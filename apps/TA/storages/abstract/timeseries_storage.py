@@ -186,17 +186,19 @@ class TimeseriesStorage(KeyValueStorage):
         self.save_own_existance()
 
         z_add_data = self.get_z_add_data()
-        # # logger.debug(f'savingdata with args {z_add_data}')
+        # logger.debug(f'saving data with args {z_add_data}')
 
         if pipeline is not None:
-            pipeline = pipeline.zadd(*z_add_data.values())
+            pipeline = pipeline.zadd(z_add_data['key'], {z_add_data['name']: z_add_data['score']})
             # logger.debug("added command to redis pipeline")
-            if publish: pipeline = self.publish(pipeline)
+            if publish:
+                pipeline = self.publish(pipeline)
             return pipeline
         else:
-            response = database.zadd(*z_add_data.values())
+            response = database.zadd(z_add_data['key'], {z_add_data['name']: z_add_data['score']})
             # logger.debug("no pipeline, executing zadd command immediately.")
-            if publish: self.publish()
+            if publish:
+                self.publish()
             return response
 
     def publish(self, pipeline=None):
