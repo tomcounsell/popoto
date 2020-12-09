@@ -1,7 +1,7 @@
 import logging
 
 from apps.TA import TAException
-from apps.TA import TickerStorage
+from apps.TA.storages.abstract.ticker import TickerStorage
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ class PriceVolumeHistoryStorage(TickerStorage):
     def query(cls, *args, **kwargs):
 
         # "ETH_BTC:poloniex:PriceVolumeHistoryStorage:close_price"
-        # f'{ticker}:{exchange}:{cls.__name__}:{index}'
+        # f'{ticker}:{publisher}:{cls.__name__}:{index}'
 
         if not "index" in kwargs:
             logger.debug("assuming to use `close_price` index in price query")
@@ -59,7 +59,7 @@ class PriceVolumeHistoryStorage(TickerStorage):
     def save(self, *args, **kwargs):
 
         # meets basic requirements for saving
-        if not all([self.ticker, self.exchange,
+        if not all([self.ticker, self.publisher,
                    self.index, self.value,
                    self.unix_timestamp]):
             logger.error("incomplete information, cannot save \n" + str(self.__dict__))

@@ -1,8 +1,8 @@
 import logging
 import time
 
+from apps.TA import SMA_LIST
 from apps.common.utilities.multithreading import start_new_thread
-from apps.indicator.models.sma import SMA_LIST
 from settings import STAGE
 from settings.redis_db import database
 
@@ -28,7 +28,7 @@ def redisCleanup():
     # delete all values 2 hours old or older
     old_for_pv_history_timestamp = now_timestamp - (3600 * 2)  # 2 hours
 
-    from apps.TA.storages.data import PriceVolumeHistoryStorage
+    from apps.TA.storages.data.pv_history import PriceVolumeHistoryStorage
     old_score = PriceVolumeHistoryStorage.score_from_timestamp(old_for_pv_history_timestamp)
 
     pv_history_keys = database.keys(f'*:PriceVolumeHistoryStorage:*')
@@ -41,7 +41,7 @@ def redisCleanup():
 
     #PriceVolumeHistoryStorage
     from datetime import datetime, timedelta
-    from apps.TA import TimeseriesStorage
+    from apps.TA.storages.abstract.timeseries_storage import TimeseriesStorage
     old_score = TimeseriesStorage.score_from_timestamp(datetime(2017, 1, 1).timestamp())
     highest_allowed_score = TimeseriesStorage.score_from_timestamp((datetime.today() + timedelta(days=1)).timestamp())
 
@@ -60,7 +60,7 @@ def redisCleanup():
     else:
         old_for_price_timestamp = now_timestamp - (3600 * 24 * SMA_LIST[-1])  # 200 days
 
-    from apps.TA.storages.data import PriceStorage
+    from apps.TA.storages.data.price import PriceStorage
     old_score = PriceStorage.score_from_timestamp(old_for_price_timestamp)
 
     price_history_keys = database.keys(f'*:PriceStorage:*')
@@ -81,11 +81,11 @@ def redisCleanup():
 # from apps.finance.TA.storages.data.memory_cleaner import redisCleanup as rC
 
 @start_new_thread
-def clear_pv_history_values(ticker: str, exchange: str, score: float, conservative: bool = True) -> bool:
+def clear_pv_history_values(ticker: str, publisher: str, score: float, conservative: bool = True) -> bool:
     """
     Permanently delete values from PriceVolumeHistoryStorage
     :param ticker: eg. "ETH_BTC"
-    :param exchange: eg. "binance"
+    :param publisher: eg. "binance"
     :param score: the score number as defined by TimeseriesStorage.score_from_timestamp()
     :param conservative: set to False to delete all values within the score period.
     Default is True, which will not delete values within 45s of the edge of the 5min period
@@ -101,6 +101,6 @@ def clear_pv_history_values(ticker: str, exchange: str, score: float, conservati
     min_score = score - 1 + ((45/300) if conservative else 0)
     max_score = score - ((255/300) if conservative else 0)
 
-    for key in database.keys(f"{ticker}:{exchange}:PriceVolumeHistoryStorage:*price*"):
+    for key in database.keys(f"{ticker}:{publisher}:PriceVolumeHistoryStorage:*price*"):
         database.zremrangebyscore(key, min_score, max_score)
         # logger.debug(f"removing values in {key} for scores {min_score} to {max_score}")

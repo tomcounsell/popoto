@@ -1,10 +1,10 @@
 import logging
 
 from apps.TA import TAException
-from apps.TA import TickerStorage
+from apps.TA.storages.abstract.ticker import TickerStorage
 from apps.TA.storages.abstract.ticker_subscriber import TickerSubscriber, timestamp_is_near_5min, \
     get_nearest_5min_timestamp
-from apps.TA.storages.data import PriceVolumeHistoryStorage, default_volume_indexes, derived_volume_indexes
+from apps.TA.storages.data.pv_history import PriceVolumeHistoryStorage, default_volume_indexes, derived_volume_indexes
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ class VolumeStorage(TickerStorage):
     def save(self, *args, **kwargs):
 
         # meets basic requirements for saving
-        if not all([self.ticker, self.exchange,
+        if not all([self.ticker, self.publisher,
                    self.index, self.value,
                    self.unix_timestamp]):
             logger.error("incomplete information, cannot save \n" + str(self.__dict__))
@@ -46,8 +46,8 @@ class VolumeSubscriber(TickerSubscriber):
     def handle(self, channel, data, *args, **kwargs):
 
         # parse timestamp from data
-        # f'{data_history.ticker}:{data_history.exchange}:{data_history.timestamp}'
-        [ticker, exchange, timestamp] = data.split(":")
+        # f'{data_history.ticker}:{data_history.publisher}:{data_history.timestamp}'
+        [ticker, publisher, timestamp] = data.split(":")
 
         if not timestamp_is_near_5min(timestamp):
             return
@@ -55,14 +55,14 @@ class VolumeSubscriber(TickerSubscriber):
         # logger.debug("near to a 5 min time marker")
         timestamp = get_nearest_5min_timestamp(timestamp)
 
-        volume = VolumeStorage(ticker=ticker, exchange=exchange, timestamp=timestamp)
+        volume = VolumeStorage(ticker=ticker, publisher=publisher, timestamp=timestamp)
         index_values = {}
 
         for index in default_volume_indexes:
             logger.debug(f'process volume for ticker: {ticker}')
 
             # example key = "XPM_BTC:poloniex:PriceVolumeHistoryStorage:close_price"
-            sorted_set_key = f'{ticker}:{exchange}:PriceVolumeHistoryStorage:{index}'
+            sorted_set_key = f'{ticker}:{publisher}:PriceVolumeHistoryStorage:{index}'
 
             index_values[index] = [
                 float(db_value.decode("utf-8").split(":")[0])

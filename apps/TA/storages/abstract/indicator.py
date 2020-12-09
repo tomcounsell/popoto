@@ -19,7 +19,7 @@ class SignalException(TAException):
 
 class IndicatorStorage(TickerStorage):
     """
-    stores indicators in a sorted set unique to each ticker and exchange
+    stores indicators in a sorted set unique to each ticker and publisher
     requires data to be a resampling to represent the most recent 5min block of time
     timestamp value must be evenly divisible by 5 minutes (300 seconds)
     add short, medium, long as 1hr, 4hr, 24hr time horizons
@@ -61,7 +61,7 @@ class IndicatorStorage(TickerStorage):
                 pass
             else:
                 self.value = self.query(
-                    ticker=self.ticker, exchange=self.exchange, timestamp=self.unix_timestamp
+                    ticker=self.ticker, publisher=self.publisher, timestamp=self.unix_timestamp
                 )['values'][-1]
             if not self.value:
                 self.value = self.compute_value()
@@ -108,7 +108,7 @@ class IndicatorStorage(TickerStorage):
         from apps.TA.storages.data import PriceStorage
         results_dict = PriceStorage.query(
             ticker=self.ticker,
-            exchange=self.exchange,
+            publisher=self.publisher,
             index=index,
             timestamp=self.unix_timestamp,
             periods_range=periods or self.periods
@@ -150,7 +150,7 @@ class IndicatorStorage(TickerStorage):
         """
 
         if not all([
-            self.ticker, self.exchange, self.unix_timestamp, self.periods
+            self.ticker, self.publisher, self.unix_timestamp, self.periods
         ]):
             raise Exception("missing required values")
 
@@ -160,8 +160,8 @@ class IndicatorStorage(TickerStorage):
         return bool(self.value)
 
     @classmethod
-    def compute_and_save_all_values_for_timestamp(cls, ticker, exchange, timestamp):
-        new_class_storage = cls(ticker=ticker, exchange=exchange, timestamp=timestamp)
+    def compute_and_save_all_values_for_timestamp(cls, ticker, publisher, timestamp):
+        new_class_storage = cls(ticker=ticker, publisher=publisher, timestamp=timestamp)
         for periods in cls.get_periods_list():
             new_class_storage.periods = periods
             new_class_storage.compute_and_save()
@@ -186,15 +186,15 @@ class IndicatorStorage(TickerStorage):
         :return: signal object (Django model object)
         """
         from apps.TA.storages.data import PriceStorage
-        price_results_dict = PriceStorage.query(ticker=self.ticker, exchange=self.exchange)
+        price_results_dict = PriceStorage.query(ticker=self.ticker, publisher=self.publisher)
         most_recent_price = int(price_results_dict['values'][0])
         # from apps.finance.TA.storages.data.volume import VolumeStorage
-        # volume_results_dict = VolumeStorage.query(ticker=self.ticker, exchange=self.exchange)
+        # volume_results_dict = VolumeStorage.query(ticker=self.ticker, publisher=self.publisher)
         # most_recent_volume = float(volume_results_dict ['values'][0])
 
         return Signal.objects.create(
             timestamp=self.unix_timestamp,
-            source=self.exchange,
+            source=self.publisher,
             transaction_currency=self.ticker.split("_")[0],
             counter_currency=self.ticker.split("_")[1],
             resample_period=self.periods * 5,  # Signal object uses 1-min periods
@@ -209,7 +209,7 @@ class IndicatorStorage(TickerStorage):
     def save(self, *args, **kwargs):
 
         # check meets basic requirements for saving
-        if not all([self.ticker, self.exchange,
+        if not all([self.ticker, self.publisher,
                     self.periods, self.value,
                     self.unix_timestamp]):
             logger.error("incomplete information, cannot save \n" + str(self.__dict__))
@@ -228,7 +228,7 @@ class IndicatorStorage(TickerStorage):
 ===== EXAMPLE USAGE =====
 
 my_indicator = TimeseriesIndicator(ticker="ETH_BTC",
-                                   exchange="bittrex",
+                                   publisher="bittrex",
                                    timestamp=1483228800,
                                    periods=12*20)
 my_indicator.value = "BUY BITCOIN"

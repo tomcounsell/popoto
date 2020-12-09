@@ -19,7 +19,7 @@ class IndicatorSubscriber(TickerSubscriber):
         #     "score": "1532373300"
         # }
 
-        [self.ticker, self.exchange, object_class, self.key_suffix] = data["key"].split(":")
+        [self.ticker, self.publisher, object_class, self.key_suffix] = data["key"].split(":")
 
         if not object_class == channel and object_class in [
             sub_class.__name__ for sub_class in self.classes_subscribing_to
@@ -52,7 +52,7 @@ class IndicatorSubscriber(TickerSubscriber):
     def handle(self, channel, data, *args, **kwargs):
         """
         a new instance was saved belonging to one of the classes subscribed to
-        for standard indicators self.ticker, self.exchange, and self.timestamp are available
+        for standard indicators self.ticker, self.publisher, and self.timestamp are available
         these values were collected by self.pre_handle() and self.extract_params()
 
         :param channel:
@@ -66,4 +66,4 @@ class IndicatorSubscriber(TickerSubscriber):
             logger.debug(f'index {self.key_suffix} is not in {self.storage_class.requisite_pv_indexes} ...ignoring...')
             return
 
-        self.storage_class.compute_and_save_all_values_for_timestamp(self.ticker, self.exchange, self.timestamp)
+        self.storage_class.compute_and_save_all_values_for_timestamp(self.ticker, self.publisher, self.timestamp)

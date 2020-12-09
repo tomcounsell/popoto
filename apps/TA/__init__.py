@@ -9,6 +9,8 @@ HORIZONS = [PERIODS_1HR, PERIODS_4HR, PERIODS_24HR] = [12, 48, 288]  # num of 5 
 PRICE_INDEXES = ['open_price', 'close_price', 'low_price', 'high_price', 'midpoint_price', 'mean_price', 'price_variance',]
 VOLUME_INDEXES = ['open_volume', 'close_volume', 'low_volume', 'high_volume',]
 
+SMA_LIST = [20, 50, 200]
+
 deployment_type = os.environ.get('DEPLOYMENT_TYPE', 'LOCAL')
 if deployment_type == 'LOCAL':
     logging.basicConfig(level=logging.DEBUG)

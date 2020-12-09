@@ -10,11 +10,11 @@ from apps.TA.storages.data import VolumeStorage
 logger = logging.getLogger(__name__)
 
 
-def generate_pv_storages(ticker: str, exchange: str, index: str, score: float) -> bool:
+def generate_pv_storages(ticker: str, publisher: str, index: str, score: float) -> bool:
     """
     resample values from PriceVolumeHistoryStorage into 5min periods in PriceStorage and VolumeStorage
     :param ticker: eg. "ETH_BTC"
-    :param exchange: eg. "binance"
+    :param publisher: eg. "binance"
     :param index: eg. "close_price"
     :param score: as defined by TimeseriesStorage.score_from_timestamp()
     :return: True if successful at generating a new storage index value for the score, else False
@@ -23,19 +23,19 @@ def generate_pv_storages(ticker: str, exchange: str, index: str, score: float) -
     timestamp = TimeseriesStorage.timestamp_from_score(score)
 
     if index in PRICE_INDEXES:
-        storage = PriceStorage(ticker=ticker, exchange=exchange, timestamp=timestamp, index=index)
+        storage = PriceStorage(ticker=ticker, publisher=publisher, timestamp=timestamp, index=index)
     elif index in VOLUME_INDEXES:
-        storage = VolumeStorage(ticker=ticker, exchange=exchange, timestamp=timestamp, index=index)
+        storage = VolumeStorage(ticker=ticker, publisher=publisher, timestamp=timestamp, index=index)
     else:
         logger.error("I don't know what kind of index this is")
         return False
 
     # logger.debug(f'process price for ticker: {ticker} and index: {index}')
 
-    # eg. key_format = f'{ticker}:{exchange}:PriceVolumeHistoryStorage:{index}'
+    # eg. key_format = f'{ticker}:{publisher}:PriceVolumeHistoryStorage:{index}'
 
     query_results = PriceVolumeHistoryStorage.query(
-        ticker=ticker, exchange=exchange,
+        ticker=ticker, publisher=publisher,
         index=index, timestamp=timestamp,
         periods_range=1, timestamp_tolerance=29
     )
@@ -85,7 +85,7 @@ def generate_pv_storages(ticker: str, exchange: str, index: str, score: float) -
         all_values_set = set(index_values)  # these are the close prices
         for other_index in ["open_price", "low_price", "high_price"]:
             query_results = PriceVolumeHistoryStorage.query(
-                ticker=ticker, exchange=exchange,
+                ticker=ticker, publisher=publisher,
                 index=other_index, timestamp=timestamp,
                 periods_range=1, timestamp_tolerance=29
             )
@@ -98,7 +98,7 @@ def generate_pv_storages(ticker: str, exchange: str, index: str, score: float) -
             return False
 
         for d_index in derived_price_indexes:
-            price_storage = PriceStorage(ticker=ticker, exchange=exchange, timestamp=timestamp, index=d_index)
+            price_storage = PriceStorage(ticker=ticker, publisher=publisher, timestamp=timestamp, index=d_index)
 
             values_set = all_values_set.copy()
 

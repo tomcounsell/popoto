@@ -19,8 +19,8 @@ class TimeseriesException(TAException):
 
 class TimeseriesStorage(KeyValueStorage):
     """
-    stores things in a sorted set unique to each ticker and exchange
-    todo: split the db by each exchange source
+    stores things in a sorted set unique to each ticker and publisher
+    todo: split the db by each publisher source
 
     """
     class_describer = "timeseries"

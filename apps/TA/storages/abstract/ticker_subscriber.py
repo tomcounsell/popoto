@@ -42,7 +42,7 @@ class TickerSubscriber(ABC):
         #   'pattern': None,
         #   'channel': b'PriceStorage',
         #   'data': b'{
-        #       "key": f'{self.ticker}:{self.exchange}:PriceStorage:{periods}',
+        #       "key": f'{self.ticker}:{self.publisher}:PriceStorage:{periods}',
         #       "name": "9545225909:1533883300",
         #       "score": "1533883300"
         #   }'

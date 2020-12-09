@@ -1,14 +1,10 @@
 import logging
-from datetime import timedelta
 
 from apps.TA import PRICE_INDEXES, VOLUME_INDEXES, JAN_1_2017_TIMESTAMP
-from apps.TA import TimeseriesStorage
-from apps.TA.storages.data import PriceStorage
-from apps.TA.storages.data import VolumeStorage
-from apps.TA import missing_elements
-from apps.TA import generate_pv_storages
-from apps.api.helpers import get_source_index, get_counter_currency_index
-from apps.indicator.models import PriceHistory
+from apps.TA.storages.abstract.timeseries_storage import TimeseriesStorage
+from apps.TA.storages.data.price import PriceStorage
+from apps.TA.storages.data.volume import VolumeStorage
+from apps.TA.storages.utils.list_search import missing_elements
 from settings.redis_db import database
 
 logger = logging.getLogger(__name__)
@@ -46,7 +42,6 @@ def find_pv_storage_data_gaps(ticker: str, exchange: str, index: str, back_to_th
     :param end_score: optional, default will reset to 2 hours ago from now()
     :return: list of scores that are still missing gaps, [] empty list means no gaps
     """
-    from apps.TA import save_pv_histories_to_redis
 
     # validate index and determine storage class
     if index in PRICE_INDEXES:
@@ -70,17 +65,17 @@ def find_pv_storage_data_gaps(ticker: str, exchange: str, index: str, back_to_th
         for processing_score in missing_scores:
             processing_datetime = TimeseriesStorage.datetime_from_score(processing_score)
 
-            price_history_objects = PriceHistory.objects.filter(
-                timestamp__gte=processing_datetime - timedelta(minutes=1),
-                timestamp__lte=processing_datetime,
-                source=get_source_index(exchange),
-                counter_currency=get_counter_currency_index(ticker.split("_")[1])
-            )
-
-            for ph_object in price_history_objects:
-                results = save_pv_histories_to_redis(ph_object)
-                if sum(results):
-                    restorable_scores.append(processing_score)
+            # pv_history_objects = PriceVolumeHistoryStorage.objects.filter(
+            #     timestamp__gte=processing_datetime - timedelta(minutes=1),
+            #     timestamp__lte=processing_datetime,
+            #     source=get_source_index(exchange),
+            #     counter_currency=get_counter_currency_index(ticker.split("_")[1])
+            # )
+            #
+            # for ph_object in pv_history_objects:
+            #     results = save_pv_histories_to_redis(ph_object)
+            #     if sum(results):
+            #         restorable_scores.append(processing_score)
 
         if len(restorable_scores):
             logger.debug("successfully restored missing data from SQL into PriceVolumeHistoryStorage")

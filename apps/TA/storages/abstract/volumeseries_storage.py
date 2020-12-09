@@ -14,7 +14,7 @@ class VolumeseriesException(TAException):
 
 class VolumeseriesStorage(KeyValueStorage):
     """
-    stores things in a sorted set unique to each ticker and exchange
+    stores things in a sorted set unique to each ticker and publisher
     ordered by blocks of volume as opposed to time
     """
     class_describer = "volumeseries"

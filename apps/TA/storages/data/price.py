@@ -23,7 +23,7 @@ class PriceStorage(TickerStorage):
     def save(self, *args, **kwargs):
 
         # meets basic requirements for saving
-        if not all([self.ticker, self.exchange,
+        if not all([self.ticker, self.publisher,
                     self.index, self.value,
                     self.unix_timestamp]):
             logger.error("incomplete information, cannot save \n" + str(self.__dict__))
@@ -73,7 +73,7 @@ class PriceSubscriber(TickerSubscriber):
 
         # eg. sorted_set_key = data["key"]
 
-        [ticker, exchange, object_class, index] = data["key"].split(":")
+        [ticker, publisher, object_class, index] = data["key"].split(":")
         if not object_class == channel == PriceVolumeHistoryStorage.__name__:
             logger.warning(f'Unexpected that these are not the same:'
                            f'object_class: {object_class}, '
@@ -88,6 +88,6 @@ class PriceSubscriber(TickerSubscriber):
                            f'is different than score {score}')
 
         if score_is_near_5min(score):
-            if generate_pv_storages(ticker, exchange, index, score):
+            if generate_pv_storages(ticker, publisher, index, score):
                 if index == "close_price":
-                    clear_pv_history_values(ticker, exchange, score)
+                    clear_pv_history_values(ticker, publisher, score)
