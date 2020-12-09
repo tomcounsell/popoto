@@ -39,8 +39,8 @@ class IndicatorStorage(TickerStorage):
         super().__init__(*args, **kwargs)
 
         # ALL INDICATORS ARE ASSUMED 5-MIN PERIOD RESAMPLED
-        if self.unix_timestamp % 300 != 0:
-            raise IndicatorException("indicator timestamp should be % 300")
+        if self.unix_timestamp % 3600 != 0:
+            raise IndicatorException("indicator timestamp should be % 3600")
 
         # self.horizon = int(kwargs.get('horizon', 1))
         self.periods = int(kwargs.get('periods', 1))  # * self.horizon))

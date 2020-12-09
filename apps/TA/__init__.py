@@ -6,8 +6,14 @@ import logging
 
 JAN_1_2017_TIMESTAMP = int(1483228800)
 HORIZONS = [PERIODS_1HR, PERIODS_4HR, PERIODS_24HR] = [12, 48, 288]  # num of 5 min samples
-PRICE_INDEXES = ['open_price', 'close_price', 'low_price', 'high_price', 'midpoint_price', 'mean_price', 'price_variance',]
-VOLUME_INDEXES = ['open_volume', 'close_volume', 'low_volume', 'high_volume',]
+
+DEFAULT_PRICE_INDEXES = ["open_price", "high_price", "low_price", "close_price", ]
+DERIVED_PRICE_INDEXES = ["midpoint_price", "mean_price", "price_variance", ]
+PRICE_INDEXES = DEFAULT_PRICE_INDEXES + DERIVED_PRICE_INDEXES
+
+DEFAULT_VOLUME_INDEXES = ["close_volume", ]
+DERIVED_VOLUME_INDEXES = ["open_volume", "high_volume", "low_volume", ]
+VOLUME_INDEXES = DEFAULT_VOLUME_INDEXES + DERIVED_VOLUME_INDEXES
 
 SMA_LIST = [20, 50, 200]
 

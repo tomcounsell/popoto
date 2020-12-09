@@ -1,9 +1,9 @@
 import logging
 
-from apps.TA import TAException
-from apps.TA import TickerStorage
+from apps.TA import TAException, PRICE_INDEXES
+from apps.TA.storages.abstract.ticker import TickerStorage
 from apps.TA.storages.abstract.ticker_subscriber import TickerSubscriber, score_is_near_5min
-from apps.TA.storages.data import default_price_indexes, derived_price_indexes, PriceVolumeHistoryStorage
+from apps.TA.storages.data.pv_history import PriceVolumeHistoryStorage
 from apps.TA.storages.utils.memory_cleaner import clear_pv_history_values
 
 logger = logging.getLogger(__name__)
@@ -30,12 +30,12 @@ class PriceStorage(TickerStorage):
             raise PriceException("save error, missing data")
 
         if not self.force_save:
-            if not self.index in default_price_indexes + derived_price_indexes:
+            if self.index not in PRICE_INDEXES:
                 logger.error("price index not in approved list, raising exception...")
                 raise PriceException("unknown index")
 
-        if self.unix_timestamp % 300 != 0:
-            raise PriceException("price timestamp should be % 300")
+        if self.unix_timestamp % 3600 != 0:
+            raise PriceException("price timestamp should be % 3600")
 
         self.db_key_suffix = f':{self.index}'
         return super().save(*args, **kwargs)
@@ -62,7 +62,7 @@ class PriceSubscriber(TickerSubscriber):
     ]
 
     def handle(self, channel, data, *args, **kwargs):
-        from apps.TA import generate_pv_storages # import here, bc has circular dependancy
+        from apps.TA import generate_pv_storages  # import here, bc has circular dependancy
 
         # parse data like...
         # {

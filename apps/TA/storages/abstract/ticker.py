@@ -24,7 +24,7 @@ class TickerStorage(TimeseriesStorage):
         # 'publisher EXPECTED BUT CAN STILL SAVE WITHOUT
         try:
             self.ticker = str(kwargs['ticker'])  # str eg. BTC_USD
-            self.source = str(kwargs['publisher'])  # str eg. binance
+            self.publisher = str(kwargs['publisher'])  # str eg. binance
         except KeyError:
             raise TAException("Indicator requires a ticker and publisher as parameters")
         except Exception as e:

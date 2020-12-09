@@ -12,9 +12,9 @@ logger = logging.getLogger(__name__)
 
 def generate_pv_storages(ticker: str, publisher: str, index: str, score: float) -> bool:
     """
-    resample values from PriceVolumeHistoryStorage into 5min periods in PriceStorage and VolumeStorage
-    :param ticker: eg. "ETH_BTC"
-    :param publisher: eg. "binance"
+    resample values from PriceVolumeHistoryStorage into 1hr periods in PriceStorage and VolumeStorage
+    :param ticker: eg. "BTC_USD"
+    :param publisher: eg. "polygon"
     :param index: eg. "close_price"
     :param score: as defined by TimeseriesStorage.score_from_timestamp()
     :return: True if successful at generating a new storage index value for the score, else False
