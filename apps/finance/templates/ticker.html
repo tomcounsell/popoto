@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block tab_title %}
+  {{ticker_symbol|upper}}
+{% endblock tab_title %}
+
+{% block css %}
+{% endblock css %}
+
+{% block javascript %}
+  <script src="https://d3js.org/d3.v6.min.js"></script>
+
+
+
+  <script>
+
+    d3.json("/data/{{ticker_symbol}}.json", function(data) {
+        console.log(data);
+    });
+
+    d3.csv("https://ipic-uploads.s3.amazonaws.com/2020-12-08-aapl-2.csv", function(data){
+      const date = parseDate(d["Date"]);
+      return {
+        date,
+        high: +d["High"],
+        low: +d["Low"],
+        open: +d["Open"],
+        close: +d["Close"]
+      };
+    }).slice(-120)
+
+    var svg = d3.select('svg').attr("viewBox", [0, 0, width, height]);
+    var g = svg.append("g").attr("fill", "orange");
+
+    svg.append("g")
+        .call(xAxis);
+
+    svg.append("g")
+        .call(yAxis);
+
+    const g = svg.append("g")
+        .attr("stroke-linecap", "round")
+        .attr("stroke", "black")
+      .selectAll("g")
+      .data(data)
+      .join("g")
+        .attr("transform", d => `translate(${x(d.date)},0)`);
+
+    g.append("line")
+        .attr("y1", d => y(d.low))
+        .attr("y2", d => y(d.high));
+
+    g.append("line")
+        .attr("y1", d => y(d.open))
+        .attr("y2", d => y(d.close))
+        .attr("stroke-width", x.bandwidth())
+        .attr("stroke", d => d.open > d.close ? d3.schemeSet1[0]
+            : d.close > d.open ? d3.schemeSet1[2]
+            : d3.schemeSet1[8]);
+
+    formatDate = d3.utcFormat("%B %-d, %Y")
+    formatValue = d3.format(".2f")
+
+    g.append("title")
+      .text(d => `${formatDate(d.date)}
+        Open: ${formatValue(d.open)}
+        Close: ${formatValue(d.close)} (${formatChange(d.open, d.close)})
+        Low: ${formatValue(d.low)}
+        High: ${formatValue(d.high)}`
+      );
+
+  </script>
+{% endblock javascript %}
+
+{% block content_subtitle %}
+  ticker
+{% endblock content_subtitle %}
+
+{% block content_title %}
+  {{ticker_symbol|upper}}
+{% endblock content_title %}
+
+{% block content_toolbar_items %}
+
+{% endblock content_toolbar_items %}
+
+{% block content %}
+
+<svg height="450" width="600"></svg>
+
+{% endblock content %}
