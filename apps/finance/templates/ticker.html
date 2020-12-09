@@ -11,13 +11,15 @@
 {% block javascript %}
   <script src="https://d3js.org/d3.v6.min.js"></script>
 
-
+  <script>
+      var ticker_data = JSON.parse('{{ ticker_timeseries | escapejs }}');
+  </script>
 
   <script>
 
-    d3.json("/data/{{ticker_symbol}}.json", function(data) {
-        console.log(data);
-    });
+//    d3.json("/data/{{ticker_symbol}}.json", function(data) {
+//        console.log(data);
+//    });
 
     d3.csv("https://ipic-uploads.s3.amazonaws.com/2020-12-08-aapl-2.csv", function(data){
       const date = parseDate(d["Date"]);
@@ -43,7 +45,7 @@
         .attr("stroke-linecap", "round")
         .attr("stroke", "black")
       .selectAll("g")
-      .data(data)
+      .data(ticker_data)
       .join("g")
         .attr("transform", d => `translate(${x(d.date)},0)`);
 
