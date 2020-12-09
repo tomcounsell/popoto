@@ -50,6 +50,13 @@ DEFAULT_FROM_EMAIL = "info@example.com"  # if you don't already have this in set
 SERVER_EMAIL = "info@example.com"  # ditto (default from-email for Django errors)
 
 
+ALPHA_VANTAGE_API_KEY = os.environ.get('ALPHA_VANTAGE_API_KEY')
+POLYGON_API_KEY = os.environ.get('POLYGON_API_KEY')
+
+COINBASE_PRO_API_KEY = os.environ.get('COINBASE_PRO_API_KEY')
+COINBASE_PRO_API_SECRET = os.environ.get('COINBASE_PRO_API_SECRET')
+
+
 # ANALYTICS STAGE
 # MIXPANEL_API_TOKEN = os.environ.get('MIXPANEL_API_TOKEN')
 # MIXPANEL_API_KEY = os.environ.get('MIXPANEL_API_KEY')
