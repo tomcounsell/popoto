@@ -20,6 +20,7 @@ django-storages==1.10.1
 django-timezone-field
 django-user-agents==0.4.0
 django-widget-tweaks
+django-tz-detect
 djangorestframework==3.12.2
 djangorestframework-simplejwt==4.6.0
 graphviz

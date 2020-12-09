@@ -36,6 +36,10 @@ urlpatterns += [
     url(r'^admin/', admin.site.urls),
 ]
 
+# for django-tz-detect
+urlpatterns += [
+    url(r'^tz_detect/', include('tz_detect.urls')),
+]
 
 # # JWT AUTH
 # from rest_framework_simplejwt import views as jwt_views

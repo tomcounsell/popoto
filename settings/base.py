@@ -86,6 +86,7 @@ THIRD_PARTY_APPS = [
     # 'simple_history',
     # 'anymail',
     # 'ultracache',
+    'tz_detect',
 ]
 
 APPS = [
@@ -109,14 +110,22 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
-
+] + [
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'request.middleware.RequestMiddleware',
     # 'simple_history.middleware.HistoryRequestMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+] + [
+    'tz_detect.middleware.TimezoneMiddleware',
 ]
+
+# These countries will be prioritized in the search
+# for a matching timezone. Consider putting your
+# app's most popular countries first.
+# Defaults to the top Internet using countries.
+TZ_DETECT_COUNTRIES = ('TH', 'CN', 'US', 'DE', 'CZ', 'GB', 'IN', 'JP', 'BR', 'RU', 'FR')
 
 # LOGIN_REDIRECT_URL = '/dashboard/admin'
 LOGIN_URL = '/account/login'

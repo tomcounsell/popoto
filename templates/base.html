@@ -105,5 +105,9 @@
   {% block javascript %}
   {% endblock javascript %}
 
+  {#  for django-tz-detect - getting user's timezone#}
+  {% load tz_detect %}
+  {% tz_detect %}
+
 </body>
 </html>
