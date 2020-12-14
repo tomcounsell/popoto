@@ -22,7 +22,7 @@
           'High': ticker_data.high_price.values[i],
           'Low': ticker_data.low_price.values[i],
           'Close': ticker_data.close_price.values[i],
-          'Date':  parseInt(ticker_data.close_price.scores[i])*5*60,
+          'Date':  timestamp_from_score(ticker_data.close_price.scores[i]),
           'Volume': 0
         });
       });
@@ -50,30 +50,31 @@
     <svg class="candlesticks" height="450" width="600"></svg>
   </div>
 
-<table class="table">
-  <thead>
-    <tr>
+{#<table class="table">#}
+{#  <thead>#}
+{#    <tr>#}
 {#      <th scope="col">Date</th>#}
-      <th scope="col">Open</th>
-      <th scope="col">High</th>
-      <th scope="col">Low</th>
-      <th scope="col">Close</th>
-      <th scope="col">Volume</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for open, high, low, close in ohlc_values %}
-      {% with i=forloop.counter0 %}
-        <tr>
-  {#        <th scope="row"></th>#}
-          <td>{{ open }}</td>
-          <td>{{ high }}</td>
-          <td>{{ low }}</td>
-          <td>{{ close }}</td>
-        </tr>
-      {% endwith %}
-    {% endfor %}
-  </tbody>
-</table>
+{#      <th scope="col">Open</th>#}
+{#      <th scope="col">High</th>#}
+{#      <th scope="col">Low</th>#}
+{#      <th scope="col">Close</th>#}
+{#      <th scope="col">Volume</th>#}
+{#    </tr>#}
+{#  </thead>#}
+{#  <tbody>#}
+{#    {% for open, high, low, close in ohlc_values %}#}
+{#      {% with i=forloop.counter0 %}#}
+{#        <tr>#}
+{#          <th scope="row"></th>#}
+{#          <td>{{ open }}</td>#}
+{#          <td>{{ high }}</td>#}
+{#          <td>{{ low }}</td>#}
+{#          <td>{{ close }}</td>#}
+{#          <td></td>#}
+{#        </tr>#}
+{#      {% endwith %}#}
+{#    {% endfor %}#}
+{#  </tbody>#}
+{#</table>#}
 
 {% endblock content %}
