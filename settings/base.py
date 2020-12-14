@@ -252,6 +252,7 @@ STATIC_URL = '/static/'
 STATICFILES_DIRS = [
     os.path.join(BASE_DIR, 'static'),
     # ('user', os.path.join(SITE_ROOT, 'apps/user/static')),
+    ('finance', os.path.join(SITE_ROOT, 'apps/finance/static')),
 ]
 
 # General apps settings
