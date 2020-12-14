@@ -60,8 +60,8 @@
     <div class="flex-auto text-center">
       <div class="btn-group" role="group" aria-label="time frames">
         <a type="button" class="btn btn-secondary {% if days == 30 %}active{% endif %}" href="?days=30">1M</a>
-        <a type="button" class="btn btn-secondary" href="?days=90">3M</a>
-        <a type="button" class="btn btn-secondary" href="?days=365">1Y</a>
+        <a type="button" class="btn btn-secondary {% if days == 90 %}active{% endif %}" href="?days=90">3M</a>
+        <a type="button" class="btn btn-secondary {% if days == 365 %}active{% endif %}" href="?days=365">1Y</a>
       </div>
     </div>
 

@@ -1,8 +1,7 @@
 import logging
 
 from apps.TA import TAException, HORIZONS
-from apps.TA import TickerStorage
-from apps.signal.models import Signal
+from apps.TA.storages.abstract.ticker import TickerStorage
 
 logger = logging.getLogger(__name__)
 
@@ -10,10 +9,6 @@ TRENDS = (BEARISH, BULLISH, OTHER) = (-1, 1, 0)
 
 
 class IndicatorException(TAException):
-    pass
-
-
-class SignalException(TAException):
     pass
 
 
@@ -192,19 +187,6 @@ class IndicatorStorage(TickerStorage):
         # volume_results_dict = VolumeStorage.query(ticker=self.ticker, publisher=self.publisher)
         # most_recent_volume = float(volume_results_dict ['values'][0])
 
-        return Signal.objects.create(
-            timestamp=self.unix_timestamp,
-            source=self.publisher,
-            transaction_currency=self.ticker.split("_")[0],
-            counter_currency=self.ticker.split("_")[1],
-            resample_period=self.periods * 5,  # Signal object uses 1-min periods
-            # horizon=self.horizon * 5,
-
-            signal=self.__class__.__name__.replace("Storage", "").upper(),
-            trend=trend,
-            price=most_recent_price,
-            **kwargs
-        )
 
     def save(self, *args, **kwargs):
 
@@ -236,12 +218,6 @@ my_indicator.save()
 
 # advanced:
 
-very_special_signal = TimeseriesIndicator(class_describer="SuperSignal",
-                                          key="SuperSignal",
-                                          key_suffix="answer_to_the_universe",
-                                          ticker="ETH_BTC",
-                                          timestamp=1483228800
-                                          )
 from settings.redis_db import database
 pipeline = database.pipeline()
 for thing in ['towel', 42, 'babelfish', 'vogon poetry']:

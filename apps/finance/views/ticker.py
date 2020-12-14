@@ -13,6 +13,7 @@ from apps.TA.storages.abstract.ticker_subscriber import get_nearest_1hr_timestam
 from apps.TA.storages.data.price import PriceStorage
 from apps.TA.storages.data.pv_history import PriceVolumeHistoryStorage
 from apps.TA.storages.data.volume import VolumeStorage
+from apps.common.utilities.multithreading import start_new_thread
 from settings import POLYGON_API_KEY
 from settings.redis_db import database
 
@@ -25,7 +26,7 @@ class Ticker(View):
         ticker_symbol = ticker_symbol.upper()
 
         if ticker_symbol.find("_") < 0:  # underscore not in ticker
-            transaction_currency, counter_currency = ticker_symbol, "USDT"
+            transaction_currency, counter_currency = ticker_symbol, "USD"
             return redirect('finance:ticker', ticker_symbol=f"{transaction_currency}_{counter_currency}")
         else:
             transaction_currency, counter_currency = ticker_symbol.split("_")
@@ -40,11 +41,12 @@ class Ticker(View):
                 index=index,
                 publisher='polygon',
                 timestamp=now_timestamp,
-                periods_range=int(days_range) * 12 * 24  # n=30 days x 24 hours
+                timestamp_tolerance=12 * 12,  # 12 hrs
+                periods_range=float(days_range) * 12 * 24 * 1.1  # n days x 24 hours * 110%
             )
 
-        # if len(ohlc_timeserieses['close_price']['values_count']) < days_range:  # missing values
-        #     refresh_ticker_timeseries(ticker_symbol, now_timestamp, days_range)
+        if ohlc_timeserieses['close_price']['values_count'] < days_range-1:  # missing values
+            refresh_ticker_timeseries(ticker_symbol, now_timestamp, days_range)
 
         if return_json:
             return JsonResponse(ohlc_timeserieses, safe=False)
@@ -69,16 +71,22 @@ class Ticker(View):
         return render(request, 'ticker.html', context)
 
 
+@start_new_thread
 def refresh_ticker_timeseries(ticker, timestamp, days_range):
+
+    polygon_api_timeout_ttl = int(database.ttl("polygon_api_timeout"))
+    if polygon_api_timeout_ttl > 60:
+        return
 
     with PolygonAPI(POLYGON_API_KEY) as polygon_client:
         cryptoTicker, multiplier, timespan = f"X:{ticker.replace('_', '')}", 1, 'day'
         to = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d')
-        from_ = (datetime.fromtimestamp(timestamp) - timedelta(days=days_range+1)).strftime('%Y-%m-%d')
+        from_ = (datetime.fromtimestamp(timestamp) - timedelta(days=days_range+2)).strftime('%Y-%m-%d')
 
         endpoint = f"{polygon_client.url}/v2/aggs/ticker/{cryptoTicker}/range/{multiplier}/{timespan}/{from_}/{to}"
         polygon_client_response = polygon_client._session.get(endpoint, params={}, timeout=polygon_client.timeout)
         logging.debug(f"polygon responded with status: {polygon_client_response.status_code}")
+        database.set("polygon_api_timeout", "on", ex=35+polygon_api_timeout_ttl)
 
     try:
         if polygon_client_response.status_code == 200 and polygon_client_response.json()['results']:
@@ -106,4 +114,3 @@ def refresh_ticker_timeseries(ticker, timestamp, days_range):
             pipeline.execute()
     except:
         pass
-

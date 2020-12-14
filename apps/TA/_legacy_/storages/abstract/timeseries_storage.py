@@ -106,7 +106,7 @@ class TimeseriesStorage(KeyValueStorage):
 
             # logger.debug(f"querying for key {sorted_set_key} with score {target_score} and back {periods_range} periods")
 
-            min_score, max_score = (target_score - score_tolerance - periods_range), (target_score + score_tolerance)
+            min_score, max_score = (target_score - (score_tolerance + periods_range)), (target_score + score_tolerance)
 
             query_response = database.zrangebyscore(sorted_set_key, min_score, max_score)
 
