@@ -58,6 +58,12 @@ class Ticker(View):
             # "volume": volume,
             # "tv_ticker_symbol": ticker_symbol.replace("_", ""),
             # "signals": signals,
+            "ohlc_values": zip(
+                ohlc_timeserieses['open_price']['values'],
+                ohlc_timeserieses['high_price']['values'],
+                ohlc_timeserieses['low_price']['values'],
+                ohlc_timeserieses['close_price']['values'],
+            ),
         }
         return render(request, 'ticker.html', context)
 

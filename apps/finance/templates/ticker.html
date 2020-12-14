@@ -6,73 +6,30 @@
 {% endblock tab_title %}
 
 {% block css %}
+  <link href="{{ STATIC_URL }}css/candlesticks.css?v=0" rel="stylesheet">
 {% endblock css %}
 
 {% block javascript %}
   <script src="https://d3js.org/d3.v6.min.js"></script>
+  <script src="http://techanjs.org/techan.min.js"></script>
 
   <script>
       var ticker_data = JSON.parse('{{ ticker_timeseries | escapejs }}');
+      var ohlc_values = []
+      $.each(ticker_data.close_price.values, function(i, item) {
+        ohlc_values.push({
+          'Open': ticker_data.open_price.values[i],
+          'High': ticker_data.high_price.values[i],
+          'Low': ticker_data.low_price.values[i],
+          'Close': ticker_data.close_price.values[i],
+          'Date':  parseInt(ticker_data.close_price.scores[i])*5*60,
+          'Volume': 0
+        });
+      });
   </script>
 
-  <script>
+  <script src="{{ STATIC_URL }}js/candlesticks.js?v=0"></script>
 
-//    d3.json("/data/{{ticker_symbol}}.json", function(data) {
-//        console.log(data);
-//    });
-
-    d3.csv("https://ipic-uploads.s3.amazonaws.com/2020-12-08-aapl-2.csv", function(data){
-      const date = parseDate(d["Date"]);
-      return {
-        date,
-        high: +d["High"],
-        low: +d["Low"],
-        open: +d["Open"],
-        close: +d["Close"]
-      };
-    }).slice(-120)
-
-    var svg = d3.select('svg').attr("viewBox", [0, 0, width, height]);
-    var g = svg.append("g").attr("fill", "orange");
-
-    svg.append("g")
-        .call(xAxis);
-
-    svg.append("g")
-        .call(yAxis);
-
-    const g = svg.append("g")
-        .attr("stroke-linecap", "round")
-        .attr("stroke", "black")
-      .selectAll("g")
-      .data(ticker_data)
-      .join("g")
-        .attr("transform", d => `translate(${x(d.date)},0)`);
-
-    g.append("line")
-        .attr("y1", d => y(d.low))
-        .attr("y2", d => y(d.high));
-
-    g.append("line")
-        .attr("y1", d => y(d.open))
-        .attr("y2", d => y(d.close))
-        .attr("stroke-width", x.bandwidth())
-        .attr("stroke", d => d.open > d.close ? d3.schemeSet1[0]
-            : d.close > d.open ? d3.schemeSet1[2]
-            : d3.schemeSet1[8]);
-
-    formatDate = d3.utcFormat("%B %-d, %Y")
-    formatValue = d3.format(".2f")
-
-    g.append("title")
-      .text(d => `${formatDate(d.date)}
-        Open: ${formatValue(d.open)}
-        Close: ${formatValue(d.close)} (${formatChange(d.open, d.close)})
-        Low: ${formatValue(d.low)}
-        High: ${formatValue(d.high)}`
-      );
-
-  </script>
 {% endblock javascript %}
 
 {% block content_subtitle %}
@@ -89,6 +46,34 @@
 
 {% block content %}
 
-<svg height="450" width="600"></svg>
+  <div class="m-5">
+    <svg class="candlesticks" height="450" width="600"></svg>
+  </div>
+
+<table class="table">
+  <thead>
+    <tr>
+{#      <th scope="col">Date</th>#}
+      <th scope="col">Open</th>
+      <th scope="col">High</th>
+      <th scope="col">Low</th>
+      <th scope="col">Close</th>
+      <th scope="col">Volume</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for open, high, low, close in ohlc_values %}
+      {% with i=forloop.counter0 %}
+        <tr>
+  {#        <th scope="row"></th>#}
+          <td>{{ open }}</td>
+          <td>{{ high }}</td>
+          <td>{{ low }}</td>
+          <td>{{ close }}</td>
+        </tr>
+      {% endwith %}
+    {% endfor %}
+  </tbody>
+</table>
 
 {% endblock content %}
