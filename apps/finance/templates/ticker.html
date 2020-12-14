@@ -33,11 +33,11 @@
 {% endblock javascript %}
 
 {% block content_subtitle %}
-  ticker
+
 {% endblock content_subtitle %}
 
 {% block content_title %}
-  {{ticker_symbol|upper}}
+
 {% endblock content_title %}
 
 {% block content_toolbar_items %}
@@ -45,6 +45,27 @@
 {% endblock content_toolbar_items %}
 
 {% block content %}
+
+  <div class="d-flex flex-row justify-content-center my-3">
+{#    <div class="flex-auto">#}
+{#      <h5>ticker</h5>#}
+{#    </div>#}
+    <div class="flex-auto">
+      <h1>{{ticker_symbol|upper}}</h1>
+    </div>
+  </div>
+
+  <div class="d-flex flex-row justify-content-center">
+
+    <div class="flex-auto text-center">
+      <div class="btn-group" role="group" aria-label="time frames">
+        <a type="button" class="btn btn-secondary {% if days == 30 %}active{% endif %}" href="?days=30">1M</a>
+        <a type="button" class="btn btn-secondary" href="?days=90">3M</a>
+        <a type="button" class="btn btn-secondary" href="?days=365">1Y</a>
+      </div>
+    </div>
+
+  </div>
 
   <div class="m-5">
     <svg class="candlesticks" height="450" width="600"></svg>

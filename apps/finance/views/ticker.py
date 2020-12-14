@@ -32,7 +32,7 @@ class Ticker(View):
 
         ohlc_timeserieses = {}
         now_timestamp = int(time.time())
-        days_range = request.GET.get('periods', '30')
+        days_range = int(request.GET.get('days', '30'))
 
         for index in DEFAULT_PRICE_INDEXES:
             ohlc_timeserieses[index] = PriceStorage.query(
@@ -53,6 +53,7 @@ class Ticker(View):
             "ticker_symbol": ticker_symbol,
             "transaction_currency": transaction_currency,
             "counter_currency": counter_currency,
+            "days": days_range,
             "ticker_timeseries": json.dumps(ohlc_timeserieses),
             # "price": price,
             # "volume": volume,

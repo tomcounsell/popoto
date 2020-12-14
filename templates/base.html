@@ -64,26 +64,26 @@
           {% include 'messages.html' %}
         {% endblock messages %}
 
-        <div class="dashhead">
-
-          <div class="dashhead-titles">
-            <h6 class="dashhead-subtitle">
-              {% block content_subtitle %}Portfolio{% endblock %}
-            </h6>
-            <h3 class="dashhead-title">
-              {% block content_title %}&nbsp;{% endblock %}
-            </h3>
-          </div>
-
-          <div class="dashhead-toolbar">
-            {% block content_toolbar %}
-              <div class="btn-group dashhead-toolbar-item">
-                {% block content_toolbar_items %}{% endblock %}
-              </div>
-            {% endblock content_toolbar %}
-          </div>
-        </div>
-        <hr class="visible-xs mt-3">
+{#        <div class="dashhead">#}
+{##}
+{#          <div class="">#}
+{#            <h6 class="">#}
+{#              {% block content_subtitle %}Portfolio{% endblock %}#}
+{#            </h6>#}
+{#            <h3 class="">#}
+{#              {% block content_title %}&nbsp;{% endblock %}#}
+{#            </h3>#}
+{#          </div>#}
+{##}
+{#          <div class="dashhead-toolbar">#}
+{#            {% block content_toolbar %}#}
+{#              <div class="btn-group dashhead-toolbar-item">#}
+{#                {% block content_toolbar_items %}{% endblock %}#}
+{#              </div>#}
+{#            {% endblock content_toolbar %}#}
+{#          </div>#}
+{#        </div>#}
+{#        <hr class="visible-xs mt-3">#}
 
         {% block content %}
           <p>Hello World</p>
