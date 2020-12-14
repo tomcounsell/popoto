@@ -1,4 +1,5 @@
 import json
+import logging
 import time
 from datetime import datetime, timedelta
 from polygon import RESTClient as PolygonAPI
@@ -6,6 +7,7 @@ from django.http import JsonResponse
 from django.shortcuts import render, redirect
 from django.views.generic import View
 
+from apps.TA import DEFAULT_PRICE_INDEXES
 from apps.TA.storages.abstract.ticker import TickerStorage
 from apps.TA.storages.abstract.ticker_subscriber import get_nearest_1hr_timestamp
 from apps.TA.storages.data.price import PriceStorage
@@ -28,20 +30,30 @@ class Ticker(View):
         else:
             transaction_currency, counter_currency = ticker_symbol.split("_")
 
-        ticker_timeseries = get_ticker_timeseries(
-            ticker=ticker_symbol,
-            timestamp=time.time(),
-            periods_range=int(request.GET.get('periods', '30')) * 12 * 24
-        )
+        ohlc_timeserieses = {}
+        now_timestamp = int(time.time())
+        days_range = request.GET.get('periods', '30')
+
+        for index in DEFAULT_PRICE_INDEXES:
+            ohlc_timeserieses[index] = PriceStorage.query(
+                ticker=ticker_symbol,
+                index='close_price',
+                publisher='polygon',
+                timestamp=now_timestamp,
+                periods_range=int(days_range) * 12 * 24  # n=30 days x 24 hours
+            )
+
+        # if len(ohlc_timeserieses['close_price']['values_count']) < days_range:  # missing values
+        #     refresh_ticker_timeseries(ticker_symbol, now_timestamp, days_range)
 
         if return_json:
-            return JsonResponse(ticker_timeseries, safe=False)
+            return JsonResponse(ohlc_timeserieses, safe=False)
 
         context = {
             "ticker_symbol": ticker_symbol,
             "transaction_currency": transaction_currency,
             "counter_currency": counter_currency,
-            "ticker_timeseries": json.dumps(ticker_timeseries),
+            "ticker_timeseries": json.dumps(ohlc_timeserieses),
             # "price": price,
             # "volume": volume,
             # "tv_ticker_symbol": ticker_symbol.replace("_", ""),
@@ -50,45 +62,41 @@ class Ticker(View):
         return render(request, 'ticker.html', context)
 
 
+def refresh_ticker_timeseries(ticker, timestamp, days_range):
 
-def get_ticker_timeseries(ticker, timestamp, periods_range):
-    ticker_timeseries = PriceStorage.query(
-        ticker=ticker,
-        publisher='polygon',
-        timestamp=int(timestamp),
-        periods_range=periods_range
-    )
+    with PolygonAPI(POLYGON_API_KEY) as polygon_client:
+        cryptoTicker, multiplier, timespan = f"X:{ticker.replace('_', '')}", 1, 'day'
+        to = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d')
+        from_ = (datetime.fromtimestamp(timestamp) - timedelta(days=days_range+1)).strftime('%Y-%m-%d')
 
-    if ticker_timeseries['values_count'] < ticker_timeseries['periods_range']:  # missing values
-        with PolygonAPI(POLYGON_API_KEY) as polygon_client:
-            cryptoTicker, multiplier, timespan = f"X:{ticker.replace('_', '')}", 1, 'day'
-            to = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d')
-            from_ = (datetime.fromtimestamp(timestamp) - timedelta(days=periods_range+1)).strftime('%Y-%m-%d')
+        endpoint = f"{polygon_client.url}/v2/aggs/ticker/{cryptoTicker}/range/{multiplier}/{timespan}/{from_}/{to}"
+        polygon_client_response = polygon_client._session.get(endpoint, params={}, timeout=polygon_client.timeout)
+        logging.debug(f"polygon responded with status: {polygon_client_response.status_code}")
 
-            endpoint = f"{polygon_client.url}/v2/aggs/ticker/{cryptoTicker}/range/{multiplier}/{timespan}/{from_}/{to}"
-            polygon_client_response = polygon_client._session.get(endpoint, params={}, timeout=polygon_client.timeout)
+    try:
+        if polygon_client_response.status_code == 200 and polygon_client_response.json()['results']:
+            pipeline = database.pipeline()
+            price_storage = PriceStorage(ticker=ticker, publisher='polygon', timestamp=timestamp)
+            volume_storage = VolumeStorage(ticker=ticker, publisher='polygon', timestamp=timestamp)
 
-        pipeline = database.pipeline()
-        price_storage = PriceStorage(ticker=ticker, publisher='polygon', timestamp=timestamp)
-        volume_storage = VolumeStorage(ticker=ticker, publisher='polygon', timestamp=timestamp)
+            for aggregate_result in polygon_client_response.json()['results']:
+                price_storage.unix_timestamp = get_nearest_1hr_timestamp(float(aggregate_result['t'])/1000)
+                for agg_key, index_name in {
+                    'o': 'open_price',
+                    'h': 'high_price',
+                    'l': 'low_price',
+                    'c': 'close_price',
+                }.items():
+                    price_storage.index = index_name
+                    price_storage.value = float(aggregate_result[agg_key])
+                    pipeline = price_storage.save(pipeline=pipeline)
 
-        for aggregate_result in polygon_client_response.json()['results']:
-            price_storage.unix_timestamp = get_nearest_1hr_timestamp(float(aggregate_result['t'])/1000)
-            for agg_key, index_name in {
-                'o': 'open_price',
-                'h': 'high_price',
-                'l': 'low_price',
-                'c': 'close_price',
-            }.items():
-                price_storage.index = index_name
-                price_storage.value = float(aggregate_result[agg_key])
-                pipeline = price_storage.save(pipeline=pipeline)
+                volume_storage.unix_timestamp = get_nearest_1hr_timestamp(float(aggregate_result['t']) / 1000)
+                volume_storage.index = 'close_volume'
+                volume_storage.value = float(aggregate_result['v'])
+                pipeline = volume_storage.save(pipeline=pipeline)
 
-            volume_storage.unix_timestamp = get_nearest_1hr_timestamp(float(aggregate_result['t']) / 1000)
-            volume_storage.index = 'close_volume'
-            volume_storage.value = float(aggregate_result['v'])
-            pipeline = volume_storage.save(pipeline=pipeline)
+            pipeline.execute()
+    except:
+        pass
 
-        pipeline.execute()
-
-    return ticker_timeseries
