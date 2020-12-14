@@ -37,7 +37,7 @@ class Ticker(View):
         for index in DEFAULT_PRICE_INDEXES:
             ohlc_timeserieses[index] = PriceStorage.query(
                 ticker=ticker_symbol,
-                index='close_price',
+                index=index,
                 publisher='polygon',
                 timestamp=now_timestamp,
                 periods_range=int(days_range) * 12 * 24  # n=30 days x 24 hours

@@ -59,7 +59,7 @@ svg.append("g")
         .text("Price ($)");
 
 // Data to display initially
-draw(data.slice(0, data.length-20));
+draw(data.slice(0, data.length));
 // Only want this button to be active if the data has loaded
 d3.select("button").on("click", function() { draw(data); }).style("display", "inline");
 
