@@ -93,14 +93,14 @@
     </div>
   </div>
 
-  <nav class="navbar fixed-bottom navbar bg-faded">
-    {% block footer %}
-      {% include 'footer.html' %}
-    {% endblock footer %}
-  </nav>
+{#  <nav class="navbar fixed-bottom navbar bg-faded">#}
+{#    {% block footer %}#}
+{#      {% include 'footer.html' %}#}
+{#    {% endblock footer %}#}
+{#  </nav>#}
 
   <!--Javascript Placed at the end of the document. Pages load faster. -->
-  <script src="{{ STATIC_URL }}js/base.js"></script>
+  <script src="{{ STATIC_URL }}js/base.js?v=0"></script>
   {% block javascript %}
   {% endblock javascript %}
 
