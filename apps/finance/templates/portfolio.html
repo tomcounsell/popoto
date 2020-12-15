@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block tab_title %}
+  Portfolio
+{% endblock tab_title %}
+
+{% block css %}
+  <link href="{{ STATIC_URL }}css/techan.css?v=0" rel="stylesheet">
+{% endblock css %}
+
+{% block javascript %}
+  <script src="https://d3js.org/d3.v6.min.js"></script>
+  <script src="http://techanjs.org/techan.min.js"></script>
+
+  <script>
+      var price_timeseries = JSON.parse('{{ price_timeseries | escapejs }}');
+      var chart_values = []
+      $.each(line_data.values, function(i, item) {
+        chart_values.push({
+          'Price': price_timeseries.values[i],
+          'Date':  timestamp_from_score(price_timeseries.scores[i]),
+          'Volume': 0
+        });
+      });
+  </script>
+
+  <script src="{{ STATIC_URL }}js/line.js?v=0"></script>
+{% endblock javascript %}
+
+
+{% block content %}
+  <div class="d-flex flex-row justify-content-center my-3">
+    <div class="flex-auto">
+      <h1>Portfolio{{ticker_symbol|upper}}</h1>
+    </div>
+  </div>
+
+
+
+
+
+
+
+{% endblock content %}
