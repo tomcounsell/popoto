@@ -6,7 +6,7 @@
 {% endblock tab_title %}
 
 {% block css %}
-  <link href="{{ STATIC_URL }}css/candlesticks.css?v=0" rel="stylesheet">
+  <link href="{{ STATIC_URL }}css/techan.css?v=0" rel="stylesheet">
 {% endblock css %}
 
 {% block javascript %}
@@ -14,38 +14,25 @@
   <script src="http://techanjs.org/techan.min.js"></script>
 
   <script>
-      var ticker_data = JSON.parse('{{ ticker_timeseries | escapejs }}');
+      var ticker_timeseries = JSON.parse('{{ ticker_timeseries | escapejs }}');
       var ohlc_values = []
-      $.each(ticker_data.close_price.values, function(i, item) {
+      $.each(ticker_timeseries.close_price.values, function(i, item) {
         ohlc_values.push({
-          'Open': ticker_data.open_price.values[i],
-          'High': ticker_data.high_price.values[i],
-          'Low': ticker_data.low_price.values[i],
-          'Close': ticker_data.close_price.values[i],
-          'Date':  timestamp_from_score(ticker_data.close_price.scores[i]),
+          'Open': ticker_timeseries.open_price.values[i],
+          'High': ticker_timeseries.high_price.values[i],
+          'Low': ticker_timeseries.low_price.values[i],
+          'Close': ticker_timeseries.close_price.values[i],
+          'Date':  timestamp_from_score(ticker_timeseries.close_price.scores[i]),
           'Volume': 0
         });
       });
   </script>
 
   <script src="{{ STATIC_URL }}js/candlesticks.js?v=0"></script>
-
 {% endblock javascript %}
 
-{% block content_subtitle %}
-
-{% endblock content_subtitle %}
-
-{% block content_title %}
-
-{% endblock content_title %}
-
-{% block content_toolbar_items %}
-
-{% endblock content_toolbar_items %}
 
 {% block content %}
-
   <div class="d-flex flex-row justify-content-center my-3">
 {#    <div class="flex-auto">#}
 {#      <h5>ticker</h5>#}
