@@ -27,7 +27,7 @@ class Ticker(View):
 
         if ticker_symbol.find("_") < 0:  # underscore not in ticker
             transaction_currency, counter_currency = ticker_symbol, "USD"
-            return redirect('finance:ticker', ticker_symbol=f"{transaction_currency}_{counter_currency}")
+            return redirect('TA:ticker', ticker_symbol=f"{transaction_currency}_{counter_currency}")
         else:
             transaction_currency, counter_currency = ticker_symbol.split("_")
 

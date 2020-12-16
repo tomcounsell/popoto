@@ -70,4 +70,4 @@ class Portfolio(View):
                 portfolio_storage.value = capital
                 portfolio_storage.save()
 
-        return redirect('finance:portfolio')
+        return redirect('portfolio:portfolio')

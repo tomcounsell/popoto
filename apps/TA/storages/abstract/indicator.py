@@ -100,7 +100,7 @@ class IndicatorStorage(TickerStorage):
         return set(periods_list)
 
     def get_denoted_price_array(self, index: str = "close_price", periods: int = 0):
-        from apps.TA.storages.data import PriceStorage
+        from apps.TA.storages.data.price import PriceStorage
         results_dict = PriceStorage.query(
             ticker=self.ticker,
             publisher=self.publisher,
@@ -180,10 +180,10 @@ class IndicatorStorage(TickerStorage):
             strength_max = 5,
         :return: signal object (Django model object)
         """
-        from apps.TA.storages.data import PriceStorage
+        from apps.TA.storages.data.price import PriceStorage
         price_results_dict = PriceStorage.query(ticker=self.ticker, publisher=self.publisher)
         most_recent_price = int(price_results_dict['values'][0])
-        # from apps.finance.TA.storages.data.volume import VolumeStorage
+        # from apps.TA.storages.data.volume import VolumeStorage
         # volume_results_dict = VolumeStorage.query(ticker=self.ticker, publisher=self.publisher)
         # most_recent_volume = float(volume_results_dict ['values'][0])
 

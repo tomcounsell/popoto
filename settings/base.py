@@ -94,7 +94,7 @@ APPS = [
     'apps.communication',
     'apps.user',
     'apps.TA',
-    'apps.finance',
+    'apps.portfolio',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + APPS
@@ -252,7 +252,8 @@ STATIC_URL = '/static/'
 STATICFILES_DIRS = [
     os.path.join(BASE_DIR, 'static'),
     # ('user', os.path.join(SITE_ROOT, 'apps/user/static')),
-    ('finance', os.path.join(SITE_ROOT, 'apps/finance/static')),
+    ('portfolio', os.path.join(SITE_ROOT, 'apps/portfolio/static')),
+    ('TA', os.path.join(SITE_ROOT, 'apps/TA/static')),
 ]
 
 # General apps settings

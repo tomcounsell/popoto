@@ -13,7 +13,8 @@ urlpatterns = [
     # path('dashboard/', include('apps.dashboard.urls', namespace='dashboard')),
     # if using namespace, include app_name = "dashboard" in urls.py
 
-    path('', include('apps.finance.urls', namespace='finance')),
+    path('', include('apps.portfolio.urls', namespace='portfolio')),
+    path('', include('apps.TA.urls', namespace='TA')),
 
 ]
 

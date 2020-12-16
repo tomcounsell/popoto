@@ -78,7 +78,7 @@ def redisCleanup():
         for key in database.keys("*:bittrex:*"):
             database.delete(key)
 
-# from apps.finance.TA.storages.data.memory_cleaner import redisCleanup as rC
+# from apps.TA.storages.data.memory_cleaner import redisCleanup as rC
 
 @start_new_thread
 def clear_pv_history_values(ticker: str, publisher: str, score: float, conservative: bool = True) -> bool:
