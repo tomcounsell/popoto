@@ -15,9 +15,9 @@
 
   <script>
       var ticker_timeseries = JSON.parse('{{ ticker_timeseries | escapejs }}');
-      var ohlc_values = []
+      var CHART_VALUES = []
       $.each(ticker_timeseries.close_price.values, function(i, item) {
-        ohlc_values.push({
+        CHART_VALUES.push({
           'Open': ticker_timeseries.open_price.values[i],
           'High': ticker_timeseries.high_price.values[i],
           'Low': ticker_timeseries.low_price.values[i],
@@ -70,7 +70,7 @@
 {#    </tr>#}
 {#  </thead>#}
 {#  <tbody>#}
-{#    {% for open, high, low, close in ohlc_values %}#}
+{#    {% for open, high, low, close in CHART_VALUES %}#}
 {#      {% with i=forloop.counter0 %}#}
 {#        <tr>#}
 {#          <th scope="row"></th>#}
