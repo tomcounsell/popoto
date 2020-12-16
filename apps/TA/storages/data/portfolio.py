@@ -1,0 +1,41 @@
+import logging
+
+from apps.TA import TAException
+from apps.TA.storages.abstract.timeseries_storage import TimeseriesStorage
+
+logger = logging.getLogger(__name__)
+
+
+class PortfolioException(TAException):
+    pass
+
+
+class PortfolioStorage(TimeseriesStorage):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.id = kwargs.get('id')
+        self.value = kwargs.get('value')
+        self.db_key_suffix = f':{self.id}'
+
+    def save(self, *args, **kwargs):
+
+        # meets basic requirements for saving
+        if not all([self.id, self.value is not None, self.unix_timestamp]):
+            logger.error("incomplete information, cannot save \n" + str(self.__dict__))
+            raise PortfolioException("save error, missing data")
+
+        if self.unix_timestamp % 3600 != 0:  # on the hour
+            raise PortfolioException("price timestamp should be % 3600")
+
+        return super().save(*args, **kwargs)
+
+    @classmethod
+    def query(cls, *args, **kwargs):
+
+        key_suffix = kwargs.get("key_suffix", "")
+        id = kwargs.get("id", "close_price")
+        kwargs["key_suffix"] = f'{id}' + (f':{key_suffix}' if key_suffix else "")
+
+        results_dict = super().query(*args, **kwargs)
+        results_dict['id'] = id
+        return results_dict
