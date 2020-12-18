@@ -36,6 +36,7 @@ PyYAML
 redis==3.5.3
 requests-oauthlib==1.3.0
 requests==2.25.0
+requests_html
 schedule==0.6.0
 simplejson
 six
@@ -50,7 +51,7 @@ yahoo_fin
 alpha_vantage # for TA indicators
 quandl # for frequent price calls
 polygon-api-client  # for frequent price calls
-
+pyfolio
 
 # LOCAL DEV
 psycopg2-binary
