@@ -7,7 +7,7 @@ from django.http import JsonResponse
 from django.shortcuts import render, redirect
 from django.views.generic import View
 
-from apps.TA import DEFAULT_PRICE_INDEXES
+from apps.TA import DEFAULT_PRICE_INDEXES, PERIODS_24HR
 from apps.TA.storages.abstract.ticker import TickerStorage
 from apps.TA.storages.abstract.ticker_subscriber import get_nearest_1hr_timestamp
 from apps.TA.storages.data.price import PriceStorage
@@ -42,7 +42,7 @@ class Ticker(View):
                 publisher='polygon',
                 timestamp=now_timestamp,
                 timestamp_tolerance=12 * 12,  # 12 hrs
-                periods_range=float(days_range) * 12 * 24 * 1.1  # n days x 24 hours * 110%
+                periods_range=float(days_range) * PERIODS_24HR * 1.1  # n days x 24 hours * 110%
             )
 
         if ohlc_timeserieses['close_price']['values_count'] < days_range-1:  # missing values

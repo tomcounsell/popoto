@@ -31,7 +31,7 @@ class TickerStorage(TimeseriesStorage):
             raise TAException(str(e))
         else:
             if self.ticker.find("_") <= 0:
-                raise TAException("ticker should be like BTC_USD")
+                raise TAException("ticker should be like GOOG_USD or LTC_BTC")
 
 
     def get_db_key(self):
@@ -54,3 +54,7 @@ class TickerStorage(TimeseriesStorage):
             results_dict['publisher'] = publisher
             results_dict['ticker'] = ticker
         return results_dict
+
+    def save(self, publish=False, pipeline=None, *args, **kwargs):
+        self.value = '{:g}'.format(float('{:.{p}g}'.format(self.value, p=self.value_sig_figs)))
+        return super().save(publish=publish, pipeline=pipeline, *args, **kwargs)

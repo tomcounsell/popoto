@@ -41,7 +41,7 @@ class TimeseriesStorage(KeyValueStorage):
             raise StorageException(str(e))
 
         if self.unix_timestamp < JAN_1_2017_TIMESTAMP:
-            raise TimeseriesException("timestamp before January 1st, 2017")
+            raise TimeseriesException(f"timestamp {self.unix_timestamp} is before January 1st, 2017")
 
     def save_own_existance(self, describer_key=""):
         self.describer_key = describer_key or f'{self.__class__.class_describer}:{self.get_db_key()}'
@@ -136,7 +136,7 @@ class TimeseriesStorage(KeyValueStorage):
                 return_dict["warning"] = "fewer values than query's periods_range"
 
             values = [value_score.decode("utf-8").split(":")[0] for value_score in query_response]
-            scores = [value_score.decode("utf-8").split(":")[1] for value_score in query_response]
+            scores = [float(value_score.decode("utf-8").split(":")[1]) for value_score in query_response]
             # todo: double check that [-1] in list is most recent timestamp
 
             return_dict.update({

@@ -18,7 +18,7 @@ class PriceStorage(TickerStorage):
         super().__init__(*args, **kwargs)
         self.index = kwargs.get('index', "close_price")
         self.value = kwargs.get('value')
-        self.db_key_suffix = f':{self.index}'  # redundant?
+        self.db_key_suffix = f':{self.index}'
 
     def save(self, *args, **kwargs):
 
@@ -37,7 +37,7 @@ class PriceStorage(TickerStorage):
         if self.unix_timestamp % 3600 != 0:
             raise PriceException("price timestamp should be % 3600")
 
-        self.db_key_suffix = f':{self.index}'
+        self.db_key_suffix = self.db_key_suffix or f':{self.index}'
         return super().save(*args, **kwargs)
 
     @classmethod
