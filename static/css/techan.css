@@ -65,12 +65,6 @@ path.line {
     stroke: #ff7f0e;
 }
 
-button {
-    position: absolute;
-    right: 110px;
-    top: 25px;
-}
-
 path.macd {
     stroke: #0000AA;
 }

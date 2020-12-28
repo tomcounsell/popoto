@@ -10,6 +10,16 @@ from apps.TA.storages.data.portfolio import PortfolioStorage
 from apps.TA.storages.data.price import PriceStorage
 from settings.redis_db import database
 
+assets = {
+    "crypto": {
+        "BTC": 9,
+        "ETH": 10,
+    },
+    "stocks": {
+        "FB": 2,
+        "ABNB": 3,
+    }
+}
 
 class Portfolio(View):
     def dispatch(self, request, *args, **kwargs):
@@ -27,19 +37,13 @@ class Portfolio(View):
         )
 
         context = {
-            "price_timeseries": json.dumps(price_timeseries)
+            "price_timeseries": json.dumps(price_timeseries),
+            "assets": assets,
         }
         return render(request, 'portfolio.html', context)
 
 
     def post(self, request, *args, **kwargs):
-        assets = {
-            "crypto": {
-                "BTC": 10,
-                "ETH": 3,
-            },
-        }
-
         today = datetime.today()
         today = datetime(today.year, today.month, today.day)
         one_month_ago = today - timedelta(days=31)

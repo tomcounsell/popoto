@@ -49,13 +49,32 @@
 
   </div>
 
-  <div class="m-5">
-    <svg class="line" height="450" width="600"></svg>
+  <div class="d-flex flex-row justify-content-center">
+    <div class="m-5">
+      <svg class="line" height="450" width="600"></svg>
+    </div>
   </div>
 
   <form method="post">
-    {% csrf_token %}
-    <button type="submit" class="btn btn-danger">Save</button>
+  {% csrf_token %}
+  <div class="d-flex flex-row justify-content-center">
+    <ul class="list-unstyled">
+      {% for asset_class, assets in assets.items %}
+        <li>{{ asset_class }}</li>
+        <ul>
+          {% for symbol, quantity in assets.items %}
+            <li>{{ symbol }}: {{ quantity }}</li>
+          {% endfor %}
+        </ul>
+
+      {% endfor %}
+    </ul>
+
+    <p class="m-5">
+      <button type="submit" class="btn btn-danger">Save</button>
+    </p>
+
+  </div>
   </form>
 
 
