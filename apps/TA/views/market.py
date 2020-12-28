@@ -18,9 +18,9 @@ from settings import POLYGON_API_KEY
 from settings.redis_db import database
 
 
-class Ticker(View):
+class Market(View):
     def dispatch(self, request, ticker_symbol, return_json=False, *args, **kwargs):
-        return super(Ticker, self).dispatch(request, ticker_symbol, return_json, *args, **kwargs)
+        return super(Market, self).dispatch(request, ticker_symbol, return_json, *args, **kwargs)
 
     def get(self, request, ticker_symbol, return_json):
         ticker_symbol = ticker_symbol.upper()

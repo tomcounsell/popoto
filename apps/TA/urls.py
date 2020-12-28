@@ -1,13 +1,13 @@
 from django.urls import path
 
-from apps.TA.views import ticker
+from apps.TA.views import market
 
 app_name = "TA"
 
 urlpatterns = [
 
     # THINGS THAT NEED A UI
-    path('ticker/<str:ticker_symbol>.json', ticker.Ticker.as_view(), kwargs={'return_json': True}, name='ticker.json'),
-    path('ticker/<str:ticker_symbol>', ticker.Ticker.as_view(), name='ticker'),
+    path('market/<str:ticker_symbol>.json', market.Market.as_view(), kwargs={'return_json': True}, name='ticker.json'),
+    path('market/<str:ticker_symbol>', market.Market.as_view(), name='ticker'),
 
 ]

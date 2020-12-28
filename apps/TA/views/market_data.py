@@ -1,19 +1,18 @@
-from apps.TA import PERIODS_24HR, PRICE_INDEXES, DEFAULT_PRICE_INDEXES, DEFAULT_VOLUME_INDEXES
+from apps.TA import PERIODS_24HR, DEFAULT_PRICE_INDEXES, DEFAULT_VOLUME_INDEXES
 from apps.TA.storages.data.price import PriceStorage
-from apps.TA.storages.data.pv_history import default_indexes
 import pandas
 import time
 from apps.TA.storages.data.volume import VolumeStorage
 
 ASSETS = {
     "stocks": [
-        "FB", "GOOG", "AMZN", "MSFT",
+        "FB", "GOOG", "AMZN", "MSFT", "ABNB", "RIOT", "UFO",
     ],
     "crypto": [
-        "BTC", "ETH",
+        "BTC", "ETH", "LTC",
     ],
     "currencies": [
-        "USD", "EUR", "GBP", "AUD",
+        "USD", "EUR", "GBP", "AUD", "THB", "CZK",
     ]
 }
 
@@ -26,11 +25,11 @@ yahoo_index_dict = {
 }
 
 
-class AssetException(Exception):
+class MarketException(Exception):
     pass
 
 
-class Asset:
+class MarketData:  # candles data for an asset-symbol
     def __init__(self, symbol, asset_class=None):
         self.symbol = symbol
         self.dataframe = pandas.DataFrame()
@@ -46,11 +45,11 @@ class Asset:
                     self.asset_class = asset_class
                     break
             if not asset_class:
-                raise AssetException("symbol not found in any asset class. specify an alt asset class")
+                raise MarketException("symbol not found in any asset class. specify an alt asset class")
 
         elif asset_class in ASSETS.keys():
             if symbol not in ASSETS[asset_class]:
-                raise AssetException("symbol not found in this asset class")
+                raise MarketException("symbol not found in this asset class")
 
     def update_dataframe(self, start_timestamp=None, end_timestamp=None):
         from settings.redis_db import database
