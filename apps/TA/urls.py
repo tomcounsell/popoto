@@ -8,6 +8,6 @@ urlpatterns = [
 
     # THINGS THAT NEED A UI
     path('market/<str:ticker_symbol>.json', market.Market.as_view(), kwargs={'return_json': True}, name='ticker.json'),
-    path('market/<str:ticker_symbol>', market.Market.as_view(), name='ticker'),
+    path('market/<str:ticker_symbol>', market.Market.as_view(), name='market'),
 
 ]

@@ -63,7 +63,12 @@
         <li>{{ asset_class }}</li>
         <ul>
           {% for symbol, quantity in assets.items %}
-            <li>{{ symbol }}: {{ quantity }}</li>
+            <li>
+              {{ quantity }}
+              <a href="{% url 'TA:market' symbol %}">
+                {{ symbol }}
+              </a>
+            </li>
           {% endfor %}
         </ul>
 

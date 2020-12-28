@@ -27,7 +27,7 @@ class Market(View):
 
         if ticker_symbol.find("_") < 0:  # underscore not in ticker
             transaction_currency, counter_currency = ticker_symbol, "USD"
-            return redirect('TA:ticker', ticker_symbol=f"{transaction_currency}_{counter_currency}")
+            return redirect('TA:market', ticker_symbol=f"{transaction_currency}_{counter_currency}")
         else:
             transaction_currency, counter_currency = ticker_symbol.split("_")
 
@@ -68,7 +68,7 @@ class Market(View):
                 ohlc_timeserieses['close_price']['values'],
             ),
         }
-        return render(request, 'ticker.html', context)
+        return render(request, 'market.html', context)
 
 
 @start_new_thread
