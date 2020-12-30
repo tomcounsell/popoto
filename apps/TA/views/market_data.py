@@ -39,9 +39,13 @@ yahoo_index_dict = {
 }
 
 
-def get_tradingview_ticker_symbol(asset, asset_type):
-    asset_type = asset_type or get_asset_class()
-    return
+def get_tradingview_ticker_symbol(asset_symbol, asset_class=None):
+    asset_class = asset_class or get_asset_class(asset_symbol)
+    if asset_class == 'crypto':
+        return f"COINBASE:{asset_symbol}USD"
+    elif asset_class == "stocks":
+        return f"NASDAQ:{asset_symbol}"
+    return ""
 
 
 class MarketException(Exception):

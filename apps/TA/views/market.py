@@ -12,6 +12,7 @@ from apps.TA.storages.abstract.ticker_subscriber import get_nearest_1hr_timestam
 from apps.TA.storages.abstract.timeseries_storage import TimeseriesStorage
 from apps.TA.storages.data.price import PriceStorage
 from apps.TA.storages.data.volume import VolumeStorage
+from apps.TA.views.market_data import MarketData, get_tradingview_ticker_symbol
 from apps.common.utilities.multithreading import start_new_thread
 from settings import POLYGON_API_KEY
 from settings.redis_db import database
@@ -56,7 +57,7 @@ class Market(View):
             "ticker_symbol": ticker_symbol,
             "days": days_range,
             "market_data_csv": market_data.dataframe.to_csv(),
-            "tradingview_ticker_symbol": f"COINBASE:{ticker_symbol}USD",
+            "tradingview_ticker_symbol": get_tradingview_ticker_symbol(ticker_symbol),
             # "signals": signals,
         }
         return render(request, 'market.html', context)
