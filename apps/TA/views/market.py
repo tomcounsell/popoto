@@ -31,7 +31,7 @@ class Market(View):
         # else:
         #     transaction_currency, counter_currency = ticker_symbol.split("_")
 
-        days_range = int(request.GET.get('days', '30'))
+        days_range = int(request.GET.get('days', '90'))
         market_data = MarketData(ticker_symbol, days_range=days_range)
         dataframe = market_data.get_candle_dataframe()
 
