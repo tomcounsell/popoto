@@ -1,17 +1,16 @@
-import json
+import csv
 import logging
 import time
 from datetime import datetime, timedelta
-from polygon import RESTClient as PolygonAPI
-from django.http import JsonResponse
-from django.shortcuts import render, redirect
-from django.views.generic import View
 
-from apps.TA import DEFAULT_PRICE_INDEXES, PERIODS_24HR
-from apps.TA.storages.abstract.ticker import TickerStorage
+from django.http import JsonResponse, HttpResponse
+from django.shortcuts import render
+from django.views.generic import View
+from polygon import RESTClient as PolygonAPI
+
 from apps.TA.storages.abstract.ticker_subscriber import get_nearest_1hr_timestamp
+from apps.TA.storages.abstract.timeseries_storage import TimeseriesStorage
 from apps.TA.storages.data.price import PriceStorage
-from apps.TA.storages.data.pv_history import PriceVolumeHistoryStorage
 from apps.TA.storages.data.volume import VolumeStorage
 from apps.common.utilities.multithreading import start_new_thread
 from settings import POLYGON_API_KEY
@@ -19,54 +18,46 @@ from settings.redis_db import database
 
 
 class Market(View):
-    def dispatch(self, request, ticker_symbol, return_json=False, *args, **kwargs):
-        return super(Market, self).dispatch(request, ticker_symbol, return_json, *args, **kwargs)
+    def dispatch(self, request, ticker_symbol, return_json=False, return_csv=False, *args, **kwargs):
+        return super(Market, self).dispatch(request, ticker_symbol, return_json, return_csv, *args, **kwargs)
 
-    def get(self, request, ticker_symbol, return_json):
+    def get(self, request, ticker_symbol, return_json, return_csv):
         ticker_symbol = ticker_symbol.upper()
 
-        if ticker_symbol.find("_") < 0:  # underscore not in ticker
-            transaction_currency, counter_currency = ticker_symbol, "USD"
-            return redirect('TA:market', ticker_symbol=f"{transaction_currency}_{counter_currency}")
-        else:
-            transaction_currency, counter_currency = ticker_symbol.split("_")
+        # if ticker_symbol.find("_") < 0:  # underscore not in ticker
+        #     transaction_currency, counter_currency = ticker_symbol, "USD"
+        #     return redirect('TA:market', ticker_symbol=f"{transaction_currency}_{counter_currency}")
+        # else:
+        #     transaction_currency, counter_currency = ticker_symbol.split("_")
 
-        ohlc_timeserieses = {}
-        now_timestamp = int(time.time())
         days_range = int(request.GET.get('days', '30'))
+        market_data = MarketData(ticker_symbol, days_range=days_range)
+        dataframe = market_data.get_candle_dataframe()
 
-        for index in DEFAULT_PRICE_INDEXES:
-            ohlc_timeserieses[index] = PriceStorage.query(
-                ticker=ticker_symbol,
-                index=index,
-                publisher='polygon',
-                timestamp=now_timestamp,
-                timestamp_tolerance=12 * 12,  # 12 hrs
-                periods_range=float(days_range) * PERIODS_24HR * 1.1  # n days x 24 hours * 110%
-            )
+        if len(dataframe) and dataframe.last_valid_index() < TimeseriesStorage.score_from_timestamp(int(time.time())-(3600*12)):
+            pass
+            # market_data.update_dataframe()
 
-        if ohlc_timeserieses['close_price']['values_count'] < days_range-1:  # missing values
-            refresh_ticker_timeseries(ticker_symbol, now_timestamp, days_range)
+        # if ohlc_timeserieses['close_price']['values_count'] < days_range-1:  # missing values
+        #     refresh_ticker_timeseries(ticker_symbol, now_timestamp, days_range)
+        # if return_json:
+        #     return JsonResponse(ohlc_timeserieses, safe=False)
 
         if return_json:
-            return JsonResponse(ohlc_timeserieses, safe=False)
+            return JsonResponse(market_data.dataframe.to_json())
+        if return_csv:
+            response = HttpResponse(content_type='text/csv')
+            response['Content-Disposition'] = f'attachment; filename="{ticker_symbol}.csv"'
+            writer = csv.writer(response)
+            writer.writerows(market_data.dataframe.to_csv())
+            return response
 
         context = {
             "ticker_symbol": ticker_symbol,
-            "transaction_currency": transaction_currency,
-            "counter_currency": counter_currency,
             "days": days_range,
-            "ticker_timeseries": json.dumps(ohlc_timeserieses),
-            # "price": price,
-            # "volume": volume,
-            # "tv_ticker_symbol": ticker_symbol.replace("_", ""),
+            "market_data_csv": market_data.dataframe.to_csv(),
+            "tradingview_ticker_symbol": f"COINBASE:{ticker_symbol}USD",
             # "signals": signals,
-            "ohlc_values": zip(
-                ohlc_timeserieses['open_price']['values'],
-                ohlc_timeserieses['high_price']['values'],
-                ohlc_timeserieses['low_price']['values'],
-                ohlc_timeserieses['close_price']['values'],
-            ),
         }
         return render(request, 'market.html', context)
 
