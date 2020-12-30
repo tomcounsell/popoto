@@ -1,8 +1,16 @@
-from apps.TA import PERIODS_24HR, DEFAULT_PRICE_INDEXES, DEFAULT_VOLUME_INDEXES
-from apps.TA.storages.data.price import PriceStorage
-import pandas
+import logging
 import time
+from datetime import datetime
+
+import pandas
+from polygon import RESTClient as PolygonAPI
+
+from apps.TA import PERIODS_24HR, DEFAULT_PRICE_INDEXES, DEFAULT_VOLUME_INDEXES
+from apps.TA.storages.abstract.ticker_subscriber import get_nearest_1hr_timestamp
+from apps.TA.storages.abstract.timeseries_storage import TimeseriesStorage
+from apps.TA.storages.data.price import PriceStorage
 from apps.TA.storages.data.volume import VolumeStorage
+from settings import POLYGON_API_KEY
 
 ASSETS = {
     "stocks": [
@@ -67,13 +75,60 @@ class MarketData:  # candles data for an asset-symbol
 
     def update_dataframe(self, start_timestamp=None, end_timestamp=None):
         from settings.redis_db import database
-        pipeline = database.pipeline()
         end_timestamp = end_timestamp or self.timestamp
         one_day_seconds = 24 * 3600
         start_timestamp = start_timestamp or end_timestamp - (self.days_range * one_day_seconds)
         start_timestamp -= one_day_seconds
+        throttle_timeout = 20
 
-        if self.asset_class == "stocks":
+
+        if database.ttl(f"throttle:{PUBLISHERS[self.asset_class]}") > 0:
+            return
+        database.set(f"throttle:{PUBLISHERS[self.asset_class]}", "slow up bro", ex=throttle_timeout) #set throttle
+
+        pipeline = database.pipeline()
+
+        if PUBLISHERS[self.asset_class] == "polygon":
+            with PolygonAPI(POLYGON_API_KEY) as polygon_client:
+                cryptoTicker, multiplier, timespan = f"X:{self.symbol}USD", 1, 'day'
+                to = datetime.fromtimestamp(end_timestamp).strftime('%Y-%m-%d')
+                from_ = datetime.fromtimestamp(start_timestamp).strftime('%Y-%m-%d')
+
+                endpoint = f"{polygon_client.url}/v2/aggs/ticker/{cryptoTicker}/range/{multiplier}/{timespan}/{from_}/{to}"
+                polygon_client_response = polygon_client._session.get(endpoint, params={},
+                                                                      timeout=polygon_client.timeout)
+                logging.debug(f"polygon responded with status: {polygon_client_response.status_code}")
+
+            if polygon_client_response.status_code == 200 and polygon_client_response.json()['results']:
+
+                for aggregate_result in polygon_client_response.json()['results']:
+                    for agg_key, index_name in {
+                        'o': 'open_price',
+                        'h': 'high_price',
+                        'l': 'low_price',
+                        'c': 'close_price',
+                    }.items():
+                        price_storage = PriceStorage(
+                            ticker=f"{self.symbol}_USD",
+                            publisher="polygon",
+                            index=index_name,
+                            timestamp=get_nearest_1hr_timestamp(float(aggregate_result['t'])/1000),
+                            value=float(aggregate_result[agg_key])
+                        )
+                        pipeline = price_storage.save(pipeline=pipeline)
+
+                    volume_storage = VolumeStorage(
+                        ticker=f"{self.symbol}_USD",
+                        publisher='polygon',
+                        index='close_volume',
+                        timestamp=get_nearest_1hr_timestamp(float(aggregate_result['t']) / 1000),
+                        value = float(aggregate_result['v'])
+                    )
+                    pipeline = volume_storage.save(pipeline=pipeline)
+
+
+
+        if PUBLISHERS[self.asset_class] == "yahoo":
             from yahoo_fin.stock_info import get_data
             self.yahoo_data = get_data(
                 self.symbol,
@@ -102,14 +157,17 @@ class MarketData:  # candles data for an asset-symbol
                     volume_storage.save(pipeline=pipeline)
 
         pipeline.execute()
-        return self.get_candle_dataframe()
+        self.dataframe = self.get_candle_dataframe()
+        return
 
     def get_candle_dataframe(self, timestamp: int = 0, days_range: int = 0):
-        self.dataframe = pandas.DataFrame(data={'score': []})
         self.timestamp = timestamp or self.timestamp
         self.days_range = days_range or self.days_range
 
-        for index in DEFAULT_PRICE_INDEXES:
+        dataframes = []
+        low_score = high_score = TimeseriesStorage.score_from_timestamp(self.timestamp)
+
+        for index in reversed(DEFAULT_PRICE_INDEXES):
             prices_timeseries = PriceStorage.query(
                 ticker=f"{self.symbol}_USD",
                 index=index,
@@ -118,18 +176,15 @@ class MarketData:  # candles data for an asset-symbol
                 periods_range=float(self.days_range) * PERIODS_24HR * 1.1  # n days x 24 hours * 110%
             )
             if 'scores' in prices_timeseries:
-                self.dataframe = pandas.merge(
-                    self.dataframe,
+                dataframes.append(
                     pandas.DataFrame(
-                        data={
-                            'score': prices_timeseries['scores'],
-                            index: prices_timeseries['values']
-                        },
+                        index=prices_timeseries['scores'],
+                        data={index: prices_timeseries['values']},
                         dtype=float
-                    ),
-                    on='score',
-                    how='outer'
+                    )
                 )
+                low_score = min([low_score, prices_timeseries['scores'][0]])
+                high_score = max([high_score, prices_timeseries['scores'][-1]])
 
         for index in DEFAULT_VOLUME_INDEXES:
             volume_timeseries = VolumeStorage.query(
@@ -141,18 +196,28 @@ class MarketData:  # candles data for an asset-symbol
                 periods_range=float(self.days_range) * PERIODS_24HR * 1.1  # n days x 24 hours * 110%
             )
             if 'scores' in volume_timeseries:
-                self.dataframe = pandas.merge(
-                    self.dataframe,
+                dataframes.append(
                     pandas.DataFrame(
-                        data={
-                            'score': volume_timeseries['scores'],
-                            index: volume_timeseries['values']
-                        },
+                        index=volume_timeseries['scores'],
+                        data={index: volume_timeseries['values']},
                         dtype=float
-                    ),
-                    on='score',
-                    how='outer'
+                    )
                 )
-        self.dataframe = self.dataframe.astype({'score': 'int64'})
-        self.dataframe.set_index('score', inplace=True, verify_integrity=False)
+                low_score = min([low_score, prices_timeseries['scores'][0]])
+                high_score = max([high_score, prices_timeseries['scores'][-1]])
+
+        self.dataframe = pandas.DataFrame(index=range(int(low_score), int(high_score), PERIODS_24HR))
+        for dataframe in dataframes:
+            # todo: flatten index to nearest whole day where (score % PERIODS_24HR == 0)
+            self.dataframe = pandas.merge(
+                self.dataframe, dataframe,
+                left_index=True, right_index=True,
+                how="outer"
+            )
+
+        # self.dataframe = self.dataframe.astype({'score': 'int64'})
+        # self.dataframe.set_index('score', inplace=True, verify_integrity=True)
+        self.dataframe.index.name = "score"
+        self.dataframe = self.dataframe.reset_index().drop_duplicates(subset='score', keep='last').set_index('score').sort_index()
+        self.dataframe.fillna(method="ffill", axis=0, inplace=True)
         return self.dataframe
