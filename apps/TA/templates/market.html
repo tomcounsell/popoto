@@ -12,22 +12,21 @@
 {% block javascript %}
   <script src="https://d3js.org/d3.v6.min.js"></script>
   <script src="http://techanjs.org/techan.min.js"></script>
-
   <script>
-      var ticker_timeseries = JSON.parse('{{ ticker_timeseries | escapejs }}');
-      var CHART_VALUES = []
-      $.each(ticker_timeseries.close_price.values, function(i, item) {
-        CHART_VALUES.push({
-          'Open': ticker_timeseries.open_price.values[i],
-          'High': ticker_timeseries.high_price.values[i],
-          'Low': ticker_timeseries.low_price.values[i],
-          'Close': ticker_timeseries.close_price.values[i],
-          'Date':  timestamp_from_score(ticker_timeseries.close_price.scores[i]),
-          'Volume': 0
-        });
-      });
-  </script>
+    var CHART_VALUES = d3.csvParse('{{ market_data_csv | escapejs }}');
 
+
+    {#$.each(ticker_timeseries.close_price.values, function(i, item) {#}
+    {#  CHART_VALUES.push({#}
+    {#    'Open': ticker_timeseries.open_price.values[i],#}
+    {#    'High': ticker_timeseries.high_price.values[i],#}
+    {#    'Low': ticker_timeseries.low_price.values[i],#}
+    {#    'Close': ticker_timeseries.close_price.values[i],#}
+    {#    'Date':  timestamp_from_score(ticker_timeseries.close_price.scores[i]),#}
+    {#    'Volume': 0#}
+    {#  });#}
+    {#});#}
+  </script>
   <script src="{{ STATIC_URL }}js/candlesticks.js?v=0"></script>
 {% endblock javascript %}
 
@@ -58,31 +57,61 @@
     <svg class="candlesticks" height="450" width="600"></svg>
   </div>
 
-{#<table class="table">#}
-{#  <thead>#}
-{#    <tr>#}
-{#      <th scope="col">Date</th>#}
-{#      <th scope="col">Open</th>#}
-{#      <th scope="col">High</th>#}
-{#      <th scope="col">Low</th>#}
-{#      <th scope="col">Close</th>#}
-{#      <th scope="col">Volume</th>#}
-{#    </tr>#}
-{#  </thead>#}
-{#  <tbody>#}
-{#    {% for open, high, low, close in CHART_VALUES %}#}
-{#      {% with i=forloop.counter0 %}#}
-{#        <tr>#}
-{#          <th scope="row"></th>#}
-{#          <td>{{ open }}</td>#}
-{#          <td>{{ high }}</td>#}
-{#          <td>{{ low }}</td>#}
-{#          <td>{{ close }}</td>#}
-{#          <td></td>#}
-{#        </tr>#}
-{#      {% endwith %}#}
-{#    {% endfor %}#}
-{#  </tbody>#}
-{#</table>#}
+  {{ market_data.to_html | safe }}
+
+{#  <table class="table">#}
+{#    <thead>#}
+{#      <tr>#}
+{#        <th scope="col">Date</th>#}
+{#        <th scope="col">Open</th>#}
+{#        <th scope="col">High</th>#}
+{#        <th scope="col">Low</th>#}
+{#        <th scope="col">Close</th>#}
+{#        <th scope="col">Volume</th>#}
+{#      </tr>#}
+{#    </thead>#}
+{#    <tbody>#}
+{#      {% for open, high, low, close in market_data %}#}
+{#        {% with i=forloop.counter0 %}#}
+{#          <tr>#}
+{#            <th scope="row"></th>#}
+{#            <td>{{ open }}</td>#}
+{#            <td>{{ high }}</td>#}
+{#            <td>{{ low }}</td>#}
+{#            <td>{{ close }}</td>#}
+{#            <td></td>#}
+{#          </tr>#}
+{#        {% endwith %}#}
+{#      {% endfor %}#}
+{#    </tbody>#}
+{#  </table>#}
+
+  <!-- TradingView Widget BEGIN -->
+  <div class="tradingview-widget-container" style="max-width: 500px; max-height: 500px;">
+    <div class="tradingview-widget-container__widget"></div>
+    <div class="tradingview-widget-copyright">
+      <!--
+      <a href="https://www.tradingview.com/symbols/BTCUSD/technicals/" rel="noopener" target="_blank">
+        <span class="blue-text">Technical Analysis for BTCUSD</span>
+      </a>
+      by TradingView
+      -->
+    </div>
+    <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-technical-analysis.js" async>
+      {
+        "interval": "1D",
+        "width": "450",
+        "height": "400",
+        "isTransparent": false,
+        "symbol": "{{ trading_view_ticker_symbol }}",
+        "showIntervalTabs": true,
+        "locale": "en",
+        "colorTheme": "light"
+      }
+    </script>
+  </div>
+  <!-- TradingView Widget END -->
+
+  {{ market_data }}
 
 {% endblock content %}

@@ -1,6 +1,4 @@
 
-var data = CHART_VALUES;
-
 var margin = {top: 20, right: 20, bottom: 30, left: 50},
         width = 960 - margin.left - margin.right,
         height = 500 - margin.top - margin.bottom;
@@ -31,14 +29,14 @@ var svg = d3.select("svg.candlesticks")
 
 var accessor = candlestick.accessor();
 
-data = data.slice(0, 200).map(function(d) {
+data = CHART_VALUES.slice(0, 365).map(function(d) {
     return {
-        date: parseDate(d.Date),
-        open: +d.Open,
-        high: +d.High,
-        low: +d.Low,
-        close: +d.Close,
-        volume: +d.Volume
+        date: parseDate(timestamp_from_score(parseInt(d.score))),
+        open: +d.open_price,
+        high: +d.high_price,
+        low: +d.low_price,
+        close: +d.close_price,
+        volume: +d.close_olume
     };
 }).sort(function(a, b) { return d3.ascending(accessor.d(a), accessor.d(b)); });
 
