@@ -6,7 +6,8 @@ import pandas
 from polygon import RESTClient as PolygonAPI
 
 from apps.TA import PERIODS_24HR, DEFAULT_PRICE_INDEXES, DEFAULT_VOLUME_INDEXES
-from apps.TA.storages.abstract.ticker_subscriber import get_nearest_1hr_timestamp
+from apps.TA.storages.abstract.ticker_subscriber import get_nearest_1hr_timestamp, get_nearest_1day_timestamp, \
+    get_nearest_1day_score
 from apps.TA.storages.abstract.timeseries_storage import TimeseriesStorage
 from apps.TA.storages.data.price import PriceStorage
 from apps.TA.storages.data.volume import VolumeStorage
@@ -61,11 +62,12 @@ class MarketException(Exception):
 
 
 class MarketData:  # candles data for an asset-symbol
-    def __init__(self, symbol: str, asset_class: str = None, timestamp: int = 0, days_range: int = 1):
+    def __init__(self, symbol: str, asset_class: str = None, timestamp: int = 0, days_range: int = 1, period="daily"):
         self.symbol = symbol
         self.dataframe = pandas.DataFrame()
         self.asset_class = asset_class or get_asset_class(symbol)
         self.timestamp = timestamp or int(time.time())
+        self.period = period
         self.days_range = days_range
 
         if asset_class in ASSETS.keys():
@@ -164,27 +166,27 @@ class MarketData:  # candles data for an asset-symbol
         self.timestamp = timestamp or self.timestamp
         self.days_range = days_range or self.days_range
 
-        dataframes = []
+        dataframes = {}
         low_score = high_score = TimeseriesStorage.score_from_timestamp(self.timestamp)
 
         for index in reversed(DEFAULT_PRICE_INDEXES):
-            prices_timeseries = PriceStorage.query(
+            price_timeseries = PriceStorage.query(
                 ticker=f"{self.symbol}_USD",
                 index=index,
                 publisher=PUBLISHERS.get(self.asset_class, "yahoo"),
                 timestamp=self.timestamp,
                 periods_range=float(self.days_range) * PERIODS_24HR * 1.1  # n days x 24 hours * 110%
             )
-            if 'scores' in prices_timeseries:
-                dataframes.append(
-                    pandas.DataFrame(
-                        index=prices_timeseries['scores'],
-                        data={index: prices_timeseries['values']},
-                        dtype=float
-                    )
-                )
-                low_score = min([low_score, prices_timeseries['scores'][0]])
-                high_score = max([high_score, prices_timeseries['scores'][-1]])
+            if 'scores' not in price_timeseries or int(price_timeseries['values_count']) < 1:
+                continue
+
+            dataframes[index] = pandas.DataFrame(
+                index=[get_nearest_1day_score(score) for score in price_timeseries['scores']],
+                data={index: price_timeseries['values'],},
+                dtype=float
+            )
+            low_score = min([low_score, price_timeseries['scores'][0]])
+            high_score = max([high_score, price_timeseries['scores'][-1]])
 
         for index in DEFAULT_VOLUME_INDEXES:
             volume_timeseries = VolumeStorage.query(
@@ -196,28 +198,47 @@ class MarketData:  # candles data for an asset-symbol
                 periods_range=float(self.days_range) * PERIODS_24HR * 1.1  # n days x 24 hours * 110%
             )
             if 'scores' in volume_timeseries:
-                dataframes.append(
-                    pandas.DataFrame(
-                        index=volume_timeseries['scores'],
-                        data={index: volume_timeseries['values']},
-                        dtype=float
-                    )
+                dataframes[index] = pandas.DataFrame(
+                    index=[get_nearest_1day_score(score) for score in volume_timeseries['scores']],
+                    data={index: volume_timeseries['values'],},
+                    dtype=float
                 )
-                low_score = min([low_score, prices_timeseries['scores'][0]])
-                high_score = max([high_score, prices_timeseries['scores'][-1]])
+                low_score = min([low_score, volume_timeseries['scores'][0]])
+                high_score = max([high_score, volume_timeseries['scores'][-1]])
 
-        self.dataframe = pandas.DataFrame(index=range(int(low_score), int(high_score), PERIODS_24HR))
-        for dataframe in dataframes:
-            # todo: flatten index to nearest whole day where (score % PERIODS_24HR == 0)
+
+        # new empty dataframe with every daily score included in the index
+        self.dataframe = pandas.DataFrame(
+            index=range(get_nearest_1day_score(low_score),
+                        get_nearest_1day_score(high_score),
+                        PERIODS_24HR)
+        )
+
+        # merge all dataframes
+        for index in reversed(DEFAULT_PRICE_INDEXES):  # close_price goes first
             self.dataframe = pandas.merge(
-                self.dataframe, dataframe,
+                self.dataframe, dataframes[index],
+                left_index=True, right_index=True,
+                how="outer"
+            )
+        for index in DEFAULT_VOLUME_INDEXES:
+            self.dataframe = pandas.merge(
+                self.dataframe, dataframes[index],
                 left_index=True, right_index=True,
                 how="outer"
             )
 
+        # fill-forward missing close_prices (includes weekends for stocks)
+        self.dataframe['close_price'].fillna(method="ffill", axis=0, inplace=True)
+        for index in reversed(DEFAULT_PRICE_INDEXES):  # close_price goes first
+            # fill all other missing prices with close price
+            self.dataframe[index].fillna(self.dataframe['close_price'], axis=0, inplace=True)
+
+        # fill missing volumes with 0
+        for index in DEFAULT_VOLUME_INDEXES:
+            self.dataframe[index].fillna(0, axis=0, inplace=True)
+
         # self.dataframe = self.dataframe.astype({'score': 'int64'})
-        # self.dataframe.set_index('score', inplace=True, verify_integrity=True)
         self.dataframe.index.name = "score"
         self.dataframe = self.dataframe.reset_index().drop_duplicates(subset='score', keep='last').set_index('score').sort_index()
-        self.dataframe.fillna(method="ffill", axis=0, inplace=True)
         return self.dataframe

@@ -12,7 +12,7 @@ from apps.TA.storages.abstract.ticker_subscriber import get_nearest_1hr_timestam
 from apps.TA.storages.abstract.timeseries_storage import TimeseriesStorage
 from apps.TA.storages.data.price import PriceStorage
 from apps.TA.storages.data.volume import VolumeStorage
-from apps.TA.views.market_data import MarketData, get_tradingview_ticker_symbol
+from apps.TA.views.market_data import MarketData, get_tradingview_ticker_symbol, get_asset_class
 from apps.common.utilities.multithreading import start_new_thread
 from settings import POLYGON_API_KEY
 from settings.redis_db import database
@@ -35,9 +35,9 @@ class Market(View):
         market_data = MarketData(ticker_symbol, days_range=days_range)
         dataframe = market_data.get_candle_dataframe()
 
-        if len(dataframe) and dataframe.last_valid_index() < TimeseriesStorage.score_from_timestamp(int(time.time())-(3600*12)):
-            # market_data.update_dataframe()
-            pass
+        if len(dataframe) < 1 or dataframe.last_valid_index() < TimeseriesStorage.score_from_timestamp(int(time.time())-(3600*12)):
+            if get_asset_class(ticker_symbol) != "other":
+                market_data.update_dataframe()
 
         # if ohlc_timeserieses['close_price']['values_count'] < days_range-1:  # missing values
         #     refresh_ticker_timeseries(ticker_symbol, now_timestamp, days_range)
