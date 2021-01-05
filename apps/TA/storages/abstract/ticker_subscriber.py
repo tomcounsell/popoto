@@ -79,6 +79,12 @@ class TickerSubscriber(ABC):
                        f'... message/event discarded')
         pass
 
+def get_nearest_1day_timestamp(timestamp) -> int:
+    return ((int(timestamp) + 21600) // 86400) * 86400
+
+def get_nearest_1day_score(score) -> int:
+    return ((int(score) + 72) // 288) * 288
+
 def timestamp_is_near_1hr(timestamp) -> bool:
     # close to a 1 hr minute period mark? (+ or - 45 seconds)
     seconds_from_1hr = (int(timestamp) + 150) % 3600
@@ -91,7 +97,7 @@ def get_nearest_1hr_timestamp(timestamp) -> int:
     return ((int(timestamp) + 150) // 3600) * 3600
 
 def get_nearest_1hr_score(score) -> int:
-    return bool(round(score) - 45/300 < score < round(score) + 45/300)
+    return ((int(score) + 3) // 12) * 12
 
 def timestamp_is_near_5min(timestamp) -> bool:
     # close to a five minute period mark? (+ or - 45 seconds)
