@@ -36,8 +36,8 @@ class Market(View):
         dataframe = market_data.get_candle_dataframe()
 
         if len(dataframe) and dataframe.last_valid_index() < TimeseriesStorage.score_from_timestamp(int(time.time())-(3600*12)):
-            pass
             # market_data.update_dataframe()
+            pass
 
         # if ohlc_timeserieses['close_price']['values_count'] < days_range-1:  # missing values
         #     refresh_ticker_timeseries(ticker_symbol, now_timestamp, days_range)

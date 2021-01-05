@@ -49,8 +49,6 @@ def redisCleanup():
         # remove anything without a valid score (valid is between jan_1_2017 and today using timeseries score)
         database.zremrangebyscore(price_history_key, 0, old_score)
         database.zremrangebyscore(price_history_key, highest_allowed_score, datetime.today().timestamp())
-    #PriceVolumeHistoryStorage
-
 
 
     # PriceStorage
