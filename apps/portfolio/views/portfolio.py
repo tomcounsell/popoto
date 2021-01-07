@@ -1,4 +1,3 @@
-import logging
 from datetime import datetime, timedelta
 import json
 import time
@@ -6,7 +5,7 @@ from django.shortcuts import render, redirect
 from django.views.generic import View
 
 from apps.TA.storages.abstract.timeseries_storage import TimeseriesStorage
-from apps.TA.storages.data.portfolio import PortfolioStorage
+from apps.TA.storages.portfolio import PortfolioStorage
 from apps.TA.storages.data.price import PriceStorage
 from settings.redis_db import database
 

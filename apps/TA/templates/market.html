@@ -13,7 +13,7 @@
   <script src="https://d3js.org/d3.v6.min.js"></script>
   <script src="http://techanjs.org/techan.min.js"></script>
   <script>
-    var CHART_VALUES = d3.csvParse('{{ market_data_csv | escapejs }}');
+    var CHART_VALUES = d3.csvParse('{{ ohlcv_data_csv | escapejs }}');
   </script>
   <script src="{{ STATIC_URL }}js/candlesticks.js?v=0"></script>
 {% endblock javascript %}
@@ -25,7 +25,9 @@
 {#      <h5>ticker</h5>#}
 {#    </div>#}
     <div class="flex-auto">
-      <h1>{{ticker_symbol|upper}}</h1>
+      <h1>
+        {{ticker_symbol|upper}}
+      </h1>
 {#      <span class="fas fa-calendar"></span>#}
 {#      <input type="text" value="{% now "Y-m-d" %}" class="form-control disabled">#}
     </div>

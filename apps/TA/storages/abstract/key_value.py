@@ -20,12 +20,13 @@ class KeyValueStorage(ABC):
     """
 
     def __init__(self, *args, **kwargs):
-        self.force_save = kwargs.get('force_save', False)
         # key for redis storage
         self.db_key = kwargs.get('key', self.__class__.__name__)
         self.db_key_prefix = kwargs.get('key_prefix', "")
         self.db_key_suffix = kwargs.get('key_suffix', "")
+
         self.value = kwargs.get('value', "")
+        self.force_save = kwargs.get('force_save', False)
 
     def __str__(self):
         return str(self.get_db_key())

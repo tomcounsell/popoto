@@ -8,11 +8,12 @@ from django.shortcuts import render
 from django.views.generic import View
 from polygon import RESTClient as PolygonAPI
 
+from apps.TA.publishers_info import get_tradingview_ticker_symbol
 from apps.TA.storages.abstract.ticker_subscriber import get_nearest_1hr_timestamp
 from apps.TA.storages.abstract.timeseries_storage import TimeseriesStorage
 from apps.TA.storages.data.price import PriceStorage
 from apps.TA.storages.data.volume import VolumeStorage
-from apps.TA.views.market_data import MarketData, get_tradingview_ticker_symbol, get_asset_class
+from apps.TA.storages.asset import AssetStorage, get_asset_class
 from apps.common.utilities.multithreading import start_new_thread
 from settings import POLYGON_API_KEY
 from settings.redis_db import database
@@ -32,12 +33,12 @@ class Market(View):
         #     transaction_currency, counter_currency = ticker_symbol.split("_")
 
         days_range = int(request.GET.get('days', '90'))
-        market_data = MarketData(ticker_symbol, days_range=days_range)
-        dataframe = market_data.get_candle_dataframe()
+        asset_storage = AssetStorage(ticker_symbol, days_range=days_range)
+        dataframe = asset_storage.get_dataframe()
 
         if len(dataframe) < 1 or dataframe.last_valid_index() < TimeseriesStorage.score_from_timestamp(int(time.time())-(3600*12)):
             if get_asset_class(ticker_symbol) != "other":
-                market_data.update_dataframe()
+                asset_storage.renew()
 
         # if ohlc_timeserieses['close_price']['values_count'] < days_range-1:  # missing values
         #     refresh_ticker_timeseries(ticker_symbol, now_timestamp, days_range)
@@ -45,18 +46,18 @@ class Market(View):
         #     return JsonResponse(ohlc_timeserieses, safe=False)
 
         if return_json:
-            return JsonResponse(market_data.dataframe.to_json())
+            return JsonResponse(asset_storage.dataframe.to_json())
         if return_csv:
             response = HttpResponse(content_type='text/csv')
             response['Content-Disposition'] = f'attachment; filename="{ticker_symbol}.csv"'
             writer = csv.writer(response)
-            writer.writerows(market_data.dataframe.to_csv())
+            writer.writerows(asset_storage.dataframe.to_csv())
             return response
 
         context = {
             "ticker_symbol": ticker_symbol,
             "days": days_range,
-            "market_data_csv": market_data.dataframe.to_csv(),
+            "ohlcv_data_csv": asset_storage.dataframe.to_csv(),
             "tradingview_ticker_symbol": get_tradingview_ticker_symbol(ticker_symbol),
             # "signals": signals,
         }
