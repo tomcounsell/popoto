@@ -253,7 +253,6 @@ STATICFILES_DIRS = [
     os.path.join(BASE_DIR, 'static'),
     # ('user', os.path.join(SITE_ROOT, 'apps/user/static')),
     ('portfolio', os.path.join(SITE_ROOT, 'apps/portfolio/static')),
-    ('TA', os.path.join(SITE_ROOT, 'apps/TA/static')),
 ]
 
 # General apps settings

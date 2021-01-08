@@ -2,7 +2,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 
 from ..test_behaviors import AuthorableTest, TimestampableTest
-from ...models import Note
+from apps.common.models import Note
 
 
 class NoteTest(AuthorableTest, TimestampableTest, TestCase):
