@@ -7,7 +7,9 @@ from django.views.generic import View
 from apps.TA.storages.abstract.timeseries_storage import TimeseriesStorage
 from apps.TA.storages.portfolio import PortfolioStorage
 from apps.TA.storages.data.price import PriceStorage
+from apps.portfolio.views.asset import AssetForm
 from settings.redis_db import database
+
 
 assets = {
     "crypto": {
@@ -20,9 +22,9 @@ assets = {
     }
 }
 
-class Portfolio(View):
+class PortfolioView(View):
     def dispatch(self, request, *args, **kwargs):
-        return super(Portfolio, self).dispatch(request, *args, **kwargs)
+        return super(PortfolioView, self).dispatch(request, *args, **kwargs)
 
     def get(self, request, *args, **kwargs):
 
@@ -38,6 +40,7 @@ class Portfolio(View):
         context = {
             "price_timeseries": json.dumps(price_timeseries),
             "assets": assets,
+            "asset_form": AssetForm(),
         }
         return render(request, 'portfolio.html', context)
 

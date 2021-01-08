@@ -1,12 +1,13 @@
-from django.forms import forms
-from django.http import JsonResponse
+from django.forms import ModelForm
+from django.http import JsonResponse, HttpResponse
 from django.shortcuts import get_object_or_404, render
 from django.views import View
+from rest_framework import status
 
 from apps.portfolio.models.asset import Asset
 
 
-class AssetForm(forms.ModelForm):
+class AssetForm(ModelForm):
     class Meta:
         model = Asset
         fields = ['name', 'symbol', 'asset_class', ]
@@ -14,7 +15,9 @@ class AssetForm(forms.ModelForm):
 
 class AssetView(View):
     def dispatch(self, request, asset_symbol="", *args, **kwargs):
-        self.asset = get_object_or_404(Asset, symbol=asset_symbol)
+        self.asset = Asset.objects.filter(symbol=asset_symbol).first()
+        if asset_symbol and not self.asset:
+            return HttpResponse(status=status.HTTP_404_NOT_FOUND)
         self.context = {
             "asset": self.asset,
         }
