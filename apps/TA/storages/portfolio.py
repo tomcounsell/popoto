@@ -13,7 +13,7 @@ class PortfolioException(TAException):
 class PortfolioStorage(TimeseriesStorage):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.id = kwargs.get('id')
+        self.id = str(kwargs.get('id'))
         self.value = kwargs.get('value')
         self.db_key_suffix = f':{self.id}'
 

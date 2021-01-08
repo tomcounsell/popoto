@@ -1,13 +1,25 @@
 from django.db import models
+from django.db.models import Sum
 from apps.common.behaviors import Timestampable
 
 
 class Allocation(Timestampable, models.Model):
 
-    portfolio = models.ForeignKey("Portfolio", null=False, unique=False, on_delete=models.CASCADE)
+    portfolio = models.ForeignKey("Portfolio", null=False, unique=False, on_delete=models.CASCADE, related_name='allocations')
     asset = models.ForeignKey("Asset", null=False, on_delete=models.PROTECT)
-    user_weight = models.FloatField(default=0.00001)
-    system_weight = models.FloatField(default=0.00001)
+    quantity_offline = models.FloatField(default=0.00001)
+    user_votes = models.IntegerField(default=1)
+    system_votes = models.IntegerField(default=1)
+
+    @property
+    def user_weight(self):
+        total_user_votes = self.portfolio.allocations.aggregate(Sum('user_votes'))['user_votes__sum']
+        return self.user_votes / total_user_votes if total_user_votes > 0 else 0
+
+    @property
+    def system_weight(self):
+        total_system_votes = self.portfolio.allocations.aggregate(Sum('system_votes'))['system_votes__sum']
+        return self.system_votes / total_system_votes if total_system_votes > 0 else 0
 
     @property
     def proportion(self):
