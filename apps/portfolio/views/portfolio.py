@@ -27,8 +27,9 @@ class PortfolioView(View):
             periods_range=float(days_range) * 12 * 24 * 1.1  # n days x 24 hours * 110%
         )
         context = {
+            "portfolio": self.portfolio,
             "price_timeseries": json.dumps(price_timeseries),
-            "assets": Asset.objects.all(),
+            "all_assets": Asset.objects.all(),
             "asset_form": AssetForm(),
         }
         return render(request, 'portfolio.html', context)

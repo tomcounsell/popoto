@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load static %}
+{% load numerics %}
 
 {% block tab_title %}
   Portfolio
@@ -55,22 +56,24 @@
     </div>
   </div>
 
-
   <div class="d-flex flex-row">
-    {% for allocation in portfolio.allocations %}
-      <div class="flex-auto">
+    {% for allocation in portfolio.allocations.all %}
+      <div class="flex-auto p-3">
         <div class="card">
           <div class="card-body">
-            <h5 class="card-title">
-              <a href="{% url 'TA:market' allocation.asset.symbol %}">
-                {{ allocation.asset.symbol }} | {{ allocation.asset.latest_price }}
-                =
-                {{ allocation.value }} {{ allocation.proportion }}
+            <h5 class="card-title nowrap">
+              <a href="{% url 'TA:market' allocation.asset.symbol %}" style="color: inherit">
+                {{ allocation.asset.symbol }} ${{ allocation.asset.latest_value|floatformat }}
               </a>
+              <small class="px-3">|</small>
+              <span class="">${{ allocation.latest_value|floatformat }}</span>
+              <small>=</small>
+              <span class="text-info">{{ allocation.proportion|percentage:1 }}</span>
             </h5>
             <p class="card-text">
-              {{ allocation.asset.name }}: {{ allocation.asset.description }}
-              {{ allocation.notes }}
+              {{ allocation.asset.name }}<br>
+              {{ allocation.asset.description }}<br>
+              {{ allocation.notes }}<br>
             </p>
 {#            <a href="#" class="btn btn-primary">Go somewhere</a>#}
           </div>
@@ -78,7 +81,7 @@
       </div>
     {% endfor %}
 
-    <div class="flex-auto">
+    <div class="flex-auto p-3">
 
       <div class="card">
         <div class="card-body">

@@ -22,10 +22,16 @@ class Allocation(Timestampable, models.Model):
         return self.system_votes / total_system_votes if total_system_votes > 0 else 0
 
     @property
+    def latest_value(self):
+        if self.proportion > 0 and self.portfolio.latest_value > 0:
+            return self.proportion * self.portfolio.latest_value
+        return 0
+
+    @property
     def proportion(self):
         if self.asset.latest_value > 0 and self.portfolio.latest_value > 0:
             return self.asset.latest_value / self.portfolio.latest_value
-        return None  # unknown
+        return 0  # unknown
 
     @property
     def desired_proportion(self):
