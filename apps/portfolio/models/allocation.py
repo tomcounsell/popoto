@@ -5,7 +5,7 @@ from apps.common.behaviors import Timestampable
 
 class Allocation(Timestampable, models.Model):
 
-    portfolio = models.ForeignKey("Portfolio", null=False, unique=False, on_delete=models.CASCADE, related_name='allocations')
+    portfolio = models.ForeignKey("Portfolio", null=False, on_delete=models.CASCADE, related_name='allocations')
     asset = models.ForeignKey("Asset", null=False, on_delete=models.PROTECT)
     quantity_offline = models.FloatField(default=0.00001)
     user_votes = models.IntegerField(default=1)
@@ -33,6 +33,9 @@ class Allocation(Timestampable, models.Model):
         proportion += self.system_weight * self.portfolio.system_weight
         proportion /= 1 + self.portfolio.system_weight
         return proportion
+
+    def __str__(self):
+        return f"{self.asset} in {self.portfolio}"
 
     class Meta:
         unique_together = ('portfolio', 'asset')

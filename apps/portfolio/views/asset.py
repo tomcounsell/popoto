@@ -4,12 +4,12 @@ from django.shortcuts import get_object_or_404, render
 from django.views import View
 from rest_framework import status
 
-from apps.portfolio.models import Allocation
+from apps.portfolio.models import Allocation, Asset
 
 
 class AssetForm(ModelForm):
     class Meta:
-        model = Allocation
+        model = Asset
         fields = ['name', 'symbol', 'asset_class', ]
 
 class AllocationForm(ModelForm):
@@ -18,9 +18,9 @@ class AllocationForm(ModelForm):
         fields = ['quantity_offline', ]
 
 
-class AllocationView(View):
+class AssetView(View):
     def dispatch(self, request, asset_symbol="", *args, **kwargs):
-        self.allocation = Allocation.objects.filter(asset__symbol=asset_symbol).first()
+        self.asset = Asset.objects.filter(asset__symbol=asset_symbol).first()
         if asset_symbol and not self.allocation:
             return HttpResponse(status=status.HTTP_404_NOT_FOUND)
         self.context = {

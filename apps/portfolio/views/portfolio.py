@@ -7,21 +7,10 @@ from django.views.generic import View
 from apps.TA.storages.abstract.timeseries_storage import TimeseriesStorage
 from apps.TA.storages.portfolio import PortfolioStorage
 from apps.TA.storages.data.price import PriceStorage
-from apps.portfolio.models import Portfolio
+from apps.portfolio.models import Portfolio, Asset
 from apps.portfolio.views.asset import AssetForm
 from settings.redis_db import database
 
-
-assets = {
-    "crypto": {
-        "BTC": 9,
-        "ETH": 10,
-    },
-    "stocks": {
-        "FB": 2,
-        "ABNB": 3,
-    }
-}
 
 class PortfolioView(View):
     def dispatch(self, request, *args, **kwargs):
@@ -39,7 +28,7 @@ class PortfolioView(View):
         )
         context = {
             "price_timeseries": json.dumps(price_timeseries),
-            "assets": assets,
+            "assets": Asset.objects.all(),
             "asset_form": AssetForm(),
         }
         return render(request, 'portfolio.html', context)
@@ -61,8 +50,7 @@ class PortfolioView(View):
         for timestamp in range(int(one_month_ago.timestamp()), int(today.timestamp()), 3600 * 24):  # daily
             capital = 0
 
-            crypto_assets = assets['crypto']
-            for asset in crypto_assets.keys():
+            for asset in Asset.objects.filter(asset_class='crypto'):
                 price_timeseries = PriceStorage.query(
                     ticker=f"{asset}_USD", publisher='polygon', timestamp=timestamp, timestamp_tolerance=3600*12
                 )

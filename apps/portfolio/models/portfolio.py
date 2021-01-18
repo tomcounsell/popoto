@@ -11,3 +11,6 @@ class Portfolio(Timestampable, models.Model):
     @property
     def latest_value(self):
         return 100
+
+    def __str__(self):
+        return f"{self.name}, {self.user}" if self.name else f"{self.user}"

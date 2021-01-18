@@ -6,9 +6,9 @@ from apps.common.behaviors import Timestampable
 
 class Asset(Timestampable, models.Model):
 
-    name = models.CharField(max_length=100, blank=True)
-    symbol = models.CharField(max_length=100, blank=True)
-    alternative_symbols = models.JSONField(default=list)
+    name = models.CharField(max_length=100, blank=True, unique=True)
+    symbol = models.CharField(max_length=100, blank=True, unique=True)
+    alternative_symbols = models.JSONField(default=list, blank=True)
 
     ASSET_CLASS_CHOICES = [(asset_class_name, asset_class_name) for asset_class_name in [
         "other", "crypto", "stocks",
@@ -34,3 +34,6 @@ class Asset(Timestampable, models.Model):
     @property
     def latest_value(self):
         return 10
+
+    def __str__(self):
+        return self.symbol or self.name or "nothing"
