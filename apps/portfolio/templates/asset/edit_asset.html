@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% load static %}
+{% load numerics %}
+
+{% block tab_title %}
+  {{ asset.name }} ({{ asset.symbol }})
+{% endblock tab_title %}
+
+{% block css %}
+{% endblock css %}
+
+{% block javascript %}
+{% endblock javascript %}
+
+
+{% block content %}
+  <div class="d-flex flex-row justify-content-center my-3">
+    <div class="flex-auto">
+      <h1>{{ asset.name }} ({{ asset.symbol }})</h1>
+    </div>
+  </div>
+
+  <div class="d-flex flex-row justify-content-center my-3">
+    <div class="flex-auto">
+
+      <div class="card">
+        <div class="card-body">
+          <form action="{% url 'portfolio:create_asset' %}" method="post" class="">
+            {% load widget_tweaks %}{% csrf_token %}
+
+            {% if asset_form.errors %}
+              {% for error in asset_form.non_field_errors %}
+                <p class="text-warning">{{ error|escape }}</p>
+              {% endfor %}
+            {% endif %}
+
+            <div class="form-group {% if asset_form.name.errors %}has-error{% endif %}">
+              {{ asset_form.name.errors }}
+              {{ asset_form.name.label_tag|title }}
+              {{ asset_form.name|add_class:'form-control' }}
+            </div>
+
+            <div class="form-group {% if asset_form.symbol.errors %}has-error{% endif %}">
+              {{ asset_form.symbol.errors }}
+              {{ asset_form.symbol.label_tag|title }}
+              {{ asset_form.symbol|add_class:'form-control' }}
+            </div>
+
+            <div class="form-group {% if asset_form.asset_class.errors %}has-error{% endif %}">
+              {{ asset_form.asset_class.errors }}
+              {{ asset_form.asset_class.label_tag|title }}
+              {{ asset_form.asset_class|add_class:'form-control' }}
+            </div>
+
+            <button type="submit" class="card-lnk btn btn-primary">Save</button>
+
+          </form>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+{% endblock content %}
