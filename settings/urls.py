@@ -7,14 +7,14 @@ from settings import DEBUG
 urlpatterns = [
 
     # static page
-    # path('', TemplateView.as_view(template_name='home.html'), name="home"),
+    path('', TemplateView.as_view(template_name='home.html'), name="home"),
 
     # route prefix for urlpatterns in apps/dashboard/urls.py
     # path('dashboard/', include('apps.dashboard.urls', namespace='dashboard')),
     # if using namespace, include app_name = "dashboard" in urls.py
 
     path('', include('apps.portfolio.urls', namespace='portfolio')),
-    path('', include('apps.TA.urls', namespace='TA')),
+    path('market', include('apps.TA.urls', namespace='TA')),
 
 ]
 

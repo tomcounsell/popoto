@@ -1,15 +1,23 @@
 from datetime import datetime, timedelta
 import json
 import time
+
+from django.forms import ModelForm
 from django.shortcuts import render, redirect
 from django.views.generic import View
 
 from apps.TA.storages.abstract.timeseries_storage import TimeseriesStorage
 from apps.TA.storages.portfolio import PortfolioStorage
 from apps.TA.storages.data.price import PriceStorage
-from apps.portfolio.models import Portfolio, Asset
+from apps.portfolio.models import Portfolio, Asset, Allocation
 from apps.portfolio.views.asset import AssetForm
 from settings.redis_db import database
+
+
+class AllocationForm(ModelForm):
+    class Meta:
+        model = Allocation
+        fields = ['quantity_offline', 'portfolio', ]
 
 
 class PortfolioView(View):
@@ -31,6 +39,7 @@ class PortfolioView(View):
             "price_timeseries": json.dumps(price_timeseries),
             "all_assets": Asset.objects.all(),
             "asset_form": AssetForm(),
+            "allocation_form": AllocationForm(),
         }
         return render(request, 'portfolio.html', context)
 

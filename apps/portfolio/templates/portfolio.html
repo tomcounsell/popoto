@@ -62,18 +62,30 @@
         <div class="card">
           <div class="card-body">
             <h5 class="card-title nowrap">
-              <a href="{% url 'TA:market' allocation.asset.symbol %}" style="color: inherit">
-                {{ allocation.asset.symbol }} ${{ allocation.asset.latest_value|floatformat }}
-              </a>
-              <small class="px-3">|</small>
-              <span class="">${{ allocation.latest_value|floatformat }}</span>
-              <small>=</small>
-              <span class="text-info">{{ allocation.proportion|percentage:1 }}</span>
+              <span class="pull-left pr-3">
+                {{ allocation.asset.name }}
+              </span>
+              <span class="pull-right">
+                ${{ allocation.latest_value|floatformat }}
+              </span>
+              <br>
+              <small class="text-info">{{ allocation.proportion|percentage:1 }}</small>
             </h5>
             <p class="card-text">
-              {{ allocation.asset.name }}<br>
-              {{ allocation.asset.description }}<br>
-              {{ allocation.notes }}<br>
+              <ul class="list-unstyled">
+                <li>
+                  <span class="pull-left pr-3">
+                    <a href="{% url 'TA:market' allocation.asset.symbol %}" style="color: inherit">
+                      {{ allocation.asset.symbol }}
+                    </a>
+                  </span>
+                  <span class="pull-right">
+                    ${{ allocation.asset.latest_value|floatformat }}
+                  </span>
+                </li>
+                <li>{{ allocation.asset.description }}</li>
+                <li>{{ allocation.notes }}</li>
+              </ul>
             </p>
 {#            <a href="#" class="btn btn-primary">Go somewhere</a>#}
           </div>
@@ -90,6 +102,11 @@
 
             {% if asset_form.errors %}
               {% for error in asset_form.non_field_errors %}
+                <p class="text-warning">{{ error|escape }}</p>
+              {% endfor %}
+            {% endif %}
+            {% if allocation_form.errors %}
+              {% for error in allocation_form.non_field_errors %}
                 <p class="text-warning">{{ error|escape }}</p>
               {% endfor %}
             {% endif %}
@@ -110,6 +127,16 @@
               {{ asset_form.asset_class.errors }}
               {{ asset_form.asset_class.label_tag|title }}
               {{ asset_form.asset_class|add_class:'form-control' }}
+            </div>
+
+            <div class="hidden">
+              <input type="hidden" name="portfolio" value="{{ portfolio.id }}">
+            </div>
+
+            <div class="form-group {% if allocation_form.quantity_offline.errors %}has-error{% endif %}">
+              {{ allocation_form.quantity_offline.errors }}
+              {{ allocation_form.quantity_offline.label_tag|title }}
+              {{ allocation_form.quantity_offline|add_class:'form-control' }}
             </div>
 
             <button type="submit" class="card-lnk btn btn-primary">Save</button>
