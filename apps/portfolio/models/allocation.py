@@ -7,7 +7,7 @@ class Allocation(Timestampable, models.Model):
 
     portfolio = models.ForeignKey("Portfolio", null=False, on_delete=models.CASCADE, related_name='allocations')
     asset = models.ForeignKey("Asset", null=False, on_delete=models.PROTECT)
-    quantity_offline = models.FloatField(default=0.00001)
+    quantity_offline = models.FloatField(default=0)
     user_votes = models.IntegerField(default=1)
     system_votes = models.IntegerField(default=1)
 
