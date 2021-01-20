@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% load static %}
+{% load numerics %}
+
+{% block tab_title %}
+  All Assets
+{% endblock tab_title %}
+
+{% block css %}
+{% endblock css %}
+
+{% block javascript %}
+{% endblock javascript %}
+
+
+{% block content %}
+  <div class="d-flex flex-row justify-content-center my-3">
+    <div class="flex-auto">
+      <h1>All Assets</h1>
+    </div>
+  </div>
+
+  <div class="d-flex flex-row justify-content-center my-3">
+    <div class="flex-auto">
+
+      {% for asset in assets %}
+        <div class="card m-3">
+          <div class="card-body">
+
+            <h5>
+              {{ asset.name }} ({{ asset.symbol }})
+            </h5>
+
+            <p>
+              {{ asset.asset_class }}
+            </p>
+
+          </div>
+        </div>
+      {% endfor %}
+
+    </div>
+  </div>
+
+{% endblock content %}

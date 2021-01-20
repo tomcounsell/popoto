@@ -59,7 +59,7 @@ class PortfolioView(View):
                 if price_timeseries['values_count'] == 0:
                     continue
 
-                capital += float(crypto_assets[asset]) * float(price_timeseries['values'][0])
+                capital += float(asset.latest_value) * float(price_timeseries['values'][0])
 
             if capital > 0:
                 portfolio_storage.unix_timestamp = timestamp
