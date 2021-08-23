@@ -1,13 +1,10 @@
 import logging
-from apps.TA import TAException
-from settings.redis_db import database
 from abc import ABC
 
+from ..redis_db import POPOTO_REDIS_DB
+from ..models import ModelException
+
 logger = logging.getLogger(__name__)
-
-
-class StorageException(TAException):
-    pass
 
 
 class KeyValueStorage(ABC):
@@ -55,12 +52,12 @@ class KeyValueStorage(ABC):
 
     def save(self, pipeline=None, *args, **kwargs):
         if not self.value:
-            raise StorageException("no value set, nothing to save!")
+            raise ModelException("no value set, nothing to save!")
         if not self.force_save:
             # validate some rules here?
             pass
         # logger.debug(f'savingkey, value: {self.get_db_key()}, {self.value}')
-        return database.set(self.get_db_key(), self.value)
+        return POPOTO_REDIS_DB.set(self.get_db_key(), self.value)
 
     def get_value(self, db_key="", *args, **kwargs):
-        return database.get(db_key or self.get_db_key())
+        return POPOTO_REDIS_DB.get(db_key or self.get_db_key())

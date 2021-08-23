@@ -1,12 +1,11 @@
 import logging
 
-from apps.TA import TAException
-from apps.TA.storages.abstract.timeseries_storage import TimeseriesStorage
+from ...models.timeseries_storage import TimeseriesException, TimeseriesStorage
 
 logger = logging.getLogger(__name__)
 
 
-class PortfolioException(TAException):
+class PortfolioException(TimeseriesException):
     pass
 
 

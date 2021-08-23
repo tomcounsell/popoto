@@ -2,18 +2,13 @@ import json
 import logging
 from datetime import datetime
 import numpy as np
-from apps.TA import TAException, JAN_1_2017_TIMESTAMP
-from apps.TA.storages.abstract.key_value import KeyValueStorage
-from settings.redis_db import database
-
+from .key_value import KeyValueStorage
+from ..redis_db import POPOTO_REDIS_DB, BEGINNING_OF_TIME
+from ..models import ModelException
 logger = logging.getLogger(__name__)
 
 
-class StorageException(TAException):
-    pass
-
-
-class TimeseriesException(TAException):
+class TimeseriesException(ModelException):
     pass
 
 
@@ -40,19 +35,19 @@ class TimeseriesStorage(KeyValueStorage):
         except Exception as e:
             raise StorageException(str(e))
 
-        if self.unix_timestamp < JAN_1_2017_TIMESTAMP:
-            raise TimeseriesException(f"timestamp {self.unix_timestamp} is before January 1st, 2017")
+        if self.unix_timestamp < BEGINNING_OF_TIME:
+            raise TimeseriesException(f"timestamp {self.unix_timestamp} is before begining of time {BEGINNING_OF_TIME}")
 
     def save_own_existance(self, describer_key=""):
         self.describer_key = describer_key or f'{self.__class__.class_describer}:{self.get_db_key()}'
 
     @classmethod
     def score_from_timestamp(cls, timestamp) -> float:
-        return round((float(timestamp) - JAN_1_2017_TIMESTAMP) / 300, 3)
+        return round((float(timestamp) - BEGINNING_OF_TIME) / 300, 3)
 
     @classmethod
     def timestamp_from_score(cls, score) -> int:
-        return int(float(score) * 300) + JAN_1_2017_TIMESTAMP
+        return int(float(score) * 300) + BEGINNING_OF_TIME
 
     @classmethod
     def datetime_from_score(cls, score) -> datetime:
@@ -91,11 +86,11 @@ class TimeseriesStorage(KeyValueStorage):
         # if no timestamp, assume query to find the most recent, the last one
 
         if not timestamp:
-            query_response = database.zrange(sorted_set_key, -1, -1)
+            query_response = POPOTO_REDIS_DB.zrange(sorted_set_key, -1, -1)
             try:
                 [value, timestamp] = query_response[0].decode("utf-8").split(":")
             except:
-                value, timestamp = "unknown", JAN_1_2017_TIMESTAMP
+                value, timestamp = "unknown", BEGINNING_OF_TIME
 
             min_score = max_score = cls.score_from_timestamp(timestamp)
 
@@ -108,13 +103,13 @@ class TimeseriesStorage(KeyValueStorage):
 
             min_score, max_score = (target_score - score_tolerance - periods_range), (target_score + score_tolerance)
 
-            query_response = database.zrangebyscore(sorted_set_key, min_score, max_score)
+            query_response = POPOTO_REDIS_DB.zrangebyscore(sorted_set_key, min_score, max_score)
 
         # OLD example query_response = [b'0.06288:1532163247']
         # which came from f'{self.value}:{str(self.unix_timestamp)}'
 
         # NEW example query_response = [b'0.06288:1532163247']
-        # which came from f'{self.value}:{str(score)}' where score = (self.timestamp-JAN_1_2017_TIMESTAMP)/300
+        # which came from f'{self.value}:{str(score)}' where score = (self.timestamp-BEGINNING_OF_TIME)/300
 
         return_dict = {
             'values': [],
@@ -178,7 +173,7 @@ class TimeseriesStorage(KeyValueStorage):
 
     def save(self, publish=False, pipeline=None, *args, **kwargs):
         if self.value is None:
-            raise StorageException("no value set, nothing to save!")
+            raise ModelException("no value set, nothing to save!")
         if not self.force_save:
             # validate some rules here?
             pass
@@ -195,7 +190,7 @@ class TimeseriesStorage(KeyValueStorage):
                 pipeline = self.publish(pipeline)
             return pipeline
         else:
-            response = database.zadd(z_add_data['key'], {z_add_data['name']: z_add_data['score']})
+            response = POPOTO_REDIS_DB.zadd(z_add_data['key'], {z_add_data['name']: z_add_data['score']})
             # logger.debug("no pipeline, executing zadd command immediately.")
             if publish:
                 self.publish()
@@ -205,7 +200,7 @@ class TimeseriesStorage(KeyValueStorage):
         if pipeline:
             return pipeline.publish(self.__class__.__name__, json.dumps(self.get_z_add_data()))
         else:
-            return database.publish(self.__class__.__name__, json.dumps(self.get_z_add_data()))
+            return POPOTO_REDIS_DB.publish(self.__class__.__name__, json.dumps(self.get_z_add_data()))
 
     def get_value(self, *args, **kwargs):
         TimeseriesException("function not yet implemented! ¯\_(ツ)_/¯ ")

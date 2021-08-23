@@ -1,0 +1,2 @@
+class FinanceException(Exception):
+    pass

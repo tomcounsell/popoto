@@ -1,11 +1,11 @@
 import logging
-from apps.TA import TAException
-from apps.TA.storages.abstract.timeseries_storage import TimeseriesStorage
+from ...finance.exceptions import FinanceException
+from ...models import TimeseriesStorage
 
 logger = logging.getLogger(__name__)
 
 
-class IndicatorException(TAException):
+class TickerException(FinanceException):
     pass
 
 
@@ -26,12 +26,12 @@ class TickerStorage(TimeseriesStorage):
             self.ticker = str(kwargs['ticker'])  # str eg. BTC_USD
             self.publisher = str(kwargs['publisher'])  # str eg. binance
         except KeyError:
-            raise TAException("Indicator requires a ticker and publisher as parameters")
+            raise Exception("Indicator requires a ticker and publisher as parameters")
         except Exception as e:
-            raise TAException(str(e))
+            raise Exception(str(e))
         else:
             if self.ticker.find("_") <= 0:
-                raise TAException("ticker should be like GOOG_USD or LTC_BTC")
+                raise Exception("ticker should be like GOOG_USD or LTC_BTC")
 
 
     def get_db_key(self):

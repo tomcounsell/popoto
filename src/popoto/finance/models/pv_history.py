@@ -1,7 +1,6 @@
 import logging
+from ...finance.models.ticker import TickerStorage, TickerException
 
-from apps.TA import TAException
-from apps.TA.storages.abstract.ticker import TickerStorage
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +13,7 @@ default_indexes = default_price_indexes + default_volume_indexes
 derived_indexes = derived_price_indexes + derived_volume_indexes
 all_indexes = default_indexes + derived_indexes
 
-class PriceVolumeHistoryException(TAException):
+class PriceVolumeHistoryException(TickerException):
     pass
 
 

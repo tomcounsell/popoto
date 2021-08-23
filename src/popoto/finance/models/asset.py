@@ -1,15 +1,13 @@
 import logging
 from datetime import datetime
 
-import pandas
-from polygon import RESTClient as PolygonAPI
-from apps.TA.publishers_info import PUBLISHERS, yahoo_index_dict
-from apps.TA import TAException
-from apps.TA.storages.abstract.ticker_subscriber import get_nearest_1hr_timestamp
-from apps.TA.storages.data.ohlcv import OLHCVStorage
-from apps.TA.storages.data.price import PriceStorage
-from apps.TA.storages.data.volume import VolumeStorage
-from settings import POLYGON_API_KEY
+from src.popoto.finance import PriceStorage, VolumeStorage, OLHCVStorage
+
+# import pandas
+# from polygon import RESTClient as PolygonAPI
+# from settings import POLYGON_API_KEY
+# get_nearest_1hr_timestamp
+# PUBLISHERS, yahoo_index_dict
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +32,7 @@ def get_asset_class(symbol):
     return asset_class
 
 
-class AssetException(TAException):
+class AssetException(Exception):
     pass
 
 

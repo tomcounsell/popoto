@@ -1,14 +1,17 @@
 import logging
 
-from apps.TA import TAException, HORIZONS
-from apps.TA.storages.abstract.ticker import TickerStorage
+
+from ...finance.exceptions import FinanceException
+from src.popoto.finance import TickerStorage
+
+# HORIZONS
 
 logger = logging.getLogger(__name__)
 
 TRENDS = (BEARISH, BULLISH, OTHER) = (-1, 1, 0)
 
 
-class IndicatorException(TAException):
+class IndicatorException(FinanceException):
     pass
 
 
@@ -180,7 +183,7 @@ class IndicatorStorage(TickerStorage):
             strength_max = 5,
         :return: signal object (Django model object)
         """
-        from apps.TA.storages.data.price import PriceStorage
+        from src.popoto.finance import PriceStorage
         price_results_dict = PriceStorage.query(ticker=self.ticker, publisher=self.publisher)
         most_recent_price = int(price_results_dict['values'][0])
         # from apps.TA.storages.data.volume import VolumeStorage

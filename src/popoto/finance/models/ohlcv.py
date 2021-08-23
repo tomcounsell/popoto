@@ -1,19 +1,15 @@
 import time
-from apps.TA import TAException
-import time
 from abc import ABC
+from ...finance.exceptions import FinanceException
+from ...models import TimeseriesStorage
+from ...finance import PriceStorage, VolumeStorage
 
-import pandas
-
-from apps.TA import PERIODS_24HR, DEFAULT_PRICE_INDEXES, DEFAULT_VOLUME_INDEXES
-from apps.TA import TAException
-from apps.TA.storages.abstract.ticker_subscriber import get_nearest_1day_score
-from apps.TA.storages.abstract.timeseries_storage import TimeseriesStorage
-from apps.TA.storages.data.price import PriceStorage
-from apps.TA.storages.data.volume import VolumeStorage
+# import pandas
+# get_nearest_1day_score
+# PERIODS_24HR, DEFAULT_PRICE_INDEXES, DEFAULT_VOLUME_INDEXES
 
 
-class OLHCVException(TAException):
+class OLHCVException(FinanceException):
     pass
 
 

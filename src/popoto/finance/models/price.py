@@ -1,15 +1,14 @@
 import logging
 
-from apps.TA import TAException, PRICE_INDEXES
-from apps.TA.storages.abstract.ticker import TickerStorage
-from apps.TA.storages.abstract.ticker_subscriber import TickerSubscriber, score_is_near_5min
-from apps.TA.storages.data.pv_history import PriceVolumeHistoryStorage
-from apps.TA.storages.utils.memory_cleaner import clear_pv_history_values
+from ...finance.exceptions import FinanceException
+from ...finance import TickerStorage, PriceVolumeHistoryStorage, TickerSubscriber
+# score_is_near_5min, clear_pv_history_values, PRICE_INDEXES, generate_pv_storages
+
 
 logger = logging.getLogger(__name__)
 
 
-class PriceException(TAException):
+class PriceException(FinanceException):
     pass
 
 
@@ -62,8 +61,6 @@ class PriceSubscriber(TickerSubscriber):
     ]
 
     def handle(self, channel, data, *args, **kwargs):
-        from apps.TA import generate_pv_storages  # import here, bc has circular dependancy
-
         # parse data like...
         # {
         #     "key": "POLY_BTC:binance:PriceVolumeHistoryStorage:open_price",

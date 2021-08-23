@@ -5,7 +5,7 @@ from threading import Thread
 
 def start_new_thread(function):
     """
-    if running any database transactions,
+    if running Django relational database transactions,
     include this at the end of your function
         ```
         from django.db import connection

@@ -1,6 +1,6 @@
 from apps.TA import IndicatorException, IndicatorStorage
 from apps.TA.storages.abstract.ticker_subscriber import TickerSubscriber
-from settings import logger
+
 
 
 class IndicatorSubscriber(TickerSubscriber):
