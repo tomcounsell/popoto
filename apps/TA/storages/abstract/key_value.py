@@ -15,8 +15,8 @@ class KeyValueStorage(ABC):
     stores things in redis database given a key and value
     by default uses the instance class name as the key
     recommend to uniquely identify the instance with a key prefix or suffix
-    prefixes are for more specific categories of objects (eg. mammal:human:woman:object )
-    suffixes are for specific attributes (eg. object:eye_color, object:age, etc)
+    prefixes are for more specific categories of objects (eg. mammal:human:woman:Lisa )
+    suffixes are for specific attributes (eg. Lisa:eye_color, Lisa:age, etc)
     """
 
     def __init__(self, *args, **kwargs):
