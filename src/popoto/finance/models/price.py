@@ -1,6 +1,6 @@
 import logging
 
-from ...finance.exceptions import FinanceException
+from src.popoto.exceptions import FinanceException
 from ...finance import TickerStorage, PriceVolumeHistoryStorage, TickerSubscriber
 # score_is_near_5min, clear_pv_history_values, PRICE_INDEXES, generate_pv_storages
 

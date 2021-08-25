@@ -2,9 +2,10 @@ import json
 import logging
 from datetime import datetime
 import numpy as np
-from .key_value import KeyValueStorage
+from ..models.key_value import KeyValueModel
+from ..models.publisher import PublisherModel
 from ..redis_db import POPOTO_REDIS_DB, BEGINNING_OF_TIME
-from ..models import ModelException
+from ..exceptions import ModelException
 logger = logging.getLogger(__name__)
 
 
@@ -12,7 +13,7 @@ class TimeseriesException(ModelException):
     pass
 
 
-class TimeseriesStorage(KeyValueStorage):
+class TimeseriesModel(KeyValueModel, PublisherModel):
     """
     stores things in a sorted set unique to each ticker and publisher
     todo: split the db by each publisher source
@@ -33,7 +34,7 @@ class TimeseriesStorage(KeyValueStorage):
                 "timestamp must be castable as integer, received {ts}".format(
                     ts=kwargs.get('timestamp')))
         except Exception as e:
-            raise StorageException(str(e))
+            raise TimeseriesException(str(e))
 
         if self.unix_timestamp < BEGINNING_OF_TIME:
             raise TimeseriesException(f"timestamp {self.unix_timestamp} is before begining of time {BEGINNING_OF_TIME}")
@@ -197,10 +198,7 @@ class TimeseriesStorage(KeyValueStorage):
             return response
 
     def publish(self, pipeline=None):
-        if pipeline:
-            return pipeline.publish(self.__class__.__name__, json.dumps(self.get_z_add_data()))
-        else:
-            return POPOTO_REDIS_DB.publish(self.__class__.__name__, json.dumps(self.get_z_add_data()))
+        return super().publish(data=self.get_z_add_data(), pipeline=pipeline)
 
     def get_value(self, *args, **kwargs):
         TimeseriesException("function not yet implemented! ¯\_(ツ)_/¯ ")

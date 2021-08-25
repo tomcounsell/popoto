@@ -1,5 +1,5 @@
 import logging
-from ...finance.exceptions import FinanceException
+from src.popoto.exceptions import FinanceException
 from ...finance import TickerStorage
 
 #  timestamp_is_near_5min, get_nearest_5min_timestamp

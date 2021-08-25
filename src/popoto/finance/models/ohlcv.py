@@ -1,6 +1,6 @@
 import time
 from abc import ABC
-from ...finance.exceptions import FinanceException
+from src.popoto.exceptions import FinanceException
 from ...models import TimeseriesStorage
 from ...finance import PriceStorage, VolumeStorage
 

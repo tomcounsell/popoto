@@ -1,6 +1,6 @@
 import logging
 
-from ...models.timeseries_storage import TimeseriesException, TimeseriesStorage
+from ...models.timeseries import TimeseriesException, TimeseriesModel
 
 logger = logging.getLogger(__name__)
 
@@ -9,7 +9,7 @@ class PortfolioException(TimeseriesException):
     pass
 
 
-class PortfolioStorage(TimeseriesStorage):
+class PortfolioStorage(TimeseriesModel):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.id = str(kwargs.get('id'))

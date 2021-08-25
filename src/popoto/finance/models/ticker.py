@@ -1,5 +1,5 @@
 import logging
-from ...finance.exceptions import FinanceException
+from src.popoto.exceptions import FinanceException
 from ...models import TimeseriesStorage
 
 logger = logging.getLogger(__name__)

@@ -1,7 +1,7 @@
 import logging
 
 
-from ...finance.exceptions import FinanceException
+from src.popoto.exceptions import FinanceException
 from src.popoto.finance import TickerStorage
 
 # HORIZONS

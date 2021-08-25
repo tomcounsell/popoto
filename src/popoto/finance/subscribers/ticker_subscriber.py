@@ -2,7 +2,7 @@ import json
 from abc import ABC
 import logging
 from json import JSONDecodeError
-from ...finance.exceptions import FinanceException
+from src.popoto.exceptions import FinanceException
 from ...redis_db import get_REDIS_DB
 
 logger = logging.getLogger(__name__)
