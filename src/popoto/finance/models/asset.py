@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime
 
-from src.popoto.finance import PriceStorage, VolumeStorage, OLHCVStorage
+from src.popoto.finance import PriceStorage, VolumeStorage, OLHCVModel
 
 # import pandas
 # from polygon import RESTClient as PolygonAPI
@@ -36,7 +36,7 @@ class AssetException(Exception):
     pass
 
 
-class AssetStorage(OLHCVStorage):
+class AssetModel(OLHCVModel):
 
     def __init__(self, symbol: str, asset_class: str = None, timestamp: int = 0, days_range: int = 1, period="daily"):
         if asset_class in ASSETS.keys():
@@ -54,7 +54,7 @@ class AssetStorage(OLHCVStorage):
         assets = Asset.objects.filter(name__icontains=symbol)
         asset = assets.filter(name__icontains=publisher).first() if publisher else assets.first()
         if asset:
-            return AssetStorage(
+            return AssetModel(
                 symbol=asset.symbol, asset_class=asset.asset_class, days_range=90
             ).get_dataframe()
 
