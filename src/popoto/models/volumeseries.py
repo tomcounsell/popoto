@@ -12,7 +12,7 @@ class VolumeseriesException(ModelException):
     pass
 
 
-class VolumeseriesModel(KeyValueModel, PublisherModel):
+class VolumeseriesModel(KeyValueModel):
     """
     stores things in a sorted set unique to each ticker and publisher
     ordered by blocks of volume instead of time

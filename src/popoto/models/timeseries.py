@@ -3,7 +3,6 @@ import logging
 from datetime import datetime
 import numpy as np
 from ..models.key_value import KeyValueModel
-from ..models.publisher import PublisherModel
 from ..redis_db import POPOTO_REDIS_DB, BEGINNING_OF_TIME
 from ..exceptions import ModelException
 logger = logging.getLogger(__name__)
@@ -13,7 +12,7 @@ class TimeseriesException(ModelException):
     pass
 
 
-class TimeseriesModel(KeyValueModel, PublisherModel):
+class TimeseriesModel(KeyValueModel):
     """
     stores things in a sorted set unique to each ticker and publisher
     todo: split the db by each publisher source
@@ -28,7 +27,7 @@ class TimeseriesModel(KeyValueModel, PublisherModel):
         try:
             self.unix_timestamp = int(kwargs['timestamp'])  # int eg. 1483228800
         except KeyError:
-            raise TimeseriesException("timestamp required for TimeseriesStorage objects")
+            raise TimeseriesException("timestamp required for TimeseriesModel objects")
         except ValueError:
             raise TimeseriesException(
                 "timestamp must be castable as integer, received {ts}".format(
@@ -40,7 +39,7 @@ class TimeseriesModel(KeyValueModel, PublisherModel):
             raise TimeseriesException(f"timestamp {self.unix_timestamp} is before begining of time {BEGINNING_OF_TIME}")
 
     def save_own_existance(self, describer_key=""):
-        self.describer_key = describer_key or f'{self.__class__.class_describer}:{self.get_db_key()}'
+        self.describer_key = describer_key or f'{self.__class__.class_describer}:{self._db_key}'
 
     @classmethod
     def score_from_timestamp(cls, timestamp) -> float:
@@ -78,7 +77,7 @@ class TimeseriesModel(KeyValueModel, PublisherModel):
         :return: dict(values=[], ...)
         """
 
-        sorted_set_key = cls.compile_db_key(key=key, key_prefix=key_prefix, key_suffix=key_suffix)
+        sorted_set_key = cls.format_db_key(key_main=key, key_prefix=key_prefix, key_suffix=key_suffix)
         # logger.debug(f'query for sorted set key {sorted_set_key}')
         # example key f'{key_prefix}:{cls.__name__}:{key_suffix}'
 

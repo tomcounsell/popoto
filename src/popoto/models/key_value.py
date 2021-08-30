@@ -18,37 +18,36 @@ class KeyValueModel(ABC):
 
     def __init__(self, *args, **kwargs):
         # key for redis storage
-        self.db_key = kwargs.get('key', self.__class__.__name__)
-        self.db_key_prefix = kwargs.get('key_prefix', "")
-        self.db_key_suffix = kwargs.get('key_suffix', "")
-
+        self._db_key_main = kwargs.get('key', self.__class__.__name__)
+        self._db_key_prefix = kwargs.get('key_prefix', "")
+        self._db_key_suffix = kwargs.get('key_suffix', "")
+        self._db_key = self.build_db_key()
         self.value = kwargs.get('value', "")
         self.force_save = kwargs.get('force_save', False)
 
     def __str__(self):
-        return str(self.get_db_key())
+        return str(self._db_key)
 
     @classmethod
-    def compile_db_key(cls, key: str, key_prefix: str, key_suffix: str) -> str:
-        key = key or cls.__name__
+    def format_db_key(cls, key_main: str, key_prefix: str, key_suffix: str) -> str:
+        key_main = key_main or cls.__name__
         return str(
             f'{key_prefix.strip(":")}:' +
-            f'{key.strip(":")}' +
+            f'{key_main.strip(":")}' +
             f':{key_suffix.strip(":")}'
         ).replace("::", ":").strip(":")
 
-    def get_db_key(self):
-
-        # default for self.db_key is already self.__class__.__name__
-        return str(
-            self.compile_db_key(
-                key=self.db_key,
-                key_prefix=self.db_key_prefix,
-                key_suffix=self.db_key_suffix
+    def build_db_key(self):
+        self._db_key = str(
+            self.format_db_key(
+                key_main=self._db_key_main,
+                key_prefix=self._db_key_prefix,
+                key_suffix=self._db_key_suffix
             )
             # todo: add this line for using env in key
             # + f':{SIMULATED_ENV if SIMULATED_ENV != "PRODUCTION" else ""}'
         )
+        return self._db_key
 
     def save(self, pipeline=None, *args, **kwargs):
         if not self.value:
@@ -56,8 +55,8 @@ class KeyValueModel(ABC):
         if not self.force_save:
             # validate some rules here?
             pass
-        # logger.debug(f'savingkey, value: {self.get_db_key()}, {self.value}')
-        return POPOTO_REDIS_DB.set(self.get_db_key(), self.value)
+        # logger.debug(f'savingkey, value: {self.db_key}, {self.value}')
+        return POPOTO_REDIS_DB.set(self._db_key, self.value)
 
-    def get_value(self, db_key="", *args, **kwargs):
-        return POPOTO_REDIS_DB.get(db_key or self.get_db_key())
+    def get_value(self, db_key: str = "", *args, **kwargs):
+        return POPOTO_REDIS_DB.get(db_key or self._db_key)
