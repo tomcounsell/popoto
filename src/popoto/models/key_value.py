@@ -7,6 +7,10 @@ from ..exceptions import ModelException
 logger = logging.getLogger(__name__)
 
 
+class KeyValueException(ModelException):
+    pass
+
+
 class KeyValueModel(ABC):
     """
     stores things in redis database given a key and value
@@ -37,6 +41,13 @@ class KeyValueModel(ABC):
             f':{key_suffix.strip(":")}'
         ).replace("::", ":").strip(":")
 
+    @classmethod
+    def get(cls, db_key: str, instance_key: str = None):
+        key_prefix, key_suffix = db_key.split(instance_key or cls.__name__)
+        key_prefix = key_prefix.strip(":")
+        key_suffix = key_suffix.strip(":")
+        return cls.__new__(key=instance_key or cls.__name__, key_prefix=key_prefix, key_suffix=key_suffix)
+
     def build_db_key(self):
         self._db_key = str(
             self.format_db_key(
@@ -51,7 +62,7 @@ class KeyValueModel(ABC):
 
     def save(self, pipeline=None, *args, **kwargs):
         if not self.value:
-            raise ModelException("no value set, nothing to save!")
+            raise KeyValueException("no value set, nothing to save!")
         if not self.force_save:
             # validate some rules here?
             pass
@@ -60,3 +71,15 @@ class KeyValueModel(ABC):
 
     def get_value(self, db_key: str = "", *args, **kwargs):
         return POPOTO_REDIS_DB.get(db_key or self._db_key)
+
+
+
+# class ModelBase(type):
+#     """Metaclass for all models."""
+#     def __new__(cls, name, bases, attrs, **kwargs):
+#         contributable_attrs = {}
+#         for obj_name, obj in attrs.items():
+#             if _has_contribute_to_class(obj):
+#                 contributable_attrs[obj_name] = obj
+#
+#
