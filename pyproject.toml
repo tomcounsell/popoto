@@ -4,5 +4,7 @@ requires = [
     "wheel",
     "redis",
     "numpy",
+    "pandas",
+    "msgpack", "msgpack-numpy",
 ]
 build-backend = "setuptools.build_meta"
