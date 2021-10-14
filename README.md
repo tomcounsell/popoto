@@ -6,7 +6,7 @@ Object Types
  - timeseries (like TimescaleDB)
  - graph relationships (like Neo4j)
 
-Popoto is ideal for streaming data. Allowing you to update states and trigger actions in real time. 
+Popoto is ideal for streaming data. The pub/sub utilities allow you to trigger data state updates in real time.
 Currently being used for:
  - trigger buy/sell actions from streaming price data
  - trigger user notifications from real time analytics
