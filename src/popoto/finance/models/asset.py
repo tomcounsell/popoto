@@ -60,7 +60,7 @@ class AssetModel(OLHCVModel):
 
 
     def renew(self, start_timestamp=None, end_timestamp=None):  # get up-to-date with newest data
-        from settings.redis_db import database
+        from ...redis_db import POPOTO_REDIS_DB
         end_timestamp = end_timestamp or self.timestamp
         one_day_seconds = 24 * 3600
         start_timestamp = start_timestamp or end_timestamp - (self.days_range * one_day_seconds)
@@ -68,11 +68,11 @@ class AssetModel(OLHCVModel):
         throttle_timeout = 20
 
 
-        if database.ttl(f"throttle:{PUBLISHERS[self.asset_class]}") > 0:
+        if POPOTO_REDIS_DB.ttl(f"throttle:{PUBLISHERS[self.asset_class]}") > 0:
             return
-        database.set(f"throttle:{PUBLISHERS[self.asset_class]}", "slow up bro", ex=throttle_timeout) #set throttle
+        POPOTO_REDIS_DB.set(f"throttle:{PUBLISHERS[self.asset_class]}", "slow up bro", ex=throttle_timeout) #set throttle
 
-        pipeline = database.pipeline()
+        pipeline = POPOTO_REDIS_DB.pipeline()
 
         if PUBLISHERS[self.asset_class] == "polygon":
             with PolygonAPI(POLYGON_API_KEY) as polygon_client:
