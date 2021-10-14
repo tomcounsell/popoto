@@ -13,5 +13,7 @@ Currently being used for:
  - robots sending each other messages for teamwork
  - compressing sensor data and training neural networks
 
+![](/static/popoto.png)
+
 Popoto gets it's name from the [Māui dolphin](https://en.wikipedia.org/wiki/M%C4%81ui_dolphin) subspeciesis - the world's smallest dolphin subspecies.
 Because dolphins are fast moving, agile, and work together in social groups. In the same way, Popoto wraps Redis and RedisGraph to make it easy to manage streaming timeseries data on a social graph.
