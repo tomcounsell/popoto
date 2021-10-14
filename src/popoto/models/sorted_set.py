@@ -149,7 +149,7 @@ class SortedSetModel(KeyValueModel):
 
         z_add_data = self.get_z_add_data(dataframe=dataframe)
 
-        if pipeline is not None:
+        if isinstance(pipeline, redis.client.Pipeline):
             pipeline = pipeline.zadd(z_add_data["key"], z_add_data["name"])
             # logger.debug("added command to redis pipeline")
             if publish:

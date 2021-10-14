@@ -1,3 +1,6 @@
+from time import time
+
+
 class ModelField:
     type: type = str
     unique: bool = False
@@ -23,6 +26,7 @@ class ModelField:
 
 class ModelKey(ModelField):
     unique: bool = True
+    auto: bool = False
     key_prefix: str = ""
     key: str = ""
     key_suffix: str = ""
@@ -36,4 +40,6 @@ class ModelKey(ModelField):
             'key_suffix': "",
         }
         full_kwargs.update(kwargs)
+        if self.auto:
+            self.key_suffix += f":{int(time()*10e6)}"  # unix time in microseconds
         self.__dict__.update(full_kwargs)
