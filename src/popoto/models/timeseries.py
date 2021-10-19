@@ -77,7 +77,7 @@ class TimeseriesModel(KeyValueModel):
         :return: dict(values=[], ...)
         """
 
-        sorted_set_key = cls.format_db_key(key_main=key, key_prefix=key_prefix, key_suffix=key_suffix)
+        sorted_set_key = cls.compile_db_key(key=key, key_prefix=key_prefix, key_suffix=key_suffix)
         # logger.debug(f'query for sorted set key {sorted_set_key}')
         # example key f'{key_prefix}:{cls.__name__}:{key_suffix}'
 

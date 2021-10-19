@@ -6,6 +6,7 @@ logger = logging.getLogger('POPOTO-REDIS_DB')
 
 global POPOTO_REDIS_DB
 BEGINNING_OF_TIME = 0
+ENCODING = 'utf-8'
 
 try:
     BEGINNING_OF_TIME = int(os.environ.get("BEGINNING_OF_TIME", 0))
@@ -46,3 +47,9 @@ def print_redis_info():
     maxmemory_human = POPOTO_REDIS_DB.info()['maxmemory_human']
     if maxmemory and maxmemory > 0:
         logger.info(f"Redis currently consumes {round(100 * used_memory / maxmemory, 2)}% out of {maxmemory_human}")
+
+
+class PopotoException(Exception):
+    def __init__(self, message):
+        self.message = message
+        logger.error(message)

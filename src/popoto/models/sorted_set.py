@@ -51,7 +51,7 @@ class SortedSetModel(KeyValueModel):
         :return: dict(values=[], ...)
         """
 
-        sorted_set_key = cls.format_db_key(key_main=key, key_prefix=key_prefix, key_suffix=key_suffix)
+        sorted_set_key = cls.compile_db_key(key=key, key_prefix=key_prefix, key_suffix=key_suffix)
         # logger.debug(f'query for sorted set key {sorted_set_key}')
         # example key f'{key_prefix}:{cls.__name__}:{key_suffix}'
 
@@ -141,9 +141,6 @@ class SortedSetModel(KeyValueModel):
     def save(self, publish: bool = False, pipeline: redis.client.Pipeline = None, dataframe: pd.DataFrame = None, *args, **kwargs):
         if self.value is None and dataframe is None:
             raise ModelException("no value set, nothing to save!")
-        if not self.force_save:
-            # validate some rules here?
-            pass
 
         self.save_own_existance()
 
