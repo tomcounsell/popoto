@@ -1,10 +1,12 @@
+import msgpack
 import redis
 
-from ...popoto import ModelField, ModelKey
+from ..models import ModelField, ModelKey
 import logging
 from ..redis_db import POPOTO_REDIS_DB
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('POPOTO.model_base')
+
 
 class ModelException(Exception):
     pass
@@ -14,13 +16,17 @@ class RedisModelBase(type):
     """Metaclass for all Redis models."""
 
     def __new__(mcs, name, bases, attrs, **kwargs):
-        print(attrs)
-
+        # logger.debug({k: v for k, v in attrs.items() if not k.startswith('__')})
         module = attrs.pop('__module__')
         new_attrs = {'__module__': module}
 
         for obj_name, obj in attrs.items():
             if obj_name.startswith("__"):
+                # builtin or inherited private vars and methods
+                new_attrs[obj_name] = obj
+
+            elif hasattr(obj, '__call__') or hasattr(obj, '__func__') or hasattr(obj, '__set__'):
+                # a callable method or property
                 new_attrs[obj_name] = obj
 
             elif isinstance(obj, ModelField):
@@ -51,12 +57,29 @@ class RedisModelBase(type):
 
 
 class RedisModel(metaclass=RedisModelBase):
+    _db_key: str = ""  # default will be self.__class__.__name__
+    _db_value: bytes = None
+    _value: bytes = None
+    # _ttl: int = None  # todo: set default in child Meta class
+    # _expire_at: Datetime? = None
+
     def __init__(self, **kwargs):
-        self.ttl = None
-        self.expire_at = None
-        if self.ttl and self.expire_at:
-            raise ModelException("Can set either ttl and expire_at. Not both.")
+        # defaults
+        self._db_key = kwargs.get('db_key', self.__class__.__name__)
+
+        # pop the value so as not to store again on obj dict below
+        self.value = kwargs.pop('value', None)
+        # self._ttl = kwargs.pop('ttl', None)
+
+        # allow init kwargs to set any base parameters
         self.__dict__.update(kwargs)
+
+        # validate attributes
+        # if self.ttl and self.expire_at:
+        #     raise ModelException("Can set either ttl and expire_at. Not both.")
+
+    def __str__(self):
+        return str(self._db_key)
 
     def validate(self) -> bool:
         """
@@ -88,7 +111,7 @@ class RedisModel(metaclass=RedisModelBase):
 
         return True
 
-    def save(self, publish: bool = False, pipeline: redis.client.Pipeline = None, ignore_errors: bool = False, *args, **kwargs):
+    def save(self, pipeline: redis.client.Pipeline = None, ttl=None, ignore_errors: bool = False, *args, **kwargs):
         """
             Default save method. Uses Redis SET command with key, value, ttl.
             For other Redis structures, see SortedSetModel or GraphNodeModel
@@ -105,9 +128,44 @@ class RedisModel(metaclass=RedisModelBase):
         # logger.debug(f'saving key: {self.db_key}, value: {self.value}')
 
         if isinstance(pipeline, redis.client.Pipeline):
-            return pipeline.set(self._db_key, self.value, ex=self.ttl, xx=self.expire_at)
+            return pipeline.set(self._db_key, self.value, ex=ttl)
+            # , exat=self.expire_at)  # exat not yes supported
         else:
-            return POPOTO_REDIS_DB.set(self._db_key, self.value, ex=self.ttl, xx=self.expire_at)
+            return POPOTO_REDIS_DB.set(self._db_key, self.value, ex=ttl)
+            # , exat=self.expire_at)  # exat not yes supported
 
-    def publish(self, pipeline=None):
-        return super().publish(data=self.get_z_add_data(), pipeline=pipeline)
+
+    @classmethod
+    def get(cls, db_key: str):
+        return cls(db_key=db_key)
+
+    @property
+    def value(self):
+        if self._value is None:
+            if self._db_value is None:
+                self._db_value = self._get_db_value(self._db_key)
+                self._value = self._db_value  # may stay None
+        if self._value is not None:
+            return msgpack.loads(self._value)
+        return None
+
+    @value.setter
+    def value(self, new_value):
+        self._value = msgpack.dumps(new_value)
+
+    @classmethod
+    def _get_db_value(cls, db_key: str = "", *args, **kwargs):
+        return POPOTO_REDIS_DB.get(db_key) if db_key else None  # also returns None if key not found
+
+    def delete(self, pipeline=None, *args, **kwargs):
+        if pipeline is not None:
+            pipeline = pipeline.delete(self._db_key)
+            return pipeline
+        else:
+            db_response = POPOTO_REDIS_DB.delete(self._db_key)
+            if db_response >= 0:
+                return True
+
+    def revert(self):
+        self._db_value = self._get_db_value(self._db_key)
+        self._value = self._db_value
