@@ -1,19 +1,14 @@
 from abc import ABC
 import logging
-
-import redis
-
-from . import RedisModel
-from ..exceptions import ModelException
 from ..redis_db import POPOTO_REDIS_DB
 import msgpack
 
 import msgpack_numpy as m
 m.patch()
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('POPOTO-publisher')
 
 
-class PublisherException(ModelException):
+class PublisherException(Exception):
     pass
 
 

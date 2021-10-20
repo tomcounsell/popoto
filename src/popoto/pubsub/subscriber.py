@@ -1,31 +1,26 @@
 from abc import ABC
 import logging
-from ..exceptions import ModelException
 from ..redis_db import POPOTO_REDIS_DB
 import msgpack
 
 import msgpack_numpy as m
 m.patch()
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('POPOTO-subscriber')
 
 
-class SubscriberException(ModelException):
+class SubscriberException(Exception):
     pass
 
 
-class SubscriberModel(ABC):
-    class_describer = "subscriber"
-    classes_subscribing_to = [
-        # ...
-    ]
+class Subscriber(ABC):
+    sub_channel_names: list = []
 
     def __init__(self):
         self.pubsub = POPOTO_REDIS_DB.pubsub()
         logger.info(f'New pubsub for {self.__class__.__name__}')
-        for s_class in self.classes_subscribing_to:
-            self.pubsub.subscribe(s_class if isinstance(s_class, str) else s_class.__name__)
-            logger.info(f'{self.__class__.__name__} subscribed to '
-                        f'{s_class if isinstance(s_class, str) else s_class.__name__} channel')
+        for channel_name in self.sub_channel_names:
+            self.pubsub.subscribe(channel_name)
+            logger.info(f'{self.__class__.__name__} subscribed to {channel_name} channel')
 
     def __call__(self):
         data_event = self.pubsub.get_message()

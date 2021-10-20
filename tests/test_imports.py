@@ -1,12 +1,12 @@
 import sys
 import os
 
-from src.popoto.models.publisher import Publisher
+from src.popoto.pubsub.publisher import Publisher
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
 
-from popoto.src.popoto.redis_db import POPOTO_REDIS_DB, print_redis_info
+from popoto.src.popoto.redis_db import print_redis_info
 print_redis_info()
 from popoto.src.popoto import models
 
