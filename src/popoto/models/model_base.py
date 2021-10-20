@@ -25,7 +25,7 @@ class RedisModelBase(type):
                 # builtin or inherited private vars and methods
                 new_attrs[obj_name] = obj
 
-            elif hasattr(obj, '__call__') or hasattr(obj, '__func__') or hasattr(obj, '__set__'):
+            elif callable(obj) or hasattr(obj, '__func__') or hasattr(obj, '__set__'):
                 # a callable method or property
                 new_attrs[obj_name] = obj
 
