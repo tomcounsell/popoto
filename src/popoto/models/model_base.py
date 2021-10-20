@@ -1,8 +1,10 @@
 import msgpack
 import redis
 
-from ..models import ModelField, ModelKey
+
 import logging
+
+from ..fields import KeyField, Field
 from ..redis_db import POPOTO_REDIS_DB
 
 logger = logging.getLogger('POPOTO.model_base')
@@ -12,13 +14,14 @@ class ModelException(Exception):
     pass
 
 
-class RedisModelBase(type):
+class ModelBase(type):
     """Metaclass for all Redis models."""
 
     def __new__(mcs, name, bases, attrs, **kwargs):
         # logger.debug({k: v for k, v in attrs.items() if not k.startswith('__')})
         module = attrs.pop('__module__')
         new_attrs = {'__module__': module}
+        db_key_field_name = ""
 
         for obj_name, obj in attrs.items():
             if obj_name.startswith("__"):
@@ -29,7 +32,15 @@ class RedisModelBase(type):
                 # a callable method or property
                 new_attrs[obj_name] = obj
 
-            elif isinstance(obj, ModelField):
+            elif isinstance(obj, KeyField):
+                if db_key_field_name is not "":
+                    raise ModelException(
+                        "Only one ModelKey field allowed. Consider using a prefix or suffix in your key.")
+                db_key_field_name = obj_name
+                # todo: handle some key management?
+                # perhaps need to prepare to handle events such as key change, partial key search, ...
+
+            elif isinstance(obj, Field):
                 if obj.value is not None:
                     try:
                         new_attrs[obj_name] = obj.type(obj.value)
@@ -38,13 +49,13 @@ class RedisModelBase(type):
                 else:
                     new_attrs[obj_name] = obj.type()
 
-                field_meta = ModelField().__dict__
+                field_meta = Field().__dict__
                 field_meta.update(obj.__dict__)
                 new_attrs[f'{obj_name}_meta'] = field_meta
 
             elif not obj_name.startswith("_"):
                 raise ModelException(
-                    f"public model attributes must inherit from class ModelField. "
+                    f"public model attributes must inherit from class Field. "
                     f"Try using a private var (eg. _{obj_name})_"
                 )
 
@@ -56,9 +67,10 @@ class RedisModelBase(type):
         #     new_class.add_to_class(field.name, field)
 
 
-class RedisModel(metaclass=RedisModelBase):
+class Model(metaclass=ModelBase):
     _db_key: str = ""  # default will be self.__class__.__name__
-    _db_value: bytes = None
+    _db_hashmap: dict = None
+    _hashmap_delta: dict = {}
     _value: bytes = None
     # _ttl: int = None  # todo: set default in child Meta class
     # _expire_at: Datetime? = None
@@ -113,8 +125,7 @@ class RedisModel(metaclass=RedisModelBase):
 
     def save(self, pipeline: redis.client.Pipeline = None, ttl=None, ignore_errors: bool = False, *args, **kwargs):
         """
-            Default save method. Uses Redis SET command with key, value, ttl.
-            For other Redis structures, see SortedSetModel or GraphNodeModel
+            Default save method. Uses Redis HSET command with key, dict of values, ttl.
         """
         if not self.validate():
             error_message = "Model instance parameters invalid. Failed to save."
@@ -139,23 +150,41 @@ class RedisModel(metaclass=RedisModelBase):
     def get(cls, db_key: str):
         return cls(db_key=db_key)
 
-    @property
-    def value(self):
-        if self._value is None:
-            if self._db_value is None:
-                self._db_value = self._get_db_value(self._db_key)
-                self._value = self._db_value  # may stay None
-        if self._value is not None:
-            return msgpack.loads(self._value)
-        return None
+    def __repr__(self):
+        return {k: msgpack.loads(v) for k, v in {**self._db_hashmap, **self._hashmap_delta}}
 
-    @value.setter
-    def value(self, new_value):
-        self._value = msgpack.dumps(new_value)
+    def __setattr__(self, key, value):
+        if not isinstance(value, self.__dict__[f'_key_meta']['type']):
+            raise TypeError(f"{key} expecting type {self.__dict__[f'_key_meta']['type']}")
+        self._hashmap_delta[key] = msgpack.dumps(value)
 
-    @classmethod
-    def _get_db_value(cls, db_key: str = "", *args, **kwargs):
-        return POPOTO_REDIS_DB.get(db_key) if db_key else None  # also returns None if key not found
+    def __getattr__(self, key):
+        if key not in self._db_hashmap:
+            value = POPOTO_REDIS_DB.hget(self._db_key, key)
+        else:
+            value = self._db_hashmap[key]
+        return msgpack.loads(value) if value is not None else None
+
+    def load_from_db(self):
+        self._db_hashmap = POPOTO_REDIS_DB.hgetall(self._db_key)
+
+    def revert(self):
+        self._hashmap_delta = {}
+        self.load_from_db()
+
+    # @property
+    # def value(self):
+    #     if self._value is None:
+    #         if self._db_value is None:
+    #             self._db_value = self._get_db_value(self._db_key)
+    #             self._value = self._db_value  # may stay None
+    #     if self._value is not None:
+    #         return msgpack.loads(self._value)
+    #     return None
+
+    # @value.setter
+    # def value(self, new_value):
+    #     self._value = msgpack.dumps(new_value)
 
     def delete(self, pipeline=None, *args, **kwargs):
         if pipeline is not None:
@@ -165,7 +194,3 @@ class RedisModel(metaclass=RedisModelBase):
             db_response = POPOTO_REDIS_DB.delete(self._db_key)
             if db_response >= 0:
                 return True
-
-    def revert(self):
-        self._db_value = self._get_db_value(self._db_key)
-        self._value = self._db_value
