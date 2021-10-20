@@ -1,9 +1,7 @@
 import logging
-from abc import ABC
-
-from . import RedisModel
-from ..redis_db import POPOTO_REDIS_DB
-from ..exceptions import ModelException
+from src.popoto.models import Model
+from src.popoto.redis_db import POPOTO_REDIS_DB
+from src.popoto.exceptions import ModelException
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +10,7 @@ class KeyValueException(ModelException):
     pass
 
 
-class KeyValueModel(RedisModel):
+class KeyValueModel(Model):
     """
     stores things in redis database given a key and value
     by default uses the instance class name as the key
