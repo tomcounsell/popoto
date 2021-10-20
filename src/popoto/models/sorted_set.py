@@ -3,9 +3,9 @@ import numpy as np
 import pandas as pd
 import redis.client
 
-from ..models.key_value import KeyValueModel
-from ..redis_db import POPOTO_REDIS_DB, BEGINNING_OF_TIME
-from ..exceptions import ModelException
+from src.popoto.fields.key_value import KeyValueModel
+from src.popoto.redis_db import POPOTO_REDIS_DB
+from src.popoto.exceptions import ModelException
 logger = logging.getLogger(__name__)
 
 

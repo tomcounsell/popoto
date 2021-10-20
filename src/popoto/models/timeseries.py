@@ -1,8 +1,7 @@
-import json
 import logging
 from datetime import datetime
 import numpy as np
-from ..models.key_value import KeyValueModel
+from src.popoto.fields.key_value import KeyValueModel
 from ..redis_db import POPOTO_REDIS_DB, BEGINNING_OF_TIME
 from ..exceptions import ModelException
 logger = logging.getLogger(__name__)
