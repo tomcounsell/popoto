@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import msgpack
 import redis
 
@@ -17,7 +19,7 @@ class ModelException(Exception):
 class ModelBase(type):
     """Metaclass for all Redis models."""
 
-    def __new__(mcs, name, bases, attrs, **kwargs):
+    def __new__(cls, name, bases, attrs, **kwargs):
         # logger.debug({k: v for k, v in attrs.items() if not k.startswith('__')})
         module = attrs.pop('__module__')
         new_attrs = {'__module__': module}
@@ -32,15 +34,15 @@ class ModelBase(type):
                 # a callable method or property
                 new_attrs[obj_name] = obj
 
-            elif isinstance(obj, KeyField):
-                if db_key_field_name is not "":
-                    raise ModelException(
-                        "Only one ModelKey field allowed. Consider using a prefix or suffix in your key.")
-                db_key_field_name = obj_name
-                # todo: handle some key management?
-                # perhaps need to prepare to handle events such as key change, partial key search, ...
-
             elif isinstance(obj, Field):
+                if isinstance(obj, KeyField):
+                    if db_key_field_name != "":
+                        raise ModelException(
+                            "Only one ModelKey field allowed. Consider using a prefix or suffix in your key.")
+                    db_key_field_name = obj_name
+                    # todo: handle some key management?
+                    # perhaps need to prepare to handle events such as key change, partial key search, ...
+
                 if obj.value is not None:
                     try:
                         new_attrs[obj_name] = obj.type(obj.value)
@@ -49,7 +51,7 @@ class ModelBase(type):
                 else:
                     new_attrs[obj_name] = obj.type()
 
-                field_meta = Field().__dict__
+                field_meta = dict(obj.__class__.__dict__)
                 field_meta.update(obj.__dict__)
                 new_attrs[f'{obj_name}_meta'] = field_meta
 
@@ -59,8 +61,7 @@ class ModelBase(type):
                     f"Try using a private var (eg. _{obj_name})_"
                 )
 
-        new_class = super().__new__(mcs, name, bases, new_attrs)
-
+        new_class = super().__new__(cls, name, bases, new_attrs)
         return new_class
 
         # for field in base._meta.private_fields:
@@ -71,24 +72,26 @@ class Model(metaclass=ModelBase):
     _db_key: str = ""  # default will be self.__class__.__name__
     _db_hashmap: dict = None
     _hashmap_delta: dict = {}
-    _value: bytes = None
-    # _ttl: int = None  # todo: set default in child Meta class
-    # _expire_at: Datetime? = None
+    _ttl: int = None  # todo: set default in child Meta class
+    _expire_at: datetime = None
 
     def __init__(self, **kwargs):
         # defaults
+        self._hashmap_delta = {}
+        self._db_hashmap = {}
         self._db_key = kwargs.get('db_key', self.__class__.__name__)
 
-        # pop the value so as not to store again on obj dict below
-        self.value = kwargs.pop('value', None)
-        # self._ttl = kwargs.pop('ttl', None)
+        self._ttl = kwargs.get('ttl', None)
+        self._expire_at = kwargs.get('expire_at', None)
 
         # allow init kwargs to set any base parameters
         self.__dict__.update(kwargs)
 
         # validate attributes
-        # if self.ttl and self.expire_at:
-        #     raise ModelException("Can set either ttl and expire_at. Not both.")
+        if self._ttl and self._expire_at:
+            raise ModelException("Can set either ttl and expire_at. Not both.")
+        self.load_from_db()
+
 
     def __str__(self):
         return str(self._db_key)
@@ -123,7 +126,7 @@ class Model(metaclass=ModelBase):
 
         return True
 
-    def save(self, pipeline: redis.client.Pipeline = None, ttl=None, ignore_errors: bool = False, *args, **kwargs):
+    def save(self, pipeline: redis.client.Pipeline = None, ttl=None, expire_at=None, ignore_errors: bool = False, *args, **kwargs):
         """
             Default save method. Uses Redis HSET command with key, dict of values, ttl.
         """
@@ -135,38 +138,53 @@ class Model(metaclass=ModelBase):
                 raise ModelException(error_message)
             return pipeline or 0
 
-        self.value = self.value if self.value is not None else ""
-        # logger.debug(f'saving key: {self.db_key}, value: {self.value}')
+        ttl, expire_at = ttl or self._ttl, expire_at or self._expire_at
+        field_names = [k for k, v in self.__dict__.items() if all([not k.startswith("_"), k+"_meta" in self.__dict__])]
+        hset_mapping = {str(k): msgpack.packb(v) for k, v in repr(self) if k in field_names}
 
         if isinstance(pipeline, redis.client.Pipeline):
-            return pipeline.set(self._db_key, self.value, ex=ttl)
-            # , exat=self.expire_at)  # exat not yes supported
+            pipeline = pipeline.hset(self._db_key, mapping=hset_mapping)
+            pipeline = pipeline if ttl is None else pipeline.expire(self._db_key, ttl)
+            pipeline = pipeline if expire_at is None else pipeline.expire_at(self._db_key, expire_at)
+            return pipeline
         else:
-            return POPOTO_REDIS_DB.set(self._db_key, self.value, ex=ttl)
-            # , exat=self.expire_at)  # exat not yes supported
-
+            db_response = POPOTO_REDIS_DB.hset(self._db_key, mapping=hset_mapping)
+            if ttl is not None: POPOTO_REDIS_DB.expire(self._db_key, ttl)
+            if expire_at is not None: POPOTO_REDIS_DB.expireat(self._db_key, ttl)
+            return db_response
 
     @classmethod
     def get(cls, db_key: str):
         return cls(db_key=db_key)
 
     def __repr__(self):
-        return {k: msgpack.loads(v) for k, v in {**self._db_hashmap, **self._hashmap_delta}}
+        return str({**{k.decode("utf-8"): msgpack.unpackb(v) for k, v in self._db_hashmap.items()}, **self._hashmap_delta})
 
     def __setattr__(self, key, value):
-        if not isinstance(value, self.__dict__[f'_key_meta']['type']):
-            raise TypeError(f"{key} expecting type {self.__dict__[f'_key_meta']['type']}")
-        self._hashmap_delta[key] = msgpack.dumps(value)
+        super(Model, self).__setattr__(key, value)
+        if not key.startswith('_'):
+            if self.__dict__.get(f'{key}_meta') and not isinstance(value, self.__dict__[f'{key}_meta']['type']):
+                raise TypeError(f"{key} expecting type {self.__dict__[f'_key_meta']['type']}")
+            # self._hashmap_delta[key] = msgpack.packb(value)
 
-    def __getattr__(self, key):
-        if key not in self._db_hashmap:
-            value = POPOTO_REDIS_DB.hget(self._db_key, key)
-        else:
-            value = self._db_hashmap[key]
-        return msgpack.loads(value) if value is not None else None
+    # def __getattr__(self, key):
+    #     try:
+    #         value = super(object, self).__getattr__(key)
+    #     except KeyError:
+    #         pass
+    #     if key not in self._db_hashmap:
+    #         value = POPOTO_REDIS_DB.hget(self._db_key, key)
+    #     else:
+    #         value = self._db_hashmap[key]
+    #     return msgpack.unpackb(value) if value is not None else None
 
     def load_from_db(self):
         self._db_hashmap = POPOTO_REDIS_DB.hgetall(self._db_key)
+        print(self._db_hashmap)
+        for key_b, db_value_b in self._db_hashmap.items():
+            print(key_b, db_value_b)
+            print(self.__dict__)
+            setattr(self, key_b.decode("utf-8"), msgpack.unpackb(db_value_b))
 
     def revert(self):
         self._hashmap_delta = {}
@@ -179,12 +197,12 @@ class Model(metaclass=ModelBase):
     #             self._db_value = self._get_db_value(self._db_key)
     #             self._value = self._db_value  # may stay None
     #     if self._value is not None:
-    #         return msgpack.loads(self._value)
+    #         return msgpack.unpackb(self._value)
     #     return None
 
     # @value.setter
     # def value(self, new_value):
-    #     self._value = msgpack.dumps(new_value)
+    #     self._value = msgpack.packb(new_value)
 
     def delete(self, pipeline=None, *args, **kwargs):
         if pipeline is not None:
