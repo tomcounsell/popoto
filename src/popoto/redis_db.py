@@ -32,6 +32,7 @@ def set_REDIS_DB_settings(env_partition_name: str = "", *args, **kwargs):
     # todo: use this to mark keys in redis db, so they can be separated and deleted
     env_partition_name = env_partition_name or os.environ.get('ENV', "")
 
+    global POPOTO_REDIS_DB
     POPOTO_REDIS_DB = redis.Redis(*args, **kwargs)
     logger.debug("Redis connection reset.")
 

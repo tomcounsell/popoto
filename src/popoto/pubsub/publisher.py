@@ -38,8 +38,8 @@ class Publisher(ABC):
             raise PublisherException("missing channel to publish to")
 
         if pipeline:
-            return pipeline.publish(self._channel_name, msgpack.dumps(self._publish_data))
+            return pipeline.publish(self._channel_name, msgpack.packb(self._publish_data))
         else:
-            subscriber_count = POPOTO_REDIS_DB.publish(channel_name, msgpack.dumps(self._publish_data))
+            subscriber_count = POPOTO_REDIS_DB.publish(channel_name, msgpack.packb(self._publish_data))
             logger.debug(f"published data to `{channel_name}`, {subscriber_count} subscribers")
             return subscriber_count
