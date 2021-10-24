@@ -108,7 +108,6 @@ class Model(metaclass=ModelBase):
 
     def __init__(self, **kwargs):
         cls = self.__class__
-
         # self._ttl = kwargs.get('ttl', None)
         # self._expire_at = kwargs.get('expire_at', None)
 
@@ -117,7 +116,7 @@ class Model(metaclass=ModelBase):
 
         # add auto KeyField if needed
         if not self._meta.db_key_field:
-            self._meta.add_field("db_key", KeyField(auto=True, key=cls.__name__))
+            self._meta.add_field("_auto_key", KeyField(auto=True, key=cls.__name__))
 
         # set defaults
         for field_name, field in self._meta.fields.items():
@@ -133,6 +132,7 @@ class Model(metaclass=ModelBase):
 
         # validate initial attributes
         self.validate(null_check=False)  # exclude null, will validate null values on pre-save
+        self._db_content = dict()  # empty until self.load_from_db() or self.save() called
 
     @property
     def db_key(self):
@@ -201,10 +201,11 @@ class Model(metaclass=ModelBase):
             return pipeline or 0
 
         ttl, expire_at = (ttl or self._ttl), (expire_at or self._expire_at)
-        field_names = [k for k, v in self.__dict__.items() if
-                       all([not k.startswith("_"), k + "_meta" in self.__dict__])]
-        hset_mapping = {str(k): msgpack.packb(v) for k, v in repr(self) if k in field_names}
-
+        hset_mapping = {
+            str(k): msgpack.packb(v)
+            for k, v in self.__dict__.items() if k in self._meta.fields
+        }
+        self._db_content = hset_mapping
         if isinstance(pipeline, redis.client.Pipeline):
             pipeline = pipeline.hset(self.db_key, mapping=hset_mapping)
             pipeline = pipeline if ttl is None else pipeline.expire(self.db_key, ttl)
@@ -227,51 +228,16 @@ class Model(metaclass=ModelBase):
     def __repr__(self):
         return str({k: v for k, v in self.__dict__.items() if k in self._meta.fields})
 
-    def __setattr__(self, key, value):
-        super(Model, self).__setattr__(key, value)
-        if not key.startswith('_'):
-            if self.__dict__.get(f'{key}_meta') and not isinstance(value, self.__dict__[f'{key}_meta']['type']):
-                raise TypeError(f"{key} expecting type {self.__dict__[f'_key_meta']['type']}")
-            # self._hashmap_delta[key] = msgpack.packb(value)
-
-    # def __getattr__(self, key):
-    #     try:
-    #         value = super(object, self).__getattr__(key)
-    #     except KeyError:
-    #         pass
-    #     if key not in self._db_hashmap:
-    #         value = POPOTO_REDIS_DB.hget(self.db_key, key)
-    #     else:
-    #         value = self._db_hashmap[key]
-    #     return msgpack.unpackb(value) if value is not None else None
-
     def load_from_db(self):
-        print(self.db_key)
         self._db_content = POPOTO_REDIS_DB.hgetall(self.db_key)
-        print(self._db_content or None)
-        # for key_b, db_value_b in self._db_hashmap.items():
-        #     print(key_b, db_value_b)
-        #     print(self.__dict__)
-        #     setattr(self, key_b.decode("utf-8"), msgpack.unpackb(db_value_b))
+        for key_b, db_value_b in self._db_content.items():
+            setattr(self, key_b.decode("utf-8"), msgpack.unpackb(db_value_b))
 
     def revert(self):
         self.load_from_db()
 
-    # @property
-    # def value(self):
-    #     if self._value is None:
-    #         if self._db_value is None:
-    #             self._db_value = self._get_db_value(self.db_key)
-    #             self._value = self._db_value  # may stay None
-    #     if self._value is not None:
-    #         return msgpack.unpackb(self._value)
-    #     return None
-
-    # @value.setter
-    # def value(self, new_value):
-    #     self._value = msgpack.packb(new_value)
-
     def delete(self, pipeline=None, *args, **kwargs):
+        self._db_content = dict()
         if pipeline is not None:
             pipeline = pipeline.delete(self.db_key)
             return pipeline

@@ -23,19 +23,24 @@ duck.value = "your most sassy LINE friend"
 duck.save()
 
 class AutoKeyModel(models.Model):
-    value = fields.Field(default="default string")
+    says = fields.Field(default="onomatopoeia")
 
-class MyModel(models.Model):
-    my_id = fields.KeyField(auto=True)
-    # my_score = fields.SortedSetField(sort_key=True)
-    my_value = fields.Field(is_null=True, max_length=2e10)
+chicken = AutoKeyModel()
+chicken.value = "cluck cluck"
 
+class FarmAnimal(models.Model):
+    id = fields.KeyField()
+    name = fields.Field(type=str, max_length=100)
+    age = fields.Field(type=int, default=0)
 
-mm = MyModel()
-mm.my_id = "thing123"
-mm.my_value = "it is what it is"
-mm.save()
+goat = FarmAnimal()
+goat.id = "AB12"
+goat.name = "Pickles"
+goat.age = 3
+goat.save()
 
+# class FarmMammal(FarmAnimal):
+#     id = fields.KeyField(key_prefix = "mammal")
 
 class MyPublishableModel(models.Model):
     def __init__(self, *args, **kwargs):
