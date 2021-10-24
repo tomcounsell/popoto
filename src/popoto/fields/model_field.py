@@ -14,8 +14,8 @@ class Field:
             'unique': True,
             'value': None,
             'is_null': False,
-            'max_length': 265,
-            'is_sort_key': False,
+            'max_length': 265,  # Redis limit is 512MB
+            'is_sort_key': False,  # for sorted sets
             'default': "",
         }
         full_kwargs.update(kwargs)
