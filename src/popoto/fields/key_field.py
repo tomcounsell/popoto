@@ -1,10 +1,15 @@
 from time import time
 from .model_field import Field
+import uuid
 
 
 class KeyField(Field):
+    """
+    todo: add support for https://github.com/ai/nanoid
+    """
     unique: bool = True
     auto: bool = False
+    auto_uuid_length: int = 0
     key_prefix: str = ""
     key: str = ""
     key_suffix: str = ""
@@ -14,8 +19,9 @@ class KeyField(Field):
         new_kwargs = {  # default
             'unique': True,
             'auto': False,
+            'auto_uuid_length': 32,
             'key_prefix': "",
-            'key': self.__class__.__name__,
+            'key': "",
             'key_suffix': "",
         }
         new_kwargs.update(kwargs)
@@ -23,4 +29,7 @@ class KeyField(Field):
             setattr(self, k, new_kwargs[k])
 
         if self.auto:
-            self.key_suffix += f":{int(time()*10e6)}"  # unix time in microseconds
+            self.key_suffix += f":{uuid.uuid4().hex[:self.auto_uuid_length]}"
+
+    def get_key(self):
+        return
