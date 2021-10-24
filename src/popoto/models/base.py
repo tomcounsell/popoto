@@ -3,7 +3,6 @@ from datetime import datetime
 import msgpack
 import redis
 
-
 import logging
 
 from ..fields import KeyField, Field
@@ -22,7 +21,6 @@ class ModelOptions:
         self.db_key_field = None
         self.hidden_fields = {}
         self.explicit_fields = {}
-        self.pk = None
         self.abstract = False
         self.indexes = []
         self.unique_together = []
@@ -30,7 +28,6 @@ class ModelOptions:
         self.parents = []
         self.auto_created = False
         self.base_meta = None
-
 
     def add_field(self, name: str, field: Field):
         if name.startswith("_") and name not in self.hidden_fields:
@@ -41,11 +38,16 @@ class ModelOptions:
             raise ModelException(f"{name} is already a Field on the model")
 
         if isinstance(field, KeyField):
-            self.db_key_field = field
+            if not self.db_key_field:
+                self.db_key_field = field
+            else:
+                raise ModelException(
+                    "Only one ModelKey field allowed. Consider using a prefix or suffix in your key.")
 
     @property
     def fields(self) -> dict:
         return {**self.explicit_fields, **self.hidden_fields}
+
 
 class ModelBase(type):
     """Metaclass for all Redis models."""
@@ -75,13 +77,6 @@ class ModelBase(type):
                 # model will handle this and set default values
                 options.add_field(obj_name, obj)
 
-                if isinstance(obj, KeyField):
-                    if not options.db_key_field:
-                        options.db_key_field = obj
-                    else:
-                        raise ModelException(
-                            "Only one ModelKey field allowed. Consider using a prefix or suffix in your key.")
-
             elif callable(obj) or hasattr(obj, '__func__') or hasattr(obj, '__set__'):
                 # a callable method or property
                 new_attrs[obj_name] = obj
@@ -109,7 +104,6 @@ class ModelBase(type):
         return new_class
 
 
-
 class Model(metaclass=ModelBase):
 
     def __init__(self, **kwargs):
@@ -125,22 +119,28 @@ class Model(metaclass=ModelBase):
         if not self._meta.db_key_field:
             self._meta.add_field("db_key", KeyField(auto=True, key=cls.__name__))
 
-        self.db_key = self._meta.db_key_field.get_key()
-        self._ttl = None  # todo: set default in child Meta class
-        self._expire_at = None  # todo: datetime? or timestamp?
-
-        self._db_content = self.load_from_db() or dict()
-        if not len(self._db_content):  # set defaults
-            for field_name, field in self._meta.fields.items():
-                if isinstance(field, KeyField):
-                    continue
-                setattr(self, field_name, field.default)
+        # set defaults
+        for field_name, field in self._meta.fields.items():
+            setattr(self, field_name, field.default)
+            if isinstance(field, KeyField):
+                self.db_key_field_name = field_name
 
         # todo: handle some key management?
         # perhaps need to prepare to handle events such as key change, partial key search, ...
 
-        # todo: validate attributes
-        self.validate(null_check=False)  # exclude null, will validate again pre-save
+        self._ttl = None  # todo: set default in child Meta class
+        self._expire_at = None  # todo: datetime? or timestamp?
+
+        # validate initial attributes
+        self.validate(null_check=False)  # exclude null, will validate null values on pre-save
+
+    @property
+    def db_key(self):
+        return getattr(self, self.db_key_field_name)
+
+    @db_key.setter
+    def db_key(self, value):
+        setattr(self, self.db_key_field_name, value)
 
     def __str__(self):
         return str(self.db_key)
@@ -154,30 +154,31 @@ class Model(metaclass=ModelBase):
             - field.is_sort_key
             - ttl, expire_at
         """
-        field_names = [k for k, v in self.__dict__.items() if all([not k.startswith("_"), k+"_meta" in self.__dict__])]
+        field_names = [k for k, v in self.__dict__.items() if
+                       all([not k.startswith("_"), k + "_meta" in self.__dict__])]
 
         for field_name in field_names:
             # type check the field values against their class specified type, unless null/None
             if self.__dict__[field_name] is not None and \
-                    not isinstance(self.__dict__[field_name], self.__dict__[field_name+'_meta'].type):
-                error = f"{field_name} is not type {self.__dict__[field_name+'_meta'].type}. " \
+                    not isinstance(self.__dict__[field_name], self.__dict__[field_name + '_meta'].type):
+                error = f"{field_name} is not type {self.__dict__[field_name + '_meta'].type}. " \
                         f"Change the value or modify type on {self.__class__.__name__}.{field_name}"
                 logger.error(error)
                 return False
 
             # check non-nullable fields
             if null_check and \
-                    self.__dict__[field_name+'_meta'].is_null is False and \
+                    self.__dict__[field_name + '_meta'].is_null is False and \
                     self.__dict__[field_name] is None:
                 error = f"{field_name} is None/null. Set a value or set is_null=True on {self.__class__.__name__}.{field_name}"
                 logger.error(error)
                 return False
 
             # validate str max_length
-            if self.__dict__[field_name+'_meta'].type == str and \
+            if self.__dict__[field_name + '_meta'].type == str and \
                     self.__dict__[field_name] and \
-                    len(self.__dict__[field_name]) > self.__dict__[field_name+'_meta'].max_length:
-                error = f"{field_name} is greater than max_length={self.__dict__[field_name+'_meta'].max_length}"
+                    len(self.__dict__[field_name]) > self.__dict__[field_name + '_meta'].max_length:
+                error = f"{field_name} is greater than max_length={self.__dict__[field_name + '_meta'].max_length}"
                 logger.error(error)
                 return False
             # if self.__dict__[field_name+'_meta'].is_sort_key:
@@ -186,7 +187,8 @@ class Model(metaclass=ModelBase):
                 raise ModelException("Can set either ttl and expire_at. Not both.")
         return True
 
-    def save(self, pipeline: redis.client.Pipeline = None, ttl=None, expire_at=None, ignore_errors: bool = False, *args, **kwargs):
+    def save(self, pipeline: redis.client.Pipeline = None, ttl=None, expire_at=None, ignore_errors: bool = False, *args,
+             **kwargs):
         """
             Default save method. Uses Redis HSET command with key, dict of values, ttl.
         """
@@ -198,8 +200,9 @@ class Model(metaclass=ModelBase):
                 raise ModelException(error_message)
             return pipeline or 0
 
-        ttl, expire_at = ttl or self._ttl, expire_at or self._expire_at
-        field_names = [k for k, v in self.__dict__.items() if all([not k.startswith("_"), k+"_meta" in self.__dict__])]
+        ttl, expire_at = (ttl or self._ttl), (expire_at or self._expire_at)
+        field_names = [k for k, v in self.__dict__.items() if
+                       all([not k.startswith("_"), k + "_meta" in self.__dict__])]
         hset_mapping = {str(k): msgpack.packb(v) for k, v in repr(self) if k in field_names}
 
         if isinstance(pipeline, redis.client.Pipeline):
@@ -215,10 +218,14 @@ class Model(metaclass=ModelBase):
 
     @classmethod
     def get(cls, db_key: str):
-        return cls(db_key=db_key)
+        instance = cls(db_key=db_key)
+        instance._db_content = instance.load_from_db() or dict()
+        if not len(instance._db_content):
+            return None
+        return instance
 
     def __repr__(self):
-        return str({k: v for k,v in self.__dict__.items() if k in self._meta.fields })
+        return str({k: v for k, v in self.__dict__.items() if k in self._meta.fields})
 
     def __setattr__(self, key, value):
         super(Model, self).__setattr__(key, value)
@@ -239,12 +246,13 @@ class Model(metaclass=ModelBase):
     #     return msgpack.unpackb(value) if value is not None else None
 
     def load_from_db(self):
-        self._db_hashmap = POPOTO_REDIS_DB.hgetall(self.db_key)
-        print(self._db_hashmap)
-        for key_b, db_value_b in self._db_hashmap.items():
-            print(key_b, db_value_b)
-            print(self.__dict__)
-            setattr(self, key_b.decode("utf-8"), msgpack.unpackb(db_value_b))
+        print(self.db_key)
+        self._db_content = POPOTO_REDIS_DB.hgetall(self.db_key)
+        print(self._db_content or None)
+        # for key_b, db_value_b in self._db_hashmap.items():
+        #     print(key_b, db_value_b)
+        #     print(self.__dict__)
+        #     setattr(self, key_b.decode("utf-8"), msgpack.unpackb(db_value_b))
 
     def revert(self):
         self.load_from_db()

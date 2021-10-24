@@ -14,14 +14,16 @@ class KeyValueModel(models.Model):
     """
     should look and quack like a simple key value store
     """
-    key = fields.KeyField(auto=True)
-    value = fields.Field(is_null=True, default="")
+    key = fields.KeyField()
+    value = fields.Field(is_null=True, default=None)
 
 duck = KeyValueModel()
 duck.key = "Sally"
 duck.value = "your most sassy LINE friend"
 duck.save()
 
+class AutoKeyModel(models.Model):
+    value = fields.Field(default="default string")
 
 class MyModel(models.Model):
     my_id = fields.KeyField(auto=True)

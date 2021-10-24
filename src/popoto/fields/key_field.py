@@ -3,6 +3,7 @@ from .model_field import Field
 import uuid
 
 
+
 class KeyField(Field):
     """
     todo: add support for https://github.com/ai/nanoid
@@ -24,6 +25,9 @@ class KeyField(Field):
             'key': "",
             'key_suffix': "",
         }
+        if kwargs.get('unique', None) == False:
+            from ..models.base import ModelException
+            raise ModelException("key field must be unique")
         new_kwargs.update(kwargs)
         for k in new_kwargs:
             setattr(self, k, new_kwargs[k])
@@ -31,5 +35,11 @@ class KeyField(Field):
         if self.auto:
             self.key_suffix += f":{uuid.uuid4().hex[:self.auto_uuid_length]}"
 
+        self.default = self.get_key()
+
     def get_key(self):
-        return
+        return str(
+            f'{self.key_prefix.strip(":")}:' +
+            f'{self.key.strip(":")}' +
+            f':{self.key_suffix.strip(":")}'
+        ).replace("::", ":").strip(":")
