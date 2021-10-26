@@ -6,32 +6,31 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 from src.popoto.redis_db import POPOTO_REDIS_DB, print_redis_info
 print_redis_info()
-from src.popoto import models, fields
-from src.popoto.pubsub import Publisher, Subscriber
+from src import popoto
 
 
-class KeyValueModel(models.Model):
+class KeyValueModel(popoto.Model):
     """
     should look and quack like a simple key value store
     """
-    key = fields.KeyField()
-    value = fields.Field(is_null=True, default=None)
+    key = popoto.KeyField()
+    value = popoto.Field(is_null=True, default=None)
 
 duck = KeyValueModel()
 duck.key = "Sally"
 duck.value = "your most sassy LINE friend"
 duck.save()
 
-class AutoKeyModel(models.Model):
-    says = fields.Field(default="onomatopoeia")
+class AutoKeyModel(popoto.Model):
+    says = popoto.Field(default="onomatopoeia")
 
 chicken = AutoKeyModel()
 chicken.value = "cluck cluck"
 
-class FarmAnimal(models.Model):
-    id = fields.KeyField()
-    name = fields.Field(type=str, max_length=100)
-    age = fields.Field(type=int, default=0)
+class FarmAnimal(popoto.Model):
+    id = popoto.KeyField()
+    name = popoto.Field(type=str, max_length=100)
+    age = popoto.Field(type=int, default=0)
 
 goat = FarmAnimal()
 goat.id = "AB12"
@@ -40,12 +39,12 @@ goat.age = 3
 goat.save()
 
 # class FarmMammal(FarmAnimal):
-#     id = fields.KeyField(key_prefix = "mammal")
+#     id = popoto.KeyField(key_prefix = "mammal")
 
-class MyPublishableModel(models.Model):
+class MyPublishableModel(popoto.Model):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.publisher = Publisher()
+        self.publisher = popoto.Publisher()
 
     def save(self, pipeline=None, *args, **kwargs):
         super().save(pipeline=pipeline, *args, **kwargs)

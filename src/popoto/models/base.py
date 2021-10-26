@@ -5,7 +5,8 @@ import redis
 
 import logging
 
-from ..fields import KeyField, Field
+from ..fields.key_field import KeyField
+from ..fields.field import Field
 from ..redis_db import POPOTO_REDIS_DB
 
 logger = logging.getLogger('POPOTO.model_base')
@@ -218,8 +219,8 @@ class Model(metaclass=ModelBase):
             return db_response
 
     @classmethod
-    def get(cls, db_key: str):
-        instance = cls(db_key=db_key)
+    def get(cls, db_key: str = None, **fields_kwargs):
+        instance = cls(db_key=db_key) if db_key else cls(**fields_kwargs)
         instance._db_content = instance.load_from_db() or dict()
         if not len(instance._db_content):
             return None
