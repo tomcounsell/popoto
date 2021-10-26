@@ -1,4 +1,4 @@
-from .model_field import Field
+from .field import Field
 
 
 class SortedSetField(Field):

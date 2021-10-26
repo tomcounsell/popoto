@@ -1,5 +1,5 @@
 from time import time
-from .model_field import Field
+from .field import Field
 import uuid
 
 
