@@ -41,6 +41,17 @@ goat.save()
 # class FarmMammal(FarmAnimal):
 #     id = popoto.KeyField(key_prefix = "mammal")
 
+class Racer(popoto.Model):
+    name = popoto.KeyField()
+    fastest_lap = popoto.SortedField(type=float)
+
+tim = Racer.create(name="Tim", fastest_lap=54.92)
+bob = Racer.create(name="Bob", fastest_lap=57.11)
+joe = Racer.create(name="Joe", fastest_lap=51.90)
+racers_under_55 = Racer.query(fastest_lap__lt=55)
+for racer in racers_under_55:
+    print(racer.name)
+
 class MyPublishableModel(popoto.Model):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

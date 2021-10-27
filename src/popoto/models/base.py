@@ -7,6 +7,7 @@ import logging
 
 from ..fields.key_field import KeyField
 from ..fields.field import Field
+from ..fields.sorted_field import SortedField
 from ..redis_db import POPOTO_REDIS_DB
 
 logger = logging.getLogger('POPOTO.model_base')
@@ -22,6 +23,11 @@ class ModelOptions:
         self.db_key_field = None
         self.hidden_fields = {}
         self.explicit_fields = {}
+        # self.list_fields = {}
+        # self.set_fields = {}
+        self.sorted_fields = {}
+        # self.related_fields = {}  # model becomes graph node
+        # self.geo_fields = {}
         self.abstract = False
         self.indexes = []
         self.unique_together = []
@@ -44,6 +50,10 @@ class ModelOptions:
             else:
                 raise ModelException(
                     "Only one ModelKey field allowed. Consider using a prefix or suffix in your key.")
+
+        elif isinstance(field, SortedField):
+            self.sorted_fields[name] = field
+
 
     @property
     def fields(self) -> dict:
@@ -217,6 +227,12 @@ class Model(metaclass=ModelBase):
             if ttl is not None: POPOTO_REDIS_DB.expire(self.db_key, ttl)
             if expire_at is not None: POPOTO_REDIS_DB.expireat(self.db_key, ttl)
             return db_response
+
+    @classmethod
+    def create(cls, *args, **kwargs):
+        instance = cls(*args, **kwargs)
+        instance.save()
+        return instance
 
     @classmethod
     def get(cls, db_key: str = None, **fields_kwargs):
