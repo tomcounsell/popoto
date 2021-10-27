@@ -19,3 +19,21 @@ class Field:
         }
         full_kwargs.update(kwargs)
         self.__dict__.update(full_kwargs)
+
+    @classmethod
+    def is_valid(cls, field, value):
+        if any([
+            (value is None and not field.null),
+            not isinstance(value, field.type),
+            len(str(value)) > field.max_length,
+        ]):
+            return False
+        return True
+
+    @classmethod
+    def pre_save(cls, model, field, value):
+        pass
+
+    @classmethod
+    def post_save(cls, model, field, value):
+        pass
