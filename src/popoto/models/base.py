@@ -150,7 +150,7 @@ class Model(metaclass=ModelBase):
         """
             todo: validate values
             - field.type ✅
-            - field.is_null ✅
+            - field.null ✅
             - field.max_length ✅
             - field.is_sort_key
             - ttl, expire_at
@@ -169,9 +169,9 @@ class Model(metaclass=ModelBase):
 
             # check non-nullable fields
             if null_check and \
-                    self.__dict__[field_name + '_meta'].is_null is False and \
+                    self.__dict__[field_name + '_meta'].null is False and \
                     self.__dict__[field_name] is None:
-                error = f"{field_name} is None/null. Set a value or set is_null=True on {self.__class__.__name__}.{field_name}"
+                error = f"{field_name} is None/null. Set a value or set null=True on {self.__class__.__name__}.{field_name}"
                 logger.error(error)
                 return False
 

@@ -14,7 +14,7 @@ class KeyValueModel(popoto.Model):
     should look and quack like a simple key value store
     """
     key = popoto.KeyField()
-    value = popoto.Field(is_null=True, default=None)
+    value = popoto.Field(null=True, default=None)
 
 duck = KeyValueModel()
 duck.key = "Sally"
