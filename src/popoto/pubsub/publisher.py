@@ -3,8 +3,6 @@ import logging
 from ..redis_db import POPOTO_REDIS_DB
 import msgpack
 
-import msgpack_numpy as m
-m.patch()
 logger = logging.getLogger('POPOTO-publisher')
 
 
@@ -29,6 +27,8 @@ class Publisher(ABC):
         self._channel_name = value
 
     def publish(self, data: dict = None, channel_name: str = None, pipeline=None):
+        import msgpack_numpy as m
+        m.patch()
         # logger.debug(f"publish to {channel_name}: {publish_data}")
         channel_name = channel_name or self._channel_name
         self._publish_data = data or self._publish_data

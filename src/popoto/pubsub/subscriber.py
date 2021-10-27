@@ -3,8 +3,6 @@ import logging
 from ..redis_db import POPOTO_REDIS_DB
 import msgpack
 
-import msgpack_numpy as m
-m.patch()
 logger = logging.getLogger('POPOTO-subscriber')
 
 
@@ -23,6 +21,8 @@ class Subscriber(ABC):
             logger.info(f'{self.__class__.__name__} subscribed to {channel_name} channel')
 
     def __call__(self):
+        import msgpack_numpy as m
+        m.patch()
         data_event = self.pubsub.get_message()
         if not data_event:
             return
