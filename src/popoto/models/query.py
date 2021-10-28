@@ -36,7 +36,6 @@ class Query:
 
         instance = self.model_class(**{self.options.db_key_field_name: db_key})
         if not instance.db_key:
-            print(repr(instance))
             return None
         instance.load_from_db() or dict()
         if not len(instance._db_content):

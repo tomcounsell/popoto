@@ -130,6 +130,7 @@ class ModelBase(type):
 
 
 class Model(metaclass=ModelBase):
+    query: Query
 
     def __init__(self, **kwargs):
         cls = self.__class__
