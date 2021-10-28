@@ -21,6 +21,7 @@ class ModelException(Exception):
 class ModelOptions:
     def __init__(self, model_name):
         self.model_name = model_name
+        self.db_key_field_name = ""
         self.db_key_field = None
         self.hidden_fields = {}
         self.explicit_fields = {}
@@ -53,6 +54,7 @@ class ModelOptions:
 
         if isinstance(field, KeyField):
             if not self.db_key_field:
+                self.db_key_field_name = field_name
                 self.db_key_field = field
             else:
                 raise ModelException(
@@ -65,6 +67,9 @@ class ModelOptions:
     def fields(self) -> dict:
         return {**self.explicit_fields, **self.hidden_fields}
 
+    @property
+    def field_names(self) -> list:
+        return list(self.fields.keys())
 
 class ModelBase(type):
     """Metaclass for all Redis models."""
@@ -108,6 +113,7 @@ class ModelBase(type):
                     f"Try using a private var (eg. _{obj_name})_"
                 )
 
+        # todo: handle multiple inheritance
         # for base in parents:
         #     for field_name, field in base.auto_fields.items():
         #         options.add_field(field_name, field)
@@ -135,15 +141,14 @@ class Model(metaclass=ModelBase):
 
         # add auto KeyField if needed
         if not self._meta.db_key_field:
-            self._meta.add_field("_auto_key", KeyField(auto=True, key=cls.__name__))
+            self._meta.add_field('_auto_key', KeyField(auto=True, key=cls.__name__))
 
         # set defaults
         for field_name, field in self._meta.fields.items():
             setattr(self, field_name, field.default)
-            if isinstance(field, KeyField):
-                self.db_key_field_name = field_name
-                self.db_key = kwargs.get(field_name)
-        for field_name in self._meta.explicit_fields.keys() & kwargs.keys():
+
+        # set field values from init kwargs
+        for field_name in self._meta.fields.keys() & kwargs.keys():
             setattr(self, field_name, kwargs.get(field_name))
 
         # todo: handle some key management?
@@ -159,11 +164,11 @@ class Model(metaclass=ModelBase):
 
     @property
     def db_key(self):
-        return getattr(self, self.db_key_field_name)
+        return getattr(self, self._meta.db_key_field_name)
 
     @db_key.setter
     def db_key(self, value):
-        setattr(self, self.db_key_field_name, value)
+        setattr(self, self._meta.db_key_field_name, value)
 
     def __str__(self):
         return str(self.db_key)
@@ -249,12 +254,8 @@ class Model(metaclass=ModelBase):
         return instance
 
     @classmethod
-    def get(cls, db_key: str = None, **fields_kwargs):
-        instance = cls(db_key=db_key, **fields_kwargs)
-        instance.load_from_db() or dict()
-        if not len(instance._db_content):
-            return None
-        return instance
+    def get(cls, db_key: str = None, **kwargs):
+        return cls.query.get(db_key=db_key, **kwargs)
 
     def __repr__(self):
         return str({k: v for k, v in self.__dict__.items() if k in self._meta.fields})
