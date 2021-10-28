@@ -6,7 +6,7 @@ Popoto is a simple ORM for your cache database on Redis.
  - familiar syntax, similar to Django models
  - scale up matrix data to N-dimensions, compatible with Pandas, Xarray
  - Geo for geometric map search
- - Timeseries for streamting data and finance tickers
+ - Timeseries for streaming data and finance tickers
  - Graph for relationship mapping (like Neo4j)
  - PubSub for message queues, streaming data processing, notification microservices
 
