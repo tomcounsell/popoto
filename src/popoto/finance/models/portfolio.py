@@ -1,6 +1,6 @@
 import logging
 
-from ...models.timeseries import TimeseriesException, TimeseriesModel
+from src.popoto._archive.timeseries import TimeseriesException, TimeseriesModel
 
 logger = logging.getLogger(__name__)
 

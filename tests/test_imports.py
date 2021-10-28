@@ -4,8 +4,7 @@ import os
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
 
-from src.popoto.redis_db import POPOTO_REDIS_DB, print_redis_info
-print_redis_info()
+from src.popoto.redis_db import POPOTO_REDIS_DB
 from src import popoto
 
 
@@ -21,11 +20,16 @@ duck.key = "Sally"
 duck.value = "your most sassy LINE friend"
 duck.save()
 
+same_duck = KeyValueModel.query.get("Sally")
+same_duck == duck
+
 class AutoKeyModel(popoto.Model):
     says = popoto.Field(default="onomatopoeia")
 
 chicken = AutoKeyModel()
 chicken.value = "cluck cluck"
+chicken._meta.fields['_auto_key'].default
+chicken.db_key
 
 class FarmAnimal(popoto.Model):
     id = popoto.KeyField()
@@ -38,8 +42,18 @@ goat.name = "Pickles"
 goat.age = 3
 goat.save()
 
-# class FarmMammal(FarmAnimal):
-#     id = popoto.KeyField(key_prefix = "mammal")
+same_goat = FarmAnimal.get(id="AB12")
+
+class Racer(popoto.Model):
+    name = popoto.KeyField()
+    fastest_lap = popoto.SortedField(type=float)
+
+tim = Racer.create(name="Tim", fastest_lap=54.92)
+bob = Racer.create(name="Bob", fastest_lap=57.11)
+joe = Racer.create(name="Joe", fastest_lap=51.90)
+racers_under_55 = Racer.query.filter(fastest_lap__lt=55)
+for racer in racers_under_55:
+    print(racer.name)
 
 class MyPublishableModel(popoto.Model):
     def __init__(self, *args, **kwargs):

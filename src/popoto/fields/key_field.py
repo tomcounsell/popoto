@@ -9,6 +9,7 @@ class KeyField(Field):
     todo: add support for https://github.com/ai/nanoid
     """
     unique: bool = True
+    indexed: bool = True
     auto: bool = False
     auto_uuid_length: int = 0
     key_prefix: str = ""
@@ -19,6 +20,7 @@ class KeyField(Field):
         super().__init__()
         new_kwargs = {  # default
             'unique': True,
+            'indexed': True,
             'auto': False,
             'auto_uuid_length': 32,
             'key_prefix': "",
