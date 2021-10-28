@@ -46,12 +46,15 @@ class Person (popoto.Model)
 lisa = Person(name="Lalisa Manobal")
 lisa.favorite_color = "yellow"
 lisa.save()
+
+# single line command
+lisa = Person.create(name="Lalisa Manobal", favorite_color = "yellow")
 ```
 
 ## Retreive Objects
 
 ```
-lisa = Person.get(name="Lalisa Manobal")
+lisa = Person.query.get("Lalisa Manobal")
 print(f"{lisa.name} likes {lisa.favorite_color}.")
 'Lalisa Manobal likes yellow.'
 ```
