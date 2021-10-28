@@ -20,11 +20,16 @@ duck.key = "Sally"
 duck.value = "your most sassy LINE friend"
 duck.save()
 
+same_duck = KeyValueModel.query.get("Sally")
+same_duck == duck
+
 class AutoKeyModel(popoto.Model):
     says = popoto.Field(default="onomatopoeia")
 
 chicken = AutoKeyModel()
 chicken.value = "cluck cluck"
+chicken._meta.fields['_auto_key'].default
+chicken.db_key
 
 class FarmAnimal(popoto.Model):
     id = popoto.KeyField()
@@ -46,7 +51,7 @@ class Racer(popoto.Model):
 tim = Racer.create(name="Tim", fastest_lap=54.92)
 bob = Racer.create(name="Bob", fastest_lap=57.11)
 joe = Racer.create(name="Joe", fastest_lap=51.90)
-racers_under_55 = Racer.query(fastest_lap__lt=55)
+racers_under_55 = Racer.query.filter(fastest_lap__lt=55)
 for racer in racers_under_55:
     print(racer.name)
 
