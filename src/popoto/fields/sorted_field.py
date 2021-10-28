@@ -4,9 +4,7 @@ from datetime import date, datetime
 import redis
 
 from .field import Field
-from .. import Model
 from ..redis_db import POPOTO_REDIS_DB
-
 
 class SortedField(Field):
     """
@@ -32,8 +30,6 @@ class SortedField(Field):
         new_kwargs.update(kwargs)
         for k in new_kwargs:
             setattr(self, k, new_kwargs[k])
-
-        self.default = self.get_key()
 
     @classmethod
     def convert_to_numeric(cls, field_type, value):
@@ -61,7 +57,7 @@ class SortedField(Field):
             return POPOTO_REDIS_DB.zadd(z_add_data["key"], z_add_data["name"])
 
     @classmethod
-    def filter_query(cls, model: Model, **query_params) -> list:
+    def filter_query(cls, model: 'Model', **query_params) -> list:
         """
         :param model: the popoto.Model to query from
         :param query_params: dict of filter args and values

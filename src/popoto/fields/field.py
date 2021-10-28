@@ -2,6 +2,7 @@
 class Field:
     type: type = str
     unique: bool = False
+    indexed: bool = False
     value: str = None
     null: bool = False
     max_length: int = 256
@@ -11,10 +12,10 @@ class Field:
         full_kwargs = {  # default
             'type': str,
             'unique': True,
+            'indexed': False,
             'value': None,
             'null': False,
             'max_length': 265,  # Redis limit is 512MB
-            'is_sort_key': False,  # for sorted sets
             'default': "",
         }
         full_kwargs.update(kwargs)
