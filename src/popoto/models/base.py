@@ -5,10 +5,11 @@ import redis
 
 import logging
 
+from .query import Query
 from ..fields.key_field import KeyField
 from ..fields.field import Field
 from ..fields.sorted_field import SortedField
-from ..redis_db import POPOTO_REDIS_DB
+from ..redis_db import POPOTO_REDIS_DB, ENCODING
 
 logger = logging.getLogger('POPOTO.model_base')
 
@@ -23,26 +24,32 @@ class ModelOptions:
         self.db_key_field = None
         self.hidden_fields = {}
         self.explicit_fields = {}
-        # self.list_fields = {}
-        # self.set_fields = {}
-        self.sorted_fields = {}
+        # self.list_field_names = []
+        # self.set_field_names = []
+        self.sorted_field_names = []
+        # self.geo_field_names = []
+        self.indexed_field_names = []
+
+        # todo: should this be a dict of related objects or just a list of field names?
         # self.related_fields = {}  # model becomes graph node
-        # self.geo_fields = {}
+
         self.abstract = False
-        self.indexes = []
         self.unique_together = []
         self.index_together = []
         self.parents = []
         self.auto_created = False
         self.base_meta = None
 
-    def add_field(self, name: str, field: Field):
-        if name.startswith("_") and name not in self.hidden_fields:
-            self.hidden_fields[name] = field
-        elif name not in self.explicit_fields:
-            self.explicit_fields[name] = field
+    def add_field(self, field_name: str, field: Field):
+        if field_name.startswith("_") and field_name not in self.hidden_fields:
+            self.hidden_fields[field_name] = field
+        elif field_name not in self.explicit_fields:
+            self.explicit_fields[field_name] = field
         else:
-            raise ModelException(f"{name} is already a Field on the model")
+            raise ModelException(f"{field_name} is already a Field on the model")
+
+        if field.indexed:
+            self.indexed_field_names.append(field_name)
 
         if isinstance(field, KeyField):
             if not self.db_key_field:
@@ -52,8 +59,7 @@ class ModelOptions:
                     "Only one ModelKey field allowed. Consider using a prefix or suffix in your key.")
 
         elif isinstance(field, SortedField):
-            self.sorted_fields[name] = field
-
+            self.sorted_field_names.append(field_name)
 
     @property
     def fields(self) -> dict:
@@ -112,6 +118,8 @@ class ModelBase(type):
         options.meta = attr_meta or getattr(new_class, 'Meta', None)
         options.base_meta = getattr(new_class, '_meta', None)
         new_class._meta = options
+        setattr(new_class, 'query', Query(new_class))
+        setattr(new_class, 'objects', new_class.query)
         return new_class
 
 
@@ -134,6 +142,9 @@ class Model(metaclass=ModelBase):
             setattr(self, field_name, field.default)
             if isinstance(field, KeyField):
                 self.db_key_field_name = field_name
+                self.db_key = kwargs.get(field_name)
+        for field_name in self._meta.explicit_fields.keys() & kwargs.keys():
+            setattr(self, field_name, kwargs.get(field_name))
 
         # todo: handle some key management?
         # perhaps need to prepare to handle events such as key change, partial key search, ...
@@ -144,6 +155,7 @@ class Model(metaclass=ModelBase):
         # validate initial attributes
         self.validate(null_check=False)  # exclude null, will validate null values on pre-save
         self._db_content = dict()  # empty until self.load_from_db() or self.save() called
+
 
     @property
     def db_key(self):
@@ -156,13 +168,16 @@ class Model(metaclass=ModelBase):
     def __str__(self):
         return str(self.db_key)
 
+    def __eq__(self, other):
+        return repr(self) == repr(other)
+
     def validate(self, null_check=True) -> bool:
         """
             todo: validate values
             - field.type ✅
             - field.null ✅
             - field.max_length ✅
-            - field.is_sort_key
+            - field.is_sort_key - add in SortedField validator
             - ttl, expire_at
         """
         field_names = [k for k, v in self.__dict__.items() if
@@ -192,7 +207,6 @@ class Model(metaclass=ModelBase):
                 error = f"{field_name} is greater than max_length={self.__dict__[field_name + '_meta'].max_length}"
                 logger.error(error)
                 return False
-            # if self.__dict__[field_name+'_meta'].is_sort_key:
 
             if self._ttl and self._expire_at:
                 raise ModelException("Can set either ttl and expire_at. Not both.")
@@ -213,7 +227,7 @@ class Model(metaclass=ModelBase):
 
         ttl, expire_at = (ttl or self._ttl), (expire_at or self._expire_at)
         hset_mapping = {
-            str(k): msgpack.packb(v)
+            str(k).encode(ENCODING): msgpack.packb(v)
             for k, v in self.__dict__.items() if k in self._meta.fields
         }
         self._db_content = hset_mapping
@@ -236,8 +250,8 @@ class Model(metaclass=ModelBase):
 
     @classmethod
     def get(cls, db_key: str = None, **fields_kwargs):
-        instance = cls(db_key=db_key) if db_key else cls(**fields_kwargs)
-        instance._db_content = instance.load_from_db() or dict()
+        instance = cls(db_key=db_key, **fields_kwargs)
+        instance.load_from_db() or dict()
         if not len(instance._db_content):
             return None
         return instance

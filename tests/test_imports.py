@@ -4,8 +4,7 @@ import os
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
 
-from src.popoto.redis_db import POPOTO_REDIS_DB, print_redis_info
-print_redis_info()
+from src.popoto.redis_db import POPOTO_REDIS_DB
 from src import popoto
 
 
@@ -38,8 +37,7 @@ goat.name = "Pickles"
 goat.age = 3
 goat.save()
 
-# class FarmMammal(FarmAnimal):
-#     id = popoto.KeyField(key_prefix = "mammal")
+same_goat = FarmAnimal.get(id="AB12")
 
 class Racer(popoto.Model):
     name = popoto.KeyField()
