@@ -21,18 +21,20 @@ class ModelException(Exception):
 class ModelOptions:
     def __init__(self, model_name):
         self.model_name = model_name
-        self.db_key_field_name = ""
-        self.db_key_field = None
         self.hidden_fields = {}
         self.explicit_fields = {}
-        # self.list_field_names = []
+        self.key_field_names = []
+        self.list_field_names = []
         # self.set_field_names = []
         self.sorted_field_names = []
-        # self.geo_field_names = []
+        self.geo_field_names = []
         self.indexed_field_names = []
 
         # todo: should this be a dict of related objects or just a list of field names?
         # self.related_fields = {}  # model becomes graph node
+
+        # todo: allow customizing this in model.Meta class
+        self.db_class_key = self.model_name
 
         self.abstract = False
         self.unique_together = []
@@ -53,15 +55,13 @@ class ModelOptions:
             self.indexed_field_names.append(field_name)
 
         if isinstance(field, KeyField):
-            if not self.db_key_field:
-                self.db_key_field_name = field_name
-                self.db_key_field = field
-            else:
-                raise ModelException(
-                    "Only one ModelKey field allowed. Consider using a prefix or suffix in your key.")
-
+            self.key_field_names.append(field_name)
         elif isinstance(field, SortedField):
             self.sorted_field_names.append(field_name)
+        # elif isinstance(field, ListField):
+        #     self.list_field_names.append(field_name)
+        # elif isinstance(field, GeoField):
+        #     self.geo_field_names.append(field_name)
 
     @property
     def fields(self) -> dict:
@@ -70,6 +70,14 @@ class ModelOptions:
     @property
     def field_names(self) -> list:
         return list(self.fields.keys())
+
+    @property
+    def db_key_length(self):
+        return 1 + len(self.key_field_names)
+
+    def get_db_key_position(self, field_name):
+        return 1 + self.key_field_names.index(field_name)
+
 
 class ModelBase(type):
     """Metaclass for all Redis models."""
@@ -141,7 +149,7 @@ class Model(metaclass=ModelBase):
         self.__dict__.update(kwargs)
 
         # add auto KeyField if needed
-        if not self._meta.db_key_field:
+        if not len(self._meta.key_field_names):
             self._meta.add_field('_auto_key', KeyField(auto=True, key=cls.__name__))
 
         # set defaults
@@ -162,14 +170,16 @@ class Model(metaclass=ModelBase):
         self.validate(null_check=False)  # exclude null, will validate null values on pre-save
         self._db_content = dict()  # empty until self.load_from_db() or self.save() called
 
-
     @property
     def db_key(self):
-        return getattr(self, self._meta.db_key_field_name)
-
-    @db_key.setter
-    def db_key(self, value):
-        setattr(self, self._meta.db_key_field_name, value)
+        """
+        the db key must include the class name - equivalent to db table name
+        like it or not, keys append alphabetically.
+        if needed, can propose feature to include order=int param on KeyField to force an order
+        """
+        return f"{self._meta.db_class_key}:" + ":".join([
+            getattr(self, key_field_name) for key_field_name in sorted(self._meta.key_field_names)
+        ])
 
     def __str__(self):
         return str(self.db_key)
@@ -177,40 +187,52 @@ class Model(metaclass=ModelBase):
     def __eq__(self, other):
         return repr(self) == repr(other)
 
+    # @property
+    # def field_names(self):
+    #     return [
+    #         k for k, v in self.__dict__.items()
+    #         if all([not k.startswith("_"), k + "_meta" in self.__dict__])
+    #     ]
+
     def validate(self, null_check=True) -> bool:
         """
             todo: validate values
             - field.type ✅
             - field.null ✅
             - field.max_length ✅
-            - field.is_sort_key - add in SortedField validator
-            - ttl, expire_at
+            - ttl, expire_at - todo
         """
-        field_names = [k for k, v in self.__dict__.items() if
-                       all([not k.startswith("_"), k + "_meta" in self.__dict__])]
 
-        for field_name in field_names:
+        for field_name in self._meta.field_names:
             # type check the field values against their class specified type, unless null/None
-            if self.__dict__[field_name] is not None and \
-                    not isinstance(self.__dict__[field_name], self.__dict__[field_name + '_meta'].type):
-                error = f"{field_name} is not type {self.__dict__[field_name + '_meta'].type}. " \
-                        f"Change the value or modify type on {self.__class__.__name__}.{field_name}"
-                logger.error(error)
-                return False
+
+            if all([
+                getattr(self, field_name) is not None,
+                not isinstance(getattr(self, field_name), self._meta.fields[field_name].type)
+            ]):
+                try:
+                    setattr(self, field_name, self._meta.fields[field_name].type(getattr(self, field_name)))
+                    if not isinstance(getattr(self, field_name), self._meta.fields[field_name].type):
+                        raise TypeError(f"{field_name} is not type {self._meta.fields[field_name].type}. ")
+                except TypeError as e:
+                    logger.error(
+                        f"{str(e)} \n Change the value or modify type on {self.__class__.__name__}.{field_name}"
+                    )
+                    return False
 
             # check non-nullable fields
             if null_check and \
-                    self.__dict__[field_name + '_meta'].null is False and \
-                    self.__dict__[field_name] is None:
+                    self._meta.fields[field_name].null is False and \
+                    getattr(self, field_name) is None:
                 error = f"{field_name} is None/null. Set a value or set null=True on {self.__class__.__name__}.{field_name}"
                 logger.error(error)
                 return False
 
             # validate str max_length
-            if self.__dict__[field_name + '_meta'].type == str and \
-                    self.__dict__[field_name] and \
-                    len(self.__dict__[field_name]) > self.__dict__[field_name + '_meta'].max_length:
-                error = f"{field_name} is greater than max_length={self.__dict__[field_name + '_meta'].max_length}"
+            if self._meta.fields[field_name].type == str and \
+                    getattr(self, field_name) and \
+                    len(getattr(self, field_name)) > self._meta.fields[field_name].max_length:
+                error = f"{field_name} is greater than max_length={self._meta.fields[field_name].max_length}"
                 logger.error(error)
                 return False
 
