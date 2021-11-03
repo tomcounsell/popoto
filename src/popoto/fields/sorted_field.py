@@ -57,7 +57,7 @@ class SortedField(Field):
             return POPOTO_REDIS_DB.zadd(z_add_data["key"], z_add_data["name"])
 
     def get_filter_query_params(self, field_name):
-        return [
+        return super().get_filter_query_params(field_name) + [
             f'{field_name}__gt',
             f'{field_name}__gte',
             f'{field_name}__lt',
@@ -65,11 +65,12 @@ class SortedField(Field):
         ]
 
     @classmethod
-    def filter_query(cls, model: 'Model', **query_params) -> list:
+    def filter_query(cls, model: 'Model', field_name: str, **query_params) -> set:
         """
         :param model: the popoto.Model to query from
+        :param field_name: the name of the field being filtered on
         :param query_params: dict of filter args and values
-        :return: list[obj,]
+        :return: set{db_key, db_key, ..}
         """
 
         for query_param, query_value in query_params.items():
@@ -105,4 +106,4 @@ class SortedField(Field):
             key, score = (key_score.decode("utf-8").split(":")[0],
                             float(key_score.decode("utf-8").split(":")[1]))
             return_list.append((key, score))
-        return return_list
+        return set(return_list)
