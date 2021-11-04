@@ -1,6 +1,6 @@
 import msgpack
 import logging
-from src.popoto.redis_db import POPOTO_REDIS_DB
+from ..redis_db import POPOTO_REDIS_DB
 
 logger = logging.getLogger('POPOTO.Query')
 

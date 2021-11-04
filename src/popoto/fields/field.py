@@ -1,4 +1,4 @@
-from src.popoto.models.query import QueryException
+from ..models.query import QueryException
 
 
 class Field:

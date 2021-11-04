@@ -40,6 +40,10 @@ class KeyField(Field):
     def get_filter_query_params(self, field_name: str) -> list:
         return super().get_filter_query_params(field_name) + [
             f'{field_name}',
+            f'{field_name}__contains',  # takes a str, matches :*x*:
+            f'{field_name}__startswith',  # takes a str, matches :x*:
+            f'{field_name}__endswith',  # takes a str, matches :*x:
+            f'{field_name}__in',  # takes a list, returns any matches
             # f'{field_name}__isnull',  # KeyFields can't be null anyway
         ]
 
@@ -60,7 +64,10 @@ class KeyField(Field):
             num_keys_before = field_key_position - 1
             num_keys_after = db_key_length-(field_key_position+1)
             key_pattern = f"{model._meta.db_class_key}:" + ("*:"*num_keys_before) + query_value + ":*"*num_keys_after
+
             pipeline.keys(key_pattern)
+            # todo: refactor to use HSCAN or sets, https://redis.io/commands/keys
+            # https://redis-py.readthedocs.io/en/stable/index.html#redis.Redis.hscan_iter
 
         redis_db_keys_lists += pipeline.execute()
         from itertools import chain
