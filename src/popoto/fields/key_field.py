@@ -12,20 +12,24 @@ class KeyField(Field):
     If only one KeyField is on the model, it must be unique
     todo: add support for https://github.com/ai/nanoid
     """
-    unique: bool = False
-    indexed: bool = False
+    unique: bool = True
+    indexed: bool = True
     auto: bool = False
-    auto_uuid_length: int = 0
+    auto_uuid_length: int = 32
     auto_id: str = ""
+    null: bool = False
+    max_length: int = 128
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        new_kwargs = {  # default
+        new_kwargs = {  # defaults
             'unique': True,
             'indexed': True,
             'auto': False,
             'auto_uuid_length': 32,
             'auto_id': "",
+            'null': False,
+            'max_length': 128,  # Redis limit is 512MB
         }
         if kwargs.get('unique', None) == False:
             from ..models.base import ModelException

@@ -7,7 +7,7 @@ class Field:
     indexed: bool = False
     value: str = None
     null: bool = False
-    max_length: int = 256
+    max_length: int = 1024
     default: str = ""
 
     def __init__(self, **kwargs):
@@ -17,7 +17,7 @@ class Field:
             'indexed': False,
             'value': None,
             'null': False,
-            'max_length': 265,  # Redis limit is 512MB
+            'max_length': 1024,  # Redis limit is 512MB
             'default': None,
         }
         full_kwargs.update(kwargs)
