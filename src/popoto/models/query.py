@@ -25,21 +25,20 @@ class Query:
                 f"{self.model_class.__name__} does not define an explicit KeyField. Cannot perform query.get(key)"
             )
 
-        if not db_key:
-            for field_name, value in kwargs.items():
-                if field_name not in self.options.indexed_field_names:
-                    raise QueryException(
-                        f"{field_name} is not an indexed field. Try using .filter({field_name}={value})"
-                    )
-            get_params = [
-                (field_name, self.options.fields.get(field_name), value)
-                for field_name, value in kwargs.items()
-            ]
+        kwargs['db_key'] = db_key
+        instance = self.model_class(**kwargs)
 
-            db_key = ''
-            # db_key = PopotoIndex.find(**get_params)
+        #
+        # for field_name, value in kwargs.items():
+        #     if field_name not in self.options.indexed_field_names:
+        #         raise QueryException(
+        #             f"{field_name} is not an indexed field. Try using .filter({field_name}={value})"
+        #         )
+        # get_params = [
+        #     (field_name, self.options.fields.get(field_name), value)
+        #     for field_name, value in kwargs.items()
+        # ]
 
-        instance = self.model_class(**{'db_key': db_key})
         if not instance.db_key:
             return None
         instance.load_from_db() or dict()
@@ -82,7 +81,7 @@ class Query:
         db_keys_sets = []
 
         for field_name, field in self.options.fields.items():
-            from src.popoto import KeyField, GeoField, SortedField
+            from ..fields.key_field import KeyField
             if isinstance(field, KeyField):
 
                 logger.debug(f"query on {field_name}")

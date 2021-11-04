@@ -12,8 +12,8 @@ class KeyField(Field):
     If only one KeyField is on the model, it must be unique
     todo: add support for https://github.com/ai/nanoid
     """
-    unique: bool = True
-    indexed: bool = True
+    unique: bool = False
+    indexed: bool = False
     auto: bool = False
     auto_uuid_length: int = 32
     auto_id: str = ""
@@ -24,16 +24,13 @@ class KeyField(Field):
         super().__init__(**kwargs)
         new_kwargs = {  # defaults
             'unique': True,
-            'indexed': True,
+            'indexed': False,
             'auto': False,
             'auto_uuid_length': 32,
             'auto_id': "",
             'null': False,
             'max_length': 128,  # Redis limit is 512MB
         }
-        if kwargs.get('unique', None) == False:
-            from ..models.base import ModelException
-            raise ModelException("key field must be unique")
         new_kwargs.update(kwargs)
         for k in new_kwargs:
             setattr(self, k, new_kwargs[k])
@@ -80,6 +77,9 @@ class KeyField(Field):
 
 class UniqueKeyField(KeyField):
     def __init__(self, **kwargs):
+        if not kwargs.get('unique', True):
+            from ..models.base import ModelException
+            raise ModelException("UniqueKey field MUST be unique")
         kwargs['unique'] = True
         super().__init__(**kwargs)
 
