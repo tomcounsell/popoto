@@ -1,5 +1,5 @@
 from time import time
-from .field import Field
+from .field import Field, logger
 import uuid
 
 from collections import namedtuple
@@ -7,25 +7,28 @@ from collections import namedtuple
 from ..models.query import QueryException
 from ..redis_db import POPOTO_REDIS_DB
 
-Coordinates = namedtuple('Coordinates', 'latitude longitude')
 
 class GeoField(Field):
     """
     A field that enables geospatial data and geospatial search
     required: latitude, longitude
     """
+    Coordinates = namedtuple('Coordinates', 'latitude longitude')
+
     type: type = tuple
     latitude: float = None
     longitude: float = None
-    default: tuple = (None, None)
+    default: tuple = Coordinates(None, None)
     null: bool = True
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         new_kwargs = {  # default
+            'type': tuple,
             'latitude': None,
             'longitude': None,
             'null': True,
+            'default': GeoField.Coordinates(None, None),
         }
         new_kwargs.update(kwargs)
         for k in new_kwargs:
@@ -35,10 +38,75 @@ class GeoField(Field):
         return super().get_filter_query_params(field_name) + [
             f'{field_name}_latitude',
             f'{field_name}_longitude',
-            f'{field_name}_coordinates',
             f'{field_name}_radius',
-            f'{field_name}_radius_units',
+            f'{field_name}_radius_unit',
         ]
+
+    @classmethod
+    def is_valid(cls, field, value) -> bool:
+        if not super().is_valid(field, value):
+            return False
+        if value is None:
+            return True
+        if isinstance(value, GeoField.Coordinates):
+            pass
+        elif isinstance(value, tuple):
+            value = GeoField.Coordinates(value[0], value[1])
+        else:
+            logger.error(f"GeoField MUST be type GeoField.Coordinates or tuple, NOT {type(value)}")
+            return False
+        if field.null and not any([value.latitude, value.longitude]):
+            return True
+        elif bool(value.latitude) != bool(value.longitude):
+            logger.error(f"latitude is {value.latitude} and longitude is {value.longitude}")
+            logger.error(f"BOTH latitude AND longitude MUST have a value or be None")
+            return False
+        elif not all([value.latitude, value.longitude]):
+            logger.error(f"BOTH latitude AND longitude MUST have a value")
+            return False
+        try:
+            float(value.latitude), float(value.longitude)
+        except ValueError as e:
+            logger.error(e)
+            return False
+        except TypeError as e:
+            logger.error(e)
+            return False
+        return True
+
+    @classmethod
+    def pre_save(cls, value):
+        """
+        format value before saving to db
+        assumes validation is already passed
+        """
+        if isinstance(value, GeoField.Coordinates):
+            return value
+        if isinstance(value, tuple):
+            return GeoField.Coordinates(value[0], value[1])
+        if cls.null:
+            return GeoField.Coordinates(None, None)
+        return value
+
+    @classmethod
+    def on_save(cls, model: 'Model', field_name: str, field_value: 'GeoField.Coordinates', pipeline=None):
+        geo_db_key = f"{model._meta.db_class_key}:GEO_{field_name}"
+        longitude = field_value.longitude
+        latitude = field_value.latitude
+        member = model.db_key
+        if pipeline:
+            return pipeline.geoadd(geo_db_key,  longitude, latitude, member)
+        else:
+            return POPOTO_REDIS_DB.geoadd(geo_db_key,  longitude, latitude, member)
+
+    @classmethod
+    def on_delete(cls, model: 'Model', field_name: str, pipeline=None):
+        geo_db_key = f"{model._meta.db_class_key}:GEO_{field_name}"
+        member = model.db_key
+        if pipeline:
+            return pipeline.zrem(geo_db_key, member)
+        else:
+            return POPOTO_REDIS_DB.zrem(geo_db_key, member)
 
     @classmethod
     def filter_query(cls, model: 'Model', field_name: str, **query_params) -> set:
@@ -49,44 +117,51 @@ class GeoField(Field):
         :return: set{db_key, db_key, ..}
         """
 
-        coordinates = Coordinates(None, None)
-        member, radius, units = None, 0, 'm'
+        coordinates = GeoField.Coordinates(None, None)
+        member, radius, unit = None, 1, 'm'
         for query_param, query_value in query_params.items():
 
-            if '_coordinates' in query_param:
-                if not isinstance(query_value, tuple) or not len(query_value) == 2:
+            print(query_param, query_value)
+
+            if query_param == f'{field_name}':
+                if isinstance(query_value, GeoField.Coordinates):
+                    coordinates = query_value
+                elif not isinstance(query_value, tuple) or not len(query_value) == 2:
                     raise QueryException(f"{query_param} must be assigned a tuple = (latitude, longitude)")
-                coordinates = Coordinates(query_value[0], query_value[1])
+                else:
+                    coordinates = GeoField.Coordinates(query_value[0], query_value[1])
 
             elif '_latitude' in query_param:
-                coordinates.latitude = query_value
+                coordinates = GeoField.Coordinates(query_value, coordinates.longitude)
             elif '_longitude' in query_param:
-                coordinates.longitude = query_value
+                coordinates = GeoField.Coordinates(coordinates.latitude, query_value)
 
             elif '_member' in query_param:
                 if not isinstance(query_value, model):
                     raise QueryException(f"{query_param} must be assigned a tuple = (latitude, longitude)")
                 member = query_value
 
-            elif query_param == 'radius':
+            elif '_radius' in query_param:
                 radius = query_value
 
-            elif query_param == 'units':
+            elif '_unit' in query_param:
                 if query_value not in ['m', 'km', 'ft', 'mi']:
                     raise QueryException(f"{query_param} must be one of m|km|ft|mi ")
-                units = query_value
+                unit = query_value
+
+        print(member, coordinates, radius, unit)
 
         if member:
             redis_db_keys_list = POPOTO_REDIS_DB.georadiusbymember(
                 model._meta.db_class_key, member=member.db_key,
-                radius=radius, units=units
+                radius=radius, unit=unit
             )
 
         elif bool(coordinates.latitude and coordinates.longitude):
             redis_db_keys_list = POPOTO_REDIS_DB.georadius(
                 model._meta.db_class_key,
                 longitude=coordinates.longitude, latitude=coordinates.latitude,
-                radius=radius, units=units
+                radius=radius, unit=unit
             )
         else:
             raise QueryException(f"missing one or more required parameters. "
