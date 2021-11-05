@@ -6,6 +6,10 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 from src.popoto.redis_db import POPOTO_REDIS_DB
 from src import popoto
+from src.popoto import Model, ModelBase
+from src.popoto import Field
+from src.popoto import KeyField, AutoKeyField, UniqueKeyField
+from src.popoto import IndexField, GeoField, SortedField, SetField, ListField
 
 
 class KeyValueModel(popoto.Model):
