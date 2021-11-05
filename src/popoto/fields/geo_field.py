@@ -1,3 +1,4 @@
+import logging
 from time import time
 from .field import Field, logger
 import uuid
@@ -116,12 +117,10 @@ class GeoField(Field):
         :param query_params: dict of filter args and values
         :return: set{db_key, db_key, ..}
         """
-
+        geo_db_key = f"{model._meta.db_class_key}:GEO_{field_name}"
         coordinates = GeoField.Coordinates(None, None)
         member, radius, unit = None, 1, 'm'
         for query_param, query_value in query_params.items():
-
-            print(query_param, query_value)
 
             if query_param == f'{field_name}':
                 if isinstance(query_value, GeoField.Coordinates):
@@ -131,9 +130,9 @@ class GeoField(Field):
                 else:
                     coordinates = GeoField.Coordinates(query_value[0], query_value[1])
 
-            elif '_latitude' in query_param:
+            elif query_param.endswith('_latitude'):
                 coordinates = GeoField.Coordinates(query_value, coordinates.longitude)
-            elif '_longitude' in query_param:
+            elif query_param.endswith('_longitude'):
                 coordinates = GeoField.Coordinates(coordinates.latitude, query_value)
 
             elif '_member' in query_param:
@@ -141,28 +140,28 @@ class GeoField(Field):
                     raise QueryException(f"{query_param} must be assigned a tuple = (latitude, longitude)")
                 member = query_value
 
-            elif '_radius' in query_param:
+            elif query_param.endswith('_radius'):
                 radius = query_value
 
-            elif '_unit' in query_param:
+            elif query_param.endswith('_radius_unit'):
                 if query_value not in ['m', 'km', 'ft', 'mi']:
                     raise QueryException(f"{query_param} must be one of m|km|ft|mi ")
                 unit = query_value
 
-        print(member, coordinates, radius, unit)
-
         if member:
             redis_db_keys_list = POPOTO_REDIS_DB.georadiusbymember(
-                model._meta.db_class_key, member=member.db_key,
+                geo_db_key, member=member.db_key,
                 radius=radius, unit=unit
             )
 
-        elif bool(coordinates.latitude and coordinates.longitude):
+        elif coordinates.latitude and coordinates.longitude:
+            # logger.debug(f"geo query on {dict(model=model._meta.db_class_key, longitude=coordinates.longitude, latitude=coordinates.latitude, radius=radius, unit=unit)}")
             redis_db_keys_list = POPOTO_REDIS_DB.georadius(
-                model._meta.db_class_key,
+                geo_db_key,
                 longitude=coordinates.longitude, latitude=coordinates.latitude,
                 radius=radius, unit=unit
             )
+            # logger.debug(f"geo query returned {redis_db_keys_list}")
         else:
             raise QueryException(f"missing one or more required parameters. "
                                  f"geofilter requires either coordinates or instance of the same model")
