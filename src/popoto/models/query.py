@@ -81,21 +81,23 @@ class Query:
         db_keys_sets = []
 
         for field_name, field in self.options.fields.items():
+
             from ..fields.key_field import KeyField
-            if isinstance(field, KeyField):
+            from ..fields.geo_field import GeoField
+            queryable_field_classes = [KeyField, GeoField]
 
+            if field.__class__ in queryable_field_classes:
+            # if isinstance(field, KeyField):
                 logger.debug(f"query on {field_name}")
-
                 # intersection of field params and filter kwargs
-                params_for_keyfield = set(kwargs.keys()) & set(field.get_filter_query_params(field_name))
-
-                logger.debug({k: kwargs[k] for k in params_for_keyfield})
-
-                key_set = KeyField.filter_query(
-                    self.model_class, field_name, **{k: kwargs[k] for k in params_for_keyfield}
+                params_for_field = set(kwargs.keys()) & set(field.get_filter_query_params(field_name))
+                logger.debug({k: kwargs[k] for k in params_for_field})
+                key_set = field.__class__.filter_query(
+                    self.model_class, field_name, **{k: kwargs[k] for k in params_for_field}
                 )
                 if len(key_set):
                     db_keys_sets.append(key_set)
+
         logger.debug(db_keys_sets)
         if not db_keys_sets:
             return []
