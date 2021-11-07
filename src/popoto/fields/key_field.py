@@ -1,4 +1,3 @@
-from time import time
 from .field import Field, logger
 import uuid
 
