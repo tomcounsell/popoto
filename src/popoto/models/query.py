@@ -1,5 +1,7 @@
 import msgpack
 import logging
+
+from .encoding import decode_popoto_model_hashmap
 from ..redis_db import POPOTO_REDIS_DB
 
 logger = logging.getLogger('POPOTO.Query')
@@ -47,7 +49,7 @@ class Query:
         return instance
 
     def all(self):
-        redis_db_keys_list = POPOTO_REDIS_DB.keys(f"{self.model_class.__name__}:*")
+        redis_db_keys_list = POPOTO_REDIS_DB.keys(f"{self.model_class.__name__}:*[]notGEO")
         return Query.get_many_objects(self.model_class, set(redis_db_keys_list))
 
     @classmethod
@@ -59,10 +61,7 @@ class Query:
         hashes_list = pipeline.execute()
         for redis_hash in hashes_list:
             objects_list.append(
-                model(**{
-                    key_b.decode("utf-8"): msgpack.unpackb(db_value_b)
-                    for key_b, db_value_b in redis_hash.items()
-                })
+                decode_popoto_model_hashmap(model, redis_hash)
             )
         return objects_list
 

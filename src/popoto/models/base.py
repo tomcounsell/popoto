@@ -80,14 +80,14 @@ class ModelOptions:
 
 
 class ModelBase(type):
-    """Metaclass for all Redis models."""
+    """Metaclass for all Popoto Models."""
 
     def __new__(cls, name, bases, attrs, **kwargs):
 
         # Initialization is only performed for a Model and its subclasses
         parents = [b for b in bases if isinstance(b, ModelBase)]
         if not parents:
-            return super().__new__(cls, name, bases, attrs)
+            return super().__new__(cls, name, bases, attrs, **kwargs)
 
         # logger.debug({k: v for k, v in attrs.items() if not k.startswith('__')})
         module = attrs.pop('__module__')
@@ -287,21 +287,27 @@ class Model(metaclass=ModelBase):
 
         ttl, expire_at = (ttl or self._ttl), (expire_at or self._expire_at)
 
-        hset_mapping = {
-            str(k).encode(ENCODING): msgpack.packb(v)
-            for k, v in self.__dict__.items() if k in self._meta.fields
-        }
+        # run any necessary formatting on field data before saving
+        for field_name, field in self._meta.fields.items():
+            setattr(
+                self, field_name,
+                field.format_value_pre_save(getattr(self, field_name))
+            )
+
+        hset_mapping = self.encode()
         self._db_content = hset_mapping
 
         for field_name, field in self._meta.fields.items():
             if pipeline:
                 pipeline = field.on_save(
-                    self, field_name=field_name, field_value=getattr(self, field_name),
+                    self, field_name=field_name,
+                    field_value=getattr(self, field_name),
                     pipeline=pipeline
                 )
             else:
-                field_db_response = field.on_save(
-                    self, field_name=field_name, field_value=getattr(self, field_name)
+                db_response = field.on_save(
+                    self, field_name=field_name,
+                    field_value=getattr(self, field_name)
                 )
 
         if isinstance(pipeline, redis.client.Pipeline):
@@ -324,6 +330,10 @@ class Model(metaclass=ModelBase):
     @classmethod
     def get(cls, db_key: str = None, **kwargs):
         return cls.query.get(db_key=db_key, **kwargs)
+
+    def encode(self):
+        from .encoding import encode_popoto_model_obj
+        return encode_popoto_model_obj(self)
 
     def load_from_db(self):
         self._db_content = POPOTO_REDIS_DB.hgetall(self.db_key)
