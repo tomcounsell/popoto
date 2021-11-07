@@ -49,7 +49,8 @@ class Query:
         return instance
 
     def all(self):
-        redis_db_keys_list = POPOTO_REDIS_DB.keys(f"{self.model_class.__name__}:*[]notGEO")
+        # todo: refactor to use SCAN or sets, https://redis.io/commands/keys
+        redis_db_keys_list = POPOTO_REDIS_DB.keys(f"{self.model_class._meta.db_class_key}:*")
         return Query.get_many_objects(self.model_class, set(redis_db_keys_list))
 
     @classmethod
