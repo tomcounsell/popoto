@@ -62,6 +62,7 @@ class SortedField(Field):
             f'{field_name}__gte',
             f'{field_name}__lt',
             f'{field_name}__lte',
+            # f'{field_name}__range',  # todo: like https://docs.djangoproject.com/en/3.2/ref/models/querysets/#range
         ]
 
     @classmethod

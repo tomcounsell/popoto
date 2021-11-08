@@ -3,7 +3,7 @@ requires = [
     "setuptools>=42",
     "wheel",
     "redis",
-    "numpy",
+    "numpy>=1.21.4",
     "pandas",
     "msgpack", "msgpack-numpy",
 ]

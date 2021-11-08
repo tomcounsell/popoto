@@ -80,14 +80,14 @@ class ModelOptions:
 
 
 class ModelBase(type):
-    """Metaclass for all Redis models."""
+    """Metaclass for all Popoto Models."""
 
     def __new__(cls, name, bases, attrs, **kwargs):
 
         # Initialization is only performed for a Model and its subclasses
         parents = [b for b in bases if isinstance(b, ModelBase)]
         if not parents:
-            return super().__new__(cls, name, bases, attrs)
+            return super().__new__(cls, name, bases, attrs, **kwargs)
 
         # logger.debug({k: v for k, v in attrs.items() if not k.startswith('__')})
         module = attrs.pop('__module__')
@@ -167,7 +167,8 @@ class Model(metaclass=ModelBase):
         self._expire_at = None  # todo: datetime? or timestamp?
 
         # validate initial attributes
-        self.validate(null_check=False)  # exclude null, will validate null values on pre-save
+        if not self.is_valid(null_check=False):  # exclude null, will validate null values on pre-save
+            raise ModelException(f"Could not instantiate class {self}")
         self._db_content = dict()  # empty until self.load_from_db() or self.save() called
 
     @property
@@ -181,11 +182,34 @@ class Model(metaclass=ModelBase):
             getattr(self, key_field_name) for key_field_name in sorted(self._meta.key_field_names)
         ])
 
+    def __repr__(self):
+        return str({k: v for k, v in self.__dict__.items() if k in self._meta.fields})
+
     def __str__(self):
         return str(self.db_key)
 
     def __eq__(self, other):
-        return repr(self) == repr(other)
+        """
+        equality method
+        instances with the same key(s) and class are considered equal
+        except when any key(s) are None, they are not equal to anything except themselves.
+
+        for evaluating all instance values against each other, use something like this:
+        self_dict = self._meta.fields.update((k, self.__dict__[k]) for k in set(self.__dict__).intersection(self._meta.fields))
+        other_dict = other._meta.fields.update((k, other.__dict__[k]) for k in set(other.__dict__).intersection(other._meta.fields))
+        return repr(dict(sorted(self_dict))) == repr(dict(sorted(other_dict)))
+        """
+        try:
+            if isinstance(other, self.__class__):
+                # always False if if any KeyFields are None
+                if (None in [self._meta.fields.get(key_field_name) for key_field_name in self._meta.key_field_names]) or \
+                        (None in [other._meta.fields.get(key_field_name) for key_field_name in other._meta.key_field_names]):
+                    return repr(self) == repr(other)
+                return self.db_key == other.db_key
+        except:
+            return False
+        else:
+            return False
 
     # @property
     # def field_names(self):
@@ -194,7 +218,7 @@ class Model(metaclass=ModelBase):
     #         if all([not k.startswith("_"), k + "_meta" in self.__dict__])
     #     ]
 
-    def validate(self, null_check=True) -> bool:
+    def is_valid(self, null_check=True) -> bool:
         """
             todo: validate values
             - field.type ✅
@@ -233,11 +257,19 @@ class Model(metaclass=ModelBase):
                     getattr(self, field_name) and \
                     len(getattr(self, field_name)) > self._meta.fields[field_name].max_length:
                 error = f"{field_name} is greater than max_length={self._meta.fields[field_name].max_length}"
-                logger.error(error)
-                return False
+
 
             if self._ttl and self._expire_at:
                 raise ModelException("Can set either ttl and expire_at. Not both.")
+
+        for field_name, field_value in self.__dict__.items():
+            if field_name in self._meta.fields.keys():
+                field_class = self._meta.fields[field_name].__class__
+                if not field_class.is_valid(self._meta.fields[field_name], field_value):
+                    error = f"Validation on [{field_name}] Field failed"
+                    logger.error(error)
+                    return False
+
         return True
 
     def save(self, pipeline: redis.client.Pipeline = None, ttl=None, expire_at=None, ignore_errors: bool = False, *args,
@@ -245,7 +277,7 @@ class Model(metaclass=ModelBase):
         """
             Default save method. Uses Redis HSET command with key, dict of values, ttl.
         """
-        if not self.validate():
+        if not self.is_valid():
             error_message = "Model instance parameters invalid. Failed to save."
             if ignore_errors:
                 logger.error(error_message)
@@ -254,11 +286,30 @@ class Model(metaclass=ModelBase):
             return pipeline or 0
 
         ttl, expire_at = (ttl or self._ttl), (expire_at or self._expire_at)
-        hset_mapping = {
-            str(k).encode(ENCODING): msgpack.packb(v)
-            for k, v in self.__dict__.items() if k in self._meta.fields
-        }
+
+        # run any necessary formatting on field data before saving
+        for field_name, field in self._meta.fields.items():
+            setattr(
+                self, field_name,
+                field.format_value_pre_save(getattr(self, field_name))
+            )
+
+        hset_mapping = self.encode()
         self._db_content = hset_mapping
+
+        for field_name, field in self._meta.fields.items():
+            if pipeline:
+                pipeline = field.on_save(
+                    self, field_name=field_name,
+                    field_value=getattr(self, field_name),
+                    pipeline=pipeline
+                )
+            else:
+                db_response = field.on_save(
+                    self, field_name=field_name,
+                    field_value=getattr(self, field_name)
+                )
+
         if isinstance(pipeline, redis.client.Pipeline):
             pipeline = pipeline.hset(self.db_key, mapping=hset_mapping)
             pipeline = pipeline if ttl is None else pipeline.expire(self.db_key, ttl)
@@ -280,8 +331,9 @@ class Model(metaclass=ModelBase):
     def get(cls, db_key: str = None, **kwargs):
         return cls.query.get(db_key=db_key, **kwargs)
 
-    def __repr__(self):
-        return str({k: v for k, v in self.__dict__.items() if k in self._meta.fields})
+    def encode(self):
+        from .encoding import encode_popoto_model_obj
+        return encode_popoto_model_obj(self)
 
     def load_from_db(self):
         self._db_content = POPOTO_REDIS_DB.hgetall(self.db_key)
