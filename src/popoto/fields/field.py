@@ -63,7 +63,7 @@ class Field(metaclass=FieldBase):
 
     @classmethod
     def on_save(cls, model: 'Model', field_name: str, field_value, pipeline=None):
-        from src.popoto.redis_db import POPOTO_REDIS_DB
+        from ..redis_db import POPOTO_REDIS_DB
         if model._meta.fields[field_name].indexed:
             field_db_key = f"{cls.field_class_key}:{model._meta.db_class_key}:{field_name}"
             field_value_b = cls.encode(field_value)
