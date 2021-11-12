@@ -35,6 +35,8 @@ class GeoField(Field):
 
     def get_filter_query_params(self, field_name):
         return super().get_filter_query_params(field_name) + [
+            f'{field_name}',
+            f'{field_name}__isnull',
             f'{field_name}_latitude',
             f'{field_name}_longitude',
             f'{field_name}_radius',

@@ -78,7 +78,7 @@ class Field(metaclass=FieldBase):
 
     def get_filter_query_params(self, field_name: str) -> list:
         # todo: auto manage sets of db_keys to allow filter by any indexed field
-        if self.indexed or self.__class__.__name__ in ['GeoField', 'SortedField']:
+        if self.indexed:
             params = [f'{field_name}', ]
             if self.null:
                 params += [f'{field_name}__isnull', ]

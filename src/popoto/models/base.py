@@ -76,7 +76,7 @@ class ModelOptions:
         return 1 + len(self.key_field_names)
 
     def get_db_key_position(self, field_name):
-        return 1 + self.key_field_names.index(field_name)
+        return 2 + self.key_field_names.index(field_name)
 
 
 class ModelBase(type):

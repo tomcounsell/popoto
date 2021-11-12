@@ -48,6 +48,7 @@ class KeyField(Field):
 
     def get_filter_query_params(self, field_name: str) -> list:
         return super().get_filter_query_params(field_name) + [
+            f'{field_name}',    # takes a str, exact match :x:
             f'{field_name}__contains',  # takes a str, matches :*x*:
             f'{field_name}__startswith',  # takes a str, matches :x*:
             f'{field_name}__endswith',  # takes a str, matches :*x:
@@ -65,6 +66,8 @@ class KeyField(Field):
 
         keys_lists_to_intersect = list()
         db_key_length, field_key_position = model._meta.db_key_length, model._meta.get_db_key_position(field_name)
+        num_keys_before = field_key_position - 1
+        num_keys_after = db_key_length - (field_key_position + 1)
 
         pipeline = POPOTO_REDIS_DB.pipeline()
 
@@ -76,8 +79,6 @@ class KeyField(Field):
             return key_pattern
 
         for query_param, query_value in query_params.items():
-            num_keys_before = field_key_position - 1
-            num_keys_after = db_key_length-(field_key_position+1)
 
             if query_param.endswith('__in'):
                 pipeline_2 = POPOTO_REDIS_DB.pipeline()

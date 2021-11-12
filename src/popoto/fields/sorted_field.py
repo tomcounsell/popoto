@@ -58,6 +58,7 @@ class SortedField(Field):
 
     def get_filter_query_params(self, field_name):
         return super().get_filter_query_params(field_name) + [
+            f'{field_name}',
             f'{field_name}__gt',
             f'{field_name}__gte',
             f'{field_name}__lt',
