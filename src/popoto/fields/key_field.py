@@ -65,9 +65,9 @@ class KeyField(Field):
         """
 
         keys_lists_to_intersect = list()
-        db_key_length, field_key_position = model._meta.db_key_length, model._meta.get_db_key_position(field_name)
-        num_keys_before = field_key_position - 1
-        num_keys_after = db_key_length - (field_key_position + 1)
+        db_key_length, field_key_position = model._meta.db_key_length, model._meta.get_db_key_index_position(field_name)
+        num_keys_before = field_key_position
+        num_keys_after = db_key_length - field_key_position - 1
 
         pipeline = POPOTO_REDIS_DB.pipeline()
 
