@@ -8,15 +8,14 @@ from ..redis_db import POPOTO_REDIS_DB
 
 class SortedField(Field):
     """
-        The SortedField enables fast queries by value range.
+        The SortedField enables fast queries for ordering or filter by value range.
         Examples:
-            Toys.filter(price_lte=4.99)
-            DairyProduct.filter(best_before_date__gte=datetime.now())
+            Toys.query.filter(price__lte=4.99)
+            DairyProduct.query.filter(best_before_date__gte=datetime.now())
         Requirements:
-            Must be numeric type (int, float, decimal, date, datetime)
+            Must be numeric type (int, float, date, datetime)
             Null values not allowed. Can set a default.
     """
-    is_sort_key: bool = True
     null = False
 
     def __init__(self, **kwargs):

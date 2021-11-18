@@ -6,9 +6,14 @@ from ..redis_db import POPOTO_REDIS_DB
 
 class KeyField(Field):
     """
-    A field the model will use to build the unique db key
+    A KeyField is for unique identifiers and category searches
+    All KeyFields are used for indexing on the DB.
     All keys together have unique_together enforced.
-    If only one KeyField is on the model, it must be unique
+
+    UniqueKeyField and AutoKeyField provide unique constraint and auto-id generation respectively.
+    All models must have one or more KeyFields.
+    However an AutoKeyField will be automatically added to models without any specified KeyFields.
+
     todo: add support for https://github.com/ai/nanoid
     """
     unique: bool = False
@@ -108,6 +113,9 @@ class KeyField(Field):
 
 
 class UniqueKeyField(KeyField):
+    """
+    UniqueKeyField() is equivalent to KeyField(unique=True)
+    """
     def __init__(self, **kwargs):
         if not kwargs.get('unique', True):
             from ..models.base import ModelException
@@ -117,6 +125,14 @@ class UniqueKeyField(KeyField):
 
 
 class AutoKeyField(UniqueKeyField):
+    """
+    AutoKeyField() is equivalent to KeyField(unique-True, auto=True)
+    The AutoKeyField is an auto-generated, universally unique key
+    It will be automatically added to models with no specified KeyFields
+    Include this field in your model if you cannot otherwise enforce a unique-together constraint with other KeyFields.
+    They auto-generated key is random and newly generated for a model instance.
+    Model instances with otherwise identical properties are saved as separate instances with different auto-keys.
+    """
     def __init__(self, **kwargs):
         kwargs['auto'] = True
         super().__init__(**kwargs)
