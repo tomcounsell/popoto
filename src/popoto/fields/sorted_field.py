@@ -1,9 +1,11 @@
+import logging
 from decimal import Decimal
 from datetime import date, datetime
 import typing
 import redis
 
 from .field import Field
+from ..models.query import QueryException
 from ..redis_db import POPOTO_REDIS_DB
 
 class SortedField(Field):
@@ -43,6 +45,8 @@ class SortedField(Field):
             f'{field_name}__gte',
             f'{field_name}__lt',
             f'{field_name}__lte',
+            # f'{field_name}__min',
+            # f'{field_name}__max',
             # f'{field_name}__range',  # todo: like https://docs.djangoproject.com/en/3.2/ref/models/querysets/#range
             # f'{field_name}__isnull',  # todo: see todo in __init__
         ]
@@ -101,38 +105,21 @@ class SortedField(Field):
         :param query_params: dict of filter args and values
         :return: set{db_key, db_key, ..}
         """
+        value_range = {'min': '-inf', 'max': '+inf'}
 
         for query_param, query_value in query_params.items():
-            field_ranges = {}
-            if '__' in query_param:
-                field_name = query_param.split('__')[0]
-                field_ranges[field_name] = {'min': '-inf', 'max': '+inf'}
             if '__gt' in query_param:
-                field_name, inclusive = query_param.split('__gt')
-                field_ranges[field_name]['min'] = f"{'' if inclusive=='e' else '('}{query_value}"
-            if '__lt' in query_param:
-                field_name, inclusive = query_param.split('__lt')
-                field_ranges[field_name]['max'] = f"{'' if inclusive=='e' else '('}{query_value}"
+                inclusive = query_param.split('__gt')[1]
+                value_range['min'] = f"{'' if inclusive=='e' else '('}{query_value}"
+            elif '__lt' in query_param:
+                inclusive = query_param.split('__lt')[1]
+                value_range['max'] = f"{'' if inclusive=='e' else '('}{query_value}"
+            else:
+                raise QueryException(f"Query filters provided are not compatible with this field {field_name}")
 
-        query_response = POPOTO_REDIS_DB.zrangebyscore(
-            model.db_key, field_ranges[field_name]['min'], field_ranges[field_name]['max']
+        sortedset_db_key = cls.get_sortedset_db_key(model, field_name)
+        redis_db_keys_list = POPOTO_REDIS_DB.zrangebyscore(
+            sortedset_db_key, value_range['min'], value_range['max']
         )
 
-        # if 'get last':
-        #     query_response = POPOTO_REDIS_DB.zrange(model.db_key, -1, -1)
-        #     try:
-        #         [value, score] = query_response[0].decode("utf-8").split(":")
-        #     except:
-        #         value, score = "unknown", 0
-        #
-        #     min_score = max_score = score
-
-        # NEW example query_response = [b'100:1']
-        # which came from f'{self.value}:{str(score)}' where score = self.score
-
-        return_list = []
-        for key_score in query_response:
-            key, score = (key_score.decode("utf-8").split(":")[0],
-                            float(key_score.decode("utf-8").split(":")[1]))
-            return_list.append((key, score))
-        return set(return_list)
+        return set(redis_db_keys_list)
