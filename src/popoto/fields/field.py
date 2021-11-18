@@ -14,6 +14,7 @@ class FieldBase(type):
 
         new_class = super().__new__(cls, name, bases, attrs, **kwargs)
         new_class.field_class_key = f"${name.strip('Field')}F"
+        new_class.special_use_field_db_key = f"{cls.field_class_key}:{model._meta.db_class_key}:{field_name}"
         return new_class
 
 
@@ -62,19 +63,26 @@ class Field(metaclass=FieldBase):
         return field_value
 
     @classmethod
-    def on_save(cls, model: 'Model', field_name: str, field_value, pipeline=None):
-        from ..redis_db import POPOTO_REDIS_DB
-        if model._meta.fields[field_name].indexed:
-            field_db_key = f"{cls.field_class_key}:{model._meta.db_class_key}:{field_name}"
-            field_value_b = cls.encode(field_value)
-            if pipeline:
-                return pipeline.set(field_db_key, field_value_b)
-            else:
-                return POPOTO_REDIS_DB.set(field_db_key, field_value_b)
+    def get_special_use_field_db_key(cls, model: 'Model', field_name: str):
+        """
+        For use by child class when implementing additional Redis data structures
+        Children implementing more than one new structure will need to augment this.
+        """
+        return f"{cls.field_class_key}:{model._meta.db_class_key}:{field_name}"
 
     @classmethod
-    def post_save(cls, model, field, value):
-        pass
+    def on_save(cls, model: 'Model', field_name: str, field_value, pipeline=None):
+        from ..redis_db import POPOTO_REDIS_DB
+        # todo: create indexes with Sets
+        # if model._meta.fields[field_name].indexed:
+        #     field_db_key = f"{cls.field_class_key}:{model._meta.db_class_key}:{field_name}"
+        # #     this will not work! how to edit, delete, prevent overwrite and duplicates?
+        #     field_value_b = cls.encode(field_value)
+        #     if pipeline:
+        #         return pipeline.set(field_db_key, field_value_b)
+        #     else:
+        #         return POPOTO_REDIS_DB.set(field_db_key, field_value_b)
+
 
     def get_filter_query_params(self, field_name: str) -> list:
         # todo: auto manage sets of db_keys to allow filter by any indexed field

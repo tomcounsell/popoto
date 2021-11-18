@@ -9,7 +9,7 @@ from ..redis_db import POPOTO_REDIS_DB
 
 class GeoField(Field):
     """
-    A field that enables geospatial data and geospatial search
+    A field that stores geospatial coordinates and enables geospatial search
     required: latitude, longitude
     """
     Coordinates = namedtuple('Coordinates', 'latitude longitude')
@@ -91,24 +91,28 @@ class GeoField(Field):
         return field_value
 
     @classmethod
+    def get_geo_db_key(cls, model, field_name):
+        return cls.get_special_use_field_db_key(model, field_name)
+
+    @classmethod
     def on_save(cls, model: 'Model', field_name: str, field_value: 'GeoField.Coordinates', pipeline=None):
-        field_db_key = f"{cls.field_class_key}:{model._meta.db_class_key}:{field_name}"
+        geo_db_key = cls.get_geo_db_key(model, field_name)
         longitude = field_value.longitude
         latitude = field_value.latitude
         member = model.db_key
         if pipeline:
-            return pipeline.geoadd(field_db_key,  longitude, latitude, member)
+            return pipeline.geoadd(geo_db_key,  longitude, latitude, member)
         else:
-            return POPOTO_REDIS_DB.geoadd(field_db_key,  longitude, latitude, member)
+            return POPOTO_REDIS_DB.geoadd(geo_db_key,  longitude, latitude, member)
 
     @classmethod
     def on_delete(cls, model: 'Model', field_name: str, pipeline=None):
-        field_db_key = f"{cls.field_class_key}:{model._meta.db_class_key}:{field_name}"
-        member = model.db_key
+        geo_db_key = cls.get_geo_db_key(model, field_name)
+        geo_member = model.db_key
         if pipeline:
-            return pipeline.zrem(field_db_key, member)
+            return pipeline.zrem(geo_db_key, geo_member)
         else:
-            return POPOTO_REDIS_DB.zrem(field_db_key, member)
+            return POPOTO_REDIS_DB.zrem(geo_db_key, geo_member)
 
     @classmethod
     def filter_query(cls, model: 'Model', field_name: str, **query_params) -> set:
@@ -119,7 +123,7 @@ class GeoField(Field):
         :return: set{db_key, db_key, ..}
         """
         field = model._meta.fields[field_name]
-        field_db_key = f"{cls.field_class_key}:{model._meta.db_class_key}:{field_name}"
+        geo_db_key = cls.get_geo_db_key(model, field_name)
         coordinates = GeoField.Coordinates(None, None)
         member, radius, unit = None, 1, 'm'
         for query_param, query_value in query_params.items():
@@ -155,14 +159,14 @@ class GeoField(Field):
 
         if member:
             redis_db_keys_list = POPOTO_REDIS_DB.georadiusbymember(
-                field_db_key, member=member.db_key,
+                geo_db_key, member=member.db_key,
                 radius=radius, unit=unit
             )
 
         elif coordinates.latitude and coordinates.longitude:
             # logger.debug(f"geo query on {dict(model=model._meta.db_class_key, longitude=coordinates.longitude, latitude=coordinates.latitude, radius=radius, unit=unit)}")
             redis_db_keys_list = POPOTO_REDIS_DB.georadius(
-                field_db_key,
+                geo_db_key,
                 longitude=coordinates.longitude, latitude=coordinates.latitude,
                 radius=radius, unit=unit
             )
