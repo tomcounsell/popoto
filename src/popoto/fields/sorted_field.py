@@ -1,6 +1,6 @@
 import logging
 from decimal import Decimal
-from datetime import date, datetime
+import datetime
 import typing
 import redis
 
@@ -15,7 +15,7 @@ class SortedField(Field):
             Toys.query.filter(price__lte=4.99)
             DairyProduct.query.filter(best_before_date__gte=datetime.now())
         Requirements:
-            Must be numeric type (int, float, Decimal, Date, Datetime)
+            Must be numeric type (int, float, Decimal, date, datetime)
             Null values not allowed. Can set a default.
     """
     type: type = float
@@ -61,13 +61,23 @@ class SortedField(Field):
 
     @classmethod
     def format_value_pre_save(cls, field_value):
-        if cls.type in [int, float]:
+        if cls.type in [int, float, datetime.datetime, datetime.date, datetime.time]:
             return field_value
-        elif cls.type is Decimal:
+        else:
             return float(field_value)
-        elif cls.type is date:
-            return field_value.toordinal(date)
-        elif cls.type is datetime:
+
+    @classmethod
+    def convert_to_numeric(cls, field, field_value):
+        print(field.type, type(field_value), field_value)
+        if field.type in [int, float]:
+            return field_value
+        elif field.type is Decimal:
+            return float(field_value)
+        elif field.type is datetime.date:
+            return field_value.toordinal()
+        elif field.type is datetime.datetime:
+            return field_value.timestamp()
+        elif field.type is datetime.time:
             return field_value.timestamp()
         else:
             raise ValueError("SortedField received non-numeric value.")
@@ -78,9 +88,9 @@ class SortedField(Field):
 
     @classmethod
     def on_save(cls, model: 'Model', field_name: str, field_value: typing.Union[int, float], pipeline=None):
-        sortedset_db_key, sortedset_member, sortedset_score = (
-            cls.get_sortedset_db_key(model, field_name), model.db_key, field_value
-        )
+        sortedset_db_key = cls.get_sortedset_db_key(model, field_name)
+        sortedset_member = model.db_key
+        sortedset_score = cls.convert_to_numeric(model._meta.fields[field_name], field_value)
         if isinstance(pipeline, redis.client.Pipeline):
             return pipeline.zadd(sortedset_db_key, {sortedset_member: sortedset_score})
         else:
@@ -88,9 +98,8 @@ class SortedField(Field):
 
     @classmethod
     def on_delete(cls, model: 'Model', field_name: str, pipeline=None):
-        sortedset_db_key, sortedset_member = (
-            cls.get_sortedset_db_key(model, field_name), model.db_key
-        )
+        sortedset_db_key = cls.get_sortedset_db_key(model, field_name)
+        sortedset_member = model.db_key
         if pipeline:
             return pipeline.zrem(sortedset_db_key, sortedset_member)
         else:
@@ -108,18 +117,23 @@ class SortedField(Field):
         value_range = {'min': '-inf', 'max': '+inf'}
 
         for query_param, query_value in query_params.items():
+            numeric_value = cls.convert_to_numeric(model._meta.fields[field_name], query_value)
             if '__gt' in query_param:
                 inclusive = query_param.split('__gt')[1]
-                value_range['min'] = f"{'' if inclusive=='e' else '('}{query_value}"
+                value_range['min'] = f"{'' if inclusive=='e' else '('}{numeric_value}"
             elif '__lt' in query_param:
                 inclusive = query_param.split('__lt')[1]
-                value_range['max'] = f"{'' if inclusive=='e' else '('}{query_value}"
+                value_range['max'] = f"{'' if inclusive=='e' else '('}{numeric_value}"
             else:
                 raise QueryException(f"Query filters provided are not compatible with this field {field_name}")
 
         sortedset_db_key = cls.get_sortedset_db_key(model, field_name)
+
+        print(sortedset_db_key, value_range['min'], value_range['max'])
+
         redis_db_keys_list = POPOTO_REDIS_DB.zrangebyscore(
             sortedset_db_key, value_range['min'], value_range['max']
         )
+        print(redis_db_keys_list)
 
         return set(redis_db_keys_list)

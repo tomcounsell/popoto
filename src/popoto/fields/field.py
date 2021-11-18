@@ -14,7 +14,6 @@ class FieldBase(type):
 
         new_class = super().__new__(cls, name, bases, attrs, **kwargs)
         new_class.field_class_key = f"${name.strip('Field')}F"
-        new_class.special_use_field_db_key = f"{cls.field_class_key}:{model._meta.db_class_key}:{field_name}"
         return new_class
 
 
