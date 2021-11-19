@@ -19,10 +19,9 @@ rose = SortedDateModel.create(name="Rose", birthday=datetime.date(1997, 2, 11))
 jisoo = SortedDateModel.create(name="Jisoo", birthday=datetime.date(1995, 1, 3))
 jennie = SortedDateModel.create(name="Jennie", birthday=datetime.date(1996, 1, 16))
 
-
 assert lisa in SortedDateModel.query.all()
 oldest = SortedDateModel.query.filter(birthday__lt=datetime.date(1996, 1, 1))[0]
-assert jisoo is oldest
+assert jisoo == oldest
 younger_than_rose = SortedDateModel.query.filter(birthday__gt=rose.birthday)
 assert len(younger_than_rose) == 1
 assert lisa in younger_than_rose
@@ -30,10 +29,20 @@ assert lisa in younger_than_rose
 
 class SortedIntModel(popoto.Model):
     product = popoto.KeyField()
-    count = popoto.SortedField()
+    count = popoto.SortedField(type=int)
+
+
+beans = SortedIntModel.create(product="beans", count=15)
+cans = SortedIntModel.create(product="cans", count=2)
+
+assert beans.count > cans.count
+more_than_cans = SortedIntModel.query.filter(count__gt=cans.count)
+assert beans in more_than_cans
 
 
 class SortedFloatModel(popoto.Model):
     wrestler = popoto.KeyField()
-    weight = popoto.SortedField()
+    height = popoto.SortedField(type=float)
 
+
+john = SortedFloatModel.create(wrestler="John Cena", weight)

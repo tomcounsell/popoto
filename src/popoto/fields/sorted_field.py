@@ -68,7 +68,6 @@ class SortedField(Field):
 
     @classmethod
     def convert_to_numeric(cls, field, field_value):
-        print(field.type, type(field_value), field_value)
         if field.type in [int, float]:
             return field_value
         elif field.type is Decimal:
@@ -128,12 +127,7 @@ class SortedField(Field):
                 raise QueryException(f"Query filters provided are not compatible with this field {field_name}")
 
         sortedset_db_key = cls.get_sortedset_db_key(model, field_name)
-
-        print(sortedset_db_key, value_range['min'], value_range['max'])
-
         redis_db_keys_list = POPOTO_REDIS_DB.zrangebyscore(
             sortedset_db_key, value_range['min'], value_range['max']
         )
-        print(redis_db_keys_list)
-
         return set(redis_db_keys_list)

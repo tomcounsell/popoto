@@ -24,9 +24,9 @@ def decode_custom_types(obj):
         if '__datetime__' in obj:
             return datetime.datetime.strptime(obj['as_str'], "%Y%m%dT%H:%M:%S.%f")
         if '__date__' in obj:
-            return datetime.datetime.strptime(obj['as_str'], "%Y%m%d")
+            return datetime.datetime.strptime(obj['as_str'], "%Y%m%d").date()
         if '__time__' in obj:
-            return datetime.datetime.strptime(obj['as_str'], "%H:%M:%S.%f")
+            return datetime.datetime.strptime(obj['as_str'], "%H:%M:%S.%f").time()
     return obj
 
 
@@ -49,10 +49,6 @@ def encode_popoto_model_obj(obj: 'Model') -> dict:
 
 
 def decode_popoto_model_hashmap(model_class: 'Model', redis_hash: dict) -> 'Model':
-    # print({
-    #     key_b.decode("utf-8"): decode_custom_types(msgpack.unpackb(value_b))
-    #     for key_b, value_b in redis_hash.items()
-    # })
     return model_class(**{
         key_b.decode("utf-8"): decode_custom_types(msgpack.unpackb(value_b))
         for key_b, value_b in redis_hash.items()
