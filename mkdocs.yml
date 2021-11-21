@@ -1,4 +1,4 @@
-site_name: Popoto - A Redis ORM - Documentation
+site_name: Popoto Documentation
 repo_url: https://github.com/tomcounsell/popoto/
 site_author: Tom Counsell
 
@@ -6,3 +6,12 @@ nav:
     - Home: 'index.md'
     - Models and Fields: 'fields.md'
     - Making Queries: 'query.md'
+
+theme:
+    name: readthedocs
+    highlightjs: true
+    hljs_languages:
+        - markdown
+        - python
+        - bash
+        - html

@@ -42,12 +42,12 @@ Currently being used in production for:
 
 # Install
 
-```
+``` bash
 pip install popoto
 ```
 
 for deployment, set
-```
+``` python
 REDIS_URL = "redis://HOST[:PORT]/DATABASE[?password=PASSWORD]"
 ```
 
