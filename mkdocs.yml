@@ -1,0 +1,6 @@
+site_name: Popoto - A Redis ORM - Documentation
+
+nav:
+    - Home: 'index.md'
+    - Models and Fields: 'fields.md'
+    - Making Queries: 'query.md'

@@ -1,9 +1,31 @@
 [![Documentation Status](https://readthedocs.org/projects/popoto/badge/?version=latest)](https://popoto.readthedocs.io/en/latest/?badge=latest)
 
-Popoto - A Redis ORM (object relational mapper)
-====
+# Popoto - A Redis ORM (Object-Relational Mapper)
 
-**Popoto** is a simple ORM for your cache database on Redis. 
+# Install
+
+```
+pip install popoto
+```
+
+# Basic Usage
+
+``` python
+import popoto
+
+class Person (popoto.Model)
+    name = popoto.KeyField()
+    fav_color = popoto.Field()
+
+lisa = Person.create(name="Lalisa Manobal", fav_color = "yellow")
+lisa = Person.query.get("Lalisa Manobal")
+
+print(f"{lisa.name} likes {lisa.fav_color}.")
+> 'Lalisa Manobal likes yellow.'
+```
+
+
+**Popoto** is a simple ORM for your cache database on Redis.
 
  - very fast stores and queries
  - familiar syntax, similar to Django models
@@ -20,54 +42,65 @@ Currently being used in production for:
  - robots sending each other messages for teamwork
  - compressing sensor data and training neural networks
 
-# Install
+# Advanced Usage
 
-```
-pip install popoto
-```
-
-for deployment, set
-```
-REDIS_URL = "redis://HOST[:PORT]/DATABASE[?password=PASSWORD]"
-```
-
-# Quickstart
-
-```
+``` python
 import popoto
 
-class Person (popoto.Model)
-    name = popoto.KeyField(max_length=100)
-    favorite_color = popoto.Field(null=True)
-    
+class Person(popoto.Model):
+    uuid = popoto.AutoKeyField()
+    username = popoto.UniqueKeyField()
+    title = popoto.KeyField()
+    level = popoto.SortedField(type=int)
+    last_active = popoto.SortedField(type=datetime)
+    location = popoto.GeoField()
 ```
 
-## Storing Objects
+## Create and Save
 
-```
-lisa = Person(name="Lalisa Manobal")
-lisa.favorite_color = "yellow"
+``` python
+lisa = Person(username="@LalisaManobal", title="Queen", last_active=datetime.now())
+lisa.level = 99
+lisa.location = (48.856373, 2.353016)  # Hôtel de Ville, Fashion Week 2021
 lisa.save()
-
-# single line command
-lisa = Person.create(name="Lalisa Manobal", favorite_color = "yellow")
 ```
 
-## Retreive Objects
+## Query
 
-```
-lisa = Person.query.get("Lalisa Manobal")
-print(f"{lisa.name} likes {lisa.favorite_color}.")
-'Lalisa Manobal likes yellow.'
-```
+``` python
 
-## Delete Objects
+paris_latitude, paris_longitude = (48.864716, 2.349014)
+query_results = Person.query.filter(
+    title__startswith="Queen",
+    level__lt=100,
+    last_active__gt=(datetime.now()-timedelta(days=1)),
+    location_latitude=paris_latitude,
+    location_longitude=paris_longitude,
+    location_radius=5, location_radius_unit='km'
+)
 
-```
+len(query_results)
+>>> 1
+
+print(query_results)
+>>> [{
+    'uuid': 'f1063355b14943ed91fa1e1697806c4f', 
+    'username': '@LalisaManobal', 
+    'title': 'Queen', 
+    'level': 99, 
+    'last_active': datetime.datetime(2021, 11, 21, 14, 47, 19, 911023), 
+    'location': (48.856373, 2.353016)
+}, ]
+
 lisa.delete()
+>>> True
+Person.query.all()
+>>> []
 ```
 
 ![](/static/popoto.png)
 
 Popoto gets it's name from the [Māui dolphin](https://en.wikipedia.org/wiki/M%C4%81ui_dolphin) subspeciesis - the world's smallest dolphin subspecies.
 Because dolphins are fast moving, agile, and work together in social groups. In the same way, Popoto wraps Redis and RedisGraph to make it easy to manage streaming timeseries data on a social graph.
+
+For help building applications with Python/Redis, contact [Tom Counsell](https://tomcounsell.com) on [LinkedIn.com/in/tomcounsell](https://linkedin.com/in/tomcounsell)

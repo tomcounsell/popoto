@@ -1,5 +1,27 @@
-Popoto - A Redis ORM - Documentation
-====
+# Popoto - A Redis ORM (Object-Relational Mapper)
+
+# Install
+
+```
+pip install popoto
+```
+
+# Basic Usage
+
+``` python
+import popoto
+
+class Person (popoto.Model)
+    name = popoto.KeyField()
+    fav_color = popoto.Field()
+
+lisa = Person.create(name="Lalisa Manobal", fav_color = "yellow")
+lisa = Person.query.get("Lalisa Manobal")
+
+print(f"{lisa.name} likes {lisa.fav_color}.")
+> 'Lalisa Manobal likes yellow.'
+```
+
 
 **Popoto** is a simple ORM for your cache database on Redis.
 
@@ -31,7 +53,7 @@ REDIS_URL = "redis://HOST[:PORT]/DATABASE[?password=PASSWORD]"
 
 # Quickstart
 
-```
+``` python
 import popoto
 
 class Person (popoto.Model)
@@ -40,9 +62,11 @@ class Person (popoto.Model)
 
 ```
 
+See [Models and Fields](fields.md) for all Model and Field options.
+
 ## Storing Objects
 
-```
+``` python
 lisa = Person(name="Lalisa Manobal")
 lisa.favorite_color = "yellow"
 lisa.save()
@@ -53,15 +77,17 @@ lisa = Person.create(name="Lalisa Manobal", favorite_color = "yellow")
 
 ## Retreive Objects
 
-```
+``` python
 lisa = Person.query.get("Lalisa Manobal")
 print(f"{lisa.name} likes {lisa.favorite_color}.")
 'Lalisa Manobal likes yellow.'
 ```
 
+See [Making Queries](query.md) for all Query and Filter options.
+
 ## Delete Objects
 
-```
+``` python
 lisa.delete()
 ```
 
@@ -70,18 +96,4 @@ lisa.delete()
 Popoto gets it's name from the [Māui dolphin](https://en.wikipedia.org/wiki/M%C4%81ui_dolphin) subspeciesis - the world's smallest dolphin subspecies.
 Because dolphins are fast moving, agile, and work together in social groups. In the same way, Popoto wraps Redis and RedisGraph to make it easy to manage streaming timeseries data on a social graph.
 
-
-Check out the :doc:`usage` section for further information, including
-how to :ref:`installation` the project.
-
-.. note::
-
-   This project is under active development.
-
-Contents
---------
-
-.. toctree::
-
-   usage
-   api
+For help building applications with Python/Redis, contact [Tom Counsell](https://tomcounsell.com) on [LinkedIn.com/in/tomcounsell](https://linkedin.com/in/tomcounsell)
