@@ -1,9 +1,7 @@
-[![Documentation Status](https://readthedocs.org/projects/popoto/badge/?version=latest)](https://popoto.readthedocs.io/en/latest/?badge=latest)
-
-Popoto - A Redis ORM (object relational mapper)
+Popoto - A Redis ORM - Documentation
 ====
 
-**Popoto** is a simple ORM for your cache database on Redis. 
+**Popoto** is a simple ORM for your cache database on Redis.
 
  - very fast stores and queries
  - familiar syntax, similar to Django models
@@ -39,7 +37,7 @@ import popoto
 class Person (popoto.Model)
     name = popoto.KeyField(max_length=100)
     favorite_color = popoto.Field(null=True)
-    
+
 ```
 
 ## Storing Objects
@@ -71,3 +69,19 @@ lisa.delete()
 
 Popoto gets it's name from the [Māui dolphin](https://en.wikipedia.org/wiki/M%C4%81ui_dolphin) subspeciesis - the world's smallest dolphin subspecies.
 Because dolphins are fast moving, agile, and work together in social groups. In the same way, Popoto wraps Redis and RedisGraph to make it easy to manage streaming timeseries data on a social graph.
+
+
+Check out the :doc:`usage` section for further information, including
+how to :ref:`installation` the project.
+
+.. note::
+
+   This project is under active development.
+
+Contents
+--------
+
+.. toctree::
+
+   usage
+   api
