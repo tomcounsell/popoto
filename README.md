@@ -1,3 +1,6 @@
+[![Documentation Status](https://readthedocs.org/projects/popoto/badge/?version=latest)](https://popoto.readthedocs.io/en/latest/?badge=latest)
+
+
 # Popoto - A Redis ORM (object relational mapper)
 
 Popoto is a simple ORM for your cache database on Redis. 
