@@ -26,6 +26,9 @@ younger_than_rose = SortedDateModel.query.filter(birthday__gt=rose.birthday)
 assert len(younger_than_rose) == 1
 assert lisa in younger_than_rose
 
+for item in SortedDateModel.query.all():
+    item.delete()
+
 
 class SortedIntModel(popoto.Model):
     product = popoto.KeyField()
@@ -39,10 +42,20 @@ assert beans.count > cans.count
 more_than_cans = SortedIntModel.query.filter(count__gt=cans.count)
 assert beans in more_than_cans
 
+for item in SortedIntModel.query.all():
+    item.delete()
+
 
 class SortedFloatModel(popoto.Model):
     wrestler = popoto.KeyField()
     height = popoto.SortedField(type=float)
 
 
-john = SortedFloatModel.create(wrestler="John Cena", weight)
+john = SortedFloatModel.create(wrestler="John Cena", height=1.85)
+rock = SortedFloatModel.create(wrestler="Dwayne Johnson", height=1.96)
+
+assert john in SortedFloatModel.query.filter(height__gte=john.height)
+assert john not in SortedFloatModel.query.filter(height__gt=john.height)
+
+for item in SortedFloatModel.query.all():
+    item.delete()

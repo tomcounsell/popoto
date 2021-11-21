@@ -130,4 +130,9 @@ class SortedField(Field):
         redis_db_keys_list = POPOTO_REDIS_DB.zrangebyscore(
             sortedset_db_key, value_range['min'], value_range['max']
         )
+        # redis_db_keys_list = POPOTO_REDIS_DB.zrange(
+        #     sortedset_db_key, value_range['min'], value_range['max'],
+        #     desc=False, withscores=False,
+        #     byscore=True, offset=None, num=None
+        # )
         return set(redis_db_keys_list)
