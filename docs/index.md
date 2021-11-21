@@ -1,5 +1,3 @@
-[![Documentation Status](https://readthedocs.org/projects/popoto/badge/?version=latest)](https://popoto.readthedocs.io/en/latest/?badge=latest)
-
 # Popoto - A Redis ORM (Object-Relational Mapper)
 
 # Install
@@ -42,60 +40,55 @@ Currently being used in production for:
  - robots sending each other messages for teamwork
  - compressing sensor data and training neural networks
 
-# Advanced Usage
+# Install
+
+```
+pip install popoto
+```
+
+for deployment, set
+```
+REDIS_URL = "redis://HOST[:PORT]/DATABASE[?password=PASSWORD]"
+```
+
+# Quickstart
 
 ``` python
 import popoto
 
-class Person(popoto.Model):
-    uuid = popoto.AutoKeyField()
-    username = popoto.UniqueKeyField()
-    title = popoto.KeyField()
-    level = popoto.SortedField(type=int)
-    last_active = popoto.SortedField(type=datetime)
-    location = popoto.GeoField()
+class Person (popoto.Model)
+    name = popoto.KeyField(max_length=100)
+    favorite_color = popoto.Field(null=True)
+
 ```
 
-## Create and Save
+See [Models and Fields](fields.md) for all Model and Field options.
+
+## Storing Objects
 
 ``` python
-lisa = Person(username="@LalisaManobal", title="Queen", last_active=datetime.now())
-lisa.level = 99
-lisa.location = (48.856373, 2.353016)  # Hôtel de Ville, Fashion Week 2021
+lisa = Person(name="Lalisa Manobal")
+lisa.favorite_color = "yellow"
 lisa.save()
+
+# single line command
+lisa = Person.create(name="Lalisa Manobal", favorite_color = "yellow")
 ```
 
-## Query
+## Retreive Objects
 
 ``` python
+lisa = Person.query.get("Lalisa Manobal")
+print(f"{lisa.name} likes {lisa.favorite_color}.")
+'Lalisa Manobal likes yellow.'
+```
 
-paris_latitude, paris_longitude = (48.864716, 2.349014)
-query_results = Person.query.filter(
-    title__startswith="Queen",
-    level__lt=100,
-    last_active__gt=(datetime.now()-timedelta(days=1)),
-    location_latitude=paris_latitude,
-    location_longitude=paris_longitude,
-    location_radius=5, location_radius_unit='km'
-)
+See [Making Queries](query.md) for all Query and Filter options.
 
-len(query_results)
->>> 1
+## Delete Objects
 
-print(query_results)
->>> [{
-    'uuid': 'f1063355b14943ed91fa1e1697806c4f', 
-    'username': '@LalisaManobal', 
-    'title': 'Queen', 
-    'level': 99, 
-    'last_active': datetime.datetime(2021, 11, 21, 14, 47, 19, 911023), 
-    'location': (48.856373, 2.353016)
-}, ]
-
+``` python
 lisa.delete()
->>> True
-Person.query.all()
->>> []
 ```
 
 ![](/static/popoto.png)
