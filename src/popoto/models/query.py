@@ -55,16 +55,11 @@ class Query:
 
     @classmethod
     def get_many_objects(cls, model: 'Model', db_keys: set):
-        objects_list = []
         pipeline = POPOTO_REDIS_DB.pipeline()
         for db_key in db_keys:
             pipeline.hgetall(db_key)
         hashes_list = pipeline.execute()
-        for redis_hash in hashes_list:
-            objects_list.append(
-                decode_popoto_model_hashmap(model, redis_hash)
-            )
-        return objects_list
+        return [decode_popoto_model_hashmap(model, redis_hash) for redis_hash in hashes_list]
 
     def filter(self, **kwargs):
         """
@@ -97,8 +92,7 @@ class Query:
             key_set = field.__class__.filter_query(
                 self.model_class, field_name, **{k: kwargs[k] for k in params_for_field}
             )
-            if len(key_set):
-                db_keys_sets.append(key_set)
+            db_keys_sets.append(key_set)
 
         logger.debug(db_keys_sets)
         if not db_keys_sets:

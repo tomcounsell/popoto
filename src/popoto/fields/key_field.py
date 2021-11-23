@@ -78,7 +78,7 @@ class KeyField(Field):
 
         def get_key_pattern(query_value_pattern):
             key_pattern = f"{model._meta.db_class_key}:"
-            key_pattern += ("*:" * num_keys_before)
+            key_pattern += ("*:" * (num_keys_before-1))
             key_pattern += query_value_pattern
             key_pattern += ":*" * num_keys_after
             return key_pattern
@@ -106,6 +106,7 @@ class KeyField(Field):
             # https://redis-py.readthedocs.io/en/stable/index.html#redis.Redis.hscan_iter
 
         keys_lists_to_intersect += pipeline.execute()
+
         logger.debug(keys_lists_to_intersect)
         if len(keys_lists_to_intersect):
             return set.intersection(*[set(key_list) for key_list in keys_lists_to_intersect])
