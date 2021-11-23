@@ -44,7 +44,7 @@ class GeoField(Field):
         ]
 
     @classmethod
-    def is_valid(cls, field, value) -> bool:
+    def is_valid(cls, field, value, **kwargs) -> bool:
         if not super().is_valid(field, value):
             return False
         if value is None:

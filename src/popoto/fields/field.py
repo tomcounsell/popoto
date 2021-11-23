@@ -41,7 +41,9 @@ class Field(metaclass=FieldBase):
             setattr(self, k, kwargs.get(k, v))
 
     @classmethod
-    def is_valid(cls, field, value) -> bool:
+    def is_valid(cls, field, value, null_check=True, **kwargs) -> bool:
+        if not null_check and value is None:
+            return True
         if value is None and not field.null:
             logger.error(f"field {field} is null")
             return False

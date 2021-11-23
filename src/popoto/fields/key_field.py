@@ -27,7 +27,7 @@ class KeyField(Field):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         new_kwargs = {  # defaults
-            'unique': True,
+            'unique': False,
             'indexed': False,
             'auto': False,
             'auto_uuid_length': 32,
@@ -43,7 +43,7 @@ class KeyField(Field):
             self.default = uuid.uuid4().hex[:self.auto_uuid_length]
 
     @classmethod
-    def is_valid(cls, field, value) -> bool:
+    def is_valid(cls, field, value, **kwargs) -> bool:
         if not super().is_valid(field, value):
             return False
         if field.auto and len(value) != field.auto_uuid_length:

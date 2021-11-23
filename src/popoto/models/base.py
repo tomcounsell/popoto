@@ -265,7 +265,7 @@ class Model(metaclass=ModelBase):
         for field_name, field_value in self.__dict__.items():
             if field_name in self._meta.fields.keys():
                 field_class = self._meta.fields[field_name].__class__
-                if not field_class.is_valid(self._meta.fields[field_name], field_value):
+                if not field_class.is_valid(self._meta.fields[field_name], field_value, null_check=null_check):
                     error = f"Validation on [{field_name}] Field failed"
                     logger.error(error)
                     return False

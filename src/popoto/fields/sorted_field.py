@@ -52,10 +52,10 @@ class SortedField(Field):
         ]
 
     @classmethod
-    def is_valid(cls, field, value) -> bool:
+    def is_valid(cls, field, value, **kwargs) -> bool:
         if not super().is_valid(field, value):
             return False
-        if not isinstance(value, field.type):
+        if value and not isinstance(value, field.type):
             return False
         return True
 
