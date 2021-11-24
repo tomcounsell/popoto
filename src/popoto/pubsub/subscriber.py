@@ -1,6 +1,6 @@
 from abc import ABC
 import logging
-from ..redis_db import POPOTO_REDIS_DB
+from ..redis_db import POPOTO_REDIS_DB, ENCODING
 import msgpack
 
 logger = logging.getLogger('POPOTO-subscriber')
@@ -32,7 +32,7 @@ class Subscriber(ABC):
         # logger.debug(f'got message: {data_event}')
 
         try:
-            channel_name = data_event.get('channel').decode("utf-8")
+            channel_name = data_event.get('channel').decode(ENCODING)
             event_data = msgpack.unpackb(data_event.get('data'))
             logger.debug(f'handling event in {self.__class__.__name__}')
             self.pre_handle(channel_name, event_data)
