@@ -29,3 +29,8 @@ query_results = Person.query.filter(
     location_longitude=paris_longitude,
     location_radius=5, location_radius_unit='km'
 )
+
+p = Person()
+
+for p in Person.query.all():
+    p.delete()

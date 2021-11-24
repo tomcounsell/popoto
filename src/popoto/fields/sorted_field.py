@@ -20,14 +20,13 @@ class SortedField(Field):
     """
     type: type = float
     null: bool = False
-    default: float = 0
 
     def __init__(self, **kwargs):
         super().__init__()
         sortedfield_defaults = {
             'type': float,
             'null': False,
-            'default': 0,
+            'default': None,  # cannot set a default for datetime, so no type gets a default
         }
         self.field_defaults.update(sortedfield_defaults)
         # set field_options, let kwargs override

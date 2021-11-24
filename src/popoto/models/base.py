@@ -4,6 +4,7 @@ import redis
 import logging
 
 from .query import Query
+from .. import GeoField
 from ..fields.key_field import KeyField, AutoKeyField
 from ..fields.field import Field
 from ..fields.sorted_field import SortedField
@@ -56,10 +57,10 @@ class ModelOptions:
             self.key_field_names.append(field_name)
         elif isinstance(field, SortedField):
             self.sorted_field_names.append(field_name)
+        elif isinstance(field, GeoField):
+            self.geo_field_names.append(field_name)
         # elif isinstance(field, ListField):
         #     self.list_field_names.append(field_name)
-        # elif isinstance(field, GeoField):
-        #     self.geo_field_names.append(field_name)
 
     @property
     def fields(self) -> dict:
@@ -238,7 +239,8 @@ class Model(metaclass=ModelBase):
                 not isinstance(getattr(self, field_name), self._meta.fields[field_name].type)
             ]):
                 try:
-                    setattr(self, field_name, self._meta.fields[field_name].type(getattr(self, field_name)))
+                    if getattr(self, field_name) is not None:
+                        setattr(self, field_name, self._meta.fields[field_name].type(getattr(self, field_name)))
                     if not isinstance(getattr(self, field_name), self._meta.fields[field_name].type):
                         raise TypeError(f"{field_name} is not type {self._meta.fields[field_name].type}. ")
                 except TypeError as e:
