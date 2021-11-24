@@ -27,7 +27,7 @@ class Field(metaclass=FieldBase):
     default: str = ""
 
     def __init__(self, **kwargs):
-        field_options = {  # default
+        self.field_defaults = {  # default
             'type': str,
             'unique': True,
             'indexed': False,
@@ -37,6 +37,7 @@ class Field(metaclass=FieldBase):
             'default': None,
         }
         # set field_options, let kwargs override
+        field_options = self.field_defaults.copy()
         for k, v in field_options.items():
             setattr(self, k, kwargs.get(k, v))
 

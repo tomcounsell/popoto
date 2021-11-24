@@ -22,15 +22,16 @@ class GeoField(Field):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        geofield_options = {  # default
+        geofield_defaults = {
             'type': tuple,
             'latitude': None,
             'longitude': None,
             'null': True,
             'default': GeoField.Coordinates(None, None),
         }
-        # set geofield_options, let kwargs override
-        for k, v in geofield_options.items():
+        self.field_defaults.update(geofield_defaults)
+        # set keyfield_options, let kwargs override
+        for k, v in geofield_defaults.items():
             setattr(self, k, kwargs.get(k, v))
 
     def get_filter_query_params(self, field_name):

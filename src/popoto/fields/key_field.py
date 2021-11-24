@@ -26,7 +26,7 @@ class KeyField(Field):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        new_kwargs = {  # defaults
+        keyfield_defaults = {
             'unique': False,
             'indexed': False,
             'auto': False,
@@ -35,9 +35,10 @@ class KeyField(Field):
             'null': False,
             'max_length': 128,  # Redis limit is 512MB
         }
-        new_kwargs.update(kwargs)
-        for k in new_kwargs:
-            setattr(self, k, new_kwargs[k])
+        self.field_defaults.update(keyfield_defaults)
+        # set keyfield_options, let kwargs override
+        for k, v in keyfield_defaults.items():
+            setattr(self, k, kwargs.get(k, v))
 
         if self.auto:
             self.default = uuid.uuid4().hex[:self.auto_uuid_length]
@@ -118,11 +119,19 @@ class UniqueKeyField(KeyField):
     UniqueKeyField() is equivalent to KeyField(unique=True)
     """
     def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        uniquekeyfield_defaults = {
+            'unique': True,
+        }
+        self.field_defaults.update(uniquekeyfield_defaults)
+        # set keyfield_options, let kwargs override
+        for k, v in uniquekeyfield_defaults.items():
+            setattr(self, k, kwargs.get(k, v))
+
+        # todo: move this to field init validation
         if not kwargs.get('unique', True):
             from ..models.base import ModelException
             raise ModelException("UniqueKey field MUST be unique")
-        kwargs['unique'] = True
-        super().__init__(**kwargs)
 
 
 class AutoKeyField(UniqueKeyField):
@@ -135,5 +144,11 @@ class AutoKeyField(UniqueKeyField):
     Model instances with otherwise identical properties are saved as separate instances with different auto-keys.
     """
     def __init__(self, **kwargs):
-        kwargs['auto'] = True
         super().__init__(**kwargs)
+        autokeyfield_defaults = {
+            'auto': True,
+        }
+        self.field_defaults.update(autokeyfield_defaults)
+        # set keyfield_options, let kwargs override
+        for k, v in autokeyfield_defaults.items():
+            setattr(self, k, kwargs.get(k, v))

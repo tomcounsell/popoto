@@ -24,14 +24,17 @@ class SortedField(Field):
 
     def __init__(self, **kwargs):
         super().__init__()
-        sortedfield_options = {  # default
+        sortedfield_defaults = {
             'type': float,
             'null': False,
             'default': 0,
         }
-        # set geofield_options, let kwargs override
-        for k, v in sortedfield_options.items():
+        self.field_defaults.update(sortedfield_defaults)
+        # set field_options, let kwargs override
+        for k, v in sortedfield_defaults.items():
             setattr(self, k, kwargs.get(k, v))
+
+        # todo: move this to field init validation
         if self.null is not False:
             from ..models.base import ModelException
             raise ModelException("SortedField cannot be null")
