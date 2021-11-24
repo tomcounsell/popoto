@@ -179,7 +179,7 @@ class Model(metaclass=ModelBase):
         if needed, can propose feature to include order=int param on KeyField to force an order
         """
         return f"{self._meta.db_class_key}:" + ":".join([
-            getattr(self, key_field_name) for key_field_name in sorted(self._meta.key_field_names)
+            getattr(self, key_field_name) or "" for key_field_name in sorted(self._meta.key_field_names)
         ])
 
     def __repr__(self):

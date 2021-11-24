@@ -44,9 +44,9 @@ class GeoField(Field):
         ]
 
     @classmethod
-    def is_valid(cls, field, value, **kwargs) -> bool:
-        if not super().is_valid(field, value):
-            return False
+    def is_valid(cls, field, value, null_check=True, **kwargs) -> bool:
+        if not super().is_valid(field, value, null_check):
+            return
         if value is None:
             return True
         if isinstance(value, GeoField.Coordinates):
@@ -62,7 +62,8 @@ class GeoField(Field):
             logger.error(f"latitude is {value.latitude} and longitude is {value.longitude}")
             logger.error(f"BOTH latitude AND longitude MUST have a value or be None")
             return False
-        elif not all([value.latitude, value.longitude]):
+        elif null_check and not all([value.latitude, value.longitude]):
+            logger.error(f"latitude is {value.latitude} and longitude is {value.longitude}")
             logger.error(f"BOTH latitude AND longitude MUST have a value")
             return False
         try:

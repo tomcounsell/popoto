@@ -49,7 +49,10 @@ def encode_popoto_model_obj(obj: 'Model') -> dict:
 
 
 def decode_popoto_model_hashmap(model_class: 'Model', redis_hash: dict) -> 'Model':
-    return model_class(**{
-        key_b.decode("utf-8"): decode_custom_types(msgpack.unpackb(value_b))
-        for key_b, value_b in redis_hash.items()
-    })
+    if len(redis_hash):
+        return model_class(**{
+            key_b.decode("utf-8"): decode_custom_types(msgpack.unpackb(value_b))
+            for key_b, value_b in redis_hash.items()
+        })
+    else:
+        return model_class()

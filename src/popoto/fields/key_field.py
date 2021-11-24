@@ -43,8 +43,8 @@ class KeyField(Field):
             self.default = uuid.uuid4().hex[:self.auto_uuid_length]
 
     @classmethod
-    def is_valid(cls, field, value, **kwargs) -> bool:
-        if not super().is_valid(field, value):
+    def is_valid(cls, field, value, null_check=True, **kwargs) -> bool:
+        if not super().is_valid(field, value, null_check):
             return False
         if field.auto and len(value) != field.auto_uuid_length:
             logger.error(f"auto key value is length {len(value)}. It should be {field.auto_uuid_length}")
