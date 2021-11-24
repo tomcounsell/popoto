@@ -40,8 +40,12 @@ class KeyField(Field):
         for k, v in keyfield_defaults.items():
             setattr(self, k, kwargs.get(k, v))
 
-        if self.auto:
-            self.default = uuid.uuid4().hex[:self.auto_uuid_length]
+    def get_new_auto_key_value(self):
+        return uuid.uuid4().hex[:self.auto_uuid_length]
+
+    def set_auto_key_value(self, force: bool = False):
+        if self.auto or force:
+            self.default = self.get_new_auto_key_value()
 
     @classmethod
     def is_valid(cls, field, value, null_check=True, **kwargs) -> bool:

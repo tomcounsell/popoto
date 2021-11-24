@@ -1,12 +1,10 @@
-from datetime import datetime
-
 import msgpack
 import redis
 
 import logging
 
 from .query import Query
-from ..fields.key_field import KeyField
+from ..fields.key_field import KeyField, AutoKeyField
 from ..fields.field import Field
 from ..fields.sorted_field import SortedField
 from ..redis_db import POPOTO_REDIS_DB, ENCODING
@@ -150,7 +148,12 @@ class Model(metaclass=ModelBase):
 
         # add auto KeyField if needed
         if not len(self._meta.key_field_names):
-            self._meta.add_field('_auto_key', KeyField(auto=True, key=cls.__name__))
+            self._meta.add_field('_auto_key', AutoKeyField(key=cls.__name__))
+
+        # prep AutoKeys with new default ids
+        for field in self._meta.fields.values():
+            if isinstance(field, KeyField):
+                field.set_auto_key_value()
 
         # set defaults
         for field_name, field in self._meta.fields.items():
@@ -338,7 +341,7 @@ class Model(metaclass=ModelBase):
     def load_from_db(self):
         self._db_content = POPOTO_REDIS_DB.hgetall(self.db_key)
         for key_b, db_value_b in self._db_content.items():
-            setattr(self, key_b.decode("utf-8"), msgpack.unpackb(db_value_b))
+            setattr(self, key_b.decode(ENCODING), msgpack.unpackb(db_value_b))
 
     def revert(self):
         self.load_from_db()
