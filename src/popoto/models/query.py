@@ -1,10 +1,10 @@
-import msgpack
 import logging
 
 from .encoding import decode_popoto_model_hashmap
 from ..redis_db import POPOTO_REDIS_DB
 
 logger = logging.getLogger('POPOTO.Query')
+
 
 class QueryException(Exception):
     pass
@@ -25,7 +25,7 @@ class Query:
 
         if db_key and '_auto_key' in self.options.key_field_names:
             raise QueryException(
-                f"{self.model_class.__name__} does not define an explicit KeyField. Cannot perform query.get(key)"
+                f"{self.model_class.__name__} does not define an explicit KeyField. Cannot perform query.get(db_key)"
             )
 
         elif db_key and len(self.options.key_field_names) == 1:
@@ -40,7 +40,6 @@ class Query:
 
         if not instance or not hasattr(instance, 'db_key'):
             return None
-
         return instance
 
     def all(self):
@@ -62,32 +61,34 @@ class Query:
            Run query using the given paramters
            return a list of model_class objects
         """
-        from itertools import chain
-        all_valid_filter_parameters = list(chain(*[
-            field.get_filter_query_params(field_name)
-            for field_name, field in self.options.fields.items()
-        ]))
+        # from itertools import chain
+        # all_valid_filter_parameters = list(chain(*[
+        #     field.get_filter_query_params(field_name)
+        #     for field_name, field in self.options.fields.items()
+        # ]))
+        # unexpected_kwargs = set(kwargs.keys()).difference(set(all_valid_filter_parameters))
+        # if len(unexpected_kwargs):
+        #     raise QueryException(f"Invalid filter parameters: {unexpected_kwargs}")
 
         db_keys_sets = []
+        employed_kwargs_set = set()
 
         for field_name, field in self.options.fields.items():
-
-            from ..fields.key_field import KeyField
-            from ..fields.geo_field import GeoField
-            queryable_field_classes = [KeyField, GeoField]
-
+            # intersection of field params and filter kwargs
             params_for_field = set(kwargs.keys()) & set(field.get_filter_query_params(field_name))
             if not params_for_field:
                 continue
-
-            logger.debug(f"query on {field_name}")
-            # intersection of field params and filter kwargs
+            logger.debug(f"query on {field_name} with {params_for_field}")
 
             logger.debug({k: kwargs[k] for k in params_for_field})
             key_set = field.__class__.filter_query(
                 self.model_class, field_name, **{k: kwargs[k] for k in params_for_field}
             )
             db_keys_sets.append(key_set)
+            employed_kwargs_set = employed_kwargs_set | params_for_field
+
+        if len(set(kwargs) - employed_kwargs_set):
+            raise QueryException(f"Invalid filter parameters: {set(kwargs) - employed_kwargs_set}")
 
         logger.debug(db_keys_sets)
         if not db_keys_sets:
