@@ -35,6 +35,8 @@ class AutoKeyModel(popoto.Model):
 random_fact_2 = AutoKeyModel.create(value="original CocaCola was green color")
 assert random_fact_2 == AutoKeyModel.query.get(key=random_fact_2.key)
 
+for item in AutoKeyModel.query.all():
+    item.delete()
 
 class HiddenAutoKeyModel(popoto.Model):
     value = popoto.Field()

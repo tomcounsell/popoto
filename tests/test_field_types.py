@@ -39,6 +39,8 @@ one = EveryTypeModel(
 )
 one.save()
 
+for item in EveryTypeModel.query.all():
+    item.delete()
 
 class EveryNullableTypeModel(popoto.Model):
     int_val = popoto.Field(type=int, null=True)
@@ -55,3 +57,6 @@ class EveryNullableTypeModel(popoto.Model):
 
 
 two = EveryNullableTypeModel.create()
+
+for item in EveryNullableTypeModel.query.all():
+    item.delete()

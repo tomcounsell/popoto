@@ -44,13 +44,13 @@ assert len(TwoKeyModel.query.filter(band="blackpink")) == 0
 assert len(TwoKeyModel.query.filter(role="singer")) == 2
 assert moonbyul == TwoKeyModel.query.get(band="Mamamoo", role="rapper")
 
-
 for item in TwoKeyModel.query.all():
     item.delete()
 
 
 class AutoKeyModel(popoto.Model):
     value = popoto.Field(default="empty")
+
 
 twice_member_names = AutoKeyModel.create(value="Nayeon, Jeongyeon, Momo, Sana, Jihyo, Mina, Dahyun, Chaeyoung, Tzuyu")
 assert twice_member_names in AutoKeyModel.query.all()
