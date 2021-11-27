@@ -58,3 +58,18 @@ assert john not in SortedFloatModel.query.filter(height__gt=john.height)
 
 for item in SortedFloatModel.query.all():
     item.delete()
+
+
+class Racer(popoto.Model):
+    name = popoto.KeyField()
+    fastest_lap = popoto.SortedField(type=float)
+
+
+tim = Racer.create(name="Tim", fastest_lap=54.92)
+bob = Racer.create(name="Bob", fastest_lap=57.11)
+joe = Racer.create(name="Joe", fastest_lap=51.90)
+assert len(Racer.query.filter(fastest_lap__lt=55)) == 2
+assert len(Racer.query.filter(fastest_lap__gte=joe.fastest_lap)) == 3
+
+for item in Racer.query.all():
+    item.delete()

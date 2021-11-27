@@ -36,9 +36,9 @@ jisoo = TwoKeyModel.create(band="BLACKPINK", role="singer", name="Kim Ji-soo")
 solar = TwoKeyModel.create(band="Mamamoo", role="singer", name="Kim Yong-sun")
 moonbyul = TwoKeyModel.create(band="Mamamoo", role="rapper", name="Moon Byul-yi")
 
-
 assert len(TwoKeyModel.query.filter(band__startswith="BLACK")) == 3
 assert len(TwoKeyModel.query.filter(band__endswith="PINK")) == 3
+assert len(TwoKeyModel.query.filter(band__in=["BLACKPINK", "Mamamoo"])) == 5
 assert len(TwoKeyModel.query.filter(band="BLACKPINK")) == 3
 assert len(TwoKeyModel.query.filter(band="blackpink")) == 0
 assert len(TwoKeyModel.query.filter(role="singer")) == 2

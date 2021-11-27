@@ -31,3 +31,4 @@ assert rome in GeoModel.query.filter(coordinates=vatican.coordinates, coordinate
 
 for item in GeoModel.query.all():
     item.delete()
+
