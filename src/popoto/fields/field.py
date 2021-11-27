@@ -85,6 +85,9 @@ class Field(metaclass=FieldBase):
         #     else:
         #         return POPOTO_REDIS_DB.set(field_db_key, field_value_b)
 
+    @classmethod
+    def on_delete(cls, model: 'Model', field_name: str, pipeline=None):
+        pass
 
     def get_filter_query_params(self, field_name: str) -> list:
         # todo: auto manage sets of db_keys to allow filter by any indexed field
