@@ -6,11 +6,6 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 from src.popoto.redis_db import POPOTO_REDIS_DB
 from src import popoto
-from src.popoto import Model, ModelBase
-from src.popoto import Field
-from src.popoto import KeyField, AutoKeyField, UniqueKeyField
-from src.popoto import IndexField, GeoField, SortedField, SetField, ListField
-
 
 class KeyValueModel(popoto.Model):
     """
@@ -64,19 +59,5 @@ class Restaurants(popoto.Model):
     location = popoto.GeoField()
 
 from itertools import chain
-list(chain(*[field.get_filter_query_params() for field in Restaurants._meta.fields.values()]))
+list(chain(*[field.get_filter_query_params(field_name) for field_name, field in Restaurants._meta.fields.items()]))
 
-class MyPublishableModel(popoto.Model):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.publisher = popoto.Publisher()
-
-    def save(self, pipeline=None, *args, **kwargs):
-        super().save(pipeline=pipeline, *args, **kwargs)
-        self.publisher.publish({
-            "key": self._db_key,
-            "value": self.value
-        }, pipeline=pipeline)
-
-
-pub_thing = MyPublishableModel()
