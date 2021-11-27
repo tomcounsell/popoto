@@ -2,6 +2,7 @@ import os
 import sys
 from datetime import datetime, timedelta
 from src import popoto
+from src.popoto.redis_db import POPOTO_REDIS_DB
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))

@@ -88,19 +88,19 @@ class SortedField(Field):
         return cls.get_special_use_field_db_key(model, field_name)
 
     @classmethod
-    def on_save(cls, model: 'Model', field_name: str, field_value: typing.Union[int, float], pipeline=None):
-        sortedset_db_key = cls.get_sortedset_db_key(model, field_name)
-        sortedset_member = model.db_key
-        sortedset_score = cls.convert_to_numeric(model._meta.fields[field_name], field_value)
+    def on_save(cls, model_instance: 'Model', field_name: str, field_value: typing.Union[int, float], pipeline=None):
+        sortedset_db_key = cls.get_sortedset_db_key(model_instance, field_name)
+        sortedset_member = model_instance.db_key
+        sortedset_score = cls.convert_to_numeric(model_instance._meta.fields[field_name], field_value)
         if isinstance(pipeline, redis.client.Pipeline):
             return pipeline.zadd(sortedset_db_key, {sortedset_member: sortedset_score})
         else:
             return POPOTO_REDIS_DB.zadd(sortedset_db_key, {sortedset_member: sortedset_score})
 
     @classmethod
-    def on_delete(cls, model: 'Model', field_name: str, pipeline=None):
-        sortedset_db_key = cls.get_sortedset_db_key(model, field_name)
-        sortedset_member = model.db_key
+    def on_delete(cls, model_instance: 'Model', field_name: str, pipeline=None):
+        sortedset_db_key = cls.get_sortedset_db_key(model_instance, field_name)
+        sortedset_member = model_instance.db_key
         if pipeline:
             return pipeline.zrem(sortedset_db_key, sortedset_member)
         else:
@@ -108,9 +108,9 @@ class SortedField(Field):
 
 
     @classmethod
-    def filter_query(cls, model: 'Model', field_name: str, **query_params) -> set:
+    def filter_query(cls, model_class: 'Model', field_name: str, **query_params) -> set:
         """
-        :param model: the popoto.Model to query from
+        :param model_class: the popoto.Model to query from
         :param field_name: the name of the field being filtered on
         :param query_params: dict of filter args and values
         :return: set{db_key, db_key, ..}
@@ -118,7 +118,7 @@ class SortedField(Field):
         value_range = {'min': '-inf', 'max': '+inf'}
 
         for query_param, query_value in query_params.items():
-            numeric_value = cls.convert_to_numeric(model._meta.fields[field_name], query_value)
+            numeric_value = cls.convert_to_numeric(model_class._meta.fields[field_name], query_value)
             if '__gt' in query_param:
                 inclusive = query_param.split('__gt')[1]
                 value_range['min'] = f"{'' if inclusive=='e' else '('}{numeric_value}"
@@ -128,7 +128,7 @@ class SortedField(Field):
             else:
                 raise QueryException(f"Query filters provided are not compatible with this field {field_name}")
 
-        sortedset_db_key = cls.get_sortedset_db_key(model, field_name)
+        sortedset_db_key = cls.get_sortedset_db_key(model_class, field_name)
         redis_db_keys_list = POPOTO_REDIS_DB.zrangebyscore(
             sortedset_db_key, value_range['min'], value_range['max']
         )

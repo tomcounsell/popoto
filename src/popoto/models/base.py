@@ -1,14 +1,14 @@
-import msgpack
-import redis
-
 import logging
 
+import redis
+
+from .encoding import encode_popoto_model_obj
 from .query import Query
 from .. import GeoField
-from ..fields.key_field import KeyField, AutoKeyField
 from ..fields.field import Field
+from ..fields.key_field import KeyField, AutoKeyField
 from ..fields.sorted_field import SortedField
-from ..redis_db import POPOTO_REDIS_DB, ENCODING
+from ..redis_db import POPOTO_REDIS_DB
 
 logger = logging.getLogger('POPOTO.model_base')
 
@@ -131,8 +131,7 @@ class ModelBase(type):
         options.meta = attr_meta or getattr(new_class, 'Meta', None)
         options.base_meta = getattr(new_class, '_meta', None)
         new_class._meta = options
-        setattr(new_class, 'query', Query(new_class))
-        setattr(new_class, 'objects', new_class.query)
+        new_class.objects = new_class.query = Query(new_class)
         return new_class
 
 
@@ -173,14 +172,24 @@ class Model(metaclass=ModelBase):
         # validate initial attributes
         if not self.is_valid(null_check=False):  # exclude null, will validate null values on pre-save
             raise ModelException(f"Could not instantiate class {self}")
-        self._db_content = dict()  # empty until self.load_from_db() or self.save() called
+
+        self._db_key = None
+        # _db_key used by Redis cannot be known without performance cost
+        # _db_key is predicted until synced during save() call
+        if None not in [getattr(self, key_field_name) for key_field_name in self._meta.key_field_names]:
+            self._db_key = self.db_key
+        self.obsolete_key = None  # to be used when db_key changes between loading and saving the object
+        self._db_content = dict()  # empty until synced during save() call
 
     @property
     def db_key(self):
         """
         the db key must include the class name - equivalent to db table name
-        like it or not, keys append alphabetically.
-        if needed, can propose feature to include order=int param on KeyField to force an order
+        keys append alphabetically.
+        if another order is required, propose feature request in GitHub issue
+        possible solutions include param on each model's KeyField order=int
+        OR model Meta: key_order = [keyname, keyname, ]
+        OR both
         """
         return f"{self._meta.db_class_key}:" + ":".join([
             getattr(self, key_field_name) or "" for key_field_name in sorted(self._meta.key_field_names)
@@ -206,8 +215,11 @@ class Model(metaclass=ModelBase):
         try:
             if isinstance(other, self.__class__):
                 # always False if if any KeyFields are None
-                if (None in [self._meta.fields.get(key_field_name) for key_field_name in self._meta.key_field_names]) or \
-                        (None in [other._meta.fields.get(key_field_name) for key_field_name in other._meta.key_field_names]):
+                if (None in [
+                    self._meta.fields.get(key_field_name) for key_field_name in self._meta.key_field_names
+                ]) or (None in [
+                    other._meta.fields.get(key_field_name) for key_field_name in other._meta.key_field_names
+                ]):
                     return repr(self) == repr(other)
                 return self.db_key == other.db_key
         except:
@@ -253,7 +265,8 @@ class Model(metaclass=ModelBase):
             if null_check and \
                     self._meta.fields[field_name].null is False and \
                     getattr(self, field_name) is None:
-                error = f"{field_name} is None/null. Set a value or set null=True on {self.__class__.__name__}.{field_name}"
+                error = f"{field_name} is None/null. " \
+                        f"Set a value or set null=True on {self.__class__.__name__}.{field_name}"
                 logger.error(error)
                 return False
 
@@ -262,7 +275,8 @@ class Model(metaclass=ModelBase):
                     getattr(self, field_name) and \
                     len(getattr(self, field_name)) > self._meta.fields[field_name].max_length:
                 error = f"{field_name} is greater than max_length={self._meta.fields[field_name].max_length}"
-
+                logger.error(error)
+                return False
 
             if self._ttl and self._expire_at:
                 raise ModelException("Can set either ttl and expire_at. Not both.")
@@ -299,8 +313,10 @@ class Model(metaclass=ModelBase):
                 field.format_value_pre_save(getattr(self, field_name))
             )
 
-        hset_mapping = self.encode()
+        hset_mapping = encode_popoto_model_obj(self)
         self._db_content = hset_mapping
+        if self._db_key and self._db_key != self.db_key:
+            self.obsolete_key = self._db_key
 
         for field_name, field in self._meta.fields.items():
             if pipeline:
@@ -319,16 +335,22 @@ class Model(metaclass=ModelBase):
             pipeline = pipeline.hset(self.db_key, mapping=hset_mapping)
             pipeline = pipeline if ttl is None else pipeline.expire(self.db_key, ttl)
             pipeline = pipeline if expire_at is None else pipeline.expire_at(self.db_key, expire_at)
+            if self.obsolete_key: pipeline.delete(self.obsolete_key)
+            self.obsolete_key = None
+            self._db_key = self.db_key
             return pipeline
         else:
             db_response = POPOTO_REDIS_DB.hset(self.db_key, mapping=hset_mapping)
             if ttl is not None: POPOTO_REDIS_DB.expire(self.db_key, ttl)
             if expire_at is not None: POPOTO_REDIS_DB.expireat(self.db_key, ttl)
+            if self.obsolete_key: POPOTO_REDIS_DB.delete(self.obsolete_key)
+            self.obsolete_key = None
+            self._db_key = self.db_key
             return db_response
 
     @classmethod
-    def create(cls, *args, **kwargs):
-        instance = cls(*args, **kwargs)
+    def create(cls, **kwargs):
+        instance = cls(**kwargs)
         instance.save()
         return instance
 
@@ -336,19 +358,19 @@ class Model(metaclass=ModelBase):
     def get(cls, db_key: str = None, **kwargs):
         return cls.query.get(db_key=db_key, **kwargs)
 
-    def encode(self):
-        from .encoding import encode_popoto_model_obj
-        return encode_popoto_model_obj(self)
+    def delete(self, pipeline=None):
 
-    def load_from_db(self):
-        self._db_content = POPOTO_REDIS_DB.hgetall(self.db_key)
-        for key_b, db_value_b in self._db_content.items():
-            setattr(self, key_b.decode(ENCODING), msgpack.unpackb(db_value_b))
+        for field_name, field in self._meta.fields.items():
+            if pipeline:
+                pipeline = field.on_delete(
+                    model_instance=self, field_name=field_name,
+                    pipeline=pipeline
+                )
+            else:
+                db_response = field.on_delete(
+                    model_instance=self, field_name=field_name
+                )
 
-    def revert(self):
-        self.load_from_db()
-
-    def delete(self, pipeline=None, *args, **kwargs):
         self._db_content = dict()
         if pipeline is not None:
             pipeline = pipeline.delete(self.db_key)
@@ -357,3 +379,17 @@ class Model(metaclass=ModelBase):
             db_response = POPOTO_REDIS_DB.delete(self.db_key)
             if db_response >= 0:
                 return True
+
+
+    @classmethod
+    def get_info(cls):
+        from itertools import chain
+        query_filters = list(chain(*[
+            field.get_filter_query_params(field_name)
+            for field_name, field in cls._meta.fields.items()
+        ]))
+        return {
+            'name': cls.__name__,
+            'fields': cls._meta.field_names,
+            'query_filters': query_filters,
+        }

@@ -12,6 +12,11 @@ class KeyValueModel(popoto.Model):
     key = popoto.KeyField()
     value = popoto.Field()
 
+duck = KeyValueModel()
+duck.key = "Sally"
+duck.value = "your most sassy LINE friend"
+duck.save()
+assert duck == KeyValueModel.query.get("Sally")
 
 random_fact_1 = KeyValueModel.create(key="oldest vegetable", value="peas")
 assert random_fact_1 == KeyValueModel.query.get(key=random_fact_1.key)
@@ -19,6 +24,7 @@ assert random_fact_1 == KeyValueModel.query.get(key=random_fact_1.key)
 for item in KeyValueModel.query.all():
     item.delete()
 assert len(KeyValueModel.query.all()) == 0
+assert len(POPOTO_REDIS_DB.keys("KeyValueModel*")) == 0
 
 
 class AutoKeyModel(popoto.Model):
@@ -29,6 +35,8 @@ class AutoKeyModel(popoto.Model):
 random_fact_2 = AutoKeyModel.create(value="original CocaCola was green color")
 assert random_fact_2 == AutoKeyModel.query.get(key=random_fact_2.key)
 
+for item in AutoKeyModel.query.all():
+    item.delete()
 
 class HiddenAutoKeyModel(popoto.Model):
     value = popoto.Field()
