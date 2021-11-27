@@ -1,14 +1,19 @@
+## Downloads
+[![Downloads](https://pepy.tech/badge/popoto)](https://pepy.tech/project/popoto) 
+[![Downloads](https://pepy.tech/badge/popoto/week)](https://pepy.tech/project/popoto)
+
+## Status
 [![Documentation Status](https://readthedocs.org/projects/popoto/badge/?version=latest)](https://popoto.readthedocs.io/en/latest/?badge=latest)
 
 # Popoto - A Redis ORM (Object-Relational Mapper)
 
-# Install
+## Install
 
 ```
 pip install popoto
 ```
 
-# Basic Usage
+## Basic Usage
 
 ``` python
 import popoto
@@ -23,7 +28,6 @@ lisa = Person.query.get("Lalisa Manobal")
 print(f"{lisa.name} likes {lisa.fav_color}.")
 > 'Lalisa Manobal likes yellow.'
 ```
-
 
 **Popoto** is a simple ORM for your cache database on Redis.
 
@@ -42,7 +46,7 @@ Currently being used in production for:
  - robots sending each other messages for teamwork
  - compressing sensor data and training neural networks
 
-# Advanced Usage
+## Advanced Usage
 
 ``` python
 import popoto
@@ -56,7 +60,7 @@ class Person(popoto.Model):
     location = popoto.GeoField()
 ```
 
-## Create and Save
+## Save Instances
 
 ``` python
 lisa = Person(username="@LalisaManobal", title="Queen", last_active=datetime.now())
@@ -65,7 +69,7 @@ lisa.location = (48.856373, 2.353016)  # Hôtel de Ville, Fashion Week 2021
 lisa.save()
 ```
 
-## Query
+## Queries
 
 ``` python
 
@@ -97,6 +101,22 @@ lisa.delete()
 Person.query.all()
 >>> []
 ```
+
+# Documentation
+
+Documenation is available at [***popoto.readthedocs.io**](https://popoto.readthedocs.io/en/latest/)
+Please create new feature and documentation related issues [github.com/tomcounsell/popoto/issues](https://github.com/tomcounsell/popoto/issues) or make a pull request with your improvements.
+
+
+# License
+
+Popoto ORM is released under the MIT Open Source license.
+
+
+# Popoto community
+
+Please post your questions on [Stack Overflow](http://stackoverflow.com/questions/tagged/popoto).
+
 
 ![](/static/popoto.png)
 
