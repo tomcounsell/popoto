@@ -363,12 +363,12 @@ class Model(metaclass=ModelBase):
         for field_name, field in self._meta.fields.items():
             if pipeline:
                 pipeline = field.on_delete(
-                    self, field_name=field_name,
+                    model_instance=self, field_name=field_name,
                     pipeline=pipeline
                 )
             else:
-                db_response = field.on_save(
-                    self, field_name=field_name
+                db_response = field.on_delete(
+                    model_instance=self, field_name=field_name
                 )
 
         self._db_content = dict()

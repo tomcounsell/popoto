@@ -6,7 +6,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 from src import popoto
-
+from src.popoto.redis_db import POPOTO_REDIS_DB
 
 class SortedDateModel(popoto.Model):
     name = popoto.KeyField()
@@ -73,3 +73,6 @@ assert len(Racer.query.filter(fastest_lap__gte=joe.fastest_lap)) == 3
 
 for item in Racer.query.all():
     item.delete()
+
+# for ss_key in POPOTO_REDIS_DB.keys("$Sort*"):
+#     print(POPOTO_REDIS_DB.zrange(ss_key, 0,-1))
