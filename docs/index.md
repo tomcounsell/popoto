@@ -1,12 +1,7 @@
 # Popoto - A Redis ORM (Object-Relational Mapper)
 
-# Install
 
-```
-pip install popoto
-```
-
-# Basic Usage
+## Basic Usage
 
 ``` python
 import popoto
@@ -40,7 +35,9 @@ Currently being used in production for:
  - robots sending each other messages for teamwork
  - compressing sensor data and training neural networks
 
-# Install
+## Getting Started
+
+### Install
 
 ``` bash
 pip install popoto
@@ -51,7 +48,7 @@ for deployment, set
 REDIS_URL = "redis://HOST[:PORT]/DATABASE[?password=PASSWORD]"
 ```
 
-# Quickstart
+### Define a Model
 
 ``` python
 import popoto
@@ -64,7 +61,7 @@ class Person (popoto.Model)
 
 See [Models and Fields](fields.md) for all Model and Field options.
 
-## Storing Objects
+### Create Instances
 
 ``` python
 lisa = Person(name="Lalisa Manobal")
@@ -75,7 +72,7 @@ lisa.save()
 lisa = Person.create(name="Lalisa Manobal", favorite_color = "yellow")
 ```
 
-## Retreive Objects
+### Retreive Instances
 
 ``` python
 lisa = Person.query.get("Lalisa Manobal")
@@ -85,7 +82,7 @@ print(f"{lisa.name} likes {lisa.favorite_color}.")
 
 See [Making Queries](query.md) for all Query and Filter options.
 
-## Delete Objects
+### Delete Instances
 
 ``` python
 lisa.delete()
