@@ -73,7 +73,7 @@ class Field(metaclass=FieldBase):
         return f"{cls.field_class_key}:{model._meta.db_class_key}:{field_name}"
 
     @classmethod
-    def on_save(cls, model: 'Model', field_name: str, field_value, pipeline=None):
+    def on_save(cls, model_instance: 'Model', field_name: str, field_value, pipeline=None):
         from ..redis_db import POPOTO_REDIS_DB
         # todo: create indexes with Sets
         # if model._meta.fields[field_name].indexed:
@@ -85,6 +85,9 @@ class Field(metaclass=FieldBase):
         #     else:
         #         return POPOTO_REDIS_DB.set(field_db_key, field_value_b)
 
+    @classmethod
+    def on_delete(cls, model_instance: 'Model', field_name: str, pipeline=None):
+        pass
 
     def get_filter_query_params(self, field_name: str) -> list:
         # todo: auto manage sets of db_keys to allow filter by any indexed field

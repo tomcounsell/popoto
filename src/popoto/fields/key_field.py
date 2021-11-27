@@ -93,7 +93,7 @@ class KeyField(Field):
             if query_param.endswith('__in'):
                 pipeline_2 = POPOTO_REDIS_DB.pipeline()
                 for query_value_elem in query_value:
-                    key_pattern = get_key_pattern(f"{query_value}")
+                    key_pattern = get_key_pattern(f"{query_value_elem}")
                     pipeline_2 = pipeline_2.keys(key_pattern)
                 keys_lists_to_union = pipeline_2.execute()
                 keys_lists_to_intersect.append(set.union(*[set(key_list) for key_list in keys_lists_to_union]))

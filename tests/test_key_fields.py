@@ -36,14 +36,13 @@ jisoo = TwoKeyModel.create(band="BLACKPINK", role="singer", name="Kim Ji-soo")
 solar = TwoKeyModel.create(band="Mamamoo", role="singer", name="Kim Yong-sun")
 moonbyul = TwoKeyModel.create(band="Mamamoo", role="rapper", name="Moon Byul-yi")
 
-
 assert len(TwoKeyModel.query.filter(band__startswith="BLACK")) == 3
 assert len(TwoKeyModel.query.filter(band__endswith="PINK")) == 3
+assert len(TwoKeyModel.query.filter(band__in=["BLACKPINK", "Mamamoo"])) == 5
 assert len(TwoKeyModel.query.filter(band="BLACKPINK")) == 3
 assert len(TwoKeyModel.query.filter(band="blackpink")) == 0
 assert len(TwoKeyModel.query.filter(role="singer")) == 2
 assert moonbyul == TwoKeyModel.query.get(band="Mamamoo", role="rapper")
-
 
 for item in TwoKeyModel.query.all():
     item.delete()
@@ -51,6 +50,7 @@ for item in TwoKeyModel.query.all():
 
 class AutoKeyModel(popoto.Model):
     value = popoto.Field(default="empty")
+
 
 twice_member_names = AutoKeyModel.create(value="Nayeon, Jeongyeon, Momo, Sana, Jihyo, Mina, Dahyun, Chaeyoung, Tzuyu")
 assert twice_member_names in AutoKeyModel.query.all()
