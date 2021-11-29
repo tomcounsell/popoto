@@ -1,7 +1,16 @@
-# Popoto - A Redis ORM (Object-Relational Mapper)
+# Introduction
+
+##### Popoto - A Redis ORM (Object-Relational Mapper)
+
+**Popoto** is an ORM for your [Redis](https://redis.io) cache database. 
+The familiar syntax makes it easy to use for [Django](https://www.djangoproject.com/) and [Flask](https://flask.palletsprojects.com/) developers.
+
+Redis is a storage system that operates in RAM memory. 
+Since it works at RAM memory level, reading/writing is typically 10-20x faster
+compared to PostgreSQL or any other traditional Relational Database.
 
 
-## Basic Usage
+## Simple Example
 
 ``` python
 import popoto
@@ -43,7 +52,9 @@ Currently being used in production for:
 pip install popoto
 ```
 
-for deployment, set
+[see Popoto on PyPi](https://pypi.org/project/popoto/)
+
+Set `REDIS_URL` in your deployed env. Optional on local
 ``` python
 REDIS_URL = "redis://HOST[:PORT]/DATABASE[?password=PASSWORD]"
 ```
