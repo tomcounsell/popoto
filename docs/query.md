@@ -37,6 +37,19 @@ Animal.query.filter(name__startswith="S")
 >>> [{'name': 'Sally', 'sound': 'quack'}]
 ```
 
+# KeyField query filters
+
+`{field_name}=`: exact match
+
+`{field_name}__contains=`: partial string match
+
+`{field_name}__startswith=`: partial string match
+
+`{field_name}__endswith=`: partial string match
+
+`{field_name}__in=`: is exact match for any element in provided list
+
+
 # SortedField query filters
 
 `{field_name}=`: exact match
