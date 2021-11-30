@@ -99,13 +99,16 @@ class GeoField(Field):
     @classmethod
     def on_save(cls, model_instance: 'Model', field_name: str, field_value: 'GeoField.Coordinates', pipeline=None):
         geo_db_key = cls.get_geo_db_key(model_instance, field_name)
-        longitude = field_value.longitude
-        latitude = field_value.latitude
-        member = model_instance.db_key
+        geo_member = model_instance.db_key
+        if not field_value or not (field_value.longitude and field_value.latitude):
+            if pipeline:
+                return pipeline.zrem(geo_db_key, geo_member)
+            else:
+                return POPOTO_REDIS_DB.zrem(geo_db_key, geo_member)
         if pipeline:
-            return pipeline.geoadd(geo_db_key,  longitude, latitude, member)
+            return pipeline.geoadd(geo_db_key, field_value.longitude, field_value.latitude, geo_member)
         else:
-            return POPOTO_REDIS_DB.geoadd(geo_db_key,  longitude, latitude, member)
+            return POPOTO_REDIS_DB.geoadd(geo_db_key, field_value.longitude, field_value.latitude, geo_member)
 
     @classmethod
     def on_delete(cls, model_instance: 'Model', field_name: str, pipeline=None):

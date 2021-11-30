@@ -28,7 +28,9 @@ vatican.save()
 assert vatican in GeoModel.query.filter(coordinates=rome.coordinates, coordinates_radius=5, coordinates_radius_unit='km')
 assert rome in GeoModel.query.filter(coordinates=vatican.coordinates, coordinates_radius=5, coordinates_radius_unit='km')
 
+area51 = GeoModel.create(key="Area 51")
+area51.coordinates = (None, None)
+area51.save()
 
 for item in GeoModel.query.all():
     item.delete()
-
