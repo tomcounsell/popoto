@@ -78,9 +78,9 @@ class KeyField(Field):
         if not model_instance._meta.fields[field_name].auto:
             unique_set_key = f"{cls.get_special_use_field_db_key(model_instance, field_name)}:{field_value}"
             if pipeline:
-                return pipeline.sadd(unique_set_key, model_instance.db_key)
+                return pipeline.srem(unique_set_key, model_instance.db_key)
             else:
-                return POPOTO_REDIS_DB.sadd(unique_set_key, model_instance.db_key)
+                return POPOTO_REDIS_DB.srem(unique_set_key, model_instance.db_key)
 
 
     def get_filter_query_params(self, field_name: str) -> list:
@@ -167,7 +167,6 @@ class UniqueKeyField(KeyField):
         for k, v in uniquekeyfield_defaults.items():
             setattr(self, k, kwargs.get(k, v))
 
-        # todo: move this to field init validation
         if not kwargs.get('unique', True):
             from ..models.base import ModelException
             raise ModelException("UniqueKey field MUST be unique")

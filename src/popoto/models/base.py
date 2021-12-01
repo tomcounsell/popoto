@@ -163,8 +163,7 @@ class Model(metaclass=ModelBase):
         for field_name in self._meta.fields.keys() & kwargs.keys():
             setattr(self, field_name, kwargs.get(field_name))
 
-        # todo: handle some key management?
-        # perhaps need to prepare to handle events such as key change, partial key search, ...
+        # additional key management here
 
         self._ttl = None  # todo: set default in child Meta class
         self._expire_at = None  # todo: datetime? or timestamp?
