@@ -1,6 +1,14 @@
 import logging
+from datetime import date, datetime, time
+from decimal import Decimal
+
+from src.popoto.exceptions import ModelException
 
 logger = logging.getLogger('POPOTO.field')
+
+VALID_FIELD_TYPES = [
+    int, float, Decimal, str, bool, list, dict, bytes, date, datetime, time,
+]
 
 
 class FieldBase(type):
@@ -40,15 +48,19 @@ class Field(metaclass=FieldBase):
         field_options = self.field_defaults.copy()
         for k, v in field_options.items():
             setattr(self, k, kwargs.get(k, v))
+        if self.__class__ == Field and self.type not in VALID_FIELD_TYPES:
+            raise ModelException(f"{self.type} is not a valid Field type")
 
     @classmethod
     def is_valid(cls, field, value, null_check=True, **kwargs) -> bool:
         if not null_check and value is None:
             return True
-        if value is None and not field.null:
+        if field.null and value is None:
+            return True
+        elif value is None:
             logger.error(f"field {field} is null")
             return False
-        if not field.null and not isinstance(value, field.type):
+        elif not isinstance(value, field.type):
             logger.error(f"field {field} is type {field.type}. But value is {type(value)}")
             return False
         if field.type == str and len(str(value)) > field.max_length:
@@ -73,20 +85,29 @@ class Field(metaclass=FieldBase):
         return f"{cls.field_class_key}:{model._meta.db_class_key}:{field_name}"
 
     @classmethod
-    def on_save(cls, model_instance: 'Model', field_name: str, field_value, pipeline=None):
-        from ..redis_db import POPOTO_REDIS_DB
-        # todo: create indexes with Sets
-        # if model._meta.fields[field_name].indexed:
-        #     field_db_key = f"{cls.field_class_key}:{model._meta.db_class_key}:{field_name}"
-        # #     this will not work! how to edit, delete, prevent overwrite and duplicates?
+    def on_save(cls, model_instance: 'Model', field_name: str, field_value, pipeline=None, **kwargs):
+        """
+        for parent classes to override.
+        will run for every field of the model instance, including null attributes
+        runs async with model instance save event, so order of processing is not guaranteed
+        """
+        # todo: create choice Sets of instance keys
+        # if model_instance._meta.fields[field_name].choices:
+        #     # this will not work! how to edit, delete, prevent overwrite and duplicates?
         #     field_value_b = cls.encode(field_value)
         #     if pipeline:
-        #         return pipeline.set(field_db_key, field_value_b)
+        #         return pipeline.set(cls.get_special_use_field_db_key(model_instance, field_name), field_value_b)
         #     else:
-        #         return POPOTO_REDIS_DB.set(field_db_key, field_value_b)
+        #         from src.popoto.redis_db import POPOTO_REDIS_DB
+        #         return POPOTO_REDIS_DB.set(cls.get_special_use_field_db_key(model_instance, field_name), field_value_b)
 
     @classmethod
-    def on_delete(cls, model_instance: 'Model', field_name: str, pipeline=None):
+    def on_delete(cls, model_instance: 'Model', field_name: str, field_value, pipeline=None, **kwargs):
+        """
+        for parent classes to override.
+        will run for every field of the model instance, including null attributes
+        runs async with model instance delete event, so order of processing is not guaranteed
+        """
         pass
 
     def get_filter_query_params(self, field_name: str) -> list:
