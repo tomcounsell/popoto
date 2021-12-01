@@ -1,6 +1,8 @@
 import sys
 import os
 
+from src.popoto.exceptions import ModelException
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
 
@@ -61,3 +63,12 @@ assert twice_member_names._auto_key in twice_member_names.db_key
 for item in AutoKeyModel.query.all():
     item.delete()
 assert len(AutoKeyModel.query.all()) == 0
+
+try:
+    for data_type in [list, dict, ]:
+        class IllegalKeyModel(popoto.Model):
+            band = popoto.KeyField(type=data_type)
+except Exception as e:
+    assert isinstance(e, ModelException)
+else:
+    raise Exception("expected ModelException on KeyField(type=list)")

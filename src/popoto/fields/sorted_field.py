@@ -88,7 +88,7 @@ class SortedField(Field):
         return cls.get_special_use_field_db_key(model, field_name)
 
     @classmethod
-    def on_save(cls, model_instance: 'Model', field_name: str, field_value: typing.Union[int, float], pipeline=None):
+    def on_save(cls, model_instance: 'Model', field_name: str, field_value: typing.Union[int, float], pipeline=None, **kwargs):
         sortedset_db_key = cls.get_sortedset_db_key(model_instance, field_name)
         sortedset_member = model_instance.db_key
         sortedset_score = cls.convert_to_numeric(model_instance._meta.fields[field_name], field_value)
@@ -98,7 +98,7 @@ class SortedField(Field):
             return POPOTO_REDIS_DB.zadd(sortedset_db_key, {sortedset_member: sortedset_score})
 
     @classmethod
-    def on_delete(cls, model_instance: 'Model', field_name: str, pipeline=None):
+    def on_delete(cls, model_instance: 'Model', field_name: str, field_value, pipeline=None, **kwargs):
         sortedset_db_key = cls.get_sortedset_db_key(model_instance, field_name)
         sortedset_member = model_instance.db_key
         if pipeline:

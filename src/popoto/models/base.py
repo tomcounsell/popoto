@@ -192,11 +192,12 @@ class Model(metaclass=ModelBase):
         OR both
         """
         return f"{self._meta.db_class_key}:" + ":".join([
-            getattr(self, key_field_name) or "" for key_field_name in sorted(self._meta.key_field_names)
+            str(getattr(self, key_field_name)).replace(':', '_') or "None"
+            for key_field_name in sorted(self._meta.key_field_names)
         ])
 
     def __repr__(self):
-        return str({k: v for k, v in self.__dict__.items() if k in self._meta.fields})
+        return f"<{self.__class__.__name__} Popoto object at {self._db_key}>"
 
     def __str__(self):
         return str(self.db_key)
@@ -291,10 +292,12 @@ class Model(metaclass=ModelBase):
 
         return True
 
-    def save(self, pipeline: redis.client.Pipeline = None, ttl=None, expire_at=None, ignore_errors: bool = False, *args,
+    def save(self, pipeline: redis.client.Pipeline = None,
+             ttl=None, expire_at=None, ignore_errors: bool = False,
              **kwargs):
         """
-            Default save method. Uses Redis HSET command with key, dict of values, ttl.
+            Model instance save method. Uses Redis HSET command with key, dict of values, ttl.
+            Also triggers all field on_save methods.
         """
         if not self.is_valid():
             error_message = "Model instance parameters invalid. Failed to save."
@@ -323,12 +326,13 @@ class Model(metaclass=ModelBase):
                 pipeline = field.on_save(
                     self, field_name=field_name,
                     field_value=getattr(self, field_name),
-                    pipeline=pipeline
+                    pipeline=pipeline, ttl=ttl, expire_at=expire_at, ignore_errors=ignore_errors, **kwargs
                 )
             else:
                 db_response = field.on_save(
                     self, field_name=field_name,
-                    field_value=getattr(self, field_name)
+                    field_value=getattr(self, field_name),
+                    ttl=ttl, expire_at=expire_at, ignore_errors=ignore_errors, pipeline=None, **kwargs
                 )
 
         if isinstance(pipeline, redis.client.Pipeline):
@@ -358,17 +362,23 @@ class Model(metaclass=ModelBase):
     def get(cls, db_key: str = None, **kwargs):
         return cls.query.get(db_key=db_key, **kwargs)
 
-    def delete(self, pipeline=None):
-
+    def delete(self, pipeline=None, *args, **kwargs):
+        """
+            Model instance delete method. Uses Redis DELETE command with key.
+            Also triggers all field on_delete methods.
+        """
         for field_name, field in self._meta.fields.items():
             if pipeline:
                 pipeline = field.on_delete(
                     model_instance=self, field_name=field_name,
-                    pipeline=pipeline
+                    field_value=getattr(self, field_name),
+                    pipeline=pipeline, **kwargs
                 )
             else:
                 db_response = field.on_delete(
-                    model_instance=self, field_name=field_name
+                    model_instance=self, field_name=field_name,
+                    field_value=getattr(self, field_name),
+                    pipeline=None, **kwargs
                 )
 
         self._db_content = dict()
@@ -377,9 +387,7 @@ class Model(metaclass=ModelBase):
             return pipeline
         else:
             db_response = POPOTO_REDIS_DB.delete(self.db_key)
-            if db_response >= 0:
-                return True
-
+            return bool(db_response >= 0)
 
     @classmethod
     def get_info(cls):
