@@ -97,7 +97,7 @@ class GeoField(Field):
         return cls.get_special_use_field_db_key(model, field_name)
 
     @classmethod
-    def on_save(cls, model_instance: 'Model', field_name: str, field_value: 'GeoField.Coordinates', pipeline=None):
+    def on_save(cls, model_instance: 'Model', field_name: str, field_value: 'GeoField.Coordinates', pipeline=None, **kwargs):
         geo_db_key = cls.get_geo_db_key(model_instance, field_name)
         geo_member = model_instance.db_key
         if not field_value or not (field_value.longitude and field_value.latitude):
@@ -111,7 +111,7 @@ class GeoField(Field):
             return POPOTO_REDIS_DB.geoadd(geo_db_key, field_value.longitude, field_value.latitude, geo_member)
 
     @classmethod
-    def on_delete(cls, model_instance: 'Model', field_name: str, pipeline=None):
+    def on_delete(cls, model_instance: 'Model', field_name: str, field_value, pipeline=None, **kwargs):
         geo_db_key = cls.get_geo_db_key(model_instance, field_name)
         geo_member = model_instance.db_key
         if pipeline:

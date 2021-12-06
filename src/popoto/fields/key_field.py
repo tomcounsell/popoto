@@ -1,8 +1,15 @@
+from decimal import Decimal
+from datetime import date, datetime, time
 from .field import Field, logger
 import uuid
 
+from ..exceptions import ModelException
+from ..models.query import QueryException
 from ..redis_db import POPOTO_REDIS_DB
 
+VALID_KEYFIELD_TYPES = [
+    int, float, Decimal, str, bool, date, datetime, time,
+]
 
 class KeyField(Field):
     """
@@ -39,6 +46,8 @@ class KeyField(Field):
         # set keyfield_options, let kwargs override
         for k, v in keyfield_defaults.items():
             setattr(self, k, kwargs.get(k, v))
+        if self.__class__ == KeyField and self.type not in VALID_KEYFIELD_TYPES:
+            raise ModelException(f"{self.type} is not a valid KeyField type")
 
     def get_new_auto_key_value(self):
         return uuid.uuid4().hex[:self.auto_uuid_length]
@@ -55,6 +64,25 @@ class KeyField(Field):
             logger.error(f"auto key value is length {len(value)}. It should be {field.auto_uuid_length}")
             return False
         return True
+
+    @classmethod
+    def on_save(cls, model_instance: 'Model', field_name: str, field_value, pipeline=None, **kwargs):
+        if not model_instance._meta.fields[field_name].auto:
+            unique_set_key = f"{cls.get_special_use_field_db_key(model_instance, field_name)}:{field_value}"
+            if pipeline:
+                return pipeline.sadd(unique_set_key, model_instance.db_key)
+            else:
+                return POPOTO_REDIS_DB.sadd(unique_set_key, model_instance.db_key)
+
+    @classmethod
+    def on_delete(cls, model_instance: 'Model', field_name: str, field_value, pipeline=None, **kwargs):
+        if not model_instance._meta.fields[field_name].auto:
+            unique_set_key = f"{cls.get_special_use_field_db_key(model_instance, field_name)}:{field_value}"
+            if pipeline:
+                return pipeline.srem(unique_set_key, model_instance.db_key)
+            else:
+                return POPOTO_REDIS_DB.srem(unique_set_key, model_instance.db_key)
+
 
     def get_filter_query_params(self, field_name: str) -> list:
         return super().get_filter_query_params(field_name) + [
@@ -83,30 +111,49 @@ class KeyField(Field):
 
         def get_key_pattern(query_value_pattern):
             key_pattern = f"{model._meta.db_class_key}:"
-            key_pattern += ("*:" * (num_keys_before-1))
+            key_pattern += "*:" * (num_keys_before-1)
             key_pattern += query_value_pattern
             key_pattern += ":*" * num_keys_after
             return key_pattern
+
+        redis_set_key_prefix = f"{model._meta.fields[field_name].get_special_use_field_db_key(model, field_name)}:"
 
         for query_param, query_value in query_params.items():
 
             if query_param.endswith('__in'):
                 pipeline_2 = POPOTO_REDIS_DB.pipeline()
                 for query_value_elem in query_value:
-                    key_pattern = get_key_pattern(f"{query_value_elem}")
-                    pipeline_2 = pipeline_2.keys(key_pattern)
+                    pipeline_2 = pipeline_2.smembers(redis_set_key_prefix + query_value_elem)
+                    
                 keys_lists_to_union = pipeline_2.execute()
                 keys_lists_to_intersect.append(set.union(*[set(key_list) for key_list in keys_lists_to_union]))
 
             else:
+                for char in "'?*^[]-/":
+                    query_value = query_value.replace(char, f"/{char}")
                 if query_param == f'{field_name}':
-                    key_pattern = get_key_pattern(f"{query_value}")
+                    if model._meta.fields[field_name].auto:
+                        keys_lists_to_intersect.append(POPOTO_REDIS_DB.keys(get_key_pattern(query_value)))
+                    else:
+                        keys_lists_to_intersect.append(POPOTO_REDIS_DB.smembers(redis_set_key_prefix + query_value))
+
+                elif query_param.endswith('__isnull'):
+                    if query_value is True:
+                        keys_lists_to_intersect.append(POPOTO_REDIS_DB.smembers(redis_set_key_prefix + str(None)))
+                    elif query_value is False:
+                        key_pattern = get_key_pattern(f"[^None]")
+                        pipeline = pipeline.keys(key_pattern)  # todo: refactor
+                    else:
+                        raise QueryException(f"{query_param} filter must be True or False")
+
                 elif query_param.endswith('__startswith'):
                     key_pattern = get_key_pattern(f"{query_value}*")
+                    pipeline = pipeline.keys(key_pattern)  # todo: refactor
                 elif query_param.endswith('__endswith'):
                     key_pattern = get_key_pattern(f"*{query_value}")
+                    pipeline = pipeline.keys(key_pattern)  # todo: refactor
 
-                pipeline = pipeline.keys(key_pattern)
+
             # todo: refactor to use HSCAN or sets, https://redis.io/commands/keys
             # https://redis-py.readthedocs.io/en/stable/index.html#redis.Redis.hscan_iter
 
@@ -132,7 +179,6 @@ class UniqueKeyField(KeyField):
         for k, v in uniquekeyfield_defaults.items():
             setattr(self, k, kwargs.get(k, v))
 
-        # todo: move this to field init validation
         if not kwargs.get('unique', True):
             from ..models.base import ModelException
             raise ModelException("UniqueKey field MUST be unique")

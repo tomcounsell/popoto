@@ -34,6 +34,7 @@ class ModelOptions:
 
         # todo: allow customizing this in model.Meta class
         self.db_class_key = self.model_name
+        self.db_class_set_key = f"$Class:{self.db_class_key}"
 
         self.abstract = False
         self.unique_together = []
@@ -163,8 +164,7 @@ class Model(metaclass=ModelBase):
         for field_name in self._meta.fields.keys() & kwargs.keys():
             setattr(self, field_name, kwargs.get(field_name))
 
-        # todo: handle some key management?
-        # perhaps need to prepare to handle events such as key change, partial key search, ...
+        # additional key management here
 
         self._ttl = None  # todo: set default in child Meta class
         self._expire_at = None  # todo: datetime? or timestamp?
@@ -181,6 +181,10 @@ class Model(metaclass=ModelBase):
         self.obsolete_key = None  # to be used when db_key changes between loading and saving the object
         self._db_content = dict()  # empty until synced during save() call
 
+        # todo: create set of possible custom field keys
+
+
+
     @property
     def db_key(self):
         """
@@ -192,11 +196,12 @@ class Model(metaclass=ModelBase):
         OR both
         """
         return f"{self._meta.db_class_key}:" + ":".join([
-            getattr(self, key_field_name) or "" for key_field_name in sorted(self._meta.key_field_names)
+            str(getattr(self, key_field_name)).replace(':', '_') or "None"
+            for key_field_name in sorted(self._meta.key_field_names)
         ])
 
     def __repr__(self):
-        return str({k: v for k, v in self.__dict__.items() if k in self._meta.fields})
+        return f"<{self.__class__.__name__} Popoto object at {self._db_key}>"
 
     def __str__(self):
         return str(self.db_key)
@@ -291,10 +296,12 @@ class Model(metaclass=ModelBase):
 
         return True
 
-    def save(self, pipeline: redis.client.Pipeline = None, ttl=None, expire_at=None, ignore_errors: bool = False, *args,
+    def save(self, pipeline: redis.client.Pipeline = None,
+             ttl=None, expire_at=None, ignore_errors: bool = False,
              **kwargs):
         """
-            Default save method. Uses Redis HSET command with key, dict of values, ttl.
+            Model instance save method. Uses Redis HSET command with key, dict of values, ttl.
+            Also triggers all field on_save methods.
         """
         if not self.is_valid():
             error_message = "Model instance parameters invalid. Failed to save."
@@ -315,37 +322,73 @@ class Model(metaclass=ModelBase):
 
         hset_mapping = encode_popoto_model_obj(self)
         self._db_content = hset_mapping
-        if self._db_key and self._db_key != self.db_key:
+
+        new_db_key = self.db_key
+        if self._db_key != new_db_key:
             self.obsolete_key = self._db_key
 
-        for field_name, field in self._meta.fields.items():
-            if pipeline:
-                pipeline = field.on_save(
-                    self, field_name=field_name,
-                    field_value=getattr(self, field_name),
-                    pipeline=pipeline
-                )
-            else:
-                db_response = field.on_save(
-                    self, field_name=field_name,
-                    field_value=getattr(self, field_name)
-                )
+        """
+        1. save object as hashmap
+        2. optionally set ttl, expire_at
+        3. add to class set
+        4. if obsolete key, delete and run field on_delete methods
+        5. run field on_save methods
+        6. save private version of compiled db key
+        """
 
         if isinstance(pipeline, redis.client.Pipeline):
-            pipeline = pipeline.hset(self.db_key, mapping=hset_mapping)
-            pipeline = pipeline if ttl is None else pipeline.expire(self.db_key, ttl)
-            pipeline = pipeline if expire_at is None else pipeline.expire_at(self.db_key, expire_at)
-            if self.obsolete_key: pipeline.delete(self.obsolete_key)
-            self.obsolete_key = None
-            self._db_key = self.db_key
+            pipeline = pipeline.hset(new_db_key, mapping=hset_mapping)  # 1
+            if ttl is not None:
+                pipeline = pipeline.expire(new_db_key, ttl)  # 2
+            if expire_at is not None:
+                pipeline = pipeline.expire_at(new_db_key, expire_at)  # 2
+            pipeline = pipeline.sadd(self._meta.db_class_set_key, new_db_key)  # 3
+            if self.obsolete_key and self.obsolete_key != new_db_key:  # 4
+                for field_name, field in self._meta.fields.items():
+                    pipeline = field.on_delete(  # 4
+                        model_instance=self, field_name=field_name,
+                        field_value=getattr(self, field_name),
+                        pipeline=pipeline, **kwargs
+                    )
+                pipeline.delete(self.obsolete_key)  # 4
+                self.obsolete_key = None
+            for field_name, field in self._meta.fields.items():  # 5
+                pipeline = field.on_save(  # 5
+                    self, field_name=field_name,
+                    field_value=getattr(self, field_name),
+                    ttl=ttl, expire_at=expire_at, ignore_errors=ignore_errors,
+                    pipeline=pipeline, **kwargs
+                )
+            self._db_key = new_db_key  # 6
             return pipeline
+
         else:
-            db_response = POPOTO_REDIS_DB.hset(self.db_key, mapping=hset_mapping)
-            if ttl is not None: POPOTO_REDIS_DB.expire(self.db_key, ttl)
-            if expire_at is not None: POPOTO_REDIS_DB.expireat(self.db_key, ttl)
-            if self.obsolete_key: POPOTO_REDIS_DB.delete(self.obsolete_key)
-            self.obsolete_key = None
-            self._db_key = self.db_key
+            db_response = POPOTO_REDIS_DB.hset(new_db_key, mapping=hset_mapping)  # 1
+            if ttl is not None:
+                POPOTO_REDIS_DB.expire(new_db_key, ttl)  # 2
+            if expire_at is not None:
+                POPOTO_REDIS_DB.expireat(new_db_key, ttl)  # 2
+            POPOTO_REDIS_DB.sadd(self._meta.db_class_set_key, new_db_key)  # 2
+
+            if self.obsolete_key and self.obsolete_key != new_db_key:  # 4
+                for field_name, field in self._meta.fields.items():
+                    field.on_delete(  # 4
+                        model_instance=self, field_name=field_name,
+                        field_value=getattr(self, field_name),
+                        pipeline=None, **kwargs
+                    )
+                POPOTO_REDIS_DB.delete(self.obsolete_key)  # 4
+                self.obsolete_key = None
+
+            for field_name, field in self._meta.fields.items():  # 5
+                field.on_save(  # 5
+                    self, field_name=field_name,
+                    field_value=getattr(self, field_name),
+                    ttl=ttl, expire_at=expire_at, ignore_errors=ignore_errors,
+                    pipeline=None, **kwargs
+                )
+
+            self._db_key = new_db_key  # 6
             return db_response
 
     @classmethod
@@ -358,28 +401,48 @@ class Model(metaclass=ModelBase):
     def get(cls, db_key: str = None, **kwargs):
         return cls.query.get(db_key=db_key, **kwargs)
 
-    def delete(self, pipeline=None):
+    def delete(self, pipeline=None, *args, **kwargs):
+        """
+            Model instance delete method. Uses Redis DELETE command with key.
+            Also triggers all field on_delete methods.
+        """
 
-        for field_name, field in self._meta.fields.items():
-            if pipeline:
-                pipeline = field.on_delete(
-                    model_instance=self, field_name=field_name,
-                    pipeline=pipeline
-                )
-            else:
-                db_response = field.on_delete(
-                    model_instance=self, field_name=field_name
-                )
+        delete_key = self._db_key or self.db_key
 
-        self._db_content = dict()
+        """
+        1. delete object as hashmap
+        2. delete from class set
+        3. run field on_delete methods
+        4. reset private vars
+        """
+
         if pipeline is not None:
-            pipeline = pipeline.delete(self.db_key)
-            return pipeline
-        else:
-            db_response = POPOTO_REDIS_DB.delete(self.db_key)
-            if db_response >= 0:
-                return True
+            pipeline = pipeline.delete(delete_key)  # 1
+            pipeline = pipeline.srem(self._meta.db_class_set_key, delete_key)  # 2
 
+            for field_name, field in self._meta.fields.items():  # 3
+                pipeline = field.on_delete(  # 3
+                    model_instance=self, field_name=field_name,
+                    field_value=getattr(self, field_name),
+                    pipeline=pipeline, **kwargs
+                )
+
+            self._db_content = dict()  # 4
+            return pipeline
+
+        else:
+            db_response = POPOTO_REDIS_DB.delete(delete_key)  # 1
+            POPOTO_REDIS_DB.srem(self._meta.db_class_set_key, delete_key)  # 2
+
+            for field_name, field in self._meta.fields.items():  # 3
+                field.on_delete(  # 3
+                    model_instance=self, field_name=field_name,
+                    field_value=getattr(self, field_name),
+                    pipeline=None, **kwargs
+                )
+
+            self._db_content = dict()  # 4
+            return bool(db_response >= 0)
 
     @classmethod
     def get_info(cls):
