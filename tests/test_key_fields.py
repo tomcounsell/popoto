@@ -87,6 +87,12 @@ jisoo = TestKeySetModel.create(band="BLACKPINK", role="singer", name="Kim Ji-soo
 solar = TestKeySetModel.create(band="Mamamoo", role="singer", name="Kim Yong-sun")
 moonbyul = TestKeySetModel.create(band="Mamamoo", role="rapper", name="Moon Byul-yi")
 
+# test class-wide redis set
+class_redis_set_key = TestKeySetModel._meta.db_class_set_key
+assert len(POPOTO_REDIS_DB.smembers(class_redis_set_key)) == len(TestKeySetModel.query.all())
+assert len(TestKeySetModel.query.all()) == len(POPOTO_REDIS_DB.keys(f"{TestKeySetModel._meta.db_class_key}:*"))
+
+# test keyfield-specific redis set
 bp_band_redis_set_key = f"{TestKeySetModel._meta.fields['band'].get_special_use_field_db_key(TestKeySetModel, 'band')}:BLACKPINK"
 assert len(POPOTO_REDIS_DB.smembers(bp_band_redis_set_key)) == 2
 assert POPOTO_REDIS_DB.smembers(bp_band_redis_set_key) == {lisa.db_key.encode(), jisoo.db_key.encode()}
@@ -107,3 +113,6 @@ assert len(TestKeySetModel.query.filter(band="BLACKPINK")) == 0
 for item in TestKeySetModel.query.all():
     item.delete()
 assert len(TestKeySetModel.query.all()) == 0
+assert len(POPOTO_REDIS_DB.smembers(class_redis_set_key)) == 0
+assert len(POPOTO_REDIS_DB.smembers(bp_band_redis_set_key)) == 0
+assert len(POPOTO_REDIS_DB.smembers(singer_role_redis_set_key)) == 0
