@@ -72,3 +72,38 @@ except Exception as e:
     assert isinstance(e, ModelException)
 else:
     raise Exception("expected ModelException on KeyField(type=list)")
+
+
+# Test KeyFields create, update, and destroy Redis Sets
+
+class TestKeySetModel(popoto.Model):
+    uuid = popoto.AutoKeyField()
+    band = popoto.KeyField(unique=False, null=True)
+    role = popoto.KeyField(unique=False, null=True)
+    name = popoto.Field()
+
+lisa = TestKeySetModel.create(band="BLACKPINK", role="rapper", name="Lalisa Manobal")
+jisoo = TestKeySetModel.create(band="BLACKPINK", role="singer", name="Kim Ji-soo")
+solar = TestKeySetModel.create(band="Mamamoo", role="singer", name="Kim Yong-sun")
+moonbyul = TestKeySetModel.create(band="Mamamoo", role="rapper", name="Moon Byul-yi")
+
+bp_band_redis_set_key = f"{TestKeySetModel._meta.fields['band'].get_special_use_field_db_key(TestKeySetModel, 'band')}:BLACKPINK"
+assert len(POPOTO_REDIS_DB.smembers(bp_band_redis_set_key)) == 2
+assert POPOTO_REDIS_DB.smembers(bp_band_redis_set_key) == {lisa.db_key.encode(), jisoo.db_key.encode()}
+
+singer_role_redis_set_key = f"{TestKeySetModel._meta.fields['role'].get_special_use_field_db_key(TestKeySetModel, 'role')}:singer"
+assert len(POPOTO_REDIS_DB.smembers(singer_role_redis_set_key)) == 2
+
+assert len(TestKeySetModel.query.filter(band="Mamamoo")) == 2
+assert TestKeySetModel.query.filter(band="Mamamoo", role="singer")[0] == solar
+assert TestKeySetModel.query.filter(band="BLACKPINK", role="rapper")[0] == lisa
+
+lisa.delete()
+assert len(POPOTO_REDIS_DB.smembers(bp_band_redis_set_key)) == 1
+jisoo.delete()
+assert len(POPOTO_REDIS_DB.smembers(bp_band_redis_set_key)) == 0
+assert len(TestKeySetModel.query.filter(band="BLACKPINK")) == 0
+
+for item in TestKeySetModel.query.all():
+    item.delete()
+assert len(TestKeySetModel.query.all()) == 0
