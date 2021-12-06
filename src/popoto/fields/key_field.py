@@ -131,9 +131,11 @@ class KeyField(Field):
             else:
                 for char in "'?*^[]-/":
                     query_value = query_value.replace(char, f"/{char}")
-
                 if query_param == f'{field_name}':
-                    keys_lists_to_intersect.append(POPOTO_REDIS_DB.smembers(redis_set_key_prefix + query_value))
+                    if model._meta.fields[field_name].auto:
+                        keys_lists_to_intersect.append(POPOTO_REDIS_DB.keys(get_key_pattern(query_value)))
+                    else:
+                        keys_lists_to_intersect.append(POPOTO_REDIS_DB.smembers(redis_set_key_prefix + query_value))
 
                 elif query_param.endswith('__isnull'):
                     if query_value is True:
