@@ -173,7 +173,6 @@ class Model(metaclass=ModelBase):
         if not self.is_valid(null_check=False):  # exclude null, will validate null values on pre-save
             raise ModelException(f"Could not instantiate class {self}")
 
-
         self._db_key = None
         # _db_key used by Redis cannot be known without performance cost
         # _db_key is predicted until synced during save() call
@@ -181,6 +180,10 @@ class Model(metaclass=ModelBase):
             self._db_key = self.db_key
         self.obsolete_key = None  # to be used when db_key changes between loading and saving the object
         self._db_content = dict()  # empty until synced during save() call
+
+        # todo: create set of possible custom field keys
+
+
 
     @property
     def db_key(self):
