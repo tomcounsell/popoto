@@ -110,7 +110,7 @@ class KeyField(Field):
 
         def get_key_pattern(query_value_pattern):
             key_pattern = f"{model._meta.db_class_key}:"
-            key_pattern += ("*:" * (num_keys_before-1))
+            key_pattern += "*:" * (num_keys_before-1)
             key_pattern += query_value_pattern
             key_pattern += ":*" * num_keys_after
             return key_pattern
@@ -126,22 +126,25 @@ class KeyField(Field):
                 keys_lists_to_intersect.append(set.union(*[set(key_list) for key_list in keys_lists_to_union]))
 
             else:
-                for char in "'?*^[]-":
+                for char in "'?*^[]-/":
                     query_value = query_value.replace(char, f"/{char}")
-                query_value = query_value.replace('?', '/?')
-                if query_param == f'{field_name}':
-                    key_pattern = get_key_pattern(f"{query_value}")
-                elif query_param.endswith('__startswith'):
-                    key_pattern = get_key_pattern(f"{query_value}*")
-                elif query_param.endswith('__endswith'):
-                    key_pattern = get_key_pattern(f"*{query_value}")
-                elif query_param.endswith('__isnull'):
-                    if query_value:
-                        key_pattern = get_key_pattern(f"None")
-                    else:
-                        key_pattern = get_key_pattern(f"[^None]")
 
-                pipeline = pipeline.keys(key_pattern)
+                if query_param == f'{field_name}':
+                    bp_band_redis_set_key = f"{model._meta.fields[field_name].get_special_use_field_db_key(model, field_name)}:{query_value}"
+                    keys_lists_to_intersect.append(POPOTO_REDIS_DB.smembers(bp_band_redis_set_key))
+
+                else:
+                    if query_param.endswith('__startswith'):
+                        key_pattern = get_key_pattern(f"{query_value}*")
+                    elif query_param.endswith('__endswith'):
+                        key_pattern = get_key_pattern(f"*{query_value}")
+                    elif query_param.endswith('__isnull'):
+                        if query_value:
+                            key_pattern = get_key_pattern(f"None")
+                        else:
+                            key_pattern = get_key_pattern(f"[^None]")
+
+                    pipeline = pipeline.keys(key_pattern)
             # todo: refactor to use HSCAN or sets, https://redis.io/commands/keys
             # https://redis-py.readthedocs.io/en/stable/index.html#redis.Redis.hscan_iter
 

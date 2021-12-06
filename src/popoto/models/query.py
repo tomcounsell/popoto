@@ -87,6 +87,7 @@ class Query:
             db_keys_sets.append(key_set)
             employed_kwargs_set = employed_kwargs_set | params_for_field
 
+        # raise error on additional unknown query parameters
         if len(set(kwargs) - employed_kwargs_set):
             raise QueryException(f"Invalid filter parameters: {set(kwargs) - employed_kwargs_set}")
 
