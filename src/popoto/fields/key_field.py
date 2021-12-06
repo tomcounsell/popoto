@@ -4,6 +4,7 @@ from .field import Field, logger
 import uuid
 
 from ..exceptions import ModelException
+from ..models.query import QueryException
 from ..redis_db import POPOTO_REDIS_DB
 
 VALID_KEYFIELD_TYPES = [
@@ -115,13 +116,15 @@ class KeyField(Field):
             key_pattern += ":*" * num_keys_after
             return key_pattern
 
+        redis_set_key_prefix = f"{model._meta.fields[field_name].get_special_use_field_db_key(model, field_name)}:"
+
         for query_param, query_value in query_params.items():
 
             if query_param.endswith('__in'):
                 pipeline_2 = POPOTO_REDIS_DB.pipeline()
                 for query_value_elem in query_value:
-                    key_pattern = get_key_pattern(f"{query_value_elem}")
-                    pipeline_2 = pipeline_2.keys(key_pattern)
+                    pipeline_2 = pipeline_2.smembers(redis_set_key_prefix + query_value_elem)
+                    
                 keys_lists_to_union = pipeline_2.execute()
                 keys_lists_to_intersect.append(set.union(*[set(key_list) for key_list in keys_lists_to_union]))
 
@@ -130,21 +133,25 @@ class KeyField(Field):
                     query_value = query_value.replace(char, f"/{char}")
 
                 if query_param == f'{field_name}':
-                    bp_band_redis_set_key = f"{model._meta.fields[field_name].get_special_use_field_db_key(model, field_name)}:{query_value}"
-                    keys_lists_to_intersect.append(POPOTO_REDIS_DB.smembers(bp_band_redis_set_key))
+                    keys_lists_to_intersect.append(POPOTO_REDIS_DB.smembers(redis_set_key_prefix + query_value))
 
-                else:
-                    if query_param.endswith('__startswith'):
-                        key_pattern = get_key_pattern(f"{query_value}*")
-                    elif query_param.endswith('__endswith'):
-                        key_pattern = get_key_pattern(f"*{query_value}")
-                    elif query_param.endswith('__isnull'):
-                        if query_value:
-                            key_pattern = get_key_pattern(f"None")
-                        else:
-                            key_pattern = get_key_pattern(f"[^None]")
+                elif query_param.endswith('__isnull'):
+                    if query_value is True:
+                        keys_lists_to_intersect.append(POPOTO_REDIS_DB.smembers(redis_set_key_prefix + str(None)))
+                    elif query_value is False:
+                        key_pattern = get_key_pattern(f"[^None]")
+                        pipeline = pipeline.keys(key_pattern)  # todo: refactor
+                    else:
+                        raise QueryException(f"{query_param} filter must be True or False")
 
-                    pipeline = pipeline.keys(key_pattern)
+                elif query_param.endswith('__startswith'):
+                    key_pattern = get_key_pattern(f"{query_value}*")
+                    pipeline = pipeline.keys(key_pattern)  # todo: refactor
+                elif query_param.endswith('__endswith'):
+                    key_pattern = get_key_pattern(f"*{query_value}")
+                    pipeline = pipeline.keys(key_pattern)  # todo: refactor
+
+
             # todo: refactor to use HSCAN or sets, https://redis.io/commands/keys
             # https://redis-py.readthedocs.io/en/stable/index.html#redis.Redis.hscan_iter
 
