@@ -2,7 +2,6 @@
 [![pypi package](https://badge.fury.io/py/popoto.svg)](https://pypi.org/project/popoto)
 [![documentation status](https://readthedocs.org/projects/popoto/badge/?version=latest)](https://popoto.readthedocs.io/en/latest/?badge=latest)
 
-[![weekly downloads](https://pepy.tech/badge/popoto/week)](https://pepy.tech/project/popoto)
 [![total downloads](https://pepy.tech/badge/popoto)](https://pepy.tech/project/popoto) 
 
 
