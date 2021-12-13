@@ -46,29 +46,7 @@ class Query:
         redis_db_keys_list = POPOTO_REDIS_DB.smembers(self.model_class._meta.db_class_set_key)
         return Query.get_many_objects(self.model_class, set(redis_db_keys_list))
 
-    @classmethod
-    def get_many_objects(cls, model: 'Model', db_keys: set):
-        pipeline = POPOTO_REDIS_DB.pipeline()
-        for db_key in db_keys:
-            pipeline.hgetall(db_key)
-        hashes_list = pipeline.execute()
-        return [decode_popoto_model_hashmap(model, redis_hash) for redis_hash in hashes_list]
-
-    def filter(self, **kwargs):
-        """
-           Access any and all filters for the fields on the model_class
-           Run query using the given paramters
-           return a list of model_class objects
-        """
-        # from itertools import chain
-        # all_valid_filter_parameters = list(chain(*[
-        #     field.get_filter_query_params(field_name)
-        #     for field_name, field in self.options.fields.items()
-        # ]))
-        # unexpected_kwargs = set(kwargs.keys()).difference(set(all_valid_filter_parameters))
-        # if len(unexpected_kwargs):
-        #     raise QueryException(f"Invalid filter parameters: {unexpected_kwargs}")
-
+    def filter_for_keys_set(self, **kwargs):
         db_keys_sets = []
         employed_kwargs_set = set()
 
@@ -91,6 +69,30 @@ class Query:
             raise QueryException(f"Invalid filter parameters: {set(kwargs) - employed_kwargs_set}")
 
         logger.debug(db_keys_sets)
-        if not db_keys_sets:
+        if not len(db_keys_sets):
             return []
-        return Query.get_many_objects(self.model_class, set.intersection(*db_keys_sets))
+        return set.intersection(*db_keys_sets)
+
+    def filter(self, **kwargs):
+        """
+           Access any and all filters for the fields on the model_class
+           Run query using the given paramters
+           return a list of model_class objects
+        """
+        db_keys_set = self.filter_for_keys_set(**kwargs)
+        if not len(db_keys_set):
+            return []
+        return Query.get_many_objects(self.model_class, db_keys_set)
+
+    def count(self, **kwargs):
+        if not len(kwargs):
+            return len(POPOTO_REDIS_DB.smembers(self.model_class._meta.db_class_set_key))
+        return len(self.filter_for_keys_set(**kwargs))
+
+    @classmethod
+    def get_many_objects(cls, model: 'Model', db_keys: set):
+        pipeline = POPOTO_REDIS_DB.pipeline()
+        for db_key in db_keys:
+            pipeline.hgetall(db_key)
+        hashes_list = pipeline.execute()
+        return [decode_popoto_model_hashmap(model, redis_hash) for redis_hash in hashes_list]

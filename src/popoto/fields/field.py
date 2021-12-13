@@ -2,7 +2,7 @@ import logging
 from datetime import date, datetime, time
 from decimal import Decimal
 
-from src.popoto.exceptions import ModelException
+from ..exceptions import ModelException
 
 logger = logging.getLogger('POPOTO.field')
 
@@ -98,7 +98,7 @@ class Field(metaclass=FieldBase):
         #     if pipeline:
         #         return pipeline.set(cls.get_special_use_field_db_key(model_instance, field_name), field_value_b)
         #     else:
-        #         from src.popoto.redis_db import POPOTO_REDIS_DB
+        #         from ..redis_db import POPOTO_REDIS_DB
         #         return POPOTO_REDIS_DB.set(cls.get_special_use_field_db_key(model_instance, field_name), field_value_b)
 
     @classmethod

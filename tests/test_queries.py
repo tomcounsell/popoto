@@ -15,16 +15,20 @@ class MultiKeyModel(popoto.Model):
     key3 = popoto.KeyField()
     value = popoto.Field(type=float)
 
-random_fact_4 = MultiKeyModel.create(key1="calories", key2="stamp", key3="lick", value=0.1)
+random_fact = MultiKeyModel.create(key1="calories", key2="stamp", key3="lick", value=0.1)
 # filter query
-assert random_fact_4 in MultiKeyModel.query.filter(key1="calories")
-assert random_fact_4 in MultiKeyModel.query.filter(key2="stamp")
-assert random_fact_4 in MultiKeyModel.query.filter(key3="lick")
+assert random_fact in MultiKeyModel.query.filter(key1="calories")
+assert random_fact in MultiKeyModel.query.filter(key2="stamp")
+assert random_fact in MultiKeyModel.query.filter(key3="lick")
+assert MultiKeyModel.query.count() == 1
 assert MultiKeyModel.query.filter(key1="calories", key2="pickle", key3="lick") == list()
 # get query
-assert random_fact_4 == MultiKeyModel.query.get(key1="calories", key2="stamp", key3="lick")
+assert random_fact == MultiKeyModel.query.get(key1="calories", key2="stamp", key3="lick")
 assert MultiKeyModel.query.get(key1="calories", key2="pickle", key3="lick") is None
-
+assert MultiKeyModel.query.count(key1="calories", key2="pickle", key3="lick") == 0
+assert MultiKeyModel.query.count(key2="stamp") == 1
 
 for item in MultiKeyModel.query.all():
     item.delete()
+
+assert MultiKeyModel.query.count() == 0
