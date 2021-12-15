@@ -12,7 +12,6 @@ class TickerException(FinanceException):
 class TickerStorage(TimeseriesModel):
     """
     stores timeseries data on tickers in a sorted set unique to each ticker and publisher (data source)
-    todo: split the db by each publisher source
     """
     class_describer = "ticker"
     value_sig_figs = 6

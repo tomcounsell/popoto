@@ -91,7 +91,7 @@ class Field(metaclass=FieldBase):
         will run for every field of the model instance, including null attributes
         runs async with model instance save event, so order of processing is not guaranteed
         """
-        # todo: create choice Sets of instance keys
+        # todo: create choice Sets of instance keys for fields using choices option
         # if model_instance._meta.fields[field_name].choices:
         #     # this will not work! how to edit, delete, prevent overwrite and duplicates?
         #     field_value_b = cls.encode(field_value)
