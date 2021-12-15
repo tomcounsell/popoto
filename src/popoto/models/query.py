@@ -104,4 +104,6 @@ class Query:
         for db_key in db_keys:
             pipeline.hgetall(db_key)
         hashes_list = pipeline.execute()
-        return [decode_popoto_model_hashmap(model, redis_hash) for redis_hash in hashes_list]
+        if {} in hashes_list:
+            logger.error("one or more redis keys points to missing objects")
+        return [decode_popoto_model_hashmap(model, redis_hash) for redis_hash in hashes_list if redis_hash]
