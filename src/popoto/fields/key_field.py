@@ -1,5 +1,8 @@
 from decimal import Decimal
 from datetime import date, datetime, time
+
+import redis.client
+
 from .field import Field, logger
 import uuid
 
@@ -66,7 +69,7 @@ class KeyField(Field):
         return True
 
     @classmethod
-    def on_save(cls, model_instance: 'Model', field_name: str, field_value, pipeline=None, **kwargs):
+    def on_save(cls, model_instance: 'Model', field_name: str, field_value, pipeline: redis.client.Pipeline = None, **kwargs):
         if not model_instance._meta.fields[field_name].auto:
             unique_set_key = f"{cls.get_special_use_field_db_key(model_instance, field_name)}:{field_value}"
             if pipeline:
@@ -74,15 +77,17 @@ class KeyField(Field):
             else:
                 return POPOTO_REDIS_DB.sadd(unique_set_key, model_instance.db_key)
 
+        return pipeline if pipeline else None
+
     @classmethod
-    def on_delete(cls, model_instance: 'Model', field_name: str, field_value, pipeline=None, **kwargs):
+    def on_delete(cls, model_instance: 'Model', field_name: str, field_value, pipeline: redis.client.Pipeline = None, **kwargs):
         if not model_instance._meta.fields[field_name].auto:
             unique_set_key = f"{cls.get_special_use_field_db_key(model_instance, field_name)}:{field_value}"
             if pipeline:
                 return pipeline.srem(unique_set_key, model_instance.db_key)
             else:
                 return POPOTO_REDIS_DB.srem(unique_set_key, model_instance.db_key)
-
+        return pipeline if pipeline else None
 
     def get_filter_query_params(self, field_name: str) -> list:
         return super().get_filter_query_params(field_name) + [

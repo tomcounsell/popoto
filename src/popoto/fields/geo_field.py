@@ -1,5 +1,8 @@
 import logging
 from time import time
+
+import redis
+
 from .field import Field, logger
 import uuid
 
@@ -111,7 +114,7 @@ class GeoField(Field):
             return POPOTO_REDIS_DB.geoadd(geo_db_key, field_value.longitude, field_value.latitude, geo_member)
 
     @classmethod
-    def on_delete(cls, model_instance: 'Model', field_name: str, field_value, pipeline=None, **kwargs):
+    def on_delete(cls, model_instance: 'Model', field_name: str, field_value, pipeline: redis.client.Pipeline = None, **kwargs):
         geo_db_key = cls.get_geo_db_key(model_instance, field_name)
         geo_member = model_instance.db_key
         if pipeline:

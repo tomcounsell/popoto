@@ -33,5 +33,8 @@ query_results = Person.query.filter(
 
 p = Person()
 
+pipeline = POPOTO_REDIS_DB.pipeline()
 for p in Person.query.all():
-    p.delete()
+    pipeline = p.save(pipeline=pipeline)
+    pipeline = p.delete(pipeline=pipeline)
+pipeline.execute()

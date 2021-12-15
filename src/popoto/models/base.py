@@ -401,7 +401,7 @@ class Model(metaclass=ModelBase):
     def get(cls, db_key: str = None, **kwargs):
         return cls.query.get(db_key=db_key, **kwargs)
 
-    def delete(self, pipeline=None, *args, **kwargs):
+    def delete(self, pipeline: redis.client.Pipeline = None, *args, **kwargs):
         """
             Model instance delete method. Uses Redis DELETE command with key.
             Also triggers all field on_delete methods.

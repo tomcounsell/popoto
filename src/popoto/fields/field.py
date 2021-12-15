@@ -2,6 +2,8 @@ import logging
 from datetime import date, datetime, time
 from decimal import Decimal
 
+import redis
+
 from ..exceptions import ModelException
 
 logger = logging.getLogger('POPOTO.field')
@@ -85,7 +87,7 @@ class Field(metaclass=FieldBase):
         return f"{cls.field_class_key}:{model._meta.db_class_key}:{field_name}"
 
     @classmethod
-    def on_save(cls, model_instance: 'Model', field_name: str, field_value, pipeline=None, **kwargs):
+    def on_save(cls, model_instance: 'Model', field_name: str, field_value, pipeline: redis.client.Pipeline = None, **kwargs):
         """
         for parent classes to override.
         will run for every field of the model instance, including null attributes
@@ -101,6 +103,8 @@ class Field(metaclass=FieldBase):
         #         from ..redis_db import POPOTO_REDIS_DB
         #         return POPOTO_REDIS_DB.set(cls.get_special_use_field_db_key(model_instance, field_name), field_value_b)
 
+        return pipeline if pipeline else None
+
     @classmethod
     def on_delete(cls, model_instance: 'Model', field_name: str, field_value, pipeline=None, **kwargs):
         """
@@ -108,7 +112,7 @@ class Field(metaclass=FieldBase):
         will run for every field of the model instance, including null attributes
         runs async with model instance delete event, so order of processing is not guaranteed
         """
-        pass
+        return pipeline if pipeline else None
 
     def get_filter_query_params(self, field_name: str) -> list:
         # todo: auto manage sets of db_keys to allow filter by any indexed field

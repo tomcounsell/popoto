@@ -1,5 +1,8 @@
 from abc import ABC
 import logging
+
+import redis
+
 from ..redis_db import POPOTO_REDIS_DB
 import msgpack
 
@@ -26,7 +29,7 @@ class Publisher(ABC):
     def channel_name(self, value):
         self._channel_name = value
 
-    def publish(self, data: dict = None, channel_name: str = None, pipeline=None):
+    def publish(self, data: dict = None, channel_name: str = None, pipeline: redis.client.Pipeline = None):
         import msgpack_numpy as m
         m.patch()
         # logger.debug(f"publish to {channel_name}: {publish_data}")
