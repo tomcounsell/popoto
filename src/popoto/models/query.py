@@ -42,13 +42,22 @@ class Query:
             return None
         return instance
 
+    def keys(self, catchall=False, **kwargs):
+        if catchall:
+            logger.warning("{catchall} is for debugging purposes only. Not for use in production environment")
+            POPOTO_REDIS_DB.keys(f"*{self.model_class.__name__}*")
+        else:
+            return POPOTO_REDIS_DB.smembers(self.model_class._meta.db_class_set_key)
+
     def all(self):
-        redis_db_keys_list = POPOTO_REDIS_DB.smembers(self.model_class._meta.db_class_set_key)
+        redis_db_keys_list = self.keys()
         return Query.get_many_objects(self.model_class, set(redis_db_keys_list))
 
     def filter_for_keys_set(self, **kwargs):
         db_keys_sets = []
         employed_kwargs_set = set()
+
+        # todo: use redis.SINTER for keyfield exact match filters
 
         for field_name, field in self.options.fields.items():
             # intersection of field params and filter kwargs
@@ -86,8 +95,8 @@ class Query:
 
     def count(self, **kwargs):
         if not len(kwargs):
-            return len(POPOTO_REDIS_DB.smembers(self.model_class._meta.db_class_set_key))
-        return len(self.filter_for_keys_set(**kwargs))
+            return int(POPOTO_REDIS_DB.scard(self.model_class._meta.db_class_set_key) or 0)
+        return len(self.filter_for_keys_set(**kwargs))  # maybe possible to refactor to use redis.SINTERCARD
 
     @classmethod
     def get_many_objects(cls, model: 'Model', db_keys: set):

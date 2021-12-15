@@ -27,6 +27,7 @@ assert random_fact == MultiKeyModel.query.get(key1="calories", key2="stamp", key
 assert MultiKeyModel.query.get(key1="calories", key2="pickle", key3="lick") is None
 assert MultiKeyModel.query.count(key1="calories", key2="pickle", key3="lick") == 0
 assert MultiKeyModel.query.count(key2="stamp") == 1
+assert MultiKeyModel.query.count() == 1
 
 for item in MultiKeyModel.query.all():
     item.delete()
