@@ -21,7 +21,7 @@ class Query:
         self.model_class = model_class
         self.options = model_class._meta
 
-    def get(self, db_key=None, **kwargs):
+    def get(self, db_key=None, **kwargs) -> 'Model':
 
         if db_key and '_auto_key' in self.options.key_field_names:
             raise QueryException(
@@ -42,18 +42,18 @@ class Query:
             return None
         return instance
 
-    def keys(self, catchall=False, **kwargs):
+    def keys(self, catchall=False, **kwargs) -> list:
         if catchall:
             logger.warning("{catchall} is for debugging purposes only. Not for use in production environment")
-            POPOTO_REDIS_DB.keys(f"*{self.model_class.__name__}*")
+            return list(POPOTO_REDIS_DB.keys(f"*{self.model_class.__name__}*"))
         else:
-            return POPOTO_REDIS_DB.smembers(self.model_class._meta.db_class_set_key)
+            return list(POPOTO_REDIS_DB.smembers(self.model_class._meta.db_class_set_key))
 
-    def all(self):
+    def all(self) -> list:
         redis_db_keys_list = self.keys()
         return Query.get_many_objects(self.model_class, set(redis_db_keys_list))
 
-    def filter_for_keys_set(self, **kwargs):
+    def filter_for_keys_set(self, **kwargs) -> list:
         db_keys_sets = []
         employed_kwargs_set = set()
 
@@ -80,9 +80,9 @@ class Query:
         logger.debug(db_keys_sets)
         if not len(db_keys_sets):
             return []
-        return set.intersection(*db_keys_sets)
+        return list(set.intersection(*db_keys_sets))
 
-    def filter(self, **kwargs):
+    def filter(self, **kwargs) -> list:
         """
            Access any and all filters for the fields on the model_class
            Run query using the given paramters
@@ -93,13 +93,13 @@ class Query:
             return []
         return Query.get_many_objects(self.model_class, db_keys_set)
 
-    def count(self, **kwargs):
+    def count(self, **kwargs) -> int:
         if not len(kwargs):
             return int(POPOTO_REDIS_DB.scard(self.model_class._meta.db_class_set_key) or 0)
         return len(self.filter_for_keys_set(**kwargs))  # maybe possible to refactor to use redis.SINTERCARD
 
     @classmethod
-    def get_many_objects(cls, model: 'Model', db_keys: set):
+    def get_many_objects(cls, model: 'Model', db_keys: set) -> list:
         pipeline = POPOTO_REDIS_DB.pipeline()
         for db_key in db_keys:
             pipeline.hgetall(db_key)
