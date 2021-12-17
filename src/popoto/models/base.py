@@ -296,12 +296,10 @@ class Model(metaclass=ModelBase):
 
         return True
 
-    def save(self, pipeline: redis.client.Pipeline = None,
-             ttl=None, expire_at=None, ignore_errors: bool = False,
-             **kwargs):
+    def pre_save(self, pipeline: redis.client.Pipeline = None,
+                 ignore_errors: bool = False, **kwargs):
         """
-            Model instance save method. Uses Redis HSET command with key, dict of values, ttl.
-            Also triggers all field on_save methods.
+        Model instance preparation for saving.
         """
         if not self.is_valid():
             error_message = "Model instance parameters invalid. Failed to save."
@@ -309,9 +307,7 @@ class Model(metaclass=ModelBase):
                 logger.error(error_message)
             else:
                 raise ModelException(error_message)
-            return pipeline or 0
-
-        ttl, expire_at = (ttl or self._ttl), (expire_at or self._expire_at)
+            return False
 
         # run any necessary formatting on field data before saving
         for field_name, field in self._meta.fields.items():
@@ -319,13 +315,28 @@ class Model(metaclass=ModelBase):
                 self, field_name,
                 field.format_value_pre_save(getattr(self, field_name))
             )
+        return pipeline if pipeline else True
 
-        hset_mapping = encode_popoto_model_obj(self)
-        self._db_content = hset_mapping
+    def save(self, pipeline: redis.client.Pipeline = None,
+             ttl=None, expire_at=None, ignore_errors: bool = False,
+             **kwargs):
+        """
+            Model instance save method. Uses Redis HSET command with key, dict of values, ttl.
+            Also triggers all field on_save methods.
+        """
+
+        pipeline_or_success = self.pre_save(pipeline=pipeline, ignore_errors=ignore_errors, **kwargs)
+        if not pipeline_or_success:
+            return pipeline or False
+        elif pipeline:
+            pipeline = pipeline_or_success
 
         new_db_key = self.db_key
         if self._db_key != new_db_key:
             self.obsolete_key = self._db_key
+
+        # todo: implement and test tll, expire_at
+        ttl, expire_at = (ttl or self._ttl), (expire_at or self._expire_at)
 
         """
         1. save object as hashmap
@@ -336,12 +347,15 @@ class Model(metaclass=ModelBase):
         6. save private version of compiled db key
         """
 
+        hset_mapping = encode_popoto_model_obj(self)  # 1
+        self._db_content = hset_mapping  # 1
+
         if isinstance(pipeline, redis.client.Pipeline):
             pipeline = pipeline.hset(new_db_key, mapping=hset_mapping)  # 1
-            if ttl is not None:
-                pipeline = pipeline.expire(new_db_key, ttl)  # 2
-            if expire_at is not None:
-                pipeline = pipeline.expire_at(new_db_key, expire_at)  # 2
+            # if ttl is not None:
+            #     pipeline = pipeline.expire(new_db_key, ttl)  # 2
+            # if expire_at is not None:
+            #     pipeline = pipeline.expire_at(new_db_key, expire_at)  # 2
             pipeline = pipeline.sadd(self._meta.db_class_set_key, new_db_key)  # 3
             if self.obsolete_key and self.obsolete_key != new_db_key:  # 4
                 for field_name, field in self._meta.fields.items():
@@ -356,7 +370,8 @@ class Model(metaclass=ModelBase):
                 pipeline = field.on_save(  # 5
                     self, field_name=field_name,
                     field_value=getattr(self, field_name),
-                    ttl=ttl, expire_at=expire_at, ignore_errors=ignore_errors,
+                    # ttl=ttl, expire_at=expire_at,
+                    ignore_errors=ignore_errors,
                     pipeline=pipeline, **kwargs
                 )
             self._db_key = new_db_key  # 6
@@ -364,10 +379,10 @@ class Model(metaclass=ModelBase):
 
         else:
             db_response = POPOTO_REDIS_DB.hset(new_db_key, mapping=hset_mapping)  # 1
-            if ttl is not None:
-                POPOTO_REDIS_DB.expire(new_db_key, ttl)  # 2
-            if expire_at is not None:
-                POPOTO_REDIS_DB.expireat(new_db_key, ttl)  # 2
+            # if ttl is not None:
+            #     POPOTO_REDIS_DB.expire(new_db_key, ttl)  # 2
+            # if expire_at is not None:
+            #     POPOTO_REDIS_DB.expireat(new_db_key, ttl)  # 2
             POPOTO_REDIS_DB.sadd(self._meta.db_class_set_key, new_db_key)  # 2
 
             if self.obsolete_key and self.obsolete_key != new_db_key:  # 4
@@ -384,7 +399,8 @@ class Model(metaclass=ModelBase):
                 field.on_save(  # 5
                     self, field_name=field_name,
                     field_value=getattr(self, field_name),
-                    ttl=ttl, expire_at=expire_at, ignore_errors=ignore_errors,
+                    # ttl=ttl, expire_at=expire_at,
+                    ignore_errors=ignore_errors,
                     pipeline=None, **kwargs
                 )
 
