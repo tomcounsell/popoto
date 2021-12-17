@@ -27,11 +27,18 @@ class SortedField(Field):
             'type': float,
             'null': False,
             'default': None,  # cannot set a default for datetime, so no type gets a default
+            'partition_on': None,
         }
         self.field_defaults.update(sortedfield_defaults)
         # set field_options, let kwargs override
         for k, v in sortedfield_defaults.items():
             setattr(self, k, kwargs.get(k, v))
+
+        if self.partition_on and not isinstance(self.partition_on, tuple) and isinstance(self.partition_on, str):
+            self.partition_on = (self.partition_on, )
+        elif self.partition_on:
+            from ..models.base import ModelException
+            raise ModelException("partition_on must be str or tuple of str field names")
 
         # todo: move this to field init validation
         if self.null is not False:
@@ -90,6 +97,13 @@ class SortedField(Field):
     @classmethod
     def on_save(cls, model_instance: 'Model', field_name: str, field_value: typing.Union[int, float], pipeline: redis.client.Pipeline = None, **kwargs):
         sortedset_db_key = cls.get_sortedset_db_key(model_instance, field_name)
+
+        if model_instance._meta.fields[field_name].partition_on:
+            sortedset_db_key = sortedset_db_key + ":" + ':'.join([
+                getattr(model_instance, partiion_field_name)
+                for partiion_field_name in model_instance._meta.fields[field_name].partition_on
+            ])
+
         sortedset_member = model_instance.db_key
         sortedset_score = cls.convert_to_numeric(model_instance._meta.fields[field_name], field_value)
         if isinstance(pipeline, redis.client.Pipeline):
@@ -129,6 +143,15 @@ class SortedField(Field):
                 raise QueryException(f"Query filters provided are not compatible with this field {field_name}")
 
         sortedset_db_key = cls.get_sortedset_db_key(model_class, field_name)
+
+        # todo: get other field exact query param, eg. asset=BTC and use to create the sortedset_db_key to search on
+        # if model_class._meta.fields[field_name].partition_on:
+        #     sortedset_db_key = sortedset_db_key + ":" + ':'.join([
+        #         getattr(model_class, partiion_field_name)
+        #         for partiion_field_name in model_class._meta.fields[field_name].partition_on
+        #     ])
+
+
         redis_db_keys_list = POPOTO_REDIS_DB.zrangebyscore(
             sortedset_db_key, value_range['min'], value_range['max']
         )

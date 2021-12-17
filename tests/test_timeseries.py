@@ -10,10 +10,10 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 
 class AssetPrice(popoto.Model):
-    _uid = popoto.KeyField(type=str, null=False)
-    asset_id = popoto.KeyField(type=str, null=False, partition_model=True)
+    _uid = popoto.UniqueKeyField(type=str, null=False)
+    asset_id = popoto.KeyField(type=str, null=False)
     price = popoto.Field(type=Decimal)
-    timestamp = popoto.SortedField(type=datetime, null=False)
+    timestamp = popoto.SortedField(type=datetime, null=False, partition_on="asset_id")
 
     def pre_save(self, **kwargs):
         self._uid = f"{self.asset_id}{self.timestamp.timestamp()}"
@@ -45,3 +45,7 @@ for timestamp in price_history.keys():
 
 query_results = AssetPrice.query.filter(timestamp__gte=datetime(2021, 1, 1), asset_id="BTC")
 assert len(query_results) == 3
+
+for key in AssetPrice.query.keys(True):
+    if "Sort" in key.decode():
+        print(key)
