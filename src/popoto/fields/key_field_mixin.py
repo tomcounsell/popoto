@@ -3,8 +3,8 @@ from datetime import date, datetime, time
 
 import redis.client
 
-from .field import Field, logger
-import uuid
+import logging
+logger = logging.getLogger('POPOTO.KeyFieldMixin')
 
 from ..exceptions import ModelException
 from ..models.query import QueryException
@@ -14,7 +14,7 @@ VALID_KEYFIELD_TYPES = [
     int, float, Decimal, str, bool, date, datetime, time,
 ]
 
-class KeyField(Field):
+class KeyFieldMixin:
     """
     A KeyField is for unique identifiers and category searches
     All KeyFields are used for indexing on the DB.
@@ -23,48 +23,26 @@ class KeyField(Field):
     UniqueKeyField and AutoKeyField provide unique constraint and auto-id generation respectively.
     All models must have one or more KeyFields.
     However an AutoKeyField will be automatically added to models without any specified KeyFields.
-
-    todo: add support for https://github.com/ai/nanoid
     """
-    unique: bool = False
-    indexed: bool = False
-    auto: bool = False
-    auto_uuid_length: int = 32
-    auto_id: str = ""
-    null: bool = False
+    key: bool = True
     max_length: int = 128
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         keyfield_defaults = {
-            'unique': False,
-            'indexed': False,
-            'auto': False,
-            'auto_uuid_length': 32,
-            'auto_id': "",
-            'null': False,
+            'key': True,
             'max_length': 128,  # Redis limit is 512MB
         }
         self.field_defaults.update(keyfield_defaults)
         # set keyfield_options, let kwargs override
         for k, v in keyfield_defaults.items():
             setattr(self, k, kwargs.get(k, v))
-        if self.__class__ == KeyField and self.type not in VALID_KEYFIELD_TYPES:
+        if self.key and self.type not in VALID_KEYFIELD_TYPES:
             raise ModelException(f"{self.type} is not a valid KeyField type")
-
-    def get_new_auto_key_value(self):
-        return uuid.uuid4().hex[:self.auto_uuid_length]
-
-    def set_auto_key_value(self, force: bool = False):
-        if self.auto or force:
-            self.default = self.get_new_auto_key_value()
 
     @classmethod
     def is_valid(cls, field, value, null_check=True, **kwargs) -> bool:
         if not super().is_valid(field, value, null_check):
-            return False
-        if field.auto and len(value) != field.auto_uuid_length:
-            logger.error(f"auto key value is length {len(value)}. It should be {field.auto_uuid_length}")
             return False
         return True
 
@@ -169,41 +147,3 @@ class KeyField(Field):
             return set.intersection(*[set(key_list) for key_list in keys_lists_to_intersect])
         return set()
 
-
-class UniqueKeyField(KeyField):
-    """
-    UniqueKeyField() is equivalent to KeyField(unique=True)
-    """
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        uniquekeyfield_defaults = {
-            'unique': True,
-        }
-        self.field_defaults.update(uniquekeyfield_defaults)
-        # set keyfield_options, let kwargs override
-        for k, v in uniquekeyfield_defaults.items():
-            setattr(self, k, kwargs.get(k, v))
-
-        if not kwargs.get('unique', True):
-            from ..models.base import ModelException
-            raise ModelException("UniqueKey field MUST be unique")
-
-
-class AutoKeyField(UniqueKeyField):
-    """
-    AutoKeyField() is equivalent to KeyField(unique-True, auto=True)
-    The AutoKeyField is an auto-generated, universally unique key
-    It will be automatically added to models with no specified KeyFields
-    Include this field in your model if you cannot otherwise enforce a unique-together constraint with other KeyFields.
-    They auto-generated key is random and newly generated for a model instance.
-    Model instances with otherwise identical properties are saved as separate instances with different auto-keys.
-    """
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        autokeyfield_defaults = {
-            'auto': True,
-        }
-        self.field_defaults.update(autokeyfield_defaults)
-        # set keyfield_options, let kwargs override
-        for k, v in autokeyfield_defaults.items():
-            setattr(self, k, kwargs.get(k, v))
