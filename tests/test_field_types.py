@@ -11,17 +11,17 @@ from src import popoto
 
 
 class EveryTypeModel(popoto.Model):
-    int_val = popoto.Field(type=int)
-    float_val = popoto.Field(type=float)
-    decimal_val = popoto.Field(type=Decimal)
-    string_val = popoto.Field(type=str)
-    boolean_val = popoto.Field(type=bool)
-    list_val = popoto.Field(type=list)
-    dict_val = popoto.Field(type=dict)
-    bytes_val = popoto.Field(type=bytes)
-    date_val = popoto.Field(type=date)
-    datetime_val = popoto.Field(type=datetime)
-    time_val = popoto.Field(type=time)
+    int_val = popoto.IntField(null=False)
+    float_val = popoto.FloatField(null=False)
+    decimal_val = popoto.DecimalField(null=False)
+    string_val = popoto.StringField(null=False)
+    boolean_val = popoto.BooleanField(null=False)
+    list_val = popoto.ListField(null=False)
+    dict_val = popoto.DictField(null=False)
+    bytes_val = popoto.BytesField(null=False)
+    date_val = popoto.DateField(null=False)
+    datetime_val = popoto.DatetimeField(null=False)
+    time_val = popoto.TimeField(null=False)
 
 
 one = EveryTypeModel(
@@ -42,18 +42,19 @@ one.save()
 for item in EveryTypeModel.query.all():
     item.delete()
 
+
 class EveryNullableTypeModel(popoto.Model):
-    int_val = popoto.Field(type=int, null=True)
-    float_val = popoto.Field(type=float, null=True)
-    decimal_val = popoto.Field(type=Decimal, null=True)
-    string_val = popoto.Field(type=str, null=True)
-    boolean_val = popoto.Field(type=bool, null=True)
-    list_val = popoto.Field(type=list, null=True)
-    dict_val = popoto.Field(type=dict, null=True)
-    bytes_val = popoto.Field(type=bytes, null=True)
-    date_val = popoto.Field(type=date, null=True)
-    datetime_val = popoto.Field(type=datetime, null=True)
-    time_val = popoto.Field(type=time, null=True)
+    int_val = popoto.Field(type=int)
+    float_val = popoto.Field(type=float)
+    decimal_val = popoto.Field(type=Decimal)
+    string_val = popoto.Field(type=str)
+    boolean_val = popoto.Field(type=bool)
+    list_val = popoto.Field(type=list)
+    dict_val = popoto.Field(type=dict)
+    bytes_val = popoto.Field(type=bytes)
+    date_val = popoto.Field(type=date)
+    datetime_val = popoto.Field(type=datetime)
+    time_val = popoto.Field(type=time)
 
 
 two = EveryNullableTypeModel.create()

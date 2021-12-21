@@ -44,7 +44,7 @@ class Field(metaclass=FieldBase):
             'key': False,
             'unique': False,
             'auto': False,
-            'null': False,
+            'null': True,
             'value': None,
             'max_length': 1024,  # Redis limit is 512MB
             'default': None,

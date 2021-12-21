@@ -10,6 +10,76 @@ class IntField(Field):
         super().__init__(**kwargs)
 
 
+class FloatField(Field):
+    def __init__(self, *args, **kwargs):
+        kwargs['type'] = float
+        super().__init__(**kwargs)
+
+
+class DecimalField(Field):
+    def __init__(self, *args, **kwargs):
+        from decimal import Decimal
+        kwargs['type'] = Decimal
+        super().__init__(**kwargs)
+
+
+class StringField(Field):
+    def __init__(self, *args, **kwargs):
+        kwargs['type'] = str
+        super().__init__(**kwargs)
+
+
+class BooleanField(Field):
+    def __init__(self, *args, **kwargs):
+        kwargs['type'] = bool
+        super().__init__(**kwargs)
+
+
+class ListField(Field):
+    def __init__(self, *args, **kwargs):
+        kwargs['type'] = list
+        super().__init__(**kwargs)
+
+
+class DictField(Field):
+    def __init__(self, *args, **kwargs):
+        kwargs['type'] = dict
+        super().__init__(**kwargs)
+
+
+class DictField(Field):
+    def __init__(self, *args, **kwargs):
+        kwargs['type'] = dict
+        super().__init__(**kwargs)
+
+
+class BytesField(Field):
+    def __init__(self, *args, **kwargs):
+        kwargs['type'] = bytes
+        super().__init__(**kwargs)
+
+
+class DateField(Field):
+    def __init__(self, *args, **kwargs):
+        from datetime import date
+        kwargs['type'] = date
+        super().__init__(**kwargs)
+
+
+class DatetimeField(Field):
+    def __init__(self, *args, **kwargs):
+        from datetime import datetime
+        kwargs['type'] = datetime
+        super().__init__(**kwargs)
+
+
+class TimeField(Field):
+    def __init__(self, *args, **kwargs):
+        from datetime import time
+        kwargs['type'] = time
+        super().__init__(**kwargs)
+
+
 class KeyField(KeyFieldMixin, Field):
     def __init__(self, *args, **kwargs):
         kwargs['key'] = True
@@ -38,5 +108,3 @@ class SortedField(SortedFieldMixin, Field):
 class SortedKeyField(SortedFieldMixin, KeyFieldMixin, Field):
     def __init__(self, *args, **kwargs):
         super().__init__(**kwargs)
-
-
