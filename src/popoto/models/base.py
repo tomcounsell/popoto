@@ -4,10 +4,10 @@ import redis
 
 from .encoding import encode_popoto_model_obj
 from .query import Query
-from .. import GeoField
 from ..fields.field import Field
-from ..fields.key_field import KeyField, AutoKeyField
-from ..fields.sorted_field import SortedField
+from ..fields.key_field_mixin import KeyFieldMixin
+from ..fields.sorted_field_mixin import SortedFieldMixin
+from ..fields.geo_field import GeoField
 from ..redis_db import POPOTO_REDIS_DB
 
 logger = logging.getLogger('POPOTO.model_base')
@@ -20,14 +20,13 @@ class ModelException(Exception):
 class ModelOptions:
     def __init__(self, model_name):
         self.model_name = model_name
-        self.hidden_fields = {}
-        self.explicit_fields = {}
-        self.key_field_names = []
-        self.list_field_names = []
-        # self.set_field_names = []
-        self.sorted_field_names = []
-        self.geo_field_names = []
-        self.indexed_field_names = []
+        self.hidden_fields = dict()
+        self.explicit_fields = dict()
+        self.key_field_names = set()
+        # self.list_field_names = set()
+        # self.set_field_names = set()
+        self.sorted_field_names = set()
+        self.geo_field_names = set()
 
         # todo: should this be a dict of related objects or just a list of field names?
         # self.related_fields = {}  # model becomes graph node
@@ -51,17 +50,14 @@ class ModelOptions:
         else:
             raise ModelException(f"{field_name} is already a Field on the model")
 
-        if field.indexed:
-            self.indexed_field_names.append(field_name)
-
-        if isinstance(field, KeyField):
-            self.key_field_names.append(field_name)
-        elif isinstance(field, SortedField):
-            self.sorted_field_names.append(field_name)
+        if isinstance(field, KeyFieldMixin):
+            self.key_field_names.add(field_name)
+        elif isinstance(field, SortedFieldMixin):
+            self.sorted_field_names.add(field_name)
         elif isinstance(field, GeoField):
-            self.geo_field_names.append(field_name)
+            self.geo_field_names.add(field_name)
         # elif isinstance(field, ListField):
-        #     self.list_field_names.append(field_name)
+        #     self.list_field_names.add(field_name)
 
     @property
     def fields(self) -> dict:
@@ -149,11 +145,12 @@ class Model(metaclass=ModelBase):
 
         # add auto KeyField if needed
         if not len(self._meta.key_field_names):
-            self._meta.add_field('_auto_key', AutoKeyField(key=cls.__name__))
+            from ..fields.shortcuts import AutoKeyField
+            self._meta.add_field('_auto_key', AutoKeyField())
 
         # prep AutoKeys with new default ids
         for field in self._meta.fields.values():
-            if isinstance(field, KeyField):
+            if hasattr(field, 'auto') and field.auto:
                 field.set_auto_key_value()
 
         # set defaults

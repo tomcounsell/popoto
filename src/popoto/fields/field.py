@@ -1,16 +1,16 @@
-import logging
 from datetime import date, datetime, time
 from decimal import Decimal
-
 import redis
 
 from ..exceptions import ModelException
 
+import logging
+
 logger = logging.getLogger('POPOTO.field')
 
-VALID_FIELD_TYPES = [
+VALID_FIELD_TYPES = {
     int, float, Decimal, str, bool, list, dict, bytes, date, datetime, time,
-]
+}
 
 
 class FieldBase(type):
@@ -29,22 +29,26 @@ class FieldBase(type):
 
 class Field(metaclass=FieldBase):
     type: type = str
+    key: bool = False
     unique: bool = False
-    indexed: bool = False
+    auto: bool = False
+    null: bool = True
     value: str = None
-    null: bool = False
     max_length: int = 1024
-    default: str = ""
+    default = ""
+    sorted: bool = False
 
     def __init__(self, **kwargs):
         self.field_defaults = {  # default
             'type': str,
-            'unique': True,
-            'indexed': False,
-            'value': None,
+            'key': False,
+            'unique': False,
+            'auto': False,
             'null': False,
+            'value': None,
             'max_length': 1024,  # Redis limit is 512MB
             'default': None,
+            'sorted': False,
         }
         # set field_options, let kwargs override
         field_options = self.field_defaults.copy()
@@ -87,7 +91,8 @@ class Field(metaclass=FieldBase):
         return f"{cls.field_class_key}:{model._meta.db_class_key}:{field_name}"
 
     @classmethod
-    def on_save(cls, model_instance: 'Model', field_name: str, field_value, pipeline: redis.client.Pipeline = None, **kwargs):
+    def on_save(cls, model_instance: 'Model', field_name: str, field_value, pipeline: redis.client.Pipeline = None,
+                **kwargs):
         """
         for parent classes to override.
         will run for every field of the model instance, including null attributes
@@ -115,9 +120,8 @@ class Field(metaclass=FieldBase):
         return pipeline if pipeline else None
 
     def get_filter_query_params(self, field_name: str) -> list:
-        # todo: auto manage sets of db_keys to allow filter by any indexed field
         # todo: refactor this method to return a set, not a list
-        if self.indexed:
+        if self.key:
             params = [f'{field_name}', ]
             if self.null:
                 params += [f'{field_name}__isnull', ]
@@ -133,7 +137,4 @@ class Field(metaclass=FieldBase):
         :return: set{db_key, db_key, ..}
         """
         from ..models.query import QueryException
-        if model._meta.fields[field_name].indexed:
-            raise QueryException("Query filter by any indexed field is not yet implemented.")
-        else:
-            raise QueryException("Query filter not possible on non-indexed fields")
+        raise QueryException("Query filter only possible KeyFields")
