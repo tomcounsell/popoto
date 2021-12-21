@@ -58,6 +58,8 @@ class SortedField(Field):
             # f'{field_name}__max',
             # f'{field_name}__range',  # todo: like https://docs.djangoproject.com/en/3.2/ref/models/querysets/#range
             # f'{field_name}__isnull',  # todo: see todo in __init__
+        ] + [
+            f'{keyfield_name}' for keyfield_name in self.partition_on
         ]
 
     @classmethod
