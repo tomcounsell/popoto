@@ -46,6 +46,11 @@ for timestamp in price_history.keys():
 query_results = AssetPrice.query.filter(timestamp__gte=datetime(2021, 1, 1), asset_id="BTC")
 assert len(query_results) == 3
 
-for key in AssetPrice.query.keys(True):
-    if "Sort" in key.decode():
-        print(key)
+# there should be 2 sortedsets based on the asset partition
+assert len([key for key in AssetPrice.query.keys(True) if "SortF" in key.decode()]) == 2
+
+for item in AssetPrice.query.all():
+    item.delete()
+
+# make sure even the special purpose keys were also deleted
+assert len(AssetPrice.query.keys(True)) == 0

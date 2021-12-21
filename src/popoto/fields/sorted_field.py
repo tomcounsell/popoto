@@ -101,14 +101,14 @@ class SortedField(Field):
 
     @classmethod
     def get_partitioned_sortedset_db_key(cls, model_instance, field_name):
-        sortedset_db_key = cls.get_special_use_field_db_key(model_instance, field_name)
-
+        sortedset_db_key = cls.get_sortedset_db_key(model_instance, field_name)
         # use field names and query values partition_on fields to extend sortedset_db_key
         for partition_field_name in model_instance._meta.fields[field_name].partition_on:
             try:
                 sortedset_db_key += f":{str(getattr(model_instance, partition_field_name))}"
             except KeyError:
                 raise QueryException(f"{field_name} filter requires partition_on field values")
+        return sortedset_db_key
 
     @classmethod
     def on_save(cls, model_instance: 'Model', field_name: str, field_value: typing.Union[int, float],
@@ -117,6 +117,7 @@ class SortedField(Field):
 
         sortedset_member = model_instance.db_key
         sortedset_score = cls.convert_to_numeric(model_instance._meta.fields[field_name], field_value)
+
         if isinstance(pipeline, redis.client.Pipeline):
             return pipeline.zadd(sortedset_db_key, {sortedset_member: sortedset_score})
         else:
