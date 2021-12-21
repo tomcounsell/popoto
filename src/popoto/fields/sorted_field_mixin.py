@@ -4,12 +4,12 @@ import datetime
 import typing
 import redis
 
-from .field import Field
 from ..models.query import QueryException
 from ..redis_db import POPOTO_REDIS_DB
+logger = logging.getLogger('POPOTO.SortedFieldMixin')
 
 
-class SortedField(Field):
+class SortedFieldMixin:
     """
         The SortedField enables fast queries for ordering or filter by value range.
         Examples:
@@ -21,6 +21,8 @@ class SortedField(Field):
     """
     type: type = float
     null: bool = False
+    default = ""
+    partition_on = tuple()
 
     def __init__(self, **kwargs):
         super().__init__()

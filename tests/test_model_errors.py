@@ -11,10 +11,7 @@ from src import popoto
 
 try:
     class KeyValueModel(popoto.Model):
-        """
-        should look and quack like a simple key value store
-        """
-        key = popoto.KeyField(null=True)
+        key = popoto.AutoKeyField(null=True)
         value = popoto.Field(null=True)
 
     KeyValueModel()
@@ -22,4 +19,4 @@ except ModelException as e:
     print(e)
     assert "null" in str(e)
 else:
-    raise Exception("expected null error on KeyField")
+    raise Exception("expected null error on AutoKeyField")

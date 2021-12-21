@@ -1,6 +1,5 @@
 import logging
 
-from .encoding import decode_popoto_model_hashmap
 from ..redis_db import POPOTO_REDIS_DB
 
 logger = logging.getLogger('POPOTO.Query')
@@ -29,7 +28,7 @@ class Query:
             )
 
         elif db_key and len(self.options.key_field_names) == 1:
-            kwargs[self.options.key_field_names[0]] = db_key
+            kwargs[list(self.options.key_field_names)[0]] = db_key
 
         instances = self.filter(**kwargs)
         if len(instances) > 1:
@@ -100,6 +99,7 @@ class Query:
 
     @classmethod
     def get_many_objects(cls, model: 'Model', db_keys: set) -> list:
+        from .encoding import decode_popoto_model_hashmap
         pipeline = POPOTO_REDIS_DB.pipeline()
         for db_key in db_keys:
             pipeline.hgetall(db_key)

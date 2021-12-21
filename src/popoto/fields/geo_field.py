@@ -1,12 +1,10 @@
-import logging
-from time import time
+from collections import namedtuple
 
 import redis
 
-from .field import Field, logger
-import uuid
-
-from collections import namedtuple
+from .field import Field
+import logging
+logger = logging.getLogger('POPOTO.GeoField')
 from ..redis_db import POPOTO_REDIS_DB
 
 
