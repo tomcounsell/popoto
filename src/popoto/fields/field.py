@@ -116,6 +116,7 @@ class Field(metaclass=FieldBase):
 
     def get_filter_query_params(self, field_name: str) -> list:
         # todo: auto manage sets of db_keys to allow filter by any indexed field
+        # todo: refactor this method to return a set, not a list
         if self.indexed:
             params = [f'{field_name}', ]
             if self.null:
