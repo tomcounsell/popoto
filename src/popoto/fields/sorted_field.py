@@ -8,6 +8,7 @@ from .field import Field
 from ..models.query import QueryException
 from ..redis_db import POPOTO_REDIS_DB
 
+
 class SortedField(Field):
     """
         The SortedField enables fast queries for ordering or filter by value range.
@@ -27,11 +28,20 @@ class SortedField(Field):
             'type': float,
             'null': False,
             'default': None,  # cannot set a default for datetime, so no type gets a default
+            'partition_on': tuple(),
         }
         self.field_defaults.update(sortedfield_defaults)
+
         # set field_options, let kwargs override
         for k, v in sortedfield_defaults.items():
             setattr(self, k, kwargs.get(k, v))
+
+        if isinstance(self.partition_on, str):
+            self.partition_on = tuple((self.partition_on,))
+
+        elif self.partition_on and not isinstance(self.partition_on, tuple):
+            from ..models.base import ModelException
+            raise ModelException("partition_on must be str or tuple of str field names")
 
         # todo: move this to field init validation
         if self.null is not False:
@@ -51,6 +61,8 @@ class SortedField(Field):
             # f'{field_name}__max',
             # f'{field_name}__range',  # todo: like https://docs.djangoproject.com/en/3.2/ref/models/querysets/#range
             # f'{field_name}__isnull',  # todo: see todo in __init__
+        ] + [
+            f'{keyfield_name}' for keyfield_name in self.partition_on
         ]
 
     @classmethod
@@ -88,24 +100,38 @@ class SortedField(Field):
         return cls.get_special_use_field_db_key(model, field_name)
 
     @classmethod
-    def on_save(cls, model_instance: 'Model', field_name: str, field_value: typing.Union[int, float], pipeline: redis.client.Pipeline = None, **kwargs):
+    def get_partitioned_sortedset_db_key(cls, model_instance, field_name):
         sortedset_db_key = cls.get_sortedset_db_key(model_instance, field_name)
+        # use field names and query values partition_on fields to extend sortedset_db_key
+        for partition_field_name in model_instance._meta.fields[field_name].partition_on:
+            try:
+                sortedset_db_key += f":{str(getattr(model_instance, partition_field_name))}"
+            except KeyError:
+                raise QueryException(f"{field_name} filter requires partition_on field values")
+        return sortedset_db_key
+
+    @classmethod
+    def on_save(cls, model_instance: 'Model', field_name: str, field_value: typing.Union[int, float],
+                pipeline: redis.client.Pipeline = None, **kwargs):
+        sortedset_db_key = cls.get_partitioned_sortedset_db_key(model_instance, field_name)
+
         sortedset_member = model_instance.db_key
         sortedset_score = cls.convert_to_numeric(model_instance._meta.fields[field_name], field_value)
+
         if isinstance(pipeline, redis.client.Pipeline):
             return pipeline.zadd(sortedset_db_key, {sortedset_member: sortedset_score})
         else:
             return POPOTO_REDIS_DB.zadd(sortedset_db_key, {sortedset_member: sortedset_score})
 
     @classmethod
-    def on_delete(cls, model_instance: 'Model', field_name: str, field_value, pipeline: redis.client.Pipeline = None, **kwargs):
-        sortedset_db_key = cls.get_sortedset_db_key(model_instance, field_name)
+    def on_delete(cls, model_instance: 'Model', field_name: str, field_value, pipeline: redis.client.Pipeline = None,
+                  **kwargs):
+        sortedset_db_key = cls.get_partitioned_sortedset_db_key(model_instance, field_name)
         sortedset_member = model_instance.db_key
         if pipeline:
             return pipeline.zrem(sortedset_db_key, sortedset_member)
         else:
             return POPOTO_REDIS_DB.zrem(sortedset_db_key, sortedset_member)
-
 
     @classmethod
     def filter_query(cls, model_class: 'Model', field_name: str, **query_params) -> set:
@@ -118,17 +144,28 @@ class SortedField(Field):
         value_range = {'min': '-inf', 'max': '+inf'}
 
         for query_param, query_value in query_params.items():
+            if field_name not in query_param:
+                continue
+
             numeric_value = cls.convert_to_numeric(model_class._meta.fields[field_name], query_value)
             if '__gt' in query_param:
                 inclusive = query_param.split('__gt')[1]
-                value_range['min'] = f"{'' if inclusive=='e' else '('}{numeric_value}"
+                value_range['min'] = f"{'' if inclusive == 'e' else '('}{numeric_value}"
             elif '__lt' in query_param:
                 inclusive = query_param.split('__lt')[1]
-                value_range['max'] = f"{'' if inclusive=='e' else '('}{numeric_value}"
+                value_range['max'] = f"{'' if inclusive == 'e' else '('}{numeric_value}"
             else:
                 raise QueryException(f"Query filters provided are not compatible with this field {field_name}")
 
         sortedset_db_key = cls.get_sortedset_db_key(model_class, field_name)
+
+        # use field names and query values partition_on fields to extend sortedset_db_key
+        for field_name in model_class._meta.fields[field_name].partition_on:
+            try:
+                sortedset_db_key += f":{str(query_params[field_name])}"
+            except KeyError:
+                raise QueryException(f"{field_name} filter requires partition_on field values")
+
         redis_db_keys_list = POPOTO_REDIS_DB.zrangebyscore(
             sortedset_db_key, value_range['min'], value_range['max']
         )
