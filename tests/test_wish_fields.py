@@ -3,7 +3,7 @@ import sys
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from src.popoto import Model, Field, GeoField, Relationship
+from src.popoto import Model, Field, GeoField
 from src.popoto.redis_db import POPOTO_REDIS_DB
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -18,7 +18,7 @@ class Person(Model):
     level = Field(type=int, sorted=True, null=True)
     last_active = Field(type=datetime, sorted=True)
     location = GeoField(type=GeoField.Coordinates, units='km')
-    friends = Relationship('Person', many=True)
+    # friends = Relationship('Person', many=True)
 
     class Meta:
         unique_together = ('title', 'level')
