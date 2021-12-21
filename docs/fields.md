@@ -1,14 +1,14 @@
 # Models and Fields
 
-Declare a Model by inheriting from `popoto.Model`.
+Declare a Model by inheriting from `Model`.
 Then simply define your choice of fields.
 Models are flexible to allow any number of fields and types of fields.
 A primary key field (or at least the Redis equivalent) will be automatically added if necessary.
 
 ```python
-import popoto
+from popoto import Model
 
-class MyObject(popoto.Model):
+class MyObject(Model):
     # add fields
 ```
 
@@ -18,12 +18,12 @@ In the background, Popoto uses all KeyFields to compile the primary key on Redis
 There almost no performance downside to using many KeyFields.
 
 ``` python
-import popoto
+from popoto import Model, AutoKeyField, UniqueKeyField, KeyField
 
-class User(popoto.Model):
-    uuid = popoto.AutoKeyField()
-    username = popoto.UniqueKeyField(max_length=20)
-    name = popoto.KeyField(max_length=100, unique=False)
+class User(Model):
+    uuid = AutoKeyField()
+    username = UniqueKeyField(max_length=20)
+    name = KeyField(max_length=100, unique=False)
 ```
 
 
@@ -33,28 +33,33 @@ These KeyFields will each enforce uniqueness across all saved instances:
 `AutoKeyfield`, `UniqueKeyfield`, and `KeyField(unique=True)` 
 
 ```python
-class User(popoto.Model):
-    uuid = popoto.AutoKeyField()
-    username = popoto.UniqueKeyField()
-    email = popoto.KeyField(unique=True)
+from popoto import Model, AutoKeyField, UniqueKeyField, KeyField
+
+class User(Model):
+    uuid = AutoKeyField()
+    username = UniqueKeyField()
+    email = KeyField(unique=True)
 ```
 
 However, it is enough for all KeyFields to be considered "unique together"
 In this example, a unique Box is the combination of dimensions. The combined dimensions *together* will be *unique* to every instance.
 
 ```python
-class Box(popoto.Model):
-    length = popoto.KeyField(type=float)
-    width = popoto.KeyField(type=float)
-    height = popoto.KeyField(type=float)
+class Box(Model):
+    length = KeyField(type=float)
+    width = KeyField(type=float)
+    height = KeyField(type=float)
 ```
 
 Finally, it is also possible to declare a Model without a KeyField and Popoto will create and maintain a hidden unique key.
 
 ```python
-class BitcoinPrice(popoto.Model):
-    usd_value = popoto.Field(type=Decimal)
-    timestamp = popoto.SortedField(type=datetime.datetime)
+from popoto import Model, DecimalField, SortedField
+from datetime import datetime
+
+class BitcoinPrice(Model):
+    usd_value = DecimalField()
+    timestamp = SortedField(type=datetime)
 ```
 
 The above example may be useful in situations where all queries are made via special purpose fields, such as `SortedField`, `GeoField`, or `GraphField`
@@ -66,34 +71,51 @@ All fields inherit from base `Field`. A basic `Field` on any model will provide 
 The following types are supported for use:
 `int`, `float`, `Decimal`, `str`, `bool`, `list`, `dict`, `bytes`, `datetime.date`, `datetime.datetime`, `datetime.time`
 
-The default type for `value = popoto.Field()` is type `str` - string
+The default type for `value = Field()` is type `str` - string
 
 ```python
+from popoto import *
 from decimal import Decimal
-import datetime
+from datetime import datetime, date, time
 
-class EveryTypeModel(popoto.Model):
-    string_val = popoto.Field(type=str)
-    int_val = popoto.Field(type=int)
-    float_val = popoto.Field(type=float)
-    decimal_val = popoto.Field(type=Decimal)
-    boolean_val = popoto.Field(type=bool)
-    list_val = popoto.Field(type=list)
-    dict_val = popoto.Field(type=dict)
-    bytes_val = popoto.Field(type=bytes)
-    date_val = popoto.Field(type=datetime.date)
-    datetime_val = popoto.Field(type=datetime.datetime)
-    time_val = popoto.Field(type=datetime.time)
+class EveryTypeModel(Model):
+    string_val = Field(type=str)
+    int_val = Field(type=int)
+    float_val = Field(type=float)
+    decimal_val = Field(type=Decimal)
+    boolean_val = Field(type=bool)
+    list_val = Field(type=list)
+    dict_val = Field(type=dict)
+    bytes_val = Field(type=bytes)
+    date_val = Field(type=date)
+    datetime_val = Field(type=datetime)
+    time_val = Field(type=time)
+```
+Named fields shown below are equivalent to the fields above. You may declare fields to your preference.
+```python 
+class EveryTypeModel(Model):
+    int_val = IntField()
+    float_val = FloatField()
+    decimal_val = DecimalField()
+    string_val = StringField()
+    boolean_val = BooleanField()
+    list_val = ListField()
+    dict_val = DictField()
+    bytes_val = BytesField()
+    date_val = DateField()
+    datetime_val = DatetimeField()
+    time_val = TimeField()
 ```
 
 ## Null Values
 
-By default, all fields are considered required unless `null=True` is specified in the model field declaration.
-All Fields can allow null values.
+KeyField and SortedField values are considered required `null=False` by default. All other fields are optional `null=True` by default. 
+You may explicitly declare whether to allow null values using the `null` keywword
 
 ```python
-class MyModel(popoto.Model):
-    optional_value = popoto.Field(null=True)
+class MyModel(Model):
+    optional_value = Field(null=True)
+    required_value = Field(null=False)
 ```
 
 ## Default Values
@@ -101,30 +123,41 @@ class MyModel(popoto.Model):
 All fields will accept a `default` value for new objects.
 
 ```python
-class MyModel(popoto.Model):
-    status = popoto.Field(type=str, default="unknown")
-    is_true = popoto.Field(type=bool, default=False)
-    access_count = popoto.Field(type=int, default=0)
+class MyModel(Model):
+    status = Field(type=str, default="unknown")
+    is_true = Field(type=bool, default=False)
+    access_count = Field(type=int, default=0)
 ```
 
 ## String Max Length
 
+Set a limit to string length. On SQL-like databases, this is often required. 
+However, on Redis (and Popoto), there is no performance 
+requirement or advantage to setting the `max_length`. 
+Use it if you want Popoto to raise exceptions on model validation.
+
+
 ```python
-class Tweet(popoto.Model):
-    text = popoto.Field(type=str, max_length=280)
+class Tweet(Model):
+    text = Field(type=str, max_length=280)
 ```
 
 # SortedField
 
 Use a `SortedField` for numerical attributes. 
-A `SortedField` provides fast and efficient (Redis ZADD, ZRANGE) access to ordered instances. Querying for instances by order of a timestamp or attribute counter is one of the most powerful and common reasons for employing a Redis database.
+A `SortedField` provides fast and efficient access to ordered instances (via Redis ZADD, ZRANGE). 
+Querying for instances by order of a timestamp or attribute counter 
+is one of the most powerful and common reasons for employing a Redis database.
+
+A SortedField is necessary in order to use these query filters: `__lt=`, `__gt=`, etc.
+See details on filters at [Query Filters](query.md)
 
 ```python
 import datetime
 
-class SortedDateModel(popoto.Model):
-    name = popoto.KeyField()
-    birthday = popoto.SortedField(type=datetime.date)
+class SortedDateModel(Model):
+    name = KeyField()
+    birthday = SortedField(type=datetime.date)
 
 lisa = SortedDateModel.create(name="Lisa", birthday=datetime.date(1997, 3, 27))
 rose = SortedDateModel.create(name="Rose", birthday=datetime.date(1997, 2, 11))
@@ -137,16 +170,49 @@ younger_than_rose = SortedDateModel.query.filter(birthday__gt=rose.birthday)
 assert lisa in younger_than_rose
 ```
 
-# GeoField
-
-Popoto provides a useful namedtuple `Coordinates`. Although, any tuple of `(float, float)` for `(latitude, longitude)` is allowed.
+To use a SortedField also as a KeyField, use `SortedKeyField`
 
 ```python
-from popoto.GeoField import Coordinates
+class BitcoinPrice(Model):
+    timestamp = SortedKeyField(type=datetime)
+    usd_value = DecimalField()
+```
 
-class GeoModel(popoto.Model):
-    name = popoto.KeyField()
-    coordinates = popoto.GeoField()
+In some cases, you may always sort against a required `KeyField`.
+You will see significant performance improvements if you define the `sort_by` field. 
+However, that field will always be required when performing a query. 
+
+In the example below, we've generalized the above BitcoinPrice model to include any asset.
+Because we will query by timestamp ranges for only one asset at a time, we can declare `sort_by="asset"`.
+
+```python
+class AssetPrice(Model):
+    asset = KeyField()
+    timestamp = SortedKeyField(type=datetime, sort_by="asset")
+    usd_value = DecimalField()
+
+AssetPrice.query.filter(
+    asset="Bitcoin", 
+    timestamp__gte=datetime(2021,1,1), 
+    timestamp__lt=datetime(2021,1,2)
+)  # return Bitcoin prices over 1 day period
+```
+
+
+# GeoField
+
+The `GeoField` employs another popular Redis feature - geospatial search.
+A common use case is searching for objects within a radius of another object.
+Use the `GeoField` to set coordinates on a model to enable these powerful query filters.
+
+Popoto provides a namedtuple `Coordinates`. Although, any tuple of `(float, float)` for `(latitude, longitude)` is allowed.
+
+```python
+from GeoField import Coordinates
+
+class GeoModel(Model):
+    name = KeyField()
+    coordinates = GeoField()
 
 
 rome = GeoModel.create(
