@@ -16,7 +16,7 @@ duck = KeyValueModel()
 duck.key = "Sally"
 duck.value = "your most sassy LINE friend"
 duck.save()
-assert duck == KeyValueModel.query.get("Sally")
+assert duck == KeyValueModel.query.get(key="Sally")
 
 random_fact_1 = KeyValueModel.create(key="oldest vegetable", value="peas")
 assert random_fact_1 == KeyValueModel.query.get(key=random_fact_1.key)
