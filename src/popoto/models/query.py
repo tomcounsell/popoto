@@ -21,25 +21,22 @@ class Query:
         self.options = model_class._meta
 
     def get(self, db_key=None, **kwargs) -> 'Model':
+        if not db_key and all([key in kwargs for key in self.options.key_field_names]):
+            db_key = self.model_class(**kwargs).db_key
 
-        if db_key and '_auto_key' in self.options.key_field_names:
-            raise QueryException(
-                f"{self.model_class.__name__} does not define an explicit KeyField. Cannot perform query.get(db_key)"
-            )
+        if db_key:
+            from src.popoto.models.encoding import decode_popoto_model_hashmap
+            instance = decode_popoto_model_hashmap(self.model_class, POPOTO_REDIS_DB.hgetall(db_key))
+        else:
+            instances = self.filter(**kwargs)
+            if len(instances) > 1:
+                raise QueryException(
+                    f"{self.model_class.__name__} found more than one unique instance. Use `query.filter()`"
+                )
+            instance = instances[0] if len(instances) == 1 else None
 
-        elif db_key and len(self.options.key_field_names) == 1:
-            kwargs[list(self.options.key_field_names)[0]] = db_key
-
-        instances = self.filter(**kwargs)
-        if len(instances) > 1:
-            raise QueryException(
-                f"{self.model_class.__name__} found more than one unique instance. Use `.filter()`"
-            )
-        instance = instances[0] if len(instances) == 1 else None
-
-        if not instance or not hasattr(instance, 'db_key'):
-            return None
-        return instance
+        # or not hasattr(instance, 'db_key')
+        return instance or None
 
     def keys(self, catchall=False, **kwargs) -> list:
         if catchall:

@@ -23,6 +23,7 @@ class ModelOptions:
         self.hidden_fields = dict()
         self.explicit_fields = dict()
         self.key_field_names = set()
+        # self.auto_field_names = set()
         # self.list_field_names = set()
         # self.set_field_names = set()
         self.sorted_field_names = set()
@@ -52,9 +53,11 @@ class ModelOptions:
 
         if isinstance(field, KeyFieldMixin):
             self.key_field_names.add(field_name)
-        elif isinstance(field, SortedFieldMixin):
+        # if field.auto:
+        #     self.auto_field_names.add(field_name)
+        if isinstance(field, SortedFieldMixin):
             self.sorted_field_names.add(field_name)
-        elif isinstance(field, GeoField):
+        if isinstance(field, GeoField):
             self.geo_field_names.add(field_name)
         # elif isinstance(field, ListField):
         #     self.list_field_names.add(field_name)
@@ -411,8 +414,8 @@ class Model(metaclass=ModelBase):
         return instance
 
     @classmethod
-    def get(cls, db_key: str = None, **kwargs):
-        return cls.query.get(db_key=db_key, **kwargs)
+    def load(cls, db_key: str = None, **kwargs):
+        return cls.query.get(db_key=db_key or cls(**kwargs).db_key)
 
     def delete(self, pipeline: redis.client.Pipeline = None, *args, **kwargs):
         """

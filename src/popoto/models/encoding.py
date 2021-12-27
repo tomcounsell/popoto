@@ -100,4 +100,4 @@ def decode_popoto_model_hashmap(model_class: 'Model', redis_hash: dict) -> 'Mode
             for key_b, value_b in redis_hash.items()
         })
     else:
-        return model_class()
+        return None
