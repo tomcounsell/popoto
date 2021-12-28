@@ -31,7 +31,7 @@ class GeoField(Field):
             'default': GeoField.Coordinates(None, None),
         }
         self.field_defaults.update(geofield_defaults)
-        # set keyfield_options, let kwargs override
+        # set field options, let kwargs override
         for k, v in geofield_defaults.items():
             setattr(self, k, kwargs.get(k, v))
 

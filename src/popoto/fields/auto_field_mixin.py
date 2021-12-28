@@ -28,7 +28,7 @@ class AutoFieldMixin:
             'auto_id': "",
         }
         self.field_defaults.update(autokeyfield_defaults)
-        # set keyfield_options, let kwargs override
+        # set field options, let kwargs override
         for k, v in autokeyfield_defaults.items():
             setattr(self, k, kwargs.get(k, v))
 

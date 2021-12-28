@@ -34,7 +34,7 @@ class KeyFieldMixin:
             'max_length': 128,  # Redis limit is 512MB
         }
         self.field_defaults.update(keyfield_defaults)
-        # set keyfield_options, let kwargs override
+        # set field options, let kwargs override
         for k, v in keyfield_defaults.items():
             setattr(self, k, kwargs.get(k, v))
         if self.key and self.type not in VALID_KEYFIELD_TYPES:
