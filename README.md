@@ -18,12 +18,12 @@ pip install popoto
 ``` python
 import popoto
 
-class Person (popoto.Model)
+class Person (popoto.Model):
     name = popoto.KeyField()
     fav_color = popoto.Field()
 
 Person.create(name="Lalisa Manobal", fav_color = "yellow")
-lisa = Person.query.get("Lalisa Manobal")
+lisa = Person.query.get(name="Lalisa Manobal")
 
 print(f"{lisa.name} likes {lisa.fav_color}.")
 > 'Lalisa Manobal likes yellow.'
