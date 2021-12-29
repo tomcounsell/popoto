@@ -4,16 +4,17 @@ import redis
 
 from .encoding import encode_popoto_model_obj
 from .query import Query
-from ..fields.field import Field
+from ..fields.field import Field, VALID_FIELD_TYPES
 from ..fields.key_field_mixin import KeyFieldMixin
 from ..fields.sorted_field_mixin import SortedFieldMixin
 from ..fields.geo_field import GeoField
+from ..fields.relationship import Relationship
 from ..redis_db import POPOTO_REDIS_DB
 
 logger = logging.getLogger('POPOTO.model_base')
 
 global RELATED_MODEL_LOAD_SEQUENCE
-RELATED_MODEL_LOAD_SEQUENCE = []
+RELATED_MODEL_LOAD_SEQUENCE = set()
 
 
 class ModelException(Exception):
@@ -65,6 +66,8 @@ class ModelOptions:
             self.geo_field_names.add(field_name)
         # elif isinstance(field, ListField):
         #     self.list_field_names.add(field_name)
+        if isinstance(field, Relationship):
+            self.relationship_field_names.add(field_name)
 
     @property
     def fields(self) -> dict:
@@ -275,9 +278,13 @@ class Model(metaclass=ModelBase):
             ]):
                 try:
                     if getattr(self, field_name) is not None:
-                        setattr(self, field_name, self._meta.fields[field_name].type(getattr(self, field_name)))
+                        if self._meta.fields[field_name].type in VALID_FIELD_TYPES:
+                            setattr(self, field_name, self._meta.fields[field_name].type(getattr(self, field_name)))
+                        else:
+                            pass  # do not force typing if custom type is defined
                     if not isinstance(getattr(self, field_name), self._meta.fields[field_name].type):
-                        raise TypeError(f"{field_name} is not type {self._meta.fields[field_name].type}. ")
+                        raise TypeError(f"Expected {field_name} to be type {self._meta.fields[field_name].type}. "
+                                        f"It is type {type(getattr(self, field_name))}")
                 except TypeError as e:
                     logger.error(
                         f"{str(e)} \n Change the value or modify type on {self.__class__.__name__}.{field_name}"

@@ -154,7 +154,6 @@ class KeyFieldMixin:
             # https://redis-py.readthedocs.io/en/stable/index.html#redis.Redis.hscan_iter
 
         keys_lists_to_intersect += pipeline.execute()
-
         logger.debug(keys_lists_to_intersect)
         if len(keys_lists_to_intersect):
             return set.intersection(*[set(key_list) for key_list in keys_lists_to_intersect])

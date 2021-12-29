@@ -70,8 +70,11 @@ class Query:
             employed_kwargs_set = employed_kwargs_set | params_for_field
 
         # raise error on additional unknown query parameters
-        if len(set(kwargs) - employed_kwargs_set):
-            raise QueryException(f"Invalid filter parameters: {set(kwargs) - employed_kwargs_set}")
+        for unknown_query_param in set(kwargs) - employed_kwargs_set:
+            if not any([
+                unknown_query_param.startswith(field_name) for field_name in self.options.relationship_field_names
+            ]):
+                raise QueryException(f"Invalid filter parameters: {set(kwargs) - employed_kwargs_set}")
 
         logger.debug(db_keys_sets)
         if not len(db_keys_sets):
