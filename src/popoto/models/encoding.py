@@ -4,7 +4,6 @@ import msgpack
 import datetime
 
 from ..exceptions import ModelException
-from ..fields.relationship import Relationship
 from ..fields.geo_field import GeoField
 from ..redis_db import ENCODING
 
@@ -61,6 +60,7 @@ def encode_popoto_model_obj(obj: 'Model') -> dict:
         value = getattr(obj, field_name)
 
         # use db_key string for relationships
+        from ..fields.relationship import Relationship
         if value and isinstance(field, Relationship):
             if not isinstance(value, field.model):
                 raise ModelException(f"Relationship field requires {field.model} model instance. got {value} insteadd")
