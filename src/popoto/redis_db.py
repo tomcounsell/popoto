@@ -1,12 +1,12 @@
 import os
 import logging
 import redis
-from redisgraph import Graph
+# from redisgraph import Graph
 
 logger = logging.getLogger('POPOTO-REDIS_DB')
 
 global POPOTO_REDIS_DB
-global REDIS_GRAPH
+# global REDIS_GRAPH
 BEGINNING_OF_TIME = 0
 ENCODING = 'utf-8'
 
@@ -26,7 +26,7 @@ try:
         REDIS_HOST, REDIS_PORT = "127.0.0.1:6379".split(":")
         pool = redis.ConnectionPool(host=REDIS_HOST, port=REDIS_PORT, db=0)
         POPOTO_REDIS_DB = redis.Redis(connection_pool=pool)
-        REDIS_GRAPH = Graph('social', POPOTO_REDIS_DB)
+        # REDIS_GRAPH = Graph('social', POPOTO_REDIS_DB)
 
 except Exception as e:
     logger.info(str(e))
@@ -38,8 +38,8 @@ def set_REDIS_DB_settings(env_partition_name: str = "", *args, **kwargs):
 
     global POPOTO_REDIS_DB
     POPOTO_REDIS_DB = redis.Redis(*args, **kwargs)
-    global REDIS_GRAPH
-    REDIS_GRAPH = Graph('social', POPOTO_REDIS_DB)
+    # global REDIS_GRAPH
+    # REDIS_GRAPH = Graph('social', POPOTO_REDIS_DB)
     logger.debug("Redis connection reset.")
 
 
