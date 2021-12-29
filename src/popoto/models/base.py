@@ -12,6 +12,9 @@ from ..redis_db import POPOTO_REDIS_DB
 
 logger = logging.getLogger('POPOTO.model_base')
 
+global RELATED_MODEL_LOAD_SEQUENCE
+RELATED_MODEL_LOAD_SEQUENCE = []
+
 
 class ModelException(Exception):
     pass
@@ -26,6 +29,7 @@ class ModelOptions:
         # self.auto_field_names = set()
         # self.list_field_names = set()
         # self.set_field_names = set()
+        self.relationship_field_names = set()
         self.sorted_field_names = set()
         self.geo_field_names = set()
 
@@ -164,6 +168,22 @@ class Model(metaclass=ModelBase):
         for field_name in self._meta.fields.keys() & kwargs.keys():
             setattr(self, field_name, kwargs.get(field_name))
 
+        # load relationships
+        if len(self._meta.relationship_field_names):
+            global RELATED_MODEL_LOAD_SEQUENCE
+            is_parent_model = len(RELATED_MODEL_LOAD_SEQUENCE) == 0
+            for field_name in self._meta.relationship_field_names:
+                if f"{self.__class__.__name__}:{field_name}" in RELATED_MODEL_LOAD_SEQUENCE:
+                    continue
+                if isinstance(getattr(self, field_name), str):
+                    setattr(
+                        self, field_name,
+                        self._meta.fields[field_name].model.load(db_key=getattr(self, field_name))
+                    )
+                RELATED_MODEL_LOAD_SEQUENCE.add(f"{self.__class__.__name__}:{field_name}")
+            if is_parent_model:
+                RELATED_MODEL_LOAD_SEQUENCE = set()
+
         # additional key management here
 
         self._ttl = None  # todo: set default in child Meta class
@@ -182,8 +202,6 @@ class Model(metaclass=ModelBase):
         self._db_content = dict()  # empty until synced during save() call
 
         # todo: create set of possible custom field keys
-
-
 
     @property
     def db_key(self):
