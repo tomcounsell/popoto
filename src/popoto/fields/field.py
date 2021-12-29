@@ -70,6 +70,7 @@ class Field(metaclass=FieldBase):
             logger.error(f"field {field} is type {field.type}. But value is {type(value)}")
             return False
         if field.type == str and len(str(value)) > field.max_length:
+            logger.error(f"{field} value is greater than max_length={field.max_length}")
             return False
         return True
 
@@ -137,4 +138,4 @@ class Field(metaclass=FieldBase):
         :return: set{db_key, db_key, ..}
         """
         from ..models.query import QueryException
-        raise QueryException("Query filter only possible KeyFields")
+        raise QueryException("Query filter not allowed on base Field. Consider using a KeyField")

@@ -7,7 +7,6 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 from src.popoto.redis_db import POPOTO_REDIS_DB
 from src import popoto
 
-# MODELS WITH A SINGLE KEYFIELD
 
 class GeoModel(popoto.Model):
     key = popoto.KeyField()
