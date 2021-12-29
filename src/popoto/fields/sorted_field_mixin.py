@@ -75,9 +75,8 @@ class SortedFieldMixin:
             return False
         return True
 
-    @classmethod
-    def format_value_pre_save(cls, field_value):
-        if cls.type in [int, float, datetime.datetime, datetime.date, datetime.time]:
+    def format_value_pre_save(self, field_value):
+        if self.type in [int, float, datetime.datetime, datetime.date, datetime.time]:
             return field_value
         else:
             return float(field_value)

@@ -74,8 +74,7 @@ class Field(metaclass=FieldBase):
             return False
         return True
 
-    @classmethod
-    def format_value_pre_save(cls, field_value):
+    def format_value_pre_save(self, field_value):
         """
         format field_value before saving to db
         return corrected field_value

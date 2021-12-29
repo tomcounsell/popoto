@@ -78,8 +78,7 @@ class GeoField(Field):
             return False
         return True
 
-    @classmethod
-    def format_value_pre_save(cls, field_value):
+    def format_value_pre_save(self, field_value):
         """
         format field_value before saving to db
         return corrected field_value
@@ -89,7 +88,7 @@ class GeoField(Field):
             return field_value
         if isinstance(field_value, tuple):
             return GeoField.Coordinates(field_value[0], field_value[1])
-        if cls.null:
+        if self.null:
             return GeoField.Coordinates(None, None)
         return field_value
 
