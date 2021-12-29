@@ -1,4 +1,3 @@
-import random
 import sys
 import os
 from datetime import date
@@ -21,7 +20,7 @@ leo = StarSign.create(name="Leo")
 
 class Person(Model):
     name = KeyField()
-    star_sign = Relationship(StarSign)
+    star_sign = Relationship(model=StarSign)
 
 
 bk = Person.create(name="Beyoncé Knowles", star_sign=virgo)
@@ -29,7 +28,7 @@ kr = Person.create(name="Kelly Rowland", star_sign=aquarius)
 mw = Person.create(name="Michelle Williams", star_sign=leo)
 
 assert bk.star_sign.name == "Virgo"
-
+queen_bey = Person.query.get(name="Beyoncé Knowles")
 
 class Group(Model):
     name = KeyField()
@@ -39,8 +38,8 @@ dc = Group.create(name="Destiny's Child")
 
 
 class Membership(Model):
-    person = Relationship('Person')
-    group = Relationship('Group')
+    person = Relationship(model=Person)
+    group = Relationship(model=Group)
     joined_at = Field(type=date, null=True)
 
 
@@ -49,7 +48,7 @@ for person in [bk, kr, mw]:
 
 
 assert len(Membership.query.filter(group=dc)) == 3
-assert bk in Person.query.filter(membership__group__name="Destiny's Child")
+assert bk in Membership.query.filter(group__name="Destiny's Child")
 
 
 
