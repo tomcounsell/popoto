@@ -2,34 +2,11 @@ from decimal import Decimal
 
 import msgpack
 import datetime
+
+from ..exceptions import ModelException
+from ..fields.relationship import Relationship
 from ..fields.geo_field import GeoField
-
 from ..redis_db import ENCODING
-
-
-# def encode_custom_types(obj):
-#     if isinstance(obj, GeoField.Coordinates):
-#         return {'__Coordinates__': True, 'latitude': obj.latitude, 'longitude': obj.longitude}
-#     if isinstance(obj, datetime.datetime):
-#         return {'__datetime__': True, 'as_str': obj.strftime("%Y%m%dT%H:%M:%S.%f")}
-#     if isinstance(obj, datetime.date):
-#         return {'__date__': True, 'as_str': obj.strftime("%Y%m%d")}
-#     if isinstance(obj, datetime.time):
-#         return {'__time__': True, 'as_str': obj.strftime("%H:%M:%S.%f")}
-#     return obj
-#
-#
-# def decode_custom_types(obj):
-#     if isinstance(obj, dict) and 'as_str' in obj:
-#         if '__Coordinates__' in obj:
-#             return GeoField.Coordinates(obj.latitude, obj.longitude)
-#         if '__datetime__' in obj:
-#             return datetime.datetime.strptime(obj['as_str'], "%Y%m%dT%H:%M:%S.%f")
-#         if '__date__' in obj:
-#             return datetime.datetime.strptime(obj['as_str'], "%Y%m%d").date()
-#         if '__time__' in obj:
-#             return datetime.datetime.strptime(obj['as_str'], "%H:%M:%S.%f").time()
-#     return obj
 
 from collections import namedtuple
 EncoderDecoder = namedtuple("EncoderDecoder", "key, encoder, decoder")
@@ -83,7 +60,12 @@ def encode_popoto_model_obj(obj: 'Model') -> dict:
     for field_name, field in obj._meta.fields.items():
         value = getattr(obj, field_name)
 
-        if field.type in TYPE_ENCODER_DECODERS.keys():
+        # use db_key string for relationships
+        if value and isinstance(field, Relationship):
+            if not isinstance(value, field.model):
+                raise ModelException(f"Relationship field requires {field.model} model instance. got {value} insteadd")
+            encoded_value = msgpack.packb(value.db_key)
+        elif field.type in TYPE_ENCODER_DECODERS.keys():
             encoded_value = msgpack.packb(value, default=TYPE_ENCODER_DECODERS[field.type].encoder)
         else:
             encoded_value = msgpack.packb(value)

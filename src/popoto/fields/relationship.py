@@ -37,29 +37,8 @@ class Relationship(Field):
             if not isinstance(field, Relationship)  # not ready for recursive compilation
         ]
 
-    # @classmethod
-    # def is_valid(cls, field, value, null_check=True, **kwargs) -> bool:
-    #     if not super().is_valid(field, value, null_check):
-    #         return False
-    #     return True
-
-    @classmethod
-    def format_value_pre_save(cls, field_value):
-        """
-        format field_value before saving in redis hashmap
-        assume validation is already passed
-        return corrected field_value
-        """
-        if not isinstance(field_value, Model):
-            raise ModelException(f"Relationship field requires model instance. got {field_value} instaed")
-        # if not field_value.db_key
-        return field_value.db_key
-
     @classmethod
     def on_save(cls, model_instance: 'Model', field_name: str, field_value: str, pipeline=None, **kwargs):
-
-
-
         return pipeline if pipeline else None
 
     @classmethod
