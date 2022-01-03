@@ -1,13 +1,14 @@
 from decimal import Decimal
-
 import msgpack
 import datetime
+from collections.abc import Iterable
 
 from ..exceptions import ModelException
 from ..fields.geo_field import GeoField
-from ..redis_db import ENCODING
+from ..redis_db import ENCODING, POPOTO_REDIS_DB
 
 from collections import namedtuple
+
 EncoderDecoder = namedtuple("EncoderDecoder", "key, encoder, decoder")
 
 TYPE_ENCODER_DECODERS = {
@@ -44,12 +45,14 @@ TYPE_ENCODER_DECODERS = {
 }
 TYPE_DECODER_KEYSTRINGS = [ed.key for ed in TYPE_ENCODER_DECODERS.values()]
 
+
 def decode_custom_types(obj):
     if isinstance(obj, dict) and 'as_str' in obj:
         for encoder_decoder in TYPE_ENCODER_DECODERS.values():
             if encoder_decoder.key in obj:
                 return encoder_decoder.decoder(obj)
     return obj
+
 
 def encode_popoto_model_obj(obj: 'Model') -> dict:
     import msgpack_numpy as m
@@ -83,3 +86,38 @@ def decode_popoto_model_hashmap(model_class: 'Model', redis_hash: dict) -> 'Mode
         })
     else:
         return None
+
+
+class DB_key(list):
+    def __init__(self, *key_partials):
+        def flatten(yet_flat):
+            for item in yet_flat:
+                if isinstance(item, Iterable) and not isinstance(item, (str, bytes)):
+                    yield from flatten(item)
+                else:
+                    yield item
+
+        super().__init__(flatten(key_partials))
+
+    @classmethod
+    def clean(cls, value: str, ignore_colons: bool = False) -> str:
+        value = value.replace('/', '//')
+        for char in "'?*^[]-":
+            value = value.replace(char, f"/{char}")
+        if not ignore_colons:
+            value = value.replace(':', '_')
+        return value
+
+    def __str__(self):
+        return ":".join([self.clean(partial) for partial in self])
+
+    @property
+    def redis_key(self):
+        return str(self)
+
+    def exists(self):
+        return True if POPOTO_REDIS_DB.exists(self.redis_key) > 0 else False
+
+    def get_instance(self, model_class):
+        redis_hash = POPOTO_REDIS_DB.hgetall(self.redis_key)
+        return decode_popoto_model_hashmap(model_class, redis_hash)
