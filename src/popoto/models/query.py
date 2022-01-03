@@ -1,5 +1,6 @@
 import logging
 
+from .db_key import DB_key
 from ..redis_db import POPOTO_REDIS_DB
 
 logger = logging.getLogger('POPOTO.Query')
@@ -20,13 +21,17 @@ class Query:
         self.model_class = model_class
         self.options = model_class._meta
 
-    def get(self, db_key=None, **kwargs) -> 'Model':
-        if not db_key and all([key in kwargs for key in self.options.key_field_names]):
+    def get(self, db_key: DB_key = None, redis_key: str = None, **kwargs) -> 'Model':
+        if not db_key and not redis_key and all([key in kwargs for key in self.options.key_field_names]):
             db_key = self.model_class(**kwargs).db_key
 
-        if db_key:
+        if db_key and not redis_key:
+            redis_key = db_key.redis_key
+
+        if redis_key:
             from src.popoto.models.encoding import decode_popoto_model_hashmap
-            instance = decode_popoto_model_hashmap(self.model_class, POPOTO_REDIS_DB.hgetall(db_key))
+            instance = decode_popoto_model_hashmap(self.model_class, POPOTO_REDIS_DB.hgetall(redis_key))
+
         else:
             instances = self.filter(**kwargs)
             if len(instances) > 1:
@@ -43,7 +48,7 @@ class Query:
             logger.warning("{catchall} is for debugging purposes only. Not for use in production environment")
             return list(POPOTO_REDIS_DB.keys(f"*{self.model_class.__name__}*"))
         else:
-            return list(POPOTO_REDIS_DB.smembers(self.model_class._meta.db_class_set_key))
+            return list(POPOTO_REDIS_DB.smembers(self.model_class._meta.db_class_set_key.redis_key))
 
     def all(self) -> list:
         redis_db_keys_list = self.keys()
@@ -94,7 +99,7 @@ class Query:
 
     def count(self, **kwargs) -> int:
         if not len(kwargs):
-            return int(POPOTO_REDIS_DB.scard(self.model_class._meta.db_class_set_key) or 0)
+            return int(POPOTO_REDIS_DB.scard(self.model_class._meta.db_class_set_key.redis_key) or 0)
         return len(self.filter_for_keys_set(**kwargs))  # maybe possible to refactor to use redis.SINTERCARD
 
     @classmethod
