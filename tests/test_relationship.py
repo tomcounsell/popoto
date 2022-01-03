@@ -48,16 +48,15 @@ for person in [bk, kr, mw]:
 
 
 assert len(Membership.query.filter(group=dc)) == 3
-assert bk in Membership.query.filter(group__name="Destiny's Child")
-
+# assert bk in Membership.query.filter(group__name="Destiny's Child")
 
 
 from random import random
 pipeline = POPOTO_REDIS_DB.pipeline()
-for model_class in [StarSign, Person, Group, Membership]:
+for model_class in [Membership, Group, Person, StarSign]:
     for item in model_class.query.all():
         if random() < 0.5:
             pipeline = item.delete(pipeline)
         else:
             item.delete()
-pipeline.execute()
+    pipeline.execute()
