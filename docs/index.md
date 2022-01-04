@@ -7,37 +7,37 @@ The familiar syntax makes it easy to use for [Django](https://www.djangoproject.
 
 Redis is a storage system that operates in RAM memory. 
 Since it works at RAM memory level, reading/writing is typically 10-20x faster
-compared to PostgreSQL or any other traditional Relational Database.
+compared to PostgreSQL and other traditional relational databases.
 
 
 ## Simple Example
 
 ``` python
-import popoto
+from popoto import Model, KeyField, Field
 
-class Person (popoto.Model)
-    name = popoto.KeyField()
-    fav_color = popoto.Field()
+class Person(Model):
+    name = KeyField()
+    fav_color = Field()
 
-lisa = Person.create(name="Lalisa Manobal", fav_color = "yellow")
-lisa = Person.query.get("Lalisa Manobal")
+Person.create(name="Lalisa Manobal", fav_color = "yellow")
+
+lisa = Person.query.get(name="Lalisa Manobal")
 
 print(f"{lisa.name} likes {lisa.fav_color}.")
 > 'Lalisa Manobal likes yellow.'
 ```
 
 
-**Popoto** is a simple ORM for your cache database on Redis.
+## Features
 
  - very fast stores and queries
  - familiar syntax, similar to Django models
- - scale up matrix data to N-dimensions, compatible with Pandas, Xarray
- - Geo for geometric map search
+ - Geometric distance search
  - Timeseries for streaming data and finance tickers
- - Graph for relationship mapping (like Neo4j)
- - PubSub for message queues, streaming data processing, notification microservices
+ - compatible with Pandas, Xarray for N-dimensional matrix search
+ - PubSub for message queues, streaming data processing
 
-**Popoto** is ideal for streaming data. The pub/sub utilities allow you to trigger data state updates in real time.
+**Popoto** is ideal for streaming data. The pub/sub module allows you to trigger state updates in real time.
 Currently being used in production for:
 
  - trigger buy/sell actions from streaming price data
