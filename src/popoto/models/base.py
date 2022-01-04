@@ -390,7 +390,7 @@ class Model(metaclass=ModelBase):
             #     pipeline = pipeline.expire(new_db_key, ttl)  # 2
             # if expire_at is not None:
             #     pipeline = pipeline.expire_at(new_db_key, expire_at)  # 2
-            pipeline = pipeline.sadd(self._meta.db_class_set_key, new_db_key.redis_key)  # 3
+            pipeline = pipeline.sadd(self._meta.db_class_set_key.redis_key, new_db_key.redis_key)  # 3
             if self.obsolete_redis_key and self.obsolete_redis_key != new_db_key.redis_key:  # 4
                 for field_name, field in self._meta.fields.items():
                     pipeline = field.on_delete(  # 4
@@ -492,7 +492,7 @@ class Model(metaclass=ModelBase):
                 )
 
             self._db_content = dict()  # 4
-            return bool(db_response >= 0)
+            return bool(db_response > 0)
 
     @classmethod
     def get_info(cls):
