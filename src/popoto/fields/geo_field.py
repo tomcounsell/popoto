@@ -1,9 +1,9 @@
 from collections import namedtuple
-
 import redis
-
 from .field import Field
 import logging
+from ..models.db_key import DB_key
+
 logger = logging.getLogger('POPOTO.GeoField')
 from ..redis_db import POPOTO_REDIS_DB
 
@@ -31,7 +31,7 @@ class GeoField(Field):
             'default': GeoField.Coordinates(None, None),
         }
         self.field_defaults.update(geofield_defaults)
-        # set keyfield_options, let kwargs override
+        # set field options, let kwargs override
         for k, v in geofield_defaults.items():
             setattr(self, k, kwargs.get(k, v))
 
@@ -78,8 +78,7 @@ class GeoField(Field):
             return False
         return True
 
-    @classmethod
-    def format_value_pre_save(cls, field_value):
+    def format_value_pre_save(self, field_value):
         """
         format field_value before saving to db
         return corrected field_value
@@ -89,36 +88,36 @@ class GeoField(Field):
             return field_value
         if isinstance(field_value, tuple):
             return GeoField.Coordinates(field_value[0], field_value[1])
-        if cls.null:
+        if self.null:
             return GeoField.Coordinates(None, None)
         return field_value
 
     @classmethod
-    def get_geo_db_key(cls, model, field_name):
+    def get_geo_db_key(cls, model, field_name: str) -> DB_key:
         return cls.get_special_use_field_db_key(model, field_name)
 
     @classmethod
     def on_save(cls, model_instance: 'Model', field_name: str, field_value: 'GeoField.Coordinates', pipeline=None, **kwargs):
         geo_db_key = cls.get_geo_db_key(model_instance, field_name)
-        geo_member = model_instance.db_key
+        geo_member = model_instance.db_key.redis_key
         if not field_value or not (field_value.longitude and field_value.latitude):
             if pipeline:
-                return pipeline.zrem(geo_db_key, geo_member)
+                return pipeline.zrem(geo_db_key.redis_key, geo_member)
             else:
-                return POPOTO_REDIS_DB.zrem(geo_db_key, geo_member)
+                return POPOTO_REDIS_DB.zrem(geo_db_key.redis_key, geo_member)
         if pipeline:
-            return pipeline.geoadd(geo_db_key, field_value.longitude, field_value.latitude, geo_member)
+            return pipeline.geoadd(geo_db_key.redis_key, field_value.longitude, field_value.latitude, geo_member)
         else:
-            return POPOTO_REDIS_DB.geoadd(geo_db_key, field_value.longitude, field_value.latitude, geo_member)
+            return POPOTO_REDIS_DB.geoadd(geo_db_key.redis_key, field_value.longitude, field_value.latitude, geo_member)
 
     @classmethod
     def on_delete(cls, model_instance: 'Model', field_name: str, field_value, pipeline: redis.client.Pipeline = None, **kwargs):
         geo_db_key = cls.get_geo_db_key(model_instance, field_name)
-        geo_member = model_instance.db_key
+        geo_member = model_instance.db_key.redis_key
         if pipeline:
-            return pipeline.zrem(geo_db_key, geo_member)
+            return pipeline.zrem(geo_db_key.redis_key, geo_member)
         else:
-            return POPOTO_REDIS_DB.zrem(geo_db_key, geo_member)
+            return POPOTO_REDIS_DB.zrem(geo_db_key.redis_key, geo_member)
 
     @classmethod
     def filter_query(cls, model: 'Model', field_name: str, **query_params) -> set:
@@ -165,14 +164,14 @@ class GeoField(Field):
 
         if member:
             redis_db_keys_list = POPOTO_REDIS_DB.georadiusbymember(
-                geo_db_key, member=member.db_key,
-                radius=radius, unit=unit
+                geo_db_key.redis_key, member=member.db_key.redis_key,
+                radius=radius, unit=unit  # , withdist=True, sort='asc'
             )
 
         elif coordinates.latitude and coordinates.longitude:
             # logger.debug(f"geo query on {dict(model=model._meta.db_class_key, longitude=coordinates.longitude, latitude=coordinates.latitude, radius=radius, unit=unit)}")
             redis_db_keys_list = POPOTO_REDIS_DB.georadius(
-                geo_db_key,
+                geo_db_key.redis_key,
                 longitude=coordinates.longitude, latitude=coordinates.latitude,
                 radius=radius, unit=unit
             )

@@ -13,7 +13,7 @@ class SubscriberException(Exception):
 class Subscriber(ABC):
     sub_channel_names: list = []
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
         self.pubsub = POPOTO_REDIS_DB.pubsub()
         logger.info(f'New pubsub for {self.__class__.__name__}')
         for channel_name in self.sub_channel_names:
@@ -29,7 +29,7 @@ class Subscriber(ABC):
         if not data_event.get('type') == 'message':
             return
 
-        # logger.debug(f'got message: {data_event}')
+        # logger.debug(f"received message: {data_event}")
 
         try:
             channel_name = data_event.get('channel').decode(ENCODING)

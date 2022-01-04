@@ -14,7 +14,7 @@ class UniqueFieldMixin:
             'unique': True,
         }
         self.field_defaults.update(uniquekeyfield_defaults)
-        # set keyfield_options, let kwargs override
+        # set field options, let kwargs override
         for k, v in uniquekeyfield_defaults.items():
             setattr(self, k, kwargs.get(k, v))
 

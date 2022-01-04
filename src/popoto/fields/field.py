@@ -6,6 +6,8 @@ from ..exceptions import ModelException
 
 import logging
 
+from ..models.db_key import DB_key
+
 logger = logging.getLogger('POPOTO.field')
 
 VALID_FIELD_TYPES = {
@@ -23,7 +25,7 @@ class FieldBase(type):
             return super().__new__(cls, name, bases, attrs, **kwargs)
 
         new_class = super().__new__(cls, name, bases, attrs, **kwargs)
-        new_class.field_class_key = f"${name.strip('Field')}F"
+        new_class.field_class_key = DB_key(f"${name.strip('Field')}F")
         return new_class
 
 
@@ -70,11 +72,11 @@ class Field(metaclass=FieldBase):
             logger.error(f"field {field} is type {field.type}. But value is {type(value)}")
             return False
         if field.type == str and len(str(value)) > field.max_length:
+            logger.error(f"{field} value is greater than max_length={field.max_length}")
             return False
         return True
 
-    @classmethod
-    def format_value_pre_save(cls, field_value):
+    def format_value_pre_save(self, field_value):
         """
         format field_value before saving to db
         return corrected field_value
@@ -83,12 +85,13 @@ class Field(metaclass=FieldBase):
         return field_value
 
     @classmethod
-    def get_special_use_field_db_key(cls, model: 'Model', field_name: str):
+    def get_special_use_field_db_key(cls, model: 'Model', field_name: str) -> DB_key:
         """
         For use by child class when implementing additional Redis data structures
         Children implementing more than one new structure will need to augment this.
         """
-        return f"{cls.field_class_key}:{model._meta.db_class_key}:{field_name}"
+        return DB_key(cls.field_class_key, model._meta.db_class_key, field_name)
+
 
     @classmethod
     def on_save(cls, model_instance: 'Model', field_name: str, field_value, pipeline: redis.client.Pipeline = None,
@@ -137,4 +140,4 @@ class Field(metaclass=FieldBase):
         :return: set{db_key, db_key, ..}
         """
         from ..models.query import QueryException
-        raise QueryException("Query filter only possible KeyFields")
+        raise QueryException("Query filter not allowed on base Field. Consider using a KeyField")

@@ -4,6 +4,7 @@ import datetime
 import typing
 import redis
 
+from ..models.db_key import DB_key
 from ..models.query import QueryException
 from ..redis_db import POPOTO_REDIS_DB
 logger = logging.getLogger('POPOTO.SortedFieldMixin')
@@ -75,9 +76,8 @@ class SortedFieldMixin:
             return False
         return True
 
-    @classmethod
-    def format_value_pre_save(cls, field_value):
-        if cls.type in [int, float, datetime.datetime, datetime.date, datetime.time]:
+    def format_value_pre_save(self, field_value):
+        if self.type in [int, float, datetime.datetime, datetime.date, datetime.time]:
             return field_value
         else:
             return float(field_value)
@@ -98,16 +98,16 @@ class SortedFieldMixin:
             raise ValueError("SortedField received non-numeric value.")
 
     @classmethod
-    def get_sortedset_db_key(cls, model, field_name):
+    def get_sortedset_db_key(cls, model, field_name) -> DB_key:
         return cls.get_special_use_field_db_key(model, field_name)
 
     @classmethod
-    def get_partitioned_sortedset_db_key(cls, model_instance, field_name):
+    def get_partitioned_sortedset_db_key(cls, model_instance, field_name) -> DB_key:
         sortedset_db_key = cls.get_sortedset_db_key(model_instance, field_name)
         # use field names and query values partition_on fields to extend sortedset_db_key
         for partition_field_name in model_instance._meta.fields[field_name].partition_on:
             try:
-                sortedset_db_key += f":{str(getattr(model_instance, partition_field_name))}"
+                sortedset_db_key.append(str(getattr(model_instance, partition_field_name)))
             except KeyError:
                 raise QueryException(f"{field_name} filter requires partition_on field values")
         return sortedset_db_key
@@ -117,23 +117,23 @@ class SortedFieldMixin:
                 pipeline: redis.client.Pipeline = None, **kwargs):
         sortedset_db_key = cls.get_partitioned_sortedset_db_key(model_instance, field_name)
 
-        sortedset_member = model_instance.db_key
+        sortedset_member = model_instance.db_key.redis_key
         sortedset_score = cls.convert_to_numeric(model_instance._meta.fields[field_name], field_value)
 
         if isinstance(pipeline, redis.client.Pipeline):
-            return pipeline.zadd(sortedset_db_key, {sortedset_member: sortedset_score})
+            return pipeline.zadd(sortedset_db_key.redis_key, {sortedset_member: sortedset_score})
         else:
-            return POPOTO_REDIS_DB.zadd(sortedset_db_key, {sortedset_member: sortedset_score})
+            return POPOTO_REDIS_DB.zadd(sortedset_db_key.redis_key, {sortedset_member: sortedset_score})
 
     @classmethod
     def on_delete(cls, model_instance: 'Model', field_name: str, field_value, pipeline: redis.client.Pipeline = None,
                   **kwargs):
         sortedset_db_key = cls.get_partitioned_sortedset_db_key(model_instance, field_name)
-        sortedset_member = model_instance.db_key
+        sortedset_member = model_instance.db_key.redis_key
         if pipeline:
-            return pipeline.zrem(sortedset_db_key, sortedset_member)
+            return pipeline.zrem(sortedset_db_key.redis_key, sortedset_member)
         else:
-            return POPOTO_REDIS_DB.zrem(sortedset_db_key, sortedset_member)
+            return POPOTO_REDIS_DB.zrem(sortedset_db_key.redis_key, sortedset_member)
 
     @classmethod
     def filter_query(cls, model_class: 'Model', field_name: str, **query_params) -> set:
@@ -169,10 +169,10 @@ class SortedFieldMixin:
                 raise QueryException(f"{field_name} filter requires partition_on field values")
 
         redis_db_keys_list = POPOTO_REDIS_DB.zrangebyscore(
-            sortedset_db_key, value_range['min'], value_range['max']
+            sortedset_db_key.redis_key, value_range['min'], value_range['max']
         )
         # redis_db_keys_list = POPOTO_REDIS_DB.zrange(
-        #     sortedset_db_key, value_range['min'], value_range['max'],
+        #     sortedset_db_key.redis_key, value_range['min'], value_range['max'],
         #     desc=False, withscores=False,
         #     byscore=True, offset=None, num=None
         # )

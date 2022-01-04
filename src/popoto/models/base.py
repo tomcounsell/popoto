@@ -3,14 +3,19 @@ import logging
 import redis
 
 from .encoding import encode_popoto_model_obj
+from .db_key import DB_key
 from .query import Query
-from ..fields.field import Field
+from ..fields.field import Field, VALID_FIELD_TYPES
 from ..fields.key_field_mixin import KeyFieldMixin
 from ..fields.sorted_field_mixin import SortedFieldMixin
 from ..fields.geo_field import GeoField
+from ..fields.relationship import Relationship
 from ..redis_db import POPOTO_REDIS_DB
 
 logger = logging.getLogger('POPOTO.model_base')
+
+global RELATED_MODEL_LOAD_SEQUENCE
+RELATED_MODEL_LOAD_SEQUENCE = set()
 
 
 class ModelException(Exception):
@@ -26,6 +31,7 @@ class ModelOptions:
         # self.auto_field_names = set()
         # self.list_field_names = set()
         # self.set_field_names = set()
+        self.relationship_field_names = set()
         self.sorted_field_names = set()
         self.geo_field_names = set()
 
@@ -33,8 +39,8 @@ class ModelOptions:
         # self.related_fields = {}  # model becomes graph node
 
         # todo: allow customizing this in model.Meta class
-        self.db_class_key = self.model_name
-        self.db_class_set_key = f"$Class:{self.db_class_key}"
+        self.db_class_key = DB_key(self.model_name)
+        self.db_class_set_key = DB_key("$Class", self.db_class_key)
 
         self.abstract = False
         self.unique_together = []
@@ -61,6 +67,8 @@ class ModelOptions:
             self.geo_field_names.add(field_name)
         # elif isinstance(field, ListField):
         #     self.list_field_names.add(field_name)
+        if isinstance(field, Relationship):
+            self.relationship_field_names.add(field_name)
 
     @property
     def fields(self) -> dict:
@@ -164,7 +172,31 @@ class Model(metaclass=ModelBase):
         for field_name in self._meta.fields.keys() & kwargs.keys():
             setattr(self, field_name, kwargs.get(field_name))
 
-        # additional key management here
+        # load relationships
+        if len(self._meta.relationship_field_names):
+            global RELATED_MODEL_LOAD_SEQUENCE
+            is_parent_model = len(RELATED_MODEL_LOAD_SEQUENCE) == 0
+            for field_name in self._meta.relationship_field_names:
+                if f"{self.__class__.__name__}.{field_name}" in RELATED_MODEL_LOAD_SEQUENCE:
+                    continue
+                RELATED_MODEL_LOAD_SEQUENCE.add(f"{self.__class__.__name__}.{field_name}")
+
+                field_value = getattr(self, field_name)
+                if isinstance(field_value, Model):
+                    setattr(self, field_name, field_value)
+                elif isinstance(field_value, str):
+                    setattr(
+                        self, field_name,
+                        self._meta.fields[field_name].model.query.get(redis_key=field_value)
+                    )
+
+                # todo: lazy load the instance from the db
+                elif not field_value:
+                    setattr(self, field_name, None)
+                else:
+                    raise ModelException(f"{field_name} expects model instance or redis_key")
+            if is_parent_model:
+                RELATED_MODEL_LOAD_SEQUENCE = set()
 
         self._ttl = None  # todo: set default in child Meta class
         self._expire_at = None  # todo: datetime? or timestamp?
@@ -173,20 +205,18 @@ class Model(metaclass=ModelBase):
         if not self.is_valid(null_check=False):  # exclude null, will validate null values on pre-save
             raise ModelException(f"Could not instantiate class {self}")
 
-        self._db_key = None
+        self._redis_key = None
         # _db_key used by Redis cannot be known without performance cost
         # _db_key is predicted until synced during save() call
         if None not in [getattr(self, key_field_name) for key_field_name in self._meta.key_field_names]:
-            self._db_key = self.db_key
-        self.obsolete_key = None  # to be used when db_key changes between loading and saving the object
+            self._redis_key = self.db_key.redis_key
+        self.obsolete_redis_key = None  # to be used when db_key changes between loading and saving the object
         self._db_content = dict()  # empty until synced during save() call
 
         # todo: create set of possible custom field keys
 
-
-
     @property
-    def db_key(self):
+    def db_key(self) -> DB_key:
         """
         the db key must include the class name - equivalent to db table name
         keys append alphabetically.
@@ -195,13 +225,13 @@ class Model(metaclass=ModelBase):
         OR model Meta: key_order = [keyname, keyname, ]
         OR both
         """
-        return f"{self._meta.db_class_key}:" + ":".join([
-            str(getattr(self, key_field_name)).replace(':', '_') or "None"
+        return DB_key(self._meta.db_class_key, [
+            getattr(self, key_field_name) or "None"
             for key_field_name in sorted(self._meta.key_field_names)
         ])
 
     def __repr__(self):
-        return f"<{self.__class__.__name__} Popoto object at {self._db_key}>"
+        return f"<{self.__class__.__name__} Popoto object at {self._redis_key}>"
 
     def __str__(self):
         return str(self.db_key)
@@ -257,9 +287,13 @@ class Model(metaclass=ModelBase):
             ]):
                 try:
                     if getattr(self, field_name) is not None:
-                        setattr(self, field_name, self._meta.fields[field_name].type(getattr(self, field_name)))
+                        if self._meta.fields[field_name].type in VALID_FIELD_TYPES:
+                            setattr(self, field_name, self._meta.fields[field_name].type(getattr(self, field_name)))
+                        else:
+                            pass  # do not force typing if custom type is defined
                     if not isinstance(getattr(self, field_name), self._meta.fields[field_name].type):
-                        raise TypeError(f"{field_name} is not type {self._meta.fields[field_name].type}. ")
+                        raise TypeError(f"Expected {field_name} to be type {self._meta.fields[field_name].type}. "
+                                        f"It is type {type(getattr(self, field_name))}")
                 except TypeError as e:
                     logger.error(
                         f"{str(e)} \n Change the value or modify type on {self.__class__.__name__}.{field_name}"
@@ -331,9 +365,9 @@ class Model(metaclass=ModelBase):
         elif pipeline:
             pipeline = pipeline_or_success
 
-        new_db_key = self.db_key
-        if self._db_key != new_db_key:
-            self.obsolete_key = self._db_key
+        new_db_key = DB_key(self.db_key)  # todo: why have a new key??
+        if self._redis_key != new_db_key.redis_key:
+            self.obsolete_redis_key = self._redis_key
 
         # todo: implement and test tll, expire_at
         ttl, expire_at = (ttl or self._ttl), (expire_at or self._expire_at)
@@ -351,21 +385,21 @@ class Model(metaclass=ModelBase):
         self._db_content = hset_mapping  # 1
 
         if isinstance(pipeline, redis.client.Pipeline):
-            pipeline = pipeline.hset(new_db_key, mapping=hset_mapping)  # 1
+            pipeline = pipeline.hset(new_db_key.redis_key, mapping=hset_mapping)  # 1
             # if ttl is not None:
             #     pipeline = pipeline.expire(new_db_key, ttl)  # 2
             # if expire_at is not None:
             #     pipeline = pipeline.expire_at(new_db_key, expire_at)  # 2
-            pipeline = pipeline.sadd(self._meta.db_class_set_key, new_db_key)  # 3
-            if self.obsolete_key and self.obsolete_key != new_db_key:  # 4
+            pipeline = pipeline.sadd(self._meta.db_class_set_key.redis_key, new_db_key.redis_key)  # 3
+            if self.obsolete_redis_key and self.obsolete_redis_key != new_db_key.redis_key:  # 4
                 for field_name, field in self._meta.fields.items():
                     pipeline = field.on_delete(  # 4
                         model_instance=self, field_name=field_name,
                         field_value=getattr(self, field_name),
                         pipeline=pipeline, **kwargs
                     )
-                pipeline.delete(self.obsolete_key)  # 4
-                self.obsolete_key = None
+                pipeline.delete(self.obsolete_redis_key)  # 4
+                self.obsolete_redis_key = None
             for field_name, field in self._meta.fields.items():  # 5
                 pipeline = field.on_save(  # 5
                     self, field_name=field_name,
@@ -374,26 +408,26 @@ class Model(metaclass=ModelBase):
                     ignore_errors=ignore_errors,
                     pipeline=pipeline, **kwargs
                 )
-            self._db_key = new_db_key  # 6
+            self._redis_key = new_db_key.redis_key  # 6
             return pipeline
 
         else:
-            db_response = POPOTO_REDIS_DB.hset(new_db_key, mapping=hset_mapping)  # 1
+            db_response = POPOTO_REDIS_DB.hset(new_db_key.redis_key, mapping=hset_mapping)  # 1
             # if ttl is not None:
             #     POPOTO_REDIS_DB.expire(new_db_key, ttl)  # 2
             # if expire_at is not None:
             #     POPOTO_REDIS_DB.expireat(new_db_key, ttl)  # 2
-            POPOTO_REDIS_DB.sadd(self._meta.db_class_set_key, new_db_key)  # 2
+            POPOTO_REDIS_DB.sadd(self._meta.db_class_set_key.redis_key, new_db_key.redis_key)  # 2
 
-            if self.obsolete_key and self.obsolete_key != new_db_key:  # 4
+            if self.obsolete_redis_key and self.obsolete_redis_key != new_db_key.redis_key:  # 4
                 for field_name, field in self._meta.fields.items():
                     field.on_delete(  # 4
                         model_instance=self, field_name=field_name,
                         field_value=getattr(self, field_name),
                         pipeline=None, **kwargs
                     )
-                POPOTO_REDIS_DB.delete(self.obsolete_key)  # 4
-                self.obsolete_key = None
+                POPOTO_REDIS_DB.delete(self.obsolete_redis_key)  # 4
+                self.obsolete_redis_key = None
 
             for field_name, field in self._meta.fields.items():  # 5
                 field.on_save(  # 5
@@ -404,7 +438,7 @@ class Model(metaclass=ModelBase):
                     pipeline=None, **kwargs
                 )
 
-            self._db_key = new_db_key  # 6
+            self._redis_key = new_db_key.redis_key  # 6
             return db_response
 
     @classmethod
@@ -423,7 +457,7 @@ class Model(metaclass=ModelBase):
             Also triggers all field on_delete methods.
         """
 
-        delete_key = self._db_key or self.db_key
+        delete_redis_key = self._redis_key or self.db_key.redis_key
 
         """
         1. delete object as hashmap
@@ -433,8 +467,8 @@ class Model(metaclass=ModelBase):
         """
 
         if pipeline is not None:
-            pipeline = pipeline.delete(delete_key)  # 1
-            pipeline = pipeline.srem(self._meta.db_class_set_key, delete_key)  # 2
+            pipeline = pipeline.delete(delete_redis_key)  # 1
+            pipeline = pipeline.srem(self._meta.db_class_set_key.redis_key, delete_redis_key)  # 2
 
             for field_name, field in self._meta.fields.items():  # 3
                 pipeline = field.on_delete(  # 3
@@ -447,8 +481,8 @@ class Model(metaclass=ModelBase):
             return pipeline
 
         else:
-            db_response = POPOTO_REDIS_DB.delete(delete_key)  # 1
-            POPOTO_REDIS_DB.srem(self._meta.db_class_set_key, delete_key)  # 2
+            db_response = POPOTO_REDIS_DB.delete(delete_redis_key)  # 1
+            POPOTO_REDIS_DB.srem(self._meta.db_class_set_key.redis_key, delete_redis_key)  # 2
 
             for field_name, field in self._meta.fields.items():  # 3
                 field.on_delete(  # 3
@@ -458,7 +492,7 @@ class Model(metaclass=ModelBase):
                 )
 
             self._db_content = dict()  # 4
-            return bool(db_response >= 0)
+            return bool(db_response > 0)
 
     @classmethod
     def get_info(cls):
