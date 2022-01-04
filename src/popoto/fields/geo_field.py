@@ -165,7 +165,7 @@ class GeoField(Field):
         if member:
             redis_db_keys_list = POPOTO_REDIS_DB.georadiusbymember(
                 geo_db_key.redis_key, member=member.db_key.redis_key,
-                radius=radius, unit=unit
+                radius=radius, unit=unit  # , withdist=True, sort='asc'
             )
 
         elif coordinates.latitude and coordinates.longitude:
