@@ -173,7 +173,7 @@ class GeoField(Field):
             redis_db_keys_list = POPOTO_REDIS_DB.georadius(
                 geo_db_key.redis_key,
                 longitude=coordinates.longitude, latitude=coordinates.latitude,
-                radius=radius, unit=unit
+                radius=radius, unit=unit  # , withdist=True, sort='asc'
             )
             # logger.debug(f"geo query returned {redis_db_keys_list}")
         else:
