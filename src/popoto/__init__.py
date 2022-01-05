@@ -1,4 +1,4 @@
-from .fields.shortcuts import IntField, FloatField, DecimalField, StringField, BooleanField, ListField, DictField, BytesField, DateField, DatetimeField, TimeField, KeyField, AutoKeyField, UniqueKeyField, SortedField
+from .fields.shortcuts import IntField, FloatField, DecimalField, StringField, BooleanField, ListField, DictField, SetField, TupleField, BytesField, DateField, DatetimeField, TimeField, KeyField, AutoKeyField, UniqueKeyField, SortedField
 from .fields.field import Field
 from .fields.geo_field import GeoField
 from .fields.relationship import Relationship
@@ -9,7 +9,8 @@ from .pubsub.subscriber import Subscriber
 __all__ = [
     'Field',
     'IntField', 'FloatField', 'DecimalField', 'StringField',
-    'BooleanField', 'ListField', 'DictField', 'BytesField',
+    'BooleanField', 'BytesField',
+    'ListField', 'DictField', 'SetField', 'TupleField',
     'DateField', 'DatetimeField', 'TimeField',
     'KeyField', 'AutoKeyField', 'UniqueKeyField',
     'SortedField', 'GeoField',

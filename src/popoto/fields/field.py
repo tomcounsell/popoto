@@ -11,7 +11,7 @@ from ..models.db_key import DB_key
 logger = logging.getLogger('POPOTO.field')
 
 VALID_FIELD_TYPES = {
-    int, float, Decimal, str, bool, list, dict, bytes, date, datetime, time,
+    int, float, Decimal, str, bool, bytes, list, dict, set, tuple, date, datetime, time,
 }
 
 

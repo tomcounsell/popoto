@@ -35,6 +35,12 @@ class BooleanField(Field):
         super().__init__(**kwargs)
 
 
+class BytesField(Field):
+    def __init__(self, *args, **kwargs):
+        kwargs['type'] = bytes
+        super().__init__(**kwargs)
+
+
 class ListField(Field):
     def __init__(self, *args, **kwargs):
         kwargs['type'] = list
@@ -47,15 +53,15 @@ class DictField(Field):
         super().__init__(**kwargs)
 
 
-class DictField(Field):
+class SetField(Field):
     def __init__(self, *args, **kwargs):
-        kwargs['type'] = dict
+        kwargs['type'] = set
         super().__init__(**kwargs)
 
 
-class BytesField(Field):
+class TupleField(Field):
     def __init__(self, *args, **kwargs):
-        kwargs['type'] = bytes
+        kwargs['type'] = tuple
         super().__init__(**kwargs)
 
 
