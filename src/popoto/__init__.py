@@ -1,5 +1,5 @@
-from .fields.shortcuts import IntField, FloatField, DecimalField, StringField, BooleanField, ListField, DictField, SetField, TupleField, BytesField, DateField, DatetimeField, TimeField, KeyField, AutoKeyField, UniqueKeyField, SortedField
 from .fields.field import Field
+from .fields.shortcuts import IntField, FloatField, DecimalField, StringField, BooleanField, ListField, DictField, SetField, TupleField, BytesField, DateField, DatetimeField, TimeField, KeyField, AutoKeyField, UniqueKeyField, SortedField, SortedKeyField
 from .fields.geo_field import GeoField
 from .fields.relationship import Relationship
 from .models.base import Model, ModelBase
@@ -13,7 +13,7 @@ __all__ = [
     'ListField', 'DictField', 'SetField', 'TupleField',
     'DateField', 'DatetimeField', 'TimeField',
     'KeyField', 'AutoKeyField', 'UniqueKeyField',
-    'SortedField', 'GeoField',
+    'SortedField', 'SortedKeyField', 'GeoField',
     'Relationship',
     'Model', 'ModelBase',
     'Publisher', 'Subscriber',
