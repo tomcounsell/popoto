@@ -16,7 +16,7 @@ class AutoFieldMixin:
     """
     # todo: add support for https://github.com/ai/nanoid
 
-    auto: bool = False
+    auto: bool = True
     auto_uuid_length: int = 32
     auto_id: str = ""
 
@@ -34,10 +34,10 @@ class AutoFieldMixin:
 
     @classmethod
     def is_valid(cls, field, value, null_check=True, **kwargs) -> bool:
-        if len(value) != field.auto_uuid_length:
+        if value and len(value) != field.auto_uuid_length:
             logger.error(f"auto key value is length {len(value)}. It should be {field.auto_uuid_length}")
             return False
-        return super().is_valid(field, value, null_check=True, **kwargs)
+        return super().is_valid(field, value, null_check=null_check, **kwargs)
 
     def get_new_auto_key_value(self):
         return uuid.uuid4().hex[:self.auto_uuid_length]
