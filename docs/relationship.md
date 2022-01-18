@@ -35,3 +35,12 @@ print(memberships[0].member)
 > Sally
 
 ```
+
+When writing a query, start with the model you want returned and use filter params.
+In the above example, to get all the memberships of a group, use a query like this:
+
+`memberships = Membership.query.filter(group=friends_group)`
+
+To traverse relationships, use a list expansion like this:
+
+`friends = [m.person for m in Membership.query.filter(group=friends_group)]`
