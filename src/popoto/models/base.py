@@ -231,7 +231,7 @@ class Model(metaclass=ModelBase):
         ])
 
     def __repr__(self):
-        return f"<{self.__class__.__name__} Popoto object at {self._redis_key}>"
+        return f"<{self.__class__.__name__} Popoto object at {self.db_key.redis_key}>"
 
     def __str__(self):
         return str(self.db_key)
@@ -444,7 +444,7 @@ class Model(metaclass=ModelBase):
     @classmethod
     def create(cls, **kwargs):
         instance = cls(**kwargs)
-        instance.save()
+        instance.save(pipeline=kwargs.get('pipeline', None))
         return instance
 
     @classmethod

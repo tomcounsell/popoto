@@ -29,7 +29,7 @@ class Query:
             redis_key = db_key.redis_key
 
         if redis_key:
-            from src.popoto.models.encoding import decode_popoto_model_hashmap
+            from ..models.encoding import decode_popoto_model_hashmap
             instance = decode_popoto_model_hashmap(self.model_class, POPOTO_REDIS_DB.hgetall(redis_key))
 
         else:
