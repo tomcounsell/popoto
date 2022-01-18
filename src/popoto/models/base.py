@@ -442,10 +442,10 @@ class Model(metaclass=ModelBase):
             return db_response
 
     @classmethod
-    def create(cls, **kwargs):
+    def create(cls, pipeline: redis.client.Pipeline = None, **kwargs):
         instance = cls(**kwargs)
-        instance.save(pipeline=kwargs.get('pipeline', None))
-        return instance
+        pipeline_or_db_response = instance.save(pipeline=pipeline)
+        return pipeline_or_db_response if pipeline else instance
 
     @classmethod
     def load(cls, db_key: str = None, **kwargs):
