@@ -37,6 +37,26 @@ Animal.query.filter(name__startswith="S")
 >>> [{'name': 'Sally', 'sound': 'quack'}]
 ```
 
+# query.filter(limit=100)
+
+returns first 100 objects
+
+``` python
+movies = Movies.query.filter(name__startswith="The", limit=100)
+len(movies)
+>>> 100
+```
+
+can be slightly faster than equivalent: 
+
+``` python
+movies = Movies.query.filter(name__startswith="The")[:100]
+len(movies)
+>>> 100
+```
+
+both are valid and will return the same list of objects.
+
 # KeyField query filters
 
 `{field_name}=`: exact match

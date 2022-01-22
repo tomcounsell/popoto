@@ -92,9 +92,11 @@ class Query:
            Run query using the given paramters
            return a list of model_class objects
         """
+        limit = int(kwargs.pop('limit')) if 'limit' in kwargs else 0
         db_keys_set = self.filter_for_keys_set(**kwargs)
         if not len(db_keys_set):
             return []
+        db_keys_set = db_keys_set[:limit] if limit > 0 else db_keys_set
         return Query.get_many_objects(self.model_class, db_keys_set)
 
     def count(self, **kwargs) -> int:
