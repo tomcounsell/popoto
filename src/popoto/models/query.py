@@ -30,7 +30,10 @@ class Query:
 
         if redis_key:
             from ..models.encoding import decode_popoto_model_hashmap
-            instance = decode_popoto_model_hashmap(self.model_class, POPOTO_REDIS_DB.hgetall(redis_key))
+            hashmap = POPOTO_REDIS_DB.hgetall(redis_key)
+            if not hashmap:
+                return None
+            instance = decode_popoto_model_hashmap(self.model_class, hashmap)
 
         else:
             instances = self.filter(**kwargs)
@@ -54,7 +57,7 @@ class Query:
         redis_db_keys_list = self.keys()
         return Query.get_many_objects(self.model_class, set(redis_db_keys_list))
 
-    def filter_for_keys_set(self, **kwargs) -> list:
+    def filter_for_keys_set(self, **kwargs) -> set:
         db_keys_sets = []
         employed_kwargs_set = set()
 
@@ -83,8 +86,8 @@ class Query:
 
         logger.debug(db_keys_sets)
         if not len(db_keys_sets):
-            return []
-        return list(set.intersection(*db_keys_sets))
+            return set()
+        return set.intersection(*db_keys_sets)
 
     def filter(self, **kwargs) -> list:
         """
@@ -92,12 +95,11 @@ class Query:
            Run query using the given paramters
            return a list of model_class objects
         """
-        limit = int(kwargs.pop('limit')) if 'limit' in kwargs else 0
+        limit = int(kwargs.pop('limit')) if 'limit' in kwargs else None
         db_keys_set = self.filter_for_keys_set(**kwargs)
         if not len(db_keys_set):
             return []
-        db_keys_set = db_keys_set[:limit] if limit > 0 else db_keys_set
-        return Query.get_many_objects(self.model_class, db_keys_set)
+        return Query.get_many_objects(self.model_class, db_keys_set, limit=limit)
 
     def count(self, **kwargs) -> int:
         if not len(kwargs):
@@ -105,7 +107,7 @@ class Query:
         return len(self.filter_for_keys_set(**kwargs))  # maybe possible to refactor to use redis.SINTERCARD
 
     @classmethod
-    def get_many_objects(cls, model: 'Model', db_keys: set) -> list:
+    def get_many_objects(cls, model: 'Model', db_keys: set, order_by_attr_name: str = "", limit: int = None) -> list:
         from .encoding import decode_popoto_model_hashmap
         pipeline = POPOTO_REDIS_DB.pipeline()
         for db_key in db_keys:
@@ -113,4 +115,9 @@ class Query:
         hashes_list = pipeline.execute()
         if {} in hashes_list:
             logger.error("one or more redis keys points to missing objects")
-        return [decode_popoto_model_hashmap(model, redis_hash) for redis_hash in hashes_list if redis_hash]
+
+        # todo: order the hashes list or objects before applying limit
+        return [
+            decode_popoto_model_hashmap(model, redis_hash)
+            for redis_hash in hashes_list[:limit] if redis_hash
+        ]

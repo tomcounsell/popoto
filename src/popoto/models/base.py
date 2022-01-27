@@ -417,7 +417,7 @@ class Model(metaclass=ModelBase):
             #     POPOTO_REDIS_DB.expire(new_db_key, ttl)  # 2
             # if expire_at is not None:
             #     POPOTO_REDIS_DB.expireat(new_db_key, ttl)  # 2
-            POPOTO_REDIS_DB.sadd(self._meta.db_class_set_key.redis_key, new_db_key.redis_key)  # 2
+            POPOTO_REDIS_DB.sadd(self._meta.db_class_set_key.redis_key, new_db_key.redis_key)  # 3
 
             if self.obsolete_redis_key and self.obsolete_redis_key != new_db_key.redis_key:  # 4
                 for field_name, field in self._meta.fields.items():
