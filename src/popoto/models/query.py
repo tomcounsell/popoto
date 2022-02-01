@@ -46,7 +46,14 @@ class Query:
         # or not hasattr(instance, 'db_key')
         return instance or None
 
-    def keys(self, catchall=False, **kwargs) -> list:
+    def keys(self, catchall=False, clean=False, **kwargs) -> list:
+        if clean:
+            logger.warning("{clean} is for debugging purposes only. Not for use in production environment")
+            for db_key in list(POPOTO_REDIS_DB.smembers(self.model_class._meta.db_class_set_key.redis_key)):
+                hash = POPOTO_REDIS_DB.hgetall(db_key)
+                if not len(hash):
+                    POPOTO_REDIS_DB.srem(self.model_class._meta.db_class_set_key.redis_key, db_key)  # 2
+
         if catchall:
             logger.warning("{catchall} is for debugging purposes only. Not for use in production environment")
             return list(POPOTO_REDIS_DB.keys(f"*{self.model_class.__name__}*"))
