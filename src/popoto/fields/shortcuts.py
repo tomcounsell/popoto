@@ -2,6 +2,7 @@ from .field import Field
 from .key_field_mixin import KeyFieldMixin
 from .auto_field_mixin import AutoFieldMixin
 from .sorted_field_mixin import SortedFieldMixin
+from .relationship import Relationship
 
 
 class IntField(Field):
@@ -112,5 +113,10 @@ class SortedField(SortedFieldMixin, Field):
 
 
 class SortedKeyField(SortedFieldMixin, KeyFieldMixin, Field):
+    def __init__(self, *args, **kwargs):
+        super().__init__(**kwargs)
+
+
+class KeyRelationship(Relationship, KeyFieldMixin, Field):
     def __init__(self, *args, **kwargs):
         super().__init__(**kwargs)

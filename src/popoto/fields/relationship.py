@@ -125,4 +125,3 @@ class Relationship(Field):
         if len(keys_lists_to_intersect):
             return set.intersection(*[set(key_list) for key_list in keys_lists_to_intersect])
         return set()
-
