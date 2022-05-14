@@ -110,6 +110,26 @@ jisoo.delete()
 assert len(POPOTO_REDIS_DB.smembers(bp_band_redis_set_key)) == 0
 assert len(TestKeySetModel.query.filter(band="BLACKPINK")) == 0
 
+
+# Test special KeyFields common uses
+
+class TestSpecialKeySetModel(popoto.Model):
+    name = popoto.KeyField(unique=False, null=True)
+    title = popoto.UniqueKeyField(unique=False, null=True)
+    uuid = popoto.AutoKeyField()
+    grade = popoto.SortedKeyField(type=int)
+    key_set_model = popoto.KeyRelationship(model=TestKeySetModel)
+    value = popoto.Field()
+
+lisa_manager = TestSpecialKeySetModel.create(
+    name="A", title="manager", grade=6,
+    key_set_model=lisa, value="not a good guy"
+)
+
+assert len(TestSpecialKeySetModel.query.all()) == 1
+assert TestSpecialKeySetModel.query.filter(key_set_model=lisa)[0] == lisa_manager
+
+
 for item in TestKeySetModel.query.all():
     item.delete()
 assert len(TestKeySetModel.query.all()) == 0
