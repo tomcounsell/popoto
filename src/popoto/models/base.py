@@ -50,7 +50,10 @@ class ModelOptions:
         self.base_meta = None
 
     def add_field(self, field_name: str, field: Field):
-        if field_name.startswith("_") and field_name not in self.hidden_fields:
+        if field_name in ['limit', 'order_by', 'values']:
+            raise ModelException(f"{field_name} is a reserved field name. "
+                                 f"See https://popoto.readthedocs.io/en/latest/fields/#Reserved-Field-Names")
+        elif field_name.startswith("_") and field_name not in self.hidden_fields:
             self.hidden_fields[field_name] = field
         elif field_name not in self.explicit_fields:
             self.explicit_fields[field_name] = field

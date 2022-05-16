@@ -231,3 +231,12 @@ vatican = GeoModel.create(
 
 assert vatican in GeoModel.query.filter(coordinates=rome.coordinates, coordinates_radius=5, coordinates_radius_unit='km')
 ```
+
+
+# <a name="Reserved-Field-Names"></a> Reserved Field Names
+
+The following names are reserved and cannot be used as field names:
+
+- _limit_: is used in query.filter() to limit the size of the returned objects list
+- _values_: is used in query.filter() to restrict which values are returned for objects
+- _order_by_: is used in query.filter() to order the results
