@@ -60,9 +60,11 @@ class Query:
         else:
             return list(POPOTO_REDIS_DB.smembers(self.model_class._meta.db_class_set_key.redis_key))
 
-    def all(self) -> list:
+    def all(self, **kwargs) -> list:
         redis_db_keys_list = self.keys()
-        return Query.get_many_objects(self.model_class, set(redis_db_keys_list))
+        return self.prepare_results(
+            Query.get_many_objects(self.model_class, set(redis_db_keys_list)), **kwargs
+        )
 
     def filter_for_keys_set(self, **kwargs) -> set:
         db_keys_sets = []
@@ -86,10 +88,13 @@ class Query:
 
         # raise error on additional unknown query parameters
         for unknown_query_param in set(kwargs) - employed_kwargs_set:
-            if not any([
+            if unknown_query_param in ['limit', 'order_by', 'values']:
+                continue
+            if any([
                 unknown_query_param.startswith(field_name) for field_name in self.options.relationship_field_names
             ]):
-                raise QueryException(f"Invalid filter parameters: {set(kwargs) - employed_kwargs_set}")
+                continue
+            raise QueryException(f"Invalid filter parameters: {set(kwargs) - employed_kwargs_set}")
 
         logger.debug(db_keys_sets)
         if not len(db_keys_sets):
@@ -102,11 +107,29 @@ class Query:
            Run query using the given paramters
            return a list of model_class objects
         """
-        limit = int(kwargs.pop('limit')) if 'limit' in kwargs else None
+        limit: int = int(kwargs.pop('limit')) if 'limit' in kwargs else None
+        order_by_attr_name: str = str(kwargs.pop('order_by')) if 'order_by' in kwargs else None
+        # values_attr_names: tuple = kwargs.pop('values') if 'values' in kwargs else None
+
         db_keys_set = self.filter_for_keys_set(**kwargs)
         if not len(db_keys_set):
             return []
-        return Query.get_many_objects(self.model_class, db_keys_set, limit=limit)
+        return self.prepare_results(
+            Query.get_many_objects(self.model_class, db_keys_set, limit=limit), **kwargs
+        )
+
+    def prepare_results(self, objects, order_by: str = "", values: tuple = (), limit: int = None, **kwargs):
+        if order_by:
+            order_by_attr_name = order_by
+            if (not isinstance(order_by_attr_name, str)) or order_by_attr_name not in self.model_class._meta.fields:
+                raise QueryException(f"order_by={order_by_attr_name} must be a field name (str)")
+            attr_type = self.model_class._meta.fields[order_by_attr_name].type
+            objects.sort(key=lambda item: getattr(item, order_by_attr_name) or attr_type())
+
+        if limit and len(objects) > limit:
+            objects = objects[:limit]
+
+        return objects
 
     def count(self, **kwargs) -> int:
         if not len(kwargs):
