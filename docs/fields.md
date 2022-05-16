@@ -233,7 +233,7 @@ assert vatican in GeoModel.query.filter(coordinates=rome.coordinates, coordinate
 ```
 
 
-# <a name="Reserved-Field-Names"></a> Reserved Field Names
+#  Reserved Field Names
 
 The following names are reserved and cannot be used as field names:
 
