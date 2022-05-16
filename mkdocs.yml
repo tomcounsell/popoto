@@ -1,5 +1,6 @@
 site_name: Popoto Documentation
 repo_url: https://github.com/tomcounsell/popoto/
+edit_uri: edit/master/docs
 site_author: Tom Counsell
 
 nav:

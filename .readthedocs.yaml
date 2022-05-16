@@ -1,5 +1,7 @@
 version: 2
 
+requirements_file: requirements.txt
+
 mkdocs:
   configuration: mkdocs.yml
   fail_on_warning: false
