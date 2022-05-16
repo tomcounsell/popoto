@@ -21,7 +21,7 @@ lisa.level = 99
 lisa.location = (48.856373, 2.353016)
 lisa.save()
 
-same_lisa = Person.load(lisa.db_key)
+same_lisa = Person.query.get(redis_key=lisa.db_key.redis_key)
 assert same_lisa == lisa
 
 paris_latitude, paris_longitude = (48.864716, 2.349014)  # Hôtel de Ville, Fashion Week 2021
