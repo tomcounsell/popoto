@@ -12,6 +12,7 @@ class KeyValueModel(popoto.Model):
     key = popoto.KeyField()
     value = popoto.Field()
 
+
 duck = KeyValueModel()
 duck.key = "Sally"
 duck.value = "your most sassy LINE friend"
@@ -37,6 +38,7 @@ assert random_fact_2 == AutoKeyModel.query.get(key=random_fact_2.key)
 
 for item in AutoKeyModel.query.all():
     item.delete()
+
 
 class HiddenAutoKeyModel(popoto.Model):
     value = popoto.Field()
