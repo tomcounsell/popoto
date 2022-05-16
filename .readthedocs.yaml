@@ -1,7 +1,9 @@
 version: 2
 
-requirements_file: docs/requirements.txt
-
 mkdocs:
   configuration: mkdocs.yml
   fail_on_warning: false
+
+python:
+   install:
+   - requirements: docs/requirements.txt
