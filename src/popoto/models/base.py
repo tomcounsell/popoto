@@ -50,7 +50,10 @@ class ModelOptions:
         self.base_meta = None
 
     def add_field(self, field_name: str, field: Field):
-        if field_name.startswith("_") and field_name not in self.hidden_fields:
+        if field_name in ['limit', 'order_by', 'values']:
+            raise ModelException(f"{field_name} is a reserved field name. "
+                                 f"See https://popoto.readthedocs.io/en/latest/fields/#Reserved-Field-Names")
+        elif field_name.startswith("_") and field_name not in self.hidden_fields:
             self.hidden_fields[field_name] = field
         elif field_name not in self.explicit_fields:
             self.explicit_fields[field_name] = field
@@ -417,7 +420,7 @@ class Model(metaclass=ModelBase):
             #     POPOTO_REDIS_DB.expire(new_db_key, ttl)  # 2
             # if expire_at is not None:
             #     POPOTO_REDIS_DB.expireat(new_db_key, ttl)  # 2
-            POPOTO_REDIS_DB.sadd(self._meta.db_class_set_key.redis_key, new_db_key.redis_key)  # 2
+            POPOTO_REDIS_DB.sadd(self._meta.db_class_set_key.redis_key, new_db_key.redis_key)  # 3
 
             if self.obsolete_redis_key and self.obsolete_redis_key != new_db_key.redis_key:  # 4
                 for field_name, field in self._meta.fields.items():
