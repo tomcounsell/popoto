@@ -2,7 +2,7 @@
 
 Key-Value Storage and then some...
 
-# Get a single object
+## Get a single object
 
 Query on a `KeyField` to retrieve a single object instance. 
 
@@ -20,7 +20,7 @@ same_duck == duck
 >>> True
 ```
 
-# Filter query results
+## Filter query results
 
 All filter paramters are `&&` AND'ed together.
 
@@ -43,7 +43,7 @@ Animal.query.filter(name__startswith="S")[0].name
 ```
 
 
-# Order By {field_name}
+## Order By {field_name}
 
 Results are ordered by the value of a given field. Ascending order is implied.
 
@@ -54,7 +54,7 @@ Movies.query.filter(order_by="name")
 the above will return movies ordered by name alphabetically
 ordering works for field types: `str`, `int`, `float`, `decimal`, `time`, `date`, `datetime`
 
-# Limit Number of Results
+## Limit Number of Results
 
 returns first 100 objects
 
@@ -77,7 +77,7 @@ both are valid and will return the same list of objects.
 if order_by is used, it will order before 
 
 
-# KeyField query filters
+## KeyField query filters
 
 `{field_name}=`: exact match
 
@@ -90,7 +90,7 @@ if order_by is used, it will order before
 `{field_name}__in=`: is exact match for any element in provided list
 
 
-# SortedField query filters
+## SortedField query filters
 
 `{field_name}=`: exact match
 
@@ -112,7 +112,7 @@ Racer.query.filter(fastest_lap__lt=55.0)
 ```
 
 
-# GeoField query filters
+## GeoField query filters
 
 `{field_name}=`: `tuple` or `popoto.GeoField.Coordinates` (float, float) with Coordinates
 
