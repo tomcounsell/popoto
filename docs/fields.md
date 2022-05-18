@@ -12,7 +12,7 @@ class MyObject(Model):
     # add fields
 ```
 
-# KeyField
+## KeyField
 A KeyField makes objects fast and easy to query for.
 In the background, Popoto uses all KeyFields to compile the primary key on Redis.
 There almost no performance downside to using many KeyFields.
@@ -64,7 +64,7 @@ class BitcoinPrice(Model):
 
 The above example may be useful in situations where all queries are made via special purpose fields, such as `SortedField`, `GeoField`, or `GraphField`
 
-# Field
+## Field
 
 All fields inherit from base `Field`. A basic `Field` on any model will provide type validation on create and update events. 
 
@@ -111,7 +111,7 @@ class EveryTypeModel(Model):
     time_val = TimeField()
 ```
 
-## Null Values
+### Null Values
 
 KeyField and SortedField values are considered required `null=False` by default. All other fields are optional `null=True` by default. 
 You may explicitly declare whether to allow null values using the `null` keywword
@@ -122,7 +122,7 @@ class MyModel(Model):
     required_value = Field(null=False)
 ```
 
-## Default Values
+### Default Values
 
 All fields will accept a `default` value for new objects.
 
@@ -133,7 +133,7 @@ class MyModel(Model):
     access_count = Field(type=int, default=0)
 ```
 
-## String Max Length
+### String Max Length
 
 Set a limit to string length. On SQL-like databases, this is often required. 
 However, on Redis (and Popoto), there is no performance 
@@ -146,7 +146,7 @@ class Tweet(Model):
     text = Field(type=str, max_length=280)
 ```
 
-# SortedField
+## SortedField
 
 Use a `SortedField` for numerical attributes. 
 A `SortedField` provides fast and efficient access to ordered instances (via Redis ZADD, ZRANGE). 
@@ -199,11 +199,11 @@ AssetPrice.query.filter(
     asset="Bitcoin", 
     timestamp__gte=datetime(2021,1,1), 
     timestamp__lt=datetime(2021,1,2)
-)  # return Bitcoin prices over 1 day period
+)  ## return Bitcoin prices over 1 day period
 ```
 
 
-# GeoField
+## GeoField
 
 The `GeoField` employs another popular Redis feature - geospatial search.
 A common use case is searching for objects within a radius of another object.
@@ -233,7 +233,7 @@ assert vatican in GeoModel.query.filter(coordinates=rome.coordinates, coordinate
 ```
 
 
-#  Reserved Field Names
+##  Reserved Field Names
 
 The following names are reserved and cannot be used as field names:
 
