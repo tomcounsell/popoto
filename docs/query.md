@@ -45,14 +45,17 @@ Animal.query.filter(name__startswith="S")[0].name
 
 ## Order By {field_name}
 
-Results are ordered by the value of a given field. Ascending order is implied.
+Results are ordered by the value of a given field.
 
 ``` python
+Movies.query.filter(order_by="-release_date")
 Movies.query.filter(order_by="name")
 ```
 
-the above will return movies ordered by name alphabetically
+The negative sign in front of "-release_date" indicates descending order. Ascending order is implied.
+The second query will return movies ordered by name alphabetically.
 ordering works for field types: `str`, `int`, `float`, `decimal`, `time`, `date`, `datetime`
+
 
 ## Limit Number of Results
 
@@ -75,6 +78,19 @@ len(movies)
 both are valid and will return the same list of objects.
 
 if order_by is used, it will order before 
+
+
+## Values
+
+Returns dictionaries, rather than model instances.
+Each of those dictionaries represents an object, with the keys corresponding to the attribute names of model objects.
+values requires a tuple of field names
+example:
+
+``` python
+Movies.query.filter(name="Life Of Pi", values=("name",))
+>>> [{"name": "Life Of Pi"}, ]
+```
 
 
 ## KeyField query filters
