@@ -2,7 +2,7 @@
 
 Key-Value Storage and then some...
 
-# query.get() for a single object
+## Get a single object
 
 Query on a `KeyField` to retrieve a single object instance. 
 
@@ -20,7 +20,7 @@ same_duck == duck
 >>> True
 ```
 
-# query.filter() for list of objects
+## Filter query results
 
 All filter paramters are `&&` AND'ed together.
 
@@ -32,12 +32,29 @@ class Animal(popoto.Model):
     sound = popoto.Field(null=True, default=None)
 
 sally = Animal.create(name="Sally", sound="quack")
-
-Animal.query.filter(name__startswith="S")
->>> [{'name': 'Sally', 'sound': 'quack'}]
 ```
 
-# query.filter(limit=100)
+See (#keyfield-query-filters)[KeyField query filters] below for supported filters
+example:
+
+``` python
+Animal.query.filter(name__startswith="S")[0].name
+>>> "salamander"
+```
+
+
+## Order By {field_name}
+
+Results are ordered by the value of a given field. Ascending order is implied.
+
+``` python
+Movies.query.filter(order_by="name")
+```
+
+the above will return movies ordered by name alphabetically
+ordering works for field types: `str`, `int`, `float`, `decimal`, `time`, `date`, `datetime`
+
+## Limit Number of Results
 
 returns first 100 objects
 
@@ -47,7 +64,7 @@ len(movies)
 >>> 100
 ```
 
-can be slightly faster than equivalent: 
+the above may be slightly faster than equivalent below
 
 ``` python
 movies = Movies.query.filter(name__startswith="The")[:100]
@@ -57,7 +74,10 @@ len(movies)
 
 both are valid and will return the same list of objects.
 
-# KeyField query filters
+if order_by is used, it will order before 
+
+
+## KeyField query filters
 
 `{field_name}=`: exact match
 
@@ -70,7 +90,7 @@ both are valid and will return the same list of objects.
 `{field_name}__in=`: is exact match for any element in provided list
 
 
-# SortedField query filters
+## SortedField query filters
 
 `{field_name}=`: exact match
 
@@ -92,7 +112,7 @@ Racer.query.filter(fastest_lap__lt=55.0)
 ```
 
 
-# GeoField query filters
+## GeoField query filters
 
 `{field_name}=`: `tuple` or `popoto.GeoField.Coordinates` (float, float) with Coordinates
 

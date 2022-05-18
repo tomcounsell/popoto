@@ -17,3 +17,5 @@ theme:
         - python
         - bash
         - html
+    collapse_navigation: False
+    sticky_navigation: True
