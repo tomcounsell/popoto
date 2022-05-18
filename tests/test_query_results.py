@@ -30,8 +30,10 @@ assert ThingModel.query.filter(str_key__startswith="1", order_by="int_key")[0] =
 assert len(ThingModel.query.all(limit=2)) == 2
 assert len(ThingModel.query.filter(str_key=1, limit=1)) == 1
 # test order_by with limit
-assert ThingModel.query.filter(str_key=1, order_by="int_key", limit=1)[0] == thing_1
-assert ThingModel.query.filter(str_key=1, order_by="-float_value", limit=1)[0] == r_thing
+assert ThingModel.query.filter(str_key__in=["1", "2"], order_by="int_key", limit=1)[0] == thing_1
+assert ThingModel.query.filter(str_key__in=["1", "2"], order_by="-int_key", limit=1)[0] == r_thing
+assert ThingModel.query.filter(str_key__in=["1", "2"], order_by="float_value", limit=1)[0] == thing_1
+assert ThingModel.query.filter(str_key__in=["1", "2"], order_by="-float_value", limit=1)[0] == thing_2
 
 for item in ThingModel.query.all():
     item.delete()
