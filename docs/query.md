@@ -42,8 +42,18 @@ Animal.query.filter(name__startswith="S")[0].name
 >>> "salamander"
 ```
 
+## Values
 
-## Order By {field_name}
+Returns dictionaries, rather than model instances. Each of those dictionaries represents an object, with the keys corresponding to the attribute names of model objects.
+Specify the fields with a tuple of field names. Each dictionary will contain only the field keys/values for the fields you specify.
+
+``` python
+Animal.query.filter(values=("name", "color"))
+>>> [{"name": "salamander", "color" "green"}, ...]
+```
+
+
+## Order By field_name
 
 Results are ordered by the value of a given field.
 
