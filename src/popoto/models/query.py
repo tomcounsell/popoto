@@ -1,7 +1,7 @@
 import logging
 
 from .db_key import DB_key
-from ..redis_db import POPOTO_REDIS_DB
+from ..redis_db import POPOTO_REDIS_DB, ENCODING
 
 logger = logging.getLogger('POPOTO.Query')
 
@@ -63,7 +63,8 @@ class Query:
     def all(self, **kwargs) -> list:
         redis_db_keys_list = self.keys()
         return self.prepare_results(
-            Query.get_many_objects(self.model_class, set(redis_db_keys_list)), **kwargs
+            Query.get_many_objects(self.model_class, set(redis_db_keys_list), values=kwargs.get('values', None)),
+            **kwargs
         )
 
     def filter_for_keys_set(self, **kwargs) -> set:
@@ -110,11 +111,25 @@ class Query:
         db_keys_set = self.filter_for_keys_set(**kwargs)
         if not len(db_keys_set):
             return []
+        elif 'values' in kwargs:
+            values = kwargs.get('values')
+            if not isinstance(values, tuple):
+                raise QueryException("values takes a tuple. eg. query.filter(values=('name',))")
+            if set(values).issubset(self.model_class._meta.key_field_names):
+                return [
+                    {
+                        field_name: db_key[self.model_class._meta.get_db_key_index_position(field_name)]
+                        for field_name in values
+                    }
+                    for db_key in db_keys_set
+                ]
+
         return self.prepare_results(
             Query.get_many_objects(
                 self.model_class, db_keys_set,
                 order_by_attr_name=kwargs.get('order_by', None),
-                limit=kwargs.get('limit', None)
+                limit=kwargs.get('limit', None),
+                values=kwargs.get('values', None),
             ),
             **kwargs
         )
@@ -143,7 +158,8 @@ class Query:
         return len(self.filter_for_keys_set(**kwargs))  # maybe possible to refactor to use redis.SINTERCARD
 
     @classmethod
-    def get_many_objects(cls, model: 'Model', db_keys: set, order_by_attr_name: str = "", limit: int = None) -> list:
+    def get_many_objects(cls, model: 'Model', db_keys: set,
+                         order_by_attr_name: str = "", limit: int = None, values: tuple = None) -> list:
         from .encoding import decode_popoto_model_hashmap
         pipeline = POPOTO_REDIS_DB.pipeline()
         reverse_order = False
@@ -158,13 +174,25 @@ class Query:
             db_keys.sort(key=lambda key: key.split(b":")[field_position])
             db_keys = list(reversed(db_keys))[:limit] if reverse_order else db_keys[:limit]
 
-        for db_key in db_keys:
-            pipeline.hgetall(db_key)
-        hashes_list = pipeline.execute()
+        if values:
+            [pipeline.hmget(db_key, values)  for db_key in db_keys]
+            value_lists = pipeline.execute()
+            hashes_list = [
+                {
+                    field_name.encode(ENCODING): result[i]
+                    for i, field_name in enumerate(values)
+                }
+                for result in value_lists
+            ]
+
+        else:
+            [pipeline.hgetall(db_key) for db_key in db_keys]
+            hashes_list = pipeline.execute()
+
         if {} in hashes_list:
             logger.error("one or more redis keys points to missing objects. Debug with Model.query.keys(clean=True")
 
         return [
-            decode_popoto_model_hashmap(model, redis_hash)
+            decode_popoto_model_hashmap(model, redis_hash, fields_only=bool(values))
             for redis_hash in hashes_list if redis_hash
         ]

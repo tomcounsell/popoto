@@ -34,6 +34,15 @@ assert ThingModel.query.filter(str_key__in=["1", "2"], order_by="int_key", limit
 assert ThingModel.query.filter(str_key__in=["1", "2"], order_by="-int_key", limit=1)[0] == r_thing
 assert ThingModel.query.filter(str_key__in=["1", "2"], order_by="float_value", limit=1)[0] == thing_1
 assert ThingModel.query.filter(str_key__in=["1", "2"], order_by="-float_value", limit=1)[0] == thing_2
+# test values
+only_ints = ThingModel.query.all(values=("int_key",))
+assert all([
+    len(only_ints) == 4,
+    {"int_key": 1} in only_ints,
+    {"int_key": 2} in only_ints,
+    {"int_key": 0} in only_ints,
+    {"int_key": 5} in only_ints,
+])
 
 for item in ThingModel.query.all():
     item.delete()
