@@ -144,7 +144,12 @@ class Query:
             if (not isinstance(order_by_attr_name, str)) or order_by_attr_name not in self.model_class._meta.fields:
                 raise QueryException(f"order_by={order_by_attr_name} must be a field name (str)")
             attr_type = self.model_class._meta.fields[order_by_attr_name].type
-            objects.sort(key=lambda item: getattr(item, order_by_attr_name) or attr_type())
+            if values and order_by_attr_name not in values:
+                raise QueryException("field must be included in values=(fieldnames) in order to use order_by")
+            elif values:
+                objects.sort(key=lambda item: item.get(order_by_attr_name))
+            else:
+                objects.sort(key=lambda item: getattr(item, order_by_attr_name) or attr_type())
             objects = list(reversed(objects))[:limit] if reverse_order else objects[:limit]
 
         if limit and len(objects) > limit:

@@ -43,6 +43,8 @@ assert all([
     {"int_key": 0} in only_ints,
     {"int_key": 5} in only_ints,
 ])
+assert ThingModel.query.all(values=("int_key", "float_value"), order_by="int_key")[0]["float_value"] == None
+assert ThingModel.query.filter(str_key__startswith="2", values=("str_value",))[0]["str_value"] == '2.2'
 
 for item in ThingModel.query.all():
     item.delete()
