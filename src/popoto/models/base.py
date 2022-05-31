@@ -231,7 +231,7 @@ class Model(metaclass=ModelBase):
         OR both
         """
         return DB_key(self._meta.db_class_key, [
-            getattr(self, key_field_name) or "None"
+            str(getattr(self, key_field_name, "None"))
             for key_field_name in sorted(self._meta.key_field_names)
         ])
 
