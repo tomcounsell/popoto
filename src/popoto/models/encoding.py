@@ -82,10 +82,10 @@ def encode_popoto_model_obj(obj: 'Model') -> dict:
 def decode_popoto_model_hashmap(model_class: 'Model', redis_hash: dict, fields_only=False) -> 'Model':
     if len(redis_hash):
         model_attrs = {
-            key_b.decode(ENCODING): decode_custom_types(msgpack.unpackb(value_b))
+            key_b.decode(ENCODING) if not fields_only else key_b:
+                decode_custom_types(msgpack.unpackb(value_b))
             for key_b, value_b in redis_hash.items()
         }
         return model_attrs if fields_only else model_class(**model_attrs)
 
-    else:
-        return None
+    return None
