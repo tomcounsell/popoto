@@ -21,20 +21,16 @@ class DB_key(list):
         return cls([DB_key.unclean(partial) for partial in redis_key.split(":")])
 
     @classmethod
-    def clean(cls, value: str, ignore_colons: bool = False) -> str:
+    def clean(cls, value: str) -> str:
         value = value.replace('/', '//')
         for char in "'?*^[]-":
             value = value.replace(char, f"/{char}")
-        if not ignore_colons:
-            value = value.replace('{&#58;}', '{{&#58;}}')
-            value = value.replace(':', '{&#58;}')
+        value = value.replace(':', '{&#58;}')
         return value
 
     @classmethod
-    def unclean(cls, value: str, ignore_colons: bool = False) -> str:
-        if not ignore_colons:
-            value = value.replace('{&#58;}', ':')  # need to use regex, to ensure non-surrounding {}
-            value = value.replace('{{&#58;}}', '{&#58;}')
+    def unclean(cls, value: str) -> str:
+        value = value.replace('{&#58;}', ':')
         for char in "'?*^[]-":
             value = value.replace(f"/{char}", char)
         value = value.replace('//', '/',)
