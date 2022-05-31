@@ -111,18 +111,6 @@ class Query:
         db_keys_set = self.filter_for_keys_set(**kwargs)
         if not len(db_keys_set):
             return []
-        elif 'values' in kwargs:
-            values = kwargs.get('values')
-            if not isinstance(values, tuple):
-                raise QueryException("values takes a tuple. eg. query.filter(values=('name',))")
-            if set(values).issubset(self.model_class._meta.key_field_names):
-                return [
-                    {
-                        field_name: db_key[self.model_class._meta.get_db_key_index_position(field_name)]
-                        for field_name in values
-                    }
-                    for db_key in db_keys_set
-                ]
 
         return self.prepare_results(
             Query.get_many_objects(
@@ -180,15 +168,29 @@ class Query:
             db_keys = list(reversed(db_keys))[:limit] if reverse_order else db_keys[:limit]
 
         if values:
-            [pipeline.hmget(db_key, values)  for db_key in db_keys]
-            value_lists = pipeline.execute()
-            hashes_list = [
-                {
-                    field_name.encode(ENCODING): result[i]
-                    for i, field_name in enumerate(values)
-                }
-                for result in value_lists
-            ]
+            if not isinstance(values, tuple):
+                raise QueryException("values takes a tuple. eg. query.filter(values=('name',))")
+            elif set(values).issubset(model._meta.key_field_names):
+                db_keys = [DB_key.from_redis_key(db_key) for db_key in db_keys]
+                return [
+                    {
+                        field_name: model._meta.fields[field_name].type(
+                            db_key[model._meta.get_db_key_index_position(field_name)]
+                        ) if db_key[model._meta.get_db_key_index_position(field_name)] else None
+                        for field_name in values
+                    }
+                    for db_key in db_keys
+                ]
+            else:
+                [pipeline.hmget(db_key, values) for db_key in db_keys]
+                value_lists = pipeline.execute()
+                hashes_list = [
+                    {
+                        field_name: result[i]
+                        for i, field_name in enumerate(values)
+                    }
+                    for result in value_lists
+                ]
 
         else:
             [pipeline.hgetall(db_key) for db_key in db_keys]
