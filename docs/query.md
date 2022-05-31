@@ -52,6 +52,8 @@ Animal.query.filter(values=("name", "color"))
 >>> [{"name": "salamander", "color" "green"}, ...]
 ```
 
+Pro Tip: If _all_ the fields specified are _Key_ fields, then query performance will be at least 2x faster compared to a query without any specified values. 
+
 
 ## Order By field_name
 
