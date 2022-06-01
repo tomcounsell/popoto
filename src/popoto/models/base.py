@@ -50,7 +50,7 @@ class ModelOptions:
         self.base_meta = None
 
     def add_field(self, field_name: str, field: Field):
-        if not field_name[0].islower():
+        if not field_name[0] == "_" and not field_name[0].islower():
             raise ModelException(f"{field_name} field name must start with a lowercase letter.")
         elif field_name in ['limit', 'order_by', 'values']:
             raise ModelException(f"{field_name} is a reserved field name. "
