@@ -98,8 +98,8 @@ class SortedFieldMixin:
             raise ValueError("SortedField received non-numeric value.")
 
     @classmethod
-    def get_sortedset_db_key(cls, model, field_name) -> DB_key:
-        return cls.get_special_use_field_db_key(model, field_name)
+    def get_sortedset_db_key(cls, model, field_name, *partition_field_names) -> DB_key:
+        return cls.get_special_use_field_db_key(model, field_name, *partition_field_names)
 
     @classmethod
     def get_partitioned_sortedset_db_key(cls, model_instance, field_name) -> DB_key:
@@ -109,7 +109,8 @@ class SortedFieldMixin:
             try:
                 sortedset_db_key.append(str(getattr(model_instance, partition_field_name)))
             except KeyError:
-                raise QueryException(f"{field_name} filter requires partition_on field values")
+                raise QueryException(f"{field_name} field is partitioned. "
+                                     f"Queries must also contain a filter for the partitioned fields")
         return sortedset_db_key
 
     @classmethod
@@ -159,14 +160,21 @@ class SortedFieldMixin:
             else:
                 raise QueryException(f"Query filters provided are not compatible with this field {field_name}")
 
-        sortedset_db_key = cls.get_sortedset_db_key(model_class, field_name)
-
-        # use field names and query values partition_on fields to extend sortedset_db_key
-        for field_name in model_class._meta.fields[field_name].partition_on:
-            try:
-                sortedset_db_key += f":{str(query_params[field_name])}"
-            except KeyError:
-                raise QueryException(f"{field_name} filter requires partition_on field values")
+        try:
+            # use field names and query values partition_on fields to extend sortedset_db_key
+            sortedset_db_key = cls.get_sortedset_db_key(
+                model_class,
+                field_name,
+                *[
+                    str(query_params[partition_field_name])
+                    for partition_field_name in model_class._meta.fields[field_name].partition_on
+                ]
+            )
+        except KeyError:
+            raise QueryException(
+                f"{field_name} field is partitioned on {', '.join(model_class._meta.fields[field_name].partition_on)}. "
+                f"Query filter must also specify a value for {', '.join(model_class._meta.fields[field_name].partition_on)}"
+            )
 
         redis_db_keys_list = POPOTO_REDIS_DB.zrangebyscore(
             sortedset_db_key.redis_key, value_range['min'], value_range['max']
