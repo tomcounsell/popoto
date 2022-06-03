@@ -2,6 +2,7 @@ from .field import Field
 from .key_field_mixin import KeyFieldMixin
 from .auto_field_mixin import AutoFieldMixin
 from .sorted_field_mixin import SortedFieldMixin
+from ..exceptions import ModelException
 
 
 class IntField(Field):
@@ -94,7 +95,11 @@ class KeyField(KeyFieldMixin, Field):
 
 class UniqueKeyField(KeyField):
     def __init__(self, *args, **kwargs):
+        if kwargs.get('unique') is False:
+            raise ModelException(f"you may not set unique=False on this field type")
         kwargs['unique'] = True
+        if kwargs.get('null') is True:
+            raise ModelException(f"you may not set null=True on this field type")
         kwargs['null'] = False
         super().__init__(**kwargs)
 
