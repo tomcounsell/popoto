@@ -85,12 +85,12 @@ class Field(metaclass=FieldBase):
         return field_value
 
     @classmethod
-    def get_special_use_field_db_key(cls, model: 'Model', field_name: str) -> DB_key:
+    def get_special_use_field_db_key(cls, model: 'Model', *field_names) -> DB_key:
         """
         For use by child class when implementing additional Redis data structures
         Children implementing more than one new structure will need to augment this.
         """
-        return DB_key(cls.field_class_key, model._meta.db_class_key, field_name)
+        return DB_key(cls.field_class_key, model._meta.db_class_key, *field_names)
 
 
     @classmethod
