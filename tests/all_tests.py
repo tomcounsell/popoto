@@ -10,4 +10,3 @@ from .test_query_results import *
 from .test_relationship import *
 from .test_sortedfield import *
 from .test_timeseries import *
-from .test_wish_fields import *
