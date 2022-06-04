@@ -1,6 +1,6 @@
 from collections.abc import Iterable
 
-from ..redis_db import POPOTO_REDIS_DB
+from ..redis_db import POPOTO_REDIS_DB, ENCODING
 
 
 class DB_key(list):
@@ -15,12 +15,25 @@ class DB_key(list):
         super().__init__(flatten(key_partials))
 
     @classmethod
-    def clean(cls, value: str, ignore_colons: bool = False) -> str:
+    def from_redis_key(cls, redis_key):
+        if isinstance(redis_key, bytes):
+            redis_key = redis_key.decode(ENCODING)
+        return cls([DB_key.unclean(partial) for partial in redis_key.split(":")])
+
+    @classmethod
+    def clean(cls, value: str) -> str:
         value = value.replace('/', '//')
         for char in "'?*^[]-":
             value = value.replace(char, f"/{char}")
-        if not ignore_colons:
-            value = value.replace(':', '_')
+        value = value.replace(':', '{&#58;}')
+        return value
+
+    @classmethod
+    def unclean(cls, value: str) -> str:
+        value = value.replace('{&#58;}', ':')
+        for char in "'?*^[]-":
+            value = value.replace(f"/{char}", char)
+        value = value.replace('//', '/',)
         return value
 
     def __str__(self):

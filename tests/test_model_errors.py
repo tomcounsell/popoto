@@ -6,7 +6,6 @@ from src.popoto.exceptions import ModelException
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
 
-from src.popoto.redis_db import POPOTO_REDIS_DB
 from src import popoto
 
 try:
@@ -16,7 +15,6 @@ try:
 
     KeyValueModel()
 except ModelException as e:
-    print(e)
     assert "null" in str(e)
 else:
     raise Exception("expected null error on AutoKeyField")

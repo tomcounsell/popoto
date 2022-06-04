@@ -50,7 +50,9 @@ class ModelOptions:
         self.base_meta = None
 
     def add_field(self, field_name: str, field: Field):
-        if field_name in ['limit', 'order_by', 'values']:
+        if not field_name[0] == "_" and not field_name[0].islower():
+            raise ModelException(f"{field_name} field name must start with a lowercase letter.")
+        elif field_name in ['limit', 'order_by', 'values']:
             raise ModelException(f"{field_name} is a reserved field name. "
                                  f"See https://popoto.readthedocs.io/en/latest/fields/#reserved-field-names")
         elif field_name.startswith("_") and field_name not in self.hidden_fields:
@@ -229,7 +231,7 @@ class Model(metaclass=ModelBase):
         OR both
         """
         return DB_key(self._meta.db_class_key, [
-            getattr(self, key_field_name) or "None"
+            str(getattr(self, key_field_name, "None"))
             for key_field_name in sorted(self._meta.key_field_names)
         ])
 

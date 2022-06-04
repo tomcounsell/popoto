@@ -1,7 +1,7 @@
 import logging
 
 from .db_key import DB_key
-from ..redis_db import POPOTO_REDIS_DB
+from ..redis_db import POPOTO_REDIS_DB, ENCODING
 
 logger = logging.getLogger('POPOTO.Query')
 
@@ -63,7 +63,8 @@ class Query:
     def all(self, **kwargs) -> list:
         redis_db_keys_list = self.keys()
         return self.prepare_results(
-            Query.get_many_objects(self.model_class, set(redis_db_keys_list)), **kwargs
+            Query.get_many_objects(self.model_class, set(redis_db_keys_list), values=kwargs.get('values', None)),
+            **kwargs
         )
 
     def filter_for_keys_set(self, **kwargs) -> set:
@@ -107,24 +108,37 @@ class Query:
            Run query using the given paramters
            return a list of model_class objects
         """
-        limit: int = int(kwargs.pop('limit')) if 'limit' in kwargs else None
-        order_by_attr_name: str = str(kwargs.pop('order_by')) if 'order_by' in kwargs else None
-        # values_attr_names: tuple = kwargs.pop('values') if 'values' in kwargs else None
-
         db_keys_set = self.filter_for_keys_set(**kwargs)
         if not len(db_keys_set):
             return []
+
         return self.prepare_results(
-            Query.get_many_objects(self.model_class, db_keys_set, limit=limit), **kwargs
+            Query.get_many_objects(
+                self.model_class, db_keys_set,
+                order_by_attr_name=kwargs.get('order_by', None),
+                limit=kwargs.get('limit', None),
+                values=kwargs.get('values', None),
+            ),
+            **kwargs
         )
 
     def prepare_results(self, objects, order_by: str = "", values: tuple = (), limit: int = None, **kwargs):
+        reverse_order = False
+        if order_by and order_by.startswith("-"):
+            reverse_order = True
+            order_by = order_by[1:]
         if order_by:
             order_by_attr_name = order_by
             if (not isinstance(order_by_attr_name, str)) or order_by_attr_name not in self.model_class._meta.fields:
                 raise QueryException(f"order_by={order_by_attr_name} must be a field name (str)")
             attr_type = self.model_class._meta.fields[order_by_attr_name].type
-            objects.sort(key=lambda item: getattr(item, order_by_attr_name) or attr_type())
+            if values and order_by_attr_name not in values:
+                raise QueryException("field must be included in values=(fieldnames) in order to use order_by")
+            elif values:
+                objects.sort(key=lambda item: item.get(order_by_attr_name))
+            else:
+                objects.sort(key=lambda item: getattr(item, order_by_attr_name) or attr_type())
+            objects = list(reversed(objects))[:limit] if reverse_order else objects[:limit]
 
         if limit and len(objects) > limit:
             objects = objects[:limit]
@@ -137,17 +151,55 @@ class Query:
         return len(self.filter_for_keys_set(**kwargs))  # maybe possible to refactor to use redis.SINTERCARD
 
     @classmethod
-    def get_many_objects(cls, model: 'Model', db_keys: set, order_by_attr_name: str = "", limit: int = None) -> list:
+    def get_many_objects(cls, model: 'Model', db_keys: set,
+                         order_by_attr_name: str = "", limit: int = None, values: tuple = None) -> list:
         from .encoding import decode_popoto_model_hashmap
         pipeline = POPOTO_REDIS_DB.pipeline()
-        for db_key in db_keys:
-            pipeline.hgetall(db_key)
-        hashes_list = pipeline.execute()
-        if {} in hashes_list:
-            logger.error("one or more redis keys points to missing objects")
+        reverse_order = False
+        # order the hashes list or objects before applying limit
+        if order_by_attr_name and order_by_attr_name.startswith("-"):
+            order_by_attr_name = order_by_attr_name[1:]
+            reverse_order = True
 
-        # todo: order the hashes list or objects before applying limit
+        if order_by_attr_name and order_by_attr_name in model._meta.key_field_names:
+            field_position = model._meta.get_db_key_index_position(order_by_attr_name)
+            db_keys = list(db_keys)
+            db_keys.sort(key=lambda key: key.split(b":")[field_position])
+            db_keys = list(reversed(db_keys))[:limit] if reverse_order else db_keys[:limit]
+
+        if values:
+            if not isinstance(values, tuple):
+                raise QueryException("values takes a tuple. eg. query.filter(values=('name',))")
+            elif set(values).issubset(model._meta.key_field_names):
+                db_keys = [DB_key.from_redis_key(db_key) for db_key in db_keys]
+                return [
+                    {
+                        field_name: model._meta.fields[field_name].type(
+                            db_key[model._meta.get_db_key_index_position(field_name)]
+                        ) if db_key[model._meta.get_db_key_index_position(field_name)] else None
+                        for field_name in values
+                    }
+                    for db_key in db_keys
+                ]
+            else:
+                [pipeline.hmget(db_key, values) for db_key in db_keys]
+                value_lists = pipeline.execute()
+                hashes_list = [
+                    {
+                        field_name: result[i]
+                        for i, field_name in enumerate(values)
+                    }
+                    for result in value_lists
+                ]
+
+        else:
+            [pipeline.hgetall(db_key) for db_key in db_keys]
+            hashes_list = pipeline.execute()
+
+        if {} in hashes_list:
+            logger.error("one or more redis keys points to missing objects. Debug with Model.query.keys(clean=True")
+
         return [
-            decode_popoto_model_hashmap(model, redis_hash)
-            for redis_hash in hashes_list[:limit] if redis_hash
+            decode_popoto_model_hashmap(model, redis_hash, fields_only=bool(values))
+            for redis_hash in hashes_list if redis_hash
         ]
