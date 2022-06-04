@@ -69,37 +69,50 @@ class Query:
 
     def filter_for_keys_set(self, **kwargs) -> set:
         db_keys_sets = []
-        employed_kwargs_set = set()
+        yet_employed_kwargs_set = set(kwargs.keys()).difference({'limit', 'order_by', 'values'})
+        if not len(yet_employed_kwargs_set):
+            return set()
 
         # todo: use redis.SINTER for keyfield exact match filters
 
-        for field_name, field in self.options.fields.items():
-            # intersection of field params and filter kwargs
-            params_for_field = set(kwargs.keys()) & set(field.get_filter_query_params(field_name))
-            if not params_for_field:
-                continue
-            logger.debug(f"query on {field_name} with {params_for_field}")
+        # do sorted_fields first - because they can obviate some keyfield filters
+        for field_name in self.options.sorted_field_names:
+            field = self.options.fields[field_name]
+            if not len(yet_employed_kwargs_set & self.options.filter_query_params_by_field[field_name]):
+                continue  # this field cannot use any of the available filter params
+            logger.debug(f"query on {field_name} with {self.options.filter_query_params_by_field[field_name]}")
+            logger.debug({k: kwargs[k] for k in self.options.filter_query_params_by_field[field_name] if k in kwargs})
+            db_keys_sets.append(field.__class__.filter_query(
+                self.model_class, field_name, **kwargs
+            ))
+            yet_employed_kwargs_set = yet_employed_kwargs_set.difference(
+                self.options.filter_query_params_by_field[field_name]
+            ).difference(set(field.sort_by))  # also remove the required sort_by field names
 
+        for field_name in self.options.filter_query_params_by_field:
+            if field_name in self.options.sorted_field_names:
+                continue  # already handled
+            params_for_field = yet_employed_kwargs_set & set(self.options.filter_query_params_by_field[field_name])
+            if not params_for_field:
+                continue  # this field cannot use any of the available filter params
+
+            field = self.options.fields[field_name]
+            logger.debug(f"query on {field_name} with {params_for_field}")
             logger.debug({k: kwargs[k] for k in params_for_field})
             key_set = field.__class__.filter_query(
                 self.model_class, field_name, **{k: kwargs[k] for k in params_for_field}
             )
             db_keys_sets.append(key_set)
-            employed_kwargs_set = employed_kwargs_set | params_for_field
+            yet_employed_kwargs_set = yet_employed_kwargs_set.difference(params_for_field)
 
         # raise error on additional unknown query parameters
-        for unknown_query_param in set(kwargs) - employed_kwargs_set:
-            if unknown_query_param in ['limit', 'order_by', 'values']:
-                continue
-            if any([
-                unknown_query_param.startswith(field_name) for field_name in self.options.relationship_field_names
-            ]):
-                continue
-            raise QueryException(f"Invalid filter parameters: {set(kwargs) - employed_kwargs_set}")
+        if yet_employed_kwargs_set:
+            raise QueryException(f"Invalid filter parameters: {','.join(yet_employed_kwargs_set)}")
 
         logger.debug(db_keys_sets)
         if not len(db_keys_sets):
             return set()
+        # return intersection of all the db keys sets, effectively &&-ing all filters
         return set.intersection(*db_keys_sets)
 
     def filter(self, **kwargs) -> list:

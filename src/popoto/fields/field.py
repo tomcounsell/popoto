@@ -122,14 +122,12 @@ class Field(metaclass=FieldBase):
         """
         return pipeline if pipeline else None
 
-    def get_filter_query_params(self, field_name: str) -> list:
-        # todo: refactor this method to return a set, not a list
-        if self.key:
-            params = [f'{field_name}', ]
-            if self.null:
-                params += [f'{field_name}__isnull', ]
-            return params
-        return list()
+    def get_filter_query_params(self, field_name: str) -> set:
+        """
+        for specialty fields to extend or override
+        returns a set of strings, representing valid parameters for Query.filter()
+        """
+        return set()
 
     @classmethod
     def filter_query(cls, model: 'Model', field_name: str, **query_params) -> set:

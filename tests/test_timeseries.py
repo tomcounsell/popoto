@@ -13,7 +13,7 @@ class AssetPrice(popoto.Model):
     _uid = popoto.UniqueKeyField(type=str, null=False)
     asset_id = popoto.KeyField(type=str, null=False)
     price = popoto.Field(type=Decimal)
-    timestamp = popoto.SortedField(type=datetime, null=False, partition_on="asset_id")
+    timestamp = popoto.SortedField(type=datetime, null=False, sort_by="asset_id")
 
     def pre_save(self, **kwargs):
         self._uid = f"{self.asset_id}{self.timestamp.timestamp()}"
