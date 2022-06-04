@@ -5,6 +5,7 @@ import redis
 from .encoding import encode_popoto_model_obj
 from .db_key import DB_key
 from .query import Query
+from ..fields.auto_field_mixin import AutoFieldMixin
 from ..fields.field import Field, VALID_FIELD_TYPES
 from ..fields.key_field_mixin import KeyFieldMixin
 from ..fields.sorted_field_mixin import SortedFieldMixin
@@ -25,22 +26,22 @@ class ModelException(Exception):
 class ModelOptions:
     def __init__(self, model_name):
         self.model_name = model_name
+        self.db_class_key = DB_key(self.model_name)
+        self.db_class_set_key = DB_key("$Class", self.db_class_key)
+
         self.hidden_fields = dict()
         self.explicit_fields = dict()
         self.key_field_names = set()
-        # self.auto_field_names = set()
+        self.auto_field_names = set()
         # self.list_field_names = set()
         # self.set_field_names = set()
         self.relationship_field_names = set()
         self.sorted_field_names = set()
         self.geo_field_names = set()
-
         # todo: should this be a dict of related objects or just a list of field names?
         # self.related_fields = {}  # model becomes graph node
 
-        # todo: allow customizing this in model.Meta class
-        self.db_class_key = DB_key(self.model_name)
-        self.db_class_set_key = DB_key("$Class", self.db_class_key)
+        self.filter_query_params_by_field = dict()  # field_name: set(query_params,..)
 
         self.abstract = False
         self.unique_together = []
@@ -64,16 +65,18 @@ class ModelOptions:
 
         if isinstance(field, KeyFieldMixin):
             self.key_field_names.add(field_name)
-        # if field.auto:
-        #     self.auto_field_names.add(field_name)
+        if isinstance(field, AutoFieldMixin):
+            self.auto_field_names.add(field_name)
         if isinstance(field, SortedFieldMixin):
             self.sorted_field_names.add(field_name)
         if isinstance(field, GeoField):
             self.geo_field_names.add(field_name)
-        # elif isinstance(field, ListField):
+        # if isinstance(field, ListField):
         #     self.list_field_names.add(field_name)
         if isinstance(field, Relationship):
             self.relationship_field_names.add(field_name)
+
+        self.filter_query_params_by_field[field_name] = field.get_filter_query_params(field_name)
 
     @property
     def fields(self) -> dict:
