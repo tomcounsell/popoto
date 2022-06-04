@@ -1,4 +1,6 @@
-import datetime
+import random
+from datetime import date, datetime
+from decimal import Decimal
 import os
 import sys
 
@@ -8,18 +10,19 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 from src import popoto
 from src.popoto.redis_db import POPOTO_REDIS_DB
 
+
 class SortedDateModel(popoto.Model):
     name = popoto.KeyField()
-    birthday = popoto.SortedField(type=datetime.date)
+    birthday = popoto.SortedField(type=date)
 
 
-lisa = SortedDateModel.create(name="Lisa", birthday=datetime.date(1997, 3, 27))
-rose = SortedDateModel.create(name="Rose", birthday=datetime.date(1997, 2, 11))
-jisoo = SortedDateModel.create(name="Jisoo", birthday=datetime.date(1995, 1, 3))
-jennie = SortedDateModel.create(name="Jennie", birthday=datetime.date(1996, 1, 16))
+lisa = SortedDateModel.create(name="Lisa", birthday=date(1997, 3, 27))
+rose = SortedDateModel.create(name="Rose", birthday=date(1997, 2, 11))
+jisoo = SortedDateModel.create(name="Jisoo", birthday=date(1995, 1, 3))
+jennie = SortedDateModel.create(name="Jennie", birthday=date(1996, 1, 16))
 
 assert lisa in SortedDateModel.query.all()
-oldest = SortedDateModel.query.filter(birthday__lt=datetime.date(1996, 1, 1))[0]
+oldest = SortedDateModel.query.filter(birthday__lt=date(1996, 1, 1))[0]
 assert jisoo == oldest
 younger_than_rose = SortedDateModel.query.filter(birthday__gt=rose.birthday)
 assert len(younger_than_rose) == 1
@@ -74,5 +77,26 @@ assert len(Racer.query.filter(fastest_lap__gte=joe.fastest_lap)) == 3
 for item in Racer.query.all():
     item.delete()
 
-# for ss_key in POPOTO_REDIS_DB.keys("$Sort*"):
-#     print(POPOTO_REDIS_DB.zrange(ss_key, 0,-1))
+
+class SortedAssetsModel(popoto.Model):
+    uuid = popoto.AutoKeyField(auto_uuid_length=6)
+    market = popoto.KeyField(unique=True)
+    asset_id = popoto.KeyField(null=False)
+    timestamp = popoto.SortedField(type=datetime, sort_by='asset_id')
+    market_cap = popoto.SortedField(type=Decimal, sort_by=('market', 'asset_id'))
+    price = popoto.DecimalField()
+
+timestamps = [datetime(2022, 1, 1, hour) for hour in range(23)]
+for timestamp in timestamps:
+    for market in ["beefi", 'damnance']:
+        for asset_id in ["SPOON", "BENT"]:
+            SortedAssetsModel.create(
+                market=market, asset_id=asset_id, timestamp=timestamp,
+                market_cap=Decimal(str(random.randint(10e3, 10e5))),
+                price=Decimal(str(random.randint(1, 100))+"."+str(random.randint(1, 100)))
+            )
+
+SortedAssetsModel.query.filter(timestamp__gt=datetime(2022, 1, 1, 12), asset_id="SPOON")
+
+for sam in SortedAssetsModel.objects.all():
+    sam.delete()

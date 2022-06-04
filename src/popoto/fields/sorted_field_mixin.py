@@ -23,7 +23,7 @@ class SortedFieldMixin:
     type: type = float
     null: bool = False
     default = ""
-    partition_on = tuple()
+    sort_by = tuple()
 
     def __init__(self, **kwargs):
         super().__init__()
@@ -31,7 +31,7 @@ class SortedFieldMixin:
             'type': float,
             'null': False,
             'default': None,  # cannot set a default for datetime, so no type gets a default
-            'partition_on': tuple(),
+            'sort_by': tuple(),
         }
         self.field_defaults.update(sortedfield_defaults)
 
@@ -39,19 +39,19 @@ class SortedFieldMixin:
         for k, v in sortedfield_defaults.items():
             setattr(self, k, kwargs.get(k, v))
 
-        if isinstance(self.partition_on, str):
-            self.partition_on = tuple((self.partition_on,))
+        if isinstance(self.sort_by, str):
+            self.sort_by = tuple((self.sort_by,))
 
-        elif self.partition_on and not isinstance(self.partition_on, tuple):
+        elif self.sort_by and not isinstance(self.sort_by, tuple):
             from ..models.base import ModelException
-            raise ModelException("partition_on must be str or tuple of str field names")
+            raise ModelException("sort_by must be str or tuple of str field names")
 
         # todo: move this to field init validation
         if self.null is not False:
             from ..models.base import ModelException
             raise ModelException("SortedField cannot be null")
-            # todo: allow null in SortedField. null removes instance from SortedSet
-            # todo: if allow null, how to filter by null value? use extra index set just for nulls?
+            # todo: when allow null in SortedField. null removes instance from SortedSet
+            # todo: how to filter by null value? use extra index set just for nulls?
 
     def get_filter_query_params(self, field_name):
         return super().get_filter_query_params(field_name) + [
@@ -60,12 +60,10 @@ class SortedFieldMixin:
             f'{field_name}__gte',
             f'{field_name}__lt',
             f'{field_name}__lte',
-            # f'{field_name}__min',
-            # f'{field_name}__max',
             # f'{field_name}__range',  # todo: like https://docs.djangoproject.com/en/3.2/ref/models/querysets/#range
             # f'{field_name}__isnull',  # todo: see todo in __init__
         ] + [
-            f'{keyfield_name}' for keyfield_name in self.partition_on
+            f'{keyfield_name}' for keyfield_name in self.sort_by
         ]
 
     @classmethod
@@ -104,8 +102,8 @@ class SortedFieldMixin:
     @classmethod
     def get_partitioned_sortedset_db_key(cls, model_instance, field_name) -> DB_key:
         sortedset_db_key = cls.get_sortedset_db_key(model_instance, field_name)
-        # use field names and query values partition_on fields to extend sortedset_db_key
-        for partition_field_name in model_instance._meta.fields[field_name].partition_on:
+        # use field names and query values sort_by fields to extend sortedset_db_key
+        for partition_field_name in model_instance._meta.fields[field_name].sort_by:
             try:
                 sortedset_db_key.append(str(getattr(model_instance, partition_field_name)))
             except KeyError:
@@ -161,19 +159,19 @@ class SortedFieldMixin:
                 raise QueryException(f"Query filters provided are not compatible with this field {field_name}")
 
         try:
-            # use field names and query values partition_on fields to extend sortedset_db_key
+            # use field names and query values sort_by fields to extend sortedset_db_key
             sortedset_db_key = cls.get_sortedset_db_key(
                 model_class,
                 field_name,
                 *[
                     str(query_params[partition_field_name])
-                    for partition_field_name in model_class._meta.fields[field_name].partition_on
+                    for partition_field_name in model_class._meta.fields[field_name].sort_by
                 ]
             )
         except KeyError:
             raise QueryException(
-                f"{field_name} field is partitioned on {', '.join(model_class._meta.fields[field_name].partition_on)}. "
-                f"Query filter must also specify a value for {', '.join(model_class._meta.fields[field_name].partition_on)}"
+                f"{field_name} field is partitioned on {', '.join(model_class._meta.fields[field_name].sort_by)}. "
+                f"Query filter must also specify a value for {', '.join(model_class._meta.fields[field_name].sort_by)}"
             )
 
         redis_db_keys_list = POPOTO_REDIS_DB.zrangebyscore(
