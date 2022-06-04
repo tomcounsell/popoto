@@ -183,16 +183,16 @@ class BitcoinPrice(Model):
 ```
 
 In some cases, you may always sort against a required `KeyField`.
-You will see significant performance improvements if you define the `sort_by` field. 
-However, that field will always be required when performing a query. 
+You will see significant performance improvements if you define `sort_by` (must be a tuple). 
+Going forward, whenever a query filter is called on the SortedField, then all fields in 'sort_by' will also need to be defined in the filter.
 
-In the example below, we've generalized the above BitcoinPrice model to include any asset.
+In the example below, we've generalized the above BitcoinPrice model to be a generic asset.
 Because we will query by timestamp ranges for only one asset at a time, we can declare `sort_by="asset"`.
 
 ```python
 class AssetPrice(Model):
     asset = KeyField()
-    timestamp = SortedKeyField(type=datetime, sort_by="asset")
+    timestamp = SortedKeyField(type=datetime, sort_by=('asset',))
     usd_value = DecimalField()
 
 AssetPrice.query.filter(
@@ -202,6 +202,8 @@ AssetPrice.query.filter(
 )  ## return Bitcoin prices over 1 day period
 ```
 
+Note: because `asset` was specified as a sort_by in the timestamp field, the query requires the asset to be defined.
+This limitation, if you choose to use it, enables maximum performance with Redis.
 
 ## GeoField
 
