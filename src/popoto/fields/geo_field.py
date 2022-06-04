@@ -35,15 +35,15 @@ class GeoField(Field):
         for k, v in geofield_defaults.items():
             setattr(self, k, kwargs.get(k, v))
 
-    def get_filter_query_params(self, field_name):
-        return super().get_filter_query_params(field_name) + [
+    def get_filter_query_params(self, field_name) -> set:
+        return super().get_filter_query_params(field_name).union({
             f'{field_name}',
             f'{field_name}__isnull',
             f'{field_name}_latitude',
             f'{field_name}_longitude',
             f'{field_name}_radius',
             f'{field_name}_radius_unit',
-        ]
+        })
 
     @classmethod
     def is_valid(cls, field, value, null_check=True, **kwargs) -> bool:

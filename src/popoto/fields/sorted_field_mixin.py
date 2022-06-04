@@ -53,8 +53,8 @@ class SortedFieldMixin:
             # todo: when allow null in SortedField. null removes instance from SortedSet
             # todo: how to filter by null value? use extra index set just for nulls?
 
-    def get_filter_query_params(self, field_name):
-        return super().get_filter_query_params(field_name) + [
+    def get_filter_query_params(self, field_name) -> set:
+        return super().get_filter_query_params(field_name).union({
             f'{field_name}',
             f'{field_name}__gt',
             f'{field_name}__gte',
@@ -62,14 +62,14 @@ class SortedFieldMixin:
             f'{field_name}__lte',
             # f'{field_name}__range',  # todo: like https://docs.djangoproject.com/en/3.2/ref/models/querysets/#range
             # f'{field_name}__isnull',  # todo: see todo in __init__
-        ] + [
+        }).union({
             f'{keyfield_name}' for keyfield_name in self.sort_by
-        ]
+        })
 
     @classmethod
     def is_valid(cls, field, value, null_check=True, **kwargs) -> bool:
         if not super().is_valid(field, value, null_check):
-            return
+            return False
         if value and not isinstance(value, field.type):
             return False
         return True

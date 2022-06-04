@@ -71,14 +71,14 @@ class KeyFieldMixin:
         else:
             return POPOTO_REDIS_DB.srem(unique_set_key.redis_key, model_instance.db_key.redis_key)
 
-    def get_filter_query_params(self, field_name: str) -> list:
-        return super().get_filter_query_params(field_name) + [
+    def get_filter_query_params(self, field_name: str) -> set:
+        return super().get_filter_query_params(field_name).union({
             f'{field_name}',  # takes a str, exact match :x:
             f'{field_name}__contains',  # takes a str, matches :*x*:
             f'{field_name}__startswith',  # takes a str, matches :x*:
             f'{field_name}__endswith',  # takes a str, matches :*x:
             f'{field_name}__in',  # takes a list, returns any matches
-        ]
+        })
 
     @classmethod
     def filter_query(cls, model: 'Model', field_name: str, **query_params) -> set:

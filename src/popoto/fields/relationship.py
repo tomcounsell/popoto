@@ -33,14 +33,17 @@ class Relationship(Field):
             setattr(self, k, kwargs.get(k, v))
 
 
-    def get_filter_query_params(self, field_name):
-        return super().get_filter_query_params(field_name) + [
+    def get_filter_query_params(self, field_name) -> set:
+        related_field_filter_query_params = set()
+        for related_field_name, related_field in self.model._meta.fields.items():
+            if isinstance(related_field, Relationship):
+                continue  # not ready for recursive compilation
+            for related_query_param in related_field.get_filter_query_params(related_field_name):
+                related_field_filter_query_params.add(f'{field_name}__{related_query_param}')
+
+        return super().get_filter_query_params(field_name).union({
             f'{field_name}',
-        ] + [
-            f'{field_name}__{field.get_filter_query_params(related_field_name)}'
-            for related_field_name, field in self.model._meta.fields.items()
-            if not isinstance(field, Relationship)  # not ready for recursive compilation
-        ]
+        }).union(related_field_filter_query_params)
 
     @classmethod
     def on_save(cls, model_instance: 'Model', field_name: str, field_value: 'Model', pipeline=None, **kwargs):
