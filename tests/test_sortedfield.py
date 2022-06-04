@@ -102,7 +102,16 @@ assert len(SortedAssetsModel.query.filter(
     timestamp__gte=datetime(2022, 1, 1, 12),
     timestamp__lt=datetime(2022, 1, 1, 20),
     asset_id='SPOON', market='damnance'
-)) == 8*2
+)) == 8
+values_result = SortedAssetsModel.query.filter(
+    timestamp__gte=datetime(2022, 1, 1, 12),
+    timestamp__lte=datetime(2022, 1, 1, 18),
+    asset_id='BENT', market='damnance', values=('timestamp', 'price'),
+    order_by='timestamp'
+)
+assert values_result[-1]['timestamp'] == datetime(2022, 1, 1, 18)
+assert list(values_result[4].keys()) == ['timestamp', 'price']
+
 
 for sam in SortedAssetsModel.objects.all():
     sam.delete()
