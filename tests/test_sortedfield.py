@@ -82,8 +82,8 @@ class SortedAssetsModel(popoto.Model):
     uuid = popoto.AutoKeyField(auto_uuid_length=6)
     market = popoto.KeyField(unique=True)
     asset_id = popoto.KeyField(null=False)
-    timestamp = popoto.SortedField(type=datetime, sort_by='asset_id')
-    market_cap = popoto.SortedField(type=Decimal, sort_by=('market', 'asset_id'))
+    timestamp = popoto.SortedKeyField(type=datetime, sort_by=('asset_id', 'market'))
+    market_cap = popoto.SortedField(type=Decimal, sort_by='market')
     price = popoto.DecimalField()
 
 timestamps = [datetime(2022, 1, 1, hour) for hour in range(23)]
@@ -96,7 +96,13 @@ for timestamp in timestamps:
                 price=Decimal(str(random.randint(1, 100))+"."+str(random.randint(1, 100)))
             )
 
-SortedAssetsModel.query.filter(timestamp__gt=datetime(2022, 1, 1, 12), asset_id="SPOON")
+assert len(SortedAssetsModel.query.filter(market='beefi', order_by='market_cap')) == len(timestamps)*2
+assert len(SortedAssetsModel.query.filter(market='damnance', asset_id='BENT')) == len(timestamps)
+assert len(SortedAssetsModel.query.filter(
+    timestamp__gte=datetime(2022, 1, 1, 12),
+    timestamp__lt=datetime(2022, 1, 1, 20),
+    asset_id='SPOON', market='damnance'
+)) == 8*2
 
 for sam in SortedAssetsModel.objects.all():
     sam.delete()

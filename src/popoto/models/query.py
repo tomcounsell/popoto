@@ -81,7 +81,7 @@ class Query:
             if not len(yet_employed_kwargs_set & self.options.filter_query_params_by_field[field_name]):
                 continue  # this field cannot use any of the available filter params
             logger.debug(f"query on {field_name} with {self.options.filter_query_params_by_field[field_name]}")
-            logger.debug({k: kwargs[k] for k in self.options.filter_query_params_by_field[field_name]})
+            logger.debug({k: kwargs[k] for k in self.options.filter_query_params_by_field[field_name] if k in kwargs})
             db_keys_sets.append(field.__class__.filter_query(
                 self.model_class, field_name, **kwargs
             ))
@@ -96,6 +96,7 @@ class Query:
             if not params_for_field:
                 continue  # this field cannot use any of the available filter params
 
+            field = self.options.fields[field_name]
             logger.debug(f"query on {field_name} with {params_for_field}")
             logger.debug({k: kwargs[k] for k in params_for_field})
             key_set = field.__class__.filter_query(

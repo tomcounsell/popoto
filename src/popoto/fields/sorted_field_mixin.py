@@ -62,8 +62,6 @@ class SortedFieldMixin:
             f'{field_name}__lte',
             # f'{field_name}__range',  # todo: like https://docs.djangoproject.com/en/3.2/ref/models/querysets/#range
             # f'{field_name}__isnull',  # todo: see todo in __init__
-        }).union({
-            f'{keyfield_name}' for keyfield_name in self.sort_by
         })
 
     @classmethod
@@ -93,7 +91,7 @@ class SortedFieldMixin:
         elif field.type is datetime.time:
             return field_value.timestamp()
         else:
-            raise ValueError("SortedField received non-numeric value.")
+            raise ValueError(f"SortedField {field} received non-numeric value {field_value} type {type(field_value)}.")
 
     @classmethod
     def get_sortedset_db_key(cls, model, field_name, *partition_field_names) -> DB_key:
@@ -170,7 +168,7 @@ class SortedFieldMixin:
             )
         except KeyError:
             raise QueryException(
-                f"{field_name} field is partitioned on {', '.join(model_class._meta.fields[field_name].sort_by)}. "
+                f"{field_name} field is sorted on {', '.join(model_class._meta.fields[field_name].sort_by)}. "
                 f"Query filter must also specify a value for {', '.join(model_class._meta.fields[field_name].sort_by)}"
             )
 
