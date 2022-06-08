@@ -86,6 +86,7 @@ lisa = TestKeySetModel.create(band="BLACKPINK", role="rapper", name="Lalisa Mano
 jisoo = TestKeySetModel.create(band="BLACKPINK", role="singer", name="Kim Ji-soo")
 solar = TestKeySetModel.create(band="Mamamoo", role="singer", name="Kim Yong-sun")
 moonbyul = TestKeySetModel.create(band="Mamamoo", role="rapper", name="Moon Byul-yi")
+anonymous = TestKeySetModel.create(name="anonymous")
 
 # test class-wide redis set
 class_redis_set_key = TestKeySetModel._meta.db_class_set_key
@@ -109,6 +110,8 @@ assert len(POPOTO_REDIS_DB.smembers(bp_band_redis_set_key)) == 1
 jisoo.delete()
 assert len(POPOTO_REDIS_DB.smembers(bp_band_redis_set_key)) == 0
 assert len(TestKeySetModel.query.filter(band="BLACKPINK")) == 0
+
+assert TestKeySetModel.query.filter(role__isnull=True, band__isnull=True) == [anonymous,]
 
 for item in TestKeySetModel.query.all():
     item.delete()
