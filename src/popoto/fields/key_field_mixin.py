@@ -74,6 +74,7 @@ class KeyFieldMixin:
     def get_filter_query_params(self, field_name: str) -> set:
         return super().get_filter_query_params(field_name).union({
             f'{field_name}',  # takes a str, exact match :x:
+            f'{field_name}__isnull',  # Takes boolean, to match for [^None]
             f'{field_name}__contains',  # takes a str, matches :*x*:
             f'{field_name}__startswith',  # takes a str, matches :x*:
             f'{field_name}__endswith',  # takes a str, matches :*x:
