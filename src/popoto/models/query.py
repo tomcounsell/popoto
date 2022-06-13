@@ -210,7 +210,7 @@ class Query:
             hashes_list = pipeline.execute()
 
         if {} in hashes_list:
-            logger.error("one or more redis keys points to missing objects. Debug with Model.query.keys(clean=True")
+            logger.error("one or more redis keys points to missing objects. Debug with Model.query.keys(clean=True)")
 
         return [
             decode_popoto_model_hashmap(model, redis_hash, fields_only=bool(values))
