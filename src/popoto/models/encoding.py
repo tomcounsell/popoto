@@ -42,14 +42,17 @@ TYPE_ENCODER_DECODERS = {
         decoder=lambda obj: datetime.datetime.strptime(obj['as_encodable'], "%H:%M:%S.%f").time()
     ),
 }
-TYPE_DECODER_KEYSTRINGS = [ed.key for ed in TYPE_ENCODER_DECODERS.values()]
+DECODERS_BY_KEYSTRING = {
+    encoder_decoder.key: encoder_decoder.decoder
+    for encoder_decoder in TYPE_ENCODER_DECODERS.values()
+}
 
 
 def decode_custom_types(obj):
     if isinstance(obj, dict) and 'as_encodable' in obj:
-        for encoder_decoder in TYPE_ENCODER_DECODERS.values():
-            if encoder_decoder.key in obj:
-                return encoder_decoder.decoder(obj)
+        for keystring in DECODERS_BY_KEYSTRING.keys():
+            if keystring in obj:
+                return TYPE_ENCODER_DECODERS.decoder(obj)
     return obj
 
 
@@ -80,6 +83,10 @@ def encode_popoto_model_obj(obj: 'Model') -> dict:
 
 
 def decode_popoto_model_hashmap(model_class: 'Model', redis_hash: dict, fields_only=False) -> 'Model':
+    """
+    fields_only=True return only the fields dict, not a model object
+    (also skips decoding of the field keys)
+    """
     if len(redis_hash):
         model_attrs = {
             key_b.decode(ENCODING) if not fields_only else key_b:
