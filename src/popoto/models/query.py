@@ -165,7 +165,7 @@ class Query:
 
     @classmethod
     def get_many_objects(cls, model: 'Model', db_keys: set,
-                         order_by_attr_name: str = "", limit: int = None, values: tuple = None) -> list:
+                         order_by_attr_name: str = None, limit: int = None, values: tuple = None) -> list:
         from .encoding import decode_popoto_model_hashmap
         pipeline = POPOTO_REDIS_DB.pipeline()
         reverse_order = False
