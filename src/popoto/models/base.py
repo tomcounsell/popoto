@@ -463,44 +463,37 @@ class Model(metaclass=ModelBase):
         """
             Model instance delete method. Uses Redis DELETE command with key.
             Also triggers all field on_delete methods.
+            1. delete object as hashmap
+            2. delete from class set
+            3. run field on_delete methods
+            4. reset private vars
+            returns pipeline or boolean(object existed AND was deleted)
         """
-
         delete_redis_key = self._redis_key or self.db_key.redis_key
+        db_response = False
 
-        """
-        1. delete object as hashmap
-        2. delete from class set
-        3. run field on_delete methods
-        4. reset private vars
-        """
-
-        if pipeline is not None:
+        if pipeline:
             pipeline = pipeline.delete(delete_redis_key)  # 1
-            pipeline = pipeline.srem(self._meta.db_class_set_key.redis_key, delete_redis_key)  # 2
-
-            for field_name, field in self._meta.fields.items():  # 3
-                pipeline = field.on_delete(  # 3
-                    model_instance=self, field_name=field_name,
-                    field_value=getattr(self, field_name),
-                    pipeline=pipeline, **kwargs
-                )
-
-            self._db_content = dict()  # 4
-            return pipeline
-
         else:
             db_response = POPOTO_REDIS_DB.delete(delete_redis_key)  # 1
-            POPOTO_REDIS_DB.srem(self._meta.db_class_set_key.redis_key, delete_redis_key)  # 2
+            pipeline = POPOTO_REDIS_DB.pipeline()
 
-            for field_name, field in self._meta.fields.items():  # 3
-                field.on_delete(  # 3
-                    model_instance=self, field_name=field_name,
-                    field_value=getattr(self, field_name),
-                    pipeline=None, **kwargs
-                )
+        pipeline = pipeline.srem(self._meta.db_class_set_key.redis_key, delete_redis_key)  # 2
 
-            self._db_content = dict()  # 4
+        for field_name, field in self._meta.fields.items():  # 3
+            pipeline = field.on_delete(
+                model_instance=self, field_name=field_name,
+                field_value=getattr(self, field_name),
+                pipeline=pipeline, **kwargs
+            )
+
+        self._db_content = dict()  # 4
+
+        if db_response is not False:
+            pipeline.execute()
             return bool(db_response > 0)
+        else:
+            return pipeline
 
     @classmethod
     def get_info(cls):
