@@ -1,6 +1,7 @@
 from .test_common_models import *
 from .test_field_types import *
 from .test_geofield import *
+from .test_dataframe_field import *
 from .test_key_fields import *
 from .test_kitchen_sink import *
 from .test_model_errors import *

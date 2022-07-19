@@ -56,9 +56,9 @@ TYPE_ENCODER_DECODERS = {
         key="__dataframe__",
         encoder=lambda obj: {
             "__dataframe__": True,
-            "as_encodable": bytes(str(obj.to_json())),
+            "as_encodable": obj.to_json(),
         },
-        decoder=lambda obj: pd.read_json(json.loads(obj)),
+        decoder=lambda obj: pd.read_json(obj["as_encodable"]),
     ),
 }
 DECODERS_BY_KEYSTRING = {
@@ -71,8 +71,16 @@ def decode_custom_types(obj):
     if isinstance(obj, dict) and "as_encodable" in obj:
         for keystring in DECODERS_BY_KEYSTRING.keys():
             if keystring in obj:
-                return TYPE_ENCODER_DECODERS.decoder(obj)
+                return DECODERS_BY_KEYSTRING[keystring](obj)
     return obj
+
+
+# def decode_custom_types(obj):
+#     if isinstance(obj, dict) and "as_encodable" in obj:
+#         for encoder_decoder in TYPE_ENCODER_DECODERS.values():
+#             if encoder_decoder.key in obj:
+#                 return encoder_decoder.decoder(obj)
+#     return obj
 
 
 def encode_popoto_model_obj(obj: "Model") -> dict:
@@ -87,7 +95,7 @@ def encode_popoto_model_obj(obj: "Model") -> dict:
         # use db_key string for relationships
         from ..fields.relationship import Relationship
 
-        if value and isinstance(field, Relationship):
+        if value is not None and isinstance(field, Relationship):
             if not isinstance(value, field.model):
                 raise ModelException(
                     f"Relationship field requires {field.model} model instance. got {value} instead"
@@ -95,7 +103,7 @@ def encode_popoto_model_obj(obj: "Model") -> dict:
             encoded_value = msgpack.packb(value.db_key.redis_key)
             # todo: refactor to store db_key list, not redis_key
 
-        elif value and field.type in TYPE_ENCODER_DECODERS.keys():
+        elif value is not None and field.type in TYPE_ENCODER_DECODERS.keys():
             encoded_value = msgpack.packb(
                 TYPE_ENCODER_DECODERS[field.type].encoder(value)
             )
