@@ -20,6 +20,7 @@ from .fields.shortcuts import (
     SortedKeyField,
 )
 from .fields.geo_field import GeoField
+from .fields.dataframe_field import DataFrameField
 from .fields.relationship import Relationship
 from .models.base import Model, ModelBase
 from .pubsub.publisher import Publisher
@@ -46,6 +47,7 @@ __all__ = [
     "SortedField",
     "SortedKeyField",
     "GeoField",
+    "DataFrameField",
     "Relationship",
     "Model",
     "ModelBase",

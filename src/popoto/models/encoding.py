@@ -52,6 +52,14 @@ TYPE_ENCODER_DECODERS = {
             obj["as_encodable"], "%H:%M:%S.%f"
         ).time(),
     ),
+    pd.DataFrame: EncoderDecoder(
+        key="__dataframe__",
+        encoder=lambda obj: {
+            "__dataframe__": True,
+            "as_encodable": bytes(str(obj.to_json())),
+        },
+        decoder=lambda obj: pd.read_json(json.loads(obj)),
+    ),
 }
 DECODERS_BY_KEYSTRING = {
     encoder_decoder.key: encoder_decoder.decoder
