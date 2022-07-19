@@ -11,3 +11,4 @@ from tests.test_query_results import *
 from tests.test_relationship import *
 from tests.test_sortedfield import *
 from tests.test_timeseries import *
+from tests.test_performance import *
