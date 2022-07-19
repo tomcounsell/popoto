@@ -13,7 +13,7 @@ from ..fields.geo_field import GeoField
 from ..fields.relationship import Relationship
 from ..redis_db import POPOTO_REDIS_DB
 
-logger = logging.getLogger('POPOTO.model_base')
+logger = logging.getLogger("POPOTO.model_base")
 
 global RELATED_MODEL_LOAD_SEQUENCE
 RELATED_MODEL_LOAD_SEQUENCE = set()
@@ -52,10 +52,14 @@ class ModelOptions:
 
     def add_field(self, field_name: str, field: Field):
         if not field_name[0] == "_" and not field_name[0].islower():
-            raise ModelException(f"{field_name} field name must start with a lowercase letter.")
-        elif field_name in ['limit', 'order_by', 'values']:
-            raise ModelException(f"{field_name} is a reserved field name. "
-                                 f"See https://popoto.readthedocs.io/en/latest/fields/#reserved-field-names")
+            raise ModelException(
+                f"{field_name} field name must start with a lowercase letter."
+            )
+        elif field_name in ["limit", "order_by", "values"]:
+            raise ModelException(
+                f"{field_name} is a reserved field name. "
+                f"See https://popoto.readthedocs.io/en/latest/fields/#reserved-field-names"
+            )
         elif field_name.startswith("_") and field_name not in self.hidden_fields:
             self.hidden_fields[field_name] = field
         elif field_name not in self.explicit_fields:
@@ -76,7 +80,9 @@ class ModelOptions:
         if isinstance(field, Relationship):
             self.relationship_field_names.add(field_name)
 
-        self.filter_query_params_by_field[field_name] = field.get_filter_query_params(field_name)
+        self.filter_query_params_by_field[field_name] = field.get_filter_query_params(
+            field_name
+        )
 
     @property
     def fields(self) -> dict:
@@ -105,9 +111,9 @@ class ModelBase(type):
             return super().__new__(cls, name, bases, attrs, **kwargs)
 
         # logger.debug({k: v for k, v in attrs.items() if not k.startswith('__')})
-        module = attrs.pop('__module__')
-        new_attrs = {'__module__': module}
-        attr_meta = attrs.pop('Meta', None)
+        module = attrs.pop("__module__")
+        new_attrs = {"__module__": module}
+        attr_meta = attrs.pop("Meta", None)
         options = ModelOptions(name)
         options.parents = parents
 
@@ -122,7 +128,7 @@ class ModelBase(type):
                 # model will handle this and set default values
                 options.add_field(obj_name, obj)
 
-            elif callable(obj) or hasattr(obj, '__func__') or hasattr(obj, '__set__'):
+            elif callable(obj) or hasattr(obj, "__func__") or hasattr(obj, "__set__"):
                 # a callable method or property
                 new_attrs[obj_name] = obj
 
@@ -143,9 +149,9 @@ class ModelBase(type):
 
         new_class = super().__new__(cls, name, bases, new_attrs)
 
-        options.abstract = getattr(attr_meta, 'abstract', False)
-        options.meta = attr_meta or getattr(new_class, 'Meta', None)
-        options.base_meta = getattr(new_class, '_meta', None)
+        options.abstract = getattr(attr_meta, "abstract", False)
+        options.meta = attr_meta or getattr(new_class, "Meta", None)
+        options.base_meta = getattr(new_class, "_meta", None)
         new_class._meta = options
         new_class.objects = new_class.query = Query(new_class)
         return new_class
@@ -165,11 +171,12 @@ class Model(metaclass=ModelBase):
         # add auto KeyField if needed
         if not len(self._meta.key_field_names):
             from ..fields.shortcuts import AutoKeyField
-            self._meta.add_field('_auto_key', AutoKeyField())
+
+            self._meta.add_field("_auto_key", AutoKeyField())
 
         # prep AutoKeys with new default ids
         for field in self._meta.fields.values():
-            if hasattr(field, 'auto') and field.auto:
+            if hasattr(field, "auto") and field.auto:
                 field.set_auto_key_value()
 
         # set defaults
@@ -185,24 +192,34 @@ class Model(metaclass=ModelBase):
             global RELATED_MODEL_LOAD_SEQUENCE
             is_parent_model = len(RELATED_MODEL_LOAD_SEQUENCE) == 0
             for field_name in self._meta.relationship_field_names:
-                if f"{self.__class__.__name__}.{field_name}" in RELATED_MODEL_LOAD_SEQUENCE:
+                if (
+                    f"{self.__class__.__name__}.{field_name}"
+                    in RELATED_MODEL_LOAD_SEQUENCE
+                ):
                     continue
-                RELATED_MODEL_LOAD_SEQUENCE.add(f"{self.__class__.__name__}.{field_name}")
+                RELATED_MODEL_LOAD_SEQUENCE.add(
+                    f"{self.__class__.__name__}.{field_name}"
+                )
 
                 field_value = getattr(self, field_name)
                 if isinstance(field_value, Model):
                     setattr(self, field_name, field_value)
                 elif isinstance(field_value, str):
                     setattr(
-                        self, field_name,
-                        self._meta.fields[field_name].model.query.get(redis_key=field_value)
+                        self,
+                        field_name,
+                        self._meta.fields[field_name].model.query.get(
+                            redis_key=field_value
+                        ),
                     )
 
                 # todo: lazy load the instance from the db
                 elif not field_value:
                     setattr(self, field_name, None)
                 else:
-                    raise ModelException(f"{field_name} expects model instance or redis_key")
+                    raise ModelException(
+                        f"{field_name} expects model instance or redis_key"
+                    )
             if is_parent_model:
                 RELATED_MODEL_LOAD_SEQUENCE = set()
 
@@ -210,15 +227,22 @@ class Model(metaclass=ModelBase):
         self._expire_at = None  # todo: datetime? or timestamp?
 
         # validate initial attributes
-        if not self.is_valid(null_check=False):  # exclude null, will validate null values on pre-save
+        if not self.is_valid(
+            null_check=False
+        ):  # exclude null, will validate null values on pre-save
             raise ModelException(f"Could not instantiate class {self}")
 
         self._redis_key = None
         # _db_key used by Redis cannot be known without performance cost
         # _db_key is predicted until synced during save() call
-        if None not in [getattr(self, key_field_name) for key_field_name in self._meta.key_field_names]:
+        if None not in [
+            getattr(self, key_field_name)
+            for key_field_name in self._meta.key_field_names
+        ]:
             self._redis_key = self.db_key.redis_key
-        self.obsolete_redis_key = None  # to be used when db_key changes between loading and saving the object
+        self.obsolete_redis_key = (
+            None  # to be used when db_key changes between loading and saving the object
+        )
         self._db_content = dict()  # empty until synced during save() call
 
         # todo: create set of possible custom field keys
@@ -233,10 +257,13 @@ class Model(metaclass=ModelBase):
         OR model Meta: key_order = [keyname, keyname, ]
         OR both
         """
-        return DB_key(self._meta.db_class_key, [
-            str(getattr(self, key_field_name, "None"))
-            for key_field_name in sorted(self._meta.key_field_names)
-        ])
+        return DB_key(
+            self._meta.db_class_key,
+            [
+                str(getattr(self, key_field_name, "None"))
+                for key_field_name in sorted(self._meta.key_field_names)
+            ],
+        )
 
     def __repr__(self):
         return f"<{self.__class__.__name__} Popoto object at {self.db_key.redis_key}>"
@@ -258,11 +285,19 @@ class Model(metaclass=ModelBase):
         try:
             if isinstance(other, self.__class__):
                 # always False if if any KeyFields are None
-                if (None in [
-                    self._meta.fields.get(key_field_name) for key_field_name in self._meta.key_field_names
-                ]) or (None in [
-                    other._meta.fields.get(key_field_name) for key_field_name in other._meta.key_field_names
-                ]):
+                if (
+                    None
+                    in [
+                        self._meta.fields.get(key_field_name)
+                        for key_field_name in self._meta.key_field_names
+                    ]
+                ) or (
+                    None
+                    in [
+                        other._meta.fields.get(key_field_name)
+                        for key_field_name in other._meta.key_field_names
+                    ]
+                ):
                     return repr(self) == repr(other)
                 return self.db_key == other.db_key
         except:
@@ -279,29 +314,43 @@ class Model(metaclass=ModelBase):
 
     def is_valid(self, null_check=True) -> bool:
         """
-            todo: validate values
-            - field.type ✅
-            - field.null ✅
-            - field.max_length ✅
-            - ttl, expire_at - todo
+        todo: validate values
+        - field.type ✅
+        - field.null ✅
+        - field.max_length ✅
+        - ttl, expire_at - todo
         """
 
         for field_name in self._meta.field_names:
             # type check the field values against their class specified type, unless null/None
 
-            if all([
-                getattr(self, field_name) is not None,
-                not isinstance(getattr(self, field_name), self._meta.fields[field_name].type)
-            ]):
+            if all(
+                [
+                    getattr(self, field_name) is not None,
+                    not isinstance(
+                        getattr(self, field_name), self._meta.fields[field_name].type
+                    ),
+                ]
+            ):
                 try:
                     if getattr(self, field_name) is not None:
                         if self._meta.fields[field_name].type in VALID_FIELD_TYPES:
-                            setattr(self, field_name, self._meta.fields[field_name].type(getattr(self, field_name)))
+                            setattr(
+                                self,
+                                field_name,
+                                self._meta.fields[field_name].type(
+                                    getattr(self, field_name)
+                                ),
+                            )
                         else:
                             pass  # do not force typing if custom type is defined
-                    if not isinstance(getattr(self, field_name), self._meta.fields[field_name].type):
-                        raise TypeError(f"Expected {field_name} to be type {self._meta.fields[field_name].type}. "
-                                        f"It is type {type(getattr(self, field_name))}")
+                    if not isinstance(
+                        getattr(self, field_name), self._meta.fields[field_name].type
+                    ):
+                        raise TypeError(
+                            f"Expected {field_name} to be type {self._meta.fields[field_name].type}. "
+                            f"It is type {type(getattr(self, field_name))}"
+                        )
                 except TypeError as e:
                     logger.error(
                         f"{str(e)} \n Change the value or modify type on {self.__class__.__name__}.{field_name}"
@@ -309,18 +358,25 @@ class Model(metaclass=ModelBase):
                     return False
 
             # check non-nullable fields
-            if null_check and \
-                    self._meta.fields[field_name].null is False and \
-                    getattr(self, field_name) is None:
-                error = f"{field_name} is None/null. " \
-                        f"Set a value or set null=True on {self.__class__.__name__}.{field_name}"
+            if (
+                null_check
+                and self._meta.fields[field_name].null is False
+                and getattr(self, field_name) is None
+            ):
+                error = (
+                    f"{field_name} is None/null. "
+                    f"Set a value or set null=True on {self.__class__.__name__}.{field_name}"
+                )
                 logger.error(error)
                 return False
 
             # validate str max_length
-            if self._meta.fields[field_name].type == str and \
-                    getattr(self, field_name) and \
-                    len(getattr(self, field_name)) > self._meta.fields[field_name].max_length:
+            if (
+                self._meta.fields[field_name].type == str
+                and getattr(self, field_name)
+                and len(getattr(self, field_name))
+                > self._meta.fields[field_name].max_length
+            ):
                 error = f"{field_name} is greater than max_length={self._meta.fields[field_name].max_length}"
                 logger.error(error)
                 return False
@@ -331,15 +387,21 @@ class Model(metaclass=ModelBase):
         for field_name, field_value in self.__dict__.items():
             if field_name in self._meta.fields.keys():
                 field_class = self._meta.fields[field_name].__class__
-                if not field_class.is_valid(self._meta.fields[field_name], field_value, null_check=null_check):
+                if not field_class.is_valid(
+                    self._meta.fields[field_name], field_value, null_check=null_check
+                ):
                     error = f"Validation on [{field_name}] Field failed"
                     logger.error(error)
                     return False
 
         return True
 
-    def pre_save(self, pipeline: redis.client.Pipeline = None,
-                 ignore_errors: bool = False, **kwargs):
+    def pre_save(
+        self,
+        pipeline: redis.client.Pipeline = None,
+        ignore_errors: bool = False,
+        **kwargs,
+    ):
         """
         Model instance preparation for saving.
         """
@@ -354,20 +416,24 @@ class Model(metaclass=ModelBase):
         # run any necessary formatting on field data before saving
         for field_name, field in self._meta.fields.items():
             setattr(
-                self, field_name,
-                field.format_value_pre_save(getattr(self, field_name))
+                self, field_name, field.format_value_pre_save(getattr(self, field_name))
             )
         return pipeline if pipeline else True
 
-    def save(self, pipeline: redis.client.Pipeline = None,
-             ttl=None, expire_at=None, ignore_errors: bool = False,
-             **kwargs):
+    def save(
+        self,
+        pipeline: redis.client.Pipeline = None,
+        ignore_errors: bool = False,
+        **kwargs,
+    ):
         """
-            Model instance save method. Uses Redis HSET command with key, dict of values, ttl.
-            Also triggers all field on_save methods.
+        Model instance save method. Uses Redis HSET command with key, dict of values, ttl.
+        Also triggers all field on_save methods.
         """
 
-        pipeline_or_success = self.pre_save(pipeline=pipeline, ignore_errors=ignore_errors, **kwargs)
+        pipeline_or_success = self.pre_save(
+            pipeline=pipeline, ignore_errors=ignore_errors, **kwargs
+        )
         if not pipeline_or_success:
             return pipeline or False
         elif pipeline:
@@ -378,7 +444,7 @@ class Model(metaclass=ModelBase):
             self.obsolete_redis_key = self._redis_key
 
         # todo: implement and test tll, expire_at
-        ttl, expire_at = (ttl or self._ttl), (expire_at or self._expire_at)
+        # ttl, expire_at = (ttl or self._ttl), (expire_at or self._expire_at)
 
         """
         1. save object as hashmap
@@ -398,52 +464,72 @@ class Model(metaclass=ModelBase):
             #     pipeline = pipeline.expire(new_db_key, ttl)  # 2
             # if expire_at is not None:
             #     pipeline = pipeline.expire_at(new_db_key, expire_at)  # 2
-            pipeline = pipeline.sadd(self._meta.db_class_set_key.redis_key, new_db_key.redis_key)  # 3
-            if self.obsolete_redis_key and self.obsolete_redis_key != new_db_key.redis_key:  # 4
+            pipeline = pipeline.sadd(
+                self._meta.db_class_set_key.redis_key, new_db_key.redis_key
+            )  # 3
+            if (
+                self.obsolete_redis_key
+                and self.obsolete_redis_key != new_db_key.redis_key
+            ):  # 4
                 for field_name, field in self._meta.fields.items():
                     pipeline = field.on_delete(  # 4
-                        model_instance=self, field_name=field_name,
+                        model_instance=self,
+                        field_name=field_name,
                         field_value=getattr(self, field_name),
-                        pipeline=pipeline, **kwargs
+                        pipeline=pipeline,
+                        **kwargs,
                     )
                 pipeline.delete(self.obsolete_redis_key)  # 4
                 self.obsolete_redis_key = None
             for field_name, field in self._meta.fields.items():  # 5
                 pipeline = field.on_save(  # 5
-                    self, field_name=field_name,
+                    self,
+                    field_name=field_name,
                     field_value=getattr(self, field_name),
                     # ttl=ttl, expire_at=expire_at,
                     ignore_errors=ignore_errors,
-                    pipeline=pipeline, **kwargs
+                    pipeline=pipeline,
+                    **kwargs,
                 )
             self._redis_key = new_db_key.redis_key  # 6
             return pipeline
 
         else:
-            db_response = POPOTO_REDIS_DB.hset(new_db_key.redis_key, mapping=hset_mapping)  # 1
+            db_response = POPOTO_REDIS_DB.hset(
+                new_db_key.redis_key, mapping=hset_mapping
+            )  # 1
             # if ttl is not None:
             #     POPOTO_REDIS_DB.expire(new_db_key, ttl)  # 2
             # if expire_at is not None:
             #     POPOTO_REDIS_DB.expireat(new_db_key, ttl)  # 2
-            POPOTO_REDIS_DB.sadd(self._meta.db_class_set_key.redis_key, new_db_key.redis_key)  # 3
+            POPOTO_REDIS_DB.sadd(
+                self._meta.db_class_set_key.redis_key, new_db_key.redis_key
+            )  # 3
 
-            if self.obsolete_redis_key and self.obsolete_redis_key != new_db_key.redis_key:  # 4
+            if (
+                self.obsolete_redis_key
+                and self.obsolete_redis_key != new_db_key.redis_key
+            ):  # 4
                 for field_name, field in self._meta.fields.items():
                     field.on_delete(  # 4
-                        model_instance=self, field_name=field_name,
+                        model_instance=self,
+                        field_name=field_name,
                         field_value=getattr(self, field_name),
-                        pipeline=None, **kwargs
+                        pipeline=None,
+                        **kwargs,
                     )
                 POPOTO_REDIS_DB.delete(self.obsolete_redis_key)  # 4
                 self.obsolete_redis_key = None
 
             for field_name, field in self._meta.fields.items():  # 5
                 field.on_save(  # 5
-                    self, field_name=field_name,
+                    self,
+                    field_name=field_name,
                     field_value=getattr(self, field_name),
                     # ttl=ttl, expire_at=expire_at,
                     ignore_errors=ignore_errors,
-                    pipeline=None, **kwargs
+                    pipeline=None,
+                    **kwargs,
                 )
 
             self._redis_key = new_db_key.redis_key  # 6
@@ -461,56 +547,58 @@ class Model(metaclass=ModelBase):
 
     def delete(self, pipeline: redis.client.Pipeline = None, *args, **kwargs):
         """
-            Model instance delete method. Uses Redis DELETE command with key.
-            Also triggers all field on_delete methods.
-        """
-
-        delete_redis_key = self._redis_key or self.db_key.redis_key
-
-        """
+        Model instance delete method. Uses Redis DELETE command with key.
+        Also triggers all field on_delete methods.
         1. delete object as hashmap
         2. delete from class set
         3. run field on_delete methods
         4. reset private vars
+        returns pipeline or boolean(object existed AND was deleted)
         """
+        delete_redis_key = self._redis_key or self.db_key.redis_key
+        db_response = False
 
-        if pipeline is not None:
+        if pipeline:
             pipeline = pipeline.delete(delete_redis_key)  # 1
-            pipeline = pipeline.srem(self._meta.db_class_set_key.redis_key, delete_redis_key)  # 2
-
-            for field_name, field in self._meta.fields.items():  # 3
-                pipeline = field.on_delete(  # 3
-                    model_instance=self, field_name=field_name,
-                    field_value=getattr(self, field_name),
-                    pipeline=pipeline, **kwargs
-                )
-
-            self._db_content = dict()  # 4
-            return pipeline
-
         else:
             db_response = POPOTO_REDIS_DB.delete(delete_redis_key)  # 1
-            POPOTO_REDIS_DB.srem(self._meta.db_class_set_key.redis_key, delete_redis_key)  # 2
+            pipeline = POPOTO_REDIS_DB.pipeline()
 
-            for field_name, field in self._meta.fields.items():  # 3
-                field.on_delete(  # 3
-                    model_instance=self, field_name=field_name,
-                    field_value=getattr(self, field_name),
-                    pipeline=None, **kwargs
-                )
+        pipeline = pipeline.srem(
+            self._meta.db_class_set_key.redis_key, delete_redis_key
+        )  # 2
 
-            self._db_content = dict()  # 4
+        for field_name, field in self._meta.fields.items():  # 3
+            pipeline = field.on_delete(
+                model_instance=self,
+                field_name=field_name,
+                field_value=getattr(self, field_name),
+                pipeline=pipeline,
+                **kwargs,
+            )
+
+        self._db_content = dict()  # 4
+
+        if db_response is not False:
+            pipeline.execute()
             return bool(db_response > 0)
+        else:
+            return pipeline
 
     @classmethod
     def get_info(cls):
         from itertools import chain
-        query_filters = list(chain(*[
-            field.get_filter_query_params(field_name)
-            for field_name, field in cls._meta.fields.items()
-        ]))
+
+        query_filters = list(
+            chain(
+                *[
+                    field.get_filter_query_params(field_name)
+                    for field_name, field in cls._meta.fields.items()
+                ]
+            )
+        )
         return {
-            'name': cls.__name__,
-            'fields': cls._meta.field_names,
-            'query_filters': query_filters,
+            "name": cls.__name__,
+            "fields": cls._meta.field_names,
+            "query_filters": query_filters,
         }

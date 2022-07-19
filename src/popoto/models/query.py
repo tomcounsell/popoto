@@ -49,10 +49,27 @@ class Query:
     def keys(self, catchall=False, clean=False, **kwargs) -> list:
         if clean:
             logger.warning("{clean} is for debugging purposes only. Not for use in production environment")
+            pipeline = POPOTO_REDIS_DB.pipeline()
+            from ..fields.key_field_mixin import KeyFieldMixin
+            from ..fields.relationship import Relationship
+
             for db_key in list(POPOTO_REDIS_DB.smembers(self.model_class._meta.db_class_set_key.redis_key)):
                 hash = POPOTO_REDIS_DB.hgetall(db_key)
                 if not len(hash):
-                    POPOTO_REDIS_DB.srem(self.model_class._meta.db_class_set_key.redis_key, db_key)  # 2
+                    pipeline = pipeline.srem(self.model_class._meta.db_class_set_key.redis_key, db_key)
+
+            # find
+            for field_name, field in self.model_class._meta.fields.items():  # 3
+                if not isinstance(field, (KeyFieldMixin, Relationship)):
+                    continue
+                field_key_prefix = field.get_special_use_field_db_key(self.model_class, field_name)
+                for field_key in POPOTO_REDIS_DB.keys(f"{field_key_prefix}:*"):
+                    for object_key in POPOTO_REDIS_DB.smembers(field_key):
+                        hash = POPOTO_REDIS_DB.hgetall(object_key)
+                        if not len(hash):
+                            pipeline = pipeline.srem(field_key, object_key)
+
+            pipeline.execute()
 
         if catchall:
             logger.warning("{catchall} is for debugging purposes only. Not for use in production environment")
@@ -165,7 +182,7 @@ class Query:
 
     @classmethod
     def get_many_objects(cls, model: 'Model', db_keys: set,
-                         order_by_attr_name: str = "", limit: int = None, values: tuple = None) -> list:
+                         order_by_attr_name: str = None, limit: int = None, values: tuple = None) -> list:
         from .encoding import decode_popoto_model_hashmap
         pipeline = POPOTO_REDIS_DB.pipeline()
         reverse_order = False
