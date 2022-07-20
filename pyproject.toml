@@ -1,10 +1,33 @@
 [build-system]
-requires = [
-    "setuptools>=42",
-    "wheel",
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "popoto"
+version = "0.8.3"
+description = "A Python Redis ORM"
+readme = "README.md"
+authors = [{ name = "Tom Counsell", email = "other@tomcounsell.com" }]
+license = { file = "LICENSE" }
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+keywords = ["redis", "ORM", "database"]
+dependencies = [
     "redis",
     "numpy>=1.21.4",
     "pandas",
     "msgpack", "msgpack-numpy",
 ]
-build-backend = "setuptools.build_meta"
+requires-python = ">=3.8"
+
+[project.optional-dependencies]
+dev = ["black", "pip-tools", "pytest"]
+
+[project.urls]
+Homepage = "https://github.com/tomcounsell/popoto"
+Bug_Tracker = "https://github.com/tomcounsell/popoto/issues"
+Documentation = "https://popoto.readthedocs.io"
