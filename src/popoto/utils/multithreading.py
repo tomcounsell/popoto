@@ -1,10 +1,11 @@
 # A DECORATOR FOR PYTHON THREADING
 # http://docs.python.org/2/library/threading.html#thread-objects
 # http://stackoverflow.com/questions/18420699/multithreading-for-python-django
+from collections.abc import Callable
 from threading import Thread
 
 
-def start_new_thread(function):
+def start_new_thread(function) -> Callable:
     """
     if running Django relational database transactions,
     include this at the end of your function

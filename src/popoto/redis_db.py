@@ -35,7 +35,9 @@ except Exception as e:
     logger.info(str(e))
 
 
-def set_REDIS_DB_settings(env_partition_name: str = "", *args, **kwargs):
+def set_REDIS_DB_settings(
+    env_partition_name: str = "", *args, **kwargs
+) -> None:
     # todo: use this to mark keys in redis db, so they can be separated and deleted
     env_partition_name = env_partition_name or os.environ.get("ENV", "")
 
@@ -50,7 +52,7 @@ def get_REDIS_DB():
     return POPOTO_REDIS_DB
 
 
-def print_redis_info():
+def print_redis_info() -> None:
     logger.info(POPOTO_REDIS_DB.info())
 
     used_memory, maxmemory = int(POPOTO_REDIS_DB.info()["used_memory"]), int(
