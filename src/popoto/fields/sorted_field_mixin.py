@@ -196,9 +196,7 @@ class SortedFieldMixin:
                 inclusive = query_param.split("__lt")[1]
                 value_range["max"] = f"{'' if inclusive == 'e' else '('}{numeric_value}"
             else:
-                raise QueryException(
-                    f"Query filters provided are not compatible with this field {field_name}"
-                )
+                pass  # this is just a mixin, another subclass may have valid query params
 
         try:
             # use field names and query values sort_by fields to extend sortedset_db_key
