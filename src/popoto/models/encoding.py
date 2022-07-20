@@ -1,5 +1,4 @@
 import datetime
-import json
 from collections import namedtuple
 from decimal import Decimal
 import msgpack
