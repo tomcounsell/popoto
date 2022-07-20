@@ -54,10 +54,12 @@ class AutoKeyModel(popoto.Model):
     value = popoto.Field(default="empty")
 
 
-twice_member_names = AutoKeyModel.create(value="Nayeon, Jeongyeon, Momo, Sana, Jihyo, Mina, Dahyun, Chaeyoung, Tzuyu")
+twice_member_names = AutoKeyModel.create(
+    value="Nayeon, Jeongyeon, Momo, Sana, Jihyo, Mina, Dahyun, Chaeyoung, Tzuyu"
+)
 assert twice_member_names in AutoKeyModel.query.all()
-assert hasattr(twice_member_names, '_auto_key')
-assert '_auto_key' in twice_member_names._meta.fields
+assert hasattr(twice_member_names, "_auto_key")
+assert "_auto_key" in twice_member_names._meta.fields
 assert twice_member_names._auto_key in twice_member_names.db_key
 
 for item in AutoKeyModel.query.all():
@@ -65,9 +67,14 @@ for item in AutoKeyModel.query.all():
 assert len(AutoKeyModel.query.all()) == 0
 
 try:
-    for data_type in [list, dict, ]:
+    for data_type in [
+        list,
+        dict,
+    ]:
+
         class IllegalKeyModel(popoto.Model):
             band = popoto.KeyField(type=data_type)
+
 except Exception as e:
     assert isinstance(e, ModelException)
 else:
@@ -76,11 +83,13 @@ else:
 
 # Test KeyFields create, update, and destroy Redis Sets
 
+
 class TestKeySetModel(popoto.Model):
     uuid = popoto.AutoKeyField()
     band = popoto.KeyField(unique=False, null=True)
     role = popoto.KeyField(unique=False, null=True)
     name = popoto.Field()
+
 
 lisa = TestKeySetModel.create(band="BLACKPINK", role="rapper", name="Lalisa Manobal")
 jisoo = TestKeySetModel.create(band="BLACKPINK", role="singer", name="Kim Ji-soo")
@@ -90,13 +99,20 @@ anonymous = TestKeySetModel.create(name="anonymous")
 
 # test class-wide redis set
 class_redis_set_key = TestKeySetModel._meta.db_class_set_key
-assert len(POPOTO_REDIS_DB.smembers(class_redis_set_key.redis_key)) == len(TestKeySetModel.query.all())
-assert len(TestKeySetModel.query.all()) == len(POPOTO_REDIS_DB.keys(f"{TestKeySetModel._meta.db_class_key}:*"))
+assert len(POPOTO_REDIS_DB.smembers(class_redis_set_key.redis_key)) == len(
+    TestKeySetModel.query.all()
+)
+assert len(TestKeySetModel.query.all()) == len(
+    POPOTO_REDIS_DB.keys(f"{TestKeySetModel._meta.db_class_key}:*")
+)
 
 # test keyfield-specific redis set
 bp_band_redis_set_key = f"{TestKeySetModel._meta.fields['band'].get_special_use_field_db_key(TestKeySetModel, 'band')}:BLACKPINK"
 assert len(POPOTO_REDIS_DB.smembers(bp_band_redis_set_key)) == 2
-assert POPOTO_REDIS_DB.smembers(bp_band_redis_set_key) == {lisa.db_key.redis_key.encode(), jisoo.db_key.redis_key.encode()}
+assert POPOTO_REDIS_DB.smembers(bp_band_redis_set_key) == {
+    lisa.db_key.redis_key.encode(),
+    jisoo.db_key.redis_key.encode(),
+}
 
 singer_role_redis_set_key = f"{TestKeySetModel._meta.fields['role'].get_special_use_field_db_key(TestKeySetModel, 'role')}:singer"
 assert len(POPOTO_REDIS_DB.smembers(singer_role_redis_set_key)) == 2
@@ -111,7 +127,9 @@ jisoo.delete()
 assert len(POPOTO_REDIS_DB.smembers(bp_band_redis_set_key)) == 0
 assert len(TestKeySetModel.query.filter(band="BLACKPINK")) == 0
 
-assert TestKeySetModel.query.filter(role__isnull=True, band__isnull=True) == [anonymous,]
+assert TestKeySetModel.query.filter(role__isnull=True, band__isnull=True) == [
+    anonymous,
+]
 
 for item in TestKeySetModel.query.all():
     item.delete()

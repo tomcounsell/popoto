@@ -22,17 +22,17 @@ class AssetPrice(popoto.Model):
 
 price_history = {
     datetime(2021, 1, 1): {
-        'BTC': Decimal("29374.15"),
-        'ETH': Decimal("730.37"),
+        "BTC": Decimal("29374.15"),
+        "ETH": Decimal("730.37"),
     },
     datetime(2021, 1, 2): {
-        'BTC': Decimal("32127.27"),
-        'ETH': Decimal("774.53"),
+        "BTC": Decimal("32127.27"),
+        "ETH": Decimal("774.53"),
     },
     datetime(2021, 1, 3): {
-        'BTC': Decimal("32782.02"),
-        'ETH': Decimal("975.51"),
-    }
+        "BTC": Decimal("32782.02"),
+        "ETH": Decimal("975.51"),
+    },
 }
 
 for timestamp in price_history.keys():
@@ -40,10 +40,12 @@ for timestamp in price_history.keys():
         AssetPrice.create(
             asset_id=asset_id,
             price=price_history[timestamp][asset_id],
-            timestamp=timestamp
+            timestamp=timestamp,
         )
 
-query_results = AssetPrice.query.filter(timestamp__gte=datetime(2021, 1, 1), asset_id="BTC")
+query_results = AssetPrice.query.filter(
+    timestamp__gte=datetime(2021, 1, 1), asset_id="BTC"
+)
 assert len(query_results) == 3
 
 # there should be 2 sortedsets based on the asset partition

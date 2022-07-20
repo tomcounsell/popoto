@@ -11,32 +11,31 @@ from settings import logger
 
 
 class RocStorage(IndicatorStorage):
-
     def produce_signal(self):
         pass
 
 
 class RocSubscriber(IndicatorSubscriber):
-    classes_subscribing_to = [
-        PriceStorage
-    ]
+    classes_subscribing_to = [PriceStorage]
 
     def handle(self, channel, data, *args, **kwargs):
 
         self.index = self.key_suffix
 
         if str(self.index) is not "close_price":
-            logger.debug(f'index {self.index} is not close_price ...ignoring...')
+            logger.debug(f"index {self.index} is not close_price ...ignoring...")
             return
 
-        new_roc_storage = RocStorage(ticker=self.ticker,
-                                     exchange=self.exchange,
-                                     timestamp=self.timestamp)
+        new_roc_storage = RocStorage(
+            ticker=self.ticker, exchange=self.exchange, timestamp=self.timestamp
+        )
 
         for horizon in HORIZONS:
             periods = horizon * 10
 
-            close_value_np_array = new_roc_storage.get_denoted_price_array("close_price", periods)
+            close_value_np_array = new_roc_storage.get_denoted_price_array(
+                "close_price", periods
+            )
 
             timeperiod = min([len(close_value_np_array), periods])
             roc_value = talib.ROC(close_value_np_array, timeperiod=timeperiod)[-1]

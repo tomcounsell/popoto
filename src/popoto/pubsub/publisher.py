@@ -6,7 +6,7 @@ import redis
 from ..redis_db import POPOTO_REDIS_DB
 import msgpack
 
-logger = logging.getLogger('POPOTO-publisher')
+logger = logging.getLogger("POPOTO-publisher")
 
 
 class PublisherException(Exception):
@@ -18,7 +18,7 @@ class Publisher(ABC):
     _publish_data: dict = {}
 
     def __init__(self, *args, **kwargs):
-        self._channel_name = kwargs.get('channel_name', self.__class__.__name__)
+        self._channel_name = kwargs.get("channel_name", self.__class__.__name__)
         super().__init__(*args, **kwargs)
 
     @property
@@ -29,8 +29,14 @@ class Publisher(ABC):
     def channel_name(self, value):
         self._channel_name = value
 
-    def publish(self, data: dict = None, channel_name: str = None, pipeline: redis.client.Pipeline = None):
+    def publish(
+        self,
+        data: dict = None,
+        channel_name: str = None,
+        pipeline: redis.client.Pipeline = None,
+    ):
         import msgpack_numpy as m
+
         m.patch()
         # logger.debug(f"publish to {channel_name}: {publish_data}")
         channel_name = channel_name or self._channel_name
@@ -41,8 +47,14 @@ class Publisher(ABC):
             raise PublisherException("missing channel to publish to")
 
         if pipeline:
-            return pipeline.publish(self._channel_name, msgpack.packb(self._publish_data))
+            return pipeline.publish(
+                self._channel_name, msgpack.packb(self._publish_data)
+            )
         else:
-            subscriber_count = POPOTO_REDIS_DB.publish(channel_name, msgpack.packb(self._publish_data))
-            logger.debug(f"published data to `{channel_name}`, {subscriber_count} subscribers")
+            subscriber_count = POPOTO_REDIS_DB.publish(
+                channel_name, msgpack.packb(self._publish_data)
+            )
+            logger.debug(
+                f"published data to `{channel_name}`, {subscriber_count} subscribers"
+            )
             return subscriber_count

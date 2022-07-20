@@ -9,31 +9,30 @@ from apps.TA.storages.abstract.indicator_subscriber import IndicatorSubscriber
 from apps.TA.storages.data.price import PriceStorage
 from settings import logger
 
-TEMA_LIST = [30,]
+TEMA_LIST = [
+    30,
+]
 
 
 class TemaStorage(IndicatorStorage):
-
     def produce_signal(self):
         pass
 
 
 class TemaSubscriber(IndicatorSubscriber):
-    classes_subscribing_to = [
-        PriceStorage
-    ]
+    classes_subscribing_to = [PriceStorage]
 
     def handle(self, channel, data, *args, **kwargs):
 
         self.index = self.key_suffix
 
-        if self.index != 'close_price':
-            logger.debug(f'index {self.index} is not close_price ...ignoring...')
+        if self.index != "close_price":
+            logger.debug(f"index {self.index} is not close_price ...ignoring...")
             return
 
-        new_tema_storage = TemaStorage(ticker=self.ticker,
-                                     exchange=self.exchange,
-                                     timestamp=self.timestamp)
+        new_tema_storage = TemaStorage(
+            ticker=self.ticker, exchange=self.exchange, timestamp=self.timestamp
+        )
 
         periods_list = []
         for s in TEMA_LIST:
@@ -41,7 +40,9 @@ class TemaSubscriber(IndicatorSubscriber):
 
         for periods in set(periods_list):
 
-            close_value_np_array = new_tema_storage.get_denoted_price_array("close_price", periods)
+            close_value_np_array = new_tema_storage.get_denoted_price_array(
+                "close_price", periods
+            )
 
             tema_value = talib.TEMA(close_value_np_array, timeperiod=periods)[-1]
             # logger.debug(f'savingTema value {tema_value}for {self.ticker} on {periods} periods')

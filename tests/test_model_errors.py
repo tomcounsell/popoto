@@ -9,6 +9,7 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 from src import popoto
 
 try:
+
     class KeyValueModel(popoto.Model):
         key = popoto.AutoKeyField(null=True)
         value = popoto.Field(null=True)

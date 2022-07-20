@@ -16,16 +16,16 @@ class VolumeException(FinanceException):
 class VolumeStorage(TickerStorage):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.index = kwargs.get('index', "close_volume")
-        self.value = kwargs.get('value')
-        self.db_key_suffix = f':{self.index}'
+        self.index = kwargs.get("index", "close_volume")
+        self.value = kwargs.get("value")
+        self.db_key_suffix = f":{self.index}"
 
     def save(self, *args, **kwargs):
 
         # meets basic requirements for saving
-        if not all([self.ticker, self.publisher,
-                   self.index, self.value,
-                   self.unix_timestamp]):
+        if not all(
+            [self.ticker, self.publisher, self.index, self.value, self.unix_timestamp]
+        ):
             logger.error("incomplete information, cannot save \n" + str(self.__dict__))
             raise VolumeException("save error, missing data")
 
@@ -37,7 +37,7 @@ class VolumeStorage(TickerStorage):
         if self.unix_timestamp % 3600 != 0:
             raise VolumeException("price timestamp should be % 3600")
 
-        self.db_key_suffix = self.db_key_suffix or f':{self.index}'
+        self.db_key_suffix = self.db_key_suffix or f":{self.index}"
         return super().save(*args, **kwargs)
 
     @classmethod
@@ -48,9 +48,9 @@ class VolumeStorage(TickerStorage):
 
         key_suffix = kwargs.get("key_suffix", "")
         index = kwargs.get("index", "close_price")
-        kwargs["key_suffix"] = f'{index}' + (f':{key_suffix}' if key_suffix else "")
+        kwargs["key_suffix"] = f"{index}" + (f":{key_suffix}" if key_suffix else "")
 
         results_dict = super().query(*args, **kwargs)
 
-        results_dict['index'] = index
+        results_dict["index"] = index
         return results_dict

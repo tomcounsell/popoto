@@ -3,7 +3,8 @@ import uuid
 
 import redis
 
-logger = logging.getLogger('POPOTO.field')
+logger = logging.getLogger("POPOTO.field")
+
 
 class AutoFieldMixin:
     """
@@ -14,6 +15,7 @@ class AutoFieldMixin:
     They auto-generated key is random and newly generated for a model instance.
     Model instances with otherwise identical properties are saved as separate instances with different auto-keys.
     """
+
     # todo: add support for https://github.com/ai/nanoid
 
     auto: bool = True
@@ -23,9 +25,9 @@ class AutoFieldMixin:
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         autokeyfield_defaults = {
-            'auto': True,
-            'auto_uuid_length': 32,
-            'auto_id': "",
+            "auto": True,
+            "auto_uuid_length": 32,
+            "auto_id": "",
         }
         self.field_defaults.update(autokeyfield_defaults)
         # set field options, let kwargs override
@@ -35,19 +37,26 @@ class AutoFieldMixin:
     @classmethod
     def is_valid(cls, field, value, null_check=True, **kwargs) -> bool:
         if value and len(value) != field.auto_uuid_length:
-            logger.error(f"auto key value is length {len(value)}. It should be {field.auto_uuid_length}")
+            logger.error(
+                f"auto key value is length {len(value)}. It should be {field.auto_uuid_length}"
+            )
             return False
         return super().is_valid(field, value, null_check=null_check, **kwargs)
 
     def get_new_auto_key_value(self):
-        return uuid.uuid4().hex[:self.auto_uuid_length]
+        return uuid.uuid4().hex[: self.auto_uuid_length]
 
     def set_auto_key_value(self, force: bool = False):
         if self.auto or force:
             self.default = self.get_new_auto_key_value()
 
     @classmethod
-    def on_save(cls, model_instance: 'Model', field_name: str, field_value, pipeline: redis.client.Pipeline = None, **kwargs):
+    def on_save(
+        cls,
+        model_instance: "Model",
+        field_name: str,
+        field_value,
+        pipeline: redis.client.Pipeline = None,
+        **kwargs,
+    ):
         return pipeline if pipeline else None
-
-

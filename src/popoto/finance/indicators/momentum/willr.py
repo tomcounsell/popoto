@@ -11,37 +11,44 @@ from settings import logger
 
 
 class WillrStorage(IndicatorStorage):
-
     def produce_signal(self):
         pass
 
 
 class WillrSubscriber(IndicatorSubscriber):
-    classes_subscribing_to = [
-        PriceStorage
-    ]
+    classes_subscribing_to = [PriceStorage]
 
     def handle(self, channel, data, *args, **kwargs):
 
         self.index = self.key_suffix
 
         if str(self.index) is not "close_price":
-            logger.debug(f'index {self.index} is not close_price ...ignoring...')
+            logger.debug(f"index {self.index} is not close_price ...ignoring...")
             return
 
-        new_willr_storage = WillrStorage(ticker=self.ticker,
-                                     exchange=self.exchange,
-                                     timestamp=self.timestamp)
+        new_willr_storage = WillrStorage(
+            ticker=self.ticker, exchange=self.exchange, timestamp=self.timestamp
+        )
 
         for horizon in HORIZONS:
             periods = horizon * 14
 
-            high_value_np_array = new_willr_storage.get_denoted_price_array("high_price", periods)
-            low_value_np_array = new_willr_storage.get_denoted_price_array("low_price", periods)
-            close_value_np_array = new_willr_storage.get_denoted_price_array("close_price", periods)
+            high_value_np_array = new_willr_storage.get_denoted_price_array(
+                "high_price", periods
+            )
+            low_value_np_array = new_willr_storage.get_denoted_price_array(
+                "low_price", periods
+            )
+            close_value_np_array = new_willr_storage.get_denoted_price_array(
+                "close_price", periods
+            )
 
-            willr_value = talib.WILLR(high_value_np_array, low_value_np_array, close_value_np_array,
-                                      timeperiod=horizon*14)[-1]
+            willr_value = talib.WILLR(
+                high_value_np_array,
+                low_value_np_array,
+                close_value_np_array,
+                timeperiod=horizon * 14,
+            )[-1]
             # logger.debug(f'savingWillr value {willr_value} for {self.ticker} on {periods} periods')
 
             new_willr_storage.periods = periods
