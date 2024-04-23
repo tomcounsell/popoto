@@ -422,12 +422,6 @@ class Model(metaclass=ModelBase):
         **kwargs,
     ):
         """
-
-            Model instance save method. Uses Redis HSET command with key, dict of values, ttl.
-            Also triggers all field on_save methods.
-        Model instance save method. Uses Redis HSET command with key, dict of values, ttl.
-        Also triggers all field on_save methods.
-
         This method is responsible for saving the instance of the Model to the Redis database.
 
         Parameters:
