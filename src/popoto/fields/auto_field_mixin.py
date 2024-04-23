@@ -12,7 +12,7 @@ class AutoFieldMixin:
     The AutoKeyField is an auto-generated, universally unique key
     It will be automatically added to models with no specified KeyFields
     Include this field in your model if you cannot otherwise enforce a unique-together constraint with other KeyFields.
-    They auto-generated key is random and newly generated for a model instance.
+    The auto-generated key is random and generated for any new model instance.
     Model instances with otherwise identical properties are saved as separate instances with different auto-keys.
     """
 
