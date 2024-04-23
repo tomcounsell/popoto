@@ -42,7 +42,7 @@ class User(Model):
 ```
 
 However, it is enough for all KeyFields to be considered "unique together"
-In this example, a unique Box is the combination of dimensions. The combined dimensions *together* will be *unique* to every instance.
+In this example, a unique Box is the combination of dimensions. The combined dimensions *together* will be *unique* to every instance. And, 2 boxes with the same dimensions will be considered _identical_ and save to the same object.
 
 ```python
 class Box(Model):
