@@ -75,14 +75,6 @@ class DateField(Field):
         super().__init__(**kwargs)
 
 
-class DatetimeField(Field):
-    def __init__(self, *args, **kwargs):
-        from datetime import datetime
-
-        kwargs["type"] = datetime
-        super().__init__(**kwargs)
-
-
 class TimeField(Field):
     def __init__(self, *args, **kwargs):
         from datetime import time
@@ -110,6 +102,10 @@ class UniqueKeyField(KeyField):
 
 class AutoKeyField(AutoFieldMixin, UniqueKeyField):
     def __init__(self, *args, **kwargs):
+        if kwargs.get("unique") is False:
+            raise ModelException(f"you may not set unique=False on this field type")
+        if kwargs.get("null") is True:
+            raise ModelException(f"you may not set null=True on this field type")
         kwargs["auto"] = True
         super().__init__(**kwargs)
 

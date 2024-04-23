@@ -10,9 +10,8 @@ from .fields.shortcuts import (
     SetField,
     TupleField,
     BytesField,
-    DateField,
-    DatetimeField,
     TimeField,
+    DateField,
     KeyField,
     AutoKeyField,
     UniqueKeyField,
@@ -21,6 +20,7 @@ from .fields.shortcuts import (
 )
 from .fields.geo_field import GeoField
 from .fields.dataframe_field import DataFrameField
+from .fields.datetime_field import DatetimeField
 from .fields.relationship import Relationship
 from .models.base import Model, ModelBase
 from .pubsub.publisher import Publisher
@@ -38,9 +38,9 @@ __all__ = [
     "DictField",
     "SetField",
     "TupleField",
+    "TimeField",
     "DateField",
     "DatetimeField",
-    "TimeField",
     "KeyField",
     "AutoKeyField",
     "UniqueKeyField",
