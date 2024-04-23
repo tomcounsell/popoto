@@ -83,6 +83,9 @@ def decode_custom_types(obj):
 
 
 def encode_popoto_model_obj(obj: "Model") -> dict:
+    """
+    todo: lru_cache this function
+    """
     import msgpack_numpy as m
 
     m.patch()
