@@ -1,7 +1,10 @@
 from abc import ABC
 import logging
-from ..redis_db import POPOTO_REDIS_DB, ENCODING
+
 import msgpack
+
+logger = logging.getLogger("POPOTO-subscriber")
+from ..redis_db import ENCODING, POPOTO_REDIS_DB
 
 logger = logging.getLogger("POPOTO-subscriber")
 
@@ -66,4 +69,4 @@ class Subscriber(ABC):
             f"BUT HANDLER NOT DEFINED! "
             f"... message/event discarded"
         )
-        pass
+        raise NotImplementedError
