@@ -10,14 +10,14 @@ class User(Timestampable, Model):
     id = AutoKeyField()
 
     # IDENTIFICATION
-    # username = KeyField(unique=True, null=False)
-    email = KeyField(unique=True, null=False)
-    phone_number = Field(default="")
+    username = KeyField(unique=True, null=False)
+    # email = KeyField(unique=True, null=False)
+    # phone_number = Field(default="")
     _password = Field(default="")
 
-    name = Field(default="")
-    # first_name = Field(default="")
-    # last_name = Field(default="")
+    # name = Field(default="")
+    first_name = Field(default="")
+    last_name = Field(default="")
 
     # DJANGO CONVENTIONS
     is_staff = BooleanField(default=False)  # Django convention for staff users
