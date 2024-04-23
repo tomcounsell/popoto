@@ -35,7 +35,7 @@ print(f"{lisa.name} likes {lisa.fav_color}.")
  - Geometric distance search
  - Timeseries for streaming data and finance tickers
  - compatible with Pandas, Xarray for N-dimensional matrix search
- - PubSub for message queues, streaming data processing
+ - [PubSub](pubsub.md) for message queues, streaming data processing
 
 **Popoto** is ideal for streaming data. The pub/sub module allows you to trigger state updates in real time.
 Currently being used in production for:
@@ -105,3 +105,4 @@ Popoto gets it's name from the [Māui dolphin](https://en.wikipedia.org/wiki/M%C
 Because dolphins are fast moving, agile, and work together in social groups. In the same way, Popoto wraps Redis and RedisGraph to make it easy to manage streaming timeseries data on a social graph.
 
 For help building applications with Python/Redis, contact [Tom Counsell](https://tomcounsell.com) on [LinkedIn.com/in/tomcounsell](https://linkedin.com/in/tomcounsell)
+

@@ -27,8 +27,8 @@ class Membership(Model):
 ```python
 
 sally = Person.create(name="Sally")
-friends = Group.create(name="My Line Friends")
-Membership.create(member=sally, group=friends)
+friends_group = Group.create(name="My Line Friends")
+Membership.create(member=sally, group=friends_group)
 
 memberships = Membership.query.filter(member__name="Sally", group=friends_group)
 print(memberships[0].member)
