@@ -1,10 +1,57 @@
 [build-system]
-requires = [
-    "setuptools>=42",
-    "wheel",
-    "redis",
-    "numpy>=1.21.4",
-    "pandas",
-    "msgpack", "msgpack-numpy",
+requires = ["setuptools>=42", "wheel", "poetry-core>=1.0.0a5"]
+build-backend = ["setuptools.build_meta", "poetry.core.masonry.api"]
+
+[project]
+name = "popoto"
+version = "0.8.3"
+description = "A Python Redis ORM"
+readme = "README.md"
+authors = [{ name = "Tom Counsell", email = "other@tomcounsell.com" }]
+license = { file = "LICENSE" }
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
 ]
-build-backend = "setuptools.build_meta"
+keywords = ["redis", "ORM", "database"]
+requires-python = ">=3.8"
+
+[project.urls]
+Homepage = "https://github.com/tomcounsell/popoto"
+Documentation = "https://popoto.readthedocs.io"
+Bug_Tracker = "https://github.com/tomcounsell/popoto/issues"
+
+[tool.poetry]
+name = "my-project"
+version = "0.1.0"
+description = ""
+authors = ["Alex"]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+redis = "^4.3.4"
+pandas = "^1.4.3"
+numpy = "^1.23.1"
+msgpack = "^1.0.4"
+msgpack-numpy = "^0.4.8"
+
+[tool.poetry.dev-dependencies]
+pytest = "^7.1.2"
+mypy = "^0.971"
+black = "^22.6.0"
+pip-tools = "^6.8.0"
+
+[tool.isort]
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+line_length = 79
+
+[tool.black]
+line-length = 79
+target-version = ['py38']
+include = '\.pyi?$'
+exclude = ''

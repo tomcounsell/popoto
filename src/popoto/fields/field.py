@@ -8,10 +8,22 @@ import logging
 
 from ..models.db_key import DB_key
 
-logger = logging.getLogger('POPOTO.field')
+logger = logging.getLogger("POPOTO.field")
 
 VALID_FIELD_TYPES = {
-    int, float, Decimal, str, bool, bytes, list, dict, set, tuple, date, datetime, time,
+    int,
+    float,
+    Decimal,
+    str,
+    bool,
+    bytes,
+    list,
+    dict,
+    set,
+    tuple,
+    date,
+    datetime,
+    time,
 }
 
 
@@ -42,15 +54,15 @@ class Field(metaclass=FieldBase):
 
     def __init__(self, **kwargs):
         self.field_defaults = {  # default
-            'type': str,
-            'key': False,
-            'unique': False,
-            'auto': False,
-            'null': True,
-            'value': None,
-            'max_length': 1024,  # Redis limit is 512MB
-            'default': None,
-            'sorted': False,
+            "type": str,
+            "key": False,
+            "unique": False,
+            "auto": False,
+            "null": True,
+            "value": None,
+            "max_length": 1024,  # Redis limit is 512MB
+            "default": None,
+            "sorted": False,
         }
         # set field_options, let kwargs override
         field_options = self.field_defaults.copy()
@@ -69,7 +81,9 @@ class Field(metaclass=FieldBase):
             logger.error(f"field {field} is null")
             return False
         elif not isinstance(value, field.type):
-            logger.error(f"field {field} is type {field.type}. But value is {type(value)}")
+            logger.error(
+                f"field {field} is type {field.type}. But value is {type(value)}"
+            )
             return False
         if field.type == str and len(str(value)) > field.max_length:
             logger.error(f"{field} value is greater than max_length={field.max_length}")
@@ -85,17 +99,22 @@ class Field(metaclass=FieldBase):
         return field_value
 
     @classmethod
-    def get_special_use_field_db_key(cls, model: 'Model', *field_names) -> DB_key:
+    def get_special_use_field_db_key(cls, model: "Model", *field_names) -> DB_key:
         """
         For use by child class when implementing additional Redis data structures
         Children implementing more than one new structure will need to augment this.
         """
         return DB_key(cls.field_class_key, model._meta.db_class_key, *field_names)
 
-
     @classmethod
-    def on_save(cls, model_instance: 'Model', field_name: str, field_value, pipeline: redis.client.Pipeline = None,
-                **kwargs):
+    def on_save(
+        cls,
+        model_instance: "Model",
+        field_name: str,
+        field_value,
+        pipeline: redis.client.Pipeline = None,
+        **kwargs,
+    ):
         """
         for parent classes to override.
         will run for every field of the model instance, including null attributes
@@ -114,7 +133,14 @@ class Field(metaclass=FieldBase):
         return pipeline if pipeline else None
 
     @classmethod
-    def on_delete(cls, model_instance: 'Model', field_name: str, field_value, pipeline=None, **kwargs):
+    def on_delete(
+        cls,
+        model_instance: "Model",
+        field_name: str,
+        field_value,
+        pipeline=None,
+        **kwargs,
+    ):
         """
         for parent classes to override.
         will run for every field of the model instance, including null attributes
@@ -130,7 +156,7 @@ class Field(metaclass=FieldBase):
         return set()
 
     @classmethod
-    def filter_query(cls, model: 'Model', field_name: str, **query_params) -> set:
+    def filter_query(cls, model: "Model", field_name: str, **query_params) -> set:
         """
         :param model: the popoto.Model to query from
         :param field_name: the name of the field being filtered on
@@ -138,4 +164,7 @@ class Field(metaclass=FieldBase):
         :return: set{db_key, db_key, ..}
         """
         from ..models.query import QueryException
-        raise QueryException("Query filter not allowed on base Field. Consider using a KeyField")
+
+        raise QueryException(
+            "Query filter not allowed on base Field. Consider using a KeyField"
+        )

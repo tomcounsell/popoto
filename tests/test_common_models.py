@@ -44,10 +44,13 @@ class HiddenAutoKeyModel(popoto.Model):
     value = popoto.Field()
 
 
-random_fact_3 = HiddenAutoKeyModel.create(value="regulation golf balls have 366 dimples")
+random_fact_3 = HiddenAutoKeyModel.create(
+    value="regulation golf balls have 366 dimples"
+)
 assert random_fact_3 in HiddenAutoKeyModel.query.all()
 first_raw_key = POPOTO_REDIS_DB.keys("HiddenAutoKeyModel:*")[
-    0].decode()  # eg. 'HiddenAutoKeyModel:d69146047a054bad99e8e5ba27a95835'
+    0
+].decode()  # eg. 'HiddenAutoKeyModel:d69146047a054bad99e8e5ba27a95835'
 first_item_auto_key = HiddenAutoKeyModel.query.all()[0]._auto_key
 assert first_raw_key.split(":")[1] == first_item_auto_key
 
@@ -62,8 +65,12 @@ class ManyKeyModel(popoto.Model):
     value = popoto.Field(type=float)
 
 
-random_fact_4 = ManyKeyModel.create(key1="calories", key2="stamp", key3="lick", value=0.1)
-assert random_fact_4 == ManyKeyModel.query.get(key1="calories", key2="stamp", key3="lick")
+random_fact_4 = ManyKeyModel.create(
+    key1="calories", key2="stamp", key3="lick", value=0.1
+)
+assert random_fact_4 == ManyKeyModel.query.get(
+    key1="calories", key2="stamp", key3="lick"
+)
 
 for item in ManyKeyModel.query.all():
     item.delete()

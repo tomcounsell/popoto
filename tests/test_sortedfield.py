@@ -82,35 +82,53 @@ class SortedAssetsModel(popoto.Model):
     uuid = popoto.AutoKeyField(auto_uuid_length=6)
     market = popoto.KeyField(unique=True)
     asset_id = popoto.KeyField(null=False)
-    timestamp = popoto.SortedKeyField(type=datetime, sort_by=('asset_id', 'market'))
-    market_cap = popoto.SortedField(type=Decimal, sort_by='market')
+    timestamp = popoto.SortedKeyField(type=datetime, sort_by=("asset_id", "market"))
+    market_cap = popoto.SortedField(type=Decimal, sort_by="market")
     price = popoto.DecimalField()
+
 
 timestamps = [datetime(2022, 1, 1, hour) for hour in range(23)]
 for timestamp in timestamps:
-    for market in ["beefi", 'damnance']:
+    for market in ["beefi", "damnance"]:
         for asset_id in ["SPOON", "BENT"]:
             SortedAssetsModel.create(
-                market=market, asset_id=asset_id, timestamp=timestamp,
+                market=market,
+                asset_id=asset_id,
+                timestamp=timestamp,
                 market_cap=Decimal(str(random.randint(10e3, 10e5))),
-                price=Decimal(str(random.randint(1, 100))+"."+str(random.randint(1, 100)))
+                price=Decimal(
+                    str(random.randint(1, 100)) + "." + str(random.randint(1, 100))
+                ),
             )
 
-assert len(SortedAssetsModel.query.filter(market='beefi', order_by='market_cap')) == len(timestamps)*2
-assert len(SortedAssetsModel.query.filter(market='damnance', asset_id='BENT')) == len(timestamps)
-assert len(SortedAssetsModel.query.filter(
-    timestamp__gte=datetime(2022, 1, 1, 12),
-    timestamp__lt=datetime(2022, 1, 1, 20),
-    asset_id='SPOON', market='damnance'
-)) == 8
+assert (
+    len(SortedAssetsModel.query.filter(market="beefi", order_by="market_cap"))
+    == len(timestamps) * 2
+)
+assert len(SortedAssetsModel.query.filter(market="damnance", asset_id="BENT")) == len(
+    timestamps
+)
+assert (
+    len(
+        SortedAssetsModel.query.filter(
+            timestamp__gte=datetime(2022, 1, 1, 12),
+            timestamp__lt=datetime(2022, 1, 1, 20),
+            asset_id="SPOON",
+            market="damnance",
+        )
+    )
+    == 8
+)
 values_result = SortedAssetsModel.query.filter(
     timestamp__gte=datetime(2022, 1, 1, 12),
     timestamp__lte=datetime(2022, 1, 1, 18),
-    asset_id='BENT', market='damnance', values=('timestamp', 'price'),
-    order_by='timestamp'
+    asset_id="BENT",
+    market="damnance",
+    values=("timestamp", "price"),
+    order_by="timestamp",
 )
-assert values_result[-1]['timestamp'] == datetime(2022, 1, 1, 18)
-assert list(values_result[4].keys()) == ['timestamp', 'price']
+assert values_result[-1]["timestamp"] == datetime(2022, 1, 1, 18)
+assert list(values_result[4].keys()) == ["timestamp", "price"]
 
 
 for sam in SortedAssetsModel.objects.all():

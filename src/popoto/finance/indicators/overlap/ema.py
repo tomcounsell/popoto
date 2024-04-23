@@ -1,4 +1,5 @@
 from settings import LOAD_TALIB
+
 if LOAD_TALIB:
     import math, talib
 
@@ -7,7 +8,11 @@ from apps.TA.storages.abstract.indicator_subscriber import IndicatorSubscriber
 from apps.TA.storages.data.price import PriceStorage
 from settings import logger
 
-EMA_LIST = [30, 50, 200, ]
+EMA_LIST = [
+    30,
+    50,
+    200,
+]
 
 
 class EmaStorage(IndicatorStorage):
@@ -16,7 +21,9 @@ class EmaStorage(IndicatorStorage):
     class_periods_list = EMA_LIST
     requisite_pv_indexes = ["close_price"]
 
-    def compute_value_with_requisite_indexes(self, requisite_pv_index_arrrays: dict, periods: int = 0) -> str:
+    def compute_value_with_requisite_indexes(
+        self, requisite_pv_index_arrrays: dict, periods: int = 0
+    ) -> str:
         """
         with cls.requisite_pv_indexes set
 
@@ -27,12 +34,13 @@ class EmaStorage(IndicatorStorage):
 
         ema_value = talib.EMA(
             requisite_pv_index_arrrays["close_price"],
-            timeperiod=periods or self.periods
+            timeperiod=periods or self.periods,
         )[-1]
 
         logger.debug(f"EMA computed: {ema_value}")
 
-        if math.isnan(ema_value): return ""
+        if math.isnan(ema_value):
+            return ""
 
         return str(ema_value)
 

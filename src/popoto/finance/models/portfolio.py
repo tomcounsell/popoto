@@ -12,9 +12,9 @@ class PortfolioException(TimeseriesException):
 class PortfolioStorage(TimeseriesModel):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.id = str(kwargs.get('id'))
-        self.value = kwargs.get('value')
-        self.db_key_suffix = f':{self.id}'
+        self.id = str(kwargs.get("id"))
+        self.value = kwargs.get("value")
+        self.db_key_suffix = f":{self.id}"
 
     def save(self, *args, **kwargs):
 
@@ -33,8 +33,8 @@ class PortfolioStorage(TimeseriesModel):
 
         key_suffix = kwargs.get("key_suffix", "")
         id = kwargs.get("id", "close_price")
-        kwargs["key_suffix"] = f'{id}' + (f':{key_suffix}' if key_suffix else "")
+        kwargs["key_suffix"] = f"{id}" + (f":{key_suffix}" if key_suffix else "")
 
         results_dict = super().query(*args, **kwargs)
-        results_dict['id'] = id
+        results_dict["id"] = id
         return results_dict

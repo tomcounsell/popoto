@@ -8,7 +8,6 @@ from src.popoto.redis_db import POPOTO_REDIS_DB
 from src import popoto
 
 
-
 class MyPublishableModel(popoto.Model):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -16,10 +15,9 @@ class MyPublishableModel(popoto.Model):
 
     def save(self, pipeline=None, *args, **kwargs):
         super().save(pipeline=pipeline, *args, **kwargs)
-        self.publisher.publish({
-            "key": self.db_key,
-            "value": self.value
-        }, pipeline=pipeline)
+        self.publisher.publish(
+            {"key": self.db_key, "value": self.value}, pipeline=pipeline
+        )
 
 
 pub_thing = MyPublishableModel()

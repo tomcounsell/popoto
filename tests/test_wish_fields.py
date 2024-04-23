@@ -18,11 +18,11 @@ class UniqueTogetherModel(Model):
 
     level = Field(type=int, sorted=True, null=True)
     last_active = Field(type=datetime, sorted=True)
-    location = GeoField(type=GeoField.Coordinates, units='km')
+    location = GeoField(type=GeoField.Coordinates, units="km")
     # friends = Relationship('Person', many=True)
 
     class Meta:
-        unique_together = ('title', 'level')
+        unique_together = ("title", "level")
 
     def pre_save(self, **kwargs):
         self._alt_uid = f"{self.title}{self.level}"

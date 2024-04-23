@@ -13,6 +13,7 @@ class TickerStorage(TimeseriesModel):
     """
     stores timeseries data on tickers in a sorted set unique to each ticker and publisher (data source)
     """
+
     class_describer = "ticker"
     value_sig_figs = 6
 
@@ -23,8 +24,8 @@ class TickerStorage(TimeseriesModel):
         """
         super().__init__(*args, **kwargs)
         try:
-            self.ticker = str(kwargs['ticker'])  # str eg. BTC_USD
-            self.publisher = str(kwargs['publisher'])  # str eg. binance
+            self.ticker = str(kwargs["ticker"])  # str eg. BTC_USD
+            self.publisher = str(kwargs["publisher"])  # str eg. binance
         except KeyError:
             raise Exception("Indicator requires a ticker and publisher as parameters")
         except Exception as e:
@@ -33,9 +34,8 @@ class TickerStorage(TimeseriesModel):
         if self.ticker.find("_") <= 0:
             raise Exception("ticker should be like GOOG_USD or LTC_BTC")
 
-        self._db_key_prefix = f'{self.ticker}:{self.publisher}:'
+        self._db_key_prefix = f"{self.ticker}:{self.publisher}:"
         self._db_key = self.build_db_key()
-
 
     @classmethod
     def query(cls, *args, **kwargs):
@@ -44,14 +44,16 @@ class TickerStorage(TimeseriesModel):
         if not ticker:
             raise TickerException("ticker required for ticker query")
         publisher = kwargs.get("publisher", "")
-        kwargs["key_prefix"] = f'{ticker}:{publisher}'
+        kwargs["key_prefix"] = f"{ticker}:{publisher}"
 
         results_dict = super().query(*args, **kwargs)
         if results_dict:
-            results_dict['publisher'] = publisher
-            results_dict['ticker'] = ticker
+            results_dict["publisher"] = publisher
+            results_dict["ticker"] = ticker
         return results_dict
 
     def save(self, publish=False, pipeline=None, *args, **kwargs):
-        self.value = '{:g}'.format(float('{:.{p}g}'.format(self.value, p=self.value_sig_figs)))
+        self.value = "{:g}".format(
+            float("{:.{p}g}".format(self.value, p=self.value_sig_figs))
+        )
         return super().save(publish=publish, pipeline=pipeline, *args, **kwargs)

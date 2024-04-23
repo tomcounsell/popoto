@@ -22,10 +22,13 @@ class IndicatorStorage(TickerStorage):
     timestamp value must be evenly divisible by 5 minutes (300 seconds)
     add short, medium, long as 1hr, 4hr, 24hr time horizons
     """
+
     class_describer = "indicator"
     value_sig_figs = 6
 
-    class_periods_list = [1,]  # class should override this
+    class_periods_list = [
+        1,
+    ]  # class should override this
     # list of integers where for x: (1 <= x <= 200)
 
     requisite_pv_indexes = []  # class should override this.
@@ -41,7 +44,7 @@ class IndicatorStorage(TickerStorage):
             raise IndicatorException("indicator timestamp should be % 3600")
 
         # self.horizon = int(kwargs.get('horizon', 1))
-        self.periods = int(kwargs.get('periods', 1))  # * self.horizon))
+        self.periods = int(kwargs.get("periods", 1))  # * self.horizon))
 
         # if self.periods // self.horizon == 0:
         #     raise IndicatorException(f'horizon {self.horizon} '
@@ -50,7 +53,7 @@ class IndicatorStorage(TickerStorage):
         #     raise IndicatorException(f'horizon {self.horizon} '
         #                              f'must be a factor of periods {self.periods}')
 
-        self.db_key_suffix = f':{self.periods}'
+        self.db_key_suffix = f":{self.periods}"
         self.value = None
 
     def get_value(self, refresh_from_db=False):
@@ -59,8 +62,10 @@ class IndicatorStorage(TickerStorage):
                 pass
             else:
                 self.value = self.query(
-                    ticker=self.ticker, publisher=self.publisher, timestamp=self.unix_timestamp
-                )['values'][-1]
+                    ticker=self.ticker,
+                    publisher=self.publisher,
+                    timestamp=self.unix_timestamp,
+                )["values"][-1]
             if not self.value:
                 self.value = self.compute_value()
         except IndexError:
@@ -88,11 +93,13 @@ class IndicatorStorage(TickerStorage):
         key_suffix = kwargs.get("key_suffix", "")
 
         if periods_key:
-            kwargs["key_suffix"] = f'{periods_key}' + (f':{key_suffix}' if key_suffix else "")
+            kwargs["key_suffix"] = f"{periods_key}" + (
+                f":{key_suffix}" if key_suffix else ""
+            )
 
         results_dict = super().query(*args, **kwargs)
 
-        results_dict['periods_key'] = periods_key
+        results_dict["periods_key"] = periods_key
         return results_dict
 
     @classmethod
@@ -104,12 +111,13 @@ class IndicatorStorage(TickerStorage):
 
     def get_denoted_price_array(self, index: str = "close_price", periods: int = 0):
         from apps.TA.storages.data.price import PriceStorage
+
         results_dict = PriceStorage.query(
             ticker=self.ticker,
             publisher=self.publisher,
             index=index,
             timestamp=self.unix_timestamp,
-            periods_range=periods or self.periods
+            periods_range=periods or self.periods,
         )
         return self.get_values_array_from_query(results_dict, limit=periods)
 
@@ -119,11 +127,14 @@ class IndicatorStorage(TickerStorage):
         index_value_arrrays = {}
         for index in self.requisite_pv_indexes:
             index_value_arrrays[index] = self.get_denoted_price_array(index, periods)
-            if not len(index_value_arrrays[index]): return ""
+            if not len(index_value_arrrays[index]):
+                return ""
 
         return self.compute_value_with_requisite_indexes(index_value_arrrays, periods)
 
-    def compute_value_with_requisite_indexes(self, requisite_pv_index_arrrays: dict, periods: int = 0) -> str:
+    def compute_value_with_requisite_indexes(
+        self, requisite_pv_index_arrrays: dict, periods: int = 0
+    ) -> str:
         """
         custom class should set cls.requisite_pv_indexes
         override this function with custom logic
@@ -147,9 +158,7 @@ class IndicatorStorage(TickerStorage):
         :return: True if value saved, else False
         """
 
-        if not all([
-            self.ticker, self.publisher, self.unix_timestamp, self.periods
-        ]):
+        if not all([self.ticker, self.publisher, self.unix_timestamp, self.periods]):
             raise Exception("missing required values")
 
         self.value = self.compute_value(self.periods)
@@ -184,23 +193,25 @@ class IndicatorStorage(TickerStorage):
         :return: signal object (Django model object)
         """
         from src.popoto.finance import PriceStorage
-        price_results_dict = PriceStorage.query(ticker=self.ticker, publisher=self.publisher)
-        most_recent_price = int(price_results_dict['values'][0])
+
+        price_results_dict = PriceStorage.query(
+            ticker=self.ticker, publisher=self.publisher
+        )
+        most_recent_price = int(price_results_dict["values"][0])
         # from apps.TA.storages.data.volume import VolumeStorage
         # volume_results_dict = VolumeStorage.query(ticker=self.ticker, publisher=self.publisher)
         # most_recent_volume = float(volume_results_dict ['values'][0])
 
-
     def save(self, *args, **kwargs):
 
         # check meets basic requirements for saving
-        if not all([self.ticker, self.publisher,
-                    self.periods, self.value,
-                    self.unix_timestamp]):
+        if not all(
+            [self.ticker, self.publisher, self.periods, self.value, self.unix_timestamp]
+        ):
             logger.error("incomplete information, cannot save \n" + str(self.__dict__))
             raise IndicatorException("save error, missing data")
 
-        self.db_key_suffix = f'{str(self.periods)}'
+        self.db_key_suffix = f"{str(self.periods)}"
         save_result = super().save(*args, **kwargs)
         try:
             self.produce_signal()

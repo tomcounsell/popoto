@@ -32,14 +32,18 @@ one = EveryTypeModel(
     decimal_val=Decimal(1.00),
     string_val="one",
     boolean_val=True,
-    bytes_val=b'1',
-    list_val=[1, ],
+    bytes_val=b"1",
+    list_val=[
+        1,
+    ],
     dict_val={"one": 1},
-    set_val={1,},
+    set_val={
+        1,
+    },
     tuple_val=(1,),
     date_val=date(2020, 1, 1),
     datetime_val=datetime(2020, 1, 1, 13, 11),
-    time_val=time(1, 11, 1, 111)
+    time_val=time(1, 11, 1, 111),
 )
 one.save()
 

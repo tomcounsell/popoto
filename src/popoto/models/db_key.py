@@ -6,7 +6,9 @@ from ..redis_db import POPOTO_REDIS_DB, ENCODING
 class DB_key(list):
     def __init__(self, *key_partials):
         def flatten(yet_flat):
-            if isinstance(yet_flat, Iterable) and not isinstance(yet_flat, (str, bytes)):
+            if isinstance(yet_flat, Iterable) and not isinstance(
+                yet_flat, (str, bytes)
+            ):
                 for item in yet_flat:
                     yield from flatten(item)
             else:
@@ -22,25 +24,32 @@ class DB_key(list):
 
     @classmethod
     def clean(cls, value: str) -> str:
-        value = value.replace('/', '//')
+        value = value.replace("/", "//")
         for char in "'?*^[]-":
             value = value.replace(char, f"/{char}")
-        value = value.replace(':', '{&#58;}')
+        value = value.replace(":", "{&#58;}")
         return value
 
     @classmethod
     def unclean(cls, value: str) -> str:
-        value = value.replace('{&#58;}', ':')
+        value = value.replace("{&#58;}", ":")
         for char in "'?*^[]-":
             value = value.replace(f"/{char}", char)
-        value = value.replace('//', '/',)
+        value = value.replace(
+            "//",
+            "/",
+        )
         return value
 
     def __str__(self):
-        return ":".join([
-            str(partial) if isinstance(partial, DB_key) else self.clean(str(partial))
-            for partial in self
-        ])
+        return ":".join(
+            [
+                str(partial)
+                if isinstance(partial, DB_key)
+                else self.clean(str(partial))
+                for partial in self
+            ]
+        )
 
     @property
     def redis_key(self):
@@ -52,4 +61,5 @@ class DB_key(list):
     def get_instance(self, model_class):
         redis_hash = POPOTO_REDIS_DB.hgetall(self.redis_key)
         from .encoding import decode_popoto_model_hashmap
+
         return decode_popoto_model_hashmap(model_class, redis_hash)

@@ -30,6 +30,7 @@ mw = Person.create(name="Michelle Williams", star_sign=leo)
 assert bk.star_sign.name == "Virgo"
 queen_bey = Person.query.get(name="Beyoncé Knowles")
 
+
 class Group(Model):
     name = KeyField()
 

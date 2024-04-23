@@ -42,7 +42,7 @@ class User(Model):
 ```
 
 However, it is enough for all KeyFields to be considered "unique together"
-In this example, a unique Box is the combination of dimensions. The combined dimensions *together* will be *unique* to every instance.
+In this example, a unique Box is the combination of dimensions. The combined dimensions *together* will be *unique* to every instance. And, 2 boxes with the same dimensions will be considered _identical_ and save to the same object.
 
 ```python
 class Box(Model):
@@ -235,6 +235,37 @@ assert vatican in GeoModel.query.filter(coordinates=rome.coordinates, coordinate
 ```
 
 
+## DataFrameField
+
+The `DataFrameField` allows for storage of [Pandas DataFrame](https://pandas.pydata.org/docs/reference/frame.html) objects for generic blocks of tabular data.
+A common use case is storing machine learning training data and results. No more pesky csv files. Use a database!
+
+```python
+import pandas as pd
+
+class DataModel(Model):
+    name = KeyField()
+    dataframe = DataFrameField()
+
+chicago_home_prices = DataModel.create(
+    name="Chicago Home Price",
+    df=pandas.read_csv('home_price.csv')
+)
+
+chicago_home_prices.df.describe()
+>>>
+              Price         Year
+count      5.000000     5.000000
+mean   27600.000000  2016.000000
+std     4878.524367     1.581139
+min    22000.000000  2014.000000
+25%    25000.000000  2015.000000
+50%    27000.000000  2016.000000
+75%    29000.000000  2017.000000
+max    35000.000000  2018.000000
+```
+
+
 ##  Reserved Field Names
 
 The following names are reserved and cannot be used as field names:
@@ -242,3 +273,4 @@ The following names are reserved and cannot be used as field names:
 - _limit_: is used in query.filter() to limit the size of the returned objects list
 - _values_: is used in query.filter() to restrict which values are returned for objects
 - _order_by_: is used in query.filter() to order the results
+

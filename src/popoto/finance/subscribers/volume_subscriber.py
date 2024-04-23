@@ -1,11 +1,10 @@
 from ticker_subscriber import TickerSubscriber
 from ...finance import PriceVolumeHistoryStorage
 
+
 class VolumeSubscriber(TickerSubscriber):
 
-    classes_subscribing_to = [
-        PriceVolumeHistoryStorage
-    ]
+    classes_subscribing_to = [PriceVolumeHistoryStorage]
 
     def handle(self, channel, data, *args, **kwargs):
 
@@ -23,15 +22,16 @@ class VolumeSubscriber(TickerSubscriber):
         index_values = {}
 
         for index in default_volume_indexes:
-            logger.debug(f'process volume for ticker: {ticker}')
+            logger.debug(f"process volume for ticker: {ticker}")
 
             # example key = "XPM_BTC:poloniex:PriceVolumeHistoryStorage:close_price"
-            sorted_set_key = f'{ticker}:{publisher}:PriceVolumeHistoryStorage:{index}'
+            sorted_set_key = f"{ticker}:{publisher}:PriceVolumeHistoryStorage:{index}"
 
             index_values[index] = [
                 float(db_value.decode("utf-8").split(":")[0])
-                for db_value
-                in self.database.zrangebyscore(sorted_set_key, timestamp - 300, timestamp + 45) # todo: update to scores
+                for db_value in self.database.zrangebyscore(
+                    sorted_set_key, timestamp - 300, timestamp + 45
+                )  # todo: update to scores
             ]
 
             try:
@@ -40,7 +40,6 @@ class VolumeSubscriber(TickerSubscriber):
 
                 elif index == "close_volume":
                     volume.value = index_values["close_volume"][-1]
-
 
             except IndexError:
                 pass  # couldn't find a useful value

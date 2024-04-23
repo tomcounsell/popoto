@@ -2,7 +2,6 @@ from apps.TA import IndicatorException, IndicatorStorage
 from apps.TA.storages.abstract.ticker_subscriber import TickerSubscriber
 
 
-
 class IndicatorSubscriber(TickerSubscriber):
     class_describer = "indicator_subscriber"
     classes_subscribing_to = [
@@ -19,35 +18,41 @@ class IndicatorSubscriber(TickerSubscriber):
         #     "score": "1532373300"
         # }
 
-        [self.ticker, self.publisher, object_class, self.key_suffix] = data["key"].split(":")
+        [self.ticker, self.publisher, object_class, self.key_suffix] = data[
+            "key"
+        ].split(":")
 
         if not object_class == channel and object_class in [
             sub_class.__name__ for sub_class in self.classes_subscribing_to
         ]:
-            logger.warning(f'Unexpected that these are not the same:'
-                           f'object_class: {object_class}, '
-                           f'channel: {channel}, '
-                           f'subscribing classes: {self.classes_subscribing_to}')
+            logger.warning(
+                f"Unexpected that these are not the same:"
+                f"object_class: {object_class}, "
+                f"channel: {channel}, "
+                f"subscribing classes: {self.classes_subscribing_to}"
+            )
 
         [value, score] = data["name"].split(":")
         self.value, self.score = float(value), float(score)
 
         if not self.score == int(float(data["score"])):
-            logger.warning(f'Unexpected that score in name {self.score} '
-                           f'is different than score {data["score"]}')
+            logger.warning(
+                f"Unexpected that score in name {self.score} "
+                f'is different than score {data["score"]}'
+            )
 
         if not self.score == int(self.score):
-            raise IndicatorException("indicator timestamp should be 5min timestamp, score should be whole number (int)")
+            raise IndicatorException(
+                "indicator timestamp should be 5min timestamp, score should be whole number (int)"
+            )
 
         self.timestamp = IndicatorStorage.timestamp_from_score(self.score)
 
         return
 
-
     def pre_handle(self, channel, data, *args, **kwargs):
         self.extract_params(channel, data, *args, **kwargs)
         super().pre_handle(channel, data, *args, **kwargs)
-
 
     def handle(self, channel, data, *args, **kwargs):
         """
@@ -63,7 +68,11 @@ class IndicatorSubscriber(TickerSubscriber):
         """
 
         if self.key_suffix not in self.storage_class.requisite_pv_indexes:
-            logger.debug(f'index {self.key_suffix} is not in {self.storage_class.requisite_pv_indexes} ...ignoring...')
+            logger.debug(
+                f"index {self.key_suffix} is not in {self.storage_class.requisite_pv_indexes} ...ignoring..."
+            )
             return
 
-        self.storage_class.compute_and_save_all_values_for_timestamp(self.ticker, self.publisher, self.timestamp)
+        self.storage_class.compute_and_save_all_values_for_timestamp(
+            self.ticker, self.publisher, self.timestamp
+        )
