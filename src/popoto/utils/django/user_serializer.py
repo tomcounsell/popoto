@@ -2,7 +2,7 @@ from django.contrib.sessions.serializers import JSONSerializer
 from .auth_backend import AuthBackend
 
 
-class PopotoUserSerializer(JSONSerializer):
+class UserSerializer(JSONSerializer):
     def serialize(self, obj):
         # Serialize the user information manually
         user = obj.get("_auth_user")

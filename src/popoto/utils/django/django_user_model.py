@@ -14,7 +14,7 @@ class DjangoUserMetaClass(models.base.ModelBase):
         return new_class
 
 
-class DjangoUser(models.Model, AbstractUser, metaclass=DjangoUserMetaClass):
+class DjangoUser(AbstractUser, metaclass=DjangoUserMetaClass):
     username = models.CharField(primary_key=True, max_length=150)
     password = models.CharField(max_length=128)
     is_active = models.BooleanField(default=True)
@@ -22,29 +22,6 @@ class DjangoUser(models.Model, AbstractUser, metaclass=DjangoUserMetaClass):
     is_superuser = models.BooleanField(default=False)
 
     objects = User.query
-
-    def __init__(self, user: User = None, *args, **kwargs):
-        if not user:
-            user = User(**kwargs)
-        for attr in user.__dict__:
-            setattr(self, attr, getattr(user, attr))
-
-    def __getattribute__(self, item):
-        if item in ["save", "delete"]:
-            return super().__getattribute__(item)
-        return getattr(self.user, item)
-
-    def __getattr__(self, name):
-        return getattr(self.user, name)
-
-    def __setattr__(self, name, value):
-        setattr(self.user, name, value)
-
-    def __str__(self):
-        return self.username
-
-    def save(self):
-        self.user.save()
 
     @property
     def pk(self):
@@ -61,6 +38,7 @@ class DjangoUser(models.Model, AbstractUser, metaclass=DjangoUserMetaClass):
         return obj.username
 
     class Meta:
+        app_label = "popoto"
         managed = False  # No database table creation
         verbose_name = "User"
         verbose_name_plural = "Users"
