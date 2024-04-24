@@ -1,12 +1,12 @@
+from .django_user_model import DjangoUser
+from ..app_models.user import User
 from datetime import datetime
 from django.contrib.auth.backends import BaseBackend
-from .user import User
 
 
-class PopotoAuthBackend(BaseBackend):
-    def authenticate(self, request, email=None, login_code=None, password=None):
-        # Assuming that there's a method 'get_by_email' that retrieves a user by email
-        users = User.query.filter(email=email)
+class AuthBackend(BaseBackend):
+    def authenticate(self, request, username=None, login_code=None, password=None):
+        users = User.query.filter(username=username)
         if len(users) == 0:
             return None
         user = users[0]
@@ -25,8 +25,7 @@ class PopotoAuthBackend(BaseBackend):
 
     def get_user(self, user_id):
         users: list = User.query.filter(id=user_id)
-        if len(users) == 0:
+        if not len(users):
             return None
-        elif users[0].is_active:
-            return users[0]
-        return None
+        user = users[0]
+        return DjangoUser(**user.__dict__)
