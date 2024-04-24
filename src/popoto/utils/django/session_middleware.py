@@ -2,7 +2,7 @@ from django.utils.deprecation import MiddlewareMixin
 from ..django.django_user_model import DjangoUser
 
 
-class CustomSessionMiddleware(MiddlewareMixin):
+class SessionMiddleware(MiddlewareMixin):
     def process_request(self, request):
         # Check if user is authenticated and set the custom session key
         if request.user.is_authenticated:
