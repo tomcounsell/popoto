@@ -2,64 +2,73 @@
 
 ##### Popoto - A Redis ORM (Object-Relational Mapper)
 
-**Popoto** is an ORM for your [Redis](https://redis.io) cache database. 
-The familiar syntax makes it easy to use for [Django](https://www.djangoproject.com/) and [Flask](https://flask.palletsprojects.com/) developers.
+**Popoto** is an ORM (Object-Relational Mapper) designed specifically for the [Redis](https://redis.io) cache database. It provides a familiar syntax that is easy to use for developers familiar with [Django](https://www.djangoproject.com/) and [Flask](https://flask.palletsprojects.com/).
 
-Redis is a storage system that operates in RAM memory. 
-Since it works at RAM memory level, reading/writing is typically 10-20x faster
-compared to PostgreSQL and other traditional relational databases.
+Redis operates in RAM memory, which makes reading and writing operations typically 10-20x faster compared to PostgreSQL and other traditional relational databases.
 
+## Quick Start
 
-## Simple Example
+Here's a simple example of how to use Popoto:
 
-``` python
+```python
 from popoto import Model, KeyField, Field
 
 class Person(Model):
     name = KeyField()
     fav_color = Field()
-
+    
 Person.create(name="Lalisa Manobal", fav_color = "yellow")
 
 lisa = Person.query.get(name="Lalisa Manobal")
 
 print(f"{lisa.name} likes {lisa.fav_color}.")
-> 'Lalisa Manobal likes yellow.'
 ```
+
+This will output: 'Lalisa Manobal likes yellow.' 
 
 
 ## Features
+
+ - Fast data storage and queries
+ - Familiar syntax, similar to Django models
+ - Geometric distance search
+ - Timeseries for streaming data and finance tickers
+ - Compatibility with Pandas, Xarray for N-dimensional matrix search
+ - [PubSub](pubsub.md) for message queues, streaming data processing
+ - [Django](django.md) utilities for Redis-based user authentication, session, and user admin
 
  - very fast stores and queries
  - familiar syntax, similar to Django models
  - Geometric distance search
  - Timeseries for streaming data and finance tickers
  - compatible with Pandas, Xarray for N-dimensional matrix search
- - [PubSub](pubsub.md) for message queues, streaming data processing
+ -  for message queues, streaming data processing
+ - [Django](django.md) utilities for Redis-based user authentication, session, and user admin
 
 **Popoto** is ideal for streaming data. The pub/sub module allows you to trigger state updates in real time.
-Currently being used in production for:
+It is currently being used in production for:
 
- - trigger buy/sell actions from streaming price data
- - robots sending each other messages for teamwork
- - compressing sensor data and training neural networks
+ - Triggering buy/sell actions from streaming price data
+ - Robots sending each other messages for teamwork
+ - Compressing sensor data and training neural networks
 
-## Getting Started
+## Installation
 
-### Install
+To install Popoto, use pip:
 
 ``` bash
 pip install popoto
 ```
 
-[see Popoto on PyPi](https://pypi.org/project/popoto/)
+You can find [Popoto on PyPi](https://pypi.org/project/popoto/).
 
-Set `REDIS_URL` in your deployed env. Optional on local
+Set `REDIS_URL` in your deployed environment. This is optional on local:
+
 ``` python
 REDIS_URL = "redis://HOST[:PORT]/DATABASE[?password=PASSWORD]"
 ```
 
-### Define a Model
+## Defining a Model
 
 ``` python
 import popoto
@@ -70,9 +79,9 @@ class Person (popoto.Model)
 
 ```
 
-See [Models and Fields](fields.md) for all Model and Field options.
+See [Models and Fields](fields.md) for more options.
 
-### Create Instances
+## Creating Instances
 
 ``` python
 lisa = Person(name="Lalisa Manobal")
@@ -83,26 +92,24 @@ lisa.save()
 lisa = Person.create(name="Lalisa Manobal", favorite_color = "yellow")
 ```
 
-### Retreive Instances
+## Retrieving Instances
 
 ``` python
 lisa = Person.query.get("Lalisa Manobal")
 print(f"{lisa.name} likes {lisa.favorite_color}.")
-'Lalisa Manobal likes yellow.'
 ```
 
-See [Making Queries](query.md) for all Query and Filter options.
+This will output: 'Lalisa Manobal likes yellow.'
 
-### Delete Instances
+See [Making Queries](query.md) for more options.
+
+### Deleting Instances
 
 ``` python
 lisa.delete()
 ```
 
-![](/static/popoto.png)
-
-Popoto gets it's name from the [Māui dolphin](https://en.wikipedia.org/wiki/M%C4%81ui_dolphin) subspeciesis - the world's smallest dolphin subspecies.
-Because dolphins are fast moving, agile, and work together in social groups. In the same way, Popoto wraps Redis and RedisGraph to make it easy to manage streaming timeseries data on a social graph.
+Popoto gets it's name from the [Māui dolphin](https://en.wikipedia.org/wiki/M%C4%81ui_dolphin), the world's smallest dolphin subspecies.
+Dolphins are fast, agile, and work together in social groups. Similarly, Popoto wraps Redis and RedisGraph to make it easy to manage streaming timeseries data on a social graph.
 
 For help building applications with Python/Redis, contact [Tom Counsell](https://tomcounsell.com) on [LinkedIn.com/in/tomcounsell](https://linkedin.com/in/tomcounsell)
-
