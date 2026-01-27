@@ -1,3 +1,41 @@
+"""Core model system for Popoto Redis ORM.
+
+This module implements the Django-inspired ORM pattern for Redis, providing a
+declarative way to define data models that persist to Redis as hash maps. The
+design philosophy centers on three key principles:
+
+1. **Familiarity**: Developers familiar with Django's ORM can immediately
+   understand Popoto's syntax. Models are classes, fields are class attributes,
+   and queries use filter/get patterns.
+
+2. **Redis-Native**: Unlike SQL ORMs that abstract away the database, Popoto
+   embraces Redis's strengths. KeyFields directly map to Redis key structure,
+   SortedFields use Redis sorted sets, and GeoFields leverage Redis geospatial
+   commands.
+
+3. **Explicit Over Implicit**: Public model attributes must be Field instances.
+   This prevents accidental data persistence and makes the schema self-documenting.
+
+Architecture Overview:
+    - ModelBase (metaclass): Intercepts class creation to process Field
+      definitions and build ModelOptions metadata.
+    - ModelOptions: Registry of field metadata enabling query optimization
+      and key generation.
+    - Model: Base class providing CRUD operations and validation.
+    - Query: Attached to each Model class for Django-style querying.
+
+Example:
+    class User(Model):
+        email = KeyField()  # Part of Redis key
+        name = Field(type=str)
+        score = SortedField()  # Enables range queries
+
+    user = User(email="test@example.com", name="Test")
+    user.save()
+
+    # Query using Django-style syntax
+    User.query.filter(score__gte=100)
+"""
 import logging
 import asyncio
 import sys
@@ -34,7 +72,18 @@ RELATED_MODEL_LOAD_SEQUENCE = set()
 
 
 class ModelException(Exception):
-    """Raised when a model operation fails (validation, save, unique constraint, etc.)."""
+    """Raised when a model operation fails (validation, save, unique constraint, etc.).
+
+    Raised when:
+        - Field names violate naming conventions (must start lowercase)
+        - Reserved field names are used (limit, order_by, values)
+        - Public attributes are not Field instances
+        - Model validation fails during instantiation or save
+        - TTL and expire_at are both set (mutually exclusive)
+
+    This exception is intentionally broad to provide clear error messages
+    during development. In production, consider catching specific cases.
+    """
 
     pass
 
@@ -45,11 +94,44 @@ INDEX_HASH_LENGTH = 16
 
 
 class ModelOptions:
-    """Metadata container for a Model class.
+    """Metadata container for a Model class, analogous to Django's Options.
 
     Tracks fields, key fields, sorted fields, geo fields, relationships,
     indexes, TTL, and default ordering. Created automatically by
     :class:`ModelBase` during class definition.
+
+    ModelOptions serves as the central registry for all field metadata on a
+    Model class. It is created during class definition by the ModelBase
+    metaclass and attached as `Model._meta`.
+
+    Design Rationale:
+        Rather than repeatedly inspecting class attributes at runtime, all
+        field information is collected once during class creation. This
+        enables efficient query building and key generation without
+        reflection overhead.
+
+    The class tracks several field categories for specialized behavior:
+        - key_field_names: Fields that comprise the Redis key (primary key)
+        - auto_field_names: Fields with auto-generated values (e.g., UUIDs)
+        - sorted_field_names: Fields backed by Redis sorted sets for range queries
+        - geo_field_names: Fields using Redis geospatial indexes
+        - relationship_field_names: Fields linking to other Model instances
+
+    Attributes:
+        model_name: The class name, used as prefix in Redis keys.
+        db_class_key: Redis key prefix for this model type.
+        db_class_set_key: Redis key for the set tracking all instances.
+        explicit_fields: User-defined public fields (no underscore prefix).
+        hidden_fields: Private fields (underscore prefix) still persisted.
+        filter_query_params_by_field: Maps field names to valid query params.
+
+    Example:
+        class Product(Model):
+            sku = KeyField()
+            price = SortedField()
+
+        Product._meta.key_field_names  # {'sku'}
+        Product._meta.sorted_field_names  # {'price'}
     """
 
     def __init__(self, model_name):
@@ -82,6 +164,28 @@ class ModelOptions:
         self.indexes = ()  # Tuple of ((field_names,), is_unique) tuples
 
     def add_field(self, field_name: str, field: Field):
+        """Register a field with this model's metadata.
+
+        Called during class creation by ModelBase metaclass. Validates the
+        field name against naming conventions and categorizes the field
+        based on its mixins (KeyFieldMixin, SortedFieldMixin, etc.).
+
+        This method enforces Popoto's "explicit schema" design: every
+        persisted attribute must be a Field instance, preventing accidental
+        data storage and making the model self-documenting.
+
+        Args:
+            field_name: The attribute name for this field.
+            field: The Field instance to register.
+
+        Raises:
+            ModelException: If field_name doesn't start lowercase, uses a
+                reserved name, or is already registered.
+
+        Note:
+            Fields starting with underscore are "hidden" - they persist to
+            Redis but signal internal/computed data.
+        """
         if not field_name[0] == "_" and not field_name[0].islower():
             raise ModelException(
                 f"{field_name} field name must start with a lowercase letter."
@@ -117,17 +221,52 @@ class ModelOptions:
 
     @property
     def fields(self) -> dict:
+        """All registered fields, both public and hidden.
+
+        Returns:
+            Dict mapping field names to Field instances.
+        """
         return {**self.explicit_fields, **self.hidden_fields}
 
     @property
     def field_names(self) -> list:
+        """List of all field names on this model.
+
+        Returns:
+            List of field name strings.
+        """
         return list(self.fields.keys())
 
     @property
-    def db_key_length(self):
+    def db_key_length(self) -> int:
+        """Number of segments in the Redis key.
+
+        Redis keys follow the pattern: ClassName:key1:key2:...
+        So length is 1 (class name) + number of KeyFields.
+
+        Returns:
+            Integer count of key segments.
+        """
         return 1 + len(self.key_field_names)
 
-    def get_db_key_index_position(self, field_name):
+    def get_db_key_index_position(self, field_name: str) -> int:
+        """Get the position of a KeyField in the Redis key string.
+
+        KeyFields are sorted alphabetically in the Redis key. This method
+        returns the 1-based index (0 is the class name) for extracting
+        field values from key strings without loading the full object.
+
+        Args:
+            field_name: Name of a KeyField on this model.
+
+        Returns:
+            Integer position in the colon-separated Redis key.
+
+        Example:
+            # For key "User:alice:123" with KeyFields email, user_id
+            _meta.get_db_key_index_position('email')  # 1
+            _meta.get_db_key_index_position('user_id')  # 2
+        """
         return 1 + sorted(self.key_field_names).index(field_name)
 
     def get_index_key(self, field_names: tuple) -> str:
@@ -169,7 +308,37 @@ class ModelOptions:
 
 
 class ModelBase(type):
-    """Metaclass for all Popoto Models."""
+    """Metaclass for all Popoto Models.
+
+    ModelBase intercepts class creation to transform Field class attributes
+    into a structured metadata registry (ModelOptions). This follows the
+    same pattern as Django's ModelBase metaclass.
+
+    Key Responsibilities:
+        1. Separate Field instances from methods and private attributes
+        2. Build ModelOptions with categorized field metadata
+        3. Attach Query interface as class attribute (Model.query)
+        4. Enforce the "public attrs must be Fields" constraint
+
+    Design Philosophy:
+        By processing fields at class creation time rather than instance
+        creation, we pay the introspection cost once. The resulting
+        ModelOptions enables O(1) field lookups during save/load operations.
+
+    The metaclass handles inheritance by checking for ModelBase parents,
+    allowing the base Model class to skip field processing while all
+    subclasses are fully configured.
+
+    Example:
+        class User(Model):  # ModelBase.__new__ is called here
+            email = KeyField()
+            name = Field()
+
+        # After metaclass processing:
+        # - User._meta contains ModelOptions with field registry
+        # - User.query is a Query instance for this model
+        # - User.objects aliases User.query (Django compatibility)
+    """
 
     def __new__(cls, name, bases, attrs, **kwargs):
 
@@ -273,18 +442,88 @@ class ModelBase(type):
 
 
 class Model(metaclass=ModelBase):
-    """Base class for all Popoto models.
+    """Base class for all Popoto models providing Redis persistence.
 
-    Define public attributes as :class:`~popoto.Field` instances.  The model is
+    Define public attributes as :class:`~popoto.Field` instances. The model is
     persisted as a Redis hash at the key ``ClassName:key1:key2:...``.
 
-    Class attributes:
+    Model is the foundation of Popoto's ORM, combining declarative field
+    definitions with Django-inspired CRUD operations. Each Model subclass
+    maps to a collection of Redis hash maps, with instances identified by
+    composite keys derived from KeyField values.
+
+    Storage Architecture:
+        - Each instance is stored as a Redis HSET (hash map)
+        - The Redis key follows pattern: ClassName:keyfield1:keyfield2:...
+        - A Redis SET tracks all keys for each model class (for .all() queries)
+        - Specialized fields (Sorted, Geo) maintain secondary indexes
+
+    Key Design Decisions:
+        1. **Composite Keys**: Multiple KeyFields combine alphabetically,
+           enabling natural multi-column primary keys.
+
+        2. **Auto-Key Fallback**: Models without explicit KeyFields get an
+           automatic UUID-based `_auto_key` field.
+
+        3. **Pipeline Support**: All operations accept an optional Redis
+           pipeline for batching multiple operations atomically.
+
+        4. **Relationship Loading**: Related models are loaded eagerly with
+           cycle detection to prevent infinite recursion.
+
+    Class Attributes:
         query: A :class:`~popoto.models.query.Query` instance for this model.
+        objects: Alias for query (Django compatibility).
+        _meta: ModelOptions containing field metadata.
+
+    Instance Attributes:
+        _redis_key: The actual Redis key after save (may differ from db_key
+            if KeyField values changed).
+        _db_content: Cached serialized content from last save.
+        obsolete_redis_key: Previous key if KeyFields changed (triggers
+            delete of old key on save).
+
+    Example:
+        class Article(Model):
+            slug = KeyField()
+            title = Field(type=str)
+            views = SortedField()
+
+        # Create and save
+        article = Article(slug="hello-world", title="Hello World")
+        article.save()
+
+        # Query
+        Article.query.get(slug="hello-world")
+        Article.query.filter(views__gte=100, order_by="-views")
     """
 
     query: Query
 
     def __init__(self, **kwargs):
+        """Initialize a model instance with field values.
+
+        Handles the complete initialization sequence:
+            1. Apply any base parameters from kwargs
+            2. Add auto-generated KeyField if no KeyFields defined
+            3. Generate values for AutoFields (e.g., UUIDs)
+            4. Set field defaults for unspecified fields
+            5. Apply kwargs values over defaults
+            6. Load related models (with cycle detection)
+            7. Validate all field values
+
+        Args:
+            **kwargs: Field values to set on the instance. Keys should
+                match field names defined on the model class.
+
+        Raises:
+            ModelException: If validation fails for any field value.
+
+        Note:
+            The instance is not saved to Redis during __init__. Call
+            save() to persist, or use Model.create() for atomic
+            create-and-save.
+        """
         cls = self.__class__
 
         # allow init kwargs to set any base parameters
@@ -380,13 +619,31 @@ class Model(metaclass=ModelBase):
 
     @property
     def db_key(self) -> DB_key:
-        """
-        the db key must include the class name - equivalent to db table name
-        keys append alphabetically.
-        if another order is required, propose feature request in GitHub issue
-        possible solutions include param on each model's KeyField order=int
-        OR model Meta: key_order = [keyname, keyname, ]
-        OR both
+        """Compute the Redis key for this instance.
+
+        The key structure is: ClassName:keyfield1_value:keyfield2_value:...
+
+        KeyField values are sorted alphabetically by field name to ensure
+        deterministic key generation. This means the order of KeyField
+        definitions doesn't affect the key structure.
+
+        Returns:
+            DB_key instance that can be used as a Redis key string.
+
+        Note:
+            This property computes the key from current field values. If
+            KeyField values change after loading, the computed key differs
+            from _redis_key (the original storage location). The save()
+            method handles this by deleting the obsolete key.
+
+        Example:
+            class User(Model):
+                org = KeyField()
+                email = KeyField()
+
+            user = User(org="acme", email="alice@example.com")
+            str(user.db_key)  # "User:alice@example.com:acme"
+            # Note: 'email' comes before 'org' alphabetically
         """
         return DB_key(
             self._meta.db_class_key,
@@ -397,21 +654,34 @@ class Model(metaclass=ModelBase):
         )
 
     def __repr__(self):
+        """Return developer-friendly representation with Redis key."""
         return f"<{self.__class__.__name__} Popoto object at {self.db_key.redis_key}>"
 
     def __str__(self):
+        """Return the Redis key as string representation."""
         return str(self.db_key)
 
     def __eq__(self, other):
-        """
-        equality method
-        instances with the same key(s) and class are considered equal
-        except when any key(s) are None, they are not equal to anything except themselves.
+        """Compare instances by their Redis key identity.
 
-        for evaluating all instance values against each other, use something like this:
-        self_dict = self._meta.fields.update((k, self.__dict__[k]) for k in set(self.__dict__).intersection(self._meta.fields))
-        other_dict = other._meta.fields.update((k, other.__dict__[k]) for k in set(other.__dict__).intersection(other._meta.fields))
-        return repr(dict(sorted(self_dict))) == repr(dict(sorted(other_dict)))
+        Two instances are equal if they have the same class and the same
+        Redis key (derived from KeyField values). This is identity equality,
+        not value equality.
+
+        Special Cases:
+            - Instances with any None KeyField values are only equal to
+              themselves (identity check via repr).
+            - Different classes are never equal, even with same key structure.
+
+        Args:
+            other: Another object to compare against.
+
+        Returns:
+            True if same class and same db_key, False otherwise.
+
+        Note:
+            For full value comparison across all fields, compare the
+            serialized field dictionaries directly rather than using ==.
         """
         try:
             if isinstance(other, self.__class__):
@@ -443,13 +713,27 @@ class Model(metaclass=ModelBase):
     #         if all([not k.startswith("_"), k + "_meta" in self.__dict__])
     #     ]
 
-    def is_valid(self, null_check=True) -> bool:
-        """
-        todo: validate values
-        - field.type ✅
-        - field.null ✅
-        - field.max_length ✅
-        - ttl, expire_at - todo
+    def is_valid(self, null_check: bool = True) -> bool:
+        """Validate all field values against their field constraints.
+
+        Performs comprehensive validation including:
+            - Type checking (coerces compatible types when possible)
+            - Null/None checking for non-nullable fields
+            - String max_length enforcement
+            - Field-specific validation via Field.is_valid()
+            - Mutual exclusion of ttl and expire_at
+
+        Args:
+            null_check: If False, skip null validation. Useful during
+                initialization when required fields may not yet be set.
+
+        Returns:
+            True if all validations pass, False otherwise.
+
+        Note:
+            Validation errors are logged but not raised. Check logs for
+            details when is_valid() returns False. This design allows
+            batch validation without exception handling complexity.
         """
 
         for field_name in self._meta.field_names:
@@ -534,8 +818,22 @@ class Model(metaclass=ModelBase):
         ignore_errors: bool = False,
         **kwargs,
     ):
-        """
-        Model instance preparation for saving.
+        """Prepare instance for saving by validating and formatting fields.
+
+        Called automatically by save(). Runs full validation and applies
+        any field-specific formatting (via Field.format_value_pre_save).
+
+        Args:
+            pipeline: Optional Redis pipeline for batched operations.
+            ignore_errors: If True, log validation errors instead of raising.
+            **kwargs: Additional arguments passed to field formatters.
+
+        Returns:
+            The pipeline if provided, True on success, or False on
+            validation failure with ignore_errors=True.
+
+        Raises:
+            ModelException: If validation fails and ignore_errors=False.
         """
         if not self.is_valid():
             error_message = "Model instance parameters invalid. Failed to save."
@@ -619,9 +917,43 @@ class Model(metaclass=ModelBase):
         ignore_errors: bool = False,
         **kwargs,
     ):
-        """
-        Model instance save method. Uses Redis HSET command with key, dict of values, ttl.
-        Also triggers all field on_save methods.
+        """Persist the model instance to Redis.
+
+        Executes the complete save workflow:
+            1. Validate and format field values (pre_save)
+            2. Serialize instance to Redis hash map
+            3. Store hash map with HSET command
+            4. Add key to model's class set (for .all() queries)
+            5. Handle key migration if KeyFields changed
+            6. Trigger Field.on_save() hooks for secondary indexes
+
+        Args:
+            pipeline: Optional Redis pipeline for atomic batch operations.
+                When provided, commands are queued but not executed - caller
+                must call pipeline.execute().
+            ignore_errors: If True, log validation errors and return False
+                instead of raising ModelException.
+            **kwargs: Passed to field on_save hooks.
+
+        Returns:
+            - If pipeline: The pipeline with queued commands
+            - If no pipeline: Redis HSET response (number of fields set)
+            - On error with ignore_errors: False
+
+        Note:
+            When KeyField values change between load and save, the old Redis
+            key is automatically deleted. This enables "rename" operations
+            while maintaining data integrity.
+
+        Example:
+            # Single save
+            user.save()
+
+            # Batched saves
+            pipe = redis.pipeline()
+            user1.save(pipeline=pipe)
+            user2.save(pipeline=pipe)
+            pipe.execute()
         """
 
         pipeline_or_success = self.pre_save(
@@ -785,25 +1117,77 @@ class Model(metaclass=ModelBase):
 
     @classmethod
     def create(cls, pipeline: redis.client.Pipeline = None, **kwargs):
-        """Create a new instance, save it to Redis, and return it."""
+        """Create a new instance, save it to Redis, and return it.
+
+        Convenience method combining instantiation and save() in one call.
+        Useful when you don't need to modify the instance before persisting.
+
+        Args:
+            pipeline: Optional Redis pipeline for batch operations.
+            **kwargs: Field values passed to __init__.
+
+        Returns:
+            - If pipeline: The pipeline with queued commands
+            - If no pipeline: The saved model instance
+
+        Example:
+            user = User.create(email="test@example.com", name="Test")
+        """
         instance = cls(**kwargs)
         pipeline_or_db_response = instance.save(pipeline=pipeline)
         return pipeline_or_db_response if pipeline else instance
 
     @classmethod
     def load(cls, db_key: str = None, **kwargs):
-        """Load an existing instance from Redis by *db_key* or field values."""
+        """Load an existing instance from Redis by *db_key* or field values.
+
+        Provides two loading patterns:
+            1. Direct key lookup: Pass db_key parameter
+            2. KeyField lookup: Pass KeyField values as kwargs
+
+        Args:
+            db_key: Direct Redis key string to load.
+            **kwargs: KeyField values to construct the lookup key.
+
+        Returns:
+            Model instance if found, None otherwise.
+
+        Example:
+            # By key
+            user = User.load(db_key="User:test@example.com")
+
+            # By KeyField values
+            user = User.load(email="test@example.com")
+        """
         return cls.query.get(db_key=db_key or cls(**kwargs).db_key)
 
     def delete(self, pipeline: redis.client.Pipeline = None, *args, **kwargs):
-        """
-        Model instance delete method. Uses Redis DELETE command with key.
-        Also triggers all field on_delete methods.
-        1. delete object as hashmap
-        2. delete from class set
-        3. run field on_delete methods
-        4. reset private vars
-        returns pipeline or boolean(object existed AND was deleted)
+        """Delete this instance from Redis.
+
+        Executes the complete deletion workflow:
+            1. Delete the Redis hash map (HSET data)
+            2. Remove key from model's class set
+            3. Trigger Field.on_delete() hooks to clean secondary indexes
+            4. Clear internal state (_db_content)
+
+        Args:
+            pipeline: Optional Redis pipeline for batch operations.
+            **kwargs: Passed to field on_delete hooks.
+
+        Returns:
+            - If pipeline provided initially: The pipeline with queued commands
+            - If no pipeline: Boolean indicating if object existed and was deleted
+
+        Note:
+            Field on_delete hooks are critical for maintaining index integrity.
+            For example, SortedField removes the instance from its sorted set,
+            and KeyField removes from its lookup set.
+
+        Example:
+            if user.delete():
+                print("User was deleted")
+            else:
+                print("User did not exist")
         """
         delete_redis_key = self._redis_key or self.db_key.redis_key
         db_response = False
@@ -857,8 +1241,25 @@ class Model(metaclass=ModelBase):
             return pipeline
 
     @classmethod
-    def get_info(cls):
-        """Return a dict with the model name, field names, and available query filters."""
+    def get_info(cls) -> dict:
+        """Return a dict with the model name, field names, and available query filters.
+
+        Useful for debugging, documentation generation, and building
+        dynamic query interfaces. Returns the model name, all field
+        names, and all valid query filter parameters.
+
+        Returns:
+            Dict with keys:
+                - name: Model class name
+                - fields: List of all field names
+                - query_filters: List of valid filter() parameter names
+
+        Example:
+            User.get_info()
+            # {'name': 'User',
+            #  'fields': ['email', 'name', 'score'],
+            #  'query_filters': ['email', 'score__gte', 'score__lte']}
+        """
         from itertools import chain
 
         query_filters = list(
