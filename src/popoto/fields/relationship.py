@@ -68,32 +68,50 @@ class Relationship(Field):
     ):
         from ..models.base import Model
 
+        # Handle different field_value types:
+        # - None: relationship was never set or being cleared
+        # - Model instance: fully loaded relationship
+        # - str: lazy-loaded relationship (redis_key string due to circular reference protection)
+        if field_value is None:
+            related_db_key = "None"
+        elif isinstance(field_value, Model):
+            related_db_key = field_value.db_key
+        elif isinstance(field_value, str):
+            # field_value is the redis_key string (lazy-loaded but never accessed)
+            related_db_key = field_value
+        else:
+            # Unknown type, log and return without action
+            logger.warning(
+                f"Unexpected field_value type in on_save: {type(field_value)} for {field_name}"
+            )
+            return pipeline if pipeline else None
+
         # on a one-to-many, save the set of many with the related instance
         # add this instance's id to a relationship set based on the related model
         # example: "$RelationshipF:Membership:person:person_db_key"
         relationship_set_db_key = DB_key(
             cls.get_special_use_field_db_key(model_instance, field_name),
-            field_value.db_key if field_value else "None",
+            related_db_key,
         )
 
-        if pipeline and field_value is None:
-            return pipeline.srem(
-                relationship_set_db_key.redis_key, model_instance.db_key.redis_key
-            )
-        elif pipeline and isinstance(field_value, Model):
-            return pipeline.sadd(
-                relationship_set_db_key.redis_key, model_instance.db_key.redis_key
-            )
-        elif field_value is None:
-            return POPOTO_REDIS_DB.srem(
-                relationship_set_db_key.redis_key, model_instance.db_key.redis_key
-            )
-        elif isinstance(field_value, Model):
-            return POPOTO_REDIS_DB.sadd(
-                relationship_set_db_key.redis_key, model_instance.db_key.redis_key
-            )
+        if field_value is None:
+            if pipeline:
+                return pipeline.srem(
+                    relationship_set_db_key.redis_key, model_instance.db_key.redis_key
+                )
+            else:
+                return POPOTO_REDIS_DB.srem(
+                    relationship_set_db_key.redis_key, model_instance.db_key.redis_key
+                )
         else:
-            return pipeline if pipeline else None
+            if pipeline:
+                return pipeline.sadd(
+                    relationship_set_db_key.redis_key, model_instance.db_key.redis_key
+                )
+            else:
+                return POPOTO_REDIS_DB.sadd(
+                    relationship_set_db_key.redis_key, model_instance.db_key.redis_key
+                )
 
     @classmethod
     def on_delete(
@@ -104,13 +122,29 @@ class Relationship(Field):
         pipeline: redis.client.Pipeline = None,
         **kwargs,
     ):
-        # todo: it's possible this instance is not fully loaded or has been changed.
-        #  Need to reload from db before deleting
-        #  Example: on person.friend.delete() the person.friend.friend will have field_value as a keystring
-        #  It will not be a model instance, so this method will fail on field_value.db_key below
+        from ..models.base import Model
+
+        # Handle different field_value types:
+        # - None: relationship was never set
+        # - Model instance: fully loaded relationship
+        # - str: lazy-loaded relationship (redis_key string due to circular reference protection)
+        if field_value is None:
+            related_db_key = "None"
+        elif isinstance(field_value, Model):
+            related_db_key = field_value.db_key
+        elif isinstance(field_value, str):
+            # field_value is the redis_key string (lazy-loaded but never accessed)
+            related_db_key = field_value
+        else:
+            # Unknown type, log and return without action
+            logger.warning(
+                f"Unexpected field_value type in on_delete: {type(field_value)} for {field_name}"
+            )
+            return pipeline if pipeline else None
+
         relationship_set_db_key = DB_key(
             cls.get_special_use_field_db_key(model_instance, field_name),
-            field_value.db_key if field_value else "None",
+            related_db_key,
         )
         if pipeline:
             return pipeline.srem(
