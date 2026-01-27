@@ -33,7 +33,7 @@ print(f"{lisa.name} likes {lisa.fav_color}.")
  - very fast stores and queries
  - familiar syntax, similar to Django models
  - Geometric distance search
- - Timeseries for streaming data and finance tickers
+ - Timeseries for streaming data
  - compatible with Pandas, Xarray for N-dimensional matrix search
  - [PubSub](pubsub.md) for message queues, streaming data processing
 
