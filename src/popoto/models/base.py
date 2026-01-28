@@ -50,6 +50,7 @@ class ModelOptions:
         self.auto_created = False
         self.base_meta = None
         self.order_by = None  # Default ordering for queries
+        self.ttl = None  # Default TTL in seconds for all instances
 
     def add_field(self, field_name: str, field: Field):
         if not field_name[0] == "_" and not field_name[0].islower():
@@ -152,6 +153,7 @@ class ModelBase(type):
 
         options.abstract = getattr(attr_meta, "abstract", False)
         options.order_by = getattr(attr_meta, "order_by", None)
+        options.ttl = getattr(attr_meta, "ttl", None)
 
         # Validate order_by field exists
         if options.order_by:
@@ -160,6 +162,14 @@ class ModelBase(type):
                 raise ModelException(
                     f"Meta.order_by references '{field_name}' but this field does not exist on {name}"
                 )
+
+        # Validate ttl is a positive integer if provided
+        if options.ttl is not None and (
+            not isinstance(options.ttl, int) or options.ttl <= 0
+        ):
+            raise ModelException(
+                f"Meta.ttl must be a positive integer (seconds), got {options.ttl}"
+            )
 
         options.meta = attr_meta or getattr(new_class, "Meta", None)
         options.base_meta = getattr(new_class, "_meta", None)
@@ -173,8 +183,6 @@ class Model(metaclass=ModelBase):
 
     def __init__(self, **kwargs):
         cls = self.__class__
-        # self._ttl = kwargs.get('ttl', None)
-        # self._expire_at = kwargs.get('expire_at', None)
 
         # allow init kwargs to set any base parameters
         self.__dict__.update(kwargs)
@@ -237,8 +245,11 @@ class Model(metaclass=ModelBase):
             if is_parent_model:
                 RELATED_MODEL_LOAD_SEQUENCE = set()
 
-        self._ttl = None  # todo: set default in child Meta class
-        self._expire_at = None  # todo: datetime? or timestamp?
+        # Set TTL from Meta.ttl as default if not already set via kwargs
+        if not hasattr(self, "_ttl") or self._ttl is None:
+            self._ttl = self._meta.ttl
+        if not hasattr(self, "_expire_at"):
+            self._expire_at = None  # Can be set per-instance as datetime
 
         # validate initial attributes
         if not self.is_valid(
@@ -477,10 +488,12 @@ class Model(metaclass=ModelBase):
 
         if isinstance(pipeline, redis.client.Pipeline):
             pipeline = pipeline.hset(new_db_key.redis_key, mapping=hset_mapping)  # 1
-            # if ttl is not None:
-            #     pipeline = pipeline.expire(new_db_key, ttl)  # 2
-            # if expire_at is not None:
-            #     pipeline = pipeline.expire_at(new_db_key, expire_at)  # 2
+            if self._ttl is not None:
+                pipeline = pipeline.expire(new_db_key.redis_key, self._ttl)  # 2
+            elif self._expire_at is not None:
+                pipeline = pipeline.expireat(
+                    new_db_key.redis_key, int(self._expire_at.timestamp())
+                )  # 2
             pipeline = pipeline.sadd(
                 self._meta.db_class_set_key.redis_key, new_db_key.redis_key
             )  # 3
@@ -525,10 +538,12 @@ class Model(metaclass=ModelBase):
             db_response = POPOTO_REDIS_DB.hset(
                 new_db_key.redis_key, mapping=hset_mapping
             )  # 1
-            # if ttl is not None:
-            #     POPOTO_REDIS_DB.expire(new_db_key, ttl)  # 2
-            # if expire_at is not None:
-            #     POPOTO_REDIS_DB.expireat(new_db_key, ttl)  # 2
+            if self._ttl is not None:
+                POPOTO_REDIS_DB.expire(new_db_key.redis_key, self._ttl)  # 2
+            elif self._expire_at is not None:
+                POPOTO_REDIS_DB.expireat(
+                    new_db_key.redis_key, int(self._expire_at.timestamp())
+                )  # 2
             POPOTO_REDIS_DB.sadd(
                 self._meta.db_class_set_key.redis_key, new_db_key.redis_key
             )  # 3
