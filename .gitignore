@@ -124,3 +124,4 @@ Pipfile
 *.dump
 settings/local.py
 /src/popoto/_archive/
+.claude/
