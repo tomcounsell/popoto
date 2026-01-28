@@ -62,7 +62,7 @@ class Relationship(Field):
         cls,
         model_instance: "Model",
         field_name: str,
-        field_value: "Model",
+        field_value: "Model | str | None",
         pipeline=None,
         **kwargs,
     ):
@@ -78,7 +78,14 @@ class Relationship(Field):
             related_db_key = field_value.db_key
         elif isinstance(field_value, str):
             # field_value is the redis_key string (lazy-loaded but never accessed)
-            related_db_key = field_value
+            # Expecting format "ClassName:key_value"
+            if ":" not in field_value:
+                logger.error(
+                    f"Invalid redis_key format for {field_name}: {field_value}. Expected 'ClassName:key_value'"
+                )
+                return pipeline if pipeline else None
+            # Parse the redis_key string into DB_key components
+            related_db_key = DB_key.from_redis_key(field_value)
         else:
             # Unknown type, log and return without action
             logger.warning(
@@ -118,7 +125,7 @@ class Relationship(Field):
         cls,
         model_instance: "Model",
         field_name: str,
-        field_value,
+        field_value: "Model | str | None",
         pipeline: redis.client.Pipeline = None,
         **kwargs,
     ):
@@ -134,7 +141,14 @@ class Relationship(Field):
             related_db_key = field_value.db_key
         elif isinstance(field_value, str):
             # field_value is the redis_key string (lazy-loaded but never accessed)
-            related_db_key = field_value
+            # Expecting format "ClassName:key_value"
+            if ":" not in field_value:
+                logger.error(
+                    f"Invalid redis_key format for {field_name}: {field_value}. Expected 'ClassName:key_value'"
+                )
+                return pipeline if pipeline else None
+            # Parse the redis_key string into DB_key components
+            related_db_key = DB_key.from_redis_key(field_value)
         else:
             # Unknown type, log and return without action
             logger.warning(
