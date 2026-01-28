@@ -72,6 +72,8 @@ class Person (popoto.Model)
 
 See [Models and Fields](fields.md) for all Model and Field options.
 
+See [Model Meta Options](meta.md) for configuration like default ordering and TTL.
+
 ### Create Instances
 
 ``` python
