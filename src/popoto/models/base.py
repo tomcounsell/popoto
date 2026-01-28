@@ -49,6 +49,7 @@ class ModelOptions:
         self.parents = []
         self.auto_created = False
         self.base_meta = None
+        self.order_by = None  # Default ordering for queries
 
     def add_field(self, field_name: str, field: Field):
         if not field_name[0] == "_" and not field_name[0].islower():
@@ -150,6 +151,16 @@ class ModelBase(type):
         new_class = super().__new__(cls, name, bases, new_attrs)
 
         options.abstract = getattr(attr_meta, "abstract", False)
+        options.order_by = getattr(attr_meta, "order_by", None)
+
+        # Validate order_by field exists
+        if options.order_by:
+            field_name = options.order_by.lstrip("-")
+            if field_name not in options.fields:
+                raise ModelException(
+                    f"Meta.order_by references '{field_name}' but this field does not exist on {name}"
+                )
+
         options.meta = attr_meta or getattr(new_class, "Meta", None)
         options.base_meta = getattr(new_class, "_meta", None)
         new_class._meta = options
@@ -181,7 +192,9 @@ class Model(metaclass=ModelBase):
 
         # set defaults (support callable defaults like uuid.uuid4 or dict)
         for field_name, field in self._meta.fields.items():
-            default_value = field.default() if callable(field.default) else field.default
+            default_value = (
+                field.default() if callable(field.default) else field.default
+            )
             setattr(self, field_name, default_value)
 
         # set field values from init kwargs
@@ -245,7 +258,9 @@ class Model(metaclass=ModelBase):
             None  # to be used when db_key changes between loading and saving the object
         )
         self._db_content = dict()  # empty until synced during save() call
-        self._saved_field_values = dict()  # stores field values at last save for proper on_delete cleanup
+        self._saved_field_values = (
+            dict()
+        )  # stores field values at last save for proper on_delete cleanup
 
         # todo: create set of possible custom field keys
 
