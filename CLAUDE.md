@@ -81,6 +81,10 @@ FLUSHDB                         # Clear current database (use with caution)
 - `field.py` - Base `Field` class with `FieldBase` metaclass
 - Mixins in separate files provide specialized behaviors (KeyFieldMixin, AutoFieldMixin, SortedFieldMixin, UniqueFieldMixin)
 - `shortcuts.py` - Convenience field types (AutoKeyField, UniqueKeyField, IntField, etc.)
+- `relationship.py` - `Relationship` field handles three value types:
+  - `Model` instance: fully loaded relationship
+  - `str`: redis_key string (lazy-loaded to prevent infinite recursion in circular references)
+  - `None`: no relationship set
 
 **Pub/Sub** (`pubsub/`) - Redis pub/sub for real-time messaging
 
@@ -91,6 +95,7 @@ FLUSHDB                         # Clear current database (use with caution)
 - Models auto-generate an `_auto_key` (AutoKeyField) if no KeyField is defined
 - Redis keys follow pattern: `ClassName:key1_value:key2_value:...`
 - Fields have `on_save()` and `on_delete()` hooks for maintaining secondary indexes
+- Relationship fields support circular references via lazy-loading (field value stored as redis_key string)
 
 ### Redis Connection
 
