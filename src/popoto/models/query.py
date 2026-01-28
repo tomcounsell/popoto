@@ -101,10 +101,16 @@ class Query:
 
     def all(self, **kwargs) -> list:
         redis_db_keys_list = self.keys()
+
+        # Apply default order_by from Meta if not explicitly provided
+        if "order_by" not in kwargs and self.model_class._meta.order_by:
+            kwargs["order_by"] = self.model_class._meta.order_by
+
         return self.prepare_results(
             Query.get_many_objects(
                 self.model_class,
                 set(redis_db_keys_list),
+                order_by_attr_name=kwargs.get("order_by", None),
                 values=kwargs.get("values", None),
             ),
             **kwargs,
@@ -189,6 +195,10 @@ class Query:
         if not len(db_keys_set):
             return []
 
+        # Apply default order_by from Meta if not explicitly provided
+        if "order_by" not in kwargs and self.model_class._meta.order_by:
+            kwargs["order_by"] = self.model_class._meta.order_by
+
         return self.prepare_results(
             Query.get_many_objects(
                 self.model_class,
@@ -208,6 +218,10 @@ class Query:
         limit: int = None,
         **kwargs,
     ):
+        # Apply default order_by from Meta if not explicitly provided
+        if not order_by and self.model_class._meta.order_by:
+            order_by = self.model_class._meta.order_by
+
         reverse_order = False
         if order_by and order_by.startswith("-"):
             reverse_order = True
@@ -285,11 +299,15 @@ class Query:
                 db_keys = [DB_key.from_redis_key(db_key) for db_key in db_keys]
                 return [
                     {
-                        field_name: model._meta.fields[field_name].type(
-                            db_key[model._meta.get_db_key_index_position(field_name)]
+                        field_name: (
+                            model._meta.fields[field_name].type(
+                                db_key[
+                                    model._meta.get_db_key_index_position(field_name)
+                                ]
+                            )
+                            if db_key[model._meta.get_db_key_index_position(field_name)]
+                            else None
                         )
-                        if db_key[model._meta.get_db_key_index_position(field_name)]
-                        else None
                         for field_name in values
                     }
                     for db_key in db_keys
