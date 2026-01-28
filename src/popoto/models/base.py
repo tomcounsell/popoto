@@ -51,6 +51,7 @@ class ModelOptions:
         self.base_meta = None
         self.order_by = None  # Default ordering for queries
         self.ttl = None  # Default TTL in seconds for all instances
+        self.indexes = ()  # Tuple of ((field_names,), is_unique) tuples
 
     def add_field(self, field_name: str, field: Field):
         if not field_name[0] == "_" and not field_name[0].islower():
@@ -100,6 +101,43 @@ class ModelOptions:
 
     def get_db_key_index_position(self, field_name):
         return 1 + sorted(self.key_field_names).index(field_name)
+
+    def get_index_key(self, field_names: tuple) -> str:
+        """Generate Redis key for an index."""
+        field_key = ":".join(field_names)
+        return f"$Index:{self.model_name}:{field_key}"
+
+    def compute_index_hash(self, model_instance, field_names: tuple) -> str:
+        """Compute hash of field values for index uniqueness check.
+
+        Returns None if any field value is None (NULL handling: multiple NULLs allowed).
+        """
+        import hashlib
+
+        values = []
+        for field_name in field_names:
+            value = getattr(model_instance, field_name, None)
+            if value is None:
+                return None  # Don't index NULL values (allows multiple NULLs)
+            values.append(str(value))
+        combined = ":".join(values)
+        return hashlib.sha256(combined.encode()).hexdigest()[:16]
+
+    def compute_index_hash_from_values(self, field_names: tuple, field_values: dict) -> str:
+        """Compute hash from a dict of field values (for cleanup of old values).
+
+        Returns None if any field value is None.
+        """
+        import hashlib
+
+        values = []
+        for field_name in field_names:
+            value = field_values.get(field_name)
+            if value is None:
+                return None
+            values.append(str(value))
+        combined = ":".join(values)
+        return hashlib.sha256(combined.encode()).hexdigest()[:16]
 
 
 class ModelBase(type):
@@ -154,6 +192,7 @@ class ModelBase(type):
         options.abstract = getattr(attr_meta, "abstract", False)
         options.order_by = getattr(attr_meta, "order_by", None)
         options.ttl = getattr(attr_meta, "ttl", None)
+        options.indexes = getattr(attr_meta, "indexes", ())
 
         # Validate order_by field exists
         if options.order_by:
@@ -170,6 +209,33 @@ class ModelBase(type):
             raise ModelException(
                 f"Meta.ttl must be a positive integer (seconds), got {options.ttl}"
             )
+
+        # Validate indexes structure
+        if options.indexes:
+            if not isinstance(options.indexes, (tuple, list)):
+                raise ModelException(
+                    f"Meta.indexes must be a tuple or list, got {type(options.indexes)}"
+                )
+            for index in options.indexes:
+                if not isinstance(index, (tuple, list)) or len(index) != 2:
+                    raise ModelException(
+                        f"Each index must be a 2-tuple (field_names, is_unique), got {index}"
+                    )
+                field_names, is_unique = index
+                if not isinstance(field_names, (tuple, list)):
+                    raise ModelException(
+                        f"Index field names must be a tuple/list, got {type(field_names)}"
+                    )
+                if not isinstance(is_unique, bool):
+                    raise ModelException(
+                        f"Index uniqueness flag must be boolean, got {type(is_unique)}"
+                    )
+                # Validate all field names exist
+                for field_name in field_names:
+                    if field_name not in options.fields:
+                        raise ModelException(
+                            f"Unknown field '{field_name}' in Meta.indexes for {name}"
+                        )
 
         options.meta = attr_meta or getattr(new_class, "Meta", None)
         options.base_meta = getattr(new_class, "_meta", None)
@@ -441,6 +507,39 @@ class Model(metaclass=ModelBase):
                 raise ModelException(error_message)
             return False
 
+        # Check unique indexes
+        for field_names, is_unique in self._meta.indexes:
+            if not is_unique:
+                continue  # Only check unique indexes
+
+            index_key = self._meta.get_index_key(tuple(field_names))
+            index_hash = self._meta.compute_index_hash(self, tuple(field_names))
+
+            # Skip NULL values (multiple NULLs allowed per SQL standard)
+            if index_hash is None:
+                continue
+
+            # Check if hash exists in Redis HASH
+            existing_key = POPOTO_REDIS_DB.hget(index_key, index_hash)
+            if existing_key:
+                existing_key_str = existing_key.decode() if isinstance(existing_key, bytes) else existing_key
+                # Skip self if updating (same db_key)
+                if self._redis_key and existing_key_str == self._redis_key:
+                    continue
+                if existing_key_str == self.db_key.redis_key:
+                    continue
+
+                field_values = [str(getattr(self, f)) for f in field_names]
+                error_message = (
+                    f"Unique index violation on {field_names}: "
+                    f"({', '.join(field_values)}) already exists"
+                )
+                if ignore_errors:
+                    logger.error(error_message)
+                    return False
+                else:
+                    raise ModelException(error_message)
+
         # run any necessary formatting on field data before saving
         for field_name, field in self._meta.fields.items():
             setattr(
@@ -526,8 +625,23 @@ class Model(metaclass=ModelBase):
                     pipeline=pipeline,
                     **kwargs,
                 )
-            self._redis_key = new_db_key.redis_key  # 6
-            # Store field values for proper cleanup on delete  # 7
+            # Manage indexes  # 6
+            for field_names, is_unique in self._meta.indexes:
+                field_names_tuple = tuple(field_names)
+                index_key = self._meta.get_index_key(field_names_tuple)
+                # Remove old index entry if indexed fields changed
+                if self._saved_field_values:
+                    old_hash = self._meta.compute_index_hash_from_values(
+                        field_names_tuple, self._saved_field_values
+                    )
+                    if old_hash:
+                        pipeline = pipeline.hdel(index_key, old_hash)
+                # Add new index entry
+                new_hash = self._meta.compute_index_hash(self, field_names_tuple)
+                if new_hash:
+                    pipeline = pipeline.hset(index_key, new_hash, new_db_key.redis_key)
+            self._redis_key = new_db_key.redis_key  # 7
+            # Store field values for proper cleanup on delete  # 8
             self._saved_field_values = {
                 field_name: getattr(self, field_name)
                 for field_name in self._meta.fields.keys()
@@ -579,8 +693,24 @@ class Model(metaclass=ModelBase):
                     **kwargs,
                 )
 
-            self._redis_key = new_db_key.redis_key  # 6
-            # Store field values for proper cleanup on delete  # 7
+            # Manage indexes  # 6
+            for field_names, is_unique in self._meta.indexes:
+                field_names_tuple = tuple(field_names)
+                index_key = self._meta.get_index_key(field_names_tuple)
+                # Remove old index entry if indexed fields changed
+                if self._saved_field_values:
+                    old_hash = self._meta.compute_index_hash_from_values(
+                        field_names_tuple, self._saved_field_values
+                    )
+                    if old_hash:
+                        POPOTO_REDIS_DB.hdel(index_key, old_hash)
+                # Add new index entry
+                new_hash = self._meta.compute_index_hash(self, field_names_tuple)
+                if new_hash:
+                    POPOTO_REDIS_DB.hset(index_key, new_hash, new_db_key.redis_key)
+
+            self._redis_key = new_db_key.redis_key  # 7
+            # Store field values for proper cleanup on delete  # 8
             self._saved_field_values = {
                 field_name: getattr(self, field_name)
                 for field_name in self._meta.fields.keys()
@@ -635,8 +765,22 @@ class Model(metaclass=ModelBase):
                 **kwargs,
             )
 
-        self._db_content = dict()  # 4
-        self._saved_field_values = dict()  # 4
+        # Clean up indexes  # 4
+        cleanup_values = self._saved_field_values or {
+            field_name: getattr(self, field_name)
+            for field_name in self._meta.fields.keys()
+        }
+        for field_names, is_unique in self._meta.indexes:
+            field_names_tuple = tuple(field_names)
+            index_key = self._meta.get_index_key(field_names_tuple)
+            index_hash = self._meta.compute_index_hash_from_values(
+                field_names_tuple, cleanup_values
+            )
+            if index_hash:
+                pipeline = pipeline.hdel(index_key, index_hash)
+
+        self._db_content = dict()  # 5
+        self._saved_field_values = dict()  # 5
 
         if db_response is not False:
             pipeline.execute()
