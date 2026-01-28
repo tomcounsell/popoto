@@ -21,6 +21,8 @@ class Query:
     def __init__(self, model_class: "Model"):
         self.model_class = model_class
         self.options = model_class._meta
+        self._geo_distances = {}  # {redis_key: distance}
+        self._geo_distance_unit = None  # unit for distance values
 
     def get(self, db_key: DB_key = None, redis_key: str = None, **kwargs) -> "Model":
         if (
@@ -144,9 +146,15 @@ class Query:
                     if k in kwargs
                 }
             )
-            db_keys_sets.append(
-                field.__class__.filter_query(self.model_class, field_name, **kwargs)
-            )
+            result = field.__class__.filter_query(self.model_class, field_name, **kwargs)
+            # Handle tuple return from GeoField with distances
+            if isinstance(result, tuple) and len(result) == 3:
+                keys_set, distances, unit = result
+                self._geo_distances.update(distances)
+                self._geo_distance_unit = unit
+                db_keys_sets.append(keys_set)
+            else:
+                db_keys_sets.append(result)
             yet_employed_kwargs_set = yet_employed_kwargs_set.difference(
                 self.options.filter_query_params_by_field[field_name]
             ).difference(
@@ -165,10 +173,17 @@ class Query:
             field = self.options.fields[field_name]
             logger.debug(f"query on {field_name} with {params_for_field}")
             logger.debug({k: kwargs[k] for k in params_for_field})
-            key_set = field.__class__.filter_query(
+            result = field.__class__.filter_query(
                 self.model_class, field_name, **{k: kwargs[k] for k in params_for_field}
             )
-            db_keys_sets.append(key_set)
+            # Handle tuple return from GeoField with distances
+            if isinstance(result, tuple) and len(result) == 3:
+                keys_set, distances, unit = result
+                self._geo_distances.update(distances)
+                self._geo_distance_unit = unit
+                db_keys_sets.append(keys_set)
+            else:
+                db_keys_sets.append(result)
             yet_employed_kwargs_set = yet_employed_kwargs_set.difference(
                 params_for_field
             )
@@ -191,6 +206,10 @@ class Query:
         Run query using the given paramters
         return a list of model_class objects
         """
+        # Reset geo distances for this query
+        self._geo_distances = {}
+        self._geo_distance_unit = None
+
         db_keys_set = self.filter_for_keys_set(**kwargs)
         if not len(db_keys_set):
             return []
@@ -199,16 +218,44 @@ class Query:
         if "order_by" not in kwargs and self.model_class._meta.order_by:
             kwargs["order_by"] = self.model_class._meta.order_by
 
-        return self.prepare_results(
-            Query.get_many_objects(
-                self.model_class,
-                db_keys_set,
-                order_by_attr_name=kwargs.get("order_by", None),
-                limit=kwargs.get("limit", None),
-                values=kwargs.get("values", None),
-            ),
-            **kwargs,
+        objects = Query.get_many_objects(
+            self.model_class,
+            db_keys_set,
+            order_by_attr_name=kwargs.get("order_by", None),
+            limit=kwargs.get("limit", None),
+            values=kwargs.get("values", None),
         )
+
+        # Attach geo distances to objects if available
+        if self._geo_distances:
+            # Normalize distance dict keys to strings for consistent lookup
+            normalized_distances = {}
+            for key, dist in self._geo_distances.items():
+                if isinstance(key, bytes):
+                    normalized_distances[key.decode()] = dist
+                else:
+                    normalized_distances[key] = dist
+
+            for obj in objects:
+                if isinstance(obj, dict):
+                    # When values= is used, obj is a dict - skip distance attachment
+                    continue
+                redis_key = obj.db_key.redis_key
+                if isinstance(redis_key, bytes):
+                    redis_key = redis_key.decode()
+                distance = normalized_distances.get(redis_key)
+                if distance is not None:
+                    obj._geo_distance = distance
+                    obj._geo_distance_unit = self._geo_distance_unit
+
+            # Sort by distance (ascending) to preserve geo-sorted order
+            # Only sort model objects, not dicts
+            model_objects = [o for o in objects if not isinstance(o, dict)]
+            dict_objects = [o for o in objects if isinstance(o, dict)]
+            model_objects.sort(key=lambda o: getattr(o, '_geo_distance', float('inf')))
+            objects = model_objects + dict_objects
+
+        return self.prepare_results(objects, **kwargs)
 
     def prepare_results(
         self,

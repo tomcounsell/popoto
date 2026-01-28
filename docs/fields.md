@@ -214,7 +214,7 @@ Use the `GeoField` to set coordinates on a model to enable these powerful query 
 Popoto provides a namedtuple `Coordinates`. Although, any tuple of `(float, float)` for `(latitude, longitude)` is allowed.
 
 ```python
-from GeoField import Coordinates
+from popoto import Model, KeyField, GeoField
 
 class GeoModel(Model):
     name = KeyField()
@@ -222,16 +222,49 @@ class GeoModel(Model):
 
 
 rome = GeoModel.create(
-    name="Rome", 
-    coordinates=Coordinates(latitude=41.902782, longitude=12.496366)
+    name="Rome",
+    coordinates=GeoField.Coordinates(latitude=41.902782, longitude=12.496366)
 )
 
 vatican = GeoModel.create(
     name="Vatican",
-    coordinates=Coordinates(latitude=41.904755, longitude=12.454628)
+    coordinates=GeoField.Coordinates(latitude=41.904755, longitude=12.454628)
 )
 
 assert vatican in GeoModel.query.filter(coordinates=rome.coordinates, coordinates_radius=5, coordinates_radius_unit='km')
+```
+
+### Query with Distances
+
+Use `{field_name}_with_distances=True` to include distance information in query results.
+When enabled, each returned object will have `_geo_distance` and `_geo_distance_unit` attributes,
+and results are automatically sorted by distance (closest first).
+
+```python
+# Find all locations within 10km of Rome, with distances
+results = GeoModel.query.filter(
+    coordinates=(41.902782, 12.496366),
+    coordinates_radius=10,
+    coordinates_radius_unit='km',
+    coordinates_with_distances=True
+)
+
+for location in results:
+    print(f"{location.name}: {location._geo_distance} {location._geo_distance_unit}")
+# Output:
+# Rome: 0.0 km
+# Vatican: 3.5 km
+```
+
+You can also use a member instance as the center point:
+
+```python
+results = GeoModel.query.filter(
+    coordinates_member=rome,
+    coordinates_radius=10,
+    coordinates_radius_unit='km',
+    coordinates_with_distances=True
+)
 ```
 
 
