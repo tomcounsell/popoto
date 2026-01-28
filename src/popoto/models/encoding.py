@@ -125,9 +125,23 @@ def decode_popoto_model_hashmap(
         model_attrs = {
             key_b.decode(ENCODING)
             if not fields_only
-            else key_b: decode_custom_types(msgpack.unpackb(value_b))
+            else key_b: decode_custom_types(msgpack.unpackb(value_b, strict_map_key=False))
             for key_b, value_b in redis_hash.items()
         }
-        return model_attrs if fields_only else model_class(**model_attrs)
+        if fields_only:
+            return model_attrs
+
+        # Create the model instance
+        model_instance = model_class(**model_attrs)
+
+        # Store the loaded field values for proper cleanup on delete
+        # This ensures that if the model is modified and then deleted,
+        # the on_delete hooks use the original saved values
+        model_instance._saved_field_values = {
+            field_name: getattr(model_instance, field_name)
+            for field_name in model_instance._meta.fields.keys()
+        }
+
+        return model_instance
 
     return None

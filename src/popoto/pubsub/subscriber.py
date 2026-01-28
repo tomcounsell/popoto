@@ -36,7 +36,7 @@ class Subscriber(ABC):
 
         try:
             channel_name = data_event.get("channel").decode(ENCODING)
-            event_data = msgpack.unpackb(data_event.get("data"))
+            event_data = msgpack.unpackb(data_event.get("data"), strict_map_key=False)
             logger.debug(f"handling event in {self.__class__.__name__}")
             self.pre_handle(channel_name, event_data)
             self.handle(channel_name, event_data)

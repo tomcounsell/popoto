@@ -179,9 +179,10 @@ class Model(metaclass=ModelBase):
             if hasattr(field, "auto") and field.auto:
                 field.set_auto_key_value()
 
-        # set defaults
+        # set defaults (support callable defaults like uuid.uuid4 or dict)
         for field_name, field in self._meta.fields.items():
-            setattr(self, field_name, field.default)
+            default_value = field.default() if callable(field.default) else field.default
+            setattr(self, field_name, default_value)
 
         # set field values from init kwargs
         for field_name in self._meta.fields.keys() & kwargs.keys():
@@ -244,6 +245,7 @@ class Model(metaclass=ModelBase):
             None  # to be used when db_key changes between loading and saving the object
         )
         self._db_content = dict()  # empty until synced during save() call
+        self._saved_field_values = dict()  # stores field values at last save for proper on_delete cleanup
 
         # todo: create set of possible custom field keys
 
@@ -472,11 +474,16 @@ class Model(metaclass=ModelBase):
                 and self.obsolete_redis_key != new_db_key.redis_key
             ):  # 4
                 for field_name, field in self._meta.fields.items():
+                    # Use saved field values for cleanup to ensure correct Redis keys are removed
+                    field_value = self._saved_field_values.get(
+                        field_name, getattr(self, field_name)
+                    )
                     pipeline = field.on_delete(  # 4
                         model_instance=self,
                         field_name=field_name,
-                        field_value=getattr(self, field_name),
+                        field_value=field_value,
                         pipeline=pipeline,
+                        saved_redis_key=self.obsolete_redis_key,
                         **kwargs,
                     )
                 pipeline.delete(self.obsolete_redis_key)  # 4
@@ -492,6 +499,11 @@ class Model(metaclass=ModelBase):
                     **kwargs,
                 )
             self._redis_key = new_db_key.redis_key  # 6
+            # Store field values for proper cleanup on delete  # 7
+            self._saved_field_values = {
+                field_name: getattr(self, field_name)
+                for field_name in self._meta.fields.keys()
+            }
             return pipeline
 
         else:
@@ -511,11 +523,16 @@ class Model(metaclass=ModelBase):
                 and self.obsolete_redis_key != new_db_key.redis_key
             ):  # 4
                 for field_name, field in self._meta.fields.items():
+                    # Use saved field values for cleanup to ensure correct Redis keys are removed
+                    field_value = self._saved_field_values.get(
+                        field_name, getattr(self, field_name)
+                    )
                     field.on_delete(  # 4
                         model_instance=self,
                         field_name=field_name,
-                        field_value=getattr(self, field_name),
+                        field_value=field_value,
                         pipeline=None,
+                        saved_redis_key=self.obsolete_redis_key,
                         **kwargs,
                     )
                 POPOTO_REDIS_DB.delete(self.obsolete_redis_key)  # 4
@@ -533,6 +550,11 @@ class Model(metaclass=ModelBase):
                 )
 
             self._redis_key = new_db_key.redis_key  # 6
+            # Store field values for proper cleanup on delete  # 7
+            self._saved_field_values = {
+                field_name: getattr(self, field_name)
+                for field_name in self._meta.fields.keys()
+            }
             return db_response
 
     @classmethod
@@ -569,15 +591,22 @@ class Model(metaclass=ModelBase):
         )  # 2
 
         for field_name, field in self._meta.fields.items():  # 3
+            # Use saved field values if available, otherwise fall back to current values
+            # This ensures we clean up the correct Redis keys even if field values changed
+            field_value = self._saved_field_values.get(
+                field_name, getattr(self, field_name)
+            )
             pipeline = field.on_delete(
                 model_instance=self,
                 field_name=field_name,
-                field_value=getattr(self, field_name),
+                field_value=field_value,
                 pipeline=pipeline,
+                saved_redis_key=delete_redis_key,
                 **kwargs,
             )
 
         self._db_content = dict()  # 4
+        self._saved_field_values = dict()  # 4
 
         if db_response is not False:
             pipeline.execute()

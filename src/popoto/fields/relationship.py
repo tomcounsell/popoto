@@ -146,14 +146,12 @@ class Relationship(Field):
             cls.get_special_use_field_db_key(model_instance, field_name),
             related_db_key,
         )
+        # Use saved_redis_key if provided, otherwise fall back to current db_key
+        member_key = kwargs.get("saved_redis_key", model_instance.db_key.redis_key)
         if pipeline:
-            return pipeline.srem(
-                relationship_set_db_key.redis_key, model_instance.db_key.redis_key
-            )
+            return pipeline.srem(relationship_set_db_key.redis_key, member_key)
         else:
-            return POPOTO_REDIS_DB.srem(
-                relationship_set_db_key.redis_key, model_instance.db_key.redis_key
-            )
+            return POPOTO_REDIS_DB.srem(relationship_set_db_key.redis_key, member_key)
 
     @classmethod
     def filter_query(cls, model: "Model", field_name: str, **query_params) -> set:

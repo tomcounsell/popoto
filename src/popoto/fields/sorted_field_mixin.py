@@ -166,7 +166,8 @@ class SortedFieldMixin:
         sortedset_db_key = cls.get_partitioned_sortedset_db_key(
             model_instance, field_name
         )
-        sortedset_member = model_instance.db_key.redis_key
+        # Use saved_redis_key if provided, otherwise fall back to current db_key
+        sortedset_member = kwargs.get("saved_redis_key", model_instance.db_key.redis_key)
         if pipeline:
             return pipeline.zrem(sortedset_db_key.redis_key, sortedset_member)
         else:

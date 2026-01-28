@@ -94,14 +94,12 @@ class KeyFieldMixin:
         unique_set_key = DB_key(
             cls.get_special_use_field_db_key(model_instance, field_name), field_value
         )
+        # Use saved_redis_key if provided, otherwise fall back to current db_key
+        member_key = kwargs.get("saved_redis_key", model_instance.db_key.redis_key)
         if pipeline:
-            return pipeline.srem(
-                unique_set_key.redis_key, model_instance.db_key.redis_key
-            )
+            return pipeline.srem(unique_set_key.redis_key, member_key)
         else:
-            return POPOTO_REDIS_DB.srem(
-                unique_set_key.redis_key, model_instance.db_key.redis_key
-            )
+            return POPOTO_REDIS_DB.srem(unique_set_key.redis_key, member_key)
 
     def get_filter_query_params(self, field_name: str) -> set:
         return (
