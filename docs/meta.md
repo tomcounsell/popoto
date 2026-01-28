@@ -110,25 +110,138 @@ This is a Popoto-specific feature. Peewee ORM (SQL-based) doesn't have TTL suppo
 
 ---
 
-### indexes (Coming Soon)
+### indexes
 
 Multi-column indexes with uniqueness support (inspired by Peewee).
 
 ```python
+from popoto import Model, KeyField, Field
+
 class Transaction(Model):
-    from_acct = KeyField()
-    to_acct = Field()
-    date = Field()
+    transaction_id = KeyField()
+    from_account = Field()
+    to_account = Field()
+    amount = Field()
 
     class Meta:
         indexes = (
             # (field_names_tuple, is_unique_boolean)
-            (('to_acct', 'date'), True),   # Unique composite index
-            (('to_acct',), False),          # Non-unique single-column index
+            (('from_account', 'to_account'), True),   # Unique composite index
+            (('to_account',), False),                  # Non-unique single-column index
         )
+
+# Creating transactions
+tx1 = Transaction.create(
+    transaction_id="tx1",
+    from_account="A",
+    to_account="B",
+    amount=100
+)
+
+# This will raise ModelException due to unique constraint
+tx2 = Transaction.create(
+    transaction_id="tx2",
+    from_account="A",  # Same combination
+    to_account="B",    # as tx1
+    amount=200
+)  # ❌ ModelException: Unique index violation
 ```
 
-**Status:** In development. Will replace the planned `unique_together` feature with a more flexible pattern.
+**Features:**
+- Enforces unique constraints on field combinations
+- Supports both unique (`True`) and non-unique (`False`) indexes
+- Field names must exist or `ModelException` is raised at class definition
+- Index entries are automatically managed on save and delete
+- Updates properly handle changing indexed fields
+
+**NULL Handling:**
+
+Following SQL standard behavior, multiple `NULL` values are allowed in unique indexes:
+
+```python
+# Both instances can have NULL in the same indexed field
+tx1 = Transaction.create(transaction_id="tx1", from_account=None, to_account="B", amount=100)
+tx2 = Transaction.create(transaction_id="tx2", from_account=None, to_account="B", amount=200)
+# ✅ No conflict - NULLs don't participate in uniqueness checks
+```
+
+**Update Handling:**
+
+Updates that would create duplicates are rejected:
+
+```python
+tx1 = Transaction.create(
+    transaction_id="tx1", from_account="A", to_account="B", amount=100
+)
+tx2 = Transaction.create(
+    transaction_id="tx2", from_account="C", to_account="D", amount=200
+)
+
+# Try to change tx2 to match tx1's indexed fields
+tx2.from_account = "A"
+tx2.to_account = "B"
+tx2.save()  # ❌ ModelException: Unique index violation
+
+# But updating non-indexed fields works fine
+tx1.amount = 150
+tx1.save()  # ✅ OK - indexed fields unchanged
+```
+
+**Delete Handling:**
+
+Deleted instances free up their index entries:
+
+```python
+tx1 = Transaction.create(
+    transaction_id="tx1", from_account="A", to_account="B", amount=100
+)
+tx1.delete()
+
+# Now another instance can use the same combination
+tx2 = Transaction.create(
+    transaction_id="tx2", from_account="A", to_account="B", amount=200
+)  # ✅ OK - tx1's index entry was cleaned up
+```
+
+**Validation:**
+
+Index structure is validated at class definition time:
+
+```python
+# These all raise ModelException immediately
+
+class Bad1(Model):
+    id = KeyField()
+    class Meta:
+        indexes = "invalid"  # ❌ Must be tuple/list
+
+class Bad2(Model):
+    id = KeyField()
+    class Meta:
+        indexes = (("field",),)  # ❌ Each index must be 2-tuple
+
+class Bad3(Model):
+    id = KeyField()
+    class Meta:
+        indexes = (("field", True),)  # ❌ Field names must be tuple/list
+
+class Bad4(Model):
+    id = KeyField()
+    class Meta:
+        indexes = ((("field",), "yes"),)  # ❌ is_unique must be boolean
+
+class Bad5(Model):
+    id = KeyField()
+    class Meta:
+        indexes = ((("nonexistent",), True),)  # ❌ Field must exist
+```
+
+**Redis Implementation:**
+
+Indexes are stored as Redis HASHes:
+- Key: `$Index:ClassName:field1:field2`
+- Hash entries: `{hash_of_values: instance_db_key}`
+- Efficient O(1) lookups with `HEXISTS`/`HGET`
 
 ---
 
