@@ -146,7 +146,8 @@ class GeoField(Field):
         **kwargs,
     ):
         geo_db_key = cls.get_geo_db_key(model_instance, field_name)
-        geo_member = model_instance.db_key.redis_key
+        # Use saved_redis_key if provided, otherwise fall back to current db_key
+        geo_member = kwargs.get("saved_redis_key", model_instance.db_key.redis_key)
         if pipeline:
             return pipeline.zrem(geo_db_key.redis_key, geo_member)
         else:
