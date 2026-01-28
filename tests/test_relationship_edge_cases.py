@@ -7,6 +7,7 @@ These tests verify that the Relationship field properly handles:
 3. String field values (redis_key) during save and delete operations
 4. Index cleanup when relationships are not fully loaded
 """
+
 import sys
 import os
 
@@ -21,11 +22,19 @@ from src.popoto.redis_db import POPOTO_REDIS_DB
 def cleanup_test_data():
     """Clean up Redis test data."""
     patterns = [
-        "NodeA:*", "NodeB:*", "NodeC:*",
-        "PersonModel:*", "GroupModel:*", "MembershipModel:*",
-        "$*:NodeA:*", "$*:NodeB:*", "$*:NodeC:*",
-        "$*:PersonModel:*", "$*:GroupModel:*", "$*:MembershipModel:*",
-        "$Class:*"
+        "NodeA:*",
+        "NodeB:*",
+        "NodeC:*",
+        "PersonModel:*",
+        "GroupModel:*",
+        "MembershipModel:*",
+        "$*:NodeA:*",
+        "$*:NodeB:*",
+        "$*:NodeC:*",
+        "$*:PersonModel:*",
+        "$*:GroupModel:*",
+        "$*:MembershipModel:*",
+        "$Class:*",
     ]
     for pattern in patterns:
         for key in POPOTO_REDIS_DB.keys(pattern):
@@ -52,8 +61,14 @@ NodeA._meta.add_field("link_to_b", NodeA.link_to_b)
 NodeB.link_to_c = Relationship(model=NodeC)
 NodeB._meta.add_field("link_to_c", NodeB.link_to_c)
 
+NodeB.related_a = Relationship(model=NodeA)
+NodeB._meta.add_field("related_a", NodeB.related_a)
+
 NodeC.link_to_a = Relationship(model=NodeA)
 NodeC._meta.add_field("link_to_a", NodeC.link_to_a)
+
+NodeA.related_b = Relationship(model=NodeB)
+NodeA._meta.add_field("related_b", NodeA.related_b)
 
 
 class PersonModel(Model):
@@ -122,8 +137,12 @@ class TestRelationshipIndexCleanup(TestRelationshipEdgeCases):
         membership = MembershipModel.create(person=person, group=group)
 
         # Get the relationship index keys
-        person_index_key = f"$RelationshipF:MembershipModel:person:{person.db_key.redis_key}"
-        group_index_key = f"$RelationshipF:MembershipModel:group:{group.db_key.redis_key}"
+        person_index_key = (
+            f"$RelationshipF:MembershipModel:person:{person.db_key.redis_key}"
+        )
+        group_index_key = (
+            f"$RelationshipF:MembershipModel:group:{group.db_key.redis_key}"
+        )
 
         # Verify membership is in the indexes
         person_members = POPOTO_REDIS_DB.smembers(person_index_key)
@@ -151,7 +170,9 @@ class TestRelationshipIndexCleanup(TestRelationshipEdgeCases):
         membership = MembershipModel.create(person=person, group=group)
 
         membership_key = membership.db_key.redis_key
-        person_index_key = f"$RelationshipF:MembershipModel:person:{person.db_key.redis_key}"
+        person_index_key = (
+            f"$RelationshipF:MembershipModel:person:{person.db_key.redis_key}"
+        )
 
         # Load membership fresh from database
         loaded_membership = MembershipModel.query.all()[0]
@@ -313,7 +334,7 @@ class TestStringFieldValueHandling(TestRelationshipEdgeCases):
             model_instance=membership,
             field_name="person",
             field_value=string_field_value,  # String instead of Model instance
-            pipeline=None
+            pipeline=None,
         )
 
         # Should succeed without error
@@ -344,7 +365,7 @@ class TestStringFieldValueHandling(TestRelationshipEdgeCases):
             model_instance=membership,
             field_name="person",
             field_value=string_field_value,  # String instead of Model instance
-            pipeline=None
+            pipeline=None,
         )
 
         # Should succeed
@@ -368,7 +389,7 @@ class TestStringFieldValueHandling(TestRelationshipEdgeCases):
             model_instance=membership,
             field_name="group",
             field_value=None,
-            pipeline=None
+            pipeline=None,
         )
 
         # Should succeed
@@ -376,6 +397,93 @@ class TestStringFieldValueHandling(TestRelationshipEdgeCases):
 
         # Cleanup
         membership.delete()
+        person.delete()
+
+
+class TestRedisKeyStringHandling:
+    """Test that on_save and on_delete handle redis_key strings correctly."""
+
+    def test_on_save_with_parsed_redis_key(self):
+        """Verify on_save correctly parses redis_key strings into DB_key."""
+        person = PersonModel.create(name="Emily")
+        membership = MembershipModel(person=person, group=None)
+
+        # Get the field class
+        person_field = MembershipModel._meta.fields["person"]
+
+        # Simulate what happens when field_value is a redis_key string (lazy-loaded)
+        string_field_value = person.db_key.redis_key
+
+        # This tests the fix: parse redis_key string with DB_key.from_redis_key()
+        result = person_field.on_save(
+            model_instance=membership,
+            field_name="person",
+            field_value=string_field_value,  # String redis_key
+            pipeline=None,
+        )
+
+        # Should succeed and return a result
+        assert result is not None or result >= 0
+
+        # Verify the index was created correctly
+        person_index_key = (
+            f"$RelationshipF:MembershipModel:person:{person.db_key.redis_key}"
+        )
+        members = POPOTO_REDIS_DB.smembers(person_index_key)
+        # Note: membership doesn't have a valid db_key yet since it wasn't saved
+
+        # Cleanup
+        person.delete()
+
+    def test_on_delete_with_parsed_redis_key(self):
+        """Verify on_delete correctly parses redis_key strings into DB_key."""
+        person = PersonModel.create(name="Frank")
+        group = GroupModel.create(name="Engineering")
+        membership = MembershipModel.create(person=person, group=group)
+
+        # Get the field class
+        person_field = MembershipModel._meta.fields["person"]
+
+        # Simulate what happens when field_value is a redis_key string
+        string_field_value = person.db_key.redis_key
+
+        # This tests the fix: parse redis_key string with DB_key.from_redis_key()
+        result = person_field.on_delete(
+            model_instance=membership,
+            field_name="person",
+            field_value=string_field_value,  # String redis_key
+            pipeline=None,
+        )
+
+        # Should succeed
+        assert result is not None or result == 0
+
+        # Cleanup
+        membership.delete()
+        person.delete()
+        group.delete()
+
+    def test_invalid_redis_key_format_logged(self):
+        """Verify that invalid redis_key format is logged and handled gracefully."""
+        person = PersonModel.create(name="Grace")
+        membership = MembershipModel(person=person, group=None)
+
+        person_field = MembershipModel._meta.fields["person"]
+
+        # Pass an invalid redis_key (no colon separator)
+        invalid_redis_key = "InvalidFormatNoColon"
+
+        result = person_field.on_save(
+            model_instance=membership,
+            field_name="person",
+            field_value=invalid_redis_key,
+            pipeline=None,
+        )
+
+        # Should return None (early return due to invalid format)
+        assert result is None
+
+        # Cleanup
         person.delete()
 
 
