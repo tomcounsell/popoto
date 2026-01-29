@@ -48,6 +48,8 @@ class GeoField(Field):
                     f"{field_name}_longitude",
                     f"{field_name}_radius",
                     f"{field_name}_radius_unit",
+                    f"{field_name}_member",
+                    f"{field_name}_with_distances",
                 }
             )
         )
@@ -154,17 +156,18 @@ class GeoField(Field):
             return POPOTO_REDIS_DB.zrem(geo_db_key.redis_key, geo_member)
 
     @classmethod
-    def filter_query(cls, model: "Model", field_name: str, **query_params) -> set:
+    def filter_query(cls, model: "Model", field_name: str, **query_params):
         """
         :param model: the popoto.Model to query from
         :param field_name: the name of the field being filtered on
         :param query_params: dict of filter args and values
-        :return: set{db_key, db_key, ..}
+        :return: set{db_key, db_key, ..} or tuple(set, distances_dict, unit) if with_distances=True
         """
         field = model._meta.fields[field_name]
         geo_db_key = cls.get_geo_db_key(model, field_name)
         coordinates = GeoField.Coordinates(None, None)
         member, radius, unit = None, 1, "m"
+        with_distances = False
         for query_param, query_value in query_params.items():
 
             if query_param == f"{field_name}":
@@ -203,24 +206,29 @@ class GeoField(Field):
                     raise QueryException(f"{query_param} must be one of m|km|ft|mi ")
                 unit = query_value
 
+            elif query_param.endswith("_with_distances"):
+                with_distances = bool(query_value)
+
         if member:
             redis_db_keys_list = POPOTO_REDIS_DB.georadiusbymember(
                 geo_db_key.redis_key,
                 member=member.db_key.redis_key,
                 radius=radius,
-                unit=unit,  # , withdist=True, sort='asc'
+                unit=unit,
+                withdist=with_distances,
+                sort="ASC" if with_distances else None,
             )
 
-        elif coordinates.latitude and coordinates.longitude:
-            # logger.debug(f"geo query on {dict(model=model._meta.db_class_key, longitude=coordinates.longitude, latitude=coordinates.latitude, radius=radius, unit=unit)}")
+        elif coordinates.latitude is not None and coordinates.longitude is not None:
             redis_db_keys_list = POPOTO_REDIS_DB.georadius(
                 geo_db_key.redis_key,
                 longitude=coordinates.longitude,
                 latitude=coordinates.latitude,
                 radius=radius,
-                unit=unit,  # , withdist=True, sort='asc'
+                unit=unit,
+                withdist=with_distances,
+                sort="ASC" if with_distances else None,
             )
-            # logger.debug(f"geo query returned {redis_db_keys_list}")
         else:
             from ..models.query import QueryException
 
@@ -229,4 +237,9 @@ class GeoField(Field):
                 f"geofilter requires either coordinates or instance of the same model"
             )
 
-        return set(redis_db_keys_list)
+        if with_distances:
+            # Result is [(key, distance), ...] when withdist=True
+            distances = {item[0]: item[1] for item in redis_db_keys_list}
+            return set(distances.keys()), distances, unit
+        else:
+            return set(redis_db_keys_list)
