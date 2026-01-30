@@ -10,8 +10,12 @@ nav:
     - Making Queries: 'query.md'
     - Relationship Field: 'relationship.md'
     - PubSub: 'pubsub.md'
+    - Style Guide: 'STYLE_GUIDE.md'
     - Completed:
         - Meta Class Implementation: 'completed/meta-class-implementation.md'
+
+markdown_extensions:
+    - admonition
 
 theme:
     name: readthedocs

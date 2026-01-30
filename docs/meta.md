@@ -1,322 +1,333 @@
 # Model Meta Options
 
-Model-specific configuration is defined in a special `Meta` inner class, following Django and Peewee ORM conventions. Once defined, access configuration via `ModelClass._meta`, not `ModelClass.Meta`.
+Every Popoto model can include a `Meta` inner class to configure model-level behavior like default ordering, automatic expiration, and composite indexes. This follows the same pattern you might know from Django or Peewee ORMs, making configuration explicit and centralized.
+
+The `Meta` class is processed when your model is defined, and its options become available via `ModelClass._meta`. This separation keeps configuration distinct from your model's fields and methods.
+
+## When to Use Meta Options
+
+You should define a `Meta` class when you want to:
+
+- **Set default ordering** for query results without specifying `order_by` every time
+- **Automatically expire data** using Redis TTL (great for sessions, cache, or temporary data)
+- **Enforce uniqueness** across multiple fields (composite unique constraints)
+
+Without a `Meta` class, your models work fine—you just configure behavior at query time instead.
+
+## Basic Example
+
+Here's a simple model with default ordering configured:
+
+```python
+from popoto import Model, KeyField, SortedField
+
+class Person(Model):
+    name = KeyField()
+    email = Field()
+    age = SortedField(type=int)
+
+    class Meta:
+        order_by = "age"  # Always return people sorted by age
+```
+
+Now when you query for people, they come back ordered by age without you needing to specify it:
+
+```python
+Person.create(name="Alice", email="alice@example.com", age=30)
+Person.create(name="Bob", email="bob@example.com", age=25)
+
+people = Person.query.all()
+print(people[0].name)
+# => "Bob"
+```
 
 ## Available Options
 
 ### order_by
 
-Define default ordering for query results.
+The `order_by` option sets a default sort order for all queries. This is useful when you almost always want results in the same order—for example, showing newest notes first, or listing people alphabetically.
+
+Without `order_by` in Meta, you'd need to specify `order_by` on every query. With it in Meta, the default is automatic, and you can still override it when needed.
 
 ```python
-from popoto import Model, KeyField
-from popoto.fields.shortcuts import SortedField
+from popoto import Model, KeyField, Field, SortedField
+from popoto.fields.relationship import Relationship
+from popoto.fields.datetime import DatetimeField
 
-class Product(Model):
-    name = KeyField()
-    price = SortedField()
-
-    class Meta:
-        order_by = "price"  # Ascending order by default
-
-# Queries automatically ordered by price
-products = Product.query.all()
-# Returns: [Product(price=10), Product(price=20), Product(price=30)]
-
-# Descending order
-class ProductDescending(Model):
-    name = KeyField()
-    price = SortedField()
+class Note(Model):
+    title = KeyField()
+    content = Field(type=str)
+    author = Relationship(Person)
+    created_at = DatetimeField(auto_now_add=True)
+    updated_at = DatetimeField(auto_now=True)
 
     class Meta:
-        order_by = "-price"  # Prefix with '-' for descending
-
-# Override at query time
-products = Product.query.all(order_by="-price")  # Descends despite Meta
-products = Product.query.filter(name="Widget", order_by="name")  # Override with different field
+        order_by = "-created_at"  # Newest notes first (descending)
 ```
 
-**Features:**
-- Supports ascending (`"fieldname"`) and descending (`"-fieldname"`)
-- Works with `all()`, `filter()`, and `limit`
-- Explicit `order_by` parameter overrides Meta default
-- Field must exist or `ModelException` is raised at class definition
+The minus sign prefix (`-`) means descending order. Without it, results are ascending.
 
----
+Now queries automatically return newest notes first:
+
+```python
+notes = Note.query.all()
+# Returns notes ordered by created_at descending
+
+recent = Note.query.filter(author=person)
+# Still respects default order_by
+```
+
+You can override the default at query time if you need a different order for a specific query:
+
+```python
+notes = Note.query.all(order_by="title")
+# Overrides Meta, sorts by title ascending instead
+```
+
+!!! note
+    The field specified in `order_by` must exist on the model, or you'll get a `ModelException` when the class is defined.
 
 ### ttl
 
-Set Time-To-Live (TTL) for Redis keys in seconds. Models expire automatically after the specified duration.
+The `ttl` (time-to-live) option tells Redis to automatically delete model instances after a specified number of seconds. This is perfect for temporary data like user sessions, rate-limiting counters, or cached API responses.
+
+When you save a model with a TTL, Popoto sets Redis's `EXPIRE` command on the key. After that time elapses, Redis automatically removes it—no cleanup code needed.
 
 ```python
 from popoto import Model, KeyField, Field
 
-class CachedData(Model):
-    key = KeyField()
-    value = Field()
+class Person(Model):
+    name = KeyField()
+    email = Field()
+    age = SortedField(type=int)
 
     class Meta:
-        ttl = 3600  # Expires after 1 hour (3600 seconds)
-
-# Instance automatically expires after 1 hour
-data = CachedData.create(key="session", value="abc123")
+        ttl = 3600  # Expire after 1 hour (3600 seconds)
 ```
 
-**Features:**
-- Sets Redis `EXPIRE` on save
-- Instance-level override with `_ttl` attribute
-- Alternative: use `_expire_at` for absolute timestamp expiration
-- Validation: must be positive integer (seconds)
-
-**Instance-Level Override:**
+Now every person instance expires one hour after being saved:
 
 ```python
-class CachedData(Model):
-    key = KeyField()
-    value = Field()
+person = Person.create(name="Charlie", email="charlie@example.com", age=28)
+# After 3600 seconds, Redis automatically deletes this person
+```
 
-    class Meta:
-        ttl = 60  # Default: 60 seconds
+!!! tip
+    TTL is a Redis-native feature that SQL databases don't have. This is one of the advantages of using Popoto with Redis for certain use cases.
 
-# Override for specific instance
-data = CachedData(key="important", value="data")
-data._ttl = 3600  # This instance expires after 1 hour
-data.save()
+#### Instance-Level Override
 
-# Disable TTL for specific instance
-permanent = CachedData(key="keep", value="forever")
-permanent._ttl = None  # No expiration
+You can override the Meta TTL for specific instances using the `_ttl` attribute:
+
+```python
+person = Person(name="Diana", email="diana@example.com", age=35)
+person._ttl = 7200  # This person expires after 2 hours instead
+person.save()
+```
+
+To make a specific instance permanent (no expiration), set `_ttl` to `None`:
+
+```python
+permanent = Person(name="Eve", email="eve@example.com", age=40)
+permanent._ttl = None  # Never expires
 permanent.save()
 ```
 
-**Absolute Expiration Time:**
+#### Absolute Expiration Time
+
+Instead of a relative TTL, you can set an absolute expiration timestamp with `_expire_at`:
 
 ```python
 from datetime import datetime, timedelta
 
-data = CachedData(key="event", value="data")
-data._expire_at = datetime.now() + timedelta(days=7)  # Expires in 7 days
-data.save()
+person = Person(name="Frank", email="frank@example.com", age=32)
+person._expire_at = datetime.now() + timedelta(days=7)
+person.save()
+# Expires exactly 7 days from now
 ```
 
-**How TTL Works:**
-- On `save()`, Redis `EXPIRE` or `EXPIREAT` is called
-- TTL is refreshed on every save (not just create)
-- After expiration, Redis automatically deletes the key
-- Queries will return `None` for expired objects
-
-**Popoto Innovation:**
-This is a Popoto-specific feature. Peewee ORM (SQL-based) doesn't have TTL support since SQL databases don't natively support key expiration. This showcases Popoto's Redis-native advantages.
-
----
+!!! warning
+    TTL is refreshed every time you call `save()`, not just on creation. If you save an instance again, the expiration clock resets.
 
 ### indexes
 
-Multi-column indexes with uniqueness support (inspired by Peewee).
+The `indexes` option creates composite indexes—multi-field indexes that can enforce uniqueness across combinations of fields. This is useful when a single field isn't enough to guarantee uniqueness, but a combination should be unique.
+
+For example, you might want to ensure that each person can only create one note with a given title, but different people can use the same title.
+
+Indexes are specified as a tuple of tuples. Each inner tuple contains:
+
+1. A tuple of field names to index together
+2. A boolean indicating whether the combination must be unique
 
 ```python
 from popoto import Model, KeyField, Field
+from popoto.fields.relationship import Relationship
+from popoto.fields.datetime import DatetimeField
 
-class Transaction(Model):
-    transaction_id = KeyField()
-    from_account = Field()
-    to_account = Field()
-    amount = Field()
+class Note(Model):
+    title = KeyField()
+    content = Field(type=str)
+    author = Relationship(Person)
+    created_at = DatetimeField(auto_now_add=True)
+    updated_at = DatetimeField(auto_now=True)
 
     class Meta:
         indexes = (
-            # (field_names_tuple, is_unique_boolean)
-            (('from_account', 'to_account'), True),   # Unique composite index
-            (('to_account',), False),                  # Non-unique single-column index
+            (('author', 'title'), True),  # Each author can only have one note with a given title
         )
-
-# Creating transactions
-tx1 = Transaction.create(
-    transaction_id="tx1",
-    from_account="A",
-    to_account="B",
-    amount=100
-)
-
-# This will raise ModelException due to unique constraint
-tx2 = Transaction.create(
-    transaction_id="tx2",
-    from_account="A",  # Same combination
-    to_account="B",    # as tx1
-    amount=200
-)  # ❌ ModelException: Unique index violation
 ```
 
-**Features:**
-- Enforces unique constraints on field combinations
-- Supports both unique (`True`) and non-unique (`False`) indexes
-- Field names must exist or `ModelException` is raised at class definition
-- Index entries are automatically managed on save and delete
-- Updates properly handle changing indexed fields
-
-**NULL Handling:**
-
-Following SQL standard behavior, multiple `NULL` values are allowed in unique indexes:
+With this index in place, attempting to create a duplicate will raise an exception:
 
 ```python
-# Both instances can have NULL in the same indexed field
-tx1 = Transaction.create(transaction_id="tx1", from_account=None, to_account="B", amount=100)
-tx2 = Transaction.create(transaction_id="tx2", from_account=None, to_account="B", amount=200)
-# ✅ No conflict - NULLs don't participate in uniqueness checks
+alice = Person.create(name="Alice", email="alice@example.com", age=30)
+
+note1 = Note.create(title="Ideas", content="First idea", author=alice)
+# => Note saved successfully
+
+note2 = Note.create(title="Ideas", content="Second idea", author=alice)
+# => ModelException: Unique index violation
 ```
 
-**Update Handling:**
-
-Updates that would create duplicates are rejected:
+However, a different person can create a note with the same title:
 
 ```python
-tx1 = Transaction.create(
-    transaction_id="tx1", from_account="A", to_account="B", amount=100
-)
-tx2 = Transaction.create(
-    transaction_id="tx2", from_account="C", to_account="D", amount=200
-)
+bob = Person.create(name="Bob", email="bob@example.com", age=25)
 
-# Try to change tx2 to match tx1's indexed fields
-tx2.from_account = "A"
-tx2.to_account = "B"
-tx2.save()  # ❌ ModelException: Unique index violation
-
-# But updating non-indexed fields works fine
-tx1.amount = 150
-tx1.save()  # ✅ OK - indexed fields unchanged
+note3 = Note.create(title="Ideas", content="Bob's idea", author=bob)
+# => Note saved successfully
 ```
 
-**Delete Handling:**
+#### Non-Unique Indexes
 
-Deleted instances free up their index entries:
+You can also create non-unique indexes for query performance by setting the second value to `False`:
 
 ```python
-tx1 = Transaction.create(
-    transaction_id="tx1", from_account="A", to_account="B", amount=100
-)
-tx1.delete()
+class Note(Model):
+    title = KeyField()
+    content = Field(type=str)
+    author = Relationship(Person)
+    created_at = DatetimeField(auto_now_add=True)
+    updated_at = DatetimeField(auto_now=True)
 
-# Now another instance can use the same combination
-tx2 = Transaction.create(
-    transaction_id="tx2", from_account="A", to_account="B", amount=200
-)  # ✅ OK - tx1's index entry was cleaned up
+    class Meta:
+        indexes = (
+            (('author', 'created_at'), False),  # Index for querying, but not unique
+        )
 ```
 
-**Validation:**
+#### NULL Handling
 
-Index structure is validated at class definition time:
+Following SQL standard behavior, `NULL` values don't participate in uniqueness checks. Multiple instances can have `NULL` in an indexed field:
 
 ```python
-# These all raise ModelException immediately
-
-class Bad1(Model):
-    id = KeyField()
-    class Meta:
-        indexes = "invalid"  # ❌ Must be tuple/list
-
-class Bad2(Model):
-    id = KeyField()
-    class Meta:
-        indexes = (("field",),)  # ❌ Each index must be 2-tuple
-
-class Bad3(Model):
-    id = KeyField()
-    class Meta:
-        indexes = (("field", True),)  # ❌ Field names must be tuple/list
-
-class Bad4(Model):
-    id = KeyField()
-    class Meta:
-        indexes = ((("field",), "yes"),)  # ❌ is_unique must be boolean
-
-class Bad5(Model):
-    id = KeyField()
-    class Meta:
-        indexes = ((("nonexistent",), True),)  # ❌ Field must exist
+note1 = Note.create(title="Orphan1", content="No author", author=None)
+note2 = Note.create(title="Orphan2", content="Also no author", author=None)
+# => Both save successfully, even with the same author value (None)
 ```
 
-**Redis Implementation:**
+#### Update and Delete Handling
 
-Indexes are stored as Redis HASHes:
-- Key: `$Index:ClassName:field1:field2`
-- Hash entries: `{hash_of_values: instance_db_key}`
-- Efficient O(1) lookups with `HEXISTS`/`HGET`
+Updates that would violate a unique index are rejected:
 
----
+```python
+alice = Person.create(name="Alice", email="alice@example.com", age=30)
+
+note1 = Note.create(title="Ideas", content="First", author=alice)
+note2 = Note.create(title="Plans", content="Second", author=alice)
+
+note2.title = "Ideas"  # Try to use the same title as note1
+note2.save()
+# => ModelException: Unique index violation
+```
+
+When you delete an instance, its index entries are automatically cleaned up:
+
+```python
+note1.delete()
+
+# Now another note can use the same title for this author
+note3 = Note.create(title="Ideas", content="Third", author=alice)
+# => Saves successfully
+```
+
+!!! note
+    All field names in an index must exist on the model, or you'll get a `ModelException` when the class is defined.
 
 ## Complete Example
 
-```python
-from popoto import Model, KeyField, Field
-from popoto.fields.shortcuts import SortedField
-
-class Session(Model):
-    session_id = KeyField()
-    user_id = SortedField()
-    created_at = SortedField()
-    data = Field()
-
-    class Meta:
-        order_by = "-created_at"  # Newest sessions first
-        ttl = 86400               # Expire after 24 hours
-
-# Usage
-session = Session.create(
-    session_id="abc123",
-    user_id="user_456",
-    created_at=1234567890,
-    data={"page": "home"}
-)
-
-# Query - automatically ordered by created_at descending
-recent_sessions = Session.query.filter(user_id__gte=100)
-
-# After 24 hours, session automatically expires from Redis
-```
-
----
-
-## Meta Validation
-
-Meta options are validated at class definition time (not runtime):
+Here's a model that combines all three Meta options:
 
 ```python
-# This raises ModelException immediately
-class BadModel(Model):
-    name = KeyField()
+from popoto import Model, KeyField, Field, SortedField
+from popoto.fields.relationship import Relationship
+from popoto.fields.datetime import DatetimeField
+
+class Note(Model):
+    title = KeyField()
+    content = Field(type=str)
+    author = Relationship(Person)
+    created_at = DatetimeField(auto_now_add=True)
+    updated_at = DatetimeField(auto_now=True)
+    priority = SortedField(type=int)
 
     class Meta:
-        order_by = "nonexistent_field"  # ❌ ModelException: field doesn't exist
-        ttl = -1                         # ❌ ModelException: must be positive integer
+        order_by = "-priority"           # High priority notes first
+        ttl = 2592000                    # Expire after 30 days (30 * 24 * 60 * 60)
+        indexes = (
+            (('author', 'title'), True),  # Each author's note titles must be unique
+        )
 ```
 
----
+This model will:
+
+- Return notes ordered by priority (highest first) by default
+- Automatically expire notes after 30 days
+- Prevent an author from creating two notes with the same title
 
 ## Accessing Meta Options
 
-Always access via `_meta`, never via `Meta`:
+After your model is defined, access Meta options via `_meta`, not `Meta`:
 
 ```python
-class Product(Model):
+class Person(Model):
+    name = KeyField()
+    email = Field()
+    age = SortedField(type=int)
+
+    class Meta:
+        order_by = "age"
+        ttl = 3600
+
+# Correct way to access
+print(Person._meta.order_by)
+# => "age"
+
+print(Person._meta.ttl)
+# => 3600
+```
+
+!!! warning
+    Don't access `Person.Meta` directly—it's processed during class creation and may not be available as you expect.
+
+## Meta Validation
+
+All Meta options are validated when your model class is defined, not when you create instances. This means you'll get immediate feedback about configuration errors:
+
+```python
+# This raises ModelException immediately
+class BadPerson(Model):
     name = KeyField()
 
     class Meta:
-        order_by = "name"
-        ttl = 3600
-
-# ✅ Correct
-print(Product._meta.order_by)  # "name"
-print(Product._meta.ttl)        # 3600
-
-# ❌ Wrong (Meta class is processed and not directly accessible)
-# print(Product.Meta.order_by)  # May not work as expected
+        order_by = "nonexistent_field"  # ModelException: field doesn't exist
+        ttl = -1                         # ModelException: must be positive integer
 ```
-
----
 
 ## Reference
 
-Inspired by:
+Popoto's Meta class is inspired by:
+
 - [Django Model Meta options](https://docs.djangoproject.com/en/stable/ref/models/options/)
 - [Peewee Model options](https://docs.peewee-orm.com/en/latest/peewee/models.html#model-options-and-table-metadata)
