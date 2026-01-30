@@ -64,7 +64,7 @@ REDIS_URL = "redis://HOST[:PORT]/DATABASE[?password=PASSWORD]"
 ``` python
 import popoto
 
-class Person (popoto.Model)
+class Person(popoto.Model):
     name = popoto.KeyField(max_length=100)
     favorite_color = popoto.Field(null=True)
 
