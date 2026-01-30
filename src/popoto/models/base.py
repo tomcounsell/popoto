@@ -1,4 +1,7 @@
 import logging
+import asyncio
+import sys
+import functools
 
 import redis
 
@@ -14,6 +17,17 @@ from ..fields.relationship import Relationship
 from ..redis_db import POPOTO_REDIS_DB
 
 logger = logging.getLogger("POPOTO.model_base")
+
+# Python 3.8 compatibility for asyncio.to_thread()
+if sys.version_info >= (3, 9):
+    to_thread = asyncio.to_thread
+else:
+    # Backport for Python 3.8
+    async def to_thread(func, *args, **kwargs):
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None, functools.partial(func, *args, **kwargs)
+        )
 
 global RELATED_MODEL_LOAD_SEQUENCE
 RELATED_MODEL_LOAD_SEQUENCE = set()
@@ -805,3 +819,78 @@ class Model(metaclass=ModelBase):
             "fields": cls._meta.field_names,
             "query_filters": query_filters,
         }
+
+    # Async methods
+
+    async def async_save(
+        self,
+        pipeline: redis.client.Pipeline = None,
+        ignore_errors: bool = False,
+        **kwargs,
+    ):
+        """Async version of save().
+
+        Runs the synchronous save() method in a thread pool to avoid blocking
+        the event loop.
+
+        Args:
+            pipeline: Optional Redis pipeline for batching operations
+            ignore_errors: If True, log errors instead of raising exceptions
+            **kwargs: Additional arguments passed to save()
+
+        Returns:
+            Pipeline or db_response depending on whether pipeline was provided
+        """
+        return await to_thread(
+            self.save, pipeline=pipeline, ignore_errors=ignore_errors, **kwargs
+        )
+
+    async def async_delete(
+        self, pipeline: redis.client.Pipeline = None, *args, **kwargs
+    ):
+        """Async version of delete().
+
+        Runs the synchronous delete() method in a thread pool to avoid blocking
+        the event loop.
+
+        Args:
+            pipeline: Optional Redis pipeline for batching operations
+            *args: Additional positional arguments passed to delete()
+            **kwargs: Additional keyword arguments passed to delete()
+
+        Returns:
+            Pipeline or boolean(object existed AND was deleted)
+        """
+        return await to_thread(self.delete, pipeline=pipeline, *args, **kwargs)
+
+    @classmethod
+    async def async_create(cls, pipeline: redis.client.Pipeline = None, **kwargs):
+        """Async version of create().
+
+        Creates a new model instance and saves it to Redis in a thread pool
+        to avoid blocking the event loop.
+
+        Args:
+            pipeline: Optional Redis pipeline for batching operations
+            **kwargs: Field values for the new instance
+
+        Returns:
+            Pipeline or Model instance depending on whether pipeline was provided
+        """
+        return await to_thread(cls.create, pipeline=pipeline, **kwargs)
+
+    @classmethod
+    async def async_load(cls, db_key: str = None, **kwargs):
+        """Async version of load().
+
+        Loads a model instance from Redis by db_key or field values in a
+        thread pool to avoid blocking the event loop.
+
+        Args:
+            db_key: Optional db_key string to load
+            **kwargs: Field values to construct db_key if not provided
+
+        Returns:
+            Model instance or None if not found
+        """
+        return await to_thread(cls.load, db_key=db_key, **kwargs)
