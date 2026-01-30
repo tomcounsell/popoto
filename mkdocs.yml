@@ -6,8 +6,12 @@ site_author: Tom Counsell
 nav:
     - Home: 'index.md'
     - Models and Fields: 'fields.md'
+    - Model Meta Options: 'meta.md'
     - Making Queries: 'query.md'
     - Relationship Field: 'relationship.md'
+    - PubSub: 'pubsub.md'
+    - Completed:
+        - Meta Class Implementation: 'completed/meta-class-implementation.md'
 
 theme:
     name: readthedocs

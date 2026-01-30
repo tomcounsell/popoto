@@ -133,6 +133,27 @@ class MyModel(Model):
     access_count = Field(type=int, default=0)
 ```
 
+### Callable Defaults
+
+Defaults can also be callables. The callable is invoked each time a new instance is created, so each instance gets its own value.
+
+```python
+import uuid
+
+class MyModel(Model):
+    id = Field(default=uuid.uuid4)       # Fresh UUID per instance
+    tags = Field(type=list, default=list) # Fresh empty list per instance
+    meta = Field(type=dict, default=dict) # Fresh empty dict per instance
+```
+
+Lambda functions work as well:
+
+```python
+class Counter(Model):
+    name = KeyField()
+    value = Field(type=int, default=lambda: 0)
+```
+
 ### String Max Length
 
 Set a limit to string length. On SQL-like databases, this is often required. 
@@ -204,6 +225,33 @@ AssetPrice.query.filter(
 
 Note: because `asset` was specified as a sort_by in the timestamp field, the query requires the asset to be defined.
 This limitation, if you choose to use it, enables maximum performance with Redis.
+
+## DatetimeField
+
+The `DatetimeField` extends the base `Field` with automatic timestamp management. It supports two special parameters for common patterns:
+
+```python
+from popoto import Model, KeyField
+from popoto.fields.shortcuts import DatetimeField
+
+class Article(Model):
+    title = KeyField()
+    created_at = DatetimeField(auto_now_add=True)  # Set on first save only
+    updated_at = DatetimeField(auto_now=True)       # Updated on every save
+```
+
+- `auto_now_add=True`: Sets the field to the current datetime when the instance is first created. The value is not changed on subsequent saves.
+- `auto_now=True`: Sets the field to the current datetime every time `save()` is called.
+
+You can also use the `Timestampable` mixin which provides both fields:
+
+```python
+from popoto.utils.mixins.timestampable import Timestampable
+
+class Article(Timestampable, Model):
+    title = KeyField()
+    # created_at and updated_at are automatically included
+```
 
 ## GeoField
 
@@ -282,10 +330,10 @@ class DataModel(Model):
 
 chicago_home_prices = DataModel.create(
     name="Chicago Home Price",
-    df=pandas.read_csv('home_price.csv')
+    dataframe=pd.read_csv('home_price.csv')
 )
 
-chicago_home_prices.df.describe()
+chicago_home_prices.dataframe.describe()
 >>>
               Price         Year
 count      5.000000     5.000000
@@ -306,4 +354,52 @@ The following names are reserved and cannot be used as field names:
 - _limit_: is used in query.filter() to limit the size of the returned objects list
 - _values_: is used in query.filter() to restrict which values are returned for objects
 - _order_by_: is used in query.filter() to order the results
+
+## Model Methods
+
+### Creating and Saving
+
+```python
+# Create and save in one step
+person = Person.create(name="Sally", age=25)
+
+# Create, modify, then save
+person = Person(name="Sally")
+person.age = 25
+person.save()
+```
+
+### Loading
+
+```python
+# Load by key field values
+person = Person.load(name="Sally")
+```
+
+### Deleting
+
+```python
+person.delete()
+```
+
+Deleting an instance removes the Redis key and cleans up all associated indexes (key field indexes, sorted set entries, geo set entries, relationship indexes, and unique composite indexes).
+
+### Validation
+
+Use `is_valid()` to check if a model instance has valid field values before saving:
+
+```python
+person = Person(name=None)
+person.is_valid()  # Returns False if name is required (null=False)
+```
+
+### The db_key Property
+
+Every saved instance has a `db_key` property that returns the Redis key components:
+
+```python
+person = Person.create(name="Sally")
+print(person.db_key)        # DB_key object
+print(person.db_key.redis_key)  # "Person:Sally"
+```
 
