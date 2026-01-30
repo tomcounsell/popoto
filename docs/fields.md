@@ -246,7 +246,7 @@ class Article(Model):
 You can also use the `Timestampable` mixin which provides both fields:
 
 ```python
-from popoto.utils.mixins import Timestampable
+from popoto.utils.mixins.timestampable import Timestampable
 
 class Article(Timestampable, Model):
     title = KeyField()
@@ -374,9 +374,6 @@ person.save()
 ```python
 # Load by key field values
 person = Person.load(name="Sally")
-
-# Load by Redis key
-person = Person.load(db_key="Person:Sally")
 ```
 
 ### Deleting
