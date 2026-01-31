@@ -34,6 +34,7 @@ Popoto provides a fast, familiar interface for working with Redis.
 
  - very fast stores and queries
  - familiar syntax, similar to Django models
+ - [Async operations](async.md) for asyncio-based applications
  - Geometric distance search
  - Timeseries for streaming data
  - compatible with Pandas, Xarray for N-dimensional matrix search
@@ -112,6 +113,23 @@ Delete an instance by calling its `delete()` method.
 ```python
 lisa.delete()
 ```
+
+### Async Operations
+
+All operations have async counterparts for use in asyncio applications.
+
+```python
+import asyncio
+
+async def main():
+    lisa = await Person.async_create(name="Lalisa Manobal", favorite_color="yellow")
+    person = await Person.query.async_get(name="Lalisa Manobal")
+    await person.async_delete()
+
+asyncio.run(main())
+```
+
+See [Async Operations](async.md) for complete async API documentation and examples.
 
 ![](/static/popoto.png)
 
