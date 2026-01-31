@@ -1,9 +1,23 @@
 import logging
+import asyncio
+import sys
+import functools
 
 from .db_key import DB_key
 from ..redis_db import POPOTO_REDIS_DB, ENCODING
 
 logger = logging.getLogger("POPOTO.Query")
+
+# Python 3.8 compatibility for asyncio.to_thread()
+if sys.version_info >= (3, 9):
+    to_thread = asyncio.to_thread
+else:
+    # Backport for Python 3.8
+    async def to_thread(func, *args, **kwargs):
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None, functools.partial(func, *args, **kwargs)
+        )
 
 
 class QueryException(Exception):
@@ -381,3 +395,81 @@ class Query:
             for redis_hash in hashes_list
             if redis_hash
         ]
+
+    # Async methods
+
+    async def async_get(
+        self, db_key: DB_key = None, redis_key: str = None, **kwargs
+    ) -> "Model":
+        """Async version of get().
+
+        Retrieves a single model instance from Redis in a thread pool to avoid
+        blocking the event loop.
+
+        Args:
+            db_key: Optional DB_key object
+            redis_key: Optional Redis key string
+            **kwargs: Field values to construct query
+
+        Returns:
+            Model instance or None if not found
+        """
+        return await to_thread(self.get, db_key=db_key, redis_key=redis_key, **kwargs)
+
+    async def async_filter(self, **kwargs) -> list:
+        """Async version of filter().
+
+        Filters model instances based on field values in a thread pool to avoid
+        blocking the event loop.
+
+        Args:
+            **kwargs: Filter parameters (field values, limit, order_by, values)
+
+        Returns:
+            List of model instances or dicts (if values= specified)
+        """
+        return await to_thread(self.filter, **kwargs)
+
+    async def async_all(self, **kwargs) -> list:
+        """Async version of all().
+
+        Retrieves all model instances in a thread pool to avoid blocking
+        the event loop.
+
+        Args:
+            **kwargs: Optional order_by and values parameters
+
+        Returns:
+            List of all model instances or dicts (if values= specified)
+        """
+        return await to_thread(self.all, **kwargs)
+
+    async def async_count(self, **kwargs) -> int:
+        """Async version of count().
+
+        Counts model instances matching filter criteria in a thread pool to avoid
+        blocking the event loop.
+
+        Args:
+            **kwargs: Optional filter parameters
+
+        Returns:
+            Count of matching instances
+        """
+        return await to_thread(self.count, **kwargs)
+
+    async def async_keys(self, catchall=False, clean=False, **kwargs) -> list:
+        """Async version of keys().
+
+        Retrieves Redis keys for model instances in a thread pool to avoid
+        blocking the event loop.
+
+        Args:
+            catchall: If True, use KEYS pattern (debug only, not for production)
+            clean: If True, clean up orphaned keys (debug only, not for production)
+            **kwargs: Additional parameters
+
+        Returns:
+            List of Redis keys
+        """
+        return await to_thread(self.keys, catchall=catchall, clean=clean, **kwargs)
