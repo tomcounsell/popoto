@@ -8,6 +8,7 @@ nav:
     - Models and Fields: 'fields.md'
     - Model Meta Options: 'meta.md'
     - Making Queries: 'query.md'
+    - Async Operations: 'async.md'
     - Relationship Field: 'relationship.md'
     - PubSub: 'pubsub.md'
     - Style Guide: 'STYLE_GUIDE.md'
