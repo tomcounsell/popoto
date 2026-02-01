@@ -41,6 +41,13 @@ Homepage = "https://github.com/tomcounsell/popoto"
 Documentation = "https://popoto.readthedocs.io"
 Bug_Tracker = "https://github.com/tomcounsell/popoto/issues"
 
+[tool.pytest.ini_options]
+markers = [
+    "slow: stress and performance tests (deselect with '-m \"not slow\"')",
+    "benchmark: performance benchmarking tests",
+]
+addopts = "-v"
+
 [tool.poetry]
 name = "popoto"
 version = "0.9.0"
