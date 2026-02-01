@@ -1,6 +1,12 @@
 import logging
-import pandas as pd
 from .field import Field
+
+try:
+    import pandas as pd
+
+    _pandas_available = True
+except ImportError:
+    _pandas_available = False
 
 logger = logging.getLogger("POPOTO.DataFrame")
 
@@ -9,14 +15,20 @@ class DataFrameField(Field):
     """
     A field that stores Pandas DataFrame objects
     required: pandas.DataFrame object
+
+    Requires the 'dataframe' extra: pip install popoto[dataframe]
     """
 
-    type: type = pd.DataFrame
-    default: pd.DataFrame = pd.DataFrame()
     null: bool = False
 
     def __init__(self, **kwargs):
+        if not _pandas_available:
+            raise ImportError(
+                "pandas is required to use DataFrameField. "
+                "Install it with: pip install popoto[dataframe]"
+            )
         super().__init__(**kwargs)
+        self.type = pd.DataFrame
         dataframefield_defaults = {
             "type": pd.DataFrame,
             "null": True,

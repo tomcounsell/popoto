@@ -19,7 +19,10 @@ from .fields.shortcuts import (
     SortedKeyField,
 )
 from .fields.geo_field import GeoField
-from .fields.dataframe_field import DataFrameField
+try:
+    from .fields.dataframe_field import DataFrameField
+except ImportError:
+    pass
 from .fields.datetime_field import DatetimeField
 from .fields.relationship import Relationship
 from .models.base import Model, ModelBase
