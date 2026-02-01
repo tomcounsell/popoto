@@ -2,9 +2,15 @@ import datetime
 from collections import namedtuple
 from decimal import Decimal
 import msgpack
-import pandas as pd
 from ..exceptions import ModelException
 from ..redis_db import ENCODING
+
+try:
+    import pandas as pd
+
+    _pandas_available = True
+except ImportError:
+    _pandas_available = False
 
 EncoderDecoder = namedtuple("EncoderDecoder", "key, encoder, decoder")
 
@@ -51,15 +57,18 @@ TYPE_ENCODER_DECODERS = {
             obj["as_encodable"], "%H:%M:%S.%f"
         ).time(),
     ),
-    pd.DataFrame: EncoderDecoder(
+}
+
+if _pandas_available:
+    TYPE_ENCODER_DECODERS[pd.DataFrame] = EncoderDecoder(
         key="__dataframe__",
         encoder=lambda obj: {
             "__dataframe__": True,
             "as_encodable": obj.to_json(),
         },
         decoder=lambda obj: pd.read_json(obj["as_encodable"]),
-    ),
-}
+    )
+
 DECODERS_BY_KEYSTRING = {
     encoder_decoder.key: encoder_decoder.decoder
     for encoder_decoder in TYPE_ENCODER_DECODERS.values()
@@ -74,18 +83,13 @@ def decode_custom_types(obj):
     return obj
 
 
-# def decode_custom_types(obj):
-#     if isinstance(obj, dict) and "as_encodable" in obj:
-#         for encoder_decoder in TYPE_ENCODER_DECODERS.values():
-#             if encoder_decoder.key in obj:
-#                 return encoder_decoder.decoder(obj)
-#     return obj
-
-
 def encode_popoto_model_obj(obj: "Model") -> dict:
-    import msgpack_numpy as m
+    try:
+        import msgpack_numpy as m
 
-    m.patch()
+        m.patch()
+    except ImportError:
+        pass
 
     encoded_hashmap = dict()
     for field_name, field in obj._meta.fields.items():
