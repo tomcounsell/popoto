@@ -48,7 +48,7 @@ class Field(metaclass=FieldBase):
     auto: bool = False
     null: bool = True
     value: str = None
-    max_length: int = 1024
+    max_length: int = None
     default = ""
     sorted: bool = False
 
@@ -60,7 +60,7 @@ class Field(metaclass=FieldBase):
             "auto": False,
             "null": True,
             "value": None,
-            "max_length": 1024,  # Redis limit is 512MB
+            "max_length": None,
             "default": None,
             "sorted": False,
         }
@@ -85,7 +85,7 @@ class Field(metaclass=FieldBase):
                 f"field {field} is type {field.type}. But value is {type(value)}"
             )
             return False
-        if field.type == str and len(str(value)) > field.max_length:
+        if field.max_length is not None and field.type == str and len(str(value)) > field.max_length:
             logger.error(f"{field} value is greater than max_length={field.max_length}")
             return False
         return True

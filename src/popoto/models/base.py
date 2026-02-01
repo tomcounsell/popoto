@@ -37,6 +37,11 @@ class ModelException(Exception):
     pass
 
 
+# Length of hex digest used for index hashes. 16 hex chars = 64 bits,
+# sufficient for index key uniqueness within a single model's field combinations.
+INDEX_HASH_LENGTH = 16
+
+
 class ModelOptions:
     def __init__(self, model_name):
         self.model_name = model_name
@@ -135,7 +140,7 @@ class ModelOptions:
                 return None  # Don't index NULL values (allows multiple NULLs)
             values.append(str(value))
         combined = ":".join(values)
-        return hashlib.sha256(combined.encode()).hexdigest()[:16]
+        return hashlib.sha256(combined.encode()).hexdigest()[:INDEX_HASH_LENGTH]
 
     def compute_index_hash_from_values(self, field_names: tuple, field_values: dict) -> str:
         """Compute hash from a dict of field values (for cleanup of old values).
@@ -151,7 +156,7 @@ class ModelOptions:
                 return None
             values.append(str(value))
         combined = ":".join(values)
-        return hashlib.sha256(combined.encode()).hexdigest()[:16]
+        return hashlib.sha256(combined.encode()).hexdigest()[:INDEX_HASH_LENGTH]
 
 
 class ModelBase(type):
@@ -480,7 +485,8 @@ class Model(metaclass=ModelBase):
 
             # validate str max_length
             if (
-                self._meta.fields[field_name].type == str
+                self._meta.fields[field_name].max_length is not None
+                and self._meta.fields[field_name].type == str
                 and getattr(self, field_name)
                 and len(getattr(self, field_name))
                 > self._meta.fields[field_name].max_length
