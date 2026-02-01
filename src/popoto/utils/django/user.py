@@ -5,6 +5,17 @@ from ...fields.shortcuts import KeyField, AutoKeyField, BooleanField
 from ...models.base import Model
 from ..mixins.timestampable import Timestampable
 
+# Number of digits in the generated login code
+LOGIN_CODE_LENGTH = 4
+
+# Login code returned for test accounts (emails ending with TEST_ACCOUNT_DOMAIN)
+TEST_ACCOUNT_DOMAIN = "@example.com"
+TEST_ACCOUNT_LOGIN_CODE = "1234"
+
+# Terms of service must be agreed to after this date to be considered valid.
+# Update this date when new terms are published.
+TERMS_EFFECTIVE_DATE = datetime(2024, 1, 1)
+
 
 class User(Timestampable, Model):
     id = AutoKeyField()
@@ -59,16 +70,16 @@ class User(Timestampable, Model):
     def four_digit_login_code(self):
         import hashlib
 
-        if self.email.endswith("@example.com"):
-            return "1234"  # for test accounts
+        if self.email.endswith(TEST_ACCOUNT_DOMAIN):
+            return TEST_ACCOUNT_LOGIN_CODE
         hash_object = hashlib.md5(
             bytes(f"{self.id}{self.email}{self.last_login}", encoding="utf-8")
         )
-        return str(int(hash_object.hexdigest(), 16))[-4:]
+        return str(int(hash_object.hexdigest(), 16))[-LOGIN_CODE_LENGTH:]
 
     @property
     def is_agreed_to_terms(self) -> bool:
-        if self.agreed_to_terms_at and self.agreed_to_terms_at > datetime(2024, 1, 1):
+        if self.agreed_to_terms_at and self.agreed_to_terms_at > TERMS_EFFECTIVE_DATE:
             return True
         return False
 

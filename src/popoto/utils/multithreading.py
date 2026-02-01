@@ -1,6 +1,7 @@
 # A DECORATOR FOR PYTHON THREADING
 # http://docs.python.org/2/library/threading.html#thread-objects
 # http://stackoverflow.com/questions/18420699/multithreading-for-python-django
+import os
 from collections.abc import Callable
 from threading import Thread
 
@@ -32,8 +33,7 @@ def run_all_multithreaded(function_def, list_of_params):
 
     from multiprocessing.dummy import Pool as ThreadPool
 
-    # make the Pool of workers
-    pool = ThreadPool(16)
+    pool = ThreadPool(min(len(list_of_params), os.cpu_count() or 4))
 
     # open functions in their own threads
     # and compile all the results

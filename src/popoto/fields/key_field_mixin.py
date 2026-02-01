@@ -34,13 +34,13 @@ class KeyFieldMixin:
     """
 
     key: bool = True
-    max_length: int = 128
+    max_length: int = None
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         keyfield_defaults = {
             "key": True,
-            "max_length": 128,  # Redis limit is 512MB
+            "max_length": None,
         }
         self.field_defaults.update(keyfield_defaults)
         # set field options, let kwargs override
