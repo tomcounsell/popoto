@@ -1,3 +1,11 @@
+"""
+Redis connection management for Popoto.
+
+Connects to Redis using the ``REDIS_URL`` environment variable, or falls back
+to ``localhost:6379``. Use :func:`set_REDIS_DB_settings` to reconfigure the
+connection at runtime.
+"""
+
 import os
 import logging
 import redis
@@ -38,6 +46,13 @@ except Exception as e:
 def set_REDIS_DB_settings(
     env_partition_name: str = "", *args, **kwargs
 ) -> None:
+    """Reset the global Redis connection with new settings.
+
+    Args:
+        env_partition_name: Optional namespace prefix for key isolation.
+            Falls back to the ``ENV`` environment variable.
+        *args, **kwargs: Passed directly to ``redis.Redis()``.
+    """
     # todo: use this to mark keys in redis db, so they can be separated and deleted
     env_partition_name = env_partition_name or os.environ.get("ENV", "")
 
@@ -49,10 +64,12 @@ def set_REDIS_DB_settings(
 
 
 def get_REDIS_DB():
+    """Return the current global Redis connection instance."""
     return POPOTO_REDIS_DB
 
 
 def print_redis_info() -> None:
+    """Log Redis server info and memory usage to the POPOTO-REDIS_DB logger."""
     logger.info(POPOTO_REDIS_DB.info())
 
     used_memory, maxmemory = int(POPOTO_REDIS_DB.info()["used_memory"]), int(
@@ -66,6 +83,8 @@ def print_redis_info() -> None:
 
 
 class PopotoException(Exception):
+    """Base exception for Popoto framework errors. Logs the message on init."""
+
     def __init__(self, message):
         self.message = message
         logger.error(message)

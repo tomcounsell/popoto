@@ -10,8 +10,18 @@ logger = logging.getLogger("POPOTO.Relationship")
 
 
 class Relationship(Field):
-    """
-    A field that stores references to one or more other model instances.
+    """A field that stores a reference to another model instance.
+
+    The first positional argument is the related Model class.  Internally the
+    relationship is stored as the related instance's ``redis_key`` string,
+    which is lazily loaded back into a full model instance on access.  This
+    prevents infinite recursion with circular references.
+
+    A field value can be one of three types at runtime:
+
+    * ``Model`` instance — fully loaded relationship.
+    * ``str`` — a redis_key (lazy-loaded, not yet resolved).
+    * ``None`` — no relationship set.
     """
 
     type: "Model" = None

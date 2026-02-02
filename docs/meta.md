@@ -1,333 +1,361 @@
 # Model Meta Options
 
-Every Popoto model can include a `Meta` inner class to configure model-level behavior like default ordering, automatic expiration, and composite indexes. This follows the same pattern you might know from Django or Peewee ORMs, making configuration explicit and centralized.
-
-The `Meta` class is processed when your model is defined, and its options become available via `ModelClass._meta`. This separation keeps configuration distinct from your model's fields and methods.
+Every Popoto model can include a `Meta` inner class to configure model-level
+behavior like default ordering, automatic expiration, and composite indexes.
+The `Meta` class is processed at class definition time, and its options
+become available via `ModelClass._meta`.
 
 ## When to Use Meta Options
 
 You should define a `Meta` class when you want to:
 
-- **Set default ordering** for query results without specifying `order_by` every time
-- **Automatically expire data** using Redis TTL (great for sessions, cache, or temporary data)
+- **Set default ordering** for query results without specifying `order_by`
+  every time
+- **Automatically expire data** using Redis TTL (great for temporary orders,
+  sessions, or cached data)
 - **Enforce uniqueness** across multiple fields (composite unique constraints)
 
-Without a `Meta` class, your models work fine—you just configure behavior at query time instead.
+Without a `Meta` class, your models work fine -- you just configure behavior
+at query time instead.
 
-## Basic Example
+## order_by
 
-Here's a simple model with default ordering configured:
-
-```python
-from popoto import Model, KeyField, SortedField
-
-class Person(Model):
-    name = KeyField()
-    email = Field()
-    age = SortedField(type=int)
-
-    class Meta:
-        order_by = "age"  # Always return people sorted by age
-```
-
-Now when you query for people, they come back ordered by age without you needing to specify it:
+The `order_by` option sets a default sort order for all queries. This is
+useful when you almost always want results in the same order -- for example,
+showing the most recent orders first.
 
 ```python
-Person.create(name="Alice", email="alice@example.com", age=30)
-Person.create(name="Bob", email="bob@example.com", age=25)
+from popoto import Model, AutoKeyField, Field, SortedField
+from popoto import Relationship, DatetimeField
 
-people = Person.query.all()
-print(people[0].name)
-# => "Bob"
-```
-
-## Available Options
-
-### order_by
-
-The `order_by` option sets a default sort order for all queries. This is useful when you almost always want results in the same order—for example, showing newest notes first, or listing people alphabetically.
-
-Without `order_by` in Meta, you'd need to specify `order_by` on every query. With it in Meta, the default is automatic, and you can still override it when needed.
-
-```python
-from popoto import Model, KeyField, Field, SortedField
-from popoto.fields.relationship import Relationship
-from popoto.fields.datetime import DatetimeField
-
-class Note(Model):
-    title = KeyField()
-    content = Field(type=str)
-    author = Relationship(Person)
+class Order(Model):
+    order_id = AutoKeyField()
+    customer = Relationship("Customer")
+    restaurant = Relationship("Restaurant")
+    driver = Relationship("Driver", null=True)
+    total = SortedField(type=float)
+    status = Field(type=str, default="pending")
     created_at = DatetimeField(auto_now_add=True)
     updated_at = DatetimeField(auto_now=True)
 
     class Meta:
-        order_by = "-created_at"  # Newest notes first (descending)
+        order_by = "-created_at"
 ```
 
-The minus sign prefix (`-`) means descending order. Without it, results are ascending.
+The minus sign prefix (`-`) means descending order. Without it, results are
+ascending. In this case, the newest orders always appear first.
 
-Now queries automatically return newest notes first:
+Queries automatically respect the default ordering:
 
 ```python
-notes = Note.query.all()
-# Returns notes ordered by created_at descending
-
-recent = Note.query.filter(author=person)
-# Still respects default order_by
+orders = Order.query.all()
+print(orders[0].status)
+# => "pending"  (the most recently created order)
 ```
 
-You can override the default at query time if you need a different order for a specific query:
+### Override per Query
+
+You can override the default at query time:
 
 ```python
-notes = Note.query.all(order_by="title")
-# Overrides Meta, sorts by title ascending instead
+orders = Order.query.all(order_by="total")
+# => Returns orders sorted by total ascending, ignoring Meta default
+
+expensive_first = Order.query.all(order_by="-total")
+# => Returns orders sorted by total descending
 ```
 
 !!! note
-    The field specified in `order_by` must exist on the model, or you'll get a `ModelException` when the class is defined.
+    The field specified in `order_by` must exist on the model. Popoto
+    validates this at class definition time and raises a `ModelException`
+    if the field does not exist.
 
-### ttl
+## ttl
 
-The `ttl` (time-to-live) option tells Redis to automatically delete model instances after a specified number of seconds. This is perfect for temporary data like user sessions, rate-limiting counters, or cached API responses.
+The `ttl` (time-to-live) option tells Redis to automatically delete model
+instances after a specified number of seconds. When you save a model with a
+TTL, Popoto calls Redis's `EXPIRE` command on the key. After that many
+seconds, Redis removes it automatically -- ideal for completed orders,
+delivery tracking records, or temporary promotions.
 
-When you save a model with a TTL, Popoto sets Redis's `EXPIRE` command on the key. After that time elapses, Redis automatically removes it—no cleanup code needed.
+Adding `ttl` to the Order model from the previous section:
 
 ```python
-from popoto import Model, KeyField, Field
-
-class Person(Model):
-    name = KeyField()
-    email = Field()
-    age = SortedField(type=int)
-
     class Meta:
-        ttl = 3600  # Expire after 1 hour (3600 seconds)
+        order_by = "-created_at"
+        ttl = 2592000  # 30 days (30 * 24 * 60 * 60)
 ```
 
-Now every person instance expires one hour after being saved:
+Every order instance now expires 30 days after its most recent save:
 
 ```python
-person = Person.create(name="Charlie", email="charlie@example.com", age=28)
-# After 3600 seconds, Redis automatically deletes this person
+order = Order.create(customer=alice, restaurant=sakura, total=29.50)
+# => Redis will automatically delete this order after 30 days
 ```
 
-!!! tip
-    TTL is a Redis-native feature that SQL databases don't have. This is one of the advantages of using Popoto with Redis for certain use cases.
-
-#### Instance-Level Override
-
-You can override the Meta TTL for specific instances using the `_ttl` attribute:
+The TTL resets every time you call `save()`. Updating an order 15 days in
+restarts the 30-day clock:
 
 ```python
-person = Person(name="Diana", email="diana@example.com", age=35)
-person._ttl = 7200  # This person expires after 2 hours instead
-person.save()
+order.status = "delivered"
+order.save()
+# => TTL resets to 30 days from now
+```
+
+When a key expires, Redis removes it silently. Any subsequent `load()` or
+`query.get()` call returns `None`. Popoto handles orphaned secondary index
+entries gracefully during queries.
+
+!!! warning
+    TTL is refreshed on every `save()` call, not just on creation. Background
+    processes that update records will extend the expiration window.
+
+## Instance-Level TTL
+
+You can override the Meta TTL for specific instances using the `_ttl`
+attribute. For example, a rush order might need a shorter retention period:
+
+```python
+rush_order = Order(
+    customer=alice, restaurant=sakura, total=49.99, status="rush"
+)
+rush_order._ttl = 604800  # 7 days instead of the default 30
+rush_order.save()
 ```
 
 To make a specific instance permanent (no expiration), set `_ttl` to `None`:
 
 ```python
-permanent = Person(name="Eve", email="eve@example.com", age=40)
-permanent._ttl = None  # Never expires
-permanent.save()
+vip_order = Order(
+    customer=alice, restaurant=sakura, total=199.99, status="vip"
+)
+vip_order._ttl = None  # Never expires, even though Meta.ttl is set
+vip_order.save()
 ```
 
-#### Absolute Expiration Time
+!!! note
+    The instance-level `_ttl` takes precedence over `Meta.ttl`. Setting it
+    to `None` disables expiration for that instance only.
 
-Instead of a relative TTL, you can set an absolute expiration timestamp with `_expire_at`:
+## Absolute Expiration
+
+Instead of a relative TTL, you can set an absolute expiration with
+`_expire_at`. This accepts a `datetime` and tells Redis to delete the key
+at that exact moment.
 
 ```python
 from datetime import datetime, timedelta
 
-person = Person(name="Frank", email="frank@example.com", age=32)
-person._expire_at = datetime.now() + timedelta(days=7)
-person.save()
-# Expires exactly 7 days from now
+order = Order(
+    customer=alice, restaurant=sakura, total=35.00, status="scheduled"
+)
+order._expire_at = datetime(2026, 3, 1, 0, 0, 0)  # Expires March 1st
+order.save()
+```
+
+You can also compute the deadline dynamically:
+
+```python
+end_of_day = datetime.now().replace(hour=23, minute=59, second=59)
+order._expire_at = end_of_day
+order.save()
+# => Order expires at the end of the current day
 ```
 
 !!! warning
-    TTL is refreshed every time you call `save()`, not just on creation. If you save an instance again, the expiration clock resets.
+    You cannot set both `_ttl` and `_expire_at` on the same instance. Popoto
+    raises a `ModelException` if both are set. Use one or the other.
 
-### indexes
+## indexes
 
-The `indexes` option creates composite indexes—multi-field indexes that can enforce uniqueness across combinations of fields. This is useful when a single field isn't enough to guarantee uniqueness, but a combination should be unique.
+The `indexes` option creates composite indexes that can enforce uniqueness
+across combinations of fields. Each index is a tuple of `(field_names,
+is_unique)` where `field_names` is a tuple of strings and `is_unique` is
+a boolean:
 
-For example, you might want to ensure that each person can only create one note with a given title, but different people can use the same title.
-
-Indexes are specified as a tuple of tuples. Each inner tuple contains:
-
-1. A tuple of field names to index together
-2. A boolean indicating whether the combination must be unique
+Adding `indexes` to the Order model alongside the other Meta options:
 
 ```python
-from popoto import Model, KeyField, Field
-from popoto.fields.relationship import Relationship
-from popoto.fields.datetime import DatetimeField
-
-class Note(Model):
-    title = KeyField()
-    content = Field(type=str)
-    author = Relationship(Person)
-    created_at = DatetimeField(auto_now_add=True)
-    updated_at = DatetimeField(auto_now=True)
-
     class Meta:
+        order_by = "-created_at"
+        ttl = 2592000
         indexes = (
-            (('author', 'title'), True),  # Each author can only have one note with a given title
+            (("restaurant", "status"), True),  # Unique composite index
         )
 ```
 
-With this index in place, attempting to create a duplicate will raise an exception:
+With this index, each restaurant can only have one order per status value:
 
 ```python
-alice = Person.create(name="Alice", email="alice@example.com", age=30)
+order1 = Order.create(
+    customer=alice, restaurant=sakura, total=25.00, status="pending"
+)
+# => Saved successfully
 
-note1 = Note.create(title="Ideas", content="First idea", author=alice)
-# => Note saved successfully
-
-note2 = Note.create(title="Ideas", content="Second idea", author=alice)
-# => ModelException: Unique index violation
+order2 = Order.create(
+    customer=bob, restaurant=sakura, total=18.00, status="pending"
+)
+# => ModelException: Unique index violation on ('restaurant', 'status')
 ```
 
-However, a different person can create a note with the same title:
+A different status for the same restaurant works fine:
 
 ```python
-bob = Person.create(name="Bob", email="bob@example.com", age=25)
-
-note3 = Note.create(title="Ideas", content="Bob's idea", author=bob)
-# => Note saved successfully
+order3 = Order.create(
+    customer=bob, restaurant=sakura, total=18.00, status="preparing"
+)
+# => Saved successfully
 ```
 
-#### Non-Unique Indexes
+### Non-Unique Indexes
 
-You can also create non-unique indexes for query performance by setting the second value to `False`:
+Set the uniqueness flag to `False` to create an index for grouping without
+a uniqueness constraint:
 
 ```python
-class Note(Model):
-    title = KeyField()
-    content = Field(type=str)
-    author = Relationship(Person)
-    created_at = DatetimeField(auto_now_add=True)
-    updated_at = DatetimeField(auto_now=True)
-
-    class Meta:
-        indexes = (
-            (('author', 'created_at'), False),  # Index for querying, but not unique
-        )
+class Meta:
+    indexes = (
+        (("restaurant", "status"), False),
+    )
 ```
 
-#### NULL Handling
+### NULL Handling
 
-Following SQL standard behavior, `NULL` values don't participate in uniqueness checks. Multiple instances can have `NULL` in an indexed field:
+Following SQL standard behavior, `NULL` values do not participate in
+uniqueness checks. Multiple instances can have `NULL` in an indexed field
+and both will save successfully.
+
+## Update and Delete Handling
+
+Popoto maintains composite indexes automatically. Updates that would violate
+a unique index are rejected before the save occurs:
 
 ```python
-note1 = Note.create(title="Orphan1", content="No author", author=None)
-note2 = Note.create(title="Orphan2", content="Also no author", author=None)
-# => Both save successfully, even with the same author value (None)
+order1 = Order.create(
+    customer=alice, restaurant=sakura, total=25.00, status="pending"
+)
+order2 = Order.create(
+    customer=bob, restaurant=sakura, total=18.00, status="preparing"
+)
+
+order2.status = "pending"  # Would collide with order1
+order2.save()
+# => ModelException: Unique index violation on ('restaurant', 'status')
 ```
 
-#### Update and Delete Handling
-
-Updates that would violate a unique index are rejected:
+When you delete an instance, its index entries are cleaned up, freeing the
+slot for future records:
 
 ```python
-alice = Person.create(name="Alice", email="alice@example.com", age=30)
+order1.delete()
 
-note1 = Note.create(title="Ideas", content="First", author=alice)
-note2 = Note.create(title="Plans", content="Second", author=alice)
-
-note2.title = "Ideas"  # Try to use the same title as note1
-note2.save()
-# => ModelException: Unique index violation
+order3 = Order.create(
+    customer=charlie, restaurant=sakura, total=22.00, status="pending"
+)
+# => Saved successfully -- the slot was freed by deleting order1
 ```
-
-When you delete an instance, its index entries are automatically cleaned up:
-
-```python
-note1.delete()
-
-# Now another note can use the same title for this author
-note3 = Note.create(title="Ideas", content="Third", author=alice)
-# => Saves successfully
-```
-
-!!! note
-    All field names in an index must exist on the model, or you'll get a `ModelException` when the class is defined.
 
 ## Complete Example
 
-Here's a model that combines all three Meta options:
+Here is the Order model combining all three Meta options:
 
 ```python
-from popoto import Model, KeyField, Field, SortedField
-from popoto.fields.relationship import Relationship
-from popoto.fields.datetime import DatetimeField
+from popoto import Model, AutoKeyField, Field, SortedField
+from popoto import Relationship, DatetimeField
 
-class Note(Model):
-    title = KeyField()
-    content = Field(type=str)
-    author = Relationship(Person)
+class Order(Model):
+    order_id = AutoKeyField()
+    customer = Relationship("Customer")
+    restaurant = Relationship("Restaurant")
+    driver = Relationship("Driver", null=True)
+    total = SortedField(type=float)
+    status = Field(type=str, default="pending")
     created_at = DatetimeField(auto_now_add=True)
     updated_at = DatetimeField(auto_now=True)
-    priority = SortedField(type=int)
 
     class Meta:
-        order_by = "-priority"           # High priority notes first
-        ttl = 2592000                    # Expire after 30 days (30 * 24 * 60 * 60)
+        order_by = "-created_at"
+        ttl = 2592000
         indexes = (
-            (('author', 'title'), True),  # Each author's note titles must be unique
+            (("restaurant", "status"), True),
         )
 ```
 
-This model will:
+This model returns orders newest-first by default, expires them after 30
+days, and prevents duplicate restaurant/status combinations.
 
-- Return notes ordered by priority (highest first) by default
-- Automatically expire notes after 30 days
-- Prevent an author from creating two notes with the same title
+## Accessing Meta at Runtime
 
-## Accessing Meta Options
-
-After your model is defined, access Meta options via `_meta`, not `Meta`:
+After your model is defined, access Meta options via the `_meta` attribute:
 
 ```python
-class Person(Model):
-    name = KeyField()
-    email = Field()
-    age = SortedField(type=int)
+print(Order._meta.order_by)
+# => "-created_at"
 
-    class Meta:
-        order_by = "age"
-        ttl = 3600
+print(Order._meta.ttl)
+# => 2592000
 
-# Correct way to access
-print(Person._meta.order_by)
-# => "age"
+print(Order._meta.indexes)
+# => ((("restaurant", "status"), True),)
+```
 
-print(Person._meta.ttl)
-# => 3600
+You can also inspect field metadata through `_meta`:
+
+```python
+print(Order._meta.sorted_field_names)
+# => {"total"}
+
+print(Order._meta.relationship_field_names)
+# => {"customer", "restaurant", "driver"}
 ```
 
 !!! warning
-    Don't access `Person.Meta` directly—it's processed during class creation and may not be available as you expect.
+    Do not access `Order.Meta` directly. It is consumed during class creation
+    by the metaclass. Always use `Order._meta` instead.
 
 ## Meta Validation
 
-All Meta options are validated when your model class is defined, not when you create instances. This means you'll get immediate feedback about configuration errors:
+All Meta options are validated at class definition time, not at runtime.
+You get immediate feedback about configuration errors when Python loads
+your model class.
 
 ```python
-# This raises ModelException immediately
-class BadPerson(Model):
-    name = KeyField()
+class BadOrder(Model):
+    order_id = AutoKeyField()
+    total = SortedField(type=float)
 
     class Meta:
-        order_by = "nonexistent_field"  # ModelException: field doesn't exist
-        ttl = -1                         # ModelException: must be positive integer
+        order_by = "nonexistent_field"
+# => ModelException: Meta.order_by references 'nonexistent_field'
+#    but this field does not exist on BadOrder
 ```
 
-## Reference
+TTL and index definitions are also validated:
 
-Popoto's Meta class is inspired by:
+```python
+class BadTTL(Model):
+    order_id = AutoKeyField()
 
-- [Django Model Meta options](https://docs.djangoproject.com/en/stable/ref/models/options/)
-- [Peewee Model options](https://docs.peewee-orm.com/en/latest/peewee/models.html#model-options-and-table-metadata)
+    class Meta:
+        ttl = -1
+# => ModelException: Meta.ttl must be a positive integer (seconds), got -1
+
+class BadIndex(Model):
+    order_id = AutoKeyField()
+    status = Field(type=str)
+
+    class Meta:
+        indexes = (
+            (("status", "missing_field"), True),
+        )
+# => ModelException: Unknown field 'missing_field' in Meta.indexes
+#    for BadIndex
+```
+
+!!! tip
+    Because validation happens at import time, you will catch configuration
+    errors during development rather than at runtime in production. Define
+    your Meta options early and run your test suite to verify them.
+
+See [Models and Fields](fields.md) for field type reference, or
+[Making Queries](query.md) for query filtering and ordering options.

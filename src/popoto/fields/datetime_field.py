@@ -3,6 +3,13 @@ from datetime import datetime
 
 
 class DatetimeField(Field):
+    """A Field that stores ``datetime`` values with optional auto-timestamping.
+
+    Args:
+        auto_now_add: Set to current datetime on first save only.
+        auto_now: Update to current datetime on every save.
+    """
+
     def __init__(self, *args, **kwargs):
         kwargs["type"] = datetime
         # Extract auto_now_add and auto_now before calling super

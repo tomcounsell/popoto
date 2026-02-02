@@ -17,29 +17,31 @@ pip install popoto
 ## Basic Usage
 
 ``` python
-from popoto import Model, KeyField, Field
+from popoto import Model, KeyField, Field, SortedField
 
-class Person(Model):
+class Restaurant(Model):
     name = KeyField()
-    fav_color = Field()
+    cuisine = Field()
+    rating = SortedField(type=float)
 
-Person.create(name="Lalisa Manobal", fav_color = "yellow")
+Restaurant.create(name="Burger Palace", cuisine="American", rating=4.5)
 
-lisa = Person.query.get(name="Lalisa Manobal")
+restaurant = Restaurant.query.get(name="Burger Palace")
 
-print(f"{lisa.name} likes {lisa.fav_color}.")
-> 'Lalisa Manobal likes yellow.'
+print(f"{restaurant.name} serves {restaurant.cuisine} food.")
+# => "Burger Palace serves American food."
 ```
 
 ### **Popoto** Features
 
  - very fast stores and queries
  - familiar syntax, similar to Django models
+ - Async operations for asyncio-based applications
  - Geometric distance search
  - Timeseries for streaming data
- - compatible with Pandas, Xarray for N-dimensional matrix search 🚧
+ - compatible with Pandas, Xarray for N-dimensional matrix search
  - PubSub for message queues, streaming data processing
- 
+
 **Popoto** is ideal for streaming data. The pub/sub module allows you to trigger state updates in real time.
 Currently being used in production for:
 
@@ -52,61 +54,61 @@ Currently being used in production for:
 
 ``` python
 import popoto
+from popoto import Relationship, DatetimeField
 
-class Person(popoto.Model):
-    uuid = popoto.AutoKeyField()
-    username = popoto.UniqueKeyField()
-    title = popoto.KeyField()
-    level = popoto.SortedField(type=int)
-    last_active = popoto.SortedField(type=datetime)
+class Restaurant(popoto.Model):
+    name = popoto.KeyField()
+    cuisine = popoto.Field()
+    rating = popoto.SortedField(type=float)
     location = popoto.GeoField()
-    invited_by = popoto.Relationship(model=Person)
+
+class Order(popoto.Model):
+    order_id = popoto.AutoKeyField()
+    restaurant = Relationship(Restaurant)
+    total = popoto.SortedField(type=float)
+    status = popoto.Field(default="pending")
+    created_at = DatetimeField(auto_now_add=True)
+
+    class Meta:
+        order_by = "-created_at"
+        ttl = 2592000  # 30 days
 ```
 
 
 ## Save Instances
 
 ``` python
-lisa = Person(username="@LalisaManobal")
-lisa.title = "Queen"
-lisa.level = 99
-lisa.location = (48.856373, 2.353016)  # Hôtel de Ville, Fashion Week 2021
-lisa.last_active = datetime.now()
-lisa.save()
+restaurant = Restaurant(name="Burger Palace")
+restaurant.cuisine = "American"
+restaurant.rating = 4.5
+restaurant.location = (40.7128, -74.0060)
+restaurant.save()
+
+order = Order.create(restaurant=restaurant, total=24.99)
 ```
 
 
 ## Queries
 
 ``` python
+from datetime import datetime, timedelta
 
-paris_lat_long = (48.864716, 2.349014)
+midtown = (40.7549, -73.9840)
 yesterday = datetime.now() - timedelta(days=1)
 
-query_results = Person.query.filter(
-    title__startswith="Queen",
-    level__lt=100,
-    last_active__gt=yesterday,
-    location=paris_lat_long,
-    location_radius=5, location_radius_unit='km'
+nearby_restaurants = Restaurant.query.filter(
+    location=midtown,
+    location_radius=5, location_radius_unit='km',
+    rating__gte=4.0
 )
 
-len(query_results)
->>> 1
+print(len(nearby_restaurants))
+# => 1
 
-print(query_results)
->>> [{
-    'uuid': 'f1063355b14943ed91fa1e1697806c4f', 
-    'username': '@LalisaManobal', 
-    'title': 'Queen', 
-    'level': 99, 
-    'last_active': datetime.datetime(2021, 11, 21, 14, 47, 19, 911023), 
-    'location': (48.856373, 2.353016)
-}, ]
-
-lisa = query_results[0]
-lisa.delete()
->>> True
+recent_orders = Order.query.filter(
+    created_at__gte=yesterday,
+    total__gte=10.00
+)
 ```
 
 
@@ -128,7 +130,7 @@ Please post your questions on [Stack Overflow](http://stackoverflow.com/question
 
 ![](/static/popoto.png)
 
-Popoto gets it's name from the [Māui dolphin](https://en.wikipedia.org/wiki/M%C4%81ui_dolphin) subspeciesis - the world's smallest dolphin subspecies.
+Popoto gets its name from the [Maui dolphin](https://en.wikipedia.org/wiki/M%C4%81ui_dolphin) subspecies - the world's smallest dolphin subspecies.
 Because dolphins are fast moving, agile, and work together in social groups. In the same way, Popoto wraps Redis and RedisGraph to make it easy to manage streaming timeseries data on a social graph.
 
 For help building applications with Python/Redis, contact [Tom Counsell](https://tomcounsell.com) on [LinkedIn.com/in/tomcounsell](https://linkedin.com/in/tomcounsell)

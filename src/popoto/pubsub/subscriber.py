@@ -7,10 +7,19 @@ logger = logging.getLogger("POPOTO-subscriber")
 
 
 class SubscriberException(Exception):
+    """Raised when a subscriber's message handler fails."""
+
     pass
 
 
 class Subscriber(ABC):
+    """Abstract base class for consuming messages from Redis pub/sub channels.
+
+    Set ``sub_channel_names`` to the list of channels to subscribe to.
+    Override :meth:`handle` to process incoming messages.  Call the instance
+    (``subscriber()``) in a loop to poll for new messages.
+    """
+
     sub_channel_names: list = []
 
     def __init__(self, *args, **kwargs):
@@ -23,6 +32,7 @@ class Subscriber(ABC):
             )
 
     def __call__(self):
+        """Poll for the next message and dispatch to :meth:`handle`."""
         import msgpack_numpy as m
 
         m.patch()
@@ -52,12 +62,15 @@ class Subscriber(ABC):
             )
 
     def pre_handle(self, channel, data, *args, **kwargs):
+        """Hook called before :meth:`handle`. Override for logging, filtering, etc."""
         pass
 
     def handle(self, channel, data, *args, **kwargs):
-        """
-        overwrite me with some logic
-        :return: None
+        """Process an incoming message. Override this in your subclass.
+
+        Args:
+            channel: The channel name the message arrived on.
+            data: The deserialized (msgpack-unpacked) message payload.
         """
         logger.warning(
             f"NEW MESSAGE for "

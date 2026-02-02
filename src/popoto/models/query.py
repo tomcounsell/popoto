@@ -21,12 +21,16 @@ else:
 
 
 class QueryException(Exception):
+    """Raised when a query is malformed or produces an unexpected result."""
+
     pass
 
 
 class Query:
-    """
-    an interface for db query operations using Popoto Models
+    """Query interface for a Popoto Model.
+
+    Accessed via ``Model.query``.  Provides ``get``, ``filter``, ``all``,
+    ``count``, and ``keys`` methods, plus async variants of each.
     """
 
     model_class: "Model"
@@ -39,6 +43,12 @@ class Query:
         self._geo_distance_unit = None  # unit for distance values
 
     def get(self, db_key: DB_key = None, redis_key: str = None, **kwargs) -> "Model":
+        """Retrieve a single model instance.
+
+        Look up by *db_key*, *redis_key*, or keyword field values.  Raises
+        :class:`QueryException` if more than one match is found.  Returns
+        ``None`` when no match exists.
+        """
         if (
             not db_key
             and not redis_key
@@ -69,6 +79,7 @@ class Query:
         return instance or None
 
     def keys(self, catchall=False, clean=False, **kwargs) -> list:
+        """Return a list of Redis key bytes for all instances of this model."""
         if clean:
             logger.warning(
                 "{clean} is for debugging purposes only. Not for use in production environment"
@@ -116,6 +127,7 @@ class Query:
             )
 
     def all(self, **kwargs) -> list:
+        """Return all instances, with optional ``order_by``, ``limit``, and ``values``."""
         redis_db_keys_list = self.keys()
 
         # Apply default order_by from Meta if not explicitly provided
@@ -316,6 +328,7 @@ class Query:
         return objects
 
     def count(self, **kwargs) -> int:
+        """Count instances matching the given filters (or all if no filters)."""
         if not len(kwargs):
             return int(
                 POPOTO_REDIS_DB.scard(self.model_class._meta.db_class_set_key.redis_key)

@@ -1,733 +1,752 @@
 # Models and Fields
 
-Models are the foundation of Popoto. They define the structure of your Redis-stored data using Python classes with field declarations. If you're familiar with Django or SQLAlchemy, the pattern will feel familiar: inherit from `Model`, declare fields as class attributes, and Popoto handles the rest.
+Models are the foundation of Popoto. They define the structure of your Redis-stored
+data using Python classes with field declarations. If you are familiar with Django or
+SQLAlchemy, the pattern will feel natural: inherit from `Model`, declare fields as
+class attributes, and Popoto handles persistence, indexing, and querying.
 
-Popoto models are flexible. You can define any number of fields with varying types and behaviors. If you don't specify a primary key field, Popoto automatically creates one for you.
+Here is a simple restaurant model to illustrate the basics:
 
 ```python
-from popoto import Model, KeyField, Field
+from popoto import Model, KeyField, Field, SortedField, GeoField
 
-class Person(Model):
+class Restaurant(Model):
     name = KeyField()
-    email = Field()
+    cuisine = Field(type=str)
+    rating = SortedField(type=float)
+    location = GeoField()
+    active = Field(type=bool, default=True)
 ```
 
-This guide covers all available field types and their configuration options.
+Each field type controls how data is validated, stored, and indexed in Redis. This
+guide covers every field type and its configuration options, working through a food
+delivery system as a running example.
 
 ## KeyField
 
-KeyFields determine how Popoto stores and retrieves your objects in Redis. They form the Redis key used to look up instances, making queries on KeyFields extremely fast.
+A `KeyField` determines how Popoto stores and retrieves your objects in Redis. The
+values of all KeyFields on a model are concatenated to form the Redis key, making
+lookups on KeyFields extremely fast -- a direct Redis GET rather than a scan.
 
-In the background, Popoto concatenates all KeyField values to build the primary key. For example, a `Person` with `name="Sally"` is stored at the Redis key `Person:Sally`. You can use multiple KeyFields with minimal performance overhead.
+For the `Restaurant` model above, a restaurant with `name="Siam Garden"` is stored at
+the Redis key `Restaurant:Siam Garden`. Create a restaurant and retrieve it by name:
 
 ```python
-from popoto import Model, KeyField
+restaurant = Restaurant.create(
+    name="Siam Garden",
+    cuisine="Thai",
+    rating=4.5,
+    location=GeoField.Coordinates(latitude=40.7128, longitude=-74.0060),
+)
 
-class Person(Model):
-    name = KeyField()
-    email = Field()
+loaded = Restaurant.load(name="Siam Garden")
+print(loaded.cuisine)
+# => "Thai"
 ```
 
-Create and retrieve a person.
+Because `name` is a `KeyField`, the lookup is a single Redis GET -- the fastest
+possible read operation. See [Making Queries](query.md) for additional ways to
+retrieve instances.
+
+## Uniqueness
+
+When two restaurants share the same `name`, the second save overwrites the first. If
+you need to guarantee that a field value is globally unique across all instances, use
+`UniqueKeyField` or `AutoKeyField`.
+
+`UniqueKeyField` enforces a per-value uniqueness constraint. `AutoKeyField` generates
+a UUID-based value automatically, ensuring every instance has a distinct key.
 
 ```python
-person = Person.create(name="Sally", email="sally@example.com")
+from popoto import Model, KeyField, AutoKeyField, UniqueKeyField
+from popoto import Field, SortedField, GeoField
 
-# Fast retrieval using the KeyField
-loaded_person = Person.load(name="Sally")
-print(loaded_person.email)
-# => "sally@example.com"
+class Customer(Model):
+    username = KeyField()
+    email = UniqueKeyField()
+    name = Field(type=str)
+    address = GeoField()
+
+class Driver(Model):
+    driver_id = AutoKeyField()
+    name = Field(type=str)
+    phone = UniqueKeyField()
+    rating = SortedField(type=float)
+    location = GeoField()
+    active = Field(type=bool, default=True)
 ```
 
-### Uniqueness
-
-It's recommended that at least one KeyField enforces uniqueness across all saved instances. This prevents accidental overwrites and ensures each instance has a distinct identity.
-
-These KeyField variants enforce uniqueness: `AutoKeyField`, `UniqueKeyField`, and `KeyField(unique=True)`.
+The `Customer` model uses `username` as its primary KeyField and enforces that every
+`email` is unique across all customers. The `Driver` model uses `AutoKeyField` so each
+driver gets a unique ID without you supplying one.
 
 ```python
-from popoto import Model, AutoKeyField, UniqueKeyField, KeyField
+customer = Customer.create(
+    username="foodie42",
+    email="foodie42@example.com",
+    name="Jane Doe",
+)
 
-class Person(Model):
-    uuid = AutoKeyField()
-    name = UniqueKeyField()
-    email = KeyField(unique=True)
-```
-
-Attempting to create a duplicate will raise an exception.
-
-```python
-Person.create(uuid="1", name="Sally", email="sally@example.com")
-
-# This will fail because name="Sally" already exists
+# Attempting a duplicate email raises an exception
 try:
-    Person.create(uuid="2", name="Sally", email="different@example.com")
+    Customer.create(
+        username="another_user",
+        email="foodie42@example.com",
+        name="Someone Else",
+    )
 except Exception as e:
-    print(f"Error: {e}")
-    # => Error: UniqueKeyField 'name' value 'Sally' already exists
+    print(e)
+    # => UniqueKeyField 'email' value 'foodie42@example.com' already exists
 ```
 
-### Composite Keys
+Drivers get an auto-generated key, so you never need to supply `driver_id`:
 
-If no single KeyField is unique, all KeyFields together must be "unique together." In this example, a unique person is identified by the combination of first and last name. Two people with identical first and last names will be treated as the same instance and save to the same Redis key.
+```python
+driver = Driver.create(
+    name="Carlos",
+    phone="+1-555-0101",
+    rating=4.8,
+    location=GeoField.Coordinates(latitude=40.7580, longitude=-73.9855),
+)
+
+print(driver.driver_id)
+# => "a1b2c3d4-..."  (auto-generated UUID)
+```
+
+## Composite Keys
+
+When no single field is unique, you can use multiple KeyFields to form a composite
+key. The combination of all KeyField values must be unique together. This is useful
+for junction or reservation models.
 
 ```python
 from popoto import Model, KeyField, Field
+from popoto import Relationship
 
-class Person(Model):
-    first_name = KeyField()
-    last_name = KeyField()
-    email = Field()
+class Reservation(Model):
+    restaurant = KeyField()
+    customer = KeyField()
+    party_size = Field(type=int)
+    notes = Field(type=str, null=True)
 ```
 
-Create instances with composite keys.
+Two distinct reservations exist as long as the restaurant-customer pair differs:
 
 ```python
-Person.create(first_name="Sally", last_name="Smith", email="sally@example.com")
-Person.create(first_name="Sally", last_name="Jones", email="sally.jones@example.com")
+Reservation.create(
+    restaurant="Siam Garden",
+    customer="foodie42",
+    party_size=4,
+    notes="Window seat please",
+)
 
-# These are two distinct people because the composite key differs
-sally_smith = Person.load(first_name="Sally", last_name="Smith")
-print(sally_smith.email)
-# => "sally@example.com"
+Reservation.create(
+    restaurant="Bella Napoli",
+    customer="foodie42",
+    party_size=2,
+)
+
+# Retrieve by the composite key
+reservation = Reservation.load(
+    restaurant="Siam Garden", customer="foodie42"
+)
+print(reservation.party_size)
+# => 4
 ```
 
-### Models Without KeyFields
+The Redis key for this instance is `Reservation:Siam Garden:foodie42`.
 
-You can declare a Model without any KeyField, and Popoto will create and maintain a hidden unique key automatically. This is useful when all queries use specialized fields like `SortedField` or `GeoField` rather than direct key lookups.
+!!! warning
+    If two reservations share the same restaurant *and* customer values, the second
+    save silently overwrites the first. Add a `UniqueKeyField` or `AutoKeyField` if
+    you need to allow duplicates on the composite fields.
+
+## Models Without KeyFields
+
+You can declare a model without any explicit KeyField. Popoto automatically adds a
+hidden `AutoKeyField` named `_auto_key`, giving every instance a unique UUID-based
+Redis key. This is convenient when you always query by other fields like `SortedField`
+or `GeoField`.
+
+The `MenuItem` model uses an explicit `AutoKeyField`, but the effect is the same as
+omitting all key fields entirely:
 
 ```python
-from popoto import Model, Field, SortedField
-from datetime import datetime
-from decimal import Decimal
+from popoto import Model, AutoKeyField, Field, SortedField
+from popoto import Relationship
 
-class Note(Model):
-    content = Field(type=str)
-    created_at = SortedField(type=datetime)
+class MenuItem(Model):
+    item_id = AutoKeyField()
+    name = Field(type=str)
+    price = SortedField(type=float)
+    restaurant = Relationship(Restaurant)
+    available = Field(type=bool, default=True)
 ```
 
-Create and query without KeyFields.
+Create items without worrying about key collisions:
 
 ```python
-note1 = Note.create(content="First note", created_at=datetime(2025, 1, 1))
-note2 = Note.create(content="Second note", created_at=datetime(2025, 1, 2))
+pad_thai = MenuItem.create(
+    name="Pad Thai",
+    price=14.99,
+    restaurant=restaurant,
+    available=True,
+)
 
-# Query using the SortedField instead of KeyFields
-recent_notes = Note.query.filter(created_at__gte=datetime(2025, 1, 1))
-print(len(recent_notes))
-# => 2
+green_curry = MenuItem.create(
+    name="Green Curry",
+    price=16.50,
+    restaurant=restaurant,
+)
+
+print(pad_thai.item_id)
+# => "e5f6a7b8-..."  (auto-generated)
 ```
+
+!!! tip
+    Use `AutoKeyField` when your model represents items that do not have a natural
+    unique identifier, such as orders, menu items, or log entries.
 
 ## Field
 
-All fields inherit from the base `Field` class. A basic `Field` on any model provides type validation on create and update operations.
+The base `Field` class stores a typed value with optional validation. If you do not
+specify a `type`, it defaults to `str`.
 
-The following types are supported: `int`, `float`, `Decimal`, `str`, `bool`, `list`, `set`, `tuple`, `dict`, `bytes`, `datetime.date`, `datetime.datetime`, `datetime.time`.
+Popoto supports the following types: `int`, `float`, `Decimal`, `str`, `bool`, `list`,
+`set`, `tuple`, `dict`, `bytes`, `datetime.date`, `datetime.datetime`, `datetime.time`.
 
-The default type for a field is `str` if not specified.
-
-```python
-from popoto import Model, KeyField, Field
-from decimal import Decimal
-from datetime import datetime, date, time
-
-class Person(Model):
-    name = KeyField()
-    email = Field(type=str)
-    age = Field(type=int)
-    balance = Field(type=Decimal)
-    is_active = Field(type=bool)
-    tags = Field(type=list)
-    metadata = Field(type=dict)
-    birth_date = Field(type=date)
-    last_login = Field(type=datetime)
-```
-
-Popoto validates field types when you save.
+Here are the types used across our food delivery models: `Restaurant.cuisine` is
+`str`, `Restaurant.rating` is `float`, `Restaurant.active` is `bool`, `Order.total`
+is `float`, and `Order.status` is `str`. Popoto validates field types when you save:
 
 ```python
-person = Person.create(
-    name="Sally",
-    email="sally@example.com",
-    age=30,
-    balance=Decimal("100.50"),
-    is_active=True,
-    tags=["user", "active"],
-    metadata={"signup_date": "2025-01-01"},
-    birth_date=date(1995, 5, 15),
-    last_login=datetime(2025, 1, 30, 10, 0, 0)
-)
+restaurant = Restaurant(name="Bella Napoli", cuisine="Italian", rating=4.2)
+restaurant.active = "yes"  # wrong type, should be bool
 
-# Type validation occurs on save
-try:
-    person.age = "thirty"  # Wrong type
-    person.save()
-except Exception as e:
-    print(f"Validation error: {e}")
+print(restaurant.is_valid())
+# => False
 ```
 
-### Named Field Shortcuts
+## Named Field Shortcuts
 
-Popoto provides named field classes that are equivalent to specifying the type parameter. Use whichever style you prefer.
+Popoto provides shortcut classes so you can avoid the `type=` parameter. These are
+functionally identical to `Field(type=...)`.
+
+| Shortcut        | Equivalent               |
+|-----------------|--------------------------|
+| `IntField`      | `Field(type=int)`        |
+| `FloatField`    | `Field(type=float)`      |
+| `DecimalField`  | `Field(type=Decimal)`    |
+| `StringField`   | `Field(type=str)`        |
+| `BooleanField`  | `Field(type=bool)`       |
+| `ListField`     | `Field(type=list)`       |
+| `SetField`      | `Field(type=set)`        |
+| `TupleField`    | `Field(type=tuple)`      |
+| `DictField`     | `Field(type=dict)`       |
+| `BytesField`    | `Field(type=bytes)`      |
+| `DateField`     | `Field(type=date)`       |
+| `DatetimeField` | `Field(type=datetime)`   |
+| `TimeField`     | `Field(type=time)`       |
+
+Import shortcuts from `popoto.fields.shortcuts`:
 
 ```python
 from popoto import Model, KeyField
-from popoto.fields.shortcuts import (
-    IntField, FloatField, DecimalField, StringField,
-    BooleanField, ListField, SetField, TupleField,
-    DictField, BytesField, DateField, DatetimeField, TimeField
+from popoto.fields.shortcuts import IntField, FloatField, BooleanField, StringField
+
+class Restaurant(Model):
+    name = KeyField()
+    cuisine = StringField()
+    seat_count = IntField()
+    avg_price = FloatField()
+    active = BooleanField()
+```
+
+Use whichever style you prefer -- the behavior is identical.
+
+## Null Values
+
+`KeyField` and `SortedField` are required (`null=False`) by default. All other fields
+are optional (`null=True`) by default. You can override this with the `null` keyword.
+
+The `Driver` model illustrates this: `driver_id` (AutoKeyField) and `phone`
+(UniqueKeyField) are always required, `rating` (SortedField) is required by default,
+while `name` (Field) and `location` (GeoField) are optional by default.
+
+```python
+driver = Driver(name=None, phone="+1-555-0199", rating=4.0)
+print(driver.is_valid())
+# => True  (name is optional, None is acceptable)
+```
+
+!!! note
+    `UniqueKeyField` and `AutoKeyField` cannot be set to `null=True`. Attempting to
+    do so raises a `ModelException` at class definition time.
+
+## Default Values
+
+Fields accept a `default` value used when creating instances without specifying that
+field. The `Order` model demonstrates this with its `status` field:
+
+```python
+order = Order.create(
+    customer=customer,
+    restaurant=restaurant,
+    total=42.50,
 )
 
-class Person(Model):
-    name = KeyField()
-    age = IntField()
-    height = FloatField()
-    balance = DecimalField()
-    email = StringField()
-    is_active = BooleanField()
-    tags = ListField()
-    categories = SetField()
-    coordinates = TupleField()
-    metadata = DictField()
-    profile_image = BytesField()
-    birth_date = DateField()
-    last_login = DatetimeField()
-    preferred_time = TimeField()
+print(order.status)
+# => "pending"
 ```
 
-These shortcuts are functionally identical to using `Field(type=int)`, `Field(type=str)`, etc.
-
-### Null Values
-
-KeyField and SortedField values are required (`null=False`) by default. All other fields are optional (`null=True`) by default. You can explicitly control this behavior using the `null` keyword argument.
-
-```python
-from popoto import Model, KeyField, Field
-
-class Person(Model):
-    name = KeyField()  # Required by default
-    email = Field(null=True)  # Optional, can be None
-    age = Field(type=int, null=False)  # Required
-```
-
-Setting a required field to `None` will fail validation.
-
-```python
-person = Person(name="Sally", age=None)
-print(person.is_valid())
-# => False
-
-person.age = 30
-print(person.is_valid())
-# => True
-```
-
-### Default Values
-
-All fields accept a `default` value that is used when creating new instances without specifying that field.
-
-```python
-from popoto import Model, KeyField, Field
-
-class Person(Model):
-    name = KeyField()
-    status = Field(type=str, default="active")
-    is_verified = Field(type=bool, default=False)
-    login_count = Field(type=int, default=0)
-```
-
-Defaults are applied when fields are not provided.
-
-```python
-person = Person.create(name="Sally")
-print(person.status)
-# => "active"
-
-print(person.is_verified)
-# => False
-
-print(person.login_count)
-# => 0
-```
-
-### Callable Defaults
-
-Defaults can also be callables. The callable is invoked each time a new instance is created, ensuring each instance gets its own fresh value. This is particularly important for mutable defaults like lists and dictionaries.
+Defaults can also be callables. The callable is invoked each time a new instance is
+created, ensuring each instance gets a fresh value. This is critical for mutable types
+like lists and dicts.
 
 ```python
 import uuid
 from popoto import Model, KeyField, Field
 
-class Person(Model):
+class Restaurant(Model):
     name = KeyField()
-    id = Field(default=uuid.uuid4)  # Fresh UUID per instance
-    tags = Field(type=list, default=list)  # Fresh empty list per instance
-    metadata = Field(type=dict, default=dict)  # Fresh empty dict per instance
-```
-
-Each instance gets its own unique values.
-
-```python
-person1 = Person.create(name="Sally")
-person2 = Person.create(name="Bob")
-
-print(person1.id == person2.id)
-# => False
-
-person1.tags.append("admin")
-print(person1.tags)
-# => ["admin"]
-
-print(person2.tags)
-# => []
-```
-
-Lambda functions work as well for simple defaults.
-
-```python
-from popoto import Model, KeyField, Field
-
-class Person(Model):
-    name = KeyField()
-    score = Field(type=int, default=lambda: 0)
+    tags = Field(type=list, default=list)        # fresh list per instance
+    metadata = Field(type=dict, default=dict)    # fresh dict per instance
+    internal_id = Field(default=uuid.uuid4)      # unique UUID per instance
+    display_order = Field(type=int, default=lambda: 0)  # lambda also works
 ```
 
 !!! warning
-    Never use mutable default values directly (e.g., `default=[]` or `default={}`). This creates a single shared object across all instances. Always use callables like `default=list` or `default=dict`.
+    Never use a mutable literal as a default (e.g., `default=[]` or `default={}`).
+    This shares a single object across all instances. Always use `default=list` or
+    `default=dict` instead.
 
-### String Max Length
+## String Max Length
 
-You can set a maximum length limit for string fields. Unlike SQL databases, Redis doesn't require max_length for performance. Use it only if you want Popoto to validate string length and raise exceptions.
-
-```python
-from popoto import Model, KeyField, Field
-
-class Note(Model):
-    title = KeyField()
-    summary = Field(type=str, max_length=280)
-```
-
-Validation occurs on save.
+You can set a maximum character length for string fields. Redis itself has no
+practical string length limit, so `max_length` is purely a validation guard.
 
 ```python
-note = Note(title="My Note", summary="A" * 300)
-try:
-    note.save()
-except Exception as e:
-    print(f"Validation error: {e}")
-    # => Validation error: Field 'summary' exceeds max_length of 280
-```
+class MenuItem(Model):
+    item_id = AutoKeyField()
+    name = Field(type=str, max_length=100)
+    description = Field(type=str, max_length=500)
 
-## SortedField
-
-SortedField enables fast range queries on numerical attributes using Redis sorted sets. This is one of Redis's most powerful features, allowing efficient queries like "all people older than 25" or "notes created in the last hour."
-
-A SortedField is required to use these query filters: `__lt`, `__lte`, `__gt`, `__gte`. See [Making Queries](query.md) for complete filter documentation.
-
-```python
-from popoto import Model, KeyField, SortedField
-from datetime import date
-
-class Person(Model):
-    name = KeyField()
-    email = Field()
-    birth_date = SortedField(type=date)
-```
-
-Create instances and query by sorted fields.
-
-```python
-Person.create(name="Sally", birth_date=date(1995, 5, 15))
-Person.create(name="Bob", birth_date=date(1990, 3, 20))
-Person.create(name="Alice", birth_date=date(2000, 7, 10))
-
-# Find people born before 1995
-older_people = Person.query.filter(birth_date__lt=date(1995, 1, 1))
-print(len(older_people))
-# => 1
-
-print(older_people[0].name)
-# => "Bob"
-
-# Find people born after 1995
-younger_people = Person.query.filter(birth_date__gt=date(1995, 12, 31))
-print([p.name for p in younger_people])
-# => ["Alice"]
-```
-
-### SortedKeyField
-
-To use a SortedField also as a KeyField, use `SortedKeyField`. This combines the fast key-based lookup of KeyField with the range query capabilities of SortedField.
-
-```python
-from popoto import Model, SortedKeyField, Field
-from datetime import datetime
-from decimal import Decimal
-
-class Note(Model):
-    created_at = SortedKeyField(type=datetime)
-    content = Field(type=str)
-```
-
-Query using the sorted key field.
-
-```python
-note1 = Note.create(created_at=datetime(2025, 1, 1, 10, 0), content="First note")
-note2 = Note.create(created_at=datetime(2025, 1, 2, 10, 0), content="Second note")
-
-# Range query on the key field
-recent = Note.query.filter(created_at__gte=datetime(2025, 1, 1))
-print(len(recent))
-# => 2
-```
-
-### Performance Optimization with sort_by
-
-When you always query a SortedField in combination with a required KeyField, you can dramatically improve performance by defining `sort_by`. This parameter (which must be a tuple) tells Popoto to create a composite index.
-
-The tradeoff is that all queries on this SortedField must include the fields specified in `sort_by`.
-
-```python
-from popoto import Model, KeyField, SortedKeyField, Field
-from datetime import datetime
-from decimal import Decimal
-
-class Note(Model):
-    title = KeyField()
-    created_at = SortedKeyField(type=datetime, sort_by=('title',))
-    content = Field(type=str)
-```
-
-Now queries on `created_at` must include `title`.
-
-```python
-Note.create(title="Work", created_at=datetime(2025, 1, 1), content="Meeting notes")
-Note.create(title="Personal", created_at=datetime(2025, 1, 2), content="Shopping list")
-
-# This query is extremely fast because it uses the composite index
-work_notes = Note.query.filter(
-    title="Work",
-    created_at__gte=datetime(2025, 1, 1),
-    created_at__lt=datetime(2025, 2, 1)
-)
-print(len(work_notes))
-# => 1
-
-# This query will fail because 'title' is required
-try:
-    all_notes = Note.query.filter(created_at__gte=datetime(2025, 1, 1))
-except Exception as e:
-    print(f"Error: {e}")
+item = MenuItem(name="A" * 150)
+print(item.is_valid())
+# => False
 ```
 
 !!! tip
-    Use `sort_by` when you always filter by the same KeyField along with the SortedField. This provides maximum performance with Redis sorted sets.
+    The default `max_length` for string fields is 1024 characters. Set it explicitly
+    only when you need a stricter or looser limit.
+
+## SortedField
+
+`SortedField` enables fast range queries using Redis sorted sets. This is one of
+Redis's most powerful features, allowing queries like "menu items under $15" or
+"restaurants rated above 4.0" without scanning every instance.
+
+A `SortedField` is required for the range filters `__lt`, `__lte`, `__gt`, `__gte`.
+See [Making Queries](query.md) for complete filter documentation.
+
+Using the `MenuItem` model (which has `price = SortedField(type=float)`), create some
+items and query by price range:
+
+```python
+MenuItem.create(name="Pad Thai", price=14.99, restaurant=restaurant)
+MenuItem.create(name="Green Curry", price=16.50, restaurant=restaurant)
+MenuItem.create(name="Spring Rolls", price=8.99, restaurant=restaurant)
+MenuItem.create(name="Mango Sticky Rice", price=9.50, restaurant=restaurant)
+
+# Find affordable items under $10
+budget_items = MenuItem.query.filter(price__lt=10.0)
+print(len(budget_items))
+# => 2
+
+# Find premium items $15 and above
+premium = MenuItem.query.filter(price__gte=15.0)
+print([item.name for item in premium])
+# => ["Pad Thai", "Green Curry"]
+```
+
+You can also query restaurant ratings the same way:
+
+```python
+# Find highly rated restaurants
+top_restaurants = Restaurant.query.filter(rating__gte=4.0)
+```
+
+Range queries work with `int`, `float`, `Decimal`, `datetime`, `date`, and `time`.
+
+## SortedKeyField
+
+`SortedKeyField` combines the direct-lookup speed of `KeyField` with the range query
+capabilities of `SortedField`. Use it when a field serves as both a primary identifier
+and a range-query target.
+
+```python
+from popoto import Model, SortedKeyField, Field
+
+class DailySpecial(Model):
+    day_number = SortedKeyField(type=int)
+    dish = Field(type=str)
+    price = Field(type=float)
+```
+
+Query by exact key or by range:
+
+```python
+DailySpecial.create(day_number=1, dish="Tacos", price=9.99)
+DailySpecial.create(day_number=2, dish="Pasta", price=12.99)
+DailySpecial.create(day_number=3, dish="Sushi", price=15.99)
+
+# Direct key lookup
+monday = DailySpecial.load(day_number=1)
+print(monday.dish)
+# => "Tacos"
+
+# Range query
+early_week = DailySpecial.query.filter(day_number__lte=2)
+print(len(early_week))
+# => 2
+```
+
+## sort_by
+
+When you always query a `SortedField` together with a specific `KeyField`, you can
+dramatically improve performance by defining `sort_by`. This creates a composite index
+scoped to the values of the fields listed in the tuple.
+
+The tradeoff is that queries on this `SortedField` *must* include the `sort_by`
+fields. This is ideal for the `MenuItem.price` field, where you typically filter items
+for a specific restaurant.
+
+```python
+class MenuItem(Model):
+    item_id = AutoKeyField()
+    name = Field(type=str)
+    price = SortedField(type=float, sort_by=('restaurant',))
+    restaurant = Relationship(Restaurant)
+    available = Field(type=bool, default=True)
+```
+
+Now price queries must include the restaurant:
+
+```python
+# Fast query: uses the composite index
+affordable = MenuItem.query.filter(
+    restaurant=restaurant,
+    price__lt=12.00,
+)
+
+# This would fail because 'restaurant' is required by sort_by
+try:
+    MenuItem.query.filter(price__lt=12.00)
+except Exception as e:
+    print(e)
+```
+
+!!! tip
+    Use `sort_by` when you have a natural parent-child relationship. Menu items
+    always belong to a restaurant, so scoping the price index to the restaurant
+    reduces the sorted set size and speeds up range queries.
 
 ## DatetimeField
 
-DatetimeField extends the base Field with automatic timestamp management. It supports two special parameters for common patterns: `auto_now_add` and `auto_now`.
+`DatetimeField` extends the base `Field` with automatic timestamp management.
+It supports two special parameters: `auto_now_add` and `auto_now`.
+
+- `auto_now_add=True` -- Sets the field to the current datetime on first save only.
+- `auto_now=True` -- Updates the field to the current datetime on every save.
+
+The `Order` model uses both:
 
 ```python
-from popoto import Model, KeyField
-from popoto.fields.shortcuts import DatetimeField
+from popoto.fields.datetime_field import DatetimeField
 
-class Note(Model):
-    title = KeyField()
-    content = Field(type=str)
-    created_at = DatetimeField(auto_now_add=True)  # Set on first save only
-    updated_at = DatetimeField(auto_now=True)  # Updated on every save
+class Order(Model):
+    order_id = AutoKeyField()
+    # ... other fields ...
+    created_at = DatetimeField(auto_now_add=True)  # set on first save
+    updated_at = DatetimeField(auto_now=True)       # refreshed on every save
 ```
 
-The timestamps are managed automatically.
+Timestamps are managed automatically:
 
 ```python
-note = Note.create(title="My Note", content="Initial content")
+order = Order.create(
+    customer=customer,
+    restaurant=restaurant,
+    total=28.99,
+)
 
-print(note.created_at)
-# => 2025-01-30 10:00:00.123456
+print(order.created_at)
+# => 2025-06-15 14:30:00.123456
 
-print(note.updated_at)
-# => 2025-01-30 10:00:00.123456
+print(order.updated_at)
+# => 2025-06-15 14:30:00.123456
 
-# Update and save
-note.content = "Updated content"
-note.save()
+# Update the order status
+order.status = "confirmed"
+order.save()
 
-print(note.created_at)
-# => 2025-01-30 10:00:00.123456 (unchanged)
+print(order.created_at)
+# => 2025-06-15 14:30:00.123456  (unchanged)
 
-print(note.updated_at)
-# => 2025-01-30 10:05:30.654321 (updated)
+print(order.updated_at)
+# => 2025-06-15 14:32:10.654321  (refreshed)
 ```
 
-- `auto_now_add=True`: Sets the field to the current datetime when the instance is first created. The value is not changed on subsequent saves.
-- `auto_now=True`: Sets the field to the current datetime every time `save()` is called.
+See [Model Meta Options](meta.md) for configuring `order_by` and `ttl` on the `Meta`
+class.
 
-### Timestampable Mixin
+## Timestampable Mixin
 
-You can also use the `Timestampable` mixin which provides both `created_at` and `updated_at` fields automatically.
+If you find yourself adding `created_at` and `updated_at` to many models, use the
+`Timestampable` mixin to include both fields automatically. It provides
+`DatetimeField(auto_now_add=True)` for `created_at` and
+`DatetimeField(auto_now=True)` for `updated_at`.
 
 ```python
 from popoto import Model, KeyField, Field
 from popoto.utils.mixins.timestampable import Timestampable
 
-class Note(Timestampable, Model):
-    title = KeyField()
-    content = Field(type=str)
-    # created_at and updated_at are automatically included
-```
-
-The mixin adds both timestamp fields for you.
-
-```python
-note = Note.create(title="My Note", content="Some content")
-
-print(hasattr(note, 'created_at'))
-# => True
-
-print(hasattr(note, 'updated_at'))
-# => True
+class Restaurant(Timestampable, Model):
+    name = KeyField()
+    cuisine = Field(type=str)
+    # created_at and updated_at are included automatically
 ```
 
 ## GeoField
 
-GeoField employs Redis geospatial search capabilities, enabling powerful location-based queries. A common use case is finding all objects within a certain radius of a point.
+`GeoField` uses Redis geospatial indexes for location-based queries. This is perfect
+for finding nearby restaurants, tracking driver positions, or searching by delivery
+address.
 
-Popoto provides a `Coordinates` namedtuple, though any tuple of `(latitude, longitude)` as floats is accepted.
+Values are `GeoField.Coordinates(latitude, longitude)` namedtuples, though plain
+`(latitude, longitude)` tuples also work.
 
-```python
-from popoto import Model, KeyField, GeoField
-
-class Place(Model):
-    name = KeyField()
-    coordinates = GeoField()
-```
-
-Create places with geographic coordinates.
+Using the `Restaurant` model (which has `location = GeoField()`), create restaurants
+with locations and search by radius:
 
 ```python
-rome = Place.create(
-    name="Rome",
-    coordinates=GeoField.Coordinates(latitude=41.902782, longitude=12.496366)
+siam = Restaurant.create(
+    name="Siam Garden",
+    cuisine="Thai",
+    rating=4.5,
+    location=GeoField.Coordinates(latitude=40.7484, longitude=-73.9857),
 )
 
-vatican = Place.create(
-    name="Vatican",
-    coordinates=GeoField.Coordinates(latitude=41.904755, longitude=12.454628)
+bella = Restaurant.create(
+    name="Bella Napoli",
+    cuisine="Italian",
+    rating=4.2,
+    location=GeoField.Coordinates(latitude=40.7527, longitude=-73.9772),
 )
 
-colosseum = Place.create(
-    name="Colosseum",
-    coordinates=GeoField.Coordinates(latitude=41.890251, longitude=12.492373)
+taco = Restaurant.create(
+    name="Taco Loco",
+    cuisine="Mexican",
+    rating=4.0,
+    location=GeoField.Coordinates(latitude=40.7589, longitude=-73.9851),
 )
+
+# Find restaurants within 2km of Midtown Manhattan
+nearby = Restaurant.query.filter(
+    location=(40.7505, -73.9834),
+    location_radius=2,
+    location_radius_unit='km',
+)
+
+print(len(nearby))
+# => 3
 ```
 
-Query for places within a radius.
+Supported radius units are `"m"` (meters), `"km"` (kilometers), `"ft"` (feet), and
+`"mi"` (miles).
+
+## Query with Distances
+
+Add `{field_name}_with_distances=True` to include distance information in results.
+Each returned object gets `_geo_distance` and `_geo_distance_unit` attributes, and
+results are sorted closest first.
 
 ```python
-# Find all places within 5km of Rome
-nearby = Place.query.filter(
-    coordinates=rome.coordinates,
-    coordinates_radius=5,
-    coordinates_radius_unit='km'
+results = Restaurant.query.filter(
+    location=(40.7505, -73.9834),
+    location_radius=5,
+    location_radius_unit='km',
+    location_with_distances=True,
 )
 
-print(vatican in nearby)
-# => True
-
-print(colosseum in nearby)
-# => True
+for r in results:
+    print(f"{r.name}: {r._geo_distance} {r._geo_distance_unit}")
+# => Siam Garden: 0.3 km
+# => Bella Napoli: 0.7 km
+# => Taco Loco: 0.9 km
 ```
 
-### Query with Distances
-
-Use `{field_name}_with_distances=True` to include distance information in query results. When enabled, each returned object will have `_geo_distance` and `_geo_distance_unit` attributes, and results are automatically sorted by distance (closest first).
+You can also use a model instance as the center point with `_member`:
 
 ```python
-# Find all places within 10km of Rome, with distances
-results = Place.query.filter(
-    coordinates=(41.902782, 12.496366),
-    coordinates_radius=10,
-    coordinates_radius_unit='km',
-    coordinates_with_distances=True
+results = Restaurant.query.filter(
+    location_member=siam,
+    location_radius=3,
+    location_radius_unit='km',
+    location_with_distances=True,
 )
 
-for place in results:
-    print(f"{place.name}: {place._geo_distance} {place._geo_distance_unit}")
-# => Rome: 0.0 km
-# => Vatican: 3.5 km
-# => Colosseum: 1.4 km
+for r in results:
+    print(f"{r.name}: {r._geo_distance} km")
+# => Siam Garden: 0.0 km
+# => Bella Napoli: 0.8 km
+# => Taco Loco: 1.2 km
 ```
 
-You can also use a model instance as the center point.
-
-```python
-results = Place.query.filter(
-    coordinates_member=rome,
-    coordinates_radius=10,
-    coordinates_radius_unit='km',
-    coordinates_with_distances=True
-)
-
-for place in results:
-    print(f"{place.name}: {place._geo_distance} km")
-# => Rome: 0.0 km
-# => Vatican: 3.5 km
-# => Colosseum: 1.4 km
-```
-
-Delete the places when done.
-
-```python
-rome.delete()
-vatican.delete()
-colosseum.delete()
-```
+!!! tip
+    Geo queries are backed by Redis GEORADIUS commands, which run in O(N+log(M))
+    time. This is very fast even with millions of locations.
 
 ## DataFrameField
 
-DataFrameField allows storage of [Pandas DataFrame](https://pandas.pydata.org/docs/reference/frame.html) objects for tabular data. Common use cases include storing machine learning training data, analysis results, or time-series datasets directly in Redis.
+`DataFrameField` stores [Pandas DataFrame](https://pandas.pydata.org/docs/reference/frame.html)
+objects directly in Redis. This is useful for analytics or caching computed datasets.
+Because it depends on Pandas, it uses a separate model outside the canonical set.
 
 ```python
 import pandas as pd
 from popoto import Model, KeyField
-from popoto.fields.shortcuts import DataFrameField
+from popoto.fields.dataframe_field import DataFrameField
 
-class Dataset(Model):
+class SalesReport(Model):
     name = KeyField()
-    dataframe = DataFrameField()
+    data = DataFrameField()
 ```
 
-Store a DataFrame loaded from CSV.
+Store and retrieve a sales report:
 
 ```python
-# Assume we have a CSV with home price data
-data = pd.DataFrame({
-    'Price': [22000, 25000, 27000, 29000, 35000],
-    'Year': [2014, 2015, 2016, 2017, 2018]
+sales_data = pd.DataFrame({
+    'restaurant': ['Siam Garden', 'Bella Napoli', 'Taco Loco'],
+    'orders': [142, 98, 215],
+    'revenue': [3408.58, 2156.02, 3225.85],
 })
 
-dataset = Dataset.create(name="Chicago Home Prices", dataframe=data)
+report = SalesReport.create(name="weekly_summary", data=sales_data)
 
-# Retrieve and analyze
-loaded = Dataset.load(name="Chicago Home Prices")
-print(loaded.dataframe.describe())
-# =>               Price         Year
-# => count      5.000000     5.000000
-# => mean   27600.000000  2016.000000
-# => std     4878.524367     1.581139
-# => min    22000.000000  2014.000000
-# => 25%    25000.000000  2015.000000
-# => 50%    27000.000000  2016.000000
-# => 75%    29000.000000  2017.000000
-# => max    35000.000000  2018.000000
+loaded = SalesReport.load(name="weekly_summary")
+print(loaded.data['revenue'].sum())
+# => 8790.45
+
+report.delete()
 ```
 
-Clean up the dataset.
-
-```python
-dataset.delete()
-```
+!!! note
+    `DataFrameField` requires the `pandas` package. Install it separately if it is
+    not already in your environment.
 
 ## Reserved Field Names
 
 The following names are reserved and cannot be used as field names:
 
-- `limit`: Used in `query.filter()` to limit the size of the returned objects list
-- `values`: Used in `query.filter()` to restrict which values are returned for objects
-- `order_by`: Used in `query.filter()` to order the results
+- `limit` -- Used in `query.filter()` to limit the number of returned objects
+- `values` -- Used in `query.filter()` to restrict which fields are returned
+- `order_by` -- Used in `query.filter()` to sort results
 
 ## Model Methods
 
+This section summarizes the core methods available on every Popoto model.
+
 ### Creating and Saving
 
-Create and save a model instance in one step using `create()`, or create an instance and save it later.
+Create and save in one step with `create()`, or instantiate and call `save()` later:
 
 ```python
-from popoto import Model, KeyField, Field
+# One-step creation
+restaurant = Restaurant.create(
+    name="Siam Garden",
+    cuisine="Thai",
+    rating=4.5,
+    location=GeoField.Coordinates(latitude=40.7484, longitude=-73.9857),
+)
 
-class Person(Model):
-    name = KeyField()
-    email = Field()
-    age = Field(type=int)
-```
-
-Create and save in one step.
-
-```python
-person = Person.create(name="Sally", email="sally@example.com", age=25)
-```
-
-Create, modify, then save.
-
-```python
-person = Person(name="Bob")
-person.email = "bob@example.com"
-person.age = 30
-person.save()
+# Two-step creation
+restaurant = Restaurant(name="Bella Napoli")
+restaurant.cuisine = "Italian"
+restaurant.rating = 4.2
+restaurant.save()
 ```
 
 ### Loading
 
-Load an existing instance by its KeyField values.
+Load an instance by its KeyField values. For `AutoKeyField` models, load by the
+generated key:
 
 ```python
-person = Person.load(name="Sally")
-print(person.email)
-# => "sally@example.com"
+restaurant = Restaurant.load(name="Siam Garden")
+print(restaurant.cuisine)
+# => "Thai"
+
+order = Order.load(order_id=order.order_id)
+print(order.status)
+# => "pending"
 ```
 
 ### Updating
 
-Modify field values and call `save()` to persist changes.
+Modify fields and call `save()` to persist changes. For models with
+`DatetimeField(auto_now=True)`, the timestamp is refreshed automatically:
 
 ```python
-person = Person.load(name="Sally")
-person.age = 26
-person.save()
+restaurant = Restaurant.load(name="Siam Garden")
+restaurant.rating = 4.7
+restaurant.save()
+
+order.status = "delivered"
+order.save()
+# order.updated_at is automatically refreshed
 ```
 
 ### Deleting
 
-Delete an instance to remove its Redis key and clean up all associated indexes.
+Call `delete()` to remove an instance and clean up all associated indexes (sorted
+set entries, geo set entries, unique field indexes, and relationship indexes):
 
 ```python
-person = Person.load(name="Sally")
-person.delete()
+restaurant = Restaurant.load(name="Siam Garden")
+restaurant.delete()
 ```
-
-Deleting removes the Redis key and cleans up all associated indexes, including key field indexes, sorted set entries, geo set entries, relationship indexes, and unique composite indexes.
 
 ### Validation
 
-Use `is_valid()` to check if a model instance has valid field values before saving.
+Use `is_valid()` to check whether a model instance passes all field validations
+before saving:
 
 ```python
-person = Person(name=None, email="test@example.com")
-print(person.is_valid())
-# => False (name is required)
+restaurant = Restaurant(name=None, cuisine="Thai", rating=4.5)
+print(restaurant.is_valid())
+# => False  (name is a required KeyField)
 
-person.name = "Charlie"
-print(person.is_valid())
+restaurant.name = "Siam Garden"
+print(restaurant.is_valid())
 # => True
 ```
 
 ### The db_key Property
 
-Every saved instance has a `db_key` property that returns the Redis key components.
+Every saved instance has a `db_key` property that exposes its Redis key:
 
 ```python
-person = Person.create(name="Sally", email="sally@example.com")
-print(person.db_key)
-# => DB_key object
+restaurant = Restaurant.create(name="Siam Garden", cuisine="Thai", rating=4.5)
+print(restaurant.db_key.redis_key)
+# => "Restaurant:Siam Garden"
 
-print(person.db_key.redis_key)
-# => "Person:Sally"
+reservation = Reservation.create(
+    restaurant="Siam Garden", customer="foodie42", party_size=4
+)
+print(reservation.db_key.redis_key)
+# => "Reservation:Siam Garden:foodie42"
 ```
 
-Clean up the test data.
-
-```python
-person.delete()
-Person.load(name="Bob").delete()
-```
+The `db_key` is useful for debugging, logging, or performing custom Redis operations
+outside of Popoto's query API.

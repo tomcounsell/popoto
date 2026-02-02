@@ -7,35 +7,53 @@ This guide defines conventions for all Popoto documentation. Follow these patter
 Use these models across all documentation pages unless a feature specifically requires a different model. Consistent examples help readers build familiarity.
 
 ```python
-from popoto import Model, KeyField, Field, SortedField
+from popoto import Model, KeyField, Field, SortedField, GeoField, AutoKeyField, UniqueKeyField
+from popoto import Relationship, DatetimeField
 
-class Person(Model):
+class Restaurant(Model):
     name = KeyField()
-    email = Field()
-    age = SortedField(type=int)
-```
+    cuisine = Field(type=str)
+    rating = SortedField(type=float)
+    location = GeoField()
+    active = Field(type=bool, default=True)
 
-```python
-from popoto import Model, KeyField, Field
-from popoto.fields.relationship import Relationship
+class MenuItem(Model):
+    item_id = AutoKeyField()
+    name = Field(type=str)
+    price = SortedField(type=float)
+    restaurant = Relationship(Restaurant)
+    available = Field(type=bool, default=True)
 
-class Note(Model):
-    title = KeyField()
-    content = Field(type=str)
-    author = Relationship(Person)
+class Customer(Model):
+    username = KeyField()
+    email = UniqueKeyField()
+    name = Field(type=str)
+    address = GeoField()
+
+class Driver(Model):
+    driver_id = AutoKeyField()
+    name = Field(type=str)
+    phone = UniqueKeyField()
+    rating = SortedField(type=float)
+    location = GeoField()
+    active = Field(type=bool, default=True)
+
+class Order(Model):
+    order_id = AutoKeyField()
+    customer = Relationship(Customer)
+    restaurant = Relationship(Restaurant)
+    driver = Relationship(Driver, null=True)
+    total = SortedField(type=float)
+    status = Field(type=str, default="pending")
     created_at = DatetimeField(auto_now_add=True)
     updated_at = DatetimeField(auto_now=True)
+
+    class Meta:
+        order_by = "-created_at"
+        ttl = 2592000  # 30 days
 ```
 
-```python
-from popoto import Model, KeyField, GeoField
-
-class Place(Model):
-    name = KeyField()
-    coordinates = GeoField()
-```
-
-Only introduce a specialized model when the canonical ones cannot demonstrate the feature (e.g., `DataFrameField` examples).
+These five models cover all Popoto features: `KeyField`, `AutoKeyField`, `UniqueKeyField`, `SortedField`, `GeoField`, `DatetimeField`, `Relationship`, `Meta` with `order_by` and `ttl`. Only introduce a specialized model when the canonical ones cannot demonstrate the feature (e.g., `DataFrameField` examples).
 
 ## Tone and Voice
 
@@ -100,7 +118,7 @@ Where possible, make code blocks self-contained so a reader could copy-paste and
 
 ### Use Canonical Models
 
-Default to `Person`, `Note`, and `Place` for examples. Only create ad hoc models when the canonical ones cannot demonstrate the feature.
+Default to `Restaurant`, `MenuItem`, `Customer`, `Driver`, and `Order` for examples. Only create ad hoc models when the canonical ones cannot demonstrate the feature.
 
 ## Admonitions
 

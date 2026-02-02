@@ -13,18 +13,25 @@ compared to PostgreSQL and other traditional relational databases.
 Here's a complete example showing how to define a model, create an instance, and retrieve it.
 
 ```python
-from popoto import Model, KeyField, Field
+from popoto import Model, KeyField, Field, SortedField, GeoField
 
-class Person(Model):
+class Restaurant(Model):
     name = KeyField()
-    fav_color = Field()
+    cuisine = Field(type=str)
+    rating = SortedField(type=float)
+    location = GeoField()
 
-Person.create(name="Lalisa Manobal", fav_color="yellow")
+Restaurant.create(
+    name="Burger Palace",
+    cuisine="American",
+    rating=4.5,
+    location=(40.7128, -74.0060)
+)
 
-lisa = Person.query.get(name="Lalisa Manobal")
+restaurant = Restaurant.query.get(name="Burger Palace")
 
-print(f"{lisa.name} likes {lisa.fav_color}.")
-# => 'Lalisa Manobal likes yellow.'
+print(f"{restaurant.name} serves {restaurant.cuisine} food.")
+# => 'Burger Palace serves American food.'
 ```
 
 
@@ -65,16 +72,19 @@ Set `REDIS_URL` in your deployed environment. This is optional on local developm
 REDIS_URL = "redis://HOST[:PORT]/DATABASE[?password=PASSWORD]"
 ```
 
+See [Configuration](configuration.md) for full connection options.
+
 ### Define a Model
 
 Start by defining a model class. Models inherit from `popoto.Model` and define fields for the data you want to store.
 
 ```python
-from popoto import Model, KeyField, Field
+from popoto import Model, KeyField, Field, SortedField
 
-class Person(Model):
-    name = KeyField(max_length=100)
-    favorite_color = Field(null=True)
+class Restaurant(Model):
+    name = KeyField()
+    cuisine = Field(type=str)
+    rating = SortedField(type=float)
 ```
 
 See [Models and Fields](fields.md) for all Model and Field options.
@@ -86,12 +96,13 @@ See [Model Meta Options](meta.md) for configuration like default ordering and TT
 You can create instances by constructing the model and calling `save()`, or use the `create()` shortcut.
 
 ```python
-lisa = Person(name="Lalisa Manobal")
-lisa.favorite_color = "yellow"
-lisa.save()
+restaurant = Restaurant(name="Burger Palace")
+restaurant.cuisine = "American"
+restaurant.rating = 4.5
+restaurant.save()
 
 # single line command
-lisa = Person.create(name="Lalisa Manobal", favorite_color="yellow")
+restaurant = Restaurant.create(name="Burger Palace", cuisine="American", rating=4.5)
 ```
 
 ### Retrieve Instances
@@ -99,9 +110,9 @@ lisa = Person.create(name="Lalisa Manobal", favorite_color="yellow")
 Use the query interface to retrieve instances by their key fields.
 
 ```python
-lisa = Person.query.get(name="Lalisa Manobal")
-print(f"{lisa.name} likes {lisa.favorite_color}.")
-# => 'Lalisa Manobal likes yellow.'
+restaurant = Restaurant.query.get(name="Burger Palace")
+print(f"{restaurant.name} serves {restaurant.cuisine} food.")
+# => 'Burger Palace serves American food.'
 ```
 
 See [Making Queries](query.md) for all Query and Filter options.
@@ -111,7 +122,7 @@ See [Making Queries](query.md) for all Query and Filter options.
 Delete an instance by calling its `delete()` method.
 
 ```python
-lisa.delete()
+restaurant.delete()
 ```
 
 ### Async Operations
@@ -122,9 +133,11 @@ All operations have async counterparts for use in asyncio applications.
 import asyncio
 
 async def main():
-    lisa = await Person.async_create(name="Lalisa Manobal", favorite_color="yellow")
-    person = await Person.query.async_get(name="Lalisa Manobal")
-    await person.async_delete()
+    restaurant = await Restaurant.async_create(
+        name="Burger Palace", cuisine="American", rating=4.5
+    )
+    loaded = await Restaurant.query.async_get(name="Burger Palace")
+    await loaded.async_delete()
 
 asyncio.run(main())
 ```
@@ -133,7 +146,7 @@ See [Async Operations](async.md) for complete async API documentation and exampl
 
 ![](/static/popoto.png)
 
-Popoto gets its name from the [Māui dolphin](https://en.wikipedia.org/wiki/M%C4%81ui_dolphin) subspecies - the world's smallest dolphin subspecies.
+Popoto gets its name from the [Maui dolphin](https://en.wikipedia.org/wiki/M%C4%81ui_dolphin) subspecies - the world's smallest dolphin subspecies.
 Because dolphins are fast moving, agile, and work together in social groups. In the same way, Popoto wraps Redis and RedisGraph to make it easy to manage streaming timeseries data on a social graph.
 
 For help building applications with Python/Redis, contact [Tom Counsell](https://tomcounsell.com) on [LinkedIn.com/in/tomcounsell](https://linkedin.com/in/tomcounsell)

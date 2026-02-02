@@ -1,346 +1,455 @@
 # Async Operations
 
-Popoto provides async-native methods for all Model and Query operations, enabling seamless integration with asyncio-based applications like async web frameworks, job queues, and bot frameworks.
-
-## Overview
-
-All synchronous operations have async counterparts that run in a thread pool to avoid blocking the event loop. This means you can use Popoto in async applications without manually wrapping every call with `asyncio.to_thread()`.
+Food delivery apps handle many simultaneous requests: customers browsing menus, drivers
+updating locations, orders streaming in. Blocking on each Redis call wastes time your
+users do not have. Popoto provides async counterparts for every Model and Query method so
+you can serve all of these requests concurrently without blocking the event loop.
 
 ## Async Model Methods
 
+Every synchronous model operation has an `async_` prefixed equivalent. These methods
+behave identically to their sync counterparts but return awaitables, letting you use
+them inside `async def` functions.
+
 ### async_create()
 
-Create and save a new model instance asynchronously.
+Create and persist a new model instance in a single step.
 
 ```python
 import asyncio
-from popoto import Model, KeyField, Field
+from popoto import (
+    Model, KeyField, AutoKeyField, UniqueKeyField,
+    Field, SortedField, GeoField, Relationship, DatetimeField,
+)
 
-class Person(Model):
+class Restaurant(Model):
     name = KeyField()
-    favorite_color = Field()
+    cuisine = Field(type=str)
+    rating = SortedField(type=float)
+    location = GeoField()
+    active = Field(type=bool, default=True)
+
+class Customer(Model):
+    username = KeyField()
+    email = UniqueKeyField()
+    name = Field(type=str)
+    address = GeoField()
+
+class Driver(Model):
+    driver_id = AutoKeyField()
+    name = Field(type=str)
+    phone = UniqueKeyField()
+    rating = SortedField(type=float)
+    location = GeoField()
+    active = Field(type=bool, default=True)
+
+class Order(Model):
+    order_id = AutoKeyField()
+    customer = Relationship(Customer)
+    restaurant = Relationship(Restaurant)
+    driver = Relationship(Driver, null=True)
+    total = SortedField(type=float)
+    status = Field(type=str, default="pending")
+    created_at = DatetimeField(auto_now_add=True)
+    updated_at = DatetimeField(auto_now=True)
+
+    class Meta:
+        order_by = "-created_at"
+        ttl = 2592000  # 30 days
 
 async def main():
-    lisa = await Person.async_create(
-        name="Lalisa Manobal",
-        favorite_color="yellow"
+    restaurant = await Restaurant.async_create(
+        name="Siam Garden",
+        cuisine="Thai",
+        rating=4.7,
+        location=(40.748, -73.985),
     )
-    print(f"{lisa.name} likes {lisa.favorite_color}.")
+    print(restaurant.name)
+    # => "Siam Garden"
 
 asyncio.run(main())
 ```
 
 ### async_save()
 
-Save changes to an existing model instance asynchronously.
+Save changes to an existing instance. This is useful when you need to update fields
+after the initial creation.
 
 ```python
-async def update_person():
-    lisa = Person(name="Lalisa Manobal", favorite_color="yellow")
-    await lisa.async_save()
+async def update_restaurant():
+    restaurant = await Restaurant.async_create(
+        name="Bella Napoli",
+        cuisine="Italian",
+        rating=4.3,
+        location=(40.750, -73.990),
+    )
 
-    # Update a field
-    lisa.favorite_color = "pink"
-    await lisa.async_save()
+    # Received a new review, bump the rating
+    restaurant.rating = 4.5
+    await restaurant.async_save()
+
+    print(restaurant.rating)
+    # => 4.5
 ```
 
 ### async_delete()
 
-Delete a model instance asynchronously.
+Remove an instance and all of its associated indexes from Redis.
 
 ```python
-async def remove_person():
-    lisa = await Person.query.async_get(name="Lalisa Manobal")
-    result = await lisa.async_delete()
-    print(f"Deleted: {result}")  # => True if deleted
+async def close_restaurant():
+    restaurant = await Restaurant.query.async_get(name="Bella Napoli")
+    deleted = await restaurant.async_delete()
+    print(deleted)
+    # => True
 ```
 
 ### async_load()
 
-Load a model instance by its key fields asynchronously.
+Load a single instance by its key fields. Returns `None` if the object does not exist.
 
 ```python
-async def load_person():
-    lisa = await Person.async_load(name="Lalisa Manobal")
-    if lisa:
-        print(f"Found: {lisa.name}")
+async def load_restaurant():
+    restaurant = await Restaurant.async_load(name="Siam Garden")
+    if restaurant:
+        print(f"{restaurant.name} serves {restaurant.cuisine}")
+        # => "Siam Garden serves Thai"
 ```
+
+!!! note
+    `async_load()` performs a direct key lookup, making it the fastest way to retrieve
+    a single object when you already know the key values.
 
 ## Async Query Methods
 
+The `query` manager exposes async versions of every query method. Use them exactly as
+you would the synchronous API, but with `await`.
+
 ### async_get()
 
-Retrieve a single instance asynchronously.
+Retrieve a single instance by key fields or filtered criteria.
 
 ```python
-async def get_person():
-    lisa = await Person.query.async_get(name="Lalisa Manobal")
-    if lisa:
-        print(f"{lisa.name} likes {lisa.favorite_color}.")
+async def find_customer():
+    customer = await Customer.query.async_get(username="foodie42")
+    if customer:
+        print(customer.email)
 ```
 
 ### async_filter()
 
-Filter instances based on field values asynchronously.
+Return a list of instances matching the given criteria. Supports the same lookups as
+the synchronous `filter()` -- see [Making Queries](query.md) for the full list.
 
 ```python
-from datetime import datetime, timedelta
-from popoto import Model, KeyField, SortedField, GeoField
-
-class Person(Model):
-    name = KeyField()
-    level = SortedField(type=int)
-    last_active = SortedField(type=datetime)
-    location = GeoField()
-
-async def find_active_people():
-    yesterday = datetime.now() - timedelta(days=1)
-
-    active_people = await Person.query.async_filter(
-        level__gte=50,
-        last_active__gt=yesterday
-    )
-
-    print(f"Found {len(active_people)} active people")
+async def find_expensive_orders():
+    big_orders = await Order.query.async_filter(total__gte=50.0)
+    for order in big_orders:
+        print(f"Order {order.order_id}: ${order.total}")
 ```
 
 ### async_all()
 
-Retrieve all instances asynchronously.
+Retrieve every instance of a model.
 
 ```python
-async def get_all_people():
-    all_people = await Person.query.async_all()
-    print(f"Total people: {len(all_people)}")
+async def list_restaurants():
+    restaurants = await Restaurant.query.async_all()
+    print(f"Total restaurants: {len(restaurants)}")
 ```
+
+!!! warning
+    `async_all()` loads every instance into memory. For models with many records, prefer
+    `async_filter()` with appropriate constraints.
 
 ### async_count()
 
-Count instances matching filter criteria asynchronously.
+Count instances without loading full objects. Accepts the same filter arguments as
+`async_filter()`.
 
 ```python
-async def count_people():
-    total = await Person.query.async_count()
-    high_level = await Person.query.async_count(level__gte=50)
-
-    print(f"Total: {total}, High level: {high_level}")
+async def dashboard_stats():
+    total_orders = await Order.query.async_count()
+    big_orders = await Order.query.async_count(total__gte=50.0)
+    print(f"{big_orders} of {total_orders} orders are over $50")
 ```
 
 ### async_keys()
 
-Retrieve Redis keys for model instances asynchronously.
+Return a list of Redis keys matching the model, without deserializing objects.
 
 ```python
-async def list_keys():
-    keys = await Person.query.async_keys()
-    print(f"Redis keys: {keys}")
+async def audit_keys():
+    keys = await Order.query.async_keys()
+    print(f"Order keys in Redis: {len(keys)}")
 ```
 
 ## Concurrent Operations
 
-You can use `asyncio.gather()` to run multiple operations concurrently for improved performance.
+The real power of async shows up when you need to perform independent operations at the
+same time. Use `asyncio.gather()` to run them concurrently instead of sequentially.
+
+A customer opens the app and expects to see nearby restaurants and available drivers on
+the same screen. With sync code you would wait for one query, then the other. With
+async, both queries run at the same time.
 
 ```python
-async def concurrent_example():
-    # Create multiple instances concurrently
-    people = await asyncio.gather(
-        Person.async_create(name="Lisa", favorite_color="yellow"),
-        Person.async_create(name="Jennie", favorite_color="black"),
-        Person.async_create(name="Rosé", favorite_color="pink"),
-        Person.async_create(name="Jisoo", favorite_color="purple"),
+async def home_screen(customer_username: str):
+    customer = await Customer.async_load(username=customer_username)
+
+    nearby_restaurants, available_drivers = await asyncio.gather(
+        Restaurant.query.async_filter(
+            location=customer.address,
+            location_radius=10,
+            location_radius_unit='km',
+        ),
+        Driver.query.async_filter(
+            location=customer.address,
+            location_radius=5,
+            location_radius_unit='km',
+        ),
     )
 
-    print(f"Created {len(people)} people")
-
-    # Query concurrently
-    results = await asyncio.gather(
-        Person.query.async_count(),
-        Person.query.async_all(),
-        Person.query.async_filter(favorite_color="pink"),
-    )
-
-    count, all_people, pink_lovers = results
-    print(f"Count: {count}, Total: {len(all_people)}, Pink: {len(pink_lovers)}")
+    print(f"{len(nearby_restaurants)} restaurants nearby")
+    print(f"{len(available_drivers)} drivers available")
 ```
 
-## Integration with Async Frameworks
-
-### FastAPI Example
+You can also create several records at once without waiting for each one individually.
 
 ```python
-from fastapi import FastAPI
-from popoto import Model, KeyField, Field
+async def seed_restaurants():
+    restaurants = await asyncio.gather(
+        Restaurant.async_create(
+            name="Siam Garden", cuisine="Thai",
+            rating=4.7, location=(-73.985, 40.748),
+        ),
+        Restaurant.async_create(
+            name="Bella Napoli", cuisine="Italian",
+            rating=4.3, location=(-73.990, 40.750),
+        ),
+        Restaurant.async_create(
+            name="Tokyo Bowl", cuisine="Japanese",
+            rating=4.8, location=(40.752, -73.978),
+        ),
+    )
+    print(f"Created {len(restaurants)} restaurants")
+    # => "Created 3 restaurants"
+```
+
+!!! tip
+    `asyncio.gather()` is most beneficial when each individual operation involves
+    network latency. When talking to a remote Redis instance the time savings add up
+    quickly.
+
+## Framework Integration: FastAPI
+
+FastAPI is a natural fit because its route handlers are already async. Below is a
+minimal food delivery API with two endpoints.
+
+```python
+from fastapi import FastAPI, HTTPException
 
 app = FastAPI()
 
-class Person(Model):
-    name = KeyField()
-    favorite_color = Field()
-
-@app.post("/people/")
-async def create_person(name: str, favorite_color: str):
-    person = await Person.async_create(
-        name=name,
-        favorite_color=favorite_color
+@app.post("/orders")
+async def create_order(
+    customer_username: str,
+    restaurant_name: str,
+    total: float,
+):
+    customer, restaurant = await asyncio.gather(
+        Customer.async_load(username=customer_username),
+        Restaurant.async_load(name=restaurant_name),
     )
-    return {"name": person.name, "favorite_color": person.favorite_color}
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    if not restaurant:
+        raise HTTPException(status_code=404, detail="Restaurant not found")
 
-@app.get("/people/{name}")
-async def get_person(name: str):
-    person = await Person.query.async_get(name=name)
-    if not person:
-        return {"error": "Person not found"}
-    return {"name": person.name, "favorite_color": person.favorite_color}
+    order = await Order.async_create(
+        customer=customer,
+        restaurant=restaurant,
+        total=total,
+    )
+    return {
+        "order_id": order.order_id,
+        "status": order.status,
+        "total": order.total,
+    }
 
-@app.get("/people/")
-async def list_people():
-    people = await Person.query.async_all()
+@app.get("/restaurants/nearby")
+async def nearby_restaurants(lat: float, lon: float, radius_km: float = 5):
+    restaurants = await Restaurant.query.async_filter(
+        location=(lat, lon),
+        location_radius=radius_km,
+        location_radius_unit='km',
+    )
     return [
-        {"name": p.name, "favorite_color": p.favorite_color}
-        for p in people
+        {
+            "name": r.name,
+            "cuisine": r.cuisine,
+            "rating": r.rating,
+        }
+        for r in restaurants
     ]
 ```
 
-### Telethon Bot Example
+!!! note
+    Because Popoto's async methods are awaitable, FastAPI can handle many incoming
+    requests without any of them blocking on Redis I/O.
+
+## Framework Integration: Background Workers
+
+Long-running order processing tasks can run as async background workers. The pattern
+below polls for recent orders, assigns a driver, and updates the status.
 
 ```python
-from telethon import TelegramClient, events
-from popoto import Model, AutoKeyField, KeyField, Field
-
-class Message(Model):
-    message_id = AutoKeyField()
-    chat_id = KeyField()
-    text = Field()
-    sender = Field()
-
-client = TelegramClient('bot', api_id, api_hash)
-
-@client.on(events.NewMessage)
-async def handle_message(event):
-    # Save message asynchronously
-    await Message.async_create(
-        chat_id=str(event.chat_id),
-        text=event.text,
-        sender=event.sender.username
-    )
-
-    # Query recent messages
-    recent = await Message.query.async_filter(
-        chat_id=str(event.chat_id),
-        limit=10
-    )
-
-    await event.reply(f"Saved! Recent messages: {len(recent)}")
-
-client.start()
-client.run_until_disconnected()
-```
-
-### Job Queue Example
-
-```python
-from popoto import Model, AutoKeyField, KeyField, SortedField, Field
-
-class Job(Model):
-    job_id = AutoKeyField()
-    project_key = KeyField()
-    status = KeyField(default="pending")
-    priority = SortedField(type=int, sort_by="project_key")
-    created_at = SortedField(type=float, sort_by="project_key")
-    message_text = Field()
-
-async def enqueue_job(project: str, message: str, priority: int = 0):
-    """Add a new job to the queue."""
-    import time
-
-    job = await Job.async_create(
-        project_key=project,
-        status="pending",
-        priority=priority,
-        created_at=time.time(),
-        message_text=message
-    )
-    return job
-
-async def dequeue_job(project: str):
-    """Get the highest priority pending job."""
-    jobs = await Job.query.async_filter(
-        project_key=project,
-        status="pending",
-        order_by="-priority",  # Highest priority first
-        limit=1
-    )
-
-    if not jobs:
-        return None
-
-    job = jobs[0]
-    job.status = "running"
-    await job.async_save()
-    return job
-
-async def complete_job(job):
-    """Mark a job as complete and remove it."""
-    await job.async_delete()
-
-# Usage
-async def worker():
+async def order_processing_worker():
+    """Continuously process recent orders."""
     while True:
-        job = await dequeue_job("myproject")
-        if job:
-            print(f"Processing: {job.message_text}")
-            # Do work here
-            await complete_job(job)
-        else:
-            await asyncio.sleep(1)
+        recent_orders = await Order.query.async_filter(
+            total__gte=0.0,
+            limit=10,
+        )
+
+        for order in recent_orders:
+            driver = await find_nearest_driver(order)
+            if driver:
+                order.driver = driver
+                order.status = "assigned"
+                driver.active = False
+                await asyncio.gather(
+                    order.async_save(),
+                    driver.async_save(),
+                )
+                print(f"Order {order.order_id} assigned to {driver.name}")
+
+        await asyncio.sleep(2)
+
+async def find_nearest_driver(order):
+    """Find the closest active driver to the restaurant."""
+    restaurant = order.restaurant
+    if isinstance(restaurant, str):
+        restaurant = await Restaurant.async_load(name=restaurant)
+
+    drivers = await Driver.query.async_filter(
+        location=restaurant.location,
+        location_radius=10,
+        location_radius_unit='km',
+        order_by="-rating",
+        limit=1,
+    )
+    return drivers[0] if drivers else None
 ```
+
+!!! tip
+    In production you would run this worker alongside your web server using
+    `asyncio.create_task()` or a task runner like `arq` or `taskiq`.
 
 ## Implementation Details
 
 ### Thread Pool Execution
 
-All async methods use `asyncio.to_thread()` internally to run the synchronous Redis operations in a thread pool. This means:
+All async methods use `asyncio.to_thread()` internally to run the synchronous Redis
+operations in a thread pool. This approach provides three key properties:
 
-- **No event loop blocking** - Redis calls don't block the async event loop
-- **Automatic thread management** - Python's default executor handles threading
-- **Same behavior as sync** - All validation, error handling, and Redis operations work identically
+- **No event loop blocking** -- Redis calls execute in a worker thread so your event
+  loop stays free to handle other coroutines.
+- **Automatic thread management** -- Python's default thread pool executor handles
+  scheduling. You do not need to create or manage threads yourself.
+- **Identical behavior** -- Validation, serialization, error handling, and Redis
+  commands work exactly the same as the synchronous path.
 
-### Python Version Compatibility
+### Python 3.8+ Compatibility
 
-Async methods work with Python 3.8+. For Python 3.8, a compatibility shim is used since `asyncio.to_thread()` was added in Python 3.9.
+`asyncio.to_thread()` was introduced in Python 3.9. For Python 3.8, Popoto includes
+a compatibility shim that replicates the same behavior using
+`loop.run_in_executor()`. No code changes are needed on your end -- the correct
+implementation is selected automatically.
 
-### Performance Considerations
+## Performance Considerations
 
-- **Sub-millisecond operations**: Most Redis operations complete in under 1ms, making thread pool overhead negligible
-- **Concurrent operations**: Use `asyncio.gather()` to run multiple independent operations in parallel
-- **Batching with pipelines**: Pipeline support works the same way in async methods
+Async does not make individual Redis commands faster. It makes your **application**
+faster by letting other work proceed while waiting for Redis responses.
 
-### Future Optimization
+When async helps the most:
 
-The current implementation uses thread pools for simplicity and maintainability. A future optimization could use `redis.asyncio` for native async Redis operations, but benchmarking would be needed to justify the added complexity.
+- **Remote Redis instances** -- network round-trips of 1-5 ms benefit significantly
+  from concurrency. Three sequential 3 ms calls take 9 ms; with `gather()` they
+  complete in roughly 3 ms.
+- **High-concurrency web servers** -- frameworks like FastAPI can serve other requests
+  while one request awaits Redis.
+- **Fan-out queries** -- searching restaurants, drivers, and orders at the same time
+  (as shown in the concurrent operations section above).
+
+When async adds little benefit:
+
+- **Local Redis, single operation** -- a sub-millisecond `GET` on localhost is already
+  fast. The thread pool overhead is negligible but the async machinery does not speed
+  it up either.
+- **CPU-bound processing** -- if most time is spent computing rather than waiting on
+  I/O, async will not help. Consider `multiprocessing` instead.
+
+!!! tip
+    Profile before optimizing. If your Redis calls are already sub-millisecond on
+    localhost, switching from sync to async will not produce a noticeable improvement
+    for single operations. Focus on `gather()` for parallel queries first.
 
 ## Error Handling
 
-Async methods raise the same exceptions as their synchronous counterparts:
+Async methods raise the same exceptions as their synchronous equivalents. Wrap calls in
+standard `try`/`except` blocks.
 
 ```python
 from popoto.models.base import ModelException
 from popoto.models.query import QueryException
 
-async def safe_create():
+async def safe_order_create(customer_username, restaurant_name, total):
     try:
-        person = await Person.async_create(
-            name="",  # Empty name might violate constraints
-            favorite_color="blue"
+        customer = await Customer.async_load(username=customer_username)
+        restaurant = await Restaurant.async_load(name=restaurant_name)
+
+        order = await Order.async_create(
+            customer=customer,
+            restaurant=restaurant,
+            total=total,
         )
+        return order
+
     except ModelException as e:
         print(f"Model error: {e}")
+        return None
     except QueryException as e:
         print(f"Query error: {e}")
+        return None
 ```
+
+You can also handle errors inside `asyncio.gather()` by passing
+`return_exceptions=True`. This prevents one failure from cancelling sibling tasks.
+
+```python
+async def resilient_lookups():
+    results = await asyncio.gather(
+        Restaurant.async_load(name="Siam Garden"),
+        Restaurant.async_load(name="Nonexistent Place"),
+        return_exceptions=True,
+    )
+
+    for result in results:
+        if isinstance(result, Exception):
+            print(f"Lookup failed: {result}")
+        elif result is None:
+            print("Restaurant not found")
+        else:
+            print(f"Found: {result.name}")
+```
+
+!!! warning
+    When using `return_exceptions=True`, remember to check each result for exceptions
+    before accessing model attributes.
 
 ## See Also
 
-- [Models and Fields](fields.md) - Define your data models
-- [Making Queries](query.md) - Query patterns and filters
-- [Model Meta Options](meta.md) - Configure model behavior
+- [Models and Fields](fields.md) -- define your data models
+- [Making Queries](query.md) -- query patterns and filter lookups
+- [Model Meta Options](meta.md) -- configure `order_by`, `ttl`, and other model behavior
