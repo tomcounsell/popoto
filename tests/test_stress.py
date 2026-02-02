@@ -244,12 +244,10 @@ def test_bulk_unique_key_operations(performance_timer):
         results = list(UniqueItemModel.query.all())
         assert len(results) == 1000
 
-        # TODO: UniqueKeyField currently doesn't enforce uniqueness - this is a known bug
-        # See production hardening plan Phase 1 for the fix
-        # Once fixed, this should raise an exception:
-        # with pytest.raises(Exception):
-        #     duplicate = UniqueItemModel(key="key_duplicate", unique_code="UNIQUE0000")
-        #     duplicate.save()
+        # UniqueKeyField should reject duplicate values on different instances
+        with pytest.raises(Exception):
+            duplicate = UniqueItemModel(key="key_duplicate", unique_code="UNIQUE0000")
+            duplicate.save()
 
         # Delete first 500
         for i in range(500):
