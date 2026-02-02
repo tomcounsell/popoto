@@ -560,6 +560,31 @@ class Model(metaclass=ModelBase):
                 else:
                     raise ModelException(error_message)
 
+        # Check unique field constraints (individual fields with unique=True)
+        for field_name, field in self._meta.fields.items():
+            if not getattr(field, "unique", False):
+                continue
+            field_value = getattr(self, field_name)
+            if field_value is None:
+                continue
+            unique_set_key = DB_key(
+                field.get_special_use_field_db_key(self, field_name), field_value
+            )
+            existing_members = POPOTO_REDIS_DB.smembers(unique_set_key.redis_key)
+            own_key = self.db_key.redis_key
+            own_key_bytes = own_key.encode() if isinstance(own_key, str) else own_key
+            other_members = {m for m in existing_members if m != own_key_bytes}
+            if other_members:
+                error_message = (
+                    f"Unique constraint violated: {field_name}={field_value} "
+                    f"already exists on another instance"
+                )
+                if ignore_errors:
+                    logger.error(error_message)
+                    return False
+                else:
+                    raise ModelException(error_message)
+
         # run any necessary formatting on field data before saving
         for field_name, field in self._meta.fields.items():
             setattr(
