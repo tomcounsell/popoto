@@ -459,13 +459,66 @@ class Query:
         # return intersection of all the db keys sets, effectively &&-ing all filters
         return set.intersection(*db_keys_sets)
 
-    def filter(self, **kwargs) -> list:
+    def _evaluate_filter_args(self, args, kwargs) -> set:
+        """Evaluate filter arguments including Q objects and return matching keys.
+
+        This method handles both traditional kwargs filtering and Q object
+        expressions. When Q objects are present, they are combined with any
+        kwargs using AND logic.
+
+        Args:
+            args: Tuple of Q objects passed as positional arguments
+            kwargs: Dict of filter parameters and result modifiers
+
+        Returns:
+            Set of Redis keys matching all filter criteria.
+
+        Processing Logic:
+        ----------------
+        1. If no Q objects in args, delegate to filter_for_keys_set()
+        2. If Q objects present:
+           a. Evaluate each Q object to get its result set
+           b. If kwargs filters exist, evaluate them too
+           c. Intersect all result sets (AND logic between args)
+        """
+        from .q import Q, evaluate_q
+
+        # Extract result modifiers from kwargs
+        filter_kwargs = {
+            k: v for k, v in kwargs.items() if k not in {"limit", "order_by", "values"}
+        }
+
+        # Check for Q objects in args
+        q_objects = [arg for arg in args if isinstance(arg, Q)]
+
+        if not q_objects:
+            # No Q objects - use traditional filtering
+            return self.filter_for_keys_set(**kwargs)
+
+        # Evaluate Q objects
+        result_sets = []
+        all_keys = None  # Lazy-loaded for negation operations
+
+        for q_obj in q_objects:
+            result_sets.append(evaluate_q(self, q_obj, all_keys))
+
+        # If there are also kwargs filters, include them
+        if filter_kwargs:
+            kwargs_result = self.filter_for_keys_set(**kwargs)
+            result_sets.append(kwargs_result)
+
+        # Intersect all result sets (AND logic between multiple Q args and kwargs)
+        if not result_sets:
+            return set()
+        return set.intersection(*result_sets) if result_sets else set()
+
+    def filter(self, *args, **kwargs) -> list:
         """
         Query for Model instances matching the specified criteria.
 
         This is the primary query method for Popoto, providing Django-like filtering
         syntax with Redis-optimized execution. All filter parameters are AND-ed
-        together; OR queries require multiple calls combined in application code.
+        together by default. Use Q objects for OR logic and complex combinations.
 
         Filter Parameters:
         -----------------
@@ -486,6 +539,12 @@ class Query:
         - `field__lt=value` - Less than
         - `field__lte=value` - Less than or equal
 
+        **Q Objects (for complex logic):**
+        - `Q(field=value)` - Basic Q object (equivalent to kwargs)
+        - `Q(...) | Q(...)` - OR logic (union of results)
+        - `Q(...) & Q(...)` - AND logic (intersection of results)
+        - `~Q(...)` - NOT logic (exclusion)
+
         Result Modifiers:
         ----------------
         - `order_by="field"` - Sort ascending by field
@@ -495,6 +554,7 @@ class Query:
           instead of full Model instances (projection query, more efficient)
 
         Args:
+            *args: Q objects for complex query expressions
             **kwargs: Filter parameters and result modifiers as described above.
 
         Returns:
@@ -519,12 +579,20 @@ class Query:
                 status="active",
                 values=("email", "name")
             )  # Returns [{"email": "...", "name": "..."}, ...]
+
+            # OR logic with Q objects
+            users = User.query.filter(Q(status="active") | Q(type="premium"))
+
+            # Complex combinations
+            users = User.query.filter(
+                (Q(status="active") | Q(type="premium")) & Q(rating__gt=3.0)
+            )
         """
         # Reset geo distances for this query
         self._geo_distances = {}
         self._geo_distance_unit = None
 
-        db_keys_set = self.filter_for_keys_set(**kwargs)
+        db_keys_set = self._evaluate_filter_args(args, kwargs)
         if not len(db_keys_set):
             return []
 
