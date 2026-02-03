@@ -1375,3 +1375,240 @@ class Model(metaclass=ModelBase):
             Model instance or None if not found
         """
         return await to_thread(cls.load, db_key=db_key, **kwargs)
+
+    # Bulk operations
+
+    @classmethod
+    def bulk_create(cls, instances, batch_size: int = 1000):
+        """Create multiple instances efficiently using Redis pipeline.
+
+        Uses Redis pipelines to batch multiple save operations, significantly
+        reducing network round-trips compared to individual save() calls.
+        For very large datasets, operations are automatically batched to
+        prevent excessive memory usage.
+
+        Args:
+            instances: List of model instances to create. Each instance should
+                be a fully constructed Model object (not yet saved).
+            batch_size: Number of operations per pipeline execution (default 1000).
+                Lower values use less memory but require more round-trips.
+
+        Returns:
+            List of created instances (the same instances passed in, now saved).
+
+        Example:
+            restaurants = [
+                Restaurant(name="A", rating=4.0),
+                Restaurant(name="B", rating=4.5),
+                Restaurant(name="C", rating=3.8),
+            ]
+            created = Restaurant.bulk_create(restaurants)
+
+        Note:
+            All instances must be of the same Model class (the class on which
+            bulk_create is called). Validation runs on each instance during save.
+        """
+        if not instances:
+            return []
+
+        created = []
+        pipeline = POPOTO_REDIS_DB.pipeline()
+        count = 0
+
+        for instance in instances:
+            instance.save(pipeline=pipeline)
+            created.append(instance)
+            count += 1
+
+            if count >= batch_size:
+                pipeline.execute()
+                pipeline = POPOTO_REDIS_DB.pipeline()
+                count = 0
+
+        if count > 0:
+            pipeline.execute()
+
+        return created
+
+    @classmethod
+    def bulk_update(cls, queryset_or_instances, batch_size: int = 1000, **updates):
+        """Update multiple instances efficiently using Redis pipeline.
+
+        Applies field updates to all instances matching the queryset or in the
+        provided list. Uses Redis pipelines to batch operations for efficiency.
+
+        Args:
+            queryset_or_instances: Either a list of Model instances, or the result
+                of a query.filter() call (list of instances).
+            batch_size: Number of operations per pipeline execution (default 1000).
+            **updates: Field name/value pairs to update on each instance.
+                Must be valid field names defined on the Model.
+
+        Returns:
+            Number of updated instances.
+
+        Raises:
+            ModelException: If validation fails on any instance during update.
+
+        Example:
+            # Update from queryset
+            count = Restaurant.bulk_update(
+                Restaurant.query.filter(status="pending"),
+                status="active"
+            )
+
+            # Update from list
+            restaurants = [r1, r2, r3]
+            count = Restaurant.bulk_update(restaurants, is_featured=True)
+
+        Note:
+            Each instance is fully validated before saving. If an instance
+            fails validation, a ModelException is raised.
+        """
+        if not updates:
+            return 0
+
+        # Handle both queryset results (list) and plain lists
+        if hasattr(queryset_or_instances, "__iter__"):
+            instances = list(queryset_or_instances)
+        else:
+            instances = [queryset_or_instances]
+
+        if not instances:
+            return 0
+
+        pipeline = POPOTO_REDIS_DB.pipeline()
+        count = 0
+        updated_count = 0
+
+        for instance in instances:
+            # Apply updates to the instance
+            for field_name, value in updates.items():
+                setattr(instance, field_name, value)
+
+            instance.save(pipeline=pipeline)
+            updated_count += 1
+            count += 1
+
+            if count >= batch_size:
+                pipeline.execute()
+                pipeline = POPOTO_REDIS_DB.pipeline()
+                count = 0
+
+        if count > 0:
+            pipeline.execute()
+
+        return updated_count
+
+    @classmethod
+    def bulk_delete(cls, queryset_or_instances, batch_size: int = 1000):
+        """Delete multiple instances efficiently using Redis pipeline.
+
+        Removes all instances matching the queryset or in the provided list
+        from Redis. Uses pipelines for efficient batch deletion.
+
+        Args:
+            queryset_or_instances: Either a list of Model instances, or the result
+                of a query.filter() call (list of instances).
+            batch_size: Number of operations per pipeline execution (default 1000).
+
+        Returns:
+            Number of deleted instances.
+
+        Example:
+            # Delete from queryset
+            count = Restaurant.bulk_delete(
+                Restaurant.query.filter(status="inactive")
+            )
+
+            # Delete from list
+            old_restaurants = [r1, r2, r3]
+            count = Restaurant.bulk_delete(old_restaurants)
+
+        Note:
+            This method properly cleans up all associated indexes (sorted fields,
+            geo fields, unique constraints, etc.) by calling delete() on each
+            instance within the pipeline.
+        """
+        # Handle both queryset results (list) and plain lists
+        if hasattr(queryset_or_instances, "__iter__"):
+            instances = list(queryset_or_instances)
+        else:
+            instances = [queryset_or_instances]
+
+        if not instances:
+            return 0
+
+        pipeline = POPOTO_REDIS_DB.pipeline()
+        count = 0
+        deleted_count = 0
+
+        for instance in instances:
+            instance.delete(pipeline=pipeline)
+            deleted_count += 1
+            count += 1
+
+            if count >= batch_size:
+                pipeline.execute()
+                pipeline = POPOTO_REDIS_DB.pipeline()
+                count = 0
+
+        if count > 0:
+            pipeline.execute()
+
+        return deleted_count
+
+    @classmethod
+    async def async_bulk_create(cls, instances, batch_size: int = 1000):
+        """Async version of bulk_create().
+
+        Creates multiple instances using Redis pipeline in a thread pool
+        to avoid blocking the event loop.
+
+        Args:
+            instances: List of model instances to create
+            batch_size: Number of operations per pipeline execution
+
+        Returns:
+            List of created instances
+        """
+        return await to_thread(cls.bulk_create, instances, batch_size=batch_size)
+
+    @classmethod
+    async def async_bulk_update(
+        cls, queryset_or_instances, batch_size: int = 1000, **updates
+    ):
+        """Async version of bulk_update().
+
+        Updates multiple instances using Redis pipeline in a thread pool
+        to avoid blocking the event loop.
+
+        Args:
+            queryset_or_instances: List of instances or queryset result
+            batch_size: Number of operations per pipeline execution
+            **updates: Field values to update
+
+        Returns:
+            Number of updated instances
+        """
+        return await to_thread(
+            cls.bulk_update, queryset_or_instances, batch_size=batch_size, **updates
+        )
+
+    @classmethod
+    async def async_bulk_delete(cls, queryset_or_instances, batch_size: int = 1000):
+        """Async version of bulk_delete().
+
+        Deletes multiple instances using Redis pipeline in a thread pool
+        to avoid blocking the event loop.
+
+        Args:
+            queryset_or_instances: List of instances or queryset result
+            batch_size: Number of operations per pipeline execution
+
+        Returns:
+            Number of deleted instances
+        """
+        return await to_thread(
+            cls.bulk_delete, queryset_or_instances, batch_size=batch_size
+        )
