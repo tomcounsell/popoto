@@ -1,7 +1,7 @@
 """
 Auto Field Mixin for Popoto Redis ORM.
 
-This module provides automatic UUID-based key generation for models that need
+This module provides automatic ID generation for models that need
 guaranteed uniqueness without requiring the developer to manage identifiers.
 
 Design Philosophy:
@@ -16,6 +16,20 @@ without requiring coordination (unlike auto-increment, which needs a central
 counter). This makes it ideal for distributed systems and eliminates a
 potential Redis bottleneck.
 
+ID Generation Strategies:
+-------------------------
+AutoFieldMixin supports multiple ID generation strategies:
+
+- uuid4 (default): Random UUID4 hex string, 32 characters. Not time-sortable
+  but provides excellent uniqueness without dependencies.
+
+- ulid: Universally Unique Lexicographically Sortable Identifier, 26 characters.
+  Time-sortable, making it ideal for chronological ordering. Requires the
+  ulid-py package: pip install ulid-py
+
+- ksuid: K-Sortable Unique Identifier, 27 characters. Similar to ULID but with
+  a different encoding. Requires the cyksuid package: pip install cyksuid
+
 Integration with Popoto's Field System:
 ---------------------------------------
 AutoFieldMixin is designed for multiple inheritance with Field via the
@@ -26,7 +40,7 @@ to create the full AutoKeyField:
         ...
 
 This layered approach allows each mixin to handle its specific concern:
-- AutoFieldMixin: UUID generation and validation
+- AutoFieldMixin: ID generation and validation
 - KeyFieldMixin: Index maintenance via Redis Sets
 - UniqueKeyField: Uniqueness constraints
 
@@ -39,19 +53,32 @@ developers to think about keys for simple use cases.
 
 Example::
 
-    # Explicit AutoKeyField
+    # Explicit AutoKeyField with default UUID4 strategy
     class Article(popoto.Model):
         uuid = popoto.AutoKeyField()
         title = popoto.Field()
+
+    # Time-sortable ULID strategy
+    class Order(popoto.Model):
+        id = popoto.AutoKeyField(strategy="ulid")
+        product = popoto.Field()
+
+    # K-Sortable ID strategy
+    class Event(popoto.Model):
+        id = popoto.AutoKeyField(strategy="ksuid")
+        name = popoto.Field()
 
     # Implicit _auto_key (added automatically since no KeyFields defined)
     class LogEntry(popoto.Model):
         message = popoto.Field()
         # _auto_key is silently added
 
-    # Both can be saved and retrieved:
+    # All can be saved and retrieved:
     article = Article.create(title="Hello")
     print(article.uuid)  # e.g., "a1b2c3d4e5f6..."
+
+    order = Order.create(product="Widget")
+    print(order.id)  # e.g., "01ARZ3NDEKTSV4RRFFQ69G5FAV"
 
     entry = LogEntry.create(message="Something happened")
     print(entry._auto_key)  # e.g., "f6e5d4c3b2a1..."
@@ -67,7 +94,7 @@ logger = logging.getLogger("POPOTO.field")
 
 class AutoFieldMixin:
     """
-    Mixin that provides automatic UUID-based value generation for key fields.
+    Mixin that provides automatic ID generation for key fields.
 
     This mixin adds auto-generation capabilities to any field, though it's
     typically used with KeyFieldMixin to create AutoKeyField. The auto-generated
@@ -81,15 +108,21 @@ class AutoFieldMixin:
     AND part of a compound key. This flexibility mirrors Django's field design
     while adapting to Redis's key-value paradigm.
 
-    Key Generation Strategy:
-    ------------------------
-    Uses UUID4 (random-based) rather than UUID1 (time-based) for several reasons:
+    ID Generation Strategies:
+    -------------------------
+    Supports multiple strategies via the `strategy` parameter:
 
-    1. No MAC address leakage (privacy)
-    2. No clock synchronization requirements (distributed-friendly)
-    3. Sufficient uniqueness for typical use cases (122 bits of randomness)
+    - "uuid4" (default): Random UUID4 hex string, 32 characters.
+      No MAC address leakage (privacy), no clock synchronization requirements
+      (distributed-friendly), and sufficient uniqueness (122 bits of randomness).
 
-    The default 32-character length uses the full UUID4 hex representation.
+    - "ulid": Universally Unique Lexicographically Sortable Identifier, 26 chars.
+      Time-sortable, ideal for chronological ordering. Requires ulid-py package.
+
+    - "ksuid": K-Sortable Unique Identifier, 27 characters.
+      Similar to ULID with different encoding. Requires cyksuid package.
+
+    The default 32-character length for UUID4 uses the full hex representation.
     Shorter lengths can be configured via `auto_uuid_length` for cases where
     collision probability is acceptable in exchange for shorter keys.
 
@@ -105,7 +138,9 @@ class AutoFieldMixin:
               Always True for this mixin; exists for field introspection.
         auto_uuid_length: Length of the generated UUID string (default 32).
                           Shorter values increase collision probability.
+                          Only applies to uuid4 strategy.
         auto_id: Deprecated/unused attribute for potential future use.
+        strategy: ID generation strategy ("uuid4", "ulid", or "ksuid").
     """
 
     # todo: add support for https://github.com/ai/nanoid
@@ -113,28 +148,52 @@ class AutoFieldMixin:
     auto: bool = True
     auto_uuid_length: int = 32
     auto_id: str = ""
+    strategy: str = "uuid4"
+
+    # Valid strategies and their expected ID lengths
+    STRATEGY_LENGTHS = {
+        "uuid4": 32,
+        "ulid": 26,
+        "ksuid": 27,
+    }
 
     def __init__(self, **kwargs):
         """
-        Initialize the auto-field mixin with UUID generation settings.
+        Initialize the auto-field mixin with ID generation settings.
 
         Follows Popoto's field initialization pattern: call super().__init__
         first to let other mixins in the MRO initialize, then merge this
         mixin's defaults into field_defaults and apply any kwargs overrides.
 
-        This ordering ensures that subclasses can override auto_uuid_length
-        or other settings through kwargs while maintaining sensible defaults.
+        This ordering ensures that subclasses can override auto_uuid_length,
+        strategy, or other settings through kwargs while maintaining sensible
+        defaults.
 
         Args:
             **kwargs: Field configuration options. Relevant options:
-                - auto_uuid_length: Override the UUID length (default 32)
+                - strategy: ID generation strategy ("uuid4", "ulid", "ksuid")
+                - auto_uuid_length: Override the UUID length (default 32,
+                    only applies to uuid4 strategy)
                 - auto: Override auto-generation (rarely needed)
+
+        Raises:
+            ValueError: If an invalid strategy is provided.
         """
         super().__init__(**kwargs)
+
+        # Validate strategy if provided
+        strategy = kwargs.get("strategy", "uuid4")
+        if strategy not in self.STRATEGY_LENGTHS:
+            raise ValueError(
+                f"Invalid strategy '{strategy}'. "
+                f"Valid strategies are: {', '.join(self.STRATEGY_LENGTHS.keys())}"
+            )
+
         autokeyfield_defaults = {
             "auto": True,
             "auto_uuid_length": 32,
             "auto_id": "",
+            "strategy": "uuid4",
         }
         self.field_defaults.update(autokeyfield_defaults)
         # set field options, let kwargs override
@@ -153,32 +212,75 @@ class AutoFieldMixin:
 
         Args:
             field: The Field instance being validated.
-            value: The value to validate (should be a UUID string or None).
+            value: The value to validate (should be an ID string or None).
             null_check: If True, null values will be checked against field.null.
             **kwargs: Additional validation context (passed to parent).
 
         Returns:
             True if valid, False otherwise. Logs an error on invalid length.
         """
-        if value and len(value) != field.auto_uuid_length:
-            logger.error(
-                f"auto key value is length {len(value)}. It should be {field.auto_uuid_length}"
+        if value:
+            # Get expected length based on strategy
+            expected_length = cls.STRATEGY_LENGTHS.get(
+                field.strategy, field.auto_uuid_length
             )
-            return False
+            # For uuid4 strategy, allow custom auto_uuid_length
+            if field.strategy == "uuid4":
+                expected_length = field.auto_uuid_length
+
+            if len(value) != expected_length:
+                logger.error(
+                    f"auto key value is length {len(value)}. "
+                    f"It should be {expected_length} for strategy '{field.strategy}'"
+                )
+                return False
         return super().is_valid(field, value, null_check=null_check, **kwargs)
 
     def get_new_auto_key_value(self):
         """
-        Generate a new UUID4-based identifier string.
+        Generate a new identifier string based on the configured strategy.
 
-        Uses uuid.uuid4().hex to get a lowercase hexadecimal string without
-        hyphens, then truncates to the configured length. The hex format
-        ensures URL-safe and Redis-key-safe characters.
+        Strategies:
+        - uuid4 (default): Uses uuid.uuid4().hex for a lowercase hexadecimal
+          string without hyphens, truncated to auto_uuid_length. URL-safe and
+          Redis-key-safe characters.
+        - ulid: Generates a ULID (Universally Unique Lexicographically Sortable
+          Identifier) using the ulid-py package. Time-sortable, 26 characters.
+        - ksuid: Generates a KSUID (K-Sortable Unique Identifier) using the
+          cyksuid package. Time-sortable, 27 characters.
 
         Returns:
-            A string of length `auto_uuid_length` containing hex characters.
+            A string identifier. Length depends on strategy:
+            - uuid4: `auto_uuid_length` (default 32)
+            - ulid: 26 characters
+            - ksuid: 27 characters
+
+        Raises:
+            ImportError: If ulid or ksuid strategy is used but the required
+                package is not installed.
         """
-        return uuid.uuid4().hex[: self.auto_uuid_length]
+        if self.strategy == "ulid":
+            try:
+                import ulid
+
+                return str(ulid.new())
+            except ImportError:
+                raise ImportError(
+                    "ulid-py package required for ULID strategy. "
+                    "Install with: pip install ulid-py"
+                )
+        elif self.strategy == "ksuid":
+            try:
+                from cyksuid.ksuid import ksuid
+
+                return str(ksuid())
+            except ImportError:
+                raise ImportError(
+                    "cyksuid package required for KSUID strategy. "
+                    "Install with: pip install cyksuid"
+                )
+        else:  # uuid4 (default)
+            return uuid.uuid4().hex[: self.auto_uuid_length]
 
     def set_auto_key_value(self, force: bool = False):
         """

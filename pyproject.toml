@@ -29,6 +29,8 @@ dataframe = [
     "numpy>=1.23.1",
     "msgpack-numpy>=0.4.8",
 ]
+ulid = ["ulid-py>=1.1.0"]
+ksuid = ["cyksuid>=1.0.0"]
 dev = [
     "pytest>=7.1.2",
     "pytest-asyncio>=0.21.0",
