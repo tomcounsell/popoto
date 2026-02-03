@@ -695,6 +695,7 @@ class Query:
         order_by_attr_name: str = None,
         limit: int = None,
         values: tuple = None,
+        lazy: bool = True,
     ) -> list:
         """
         Batch-load multiple Model instances from Redis using pipelined commands.
@@ -804,7 +805,9 @@ class Query:
             )
 
         return [
-            decode_popoto_model_hashmap(model, redis_hash, fields_only=bool(values))
+            decode_popoto_model_hashmap(
+                model, redis_hash, fields_only=bool(values), lazy=lazy and not values
+            )
             for redis_hash in hashes_list
             if redis_hash
         ]

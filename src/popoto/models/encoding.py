@@ -258,7 +258,7 @@ def encode_popoto_model_obj(obj: "Model") -> dict:
 
 
 def decode_popoto_model_hashmap(
-    model_class: "Model", redis_hash: dict, fields_only=False
+    model_class: "Model", redis_hash: dict, fields_only=False, lazy=False
 ) -> "Model":
     """Decode a Redis hash into a model instance (or a raw fields dict).
 
@@ -273,6 +273,9 @@ def decode_popoto_model_hashmap(
                      Keys remain as bytes (not decoded to strings). Useful for
                      bulk operations where Model instantiation overhead is
                      unwanted, such as Query.values() projections.
+        lazy: If ``True``, defer field deserialization until access. Fields are
+              decoded on-demand when first accessed, reducing overhead for bulk
+              queries where only a subset of fields are used.
 
     Returns:
         A model instance, a dict (when *fields_only*), or ``None`` if the hash
@@ -297,14 +300,21 @@ def decode_popoto_model_hashmap(
         when accessed.
     """
     if len(redis_hash):
+        if fields_only:
+            model_attrs = {
+                key_b: decode_custom_types(msgpack.unpackb(value_b, strict_map_key=False))
+                for key_b, value_b in redis_hash.items()
+            }
+            return model_attrs
+
+        if lazy:
+            # Lazy loading: store raw bytes, decode on access
+            return _create_lazy_model(model_class, redis_hash)
+
         model_attrs = {
-            key_b.decode(ENCODING)
-            if not fields_only
-            else key_b: decode_custom_types(msgpack.unpackb(value_b, strict_map_key=False))
+            key_b.decode(ENCODING): decode_custom_types(msgpack.unpackb(value_b, strict_map_key=False))
             for key_b, value_b in redis_hash.items()
         }
-        if fields_only:
-            return model_attrs
 
         # Create the model instance
         model_instance = model_class(**model_attrs)
@@ -320,3 +330,53 @@ def decode_popoto_model_hashmap(
         return model_instance
 
     return None
+
+
+def _create_lazy_model(model_class: "Model", redis_hash: dict) -> "Model":
+    """Create a model instance with deferred field deserialization.
+
+    Uses object.__new__() to bypass the full __init__ process, then sets up
+    the instance for lazy field loading. Fields are decoded from msgpack
+    on first access via Model.__getattribute__.
+
+    Args:
+        model_class: The Model subclass to instantiate.
+        redis_hash: Raw Redis hash with msgpack-encoded values.
+
+    Returns:
+        A model instance with _lazy_fields containing raw bytes.
+    """
+    # Create instance without calling __init__
+    instance = object.__new__(model_class)
+
+    # Store raw msgpack bytes for lazy decoding
+    instance._lazy_fields = {
+        key_b.decode(ENCODING): value_b
+        for key_b, value_b in redis_hash.items()
+    }
+    instance._decoded_fields = {}
+
+    # Initialize essential Model attributes that would be set in __init__
+    instance._redis_key = None
+    instance._db_content = dict()
+    instance._saved_field_values = dict()
+    instance.obsolete_redis_key = None
+    instance._ttl = model_class._meta.ttl
+    instance._expire_at = None
+
+    return instance
+
+
+def decode_lazy_field(value_bytes: bytes):
+    """Decode a single msgpack-encoded field value.
+
+    Called by Model.__getattribute__ when accessing a lazily-loaded field
+    for the first time.
+
+    Args:
+        value_bytes: Raw msgpack bytes from Redis.
+
+    Returns:
+        The decoded Python value with custom types restored.
+    """
+    return decode_custom_types(msgpack.unpackb(value_bytes, strict_map_key=False))

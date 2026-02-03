@@ -498,3 +498,104 @@ if nearby_drivers:
 
 See [Models and Fields](fields.md#geofield) for more on defining GeoFields, and
 [Relationship Field](relationship.md) for linking drivers to orders.
+
+## Performance Best Practices
+
+Popoto is optimized for common query patterns, but understanding the underlying Redis operations
+helps you write efficient code. Here are the key patterns to follow.
+
+### Use `count()` Instead of `len(all())`
+
+The `count()` method uses Redis `SCARD` for O(1) cardinality checks when called without filters.
+This is approximately 186x faster than loading all objects just to count them.
+
+```python
+# Good: O(1) using Redis SCARD
+total = Restaurant.query.count()
+
+# Bad: Loads all objects into memory first
+total = len(Restaurant.query.all())
+```
+
+### Use `values()` for Partial Field Access
+
+When you only need a few fields, use the `values` parameter. This is 2-4x faster than loading
+full model instances because it uses `HMGET` instead of `HGETALL` and skips model instantiation.
+
+```python
+# Good: Only fetches name and rating fields
+data = Restaurant.query.all(values=("name", "rating"))
+# => [{"name": "Burger Palace", "rating": 4.5}, ...]
+
+# Better: If all fields are KeyFields, no Redis commands needed at all
+names = Restaurant.query.all(values=("name",))
+```
+
+When all requested fields are KeyFields, Popoto extracts values directly from the Redis key
+strings without any additional Redis commands.
+
+### Prefer Exact Match and `__in` Over Pattern Filters
+
+Exact match and `__in` lookups use Redis set operations (O(1) per value). Pattern filters
+like `__startswith`, `__endswith`, and `__contains` use Redis `SCAN` which iterates through
+keys.
+
+```python
+# Good: Uses Redis set lookup - O(1)
+Restaurant.query.filter(name="Burger Palace")
+
+# Good: Uses SUNION for efficient OR queries
+Restaurant.query.filter(name__in=["Burger Palace", "Sushi Zen"])
+
+# Slower: Scans all keys matching pattern
+Restaurant.query.filter(name__startswith="B")
+```
+
+### Use SortedField for Range Queries
+
+SortedField filters use Redis sorted sets with O(log N + M) time complexity where N is the
+index size and M is the result count. This is much faster than filtering in Python.
+
+```python
+# Good: Uses Redis ZRANGEBYSCORE - O(log N + M)
+MenuItem.query.filter(price__gte=5.0, price__lte=15.0)
+
+# Avoid: Would require loading all items and filtering in Python
+# (Popoto doesn't support this pattern, but the principle applies)
+```
+
+### Limit Results When Possible
+
+Apply `limit` to reduce the number of objects loaded from Redis. When combined with
+`order_by` on a KeyField, the limit is applied before loading objects.
+
+```python
+# Good: Only loads 10 objects
+top_10 = Restaurant.query.all(order_by="-rating", limit=10)
+```
+
+### Lazy Loading for Bulk Queries
+
+When iterating over query results, Popoto uses lazy deserialization by default. Field values
+are only decoded from msgpack when you access them. This significantly reduces overhead when
+you only use a subset of fields.
+
+```python
+# Only decodes 'name' and 'rating' fields, not 'location' or 'cuisine'
+for restaurant in Restaurant.query.all():
+    print(f"{restaurant.name}: {restaurant.rating}")
+```
+
+### Query Performance Summary
+
+| Operation | Redis Command | Time Complexity |
+|-----------|--------------|-----------------|
+| `count()` (no filters) | SCARD | O(1) |
+| `get(key=...)` | HGETALL | O(1) |
+| `filter(field=...)` | SMEMBERS | O(1) |
+| `filter(field__in=[...])` | SUNION | O(N) where N = total members |
+| `filter(field__startswith=...)` | SCAN | O(N) where N = total keys |
+| `filter(sorted__gte=...)` | ZRANGEBYSCORE | O(log N + M) |
+| `filter(geo=..., radius=...)` | GEORADIUS | O(N + log M) |
+| `all()` | SMEMBERS + pipeline HGETALL | O(N) |
+| `values(...)` on KeyFields only | No Redis call | O(1) |
