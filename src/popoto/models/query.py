@@ -380,7 +380,8 @@ class Query:
             {"limit", "order_by", "values"}
         )
         if not len(yet_employed_kwargs_set):
-            return set()
+            # No filter criteria - return all keys (same as all())
+            return set(self.keys())
 
         # todo: use redis.SINTER for keyfield exact match filters
 
