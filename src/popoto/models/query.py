@@ -106,26 +106,30 @@ class QueryBuilder:
         Iterating over a QueryBuilder or accessing len() will execute the query.
     """
 
-    def __init__(self, query: "Query", filters: dict = None):
+    def __init__(self, query: "Query", filters: dict = None, q_objects: list = None):
         """Initialize a QueryBuilder with a reference to the parent Query.
 
         Args:
             query: The Query instance this builder operates on
             filters: Initial filter parameters (optional)
+            q_objects: List of Q objects for complex query logic (optional)
         """
         self._query = query
         self._filters = filters.copy() if filters else {}
+        self._q_objects = list(q_objects) if q_objects else []
         self._limit_value = None
         self._order_by_value = None
         self._values_tuple = None
 
-    def filter(self, **kwargs) -> "QueryBuilder":
+    def filter(self, *args, **kwargs) -> "QueryBuilder":
         """Add filter criteria and return a new QueryBuilder.
 
         Creates a new QueryBuilder with merged filter parameters, allowing
-        multiple filter() calls to be chained.
+        multiple filter() calls to be chained. Supports Q objects for complex
+        query logic with OR/AND/NOT operators.
 
         Args:
+            *args: Q objects for complex query expressions
             **kwargs: Filter parameters to add to the query
 
         Returns:
@@ -133,10 +137,15 @@ class QueryBuilder:
 
         Example:
             query = Model.query.filter(status="active").filter(type="premium")
+            query = Model.query.filter(Q(status="active") | Q(type="premium"))
         """
-        # Create a new QueryBuilder with merged filters
-        new_builder = QueryBuilder(self._query, self._filters)
+        from .q import Q
+
+        # Create a new QueryBuilder with merged filters and Q objects
+        new_builder = QueryBuilder(self._query, self._filters, self._q_objects)
         new_builder._filters.update(kwargs)
+        # Add any new Q objects
+        new_builder._q_objects.extend([arg for arg in args if isinstance(arg, Q)])
         new_builder._limit_value = self._limit_value
         new_builder._order_by_value = self._order_by_value
         new_builder._values_tuple = self._values_tuple
@@ -203,7 +212,7 @@ class QueryBuilder:
             kwargs["order_by"] = self._order_by_value
         if self._values_tuple is not None:
             kwargs["values"] = self._values_tuple
-        return self._query._execute_filter(**kwargs)
+        return self._query._execute_filter(q_objects=self._q_objects, **kwargs)
 
     def count(self) -> int:
         """Count matching results without loading objects.
@@ -211,6 +220,9 @@ class QueryBuilder:
         Returns:
             Integer count of matching instances
         """
+        # For Q objects, we need to execute the full query and count
+        if self._q_objects:
+            return len(self.all())
         return self._query.count(**self._filters)
 
     def first(self) -> "Model":
@@ -651,13 +663,63 @@ class Query:
         # return intersection of all the db keys sets, effectively &&-ing all filters
         return set.intersection(*db_keys_sets)
 
-    def filter(self, **kwargs) -> "QueryBuilder":
+    def _evaluate_filter_args(self, q_objects: list, kwargs: dict) -> set:
+        """Evaluate filter arguments including Q objects and return matching keys.
+
+        This method handles both traditional kwargs filtering and Q object
+        expressions. When Q objects are present, they are combined with any
+        kwargs using AND logic.
+
+        Args:
+            q_objects: List of Q objects for complex query expressions
+            kwargs: Dict of filter parameters and result modifiers
+
+        Returns:
+            Set of Redis keys matching all filter criteria.
+
+        Processing Logic:
+        ----------------
+        1. If no Q objects, delegate to filter_for_keys_set()
+        2. If Q objects present:
+           a. Evaluate each Q object to get its result set
+           b. If kwargs filters exist, evaluate them too
+           c. Intersect all result sets (AND logic between args)
+        """
+        from .q import Q, evaluate_q
+
+        # Extract result modifiers from kwargs
+        filter_kwargs = {
+            k: v for k, v in kwargs.items() if k not in {"limit", "order_by", "values"}
+        }
+
+        if not q_objects:
+            # No Q objects - use traditional filtering
+            return self.filter_for_keys_set(**kwargs)
+
+        # Evaluate Q objects
+        result_sets = []
+        all_keys = None  # Lazy-loaded for negation operations
+
+        for q_obj in q_objects:
+            result_sets.append(evaluate_q(self, q_obj, all_keys))
+
+        # If there are also kwargs filters, include them
+        if filter_kwargs:
+            kwargs_result = self.filter_for_keys_set(**kwargs)
+            result_sets.append(kwargs_result)
+
+        # Intersect all result sets (AND logic between multiple Q args and kwargs)
+        if not result_sets:
+            return set()
+        return set.intersection(*result_sets) if result_sets else set()
+
+    def filter(self, *args, **kwargs) -> "QueryBuilder":
         """
         Query for Model instances matching the specified criteria.
 
         This is the primary query method for Popoto, providing Django-like filtering
         syntax with Redis-optimized execution. All filter parameters are AND-ed
-        together; OR queries require multiple calls combined in application code.
+        together by default. Use Q objects for OR logic and complex combinations.
 
         Returns a QueryBuilder that supports method chaining. The QueryBuilder also
         behaves like a list for backward compatibility - you can iterate over it or
@@ -682,6 +744,12 @@ class Query:
         - `field__lt=value` - Less than
         - `field__lte=value` - Less than or equal
 
+        **Q Objects (for complex logic):**
+        - `Q(field=value)` - Basic Q object (equivalent to kwargs)
+        - `Q(...) | Q(...)` - OR logic (union of results)
+        - `Q(...) & Q(...)` - AND logic (intersection of results)
+        - `~Q(...)` - NOT logic (exclusion)
+
         Result Modifiers (kwargs API):
         -----------------------------
         - `order_by="field"` - Sort ascending by field
@@ -701,6 +769,7 @@ class Query:
         - `.count()` - Count matching results without loading objects
 
         Args:
+            *args: Q objects for complex query expressions
             **kwargs: Filter parameters and result modifiers as described above.
 
         Returns:
@@ -727,12 +796,25 @@ class Query:
 
             # Efficient projection - only load specific fields
             emails = User.query.filter(status="active").values("email", "name").all()
+
+            # OR logic with Q objects
+            users = User.query.filter(Q(status="active") | Q(type="premium"))
+
+            # Complex combinations
+            users = User.query.filter(
+                (Q(status="active") | Q(type="premium")) & Q(rating__gt=3.0)
+            )
         """
+        from .q import Q
+
+        # Extract Q objects from args
+        q_objects = [arg for arg in args if isinstance(arg, Q)]
+
         # Extract result modifiers from kwargs for the QueryBuilder
         filters = {
             k: v for k, v in kwargs.items() if k not in {"limit", "order_by", "values"}
         }
-        builder = QueryBuilder(self, filters)
+        builder = QueryBuilder(self, filters, q_objects)
 
         # Apply result modifiers if provided in kwargs (for backward compatibility)
         if "limit" in kwargs:
@@ -744,13 +826,14 @@ class Query:
 
         return builder
 
-    def _execute_filter(self, **kwargs) -> list:
+    def _execute_filter(self, q_objects: list = None, **kwargs) -> list:
         """Internal method to execute filter logic and return results.
 
         This is the actual filter execution, called by QueryBuilder.all() and
         the backward-compatible list operations on QueryBuilder.
 
         Args:
+            q_objects: List of Q objects for complex query expressions
             **kwargs: Filter parameters and result modifiers
 
         Returns:
@@ -760,7 +843,11 @@ class Query:
         self._geo_distances = {}
         self._geo_distance_unit = None
 
-        db_keys_set = self.filter_for_keys_set(**kwargs)
+        # Use _evaluate_filter_args if Q objects present, otherwise filter_for_keys_set
+        if q_objects:
+            db_keys_set = self._evaluate_filter_args(q_objects, kwargs)
+        else:
+            db_keys_set = self.filter_for_keys_set(**kwargs)
         if not len(db_keys_set):
             return []
 
