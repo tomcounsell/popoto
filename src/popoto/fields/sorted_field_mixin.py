@@ -516,6 +516,10 @@ class SortedFieldMixin:
             elif "__lt" in query_param:
                 inclusive = query_param.split("__lt")[1]
                 value_range["max"] = f"{'' if inclusive == 'e' else '('}{numeric_value}"
+            elif query_param == field_name:
+                # Exact match: set both min and max to the same value (inclusive)
+                value_range["min"] = f"{numeric_value}"
+                value_range["max"] = f"{numeric_value}"
             else:
                 pass  # this is just a mixin, another subclass may have valid query params
 

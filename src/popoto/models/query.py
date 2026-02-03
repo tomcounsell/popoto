@@ -336,6 +336,100 @@ class Query:
             **kwargs,
         )
 
+    def _filter_for_keys_set_with_expressions(self, *args, **kwargs) -> set:
+        """
+        Execute filter logic with support for Expression objects.
+
+        This method handles both traditional kwargs filtering and expression-based
+        filtering. It processes Expression and CombinedExpression objects passed
+        as positional arguments, converting them to kwargs or handling OR logic.
+
+        Args:
+            *args: Expression or CombinedExpression objects
+            **kwargs: Traditional filter parameters
+
+        Returns:
+            Set of Redis key strings (bytes) matching the filter criteria.
+        """
+        from .expressions import Expression, CombinedExpression
+
+        # Separate expressions from other args (shouldn't be any other args, but be safe)
+        expressions = [
+            arg for arg in args if isinstance(arg, (Expression, CombinedExpression))
+        ]
+
+        # Handle combined expressions with OR logic separately
+        or_result_sets = []
+        and_expressions = []
+
+        for expr in expressions:
+            if isinstance(expr, CombinedExpression):
+                # Process the combined expression tree
+                result = self._evaluate_combined_expression(expr)
+                if result is not None:
+                    or_result_sets.append(result)
+            elif isinstance(expr, Expression):
+                # Simple expressions are AND-ed together via kwargs
+                and_expressions.append(expr)
+
+        # Convert simple AND expressions to kwargs
+        for expr in and_expressions:
+            expr_kwargs = expr.to_kwargs()
+            kwargs.update(expr_kwargs)
+
+        # Get keys from kwargs filtering
+        kwargs_keys = self.filter_for_keys_set(**kwargs)
+
+        # Combine with OR expression results
+        if or_result_sets:
+            # Start with kwargs result (or all keys if no kwargs)
+            if kwargs_keys:
+                all_sets = [kwargs_keys] + or_result_sets
+            else:
+                all_sets = or_result_sets
+
+            # If we have both kwargs AND or_expressions, we need intersection
+            # If we only have or_expressions, we already have the union from evaluation
+            if kwargs_keys and or_result_sets:
+                return set.intersection(*all_sets)
+            elif or_result_sets:
+                # Just OR expressions, return their combined result
+                return (
+                    set.union(*or_result_sets)
+                    if len(or_result_sets) > 1
+                    else or_result_sets[0]
+                )
+
+        return kwargs_keys
+
+    def _evaluate_combined_expression(self, expr) -> set:
+        """
+        Recursively evaluate a CombinedExpression tree.
+
+        Args:
+            expr: A CombinedExpression or Expression object
+
+        Returns:
+            Set of matching Redis keys
+        """
+        from .expressions import Expression, CombinedExpression
+
+        if isinstance(expr, Expression):
+            # Evaluate single expression
+            return self.filter_for_keys_set(**expr.to_kwargs())
+
+        elif isinstance(expr, CombinedExpression):
+            # Recursively evaluate both sides
+            left_keys = self._evaluate_combined_expression(expr.left)
+            right_keys = self._evaluate_combined_expression(expr.right)
+
+            if expr.connector == "AND":
+                return left_keys & right_keys
+            else:  # OR
+                return left_keys | right_keys
+
+        return set()
+
     def filter_for_keys_set(self, **kwargs) -> set:
         """
         Execute filter logic and return matching Redis keys (without loading objects).
@@ -459,13 +553,14 @@ class Query:
         # return intersection of all the db keys sets, effectively &&-ing all filters
         return set.intersection(*db_keys_sets)
 
-    def filter(self, **kwargs) -> list:
+    def filter(self, *args, **kwargs) -> list:
         """
         Query for Model instances matching the specified criteria.
 
         This is the primary query method for Popoto, providing Django-like filtering
         syntax with Redis-optimized execution. All filter parameters are AND-ed
-        together; OR queries require multiple calls combined in application code.
+        together; OR queries require multiple calls combined in application code,
+        or by using the | operator with Expression objects.
 
         Filter Parameters:
         -----------------
@@ -486,6 +581,16 @@ class Query:
         - `field__lt=value` - Less than
         - `field__lte=value` - Less than or equal
 
+        **Expression-based syntax (alternative):**
+        - `Model.field == value` - Equality
+        - `Model.field != value` - Inequality
+        - `Model.field > value` - Greater than
+        - `Model.field >= value` - Greater than or equal
+        - `Model.field < value` - Less than
+        - `Model.field <= value` - Less than or equal
+        - Expressions can be combined: `(Model.a > 1) & (Model.b == "x")`
+        - OR is supported: `(Model.status == "active") | (Model.status == "pending")`
+
         Result Modifiers:
         ----------------
         - `order_by="field"` - Sort ascending by field
@@ -495,6 +600,7 @@ class Query:
           instead of full Model instances (projection query, more efficient)
 
         Args:
+            *args: Expression objects created from Field comparison operators
             **kwargs: Filter parameters and result modifiers as described above.
 
         Returns:
@@ -505,7 +611,7 @@ class Query:
             QueryException: If unknown filter parameters are provided.
 
         Example:
-            # Find active premium users created this year
+            # Keyword argument style
             users = User.query.filter(
                 status="active",
                 tier="premium",
@@ -514,17 +620,31 @@ class Query:
                 limit=50
             )
 
-            # Efficient projection - only load specific fields
-            emails = User.query.filter(
-                status="active",
-                values=("email", "name")
-            )  # Returns [{"email": "...", "name": "..."}, ...]
+            # Expression-based style
+            users = User.query.filter(
+                User.status == "active",
+                User.tier == "premium",
+                User.created_at >= datetime(2024, 1, 1),
+                order_by="-created_at",
+                limit=50
+            )
+
+            # Mixed style
+            users = User.query.filter(
+                User.rating > 4.0,
+                status="active"
+            )
+
+            # Combined expressions with OR
+            users = User.query.filter(
+                (User.status == "active") | (User.status == "pending")
+            )
         """
         # Reset geo distances for this query
         self._geo_distances = {}
         self._geo_distance_unit = None
 
-        db_keys_set = self.filter_for_keys_set(**kwargs)
+        db_keys_set = self._filter_for_keys_set_with_expressions(*args, **kwargs)
         if not len(db_keys_set):
             return []
 

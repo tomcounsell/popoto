@@ -204,6 +204,9 @@ class ModelOptions:
         else:
             raise ModelException(f"{field_name} is already a Field on the model")
 
+        # Set the field name for expression-based queries
+        field.name = field_name
+
         if isinstance(field, KeyFieldMixin):
             self.key_field_names.add(field_name)
         if isinstance(field, AutoFieldMixin):
@@ -367,7 +370,10 @@ class ModelBase(type):
                 # save field instance
                 # attr will be overwritten as a field.type
                 # model will handle this and set default values
+                obj.name = obj_name  # Set field name for expression-based queries
                 options.add_field(obj_name, obj)
+                # Keep Field as class attribute for expression queries (Model.field > value)
+                new_attrs[obj_name] = obj
 
             elif callable(obj) or hasattr(obj, "__func__") or hasattr(obj, "__set__"):
                 # a callable method or property

@@ -27,6 +27,7 @@ except ImportError:
 from .fields.datetime_field import DatetimeField
 from .fields.relationship import Relationship
 from .models.base import Model, ModelBase
+from .models.expressions import Expression, CombinedExpression
 from .pubsub.publisher import Publisher
 from .pubsub.subscriber import Subscriber
 
@@ -55,6 +56,8 @@ __all__ = [
     "Relationship",
     "Model",
     "ModelBase",
+    "Expression",
+    "CombinedExpression",
     "Publisher",
     "Subscriber",
 ]
