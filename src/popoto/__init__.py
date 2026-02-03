@@ -28,6 +28,7 @@ from .fields.datetime_field import DatetimeField
 from .fields.relationship import Relationship
 from .models.base import Model, ModelBase
 from .models.q import Q
+from .models.expressions import Expression, CombinedExpression
 from .pubsub.publisher import Publisher
 from .pubsub.subscriber import Subscriber
 
@@ -57,6 +58,8 @@ __all__ = [
     "Model",
     "ModelBase",
     "Q",
+    "Expression",
+    "CombinedExpression",
     "Publisher",
     "Subscriber",
 ]

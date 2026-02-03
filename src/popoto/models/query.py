@@ -125,11 +125,11 @@ class QueryBuilder:
         """Add filter criteria and return a new QueryBuilder.
 
         Creates a new QueryBuilder with merged filter parameters, allowing
-        multiple filter() calls to be chained. Supports Q objects for complex
-        query logic with OR/AND/NOT operators.
+        multiple filter() calls to be chained. Supports Q objects and Expression
+        objects for complex query logic with OR/AND/NOT operators.
 
         Args:
-            *args: Q objects for complex query expressions
+            *args: Q objects or Expression objects for complex query expressions
             **kwargs: Filter parameters to add to the query
 
         Returns:
@@ -138,14 +138,23 @@ class QueryBuilder:
         Example:
             query = Model.query.filter(status="active").filter(type="premium")
             query = Model.query.filter(Q(status="active") | Q(type="premium"))
+            query = Model.query.filter(Model.rating > 4.0)
         """
         from .q import Q
+        from .expressions import Expression, CombinedExpression
 
         # Create a new QueryBuilder with merged filters and Q objects
         new_builder = QueryBuilder(self._query, self._filters, self._q_objects)
         new_builder._filters.update(kwargs)
-        # Add any new Q objects
-        new_builder._q_objects.extend([arg for arg in args if isinstance(arg, Q)])
+
+        # Process args - can be Q objects or Expression objects
+        for arg in args:
+            if isinstance(arg, Q):
+                new_builder._q_objects.append(arg)
+            elif isinstance(arg, (Expression, CombinedExpression)):
+                # Convert Expression to Q object
+                new_builder._q_objects.append(arg.to_q())
+
         new_builder._limit_value = self._limit_value
         new_builder._order_by_value = self._order_by_value
         new_builder._values_tuple = self._values_tuple
@@ -806,9 +815,16 @@ class Query:
             )
         """
         from .q import Q
+        from .expressions import Expression, CombinedExpression
 
-        # Extract Q objects from args
-        q_objects = [arg for arg in args if isinstance(arg, Q)]
+        # Process args - can be Q objects or Expression objects
+        q_objects = []
+        for arg in args:
+            if isinstance(arg, Q):
+                q_objects.append(arg)
+            elif isinstance(arg, (Expression, CombinedExpression)):
+                # Convert Expression to Q object
+                q_objects.append(arg.to_q())
 
         # Extract result modifiers from kwargs for the QueryBuilder
         filters = {

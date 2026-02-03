@@ -223,6 +223,124 @@ class Field(metaclass=FieldBase):
         if self.__class__ == Field and self.type not in VALID_FIELD_TYPES:
             raise ModelException(f"{self.type} is not a valid Field type")
 
+    # -------------------------------------------------------------------------
+    # Comparison operators for expression-based queries
+    # -------------------------------------------------------------------------
+    # These methods enable Python comparison syntax on Field class attributes:
+    #   Model.query.filter(Model.price > 100)
+    # instead of:
+    #   Model.query.filter(price__gt=100)
+    #
+    # IMPORTANT: The `name` attribute is set by the Model metaclass when the
+    # field is assigned to a model class. These operators rely on `self.name`
+    # being available, which happens automatically for class-level Field access.
+    # -------------------------------------------------------------------------
+
+    def __eq__(self, value):
+        """Create an equality expression or perform normal Python equality check.
+
+        When comparing a Field to a non-Field value, creates an Expression for
+        query filtering. When comparing two Fields, falls back to Python's
+        normal object equality.
+
+        Args:
+            value: The value to compare against
+
+        Returns:
+            Expression if comparing to a non-Field value, bool otherwise
+
+        Example:
+            Model.status == "active"  # Returns Expression
+            field1 == field2          # Returns bool (normal Python equality)
+        """
+        if isinstance(value, Field):
+            return id(self) == id(value)  # Normal Python object equality
+        from ..models.expressions import Expression
+
+        return Expression(self.name, "__eq", value)
+
+    def __ne__(self, value):
+        """Create an inequality expression or perform normal Python inequality check.
+
+        Args:
+            value: The value to compare against
+
+        Returns:
+            Expression if comparing to a non-Field value, bool otherwise
+
+        Example:
+            Model.status != "inactive"  # Returns Expression
+        """
+        if isinstance(value, Field):
+            return id(self) != id(value)  # Normal Python object inequality
+        from ..models.expressions import Expression
+
+        return Expression(self.name, "__ne", value)
+
+    def __gt__(self, value):
+        """Create a greater-than expression for query filtering.
+
+        Args:
+            value: The value to compare against
+
+        Returns:
+            Expression representing field > value
+
+        Example:
+            Model.price > 100  # Returns Expression(price__gt=100)
+        """
+        from ..models.expressions import Expression
+
+        return Expression(self.name, "__gt", value)
+
+    def __lt__(self, value):
+        """Create a less-than expression for query filtering.
+
+        Args:
+            value: The value to compare against
+
+        Returns:
+            Expression representing field < value
+
+        Example:
+            Model.price < 50  # Returns Expression(price__lt=50)
+        """
+        from ..models.expressions import Expression
+
+        return Expression(self.name, "__lt", value)
+
+    def __ge__(self, value):
+        """Create a greater-than-or-equal expression for query filtering.
+
+        Args:
+            value: The value to compare against
+
+        Returns:
+            Expression representing field >= value
+
+        Example:
+            Model.price >= 100  # Returns Expression(price__gte=100)
+        """
+        from ..models.expressions import Expression
+
+        return Expression(self.name, "__gte", value)
+
+    def __le__(self, value):
+        """Create a less-than-or-equal expression for query filtering.
+
+        Args:
+            value: The value to compare against
+
+        Returns:
+            Expression representing field <= value
+
+        Example:
+            Model.price <= 50  # Returns Expression(price__lte=50)
+        """
+        from ..models.expressions import Expression
+
+        return Expression(self.name, "__lte", value)
+
     @classmethod
     def is_valid(cls, field, value, null_check=True, **kwargs) -> bool:
         """
