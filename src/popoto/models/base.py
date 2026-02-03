@@ -795,35 +795,25 @@ class Model(metaclass=ModelBase):
             batch validation without exception handling complexity.
         """
 
-        for field_name in self._meta.field_names:
-            # type check the field values against their class specified type, unless null/None
+        # Check TTL/expire_at mutual exclusion (model-level, not per-field)
+        if self._ttl and self._expire_at:
+            raise ModelException("Can set either ttl and expire_at. Not both.")
 
-            if all(
-                [
-                    getattr(self, field_name) is not None,
-                    not isinstance(
-                        getattr(self, field_name), self._meta.fields[field_name].type
-                    ),
-                ]
-            ):
+        # Single pass over all fields with cached lookups
+        for field_name, field in self._meta.fields.items():
+            value = getattr(self, field_name)
+
+            # Type coercion: convert compatible types before validation
+            if value is not None and not isinstance(value, field.type):
                 try:
-                    if getattr(self, field_name) is not None:
-                        if self._meta.fields[field_name].type in VALID_FIELD_TYPES:
-                            setattr(
-                                self,
-                                field_name,
-                                self._meta.fields[field_name].type(
-                                    getattr(self, field_name)
-                                ),
-                            )
-                        else:
-                            pass  # do not force typing if custom type is defined
-                    if not isinstance(
-                        getattr(self, field_name), self._meta.fields[field_name].type
-                    ):
+                    if field.type in VALID_FIELD_TYPES:
+                        coerced = field.type(value)
+                        setattr(self, field_name, coerced)
+                        value = coerced
+                    if not isinstance(value, field.type):
                         raise TypeError(
-                            f"Expected {field_name} to be type {self._meta.fields[field_name].type}. "
-                            f"It is type {type(getattr(self, field_name))}"
+                            f"Expected {field_name} to be type {field.type}. "
+                            f"It is type {type(value)}"
                         )
                 except TypeError as e:
                     logger.error(
@@ -831,43 +821,11 @@ class Model(metaclass=ModelBase):
                     )
                     return False
 
-            # check non-nullable fields
-            if (
-                null_check
-                and self._meta.fields[field_name].null is False
-                and getattr(self, field_name) is None
-            ):
-                error = (
-                    f"{field_name} is None/null. "
-                    f"Set a value or set null=True on {self.__class__.__name__}.{field_name}"
-                )
-                logger.error(error)
+            # Field-level validation (handles null check, type check, max_length, etc.)
+            field_class = field.__class__
+            if not field_class.is_valid(field, value, null_check=null_check):
+                logger.error(f"Validation on [{field_name}] Field failed")
                 return False
-
-            # validate str max_length
-            if (
-                self._meta.fields[field_name].max_length is not None
-                and self._meta.fields[field_name].type == str
-                and getattr(self, field_name)
-                and len(getattr(self, field_name))
-                > self._meta.fields[field_name].max_length
-            ):
-                error = f"{field_name} is greater than max_length={self._meta.fields[field_name].max_length}"
-                logger.error(error)
-                return False
-
-            if self._ttl and self._expire_at:
-                raise ModelException("Can set either ttl and expire_at. Not both.")
-
-        for field_name, field_value in self.__dict__.items():
-            if field_name in self._meta.fields.keys():
-                field_class = self._meta.fields[field_name].__class__
-                if not field_class.is_valid(
-                    self._meta.fields[field_name], field_value, null_check=null_check
-                ):
-                    error = f"Validation on [{field_name}] Field failed"
-                    logger.error(error)
-                    return False
 
         return True
 
