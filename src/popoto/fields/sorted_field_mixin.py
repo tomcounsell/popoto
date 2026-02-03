@@ -1,3 +1,51 @@
+"""
+Sorted Field Mixin for Redis Sorted Set-backed range queries.
+
+This module provides the SortedFieldMixin class, which enables efficient range-based
+filtering on numeric and temporal fields by leveraging Redis Sorted Sets (ZSET).
+
+Design Philosophy:
+    Redis stores all data as strings, making range queries on numeric values
+    impossible without additional data structures. The SortedFieldMixin solves
+    this by maintaining a parallel Sorted Set index alongside each model instance.
+    When a model is saved, its Redis key is added to the Sorted Set with the field
+    value as the score, enabling O(log(N)) range queries via ZRANGEBYSCORE.
+
+Trade-offs:
+    - Storage: Each sorted field creates an additional Redis key per unique
+      partition (or one global key if no partitioning). This is a deliberate
+      trade-off of storage space for query performance.
+    - Consistency: The Sorted Set index must be updated on every save/delete.
+      This is handled automatically through the on_save() and on_delete() hooks.
+    - Null values: Currently not supported. A sorted field cannot be null because
+      Redis Sorted Sets require a numeric score. Future versions may support
+      nulls via a separate index set.
+
+Integration with Query System:
+    The Query class (models/query.py) prioritizes sorted field filters because
+    they typically return smaller result sets than key field filters. The
+    filter_query() method returns a set of Redis keys that can be intersected
+    with results from other field filters.
+
+Example:
+    class Product(Model):
+        name = KeyField()
+        price = SortedField(type=float)
+        category = KeyField()
+
+    # Range query - uses ZRANGEBYSCORE under the hood
+    Product.query.filter(price__gte=10.0, price__lte=50.0)
+
+    # With partitioning for better performance on large datasets
+    class Product(Model):
+        name = KeyField()
+        price = SortedField(type=float, sort_by='category')
+        category = KeyField()
+
+    # Query must include partition field
+    Product.query.filter(category='electronics', price__lte=100.0)
+"""
+
 import logging
 from decimal import Decimal
 import datetime
@@ -13,13 +61,49 @@ logger = logging.getLogger("POPOTO.SortedFieldMixin")
 
 class SortedFieldMixin:
     """
-    The SortedField enables fast queries for ordering or filter by value range.
-    Examples:
-        Toys.query.filter(price__lte=4.99)
-        DairyProduct.query.filter(best_before_date__gte=datetime.now())
-    Requirements:
-        Must be numeric type (int, float, Decimal, date, datetime)
-        Null values not allowed. Can set a default.
+    Mixin that adds Redis Sorted Set indexing to enable range-based queries.
+
+    This mixin transforms a regular Field into one that supports Django-style
+    range lookups (__gt, __gte, __lt, __lte) by maintaining a Redis Sorted Set
+    index. The design follows the mixin pattern so it can be combined with
+    other field behaviors (e.g., SortedKeyField combines sorting with key field
+    identity).
+
+    Why a Mixin:
+        Popoto uses composition over inheritance for field capabilities. This
+        allows creating field types like SortedKeyField that combines range
+        query support with key field identity, without complex inheritance
+        hierarchies.
+
+    Partitioning via sort_by:
+        For large datasets, a single global Sorted Set becomes a bottleneck.
+        The sort_by parameter partitions the index by one or more key fields,
+        creating separate Sorted Sets per partition. For example, sorting
+        products by price within each category creates one Sorted Set per
+        category rather than one global set.
+
+    Supported Types:
+        - int, float: Used directly as Redis scores
+        - Decimal: Converted to float (some precision loss possible)
+        - datetime: Converted to Unix timestamp
+        - date: Converted to ordinal (days since year 1)
+        - time: Converted to timestamp
+
+    Attributes:
+        type: The Python type for this field (must be numeric or temporal).
+        null: Must be False; sorted fields cannot be null.
+        default: Default value when none provided.
+        sort_by: Tuple of field names to partition the sorted index by.
+
+    Example:
+        # Basic sorted field
+        price = SortedField(type=float)
+
+        # Partitioned by category for better scaling
+        price = SortedField(type=float, sort_by='category')
+
+        # Partitioned by multiple fields
+        timestamp = SortedField(type=datetime.datetime, sort_by=('exchange', 'symbol'))
     """
 
     type: type = float
@@ -28,6 +112,28 @@ class SortedFieldMixin:
     sort_by = tuple()
 
     def __init__(self, **kwargs):
+        """
+        Initialize the sorted field mixin with sorting configuration.
+
+        This constructor follows Popoto's field initialization pattern where
+        each mixin updates the shared field_defaults dict and then applies
+        kwargs overrides. The super().__init__() call ensures proper MRO
+        (Method Resolution Order) traversal through all mixins.
+
+        The sort_by parameter accepts either a single field name string or a
+        tuple of field names for multi-field partitioning. Single strings are
+        automatically converted to tuples for consistent internal handling.
+
+        Args:
+            **kwargs: Field configuration options including:
+                - type: Python type (int, float, Decimal, datetime, date, time)
+                - default: Default value (None by default; cannot default datetime)
+                - sort_by: Field name(s) to partition the sorted index
+
+        Raises:
+            ModelException: If sort_by is not a string or tuple, or if null=True
+                is attempted (not yet supported).
+        """
         super().__init__()
         sortedfield_defaults = {
             "type": float,
@@ -58,6 +164,26 @@ class SortedFieldMixin:
             # todo: how to filter by null value? use extra index set just for nulls?
 
     def get_filter_query_params(self, field_name) -> set:
+        """
+        Register the Django-style lookup parameters this field supports.
+
+        This method is called during model class construction to build a
+        registry of valid query parameters. The Query class uses this registry
+        to validate filter() arguments and route them to the appropriate
+        field's filter_query() method.
+
+        The sorted field mixin adds range comparison operators following
+        Django's double-underscore convention. The exact match parameter
+        (field_name without suffix) is also included for equality filtering.
+
+        Args:
+            field_name: The attribute name of this field on the model.
+
+        Returns:
+            A set of valid query parameter strings that can be passed to
+            Model.query.filter(). Includes parameters from parent classes
+            via super() to support mixin composition.
+        """
         return (
             super()
             .get_filter_query_params(field_name)
@@ -76,6 +202,23 @@ class SortedFieldMixin:
 
     @classmethod
     def is_valid(cls, field, value, null_check=True, **kwargs) -> bool:
+        """
+        Validate that the value is compatible with sorted set storage.
+
+        Extends the base Field validation to ensure the value matches the
+        declared type. This is important because the value will be converted
+        to a numeric score for Redis storage, and type mismatches could
+        cause conversion errors or incorrect sorting behavior.
+
+        Args:
+            field: The Field instance being validated.
+            value: The value to validate.
+            null_check: Whether to enforce null constraints.
+            **kwargs: Additional validation context.
+
+        Returns:
+            True if the value is valid for this sorted field, False otherwise.
+        """
         if not super().is_valid(field, value, null_check):
             return False
         if value and not isinstance(value, field.type):
@@ -83,6 +226,23 @@ class SortedFieldMixin:
         return True
 
     def format_value_pre_save(self, field_value):
+        """
+        Normalize the field value before saving to the model's Redis hash.
+
+        This method handles the value stored in the model's primary hash
+        (the actual model data), not the sorted set index. Native numeric
+        and temporal types are preserved as-is for msgpack serialization,
+        while other types (like Decimal) are converted to float.
+
+        Note that this is separate from convert_to_numeric(), which handles
+        the score conversion for the sorted set index.
+
+        Args:
+            field_value: The raw value to be saved.
+
+        Returns:
+            The normalized value suitable for msgpack serialization.
+        """
         if self.type in [int, float, datetime.datetime, datetime.date, datetime.time]:
             return field_value
         else:
@@ -90,6 +250,34 @@ class SortedFieldMixin:
 
     @classmethod
     def convert_to_numeric(cls, field, field_value):
+        """
+        Convert a field value to a numeric score for Redis Sorted Set storage.
+
+        Redis Sorted Sets require numeric scores for ordering. This method
+        provides the conversion strategy for each supported type, ensuring
+        that the natural ordering of the original type is preserved in the
+        numeric representation.
+
+        Conversion strategies:
+            - int/float: Used directly (no conversion needed)
+            - Decimal: Cast to float (may lose precision for very large values)
+            - date: Converted to ordinal (days since year 1), preserving day-level ordering
+            - datetime: Converted to Unix timestamp, preserving second-level ordering
+            - time: Converted to timestamp (note: may not behave as expected without a date)
+
+        This method is used both when saving (to compute the score) and when
+        filtering (to convert query values to comparable scores).
+
+        Args:
+            field: The Field instance containing type information.
+            field_value: The value to convert.
+
+        Returns:
+            A numeric value suitable for use as a Redis Sorted Set score.
+
+        Raises:
+            ValueError: If the value cannot be converted to a numeric score.
+        """
         if field.type in [int, float]:
             return field_value
         elif field.type is Decimal:
@@ -107,12 +295,54 @@ class SortedFieldMixin:
 
     @classmethod
     def get_sortedset_db_key(cls, model, field_name, *partition_field_names) -> DB_key:
+        """
+        Generate the Redis key for this field's Sorted Set index.
+
+        Each sorted field maintains a Redis Sorted Set that maps model instance
+        keys to their field values (as scores). This method constructs the key
+        for that Sorted Set, incorporating any partition field values.
+
+        Key structure:
+            $SortedF:{ModelName}:{field_name}:{partition_value1}:{partition_value2}:...
+
+        The $SortedF prefix identifies this as a sorted field index (following
+        Popoto's convention of prefixing special-purpose keys). Partition values
+        are appended to create separate sorted sets per partition.
+
+        Args:
+            model: The Model class or instance.
+            field_name: The name of the sorted field.
+            *partition_field_names: Values for partition fields (from sort_by).
+
+        Returns:
+            A DB_key instance representing the Redis key for the Sorted Set.
+        """
         return cls.get_special_use_field_db_key(
             model, field_name, *partition_field_names
         )
 
     @classmethod
     def get_partitioned_sortedset_db_key(cls, model_instance, field_name) -> DB_key:
+        """
+        Build the fully-qualified Sorted Set key including partition values.
+
+        This method reads the actual partition field values from a model instance
+        to construct the complete Sorted Set key. It is used during save/delete
+        operations where we have a concrete instance with all field values.
+
+        For queries (where we have filter parameters but not an instance), use
+        get_sortedset_db_key() with explicit partition values instead.
+
+        Args:
+            model_instance: A Model instance with populated field values.
+            field_name: The name of the sorted field.
+
+        Returns:
+            A DB_key for the partition-specific Sorted Set.
+
+        Raises:
+            QueryException: If a required partition field value is missing.
+        """
         sortedset_db_key = cls.get_sortedset_db_key(model_instance, field_name)
         # use field names and query values sort_by fields to extend sortedset_db_key
         for partition_field_name in model_instance._meta.fields[field_name].sort_by:
@@ -136,6 +366,33 @@ class SortedFieldMixin:
         pipeline: redis.client.Pipeline = None,
         **kwargs,
     ):
+        """
+        Update the Sorted Set index when a model instance is saved.
+
+        This hook is called by the Model.save() method for each field. For
+        sorted fields, it adds or updates the model's entry in the Sorted Set
+        index using ZADD. The model's Redis key becomes the member, and the
+        field value (converted to numeric) becomes the score.
+
+        Redis ZADD is idempotent for updates: if the member already exists,
+        its score is simply updated. This handles both create and update
+        operations without needing to check existence first.
+
+        Pipeline Support:
+            When a pipeline is provided, the ZADD command is queued for batch
+            execution. This is crucial for atomic saves where the model hash
+            and all indexes must be updated together.
+
+        Args:
+            model_instance: The Model instance being saved.
+            field_name: The name of this sorted field.
+            field_value: The value being saved (will be converted to score).
+            pipeline: Optional Redis pipeline for batch execution.
+            **kwargs: Additional context (unused but accepted for compatibility).
+
+        Returns:
+            The pipeline (if provided) or the ZADD result.
+        """
         sortedset_db_key = cls.get_partitioned_sortedset_db_key(
             model_instance, field_name
         )
@@ -163,6 +420,27 @@ class SortedFieldMixin:
         pipeline: redis.client.Pipeline = None,
         **kwargs,
     ):
+        """
+        Remove the model instance from the Sorted Set index when deleted.
+
+        This hook ensures index consistency when a model is deleted. It removes
+        the model's Redis key from the Sorted Set using ZREM. Without this
+        cleanup, deleted models would remain in the index as orphaned entries,
+        causing ghost results in range queries.
+
+        ZREM is safe to call even if the member doesn't exist (returns 0),
+        so this works correctly even if the index is somehow out of sync.
+
+        Args:
+            model_instance: The Model instance being deleted.
+            field_name: The name of this sorted field.
+            field_value: The current field value (used to find the right partition).
+            pipeline: Optional Redis pipeline for batch execution.
+            **kwargs: Additional context (unused but accepted for compatibility).
+
+        Returns:
+            The pipeline (if provided) or the ZREM result.
+        """
         sortedset_db_key = cls.get_partitioned_sortedset_db_key(
             model_instance, field_name
         )
@@ -176,10 +454,50 @@ class SortedFieldMixin:
     @classmethod
     def filter_query(cls, model_class: "Model", field_name: str, **query_params) -> set:
         """
-        :param model_class: the popoto.Model to query from
-        :param field_name: the name of the field being filtered on
-        :param query_params: dict of filter args and values
-        :return: set{db_key, db_key, ..}
+        Execute a range query against the Sorted Set index.
+
+        This is the core query method that translates Django-style filter
+        parameters into a Redis ZRANGEBYSCORE command. It returns a set of
+        Redis keys for model instances whose field values fall within the
+        specified range.
+
+        Query Parameter Parsing:
+            The method parses __gt, __gte, __lt, __lte suffixes to determine
+            the range bounds. Redis uses special syntax for exclusive bounds:
+            a leading '(' makes the bound exclusive. For example:
+            - price__gte=10 becomes min="10" (inclusive)
+            - price__gt=10 becomes min="(10" (exclusive)
+
+        Partition Handling:
+            For partitioned sorted fields (those with sort_by), the query
+            parameters MUST include values for all partition fields. This is
+            required because each partition has its own Sorted Set, and we
+            need to know which one to query.
+
+        Performance:
+            ZRANGEBYSCORE is O(log(N)+M) where N is the set size and M is the
+            number of results. For large datasets, partitioning via sort_by
+            reduces N significantly, improving query performance.
+
+        Args:
+            model_class: The Model class to query.
+            field_name: The name of the sorted field being filtered.
+            **query_params: Filter parameters (e.g., price__gte=10, price__lt=100).
+
+        Returns:
+            A set of Redis keys (as bytes) for matching model instances.
+            This set can be intersected with results from other field filters.
+
+        Raises:
+            QueryException: If a partitioned field is queried without providing
+                values for all partition fields.
+
+        Example:
+            # Direct call (usually called by Query.filter_for_keys_set)
+            keys = SortedFieldMixin.filter_query(
+                Product, 'price',
+                price__gte=10.0, price__lt=50.0, category='electronics'
+            )
         """
         value_range = {"min": "-inf", "max": "+inf"}
 
