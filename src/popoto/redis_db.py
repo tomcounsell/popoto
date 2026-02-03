@@ -126,6 +126,43 @@ def get_REDIS_DB():
     return POPOTO_REDIS_DB
 
 
+def scan_keys(pattern: str, count: int = 1000) -> list:
+    """Non-blocking replacement for KEYS using cursor-based SCAN.
+
+    The Redis KEYS command blocks the server while scanning the entire keyspace,
+    which can cause multi-second delays at scale (100K+ keys). SCAN iterates
+    incrementally using a cursor, allowing other operations to interleave.
+
+    Performance is similar to KEYS at small scale, but SCAN avoids blocking
+    the Redis server, making it safe for production use.
+
+    Args:
+        pattern: Glob-style pattern to match keys (e.g., "User:*", "*:active").
+        count: Hint for how many keys to return per iteration. Redis may return
+            more or fewer. Higher values reduce round-trips but increase per-call
+            latency. Default 1000 balances throughput and responsiveness.
+
+    Returns:
+        list: All keys matching the pattern. Unlike KEYS, results are collected
+            across multiple SCAN iterations before returning.
+
+    Example:
+        # Find all User model keys
+        user_keys = scan_keys("User:*")
+
+        # Find keys ending with a pattern
+        active_keys = scan_keys("*:active")
+    """
+    results = []
+    cursor = 0
+    while True:
+        cursor, keys = POPOTO_REDIS_DB.scan(cursor=cursor, match=pattern, count=count)
+        results.extend(keys)
+        if cursor == 0:
+            break
+    return results
+
+
 def print_redis_info() -> None:
     """Log Redis server info and memory usage to the POPOTO-REDIS_DB logger.
 

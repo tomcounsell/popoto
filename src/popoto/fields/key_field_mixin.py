@@ -64,7 +64,7 @@ logger = logging.getLogger("POPOTO.KeyFieldMixin")
 
 from ..exceptions import ModelException
 from ..models.query import QueryException
-from ..redis_db import POPOTO_REDIS_DB
+from ..redis_db import POPOTO_REDIS_DB, scan_keys
 
 # Key fields must be serializable to strings for Redis key construction.
 # Complex types like dict, list, and set are excluded because they don't
@@ -397,8 +397,6 @@ class KeyFieldMixin:
         num_keys_before = field_key_position
         num_keys_after = db_key_length - field_key_position - 1
 
-        pipeline = POPOTO_REDIS_DB.pipeline()
-
         def get_key_pattern(query_value_pattern):
             """Build a Redis KEYS pattern with the value at the correct position."""
             key_pattern = model._meta.db_class_key.redis_key + ":"
@@ -414,22 +412,24 @@ class KeyFieldMixin:
         for query_param, query_value in query_params.items():
 
             if query_param.endswith("__in"):
-                pipeline_2 = POPOTO_REDIS_DB.pipeline()
-                for query_value_elem in query_value:
-                    pipeline_2 = pipeline_2.smembers(
-                        DB_key(redis_set_key_prefix, query_value_elem).redis_key
+                # Use SUNION for efficient server-side set union (single command vs N SMEMBERS)
+                set_keys = [
+                    DB_key(redis_set_key_prefix, query_value_elem).redis_key
+                    for query_value_elem in query_value
+                ]
+                if set_keys:
+                    keys_lists_to_intersect.append(
+                        POPOTO_REDIS_DB.sunion(set_keys)
                     )
-                keys_lists_to_union = pipeline_2.execute()
-                keys_lists_to_intersect.append(
-                    set.union(*[set(key_list) for key_list in keys_lists_to_union])
-                )
+                else:
+                    keys_lists_to_intersect.append(set())
 
             else:
                 if query_param == f"{field_name}":
                     if model._meta.fields[field_name].auto:
-                        # todo: refactor or show warning or depricate ability
+                        # Auto fields use pattern scan since they don't maintain index sets
                         keys_lists_to_intersect.append(
-                            POPOTO_REDIS_DB.keys(get_key_pattern(query_value))
+                            scan_keys(get_key_pattern(query_value))
                         )
                     else:
                         keys_lists_to_intersect.append(
@@ -446,27 +446,25 @@ class KeyFieldMixin:
                             )
                         )
                     elif query_value is False:
-                        pipeline = pipeline.keys(
-                            get_key_pattern(f"[^None]")
-                        )  # todo: refactor
+                        # Use SCAN instead of KEYS to avoid blocking Redis
+                        keys_lists_to_intersect.append(
+                            scan_keys(get_key_pattern(f"[^None]"))
+                        )
                     else:
                         raise QueryException(
                             f"{query_param} filter must be True or False"
                         )
 
                 elif query_param.endswith("__startswith"):
-                    pipeline = pipeline.keys(
-                        get_key_pattern(f"{DB_key.clean(query_value)}*")
-                    )  # todo: refactor
+                    # Use SCAN instead of KEYS to avoid blocking Redis
+                    keys_lists_to_intersect.append(
+                        scan_keys(get_key_pattern(f"{DB_key.clean(query_value)}*"))
+                    )
                 elif query_param.endswith("__endswith"):
-                    pipeline = pipeline.keys(
-                        get_key_pattern(f"*{DB_key.clean(query_value)}")
-                    )  # todo: refactor
-
-            # todo: refactor to use HSCAN or sets, https://redis.io/commands/keys
-            # https://redis-py.readthedocs.io/en/stable/index.html#redis.Redis.hscan_iter
-
-        keys_lists_to_intersect += pipeline.execute()
+                    # Use SCAN instead of KEYS to avoid blocking Redis
+                    keys_lists_to_intersect.append(
+                        scan_keys(get_key_pattern(f"*{DB_key.clean(query_value)}"))
+                    )
         logger.debug(keys_lists_to_intersect)
         if len(keys_lists_to_intersect):
             return set.intersection(

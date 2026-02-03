@@ -1,7 +1,8 @@
 # Plan: Query Performance Improvements
 
-**Status**: PLANNED
+**Status**: COMPLETE
 **Created**: 2026-02-03
+**Completed**: 2026-02-03
 **Issue**: #84 (tracking), #77, #78
 
 ## Overview

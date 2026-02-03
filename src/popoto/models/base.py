@@ -43,7 +43,7 @@ import functools
 
 import redis
 
-from .encoding import encode_popoto_model_obj
+from .encoding import encode_popoto_model_obj, decode_lazy_field
 from .db_key import DB_key
 from .query import Query
 from ..fields.auto_field_mixin import AutoFieldMixin
@@ -705,6 +705,65 @@ class Model(metaclass=ModelBase):
             return False
         else:
             return False
+
+    def __getattribute__(self, name):
+        """Get attribute with lazy field loading support.
+
+        For lazily-loaded model instances (created via decode_popoto_model_hashmap
+        with lazy=True), field values are decoded from msgpack on first access.
+        This reduces deserialization overhead when only a subset of fields are used.
+
+        The lazy loading mechanism:
+            1. Check if instance has _lazy_fields (lazy-loaded from Redis)
+            2. If the field hasn't been decoded yet, decode and cache it
+            3. Return the cached decoded value
+
+        Args:
+            name: Attribute name to retrieve.
+
+        Returns:
+            The attribute value, decoded from msgpack if lazy-loaded.
+        """
+        # Use object.__getattribute__ to avoid recursion
+        try:
+            lazy_fields = object.__getattribute__(self, "_lazy_fields")
+        except AttributeError:
+            # Not a lazy instance, use normal attribute access
+            return object.__getattribute__(self, name)
+
+        # Check if this is a lazy field that needs decoding
+        if name in lazy_fields:
+            decoded_fields = object.__getattribute__(self, "_decoded_fields")
+            if name not in decoded_fields:
+                # Decode and cache the field value
+                decoded_fields[name] = decode_lazy_field(lazy_fields[name])
+            return decoded_fields[name]
+
+        # For non-field attributes or already decoded fields, use normal access
+        return object.__getattribute__(self, name)
+
+    def __setattr__(self, name, value):
+        """Set attribute with lazy field cache update.
+
+        When setting a field value on a lazy-loaded instance, update the
+        decoded fields cache to ensure consistency.
+
+        Args:
+            name: Attribute name to set.
+            value: Value to assign.
+        """
+        # Check if this is a lazy instance and we're setting a lazy field
+        try:
+            lazy_fields = object.__getattribute__(self, "_lazy_fields")
+            if name in lazy_fields:
+                decoded_fields = object.__getattribute__(self, "_decoded_fields")
+                decoded_fields[name] = value
+                return
+        except AttributeError:
+            pass
+
+        # Normal attribute setting
+        object.__setattr__(self, name, value)
 
     # @property
     # def field_names(self):
