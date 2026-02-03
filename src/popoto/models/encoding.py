@@ -1,3 +1,10 @@
+"""
+Serialization and deserialization of Popoto model instances using msgpack.
+
+Custom types (Decimal, tuple, set, datetime, date, time, DataFrame) are
+encoded with tagged dicts so they round-trip through msgpack faithfully.
+"""
+
 import datetime
 from collections import namedtuple
 from decimal import Decimal
@@ -76,6 +83,7 @@ DECODERS_BY_KEYSTRING = {
 
 
 def decode_custom_types(obj):
+    """Msgpack object-hook that restores tagged dicts to their Python types."""
     if isinstance(obj, dict) and "as_encodable" in obj:
         for keystring in DECODERS_BY_KEYSTRING.keys():
             if keystring in obj:
@@ -84,6 +92,11 @@ def decode_custom_types(obj):
 
 
 def encode_popoto_model_obj(obj: "Model") -> dict:
+    """Encode a model instance into a dict of ``{field_name_bytes: msgpack_bytes}``.
+
+    Relationship fields are stored as the related instance's ``redis_key``.
+    Custom types (Decimal, datetime, etc.) use tagged-dict encoding.
+    """
     try:
         import msgpack_numpy as m
 
@@ -121,9 +134,16 @@ def encode_popoto_model_obj(obj: "Model") -> dict:
 def decode_popoto_model_hashmap(
     model_class: "Model", redis_hash: dict, fields_only=False
 ) -> "Model":
-    """
-    fields_only=True return only the fields dict, not a model object
-    (also skips decoding of the field keys)
+    """Decode a Redis hash into a model instance (or a raw fields dict).
+
+    Args:
+        model_class: The Model subclass to instantiate.
+        redis_hash: Mapping of ``{field_name_bytes: msgpack_bytes}`` from Redis.
+        fields_only: If ``True``, return a plain dict instead of a model instance.
+
+    Returns:
+        A model instance, a dict (when *fields_only*), or ``None`` if the hash
+        is empty.
     """
     if len(redis_hash):
         model_attrs = {

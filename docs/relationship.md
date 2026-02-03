@@ -1,280 +1,321 @@
-# Relationships
+# Relationship Field
 
-The `Relationship` field creates references between model instances, similar to foreign keys in SQL databases. Unlike SQL, Redis does not support JOIN operations, so relationships in Popoto work differently — they store references (Redis keys) that are lazy-loaded when accessed.
-
-This page explains how to create, query, and traverse relationships. If your application requires complex relational queries with joins and aggregations, consider whether Redis is the right fit for your use case.
+The `Relationship` field creates references between model instances, similar
+to foreign keys in SQL databases. Unlike SQL, Redis has no JOIN operation.
+Popoto stores a reference (the related instance's Redis key) and lazy-loads
+the full object on access. This keeps writes fast and avoids loading data you
+never use, but multi-model queries work differently than in Django or
+SQLAlchemy.
 
 ## Basic Usage
 
-A `Relationship` field stores a reference to another model instance. The simplest relationship links one model to another.
+A `Relationship` field points from one model to another. In a food delivery
+system, a `MenuItem` belongs to a `Restaurant` and an `Order` references
+a `Customer`, a `Restaurant`, and optionally a `Driver`.
 
 ```python
-from popoto import Model, KeyField, Field
-from popoto.fields.relationship import Relationship
+from popoto import (
+    Model, KeyField, AutoKeyField, UniqueKeyField,
+    Field, SortedField, GeoField, Relationship, DatetimeField,
+)
 
-class Person(Model):
+class Restaurant(Model):
     name = KeyField()
-    email = Field()
+    cuisine = Field(type=str)
+    rating = SortedField(type=float)
+    location = GeoField()
 
-class Note(Model):
-    title = KeyField()
-    content = Field(type=str)
-    author = Relationship(Person)
+class MenuItem(Model):
+    item_id = AutoKeyField()
+    name = Field(type=str)
+    price = SortedField(type=float)
+    restaurant = Relationship(model=Restaurant)  # links to Restaurant
+    available = Field(type=bool, default=True)
+
+class Customer(Model):
+    username = KeyField()
+    email = UniqueKeyField()
+    name = Field(type=str)
+    address = GeoField()
+
+class Driver(Model):
+    driver_id = AutoKeyField()
+    name = Field(type=str)
+    phone = UniqueKeyField()
+    rating = SortedField(type=float)
+    location = GeoField()
+
+class Order(Model):
+    order_id = AutoKeyField()
+    customer = Relationship(model=Customer)
+    restaurant = Relationship(model=Restaurant)
+    driver = Relationship(model=Driver, null=True)  # nullable
+    total = SortedField(type=float)
+    status = Field(type=str, default="pending")
+    created_at = DatetimeField(auto_now_add=True)
+    updated_at = DatetimeField(auto_now=True)
+
+    class Meta:
+        order_by = "-created_at"
+        ttl = 2592000  # 30 days
 ```
 
-When you create a `Note`, you pass a `Person` instance to the `author` field.
+`MenuItem.restaurant` is a required relationship. `Order` has three: `customer`
+and `restaurant` are required, while `driver` is nullable because a driver is
+assigned only after the order is accepted.
+
+## Creating Related Instances
+
+Create the referenced model first, then pass it to the relationship field.
 
 ```python
-sally = Person.create(name="Sally", email="sally@example.com")
-note = Note.create(
-    title="Meeting Notes",
-    content="Discussed Q1 roadmap",
-    author=sally
+burger_palace = Restaurant.create(
+    name="Burger Palace", cuisine="American",
+    rating=4.5, location=(40.7128, -74.0060),
 )
 
-print(note.author.name)
-# => "Sally"
-```
-
-The `author` field now holds a reference to Sally. When you access `note.author`, Popoto loads the full `Person` instance from Redis.
-
-## How Relationships Differ from SQL
-
-In SQL databases, relationships use foreign keys and JOINs to combine data from multiple tables in a single query. Redis has no built-in JOIN operation, so Popoto uses a different approach:
-
-1. **Storage**: The relationship field stores the related model's Redis key (e.g., `"Person:Sally"`) as a string.
-2. **Loading**: When you access the field, Popoto fetches the related instance from Redis on demand.
-3. **Querying**: You can filter by related fields using double-underscore notation, but you cannot join models in a single query.
-
-This means querying relationships requires traversing references explicitly, often using list comprehensions or loops. If your application needs complex multi-table joins, SQL may be a better fit than Redis.
-
-## Creating Relationships
-
-Pass a model instance when creating or updating a relationship field.
-
-```python
-sally = Person.create(name="Sally", email="sally@example.com")
-note = Note.create(
-    title="Design Doc",
-    content="System architecture proposal",
-    author=sally
+classic_burger = MenuItem.create(
+    name="Classic Burger", price=12.99, restaurant=burger_palace,
 )
+
+print(classic_burger.restaurant.name)
+# => "Burger Palace"
 ```
 
-You can update relationships the same way.
+For an `Order`, pass multiple related instances at once.
 
 ```python
-tom = Person.create(name="Tom", email="tom@example.com")
-note.author = tom
-note.save()
+alice = Customer.create(username="alice", email="alice@example.com",
+                        name="Alice Chen", address=(40.7128, -74.0060))
 
-print(note.author.name)
-# => "Tom"
+order = Order.create(customer=alice, restaurant=burger_palace,
+                     total=25.98, status="pending")
+print(order.customer.name)
+# => "Alice Chen"
+print(order.restaurant.name)
+# => "Burger Palace"
+```
+
+You can reassign a relationship and call `save()` to update it.
+
+```python
+sushi_house = Restaurant.create(name="Sushi House", cuisine="Japanese",
+                                rating=4.8, location=(40.7580, -73.9855))
+classic_burger.restaurant = sushi_house
+classic_burger.save()
+print(classic_burger.restaurant.cuisine)
+# => "Japanese"
 ```
 
 ## Querying by Relationship
 
-You can filter models by their relationship fields in two ways: exact match or nested field access.
-
-### Exact Match
-
-Pass a model instance to filter for exact matches.
+Pass a model instance to filter for all objects that reference it.
 
 ```python
-sally = Person.query.get(name="Sally")
-sally_notes = Note.query.filter(author=sally)
+items = MenuItem.query.filter(restaurant=burger_palace)
+for item in items:
+    print(f"{item.name} - ${item.price}")
+# => "Classic Burger - $12.99"
 
-for note in sally_notes:
-    print(note.title)
-# => "Meeting Notes"
-# => "Design Doc"
+alice_orders = Order.query.filter(customer=alice)
+print(len(alice_orders))
+# => 1
 ```
 
-This returns all `Note` instances where `author` points to the `sally` instance.
+!!! note
+    The filter value must be a model instance, not a string or key value.
+    `Order.query.filter(customer=alice)` works, but
+    `Order.query.filter(customer="alice")` raises a `QueryException`.
 
-### Nested Field Access
+## Nested Field Access
 
 Use double-underscore notation to query by fields on the related model.
 
 ```python
-# Find notes where the author's name is "Sally"
-notes = Note.query.filter(author__name="Sally")
+orders = Order.query.filter(restaurant__name="Burger Palace")
+for order in orders:
+    print(f"Order {order.order_id}: ${order.total}")
+# => "Order ...: $25.98"
 
-# Combine with other filters
-notes = Note.query.filter(
-    author__name="Sally",
-    title="Meeting Notes"
+# Combine nested filters with other parameters
+big_orders = Order.query.filter(
+    restaurant__name="Burger Palace", total__gte=20.0,
 )
+print(len(big_orders))
+# => 1
 ```
 
-This queries the `Person` model's `name` field without loading the full `Person` instance first.
+See [Making Queries](query.md) for the full list of filter operators.
+
+!!! warning
+    Nested filters do not recurse through multiple relationship levels.
+    `Order.query.filter(restaurant__name="Burger Palace")` works because
+    `name` is a direct field on `Restaurant`. You cannot chain through
+    a second relationship.
 
 ## Traversing Relationships
 
-Because Redis does not support JOINs, you traverse relationships using list comprehensions or loops.
+Because Redis has no JOINs, you traverse relationships with Python loops.
 
 ```python
-# Get all authors who wrote notes with "roadmap" in the content
-authors = [
-    note.author
-    for note in Note.query.all()
-    if "roadmap" in note.content
-]
-
-for author in authors:
-    print(author.name)
-# => "Sally"
+alice = Customer.query.get(username="alice")
+alice_orders = Order.query.filter(customer=alice)
+restaurants = [order.restaurant for order in alice_orders]
+for r in restaurants:
+    print(r.name)
+# => "Burger Palace"
 ```
 
-This loads each `Note`, checks its content, and collects the related `Person` instances.
-
 !!! warning "N+1 Query Problem"
-    Accessing relationships in loops triggers one Redis call per access. This can cause performance issues with large datasets.
+    Each `order.restaurant` access triggers a separate Redis call. With 100
+    orders, that is 100 additional round trips on top of the initial query.
 
     ```python
-    # Anti-pattern: N Redis calls (1 for query + N for each author)
-    notes = Note.query.all()
-    for note in notes:
-        print(note.author.name)  # Each access = Redis GET
+    # Anti-pattern: 1 query + N lazy loads
+    for order in Order.query.all():
+        print(order.customer.name)   # Redis GET per iteration
+        print(order.restaurant.name) # Another Redis GET per iteration
     ```
 
-    If you need to load many related instances, consider whether your data model could denormalize some fields to reduce round trips.
+    For large result sets, consider denormalizing frequently accessed fields
+    (e.g., storing `restaurant_name` directly on `Order`).
 
 ## How Relationships Work Internally
 
-Understanding the internal mechanics helps you write efficient relationship queries and avoid common pitfalls.
+### Storage as Redis Key
 
-### Storage Strategy
-
-Relationships are **not** stored as full serialized model objects. Instead, Popoto stores the related model's Redis key as a string.
-
-```python
-sally = Person.create(name="Sally", email="sally@example.com")
-note = Note.create(title="Meeting Notes", content="...", author=sally)
-
-# Internally, Redis stores:
-# Note:Meeting Notes → { "author": "Person:Sally", ... }
-```
-
-When you access `note.author`, Popoto checks if the value is a string. If so, it performs a Redis GET to load the full `Person` instance and caches it in memory.
+Popoto stores the related instance's Redis key as a string, not the full
+serialized object. A `MenuItem` with `restaurant=burger_palace` stores
+`"Restaurant:Burger Palace"` in the Redis hash.
 
 ### Lazy Loading
 
-Related models are loaded only when accessed, not when the parent model is loaded.
+When you load a model, relationship fields initially hold the raw Redis key
+string. Popoto resolves it to a full instance only when you access the field.
 
 ```python
-note = Note.query.get(title="Meeting Notes")
-
-# At this point, `author` is still a string internally ("Person:Sally")
-# Accessing it triggers a Redis GET
-person = note.author  # Lazy-loaded here
-
-# Subsequent access uses the cached instance
-name = note.author.name  # No additional Redis call
+item = MenuItem.query.get(name="Fries")
+# item.restaurant is internally "Restaurant:Burger Palace"
+restaurant = item.restaurant  # triggers Redis HGETALL
+print(restaurant.cuisine)     # => "American"
+# Subsequent access uses the resolved instance -- no extra Redis call
 ```
 
-This lazy-loading prevents unnecessary Redis calls when you do not need the related data.
+### Relationship Index
 
-### Circular Reference Prevention
-
-Popoto handles circular references safely by tracking which models are currently being loaded.
-
-```python
-class Node(Model):
-    name = KeyField()
-    parent = Relationship(model='Node', null=True)
-
-root = Node.create(name="Root", parent=None)
-child = Node.create(name="Child", parent=root)
-
-# This works without infinite recursion
-print(child.parent.name)
-# => "Root"
-```
-
-The relationship system uses a global set (`RELATED_MODEL_LOAD_SEQUENCE`) to detect circular references and break the loop.
-
-### Relationship Index Maintenance
-
-Popoto maintains Redis sets to enable efficient relationship queries. For each relationship field, it creates an index set.
+Popoto maintains a Redis set for each relationship value so that
+`filter(restaurant=instance)` is an O(1) set lookup rather than a scan.
 
 ```
-# Example: Note with author=Person:Sally
-$RelationshipF:Note:author:Person:Sally → {Note:Meeting Notes, Note:Design Doc, ...}
+$RelationshipF:MenuItem:restaurant:Restaurant:Burger Palace
+  -> { MenuItem:<key1>, MenuItem:<key2>, ... }
 ```
 
-These indexes are automatically created on `save()`, updated when the relationship changes, and cleaned up on `delete()`.
+Indexes are created on `save()`, updated when the relationship changes,
+and cleaned up on `delete()`.
+
+### Circular Reference Protection
+
+Popoto tracks which instances are currently being deserialized. If it
+encounters a cycle, it leaves the relationship as a Redis key string
+instead of recursing infinitely.
 
 ## Null Relationships
 
-Relationships can be optional by setting `null=True`.
+An `Order` starts without a driver -- `None` until one is assigned.
 
 ```python
-class Note(Model):
-    title = KeyField()
-    content = Field(type=str)
-    author = Relationship(Person, null=True)
-
-# Valid - author can be None
-note = Note.create(title="Draft", content="...", author=None)
-
-print(note.author)
+order = Order.create(customer=alice, restaurant=burger_palace,
+                     total=15.50, status="pending")
+print(order.driver)
 # => None
+
+dave = Driver.create(name="Dave", phone="555-0199",
+                     rating=4.9, location=(40.7300, -73.9950))
+order.driver = dave
+order.status = "assigned"
+order.save()
+print(order.driver.name)
+# => "Dave"
 ```
 
-This is useful when a relationship may not always exist (e.g., a note without an assigned author).
+!!! tip
+    Always check for `None` before accessing attributes on a nullable
+    relationship to avoid `AttributeError`.
+
+    ```python
+    if order.driver is not None:
+        print(order.driver.name)
+    else:
+        print("No driver assigned yet")
+    ```
 
 ## Self-Referential Relationships
 
-A model can reference itself, such as a tree structure or linked list.
+A model can reference itself -- useful for combo meals that include other
+menu items.
 
 ```python
-class Node(Model):
-    name = KeyField()
-    parent = Relationship(model='Node', null=True)
+class MenuItem(Model):
+    item_id = AutoKeyField()
+    name = Field(type=str)
+    price = SortedField(type=float)
+    restaurant = Relationship(model=Restaurant)
+    combo_includes = Relationship(model='MenuItem', null=True)
 
-root = Node.create(name="Root", parent=None)
-child = Node.create(name="Child", parent=root)
-grandchild = Node.create(name="Grandchild", parent=child)
-
-print(grandchild.parent.parent.name)
-# => "Root"
+burger = MenuItem.create(name="Classic Burger", price=12.99,
+                         restaurant=burger_palace, combo_includes=None)
+combo = MenuItem.create(name="Burger Combo", price=14.99,
+                        restaurant=burger_palace, combo_includes=burger)
+print(combo.combo_includes.name)
+# => "Classic Burger"
 ```
 
-Use a string for the model name (`'Node'`) when the model is not yet defined. Set `null=True` for the root node.
+Use a string (`'MenuItem'`) when the class is not yet fully defined. Set
+`null=True` so non-combo items can leave the field empty.
 
 ## Best Practices
 
-Start your queries from the model that holds the relationship field. You cannot query in reverse unless you create a bidirectional relationship.
+### Query from the Model That Holds the Relationship
+
+You can only filter on a relationship from the model that declares it.
 
 ```python
-# Good: Query from Note (which has the author field)
-notes = Note.query.filter(author=sally)
-
-# Not possible: Person has no back-reference to Note
-# notes = Person.query.filter(notes=...)
+orders = Order.query.filter(customer=alice)       # Order has customer field
+# Customer.query.filter(orders=...) is NOT possible
 ```
 
-If you need reverse lookups frequently, add a relationship field in both directions.
+If you need reverse lookups, add a relationship field in both directions.
 
-```python
-class Person(Model):
-    name = KeyField()
-    notes = Field(type=list, default=list)  # Store Note keys
+### Denormalize for Frequent Access Patterns
 
-class Note(Model):
-    title = KeyField()
-    author = Relationship(Person)
-```
+When you repeatedly need a related field's value, store it directly on the
+model. For example, adding `restaurant_name` to `Order` avoids lazy-loading
+the `Restaurant` just to display its name.
 
-This denormalizes data but makes reverse queries efficient.
+!!! tip
+    Denormalization is a common Redis pattern. Duplicating a field is often
+    cheaper than chaining lookups, but you must keep it in sync manually.
 
-!!! tip "Denormalize for Complex Queries"
-    Redis excels at simple key-value lookups, not complex relational queries. If you need frequent multi-step traversals or aggregations, consider storing redundant data to reduce round trips.
+### No Cascade Delete
 
-    For example, if you often need to count a person's notes, store a `note_count` field on `Person` and increment it when creating or deleting notes.
+Deleting a model does **not** cascade to related instances. If you delete a
+`Restaurant`, any `MenuItem` or `Order` referencing it will hold a stale key.
 
-!!! note "No Cascade Delete"
-    Deleting a model does not cascade to related models. If you delete a `Person`, any `Note` instances still reference the deleted person's Redis key, which will raise an error when accessed.
+!!! warning
+    Always delete or reassign dependent instances before removing the
+    referenced model.
 
-    You must manually delete or update related instances before deleting the parent.
+    ```python
+    for item in MenuItem.query.filter(restaurant=burger_palace):
+        item.delete()
+    burger_palace.delete()
+    ```
+
+### Keep Relationship Depth Shallow
+
+Each relationship traversal costs a Redis round trip. Design your models so
+the most common access patterns require at most one or two hops.
+
+See [Making Queries](query.md) for filter operators and
+[Model Meta Options](meta.md) for `order_by` and `ttl` configuration.

@@ -9,9 +9,13 @@ from ..redis_db import POPOTO_REDIS_DB
 
 
 class GeoField(Field):
-    """
-    A field that stores geospatial coordinates and enables geospatial search
-    required: latitude, longitude
+    """A field that stores geospatial coordinates and enables radius search.
+
+    Values are ``GeoField.Coordinates(latitude, longitude)`` namedtuples
+    (plain tuples also accepted). Backed by a Redis GEO set.
+
+    Filter lookups: coordinates, ``_latitude``, ``_longitude``, ``_radius``,
+    ``_radius_unit`` (m/km/ft/mi), ``_member``, ``_with_distances``.
     """
 
     Coordinates = namedtuple("Coordinates", "latitude longitude")

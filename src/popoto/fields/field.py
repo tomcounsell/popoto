@@ -42,6 +42,19 @@ class FieldBase(type):
 
 
 class Field(metaclass=FieldBase):
+    """Base class for all Popoto model fields.
+
+    Defines the value type, nullability, default, and validation logic.
+    Specialized behaviors (key indexing, sorting, geo) are added via mixins
+    or subclasses.
+
+    Args:
+        type: Python type for the field value (default ``str``).
+        null: Allow ``None`` values (default ``True``).
+        default: Default value for new instances.
+        max_length: Maximum string length enforced on save (default 1024).
+    """
+
     type: type = str
     key: bool = False
     unique: bool = False

@@ -10,10 +10,18 @@ logger = logging.getLogger("POPOTO-publisher")
 
 
 class PublisherException(Exception):
+    """Raised when a publish operation fails (e.g. missing channel name)."""
+
     pass
 
 
 class Publisher(ABC):
+    """Abstract base class for publishing msgpack-encoded messages to Redis channels.
+
+    Subclass and call :meth:`publish` to send data.  The channel name defaults
+    to the class name but can be overridden via the constructor or per-call.
+    """
+
     _channel_name: str = ""
     _publish_data: dict = {}
 
@@ -35,6 +43,17 @@ class Publisher(ABC):
         channel_name: str = None,
         pipeline: redis.client.Pipeline = None,
     ):
+        """Publish *data* as msgpack to the given (or default) channel.
+
+        Args:
+            data: Dict payload to publish. Falls back to ``_publish_data``.
+            channel_name: Override the default channel for this call.
+            pipeline: Optional Redis pipeline for batching.
+
+        Returns:
+            The number of subscribers that received the message, or the
+            pipeline when batching.
+        """
         import msgpack_numpy as m
 
         m.patch()

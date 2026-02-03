@@ -34,6 +34,8 @@ RELATED_MODEL_LOAD_SEQUENCE = set()
 
 
 class ModelException(Exception):
+    """Raised when a model operation fails (validation, save, unique constraint, etc.)."""
+
     pass
 
 
@@ -43,6 +45,13 @@ INDEX_HASH_LENGTH = 16
 
 
 class ModelOptions:
+    """Metadata container for a Model class.
+
+    Tracks fields, key fields, sorted fields, geo fields, relationships,
+    indexes, TTL, and default ordering. Created automatically by
+    :class:`ModelBase` during class definition.
+    """
+
     def __init__(self, model_name):
         self.model_name = model_name
         self.db_class_key = DB_key(self.model_name)
@@ -264,6 +273,15 @@ class ModelBase(type):
 
 
 class Model(metaclass=ModelBase):
+    """Base class for all Popoto models.
+
+    Define public attributes as :class:`~popoto.Field` instances.  The model is
+    persisted as a Redis hash at the key ``ClassName:key1:key2:...``.
+
+    Class attributes:
+        query: A :class:`~popoto.models.query.Query` instance for this model.
+    """
+
     query: Query
 
     def __init__(self, **kwargs):
@@ -767,12 +785,14 @@ class Model(metaclass=ModelBase):
 
     @classmethod
     def create(cls, pipeline: redis.client.Pipeline = None, **kwargs):
+        """Create a new instance, save it to Redis, and return it."""
         instance = cls(**kwargs)
         pipeline_or_db_response = instance.save(pipeline=pipeline)
         return pipeline_or_db_response if pipeline else instance
 
     @classmethod
     def load(cls, db_key: str = None, **kwargs):
+        """Load an existing instance from Redis by *db_key* or field values."""
         return cls.query.get(db_key=db_key or cls(**kwargs).db_key)
 
     def delete(self, pipeline: redis.client.Pipeline = None, *args, **kwargs):
@@ -838,6 +858,7 @@ class Model(metaclass=ModelBase):
 
     @classmethod
     def get_info(cls):
+        """Return a dict with the model name, field names, and available query filters."""
         from itertools import chain
 
         query_filters = list(

@@ -5,13 +5,16 @@ site_author: Tom Counsell
 
 nav:
     - Home: 'index.md'
+    - Configuration: 'configuration.md'
     - Models and Fields: 'fields.md'
     - Model Meta Options: 'meta.md'
     - Making Queries: 'query.md'
-    - Async Operations: 'async.md'
     - Relationship Field: 'relationship.md'
+    - Async Operations: 'async.md'
     - PubSub: 'pubsub.md'
-    - Style Guide: 'STYLE_GUIDE.md'
+    - API Reference: 'api-reference.md'
+    - Contributing:
+        - Style Guide: 'STYLE_GUIDE.md'
     - Completed:
         - Meta Class Implementation: 'completed/meta-class-implementation.md'
 
