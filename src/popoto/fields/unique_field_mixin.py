@@ -45,6 +45,7 @@ Example Usage
     # This would fail validation due to duplicate email
     user2 = User(email="alice@example.com", username="bob")
 """
+
 import logging
 
 logger = logging.getLogger("POPOTO.KeyFieldMixin")

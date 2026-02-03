@@ -2,7 +2,9 @@
 Performance audit of validation logic in save() hot path.
 Run: python tests/profile_validation.py
 """
+
 import sys
+
 sys.path.insert(0, "src")
 
 import time
@@ -10,22 +12,25 @@ import statistics
 import popoto
 from popoto.redis_db import POPOTO_REDIS_DB
 
-
 # --- Models ---
+
 
 class SimpleModel(popoto.Model):
     """Minimal model - baseline."""
+
     key = popoto.KeyField()
 
 
 class UniqueModel(popoto.Model):
     """Model with unique field - tests SMEMBERS overhead."""
+
     id = popoto.AutoKeyField()
     email = popoto.UniqueKeyField()
 
 
 class ManyFieldsModel(popoto.Model):
     """Model with many fields - tests per-field validation cost."""
+
     key = popoto.KeyField()
     f1 = popoto.Field(type=str)
     f2 = popoto.Field(type=str)
@@ -41,6 +46,7 @@ class ManyFieldsModel(popoto.Model):
 
 class IndexedModel(popoto.Model):
     """Model with unique_together index."""
+
     id = popoto.AutoKeyField()
     category = popoto.KeyField()
     code = popoto.Field(type=str)
@@ -50,6 +56,7 @@ class IndexedModel(popoto.Model):
 
 
 # --- Profiling helpers ---
+
 
 def time_operation(func, iterations, label):
     """Time an operation over N iterations, return stats."""
@@ -95,11 +102,7 @@ def test_baseline_save():
     print(f"{'='*60}")
     POPOTO_REDIS_DB.flushdb()
 
-    time_operation(
-        lambda i: SimpleModel(key=f"k{i}").save(),
-        N,
-        "SimpleModel.save()"
-    )
+    time_operation(lambda i: SimpleModel(key=f"k{i}").save(), N, "SimpleModel.save()")
 
 
 def test_unique_field_save():
@@ -110,9 +113,7 @@ def test_unique_field_save():
     POPOTO_REDIS_DB.flushdb()
 
     time_operation(
-        lambda i: UniqueModel(email=f"user{i}@test.com").save(),
-        N,
-        "UniqueModel.save()"
+        lambda i: UniqueModel(email=f"user{i}@test.com").save(), N, "UniqueModel.save()"
     )
 
 
@@ -125,11 +126,20 @@ def test_many_fields_save():
 
     time_operation(
         lambda i: ManyFieldsModel(
-            key=f"k{i}", f1="a", f2="b", f3="c", f4="d", f5="e",
-            f6=1, f7=2, f8=3, f9=True, f10=False
+            key=f"k{i}",
+            f1="a",
+            f2="b",
+            f3="c",
+            f4="d",
+            f5="e",
+            f6=1,
+            f7=2,
+            f8=3,
+            f9=True,
+            f10=False,
         ).save(),
         N,
-        "ManyFieldsModel.save()"
+        "ManyFieldsModel.save()",
     )
 
 
@@ -143,7 +153,7 @@ def test_indexed_save():
     time_operation(
         lambda i: IndexedModel(category=f"cat{i % 10}", code=f"code{i}").save(),
         N,
-        "IndexedModel.save()"
+        "IndexedModel.save()",
     )
 
 
@@ -155,7 +165,11 @@ def test_unique_field_scaling():
     POPOTO_REDIS_DB.flushdb()
 
     # Pre-populate with increasing amounts of data, then measure save time
-    for batch_label, pre_count in [("0 existing", 0), ("1K existing", 1000), ("10K existing", 10000)]:
+    for batch_label, pre_count in [
+        ("0 existing", 0),
+        ("1K existing", 1000),
+        ("10K existing", 10000),
+    ]:
         POPOTO_REDIS_DB.flushdb()
         # Pre-populate
         for i in range(pre_count):
@@ -181,31 +195,31 @@ def test_is_valid_isolation():
     print(f"{'='*60}")
     POPOTO_REDIS_DB.flushdb()
 
-    instances = [ManyFieldsModel(
-        key=f"k{i}", f1="a", f2="b", f3="c", f4="d", f5="e",
-        f6=1, f7=2, f8=3, f9=True, f10=False
-    ) for i in range(N)]
+    instances = [
+        ManyFieldsModel(
+            key=f"k{i}",
+            f1="a",
+            f2="b",
+            f3="c",
+            f4="d",
+            f5="e",
+            f6=1,
+            f7=2,
+            f8=3,
+            f9=True,
+            f10=False,
+        )
+        for i in range(N)
+    ]
 
     # is_valid only
-    profile_phase(
-        lambda i: instances[i].is_valid(),
-        N,
-        "is_valid() alone"
-    )
+    profile_phase(lambda i: instances[i].is_valid(), N, "is_valid() alone")
 
     # pre_save only
-    profile_phase(
-        lambda i: instances[i].pre_save(),
-        N,
-        "pre_save() alone"
-    )
+    profile_phase(lambda i: instances[i].pre_save(), N, "pre_save() alone")
 
     # full save
-    profile_phase(
-        lambda i: instances[i].save(),
-        N,
-        "save() full"
-    )
+    profile_phase(lambda i: instances[i].save(), N, "save() full")
 
 
 def test_smembers_vs_sismember():
@@ -245,9 +259,15 @@ def test_smembers_vs_sismember():
         times_sismember.append(elapsed * 1000)
 
     print(f"  SET with 1000 members:")
-    print(f"    SMEMBERS:  avg={statistics.mean(times_smembers):.3f}ms  (returns all members)")
-    print(f"    SCARD:     avg={statistics.mean(times_scard):.3f}ms  (returns count only)")
-    print(f"    SISMEMBER: avg={statistics.mean(times_sismember):.3f}ms  (checks one member)")
+    print(
+        f"    SMEMBERS:  avg={statistics.mean(times_smembers):.3f}ms  (returns all members)"
+    )
+    print(
+        f"    SCARD:     avg={statistics.mean(times_scard):.3f}ms  (returns count only)"
+    )
+    print(
+        f"    SISMEMBER: avg={statistics.mean(times_sismember):.3f}ms  (checks one member)"
+    )
 
 
 def test_double_validation_overhead():
@@ -261,15 +281,36 @@ def test_double_validation_overhead():
     original_getattr = ManyFieldsModel.__getattribute__
 
     def counting_getattr(self, name):
-        if not name.startswith("_") and name in ("f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "key"):
+        if not name.startswith("_") and name in (
+            "f1",
+            "f2",
+            "f3",
+            "f4",
+            "f5",
+            "f6",
+            "f7",
+            "f8",
+            "f9",
+            "f10",
+            "key",
+        ):
             access_count["getattr"] += 1
         return original_getattr(self, name)
 
     ManyFieldsModel.__getattribute__ = counting_getattr
 
     instance = ManyFieldsModel(
-        key="test", f1="a", f2="b", f3="c", f4="d", f5="e",
-        f6=1, f7=2, f8=3, f9=True, f10=False
+        key="test",
+        f1="a",
+        f2="b",
+        f3="c",
+        f4="d",
+        f5="e",
+        f6=1,
+        f7=2,
+        f8=3,
+        f9=True,
+        f10=False,
     )
 
     access_count["getattr"] = 0

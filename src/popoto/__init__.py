@@ -19,6 +19,7 @@ from .fields.shortcuts import (
     SortedKeyField,
 )
 from .fields.geo_field import GeoField
+
 try:
     from .fields.dataframe_field import DataFrameField
 except ImportError:

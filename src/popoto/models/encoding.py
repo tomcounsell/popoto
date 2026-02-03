@@ -40,6 +40,7 @@ Example:
     # Automatic during query
     person = Person.query.get(name="Alice")  # Internally calls decode_popoto_model_hashmap
 """
+
 import datetime
 from collections import namedtuple
 from decimal import Decimal
@@ -302,7 +303,9 @@ def decode_popoto_model_hashmap(
     if len(redis_hash):
         if fields_only:
             model_attrs = {
-                key_b: decode_custom_types(msgpack.unpackb(value_b, strict_map_key=False))
+                key_b: decode_custom_types(
+                    msgpack.unpackb(value_b, strict_map_key=False)
+                )
                 for key_b, value_b in redis_hash.items()
             }
             return model_attrs
@@ -312,7 +315,9 @@ def decode_popoto_model_hashmap(
             return _create_lazy_model(model_class, redis_hash)
 
         model_attrs = {
-            key_b.decode(ENCODING): decode_custom_types(msgpack.unpackb(value_b, strict_map_key=False))
+            key_b.decode(ENCODING): decode_custom_types(
+                msgpack.unpackb(value_b, strict_map_key=False)
+            )
             for key_b, value_b in redis_hash.items()
         }
 
@@ -351,8 +356,7 @@ def _create_lazy_model(model_class: "Model", redis_hash: dict) -> "Model":
 
     # Store raw msgpack bytes for lazy decoding
     instance._lazy_fields = {
-        key_b.decode(ENCODING): value_b
-        for key_b, value_b in redis_hash.items()
+        key_b.decode(ENCODING): value_b for key_b, value_b in redis_hash.items()
     }
     instance._decoded_fields = {}
 

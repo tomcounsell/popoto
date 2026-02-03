@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Popoto is a Python Redis ORM (Object-Relational Mapper) library that provides Django-like model syntax for Redis. It supports object persistence, queries, geographic search, time-series data, and pub/sub messaging.
+Popoto is a Python Redis/Valkey ORM (Object-Relational Mapper) library that provides Django-like model syntax for Redis and Valkey. It supports object persistence, queries, geographic search, time-series data, and pub/sub messaging.
 
 ## Setup
 
@@ -31,13 +31,14 @@ black src/ tests/               # Format code
 mkdocs serve                    # Serve docs locally
 ```
 
-## Debugging with Redis CLI
+## Debugging with Redis/Valkey CLI
 
-Use `redis-cli` to inspect Redis state when debugging Popoto models.
+Use `redis-cli` (or `valkey-cli` for Valkey) to inspect database state when debugging Popoto models. Both CLIs use identical commands.
 
 ```bash
-# Connect to Redis
+# Connect to Redis or Valkey
 redis-cli                       # Connect to localhost:6379 (default)
+valkey-cli                      # Valkey equivalent (same commands)
 redis-cli -u $REDIS_URL         # Connect using REDIS_URL
 
 # Inspect keys
@@ -97,9 +98,9 @@ FLUSHDB                         # Clear current database (use with caution)
 - Fields have `on_save()` and `on_delete()` hooks for maintaining secondary indexes
 - Relationship fields support circular references via lazy-loading (field value stored as redis_key string)
 
-### Redis Connection
+### Redis/Valkey Connection
 
-Uses `REDIS_URL` environment variable or defaults to `localhost:6379`. Connection managed in `redis_db.py`.
+Uses `REDIS_URL` environment variable or defaults to `localhost:6379`. Connection managed in `redis_db.py`. Works with both Redis and Valkey servers.
 
 ## Code Style
 

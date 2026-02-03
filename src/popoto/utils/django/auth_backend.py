@@ -27,6 +27,7 @@ Trade-offs:
     - No Django ORM integration means no built-in admin, permissions, or groups
     - Users are queried by email (not username) to support modern auth patterns
 """
+
 from datetime import datetime
 from django.contrib.auth.backends import BaseBackend
 from .user import User

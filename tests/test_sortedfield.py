@@ -80,7 +80,7 @@ for item in Racer.query.all():
 
 class SortedAssetsModel(popoto.Model):
     uuid = popoto.AutoKeyField(auto_uuid_length=6)
-    market = popoto.KeyField(unique=True)
+    market = popoto.KeyField()
     asset_id = popoto.KeyField(null=False)
     timestamp = popoto.SortedKeyField(type=datetime, sort_by=("asset_id", "market"))
     market_cap = popoto.SortedField(type=Decimal, sort_by="market")
@@ -95,7 +95,7 @@ for timestamp in timestamps:
                 market=market,
                 asset_id=asset_id,
                 timestamp=timestamp,
-                market_cap=Decimal(str(random.randint(10e3, 10e5))),
+                market_cap=Decimal(str(random.randint(int(10e3), int(10e5)))),
                 price=Decimal(
                     str(random.randint(1, 100)) + "." + str(random.randint(1, 100))
                 ),

@@ -38,6 +38,7 @@ See Also:
     - Subscriber: The receiving end of the pub/sub system
     - redis_db: Connection management for Redis
 """
+
 from abc import ABC
 import logging
 

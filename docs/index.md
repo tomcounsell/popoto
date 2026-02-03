@@ -1,11 +1,14 @@
 # Introduction
 
-Popoto is an ORM for your [Redis](https://redis.io) cache database.
+Popoto is an ORM for [Redis](https://redis.io) and [Valkey](https://valkey.io) databases.
 The familiar syntax makes it easy to use for [Django](https://www.djangoproject.com/) and [Flask](https://flask.palletsprojects.com/) developers.
 
-Redis is a storage system that operates in RAM memory.
-Since it works at RAM memory level, reading/writing is typically 10-20x faster
+Redis and Valkey are storage systems that operate in RAM memory.
+Since they work at RAM memory level, reading/writing is typically 10-20x faster
 compared to PostgreSQL and other traditional relational databases.
+
+!!! tip "Valkey Support"
+    Popoto fully supports Valkey, the open-source Redis fork. Simply point your `REDIS_URL` at a Valkey server - no code changes needed.
 
 
 ## Simple Example
@@ -37,8 +40,9 @@ print(f"{restaurant.name} serves {restaurant.cuisine} food.")
 
 ## Features
 
-Popoto provides a fast, familiar interface for working with Redis.
+Popoto provides a fast, familiar interface for working with Redis and Valkey.
 
+ - **Full Redis and Valkey support** - works with both out of the box
  - very fast stores and queries
  - familiar syntax, similar to Django models
  - [Async operations](async.md) for asyncio-based applications

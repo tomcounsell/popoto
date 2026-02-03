@@ -418,9 +418,7 @@ class KeyFieldMixin:
                     for query_value_elem in query_value
                 ]
                 if set_keys:
-                    keys_lists_to_intersect.append(
-                        POPOTO_REDIS_DB.sunion(set_keys)
-                    )
+                    keys_lists_to_intersect.append(POPOTO_REDIS_DB.sunion(set_keys))
                 else:
                     keys_lists_to_intersect.append(set())
 

@@ -36,6 +36,7 @@ Example:
     # Query using Django-style syntax
     User.query.filter(score__gte=100)
 """
+
 import logging
 import asyncio
 import sys
@@ -66,6 +67,7 @@ else:
         return await loop.run_in_executor(
             None, functools.partial(func, *args, **kwargs)
         )
+
 
 global RELATED_MODEL_LOAD_SEQUENCE
 RELATED_MODEL_LOAD_SEQUENCE = set()
@@ -290,7 +292,9 @@ class ModelOptions:
         combined = ":".join(values)
         return hashlib.sha256(combined.encode()).hexdigest()[:INDEX_HASH_LENGTH]
 
-    def compute_index_hash_from_values(self, field_names: tuple, field_values: dict) -> str:
+    def compute_index_hash_from_values(
+        self, field_names: tuple, field_values: dict
+    ) -> str:
         """Compute hash from a dict of field values (for cleanup of old values).
 
         Returns None if any field value is None.
@@ -875,7 +879,11 @@ class Model(metaclass=ModelBase):
             # Check if hash exists in Redis HASH
             existing_key = POPOTO_REDIS_DB.hget(index_key, index_hash)
             if existing_key:
-                existing_key_str = existing_key.decode() if isinstance(existing_key, bytes) else existing_key
+                existing_key_str = (
+                    existing_key.decode()
+                    if isinstance(existing_key, bytes)
+                    else existing_key
+                )
                 # Skip self if updating (same db_key)
                 if self._redis_key and existing_key_str == self._redis_key:
                     continue

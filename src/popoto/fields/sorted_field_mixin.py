@@ -445,7 +445,9 @@ class SortedFieldMixin:
             model_instance, field_name
         )
         # Use saved_redis_key if provided, otherwise fall back to current db_key
-        sortedset_member = kwargs.get("saved_redis_key", model_instance.db_key.redis_key)
+        sortedset_member = kwargs.get(
+            "saved_redis_key", model_instance.db_key.redis_key
+        )
         if pipeline:
             return pipeline.zrem(sortedset_db_key.redis_key, sortedset_member)
         else:
