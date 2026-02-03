@@ -105,3 +105,8 @@ Uses `REDIS_URL` environment variable or defaults to `localhost:6379`. Connectio
 
 - Line length: 88 (black), imports: 79 (isort)
 - Python 3.8+
+
+## Git Workflow
+
+- Never push directly to main - always create a feature branch and open a PR
+- Use descriptive branch names like `feature/query-performance` or `fix/scan-keys`
