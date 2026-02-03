@@ -45,6 +45,7 @@ See Also:
 - key_field_mixin.py: Adds key-based indexing and lookup capabilities
 - sorted_field_mixin.py: Adds range query support via Redis sorted sets
 """
+
 from datetime import date, datetime, time
 from decimal import Decimal
 import redis
@@ -173,6 +174,7 @@ class Field(metaclass=FieldBase):
             view_count = Field(type=int, default=0)
             content = Field(type=str, max_length=50000)
     """
+
     type: type = str
     key: bool = False
     unique: bool = False
@@ -261,7 +263,11 @@ class Field(metaclass=FieldBase):
                 f"field {field} is type {field.type}. But value is {type(value)}"
             )
             return False
-        if field.max_length is not None and field.type == str and len(str(value)) > field.max_length:
+        if (
+            field.max_length is not None
+            and field.type == str
+            and len(str(value)) > field.max_length
+        ):
             logger.error(f"{field} value is greater than max_length={field.max_length}")
             return False
         return True

@@ -52,6 +52,7 @@ Limitations:
     - JSON serialization may lose some pandas-specific features (e.g., categorical dtypes)
     - Not suitable for streaming/appending data; consider TimeseriesModel for that use case
 """
+
 import logging
 from .field import Field
 

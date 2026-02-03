@@ -68,6 +68,7 @@ class DB_key(list):
         >>> str(key)
         'Config:db{&#58;}host'
     """
+
     def __init__(self, *key_partials):
         """
         Initialize a DB_key from one or more key segments.
@@ -89,6 +90,7 @@ class DB_key(list):
             >>> DB_key(["A", "B"], "C")           # Flattened to ["A", "B", "C"]
             >>> DB_key(other_db_key, field_val)  # Compose from existing key
         """
+
         def flatten(yet_flat):
             if isinstance(yet_flat, Iterable) and not isinstance(
                 yet_flat, (str, bytes)
@@ -194,9 +196,11 @@ class DB_key(list):
         """
         return ":".join(
             [
-                str(partial)
-                if isinstance(partial, DB_key)
-                else self.clean(str(partial))
+                (
+                    str(partial)
+                    if isinstance(partial, DB_key)
+                    else self.clean(str(partial))
+                )
                 for partial in self
             ]
         )

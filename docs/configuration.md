@@ -1,8 +1,10 @@
 # Configuration
 
-Popoto connects to Redis automatically when imported. By default it connects to `localhost:6379`, which works for local development. For production, set the `REDIS_URL` environment variable.
+Popoto connects to Redis or Valkey automatically when imported. By default it connects to `localhost:6379`, which works for local development. For production, set the `REDIS_URL` environment variable.
 
-## Redis Connection
+## Redis/Valkey Connection
+
+Popoto works with both Redis and [Valkey](https://valkey.io) (the open-source Redis fork). The same configuration works for either - just point `REDIS_URL` at your server.
 
 ### Using REDIS_URL (Recommended)
 
@@ -32,9 +34,12 @@ REDIS_URL="redis://myuser:mypassword@redis.example.com:6379/0"
 
 # Heroku Redis, Render, Railway, etc.
 REDIS_URL="redis://default:abc123@some-host.cloud:6379"
+
+# Valkey (same format works)
+REDIS_URL="redis://localhost:6379/0"
 ```
 
-When `REDIS_URL` is set, Popoto calls `redis.from_url()` to establish the connection.
+When `REDIS_URL` is set, Popoto calls `redis.from_url()` to establish the connection. This works with both Redis and Valkey servers.
 
 ### Default Connection
 
@@ -94,9 +99,9 @@ print_redis_info()
 # Logs memory usage percentage and server info to the POPOTO-REDIS_DB logger
 ```
 
-### Redis CLI
+### Redis/Valkey CLI
 
-You can inspect Popoto's data directly using `redis-cli`:
+You can inspect Popoto's data directly using `redis-cli` (or `valkey-cli` for Valkey - commands are identical):
 
 ```bash
 redis-cli

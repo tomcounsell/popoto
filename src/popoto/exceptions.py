@@ -96,6 +96,7 @@ class ModelException(Exception):
         False. This is useful for batch operations where you want to continue
         processing despite individual failures.
     """
+
     pass
 
 
@@ -141,4 +142,5 @@ class FinanceException(Exception):
         Applications may want to retry finance errors (e.g., refetch data)
         but fail fast on model errors (which indicate code bugs).
     """
+
     pass

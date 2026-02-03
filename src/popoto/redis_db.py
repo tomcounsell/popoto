@@ -1,25 +1,31 @@
 """
-Redis connection management for Popoto.
+Redis/Valkey connection management for Popoto.
 
-Connects to Redis using the ``REDIS_URL`` environment variable, or falls back
-to ``localhost:6379``. Use :func:`set_REDIS_DB_settings` to reconfigure the
+Connects to Redis or Valkey using the ``REDIS_URL`` environment variable, or falls
+back to ``localhost:6379``. Use :func:`set_REDIS_DB_settings` to reconfigure the
 connection at runtime.
 
-This module serves as the central point for Redis connectivity throughout Popoto.
-Rather than requiring each model, field, or query to manage its own connection,
-this module provides a single global connection instance (POPOTO_REDIS_DB) that
-all components share.
+Valkey Compatibility:
+    Popoto fully supports Valkey, the open-source Redis fork. The redis-py client
+    library works with both Redis and Valkey servers, so no code changes are needed.
+    Simply point ``REDIS_URL`` at your Valkey server.
+
+This module serves as the central point for Redis/Valkey connectivity throughout
+Popoto. Rather than requiring each model, field, or query to manage its own
+connection, this module provides a single global connection instance (POPOTO_REDIS_DB)
+that all components share.
 
 Design Philosophy:
     Popoto follows a "configure once, use everywhere" pattern for database connections.
     The connection is established at module import time using environment variables,
-    allowing applications to configure Redis without modifying code. This mirrors
+    allowing applications to configure Redis/Valkey without modifying code. This mirrors
     Django's database configuration approach, making Popoto feel familiar to Django
     developers.
 
 Configuration:
-    - REDIS_URL: Full Redis URL (e.g., "redis://user:pass@host:port/db")
+    - REDIS_URL: Full Redis/Valkey URL (e.g., "redis://user:pass@host:port/db")
     - Falls back to localhost:6379 if REDIS_URL is not set
+    - Works with both Redis and Valkey servers
 
     Optional:
     - BEGINNING_OF_TIME: Unix timestamp (seconds) used as a floor for time-series
@@ -78,9 +84,7 @@ except Exception as e:
     logger.info(str(e))
 
 
-def set_REDIS_DB_settings(
-    env_partition_name: str = "", *args, **kwargs
-) -> None:
+def set_REDIS_DB_settings(env_partition_name: str = "", *args, **kwargs) -> None:
     """Reset the global Redis connection with new settings.
 
     This function enables dynamic connection switching, which is essential for:

@@ -205,8 +205,12 @@ def test_no_indexes_model():
 
 def test_null_values_in_unique_index():
     """Test that NULL values in indexed fields are handled."""
-    tx1 = Transaction.create(transaction_id="tx1", from_account=None, to_account="B", amount=100)
-    tx2 = Transaction.create(transaction_id="tx2", from_account=None, to_account="B", amount=200)
+    tx1 = Transaction.create(
+        transaction_id="tx1", from_account=None, to_account="B", amount=100
+    )
+    tx2 = Transaction.create(
+        transaction_id="tx2", from_account=None, to_account="B", amount=200
+    )
 
     # Multiple NULLs should be allowed (standard SQL behavior)
     # Two instances with (NULL, "B") should not conflict

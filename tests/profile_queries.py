@@ -2,7 +2,9 @@
 Performance audit of query and filter operations.
 Run: python tests/profile_queries.py
 """
+
 import sys
+
 sys.path.insert(0, "src")
 
 import time
@@ -11,8 +13,8 @@ import random
 import popoto
 from popoto.redis_db import POPOTO_REDIS_DB
 
-
 # --- Models ---
+
 
 class SimpleItem(popoto.Model):
     key = popoto.KeyField()
@@ -36,6 +38,7 @@ class GeoItem(popoto.Model):
 
 
 # --- Helpers ---
+
 
 def time_op(func, iterations, label):
     times = []
@@ -96,6 +99,7 @@ def populate_geo(n):
 
 # --- Tests ---
 
+
 def test_all_scaling():
     """Measure query.all() at different data sizes."""
     print(f"\n{'='*60}")
@@ -112,7 +116,9 @@ def test_all_scaling():
             times.append(elapsed * 1000)
         avg = statistics.mean(times)
         p99 = sorted(times)[min(9, len(times) - 1)]
-        print(f"  {n} items: avg={avg:.1f}ms  p99={p99:.1f}ms  ({n/avg*1000:.0f} items/sec)")
+        print(
+            f"  {n} items: avg={avg:.1f}ms  p99={p99:.1f}ms  ({n/avg*1000:.0f} items/sec)"
+        )
 
 
 def test_get_vs_filter():
@@ -125,16 +131,14 @@ def test_get_vs_filter():
 
     # get() with known key
     time_op(
-        lambda i: SimpleItem.query.get(key=f"item{i:06d}"),
-        100,
-        "query.get(key=...)"
+        lambda i: SimpleItem.query.get(key=f"item{i:06d}"), 100, "query.get(key=...)"
     )
 
     # filter() with exact match
     time_op(
         lambda i: SimpleItem.query.filter(key=f"item{i:06d}"),
         100,
-        "query.filter(key=...)"
+        "query.filter(key=...)",
     )
 
 
@@ -150,21 +154,21 @@ def test_filter_exact_vs_pattern():
     time_op(
         lambda i: SimpleItem.query.filter(key=f"item{i:06d}"),
         100,
-        "filter(key=...) [SMEMBERS]"
+        "filter(key=...) [SMEMBERS]",
     )
 
     # Startswith - uses KEYS
     time_op(
         lambda i: SimpleItem.query.filter(key__startswith=f"item{i:03d}"),
         100,
-        "filter(key__startswith=...) [KEYS]"
+        "filter(key__startswith=...) [KEYS]",
     )
 
     # Endswith - uses KEYS
     time_op(
         lambda i: SimpleItem.query.filter(key__endswith=f"{i:03d}"),
         100,
-        "filter(key__endswith=...) [KEYS]"
+        "filter(key__endswith=...) [KEYS]",
     )
 
 
@@ -199,14 +203,16 @@ def test_filter_intersection():
     time_op(
         lambda i: MultiKeyItem.query.filter(category=f"cat{i % 10}"),
         100,
-        "filter(category=...) [single field]"
+        "filter(category=...) [single field]",
     )
 
     # Two field filter (intersection)
     time_op(
-        lambda i: MultiKeyItem.query.filter(category=f"cat{i % 10}", subcategory=f"sub{i % 10}"),
+        lambda i: MultiKeyItem.query.filter(
+            category=f"cat{i % 10}", subcategory=f"sub{i % 10}"
+        ),
         100,
-        "filter(category=..., subcategory=...) [intersection]"
+        "filter(category=..., subcategory=...) [intersection]",
     )
 
 
@@ -242,21 +248,21 @@ def test_sorted_field_queries():
     time_op(
         lambda i: SortedItem.query.filter(score__gte=0, score__lte=10000),
         50,
-        "filter(score__gte=0, score__lte=10000) [~10% of 1000]"
+        "filter(score__gte=0, score__lte=10000) [~10% of 1000]",
     )
 
     # Range query returning ~50% of data
     time_op(
         lambda i: SortedItem.query.filter(score__gte=0, score__lte=50000),
         50,
-        "filter(score__gte=0, score__lte=50000) [~50% of 1000]"
+        "filter(score__gte=0, score__lte=50000) [~50% of 1000]",
     )
 
     # Narrow range
     time_op(
         lambda i: SortedItem.query.filter(score__gte=5000, score__lte=5100),
         50,
-        "filter(score 5000-5100) [~1% of 1000]"
+        "filter(score 5000-5100) [~1% of 1000]",
     )
 
 
@@ -271,21 +277,25 @@ def test_geo_queries():
     # Small radius
     time_op(
         lambda i: GeoItem.query.filter(
-            location_latitude=40.5, location_longitude=-73.95,
-            location_radius=5, location_radius_unit="km"
+            location_latitude=40.5,
+            location_longitude=-73.95,
+            location_radius=5,
+            location_radius_unit="km",
         ),
         50,
-        "geo radius 5km"
+        "geo radius 5km",
     )
 
     # Large radius
     time_op(
         lambda i: GeoItem.query.filter(
-            location_latitude=40.5, location_longitude=-73.95,
-            location_radius=50, location_radius_unit="km"
+            location_latitude=40.5,
+            location_longitude=-73.95,
+            location_radius=50,
+            location_radius_unit="km",
         ),
         50,
-        "geo radius 50km"
+        "geo radius 50km",
     )
 
 
@@ -297,17 +307,9 @@ def test_count_vs_all():
 
     populate_simple(1000)
 
-    time_op(
-        lambda i: SimpleItem.query.count(),
-        100,
-        "query.count() [SCARD]"
-    )
+    time_op(lambda i: SimpleItem.query.count(), 100, "query.count() [SCARD]")
 
-    time_op(
-        lambda i: len(SimpleItem.query.all()),
-        10,
-        "len(query.all()) [full fetch]"
-    )
+    time_op(lambda i: len(SimpleItem.query.all()), 10, "len(query.all()) [full fetch]")
 
 
 def test_order_by_overhead():
@@ -318,16 +320,12 @@ def test_order_by_overhead():
 
     populate_simple(1000)
 
-    time_op(
-        lambda i: SimpleItem.query.all(),
-        10,
-        "query.all() [no ordering]"
-    )
+    time_op(lambda i: SimpleItem.query.all(), 10, "query.all() [no ordering]")
 
     time_op(
         lambda i: SimpleItem.query.all(order_by="key"),
         10,
-        "query.all(order_by='key') [Python sort]"
+        "query.all(order_by='key') [Python sort]",
     )
 
 
@@ -339,22 +337,18 @@ def test_values_optimization():
 
     populate_simple(1000)
 
-    time_op(
-        lambda i: SimpleItem.query.all(),
-        10,
-        "query.all() [full objects]"
-    )
+    time_op(lambda i: SimpleItem.query.all(), 10, "query.all() [full objects]")
 
     time_op(
         lambda i: SimpleItem.query.all(values=("key",)),
         10,
-        "query.all(values=('key',)) [key-only, no Redis fetch]"
+        "query.all(values=('key',)) [key-only, no Redis fetch]",
     )
 
     time_op(
         lambda i: SimpleItem.query.all(values=("key", "value")),
         10,
-        "query.all(values=('key','value')) [hmget]"
+        "query.all(values=('key','value')) [hmget]",
     )
 
 
@@ -383,7 +377,9 @@ def test_keys_vs_scan_raw():
         result = []
         cursor = 0
         while True:
-            cursor, keys = POPOTO_REDIS_DB.scan(cursor=cursor, match=pattern, count=1000)
+            cursor, keys = POPOTO_REDIS_DB.scan(
+                cursor=cursor, match=pattern, count=1000
+            )
             result.extend(keys)
             if cursor == 0:
                 break
@@ -425,6 +421,7 @@ def test_deserialization_overhead():
 
     # Decode
     from popoto.models.encoding import decode_popoto_model_hashmap
+
     times_decode = []
     for _ in range(10):
         start = time.perf_counter()
@@ -437,7 +434,9 @@ def test_deserialization_overhead():
     print(f"  1000 items:")
     print(f"    Pipeline HGETALL: avg={statistics.mean(times_fetch):.1f}ms")
     print(f"    msgpack decode:   avg={statistics.mean(times_decode):.1f}ms")
-    print(f"    decode share:     {statistics.mean(times_decode)/(statistics.mean(times_fetch)+statistics.mean(times_decode))*100:.0f}%")
+    print(
+        f"    decode share:     {statistics.mean(times_decode)/(statistics.mean(times_fetch)+statistics.mean(times_decode))*100:.0f}%"
+    )
 
 
 if __name__ == "__main__":

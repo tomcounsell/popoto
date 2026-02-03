@@ -4,6 +4,7 @@ Comprehensive stress tests for popoto - production readiness validation.
 Run with: pytest tests/test_stress.py -v
 Skip in fast runs: pytest -m "not slow"
 """
+
 import sys
 import os
 import asyncio
@@ -19,10 +20,10 @@ from src.popoto.redis_db import POPOTO_REDIS_DB
 from src import popoto
 from src.popoto.exceptions import ModelException
 
-
 # =============================================================================
 # MODEL DEFINITIONS
 # =============================================================================
+
 
 class KeyValueModel(popoto.Model):
     key = popoto.KeyField()
@@ -101,6 +102,7 @@ class UpdateCounterModel(popoto.Model):
 # FIXTURES
 # =============================================================================
 
+
 @pytest.fixture(autouse=True)
 def flush_redis():
     """Clean Redis before each test."""
@@ -112,6 +114,7 @@ def flush_redis():
 @pytest.fixture
 def performance_timer():
     """Context manager for performance timing."""
+
     class Timer:
         def __init__(self):
             self.start_time = None
@@ -125,7 +128,9 @@ def performance_timer():
             self.elapsed = time.time() - self.start_time
 
         def assert_under(self, seconds, message=""):
-            assert self.elapsed < seconds, f"{message} took {self.elapsed:.2f}s (threshold: {seconds}s)"
+            assert (
+                self.elapsed < seconds
+            ), f"{message} took {self.elapsed:.2f}s (threshold: {seconds}s)"
 
     return Timer
 
@@ -133,6 +138,7 @@ def performance_timer():
 # =============================================================================
 # CORE STRESS TESTS
 # =============================================================================
+
 
 @pytest.mark.slow
 def test_bulk_create_save_delete(performance_timer):
@@ -190,8 +196,12 @@ def test_bulk_sorted_field_range_queries(performance_timer):
 
     # Test __gte and __lte
     with performance_timer() as timer:
-        results = list(SortedIntModel.query.filter(sorted_value__gte=500, sorted_value__lte=600))
-    assert len(results) == 101, f"Expected 101 items between 500-600, got {len(results)}"
+        results = list(
+            SortedIntModel.query.filter(sorted_value__gte=500, sorted_value__lte=600)
+        )
+    assert (
+        len(results) == 101
+    ), f"Expected 101 items between 500-600, got {len(results)}"
     timer.assert_under(0.1, "Query __gte=500, __lte=600")
 
     # Verify result values are in range
@@ -219,16 +229,20 @@ def test_bulk_geo_radius_search(performance_timer):
     # Radius search from center - use smaller radius (5km)
     center_lat, center_lon = 1.225, 1.225
     with performance_timer() as timer:
-        results = list(GeoLocationModel.query.filter(
-            location_latitude=center_lat,
-            location_longitude=center_lon,
-            location_radius=10,
-            location_radius_unit="km"
-        ))
+        results = list(
+            GeoLocationModel.query.filter(
+                location_latitude=center_lat,
+                location_longitude=center_lon,
+                location_radius=10,
+                location_radius_unit="km",
+            )
+        )
     timer.assert_under(0.2, "Geo radius search (10km)")
 
     # Should find center + nearby points (expect 5-25 within 10km)
-    assert 5 <= len(results) <= 30, f"Expected 5-30 results in 10km radius, got {len(results)}"
+    assert (
+        5 <= len(results) <= 30
+    ), f"Expected 5-30 results in 10km radius, got {len(results)}"
 
 
 @pytest.mark.slow
@@ -283,11 +297,7 @@ def test_bulk_relationship_integrity(performance_timer):
         children = []
         for i in range(1000):
             parent_idx = i // 5
-            child = ChildModel(
-                key=f"child{i}",
-                parent=parents[parent_idx],
-                value=i
-            )
+            child = ChildModel(key=f"child{i}", parent=parents[parent_idx], value=i)
             child.save()
             children.append(child)
 
@@ -339,9 +349,9 @@ def test_bulk_filter_operations(performance_timer):
 
     # Test __in
     with performance_timer() as timer:
-        results = list(FilterTestModel.query.filter(
-            key__in=["user_0001", "admin_001", "guest_01"]
-        ))
+        results = list(
+            FilterTestModel.query.filter(key__in=["user_0001", "admin_001", "guest_01"])
+        )
     assert len(results) == 3
     timer.assert_under(0.15, "Filter __in with 3 values")
 
@@ -358,13 +368,19 @@ def test_bulk_mixed_field_types(performance_timer):
                 int_field=i if i % 2 == 0 else -i,
                 float_field=i * 1.5,
                 decimal_field=Decimal(f"{i}.{i:03d}"),
-                string_field=f"string_{i}" if i % 10 != 0 else "",  # Include empty strings
+                string_field=(
+                    f"string_{i}" if i % 10 != 0 else ""
+                ),  # Include empty strings
                 bool_field=i % 2 == 0,
                 bytes_field=f"bytes{i}".encode(),
-                list_field=[i, i+1, i+2] if i % 5 != 0 else [],  # Include empty lists
-                dict_field={"id": i, "value": i*2} if i % 7 != 0 else {},  # Include empty dicts
-                set_field={i, i+1} if i % 3 != 0 else set(),
-                tuple_field=(i, i+1),
+                list_field=(
+                    [i, i + 1, i + 2] if i % 5 != 0 else []
+                ),  # Include empty lists
+                dict_field=(
+                    {"id": i, "value": i * 2} if i % 7 != 0 else {}
+                ),  # Include empty dicts
+                set_field={i, i + 1} if i % 3 != 0 else set(),
+                tuple_field=(i, i + 1),
                 date_field=date(2020 + (i % 5), 1 + (i % 12), 1 + (i % 28)),
                 datetime_field=datetime(2020, 1, 1, i % 24, i % 60, i % 60),
                 time_field=dt_time(i % 24, i % 60, i % 60),
@@ -515,6 +531,7 @@ def test_rapid_update_cycles(performance_timer):
 # EDGE CASE & ERROR TESTS
 # =============================================================================
 
+
 @pytest.mark.slow
 def test_ttl_expiration_at_scale():
     """Save 200 items with 2s TTL, verify expiration."""
@@ -651,6 +668,7 @@ def test_memory_efficiency():
     # Check object count (rough memory check)
     # This is a basic sanity check - not precise memory profiling
     import gc
+
     gc.collect()
     obj_count = len(gc.get_objects())
     # Just verify it's not absurdly high (< 1M objects)
@@ -660,6 +678,7 @@ def test_memory_efficiency():
 # =============================================================================
 # PERFORMANCE BENCHMARKING TESTS
 # =============================================================================
+
 
 @pytest.mark.slow
 @pytest.mark.benchmark
@@ -671,7 +690,9 @@ def test_benchmark_save_operations(performance_timer):
             KeyValueModel(key=f"bench{i}", value=f"value{i}").save()
 
     ops_per_sec = 1000 / timer.elapsed
-    print(f"\n  Sequential saves: {ops_per_sec:.0f} ops/sec ({timer.elapsed:.2f}s total)")
+    print(
+        f"\n  Sequential saves: {ops_per_sec:.0f} ops/sec ({timer.elapsed:.2f}s total)"
+    )
 
     assert ops_per_sec > 100, f"Save throughput too low: {ops_per_sec:.0f} ops/sec"
 
@@ -690,7 +711,9 @@ def test_benchmark_query_operations(performance_timer):
             KeyValueModel.query.get(key=f"qbench{i}")
 
     ops_per_sec = 100 / timer.elapsed
-    print(f"\n  Individual gets: {ops_per_sec:.0f} ops/sec ({timer.elapsed:.2f}s total)")
+    print(
+        f"\n  Individual gets: {ops_per_sec:.0f} ops/sec ({timer.elapsed:.2f}s total)"
+    )
 
     # Bulk query
     with performance_timer() as timer:

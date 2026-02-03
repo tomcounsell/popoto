@@ -6,7 +6,7 @@
 ### Documentation: [**popoto.readthedocs.io**](https://popoto.readthedocs.io/en/latest/)
 
 
-# Popoto - A Redis ORM (Object-Relational Mapper)
+# Popoto - A Redis/Valkey ORM (Object-Relational Mapper)
 
 ## Install
 
@@ -41,6 +41,7 @@ print(f"{restaurant.name} serves {restaurant.cuisine} food.")
  - Timeseries for streaming data
  - compatible with Pandas, Xarray for N-dimensional matrix search
  - PubSub for message queues, streaming data processing
+ - **Full Redis and Valkey support** - works with both out of the box
 
 **Popoto** is ideal for streaming data. The pub/sub module allows you to trigger state updates in real time.
 Currently being used in production for:

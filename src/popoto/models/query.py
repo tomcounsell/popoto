@@ -403,7 +403,9 @@ class Query:
                     if k in kwargs
                 }
             )
-            result = field.__class__.filter_query(self.model_class, field_name, **kwargs)
+            result = field.__class__.filter_query(
+                self.model_class, field_name, **kwargs
+            )
             # Handle tuple return from GeoField with distances
             if isinstance(result, tuple) and len(result) == 3:
                 keys_set, distances, unit = result
@@ -564,7 +566,7 @@ class Query:
             # Only sort model objects, not dicts
             model_objects = [o for o in objects if not isinstance(o, dict)]
             dict_objects = [o for o in objects if isinstance(o, dict)]
-            model_objects.sort(key=lambda o: getattr(o, '_geo_distance', float('inf')))
+            model_objects.sort(key=lambda o: getattr(o, "_geo_distance", float("inf")))
             objects = model_objects + dict_objects
 
         return self.prepare_results(objects, **kwargs)

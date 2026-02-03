@@ -52,6 +52,7 @@ See Also:
     - Timestampable mixin for automatic timestamp management
     - KeyField for understanding username uniqueness enforcement
 """
+
 from datetime import datetime
 from ...fields.field import Field
 from ...fields.datetime_field import DatetimeField
@@ -119,6 +120,7 @@ class User(Timestampable, Model):
         created_at: Inherited from Timestampable
         updated_at: Inherited from Timestampable
     """
+
     id = AutoKeyField()
 
     # IDENTIFICATION

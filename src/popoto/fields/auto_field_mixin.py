@@ -56,6 +56,7 @@ Example::
     entry = LogEntry.create(message="Something happened")
     print(entry._auto_key)  # e.g., "f6e5d4c3b2a1..."
 """
+
 import logging
 import uuid
 

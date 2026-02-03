@@ -37,6 +37,7 @@ Example:
     memberships = Membership.query.filter(person=alice)
     memberships = Membership.query.filter(person__name="Alice")
 """
+
 import redis
 from .field import Field
 import logging
