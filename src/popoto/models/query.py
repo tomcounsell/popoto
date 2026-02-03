@@ -85,6 +85,180 @@ class QueryException(Exception):
     pass
 
 
+class QueryBuilder:
+    """Chainable query builder that accumulates query state.
+
+    This class provides a fluent interface for building queries incrementally.
+    Each method returns self (or a new QueryBuilder) to enable method chaining.
+
+    The QueryBuilder is returned by Query.filter() and accumulates filter
+    parameters, ordering, and limits until execution methods like all() are called.
+
+    Example:
+        # Chainable query construction
+        results = Model.query.filter(status="active").order_by("name").limit(10).all()
+
+        # Multiple filter chaining
+        results = Model.query.filter(status="active").filter(type="premium").all()
+
+    Note:
+        QueryBuilder also acts as a list-like object for backward compatibility.
+        Iterating over a QueryBuilder or accessing len() will execute the query.
+    """
+
+    def __init__(self, query: "Query", filters: dict = None):
+        """Initialize a QueryBuilder with a reference to the parent Query.
+
+        Args:
+            query: The Query instance this builder operates on
+            filters: Initial filter parameters (optional)
+        """
+        self._query = query
+        self._filters = filters.copy() if filters else {}
+        self._limit_value = None
+        self._order_by_value = None
+        self._values_tuple = None
+
+    def filter(self, **kwargs) -> "QueryBuilder":
+        """Add filter criteria and return a new QueryBuilder.
+
+        Creates a new QueryBuilder with merged filter parameters, allowing
+        multiple filter() calls to be chained.
+
+        Args:
+            **kwargs: Filter parameters to add to the query
+
+        Returns:
+            A new QueryBuilder with the combined filters
+
+        Example:
+            query = Model.query.filter(status="active").filter(type="premium")
+        """
+        # Create a new QueryBuilder with merged filters
+        new_builder = QueryBuilder(self._query, self._filters)
+        new_builder._filters.update(kwargs)
+        new_builder._limit_value = self._limit_value
+        new_builder._order_by_value = self._order_by_value
+        new_builder._values_tuple = self._values_tuple
+        return new_builder
+
+    def limit(self, n: int) -> "QueryBuilder":
+        """Set the maximum number of results to return.
+
+        Args:
+            n: Maximum number of results
+
+        Returns:
+            Self for method chaining
+
+        Example:
+            results = Model.query.filter(status="active").limit(10).all()
+        """
+        self._limit_value = n
+        return self
+
+    def order_by(self, field: str) -> "QueryBuilder":
+        """Set the field to order results by.
+
+        Args:
+            field: Field name to sort by. Prefix with "-" for descending order.
+
+        Returns:
+            Self for method chaining
+
+        Example:
+            results = Model.query.filter(status="active").order_by("-created_at").all()
+        """
+        self._order_by_value = field
+        return self
+
+    def values(self, *fields) -> "QueryBuilder":
+        """Specify fields to return as dicts instead of model instances.
+
+        Args:
+            *fields: Field names to include in the result dicts
+
+        Returns:
+            Self for method chaining
+
+        Example:
+            results = Model.query.filter(status="active").values("name", "email").all()
+        """
+        self._values_tuple = fields
+        return self
+
+    def all(self) -> list:
+        """Execute the query and return all matching results.
+
+        Combines all accumulated filters, ordering, and limits into a single
+        query execution.
+
+        Returns:
+            List of Model instances, or list of dicts if values() was called.
+        """
+        kwargs = self._filters.copy()
+        if self._limit_value is not None:
+            kwargs["limit"] = self._limit_value
+        if self._order_by_value is not None:
+            kwargs["order_by"] = self._order_by_value
+        if self._values_tuple is not None:
+            kwargs["values"] = self._values_tuple
+        return self._query._execute_filter(**kwargs)
+
+    def count(self) -> int:
+        """Count matching results without loading objects.
+
+        Returns:
+            Integer count of matching instances
+        """
+        return self._query.count(**self._filters)
+
+    def first(self) -> "Model":
+        """Return the first matching result, or None if no matches.
+
+        Returns:
+            First Model instance or None
+        """
+        results = self.limit(1).all()
+        return results[0] if results else None
+
+    # List-like behavior for backward compatibility
+    def __iter__(self):
+        """Iterate over query results (executes query)."""
+        return iter(self.all())
+
+    def __len__(self):
+        """Return the number of results (executes query)."""
+        return len(self.all())
+
+    def __getitem__(self, index):
+        """Access results by index (executes query)."""
+        return self.all()[index]
+
+    def __bool__(self):
+        """Check if any results exist (executes query)."""
+        return len(self.all()) > 0
+
+    def __eq__(self, other):
+        """Compare with another object (executes query for comparison).
+
+        Supports comparison with lists and other QueryBuilders for backward
+        compatibility with code like: `assert Model.query.filter(...) == []`
+        """
+        if isinstance(other, list):
+            return self.all() == other
+        if isinstance(other, QueryBuilder):
+            return self.all() == other.all()
+        return NotImplemented
+
+    def __contains__(self, item):
+        """Check if item is in query results (executes query)."""
+        return item in self.all()
+
+    def __repr__(self):
+        return f"<QueryBuilder for {self._query.model_class.__name__} filters={self._filters}>"
+
+
 class Query:
     """Query interface for a Popoto Model.
 
@@ -108,6 +282,24 @@ class Query:
 
     This delegation pattern allows new field types to add query capabilities
     without modifying the Query class.
+
+    Chainable Query API:
+    -------------------
+    In addition to the original kwargs-based API, Query now supports a fluent
+    chainable interface via QueryBuilder:
+
+        # Original API (still fully supported)
+        results = Model.query.filter(status="active", limit=10, order_by="name")
+
+        # Chainable API
+        results = Model.query.filter(status="active").order_by("name").limit(10).all()
+
+        # Chain multiple filters
+        results = Model.query.filter(status="active").filter(type="premium").all()
+
+    The filter() method returns a QueryBuilder when no limit/order_by/values kwargs
+    are provided, enabling chaining. The QueryBuilder is also iterable for backward
+    compatibility with code that iterates over filter() results directly.
 
     Attributes:
         model_class: The Model subclass this Query operates on
@@ -459,13 +651,17 @@ class Query:
         # return intersection of all the db keys sets, effectively &&-ing all filters
         return set.intersection(*db_keys_sets)
 
-    def filter(self, **kwargs) -> list:
+    def filter(self, **kwargs) -> "QueryBuilder":
         """
         Query for Model instances matching the specified criteria.
 
         This is the primary query method for Popoto, providing Django-like filtering
         syntax with Redis-optimized execution. All filter parameters are AND-ed
         together; OR queries require multiple calls combined in application code.
+
+        Returns a QueryBuilder that supports method chaining. The QueryBuilder also
+        behaves like a list for backward compatibility - you can iterate over it or
+        pass it to len() and it will execute the query automatically.
 
         Filter Parameters:
         -----------------
@@ -486,26 +682,35 @@ class Query:
         - `field__lt=value` - Less than
         - `field__lte=value` - Less than or equal
 
-        Result Modifiers:
-        ----------------
+        Result Modifiers (kwargs API):
+        -----------------------------
         - `order_by="field"` - Sort ascending by field
         - `order_by="-field"` - Sort descending by field
         - `limit=N` - Return at most N results
         - `values=("field1", "field2")` - Return dicts with only specified fields
           instead of full Model instances (projection query, more efficient)
 
+        Chainable Methods:
+        -----------------
+        - `.filter(**kwargs)` - Add more filter criteria
+        - `.order_by("field")` - Sort results (prefix with "-" for descending)
+        - `.limit(n)` - Limit number of results
+        - `.values("field1", "field2")` - Return dicts instead of objects
+        - `.all()` - Execute and return results
+        - `.first()` - Execute and return first result or None
+        - `.count()` - Count matching results without loading objects
+
         Args:
             **kwargs: Filter parameters and result modifiers as described above.
 
         Returns:
-            List of Model instances matching all criteria, or list of dicts if
-            `values` is specified. Empty list if no matches.
+            QueryBuilder that can be chained or iterated directly.
 
         Raises:
             QueryException: If unknown filter parameters are provided.
 
         Example:
-            # Find active premium users created this year
+            # Original kwargs API (still fully supported)
             users = User.query.filter(
                 status="active",
                 tier="premium",
@@ -514,11 +719,42 @@ class Query:
                 limit=50
             )
 
+            # Chainable API
+            users = User.query.filter(status="active").order_by("-created_at").limit(50).all()
+
+            # Chain multiple filters
+            users = User.query.filter(status="active").filter(tier="premium").all()
+
             # Efficient projection - only load specific fields
-            emails = User.query.filter(
-                status="active",
-                values=("email", "name")
-            )  # Returns [{"email": "...", "name": "..."}, ...]
+            emails = User.query.filter(status="active").values("email", "name").all()
+        """
+        # Extract result modifiers from kwargs for the QueryBuilder
+        filters = {
+            k: v for k, v in kwargs.items() if k not in {"limit", "order_by", "values"}
+        }
+        builder = QueryBuilder(self, filters)
+
+        # Apply result modifiers if provided in kwargs (for backward compatibility)
+        if "limit" in kwargs:
+            builder._limit_value = kwargs["limit"]
+        if "order_by" in kwargs:
+            builder._order_by_value = kwargs["order_by"]
+        if "values" in kwargs:
+            builder._values_tuple = kwargs["values"]
+
+        return builder
+
+    def _execute_filter(self, **kwargs) -> list:
+        """Internal method to execute filter logic and return results.
+
+        This is the actual filter execution, called by QueryBuilder.all() and
+        the backward-compatible list operations on QueryBuilder.
+
+        Args:
+            **kwargs: Filter parameters and result modifiers
+
+        Returns:
+            List of Model instances or dicts
         """
         # Reset geo distances for this query
         self._geo_distances = {}
