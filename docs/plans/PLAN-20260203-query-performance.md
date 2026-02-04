@@ -5,33 +5,27 @@
 **Completed**: 2026-02-03
 **Issue**: #84 (tracking), #77, #78
 
-## Overview
+## Problem
 
-Address the three main performance bottlenecks identified in the query performance audit (PR #79):
+Query performance audit (PR #79) identified three bottlenecks causing production-scale issues:
 
-1. **KEYS command blocks Redis** — Replace with SCAN
-2. **Deserialization is 60% of bulk query time** — Optimize encoding
-3. **`__in` scales linearly** — Batch optimization
+1. **KEYS command blocks Redis** — The `KEYS` command is O(N) and blocks the entire Redis server while scanning. At scale (>100k keys), this causes request timeouts and cascading failures.
 
-## Phase 1: Replace KEYS with SCAN (#77)
+2. **Deserialization is 60% of bulk query time** — Each model field is individually decoded via `msgpack.unpackb()`, creating N function calls per model. Bulk queries amplify this overhead.
 
-**Priority**: Critical
-**Risk**: KEYS blocks entire Redis server at scale
+3. **`__in` scales linearly** — Each value in an `__in` query generates a separate `SMEMBERS` call, making `filter(status__in=["a","b","c"])` O(N) instead of O(1).
 
-### Current State
+## Appetite
 
-`KeyFieldMixin.filter_query()` uses Redis `KEYS` command for pattern matching:
+**Medium (3-5 days)** | 1 developer
 
-```python
-# key_field_mixin.py lines 168, 185, 194, 198
-POPOTO_REDIS_DB.keys(f"{Model._get_db_key()}*")
-```
+Phase 1 is critical and must ship first. Phases 2-3 are optimizations that can be deferred.
 
-### Implementation
+## Solution
 
-#### 1.1 Add SCAN utility function
+### Phase 1: Replace KEYS with SCAN (Critical)
 
-Create `src/popoto/redis_db.py` helper:
+Add `scan_keys()` utility to `redis_db.py` using cursor-based iteration:
 
 ```python
 def scan_keys(pattern: str, count: int = 1000) -> list[bytes]:
@@ -46,53 +40,11 @@ def scan_keys(pattern: str, count: int = 1000) -> list[bytes]:
     return results
 ```
 
-#### 1.2 Replace KEYS calls in key_field_mixin.py
+Replace KEYS calls in `key_field_mixin.py` (lines 168, 185, 194, 198).
 
-Update four locations:
-- Line 168: Auto field exact match
-- Line 185: `__isnull=False`
-- Line 194: `__startswith`
-- Line 198: `__endswith`
+### Phase 2: Lazy Deserialization (High)
 
-Replace:
-```python
-POPOTO_REDIS_DB.keys(pattern)
-```
-
-With:
-```python
-scan_keys(pattern)
-```
-
-#### 1.3 Leave debug KEYS calls in query.py
-
-Lines 98 and 110 are debug-only (`keys(clean=True)` and `keys(catchall=True)`). These are acceptable for development use.
-
-### Verification
-
-```bash
-pytest tests/test_queries.py -v -k "startswith or endswith or isnull"
-pytest tests/profile_queries.py -v -s  # Compare timings
-```
-
-## Phase 2: Optimize Deserialization (#78)
-
-**Priority**: High
-**Impact**: 60% of bulk query time
-
-### Current State
-
-`decode_popoto_model_hashmap()` in `encoding.py` calls `msgpack.unpackb()` per field:
-
-```python
-for field_name, value_bytes in hashmap.items():
-    value = msgpack.unpackb(value_bytes)  # Called N times per model
-    setattr(instance, field_name, value)
-```
-
-### Implementation: Lazy Deserialization (Option B)
-
-Don't decode fields until accessed. This avoids storage migration and provides immediate benefit for partial-field queries.
+Don't decode fields until accessed:
 
 ```python
 class LazyModel:
@@ -105,126 +57,104 @@ class LazyModel:
         return self._decoded[name]
 ```
 
-Benefits:
-- No change to storage format
-- Big win when only accessing few fields
-- Backward compatible with existing data
+### Phase 3: `__in` Query Optimization (Medium)
 
----
-
-<details>
-<summary>Other options considered</summary>
-
-#### Option A: Single-blob encoding
-
-Store entire model as one msgpack blob instead of per-field hashes.
-
-Pros:
-- One `unpackb()` call per model vs N calls
-- Simpler Redis key structure
-
-Cons:
-- Can't use HMGET for partial field fetches
-- Migration needed for existing data
-
-#### Option B: Lazy deserialization — CHOSEN
-
-See implementation above.
-
-#### Option C: `__slots__` optimization
-
-Add `__slots__` to Model class:
-
-```python
-class Model(metaclass=ModelBase):
-    __slots__ = ('_field_values', '_key_values', ...)
-```
-
-Pros:
-- Faster attribute access
-- Lower memory per instance
-
-Cons:
-- Smallest impact of the three
-- May conflict with dynamic field system
-
-</details>
-
-### Verification
-
-```bash
-pytest tests/profile_queries.py -v -s -k "all_query or deserialization"
-```
-
-## Phase 3: `__in` Query Optimization
-
-**Priority**: Medium
-**Current behavior**: O(N) pipeline of SMEMBERS
-
-### Implementation
-
-Batch `__in` queries using SUNION when querying against sorted set indexes:
+Batch `__in` queries using SUNION:
 
 ```python
 # Current: N separate SMEMBERS
 for value in values:
     keys = POPOTO_REDIS_DB.smembers(f"{prefix}:{value}")
-    results.extend(keys)
 
 # Optimized: single SUNION
 keys_to_union = [f"{prefix}:{v}" for v in values]
 results = POPOTO_REDIS_DB.sunion(keys_to_union)
 ```
 
-### Verification
+## Risks
 
-```bash
-pytest tests/profile_queries.py -v -s -k "in_query"
-```
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| SCAN returns duplicates during rehashing | Low | Dedupe results with set() |
+| Lazy loading breaks existing code | Medium | Maintain full backward compat, decode on any attribute access |
+| SUNION on large sets causes memory spike | Low | Only use for reasonable-sized `__in` lists (<1000 values) |
 
-## Phase 4: Documentation
+## Team Orchestration
 
-Update `docs/query.md` with performance best practices:
+### Team Members
 
-1. Use `count()` instead of `len(all())` — 186x faster
-2. Use `values=('field1', 'field2')` for partial fetches — 2-4x faster
-3. Prefer sorted field range queries over pattern filters
-4. Avoid `__startswith`/`__endswith` on large datasets
+- **Builder (scan)**
+  - Name: scan-implementer
+  - Role: Replace KEYS with SCAN across key_field_mixin
+  - Agent Type: builder
+  - Resume: true
 
-## Files to Modify
+- **Builder (lazy)**
+  - Name: lazy-decoder
+  - Role: Implement lazy deserialization in encoding.py
+  - Agent Type: builder
+  - Resume: true
 
-### Phase 1
-- **Edit**: `src/popoto/redis_db.py` — add `scan_keys()` utility
-- **Edit**: `src/popoto/fields/key_field_mixin.py` — replace KEYS with scan_keys
+- **Validator (perf)**
+  - Name: perf-validator
+  - Role: Run benchmarks to verify improvements
+  - Agent Type: validator
+  - Resume: true
 
-### Phase 2
-- **Edit**: `src/popoto/models/encoding.py` — lazy deserialization
-- **Edit**: `src/popoto/models/base.py` — LazyModel support
+## Step by Step Tasks
 
-### Phase 3
-- **Edit**: `src/popoto/fields/key_field_mixin.py` — SUNION for `__in`
+### 1. Implement scan_keys utility
+- **Task ID**: implement-scan
+- **Depends On**: none
+- **Assigned To**: scan-implementer
+- **Agent Type**: builder
+- **Parallel**: true
+- Add `scan_keys()` function to `src/popoto/redis_db.py`
+- Replace KEYS calls in `key_field_mixin.py` (4 locations)
+- Run `pytest tests/test_queries.py -v -k "startswith or endswith or isnull"`
 
-### Phase 4
-- **Edit**: `docs/query.md` — performance best practices section
+### 2. Add lazy deserialization
+- **Task ID**: lazy-decode
+- **Depends On**: none
+- **Assigned To**: lazy-decoder
+- **Agent Type**: builder
+- **Parallel**: true
+- Update `decode_popoto_model_hashmap()` in `encoding.py`
+- Add lazy field wrapper in `base.py`
+- Run `pytest tests/test_queries.py tests/test_stress.py`
 
-## Verification Plan
+### 3. Optimize __in queries
+- **Task ID**: optimize-in
+- **Depends On**: implement-scan
+- **Assigned To**: scan-implementer
+- **Agent Type**: builder
+- **Parallel**: false
+- Add SUNION optimization to `key_field_mixin.py`
+- Run `pytest tests/test_queries.py -k "in"`
 
-```bash
-# Run full test suite
-pytest
+### 4. Validate performance improvements
+- **Task ID**: validate-perf
+- **Depends On**: implement-scan, lazy-decode, optimize-in
+- **Assigned To**: perf-validator
+- **Agent Type**: validator
+- **Parallel**: false
+- Run `pytest tests/profile_queries.py -v -s`
+- Compare before/after metrics
+- Verify no test regressions
 
-# Run profiling before/after each phase
-pytest tests/profile_queries.py -v -s
+## Success Criteria
 
-# Verify no regressions
-pytest tests/test_queries.py tests/test_stress.py -v
-```
+- [x] `scan_keys()` function added to redis_db.py
+- [x] KEYS command replaced with SCAN in key_field_mixin.py
+- [x] All existing query tests pass
+- [x] `__startswith`/`__endswith` filters non-blocking
+- [ ] Lazy deserialization reduces `all()` time by 40%+
+- [ ] `__in` queries use SUNION for O(1) performance
 
-## Success Metrics
+## Files Modified
 
-| Metric | Before | Target |
-|--------|--------|--------|
-| KEYS blocking | Yes | No (SCAN) |
-| `all()` 1000 items | 10.2ms | <5ms |
-| `filter(__startswith)` | 1.3ms blocking | 1.4ms non-blocking |
-| `__in` 100 values | O(100) | O(1) SUNION |
+- `src/popoto/redis_db.py` — add `scan_keys()` utility
+- `src/popoto/fields/key_field_mixin.py` — replace KEYS, optimize `__in`
+- `src/popoto/models/encoding.py` — lazy deserialization
+- `src/popoto/models/base.py` — LazyModel support
+- `docs/query.md` — performance best practices section
