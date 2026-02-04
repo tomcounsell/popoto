@@ -130,30 +130,92 @@ See the [CLAUDE.md](https://github.com/tomcounsell/popoto) debugging section for
 |----------|---------|-------------|
 | `REDIS_URL` | *(empty)* | Redis connection URL. Falls back to localhost:6379. |
 | `BEGINNING_OF_TIME` | `0` | Unix timestamp used as the minimum time boundary for time-based queries. |
+| `POPOTO_LOG_LEVEL` | `WARNING` | Log level for POPOTO-REDIS_DB logger (DEBUG, INFO, WARNING, ERROR, CRITICAL) |
 
 ## Logging
 
-Popoto uses Python's `logging` module with these logger names:
+Popoto uses Python's standard logging module. You can configure log levels
+globally or per-logger.
 
-| Logger | Purpose |
-|--------|---------|
-| `POPOTO-REDIS_DB` | Connection events and memory info |
-| `POPOTO.model_base` | Model save/load/delete operations |
-| `POPOTO.Query` | Query execution details |
-| `POPOTO.field` | Field validation errors |
-| `POPOTO.KeyFieldMixin` | Key field index operations |
-| `POPOTO.SortedFieldMixin` | Sorted set operations |
-| `POPOTO.GeoField` | Geo index operations |
-| `POPOTO.Relationship` | Relationship field operations |
-| `POPOTO-publisher` | Pub/sub publish events |
-| `POPOTO-subscriber` | Pub/sub message handling |
+### Environment Variable
 
-Configure logging to see Popoto's debug output:
+Set `POPOTO_LOG_LEVEL` to control the default log level for Popoto's Redis
+connection logger:
+
+```bash
+export POPOTO_LOG_LEVEL=DEBUG  # Show all connection details
+export POPOTO_LOG_LEVEL=INFO   # Show connection events
+export POPOTO_LOG_LEVEL=WARNING  # Default - only warnings and errors
+export POPOTO_LOG_LEVEL=ERROR  # Only errors
+```
+
+### Programmatic Configuration
+
+For finer control, configure individual loggers:
 
 ```python
 import logging
 
-logging.basicConfig(level=logging.DEBUG)
-# Or target specific loggers
+# Set all Popoto loggers to DEBUG
+for name in [
+    "POPOTO-REDIS_DB",
+    "POPOTO.model_base",
+    "POPOTO.Query",
+    "POPOTO.field",
+    "POPOTO.KeyFieldMixin",
+    "POPOTO.SortedFieldMixin",
+    "POPOTO.GeoField",
+    "POPOTO.Relationship",
+    "POPOTO-publisher",
+    "POPOTO-subscriber",
+]:
+    logging.getLogger(name).setLevel(logging.DEBUG)
+
+# Or configure a specific logger
 logging.getLogger("POPOTO.Query").setLevel(logging.DEBUG)
 ```
+
+### Logger Reference
+
+| Logger Name | Purpose |
+|------------|---------|
+| `POPOTO-REDIS_DB` | Connection events, errors, health checks |
+| `POPOTO.model_base` | Model creation, metaclass operations |
+| `POPOTO.Query` | Query execution, filtering, results |
+| `POPOTO.field` | Field validation, type checking |
+| `POPOTO.KeyFieldMixin` | Key field operations |
+| `POPOTO.SortedFieldMixin` | Sorted set index operations |
+| `POPOTO.GeoField` | Geographic queries and indexing |
+| `POPOTO.Relationship` | Relationship loading and saving |
+| `POPOTO-publisher` | PubSub publishing events |
+| `POPOTO-subscriber` | PubSub subscription events |
+
+### Integration with Frameworks
+
+**Django:**
+```python
+# settings.py
+LOGGING = {
+    'version': 1,
+    'handlers': {
+        'console': {'class': 'logging.StreamHandler'},
+    },
+    'loggers': {
+        'POPOTO-REDIS_DB': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
+    },
+}
+```
+
+**Flask:**
+```python
+import logging
+logging.getLogger("POPOTO-REDIS_DB").setLevel(logging.INFO)
+app.logger.info("Popoto logging configured")
+```
+
+!!! tip
+    During development, set `POPOTO_LOG_LEVEL=DEBUG` to see all Redis
+    operations. In production, use `WARNING` or `ERROR` to reduce noise.

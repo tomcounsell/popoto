@@ -55,6 +55,13 @@ import redis
 
 logger = logging.getLogger("POPOTO-REDIS_DB")
 
+# Configure logging level from environment
+_log_level = os.environ.get("POPOTO_LOG_LEVEL", "WARNING").upper()
+_valid_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+if _log_level in _valid_levels:
+    logging.getLogger("POPOTO-REDIS_DB").setLevel(getattr(logging, _log_level))
+
+
 global POPOTO_REDIS_DB
 # global REDIS_GRAPH
 BEGINNING_OF_TIME = 0
