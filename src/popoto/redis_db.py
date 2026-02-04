@@ -72,16 +72,25 @@ except Exception as e:
 try:
     REDIS_URL = os.environ.get("REDIS_URL", "")
     if REDIS_URL:
-        POPOTO_REDIS_DB = redis.from_url(REDIS_URL)
+        POPOTO_REDIS_DB = redis.from_url(
+            REDIS_URL, socket_timeout=5, socket_connect_timeout=5
+        )
         logger.debug("Redis connection established.")
     else:
         REDIS_HOST, REDIS_PORT = "127.0.0.1:6379".split(":")
-        pool = redis.ConnectionPool(host=REDIS_HOST, port=REDIS_PORT, db=0)
+        pool = redis.ConnectionPool(
+            host=REDIS_HOST,
+            port=int(REDIS_PORT),
+            db=0,
+            socket_timeout=5,
+            socket_connect_timeout=5,
+        )
         POPOTO_REDIS_DB = redis.Redis(connection_pool=pool)
         # REDIS_GRAPH = Graph('social', POPOTO_REDIS_DB)
 
 except Exception as e:
-    logger.info(str(e))
+    logger.error(f"Redis connection failed: {e}")
+    raise
 
 
 def set_REDIS_DB_settings(env_partition_name: str = "", *args, **kwargs) -> None:
@@ -108,6 +117,10 @@ def set_REDIS_DB_settings(env_partition_name: str = "", *args, **kwargs) -> None
     # todo: use this to mark keys in redis db, so they can be separated and deleted
     env_partition_name = env_partition_name or os.environ.get("ENV", "")
 
+    # Apply default socket timeouts if not provided
+    kwargs.setdefault("socket_timeout", 5)
+    kwargs.setdefault("socket_connect_timeout", 5)
+
     global POPOTO_REDIS_DB
     POPOTO_REDIS_DB = redis.Redis(*args, **kwargs)
     # global REDIS_GRAPH
@@ -128,6 +141,25 @@ def get_REDIS_DB():
         redis.Redis: The configured Redis client instance.
     """
     return POPOTO_REDIS_DB
+
+
+def check_connection() -> bool:
+    """
+    Check if the Redis connection is healthy.
+
+    Returns:
+        True if Redis is reachable and responding, False otherwise.
+
+    Example:
+        >>> from popoto.redis_db import check_connection
+        >>> if check_connection():
+        ...     print("Redis is healthy")
+    """
+    try:
+        POPOTO_REDIS_DB.ping()
+        return True
+    except Exception:
+        return False
 
 
 def scan_keys(pattern: str, count: int = 1000) -> list:
