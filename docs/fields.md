@@ -55,7 +55,7 @@ you need to guarantee that a field value is globally unique across all instances
 `UniqueKeyField` or `AutoKeyField`.
 
 `UniqueKeyField` enforces a per-value uniqueness constraint. `AutoKeyField` generates
-a UUID-based value automatically, ensuring every instance has a distinct key.
+a unique value automatically, ensuring every instance has a distinct key.
 
 ```python
 from popoto import Model, KeyField, AutoKeyField, UniqueKeyField
@@ -110,8 +110,125 @@ driver = Driver.create(
 )
 
 print(driver.driver_id)
-# => "a1b2c3d4-..."  (auto-generated UUID)
+# => "a1b2c3d4e5f6..."  (auto-generated UUID4 hex)
 ```
+
+### AutoKeyField ID Strategies
+
+`AutoKeyField` supports multiple ID generation strategies via the `strategy` parameter.
+The default strategy is `uuid4` for backward compatibility.
+
+| Strategy | Length | Time-Sortable | Installation |
+|----------|--------|---------------|--------------|
+| `uuid4`  | 32 chars | No | Built-in (default) |
+| `ulid`   | 26 chars | Yes | `pip install popoto[ulid]` |
+| `ksuid`  | 27 chars | Yes | `pip install popoto[ksuid]` |
+
+#### UUID4 (Default)
+
+The default strategy generates a 32-character random hexadecimal string using Python's
+`uuid.uuid4()`. UUIDs are excellent for general-purpose unique identifiers but are not
+time-sortable, meaning queries cannot rely on ID order to determine creation order.
+
+```python
+class Article(Model):
+    id = AutoKeyField()  # Default: strategy="uuid4"
+    title = Field(type=str)
+
+article = Article.create(title="Hello World")
+print(article.id)
+# => "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"  (32 chars)
+```
+
+Use UUID4 when:
+
+- You do not need chronological ordering by ID
+- You want zero external dependencies
+- Backward compatibility with existing Popoto models is important
+
+#### ULID (Time-Sortable)
+
+ULID (Universally Unique Lexicographically Sortable Identifier) generates 26-character
+IDs that are time-sortable. The first 10 characters encode a millisecond-precision
+timestamp, and the remaining 16 characters are random. ULIDs use Crockford's Base32
+encoding for URL-safety and readability.
+
+```bash
+pip install popoto[ulid]
+```
+
+```python
+class Order(Model):
+    id = AutoKeyField(strategy="ulid")
+    product = Field(type=str)
+    quantity = Field(type=int)
+
+order1 = Order.create(product="Widget", quantity=5)
+order2 = Order.create(product="Gadget", quantity=3)
+
+print(order1.id)
+# => "01ARZ3NDEKTSV4RRFFQ69G5FAV"  (26 chars)
+
+# IDs are lexicographically sortable by creation time
+print(order1.id < order2.id)
+# => True
+```
+
+Use ULID when:
+
+- You need IDs that sort chronologically (e.g., orders, events, logs)
+- You want shorter IDs than UUID4 (26 vs 32 characters)
+- You need URL-safe identifiers without special characters
+
+#### KSUID (Time-Sortable)
+
+KSUID (K-Sortable Unique Identifier) generates 27-character IDs that are also
+time-sortable. KSUIDs encode a timestamp with second-precision and 16 bytes of random
+data using Base62 encoding. They have a longer time range than ULIDs (until year 2150).
+
+```bash
+pip install popoto[ksuid]
+```
+
+```python
+class Event(Model):
+    id = AutoKeyField(strategy="ksuid")
+    name = Field(type=str)
+    timestamp = Field(type=str)
+
+event1 = Event.create(name="user_signup", timestamp="2025-01-15T10:30:00Z")
+event2 = Event.create(name="purchase", timestamp="2025-01-15T10:31:00Z")
+
+print(event1.id)
+# => "0ujsswThIGTUYm2K8FjOOfXtY1K"  (27 chars)
+
+# IDs are lexicographically sortable by creation time
+print(event1.id < event2.id)
+# => True
+```
+
+Use KSUID when:
+
+- You need IDs that sort chronologically
+- You prefer Base62 encoding (alphanumeric only, case-sensitive)
+- You need the extended time range (valid until year 2150)
+
+#### Choosing a Strategy
+
+| Use Case | Recommended Strategy |
+|----------|---------------------|
+| General-purpose unique IDs | `uuid4` (default) |
+| Event logs, audit trails | `ulid` or `ksuid` |
+| Orders, transactions | `ulid` or `ksuid` |
+| Time-series data | `ulid` or `ksuid` |
+| Existing Popoto models | `uuid4` (backward compatible) |
+| Minimal dependencies | `uuid4` (built-in) |
+| Shortest IDs | `ulid` (26 chars) |
+
+!!! tip
+    Time-sortable IDs like ULID and KSUID are particularly useful when you want to
+    query "most recent" records efficiently, since lexicographic sorting on the ID
+    field naturally orders by creation time.
 
 ## Composite Keys
 
@@ -164,9 +281,14 @@ The Redis key for this instance is `Reservation:Siam Garden:foodie42`.
 ## Models Without KeyFields
 
 You can declare a model without any explicit KeyField. Popoto automatically adds a
-hidden `AutoKeyField` named `_auto_key`, giving every instance a unique UUID-based
+hidden `AutoKeyField` named `_auto_key`, giving every instance a unique UUID4-based
 Redis key. This is convenient when you always query by other fields like `SortedField`
 or `GeoField`.
+
+!!! note
+    The automatically added `_auto_key` uses the default `uuid4` strategy. If you need
+    time-sortable IDs, declare an explicit `AutoKeyField(strategy="ulid")` or
+    `AutoKeyField(strategy="ksuid")` instead.
 
 The `MenuItem` model uses an explicit `AutoKeyField`, but the effect is the same as
 omitting all key fields entirely:
@@ -205,7 +327,9 @@ print(pad_thai.item_id)
 
 !!! tip
     Use `AutoKeyField` when your model represents items that do not have a natural
-    unique identifier, such as orders, menu items, or log entries.
+    unique identifier, such as orders, menu items, or log entries. Consider using
+    `strategy="ulid"` or `strategy="ksuid"` for models where chronological ordering
+    by ID is useful.
 
 ## Field
 

@@ -151,9 +151,575 @@ print(len(top_restaurants))
 # => 2
 ```
 
+!!! note
+    All filter parameters are AND-ed together by default. For OR logic, use Q objects
+    described in the [Q Objects section](#q-objects-or-and-not) below.
+
+## Chainable Query Builder
+
+Popoto supports two query syntaxes: the traditional kwargs-based API shown above, and a fluent
+chainable API that allows method chaining. Both syntaxes are fully supported and can be used
+interchangeably based on your preference.
+
+### Chainable vs Kwargs Syntax
+
+The original kwargs API passes all parameters to a single `filter()` call.
+
+```python
+# Kwargs API - all parameters in one call
+results = Restaurant.query.filter(
+    rating__gte=4.0,
+    order_by="-rating",
+    limit=10
+)
+```
+
+The chainable API builds queries incrementally with method chaining.
+
+```python
+# Chainable API - fluent method chaining
+results = Restaurant.query.filter(rating__gte=4.0).order_by("-rating").limit(10).all()
+```
+
+Both approaches produce identical results. The chainable API can be more readable when building
+complex queries dynamically or when you prefer a fluent interface style.
+
+### Chainable Methods
+
+The `QueryBuilder` returned by `filter()` supports these chainable methods:
+
+| Method | Description |
+|--------|-------------|
+| `filter(**kwargs)` | Add filter criteria, returns new QueryBuilder |
+| `order_by(field)` | Set sort field (prefix with "-" for descending) |
+| `limit(n)` | Set maximum number of results |
+| `values(*fields)` | Return dicts with specified fields instead of model instances |
+| `all()` | Execute query and return all results as a list |
+| `first()` | Execute query and return first result or None |
+| `count()` | Count matching results without loading objects |
+
+### Chaining Multiple Filters
+
+You can chain multiple `filter()` calls to incrementally add criteria. Each call returns a new
+QueryBuilder with the combined filters.
+
+```python
+# Chain multiple filters - equivalent to AND-ing criteria
+results = (
+    Restaurant.query
+    .filter(rating__gte=4.0)
+    .filter(cuisine="Japanese")
+    .order_by("-rating")
+    .limit(5)
+    .all()
+)
+```
+
+This is equivalent to the kwargs version.
+
+```python
+# Same query using kwargs API
+results = Restaurant.query.filter(
+    rating__gte=4.0,
+    cuisine="Japanese",
+    order_by="-rating",
+    limit=5
+)
+```
+
+### Getting the First Result
+
+Use `first()` to retrieve only the first matching result, or `None` if no matches exist.
+This is more efficient than calling `all()[0]` when you only need one object.
+
+```python
+# Get the highest-rated Japanese restaurant
+top_japanese = (
+    Restaurant.query
+    .filter(cuisine="Japanese")
+    .order_by("-rating")
+    .first()
+)
+
+if top_japanese:
+    print(f"Best Japanese: {top_japanese.name} ({top_japanese.rating})")
+```
+
+### Counting Without Loading
+
+Use `count()` on a QueryBuilder to count matching results without loading objects into memory.
+
+```python
+# Count premium menu items without loading them
+expensive_count = MenuItem.query.filter(price__gte=20.0).count()
+print(f"Premium items: {expensive_count}")
+```
+
+### Using Values with Chainable API
+
+The `values()` method specifies which fields to return as dictionaries.
+
+```python
+# Get only names and ratings as dicts
+restaurant_data = (
+    Restaurant.query
+    .filter(rating__gte=4.0)
+    .values("name", "rating")
+    .order_by("-rating")
+    .all()
+)
+# => [{"name": "Sushi Zen", "rating": 4.8}, {"name": "Burger Palace", "rating": 4.5}]
+```
+
+### Backward Compatibility
+
+The QueryBuilder is fully backward compatible with code that treats `filter()` results as a list.
+You can iterate over a QueryBuilder directly, use `len()`, or access items by index.
+
+```python
+# These all work - QueryBuilder acts like a list
+results = Restaurant.query.filter(rating__gte=4.0)
+
+# Iteration
+for restaurant in results:
+    print(restaurant.name)
+
+# Length
+print(len(results))
+
+# Indexing
+first = results[0]
+
+# Boolean check
+if results:
+    print("Found matches!")
+
+# Comparison with list
+assert results == Restaurant.query.filter(rating__gte=4.0).all()
+```
+
+Each of these operations executes the query when first accessed. For repeated access, call
+`all()` once and store the result.
+
+```python
+# More efficient for multiple operations
+results = Restaurant.query.filter(rating__gte=4.0).all()
+print(len(results))
+for r in results:
+    print(r.name)
+```
+
+!!! tip
+    The chainable API is especially useful when building queries conditionally. You can
+    start with a base query and add filters based on runtime conditions, then call `all()`
+    at the end.
+
+```python
+# Build query conditionally
+query = Restaurant.query.filter(active=True)
+
+if min_rating:
+    query = query.filter(rating__gte=min_rating)
+
+if cuisine_type:
+    query = query.filter(cuisine=cuisine_type)
+
+results = query.order_by("-rating").limit(20).all()
+```
+
+## Q Objects (OR, AND, NOT)
+
+Q objects enable complex query logic with OR, AND, and NOT operators. They provide a Django-style
+interface for building expressive filter expressions that go beyond simple AND-ed kwargs.
+
+### Importing Q
+
+Import the `Q` class from popoto alongside your other imports.
+
+```python
+from popoto import Q, Model, KeyField, Field, SortedField
+```
+
+### Basic Q Object Usage
+
+A Q object wraps filter kwargs, which can then be combined with other Q objects using operators.
+
+```python
+# Simple Q object - equivalent to filter(status="active")
+active = Restaurant.query.filter(Q(active=True))
+
+# Q objects support all the same lookups as regular filter kwargs
+high_rated = Restaurant.query.filter(Q(rating__gte=4.5))
+```
+
+### OR Queries with `|`
+
+Use the `|` (pipe) operator to combine Q objects with OR logic. This returns instances matching
+either condition.
+
+```python
+# Find restaurants that are Japanese OR have a high rating
+results = Restaurant.query.filter(
+    Q(cuisine="Japanese") | Q(rating__gte=4.5)
+)
+```
+
+You can chain multiple OR conditions.
+
+```python
+# Find restaurants matching any of three cuisines
+results = Restaurant.query.filter(
+    Q(cuisine="Japanese") | Q(cuisine="Italian") | Q(cuisine="Mexican")
+)
+```
+
+!!! tip
+    For simple "match any of these values" queries, the `__in` lookup is more efficient than
+    multiple OR conditions: `filter(cuisine__in=["Japanese", "Italian", "Mexican"])`.
+
+### AND Queries with `&`
+
+Use the `&` operator for explicit AND logic. This returns instances matching both conditions.
+
+```python
+# Find active restaurants with high ratings
+results = Restaurant.query.filter(
+    Q(active=True) & Q(rating__gte=4.0)
+)
+```
+
+!!! note
+    Explicit AND with `&` is equivalent to passing multiple kwargs to `filter()`. Both of
+    these queries produce identical results:
+    ```python
+    # Using Q with &
+    Restaurant.query.filter(Q(active=True) & Q(rating__gte=4.0))
+
+    # Using kwargs (simpler)
+    Restaurant.query.filter(active=True, rating__gte=4.0)
+    ```
+    Use `&` when you need to combine it with OR logic in the same expression.
+
+### Negation with `~`
+
+Use the `~` (tilde) operator to negate a Q object. This returns instances that do NOT match the
+condition.
+
+```python
+# Find all restaurants that are NOT inactive
+results = Restaurant.query.filter(~Q(active=False))
+
+# Find restaurants not in the "Fast Food" cuisine
+results = Restaurant.query.filter(~Q(cuisine="Fast Food"))
+```
+
 !!! warning
-    All filter parameters are AND-ed together. There is no built-in OR support. If you need
-    OR logic, run separate queries and merge the results in Python.
+    Negation (`~Q`) requires scanning all keys for the model to compute the set difference.
+    On large datasets with many instances, this can be slow and memory-intensive. Use with
+    caution in production, and prefer positive filters when possible.
+
+### Complex Nested Expressions
+
+Q objects can be nested to build arbitrarily complex expressions. Use parentheses to control
+operator precedence.
+
+```python
+# Active OR premium restaurants, with high ratings
+results = Restaurant.query.filter(
+    (Q(active=True) | Q(cuisine="Premium")) & Q(rating__gte=4.0)
+)
+
+# Complex: (active AND high-rated) OR (premium AND any rating)
+results = Restaurant.query.filter(
+    (Q(active=True) & Q(rating__gte=4.5)) | Q(cuisine="Premium")
+)
+
+# Exclude specific combinations
+results = Restaurant.query.filter(
+    Q(rating__gte=3.0) & ~Q(cuisine="Fast Food")
+)
+```
+
+### Mixing Q Objects with Kwargs
+
+You can pass Q objects alongside regular kwargs to `filter()`. The Q objects are evaluated first,
+then AND-ed with the kwargs filters.
+
+```python
+# Q object OR combined with kwarg filter
+# Equivalent to: (cuisine="Japanese" OR cuisine="Italian") AND active=True
+results = Restaurant.query.filter(
+    Q(cuisine="Japanese") | Q(cuisine="Italian"),
+    active=True
+)
+```
+
+This is useful when you have a dynamic OR condition but always want to apply a static filter.
+
+```python
+# Dynamic cuisine filter with static active=True
+cuisines = ["Japanese", "Italian", "Mexican"]
+cuisine_q = Q(cuisine=cuisines[0])
+for c in cuisines[1:]:
+    cuisine_q = cuisine_q | Q(cuisine=c)
+
+results = Restaurant.query.filter(cuisine_q, active=True)
+```
+
+### Q Objects with Chainable API
+
+Q objects work seamlessly with the chainable query builder.
+
+```python
+results = (
+    Restaurant.query
+    .filter(Q(cuisine="Japanese") | Q(cuisine="Italian"))
+    .filter(rating__gte=4.0)
+    .order_by("-rating")
+    .limit(10)
+    .all()
+)
+```
+
+### Supported Lookups in Q Objects
+
+Q objects support all the same lookups as regular filter kwargs:
+
+| Field Type | Supported Lookups |
+|------------|-------------------|
+| KeyField | `=`, `__in`, `__contains`, `__startswith`, `__endswith`, `__isnull` |
+| SortedField | `=`, `__gt`, `__gte`, `__lt`, `__lte` |
+| GeoField | `location=`, `location_radius=`, etc. |
+| Field | `=` (exact match) |
+
+```python
+# Q with SortedField range
+Restaurant.query.filter(Q(rating__gte=4.0) | Q(rating__lte=2.0))
+
+# Q with KeyField pattern matching
+Restaurant.query.filter(Q(name__startswith="A") | Q(name__startswith="B"))
+```
+
+### Performance Considerations
+
+Q objects provide expressive query syntax, but understanding their performance characteristics
+helps you write efficient code.
+
+**OR queries execute both sides**: When you use `|`, Popoto evaluates both Q objects and computes
+the union of their result sets. This means two separate filter operations are performed.
+
+```python
+# This executes TWO filter operations, then unions the results
+Restaurant.query.filter(Q(cuisine="Japanese") | Q(cuisine="Italian"))
+
+# This is more efficient for simple value matching
+Restaurant.query.filter(cuisine__in=["Japanese", "Italian"])
+```
+
+**AND queries use set intersection**: When you use `&`, Popoto evaluates both Q objects and
+computes the intersection. This is similar to passing multiple kwargs.
+
+**Negation scans all keys**: The `~` operator requires fetching all keys for the model to
+compute the set difference. Avoid `~Q` on models with many instances.
+
+| Expression | Redis Operations |
+|------------|------------------|
+| `Q(a=1)` | Single filter |
+| `Q(a=1) \| Q(b=2)` | Two filters + set union |
+| `Q(a=1) & Q(b=2)` | Two filters + set intersection |
+| `~Q(a=1)` | One filter + all keys scan + set difference |
+
+!!! tip
+    For best performance, prefer `__in` over multiple OR conditions when matching against a
+    list of values, and avoid `~Q` on large datasets.
+
+## Expression-Based Queries
+
+Expression-based queries let you use Python comparison operators directly on Field classes to build
+filter conditions. This provides a more Pythonic, type-safe way to write queries with excellent IDE
+support for autocomplete and error detection.
+
+### Expression vs Kwargs Syntax
+
+The traditional kwargs syntax uses field names as strings with lookup suffixes.
+
+```python
+# Kwargs syntax
+Restaurant.query.filter(rating__gte=4.0, status="active")
+```
+
+The expression syntax uses Python operators on Field classes accessed through the Model.
+
+```python
+# Expression syntax
+Restaurant.query.filter(Restaurant.rating >= 4.0, Restaurant.status == "active")
+```
+
+Both approaches produce identical results. The expression syntax offers IDE autocomplete on field
+names, compile-time detection of typos, and a more natural Python feel.
+
+### Supported Operators
+
+Expression-based queries support all standard Python comparison operators.
+
+| Operator | Description | Equivalent Lookup |
+|----------|-------------|-------------------|
+| `==` | Equal to | `field=value` |
+| `!=` | Not equal to | `~Q(field=value)` |
+| `>` | Greater than | `field__gt=value` |
+| `>=` | Greater than or equal | `field__gte=value` |
+| `<` | Less than | `field__lt=value` |
+| `<=` | Less than or equal | `field__lte=value` |
+
+Here are examples using different operators.
+
+```python
+# Equal to
+Restaurant.query.filter(Restaurant.name == "Burger Palace")
+
+# Not equal to
+Restaurant.query.filter(Restaurant.status != "closed")
+
+# Greater than
+MenuItem.query.filter(MenuItem.price > 20.0)
+
+# Greater than or equal
+Restaurant.query.filter(Restaurant.rating >= 4.5)
+
+# Less than
+MenuItem.query.filter(MenuItem.price < 10.0)
+
+# Less than or equal
+Order.query.filter(Order.total <= 50.0)
+```
+
+### Combining Expressions with & and |
+
+Use the `&` operator for AND logic and `|` for OR logic, just like with Q objects. Parentheses
+control operator precedence.
+
+```python
+# AND: restaurants with high rating AND active status
+Restaurant.query.filter(
+    (Restaurant.rating >= 4.0) & (Restaurant.active == True)
+)
+
+# OR: restaurants that are Japanese OR Italian
+Restaurant.query.filter(
+    (Restaurant.cuisine == "Japanese") | (Restaurant.cuisine == "Italian")
+)
+
+# Complex: (high-rated AND active) OR premium cuisine
+Restaurant.query.filter(
+    ((Restaurant.rating >= 4.5) & (Restaurant.active == True))
+    | (Restaurant.cuisine == "Premium")
+)
+```
+
+!!! note
+    Always use parentheses around individual expressions when combining with `&` or `|`.
+    Without parentheses, Python's operator precedence may produce unexpected results.
+
+### Mixing Expressions with Kwargs
+
+You can mix expression-based filters with traditional kwargs in the same `filter()` call. This is
+useful when some conditions are more naturally expressed one way or the other.
+
+```python
+# Expression for comparison, kwarg for exact match
+Restaurant.query.filter(
+    Restaurant.rating > 4.0,
+    active=True
+)
+
+# Multiple expressions with kwargs
+MenuItem.query.filter(
+    MenuItem.price >= 5.0,
+    MenuItem.price <= 15.0,
+    available=True
+)
+```
+
+The expressions and kwargs are combined with AND logic, just like multiple kwargs would be.
+
+### Expressions with Chainable API
+
+Expression-based queries work seamlessly with the chainable query builder.
+
+```python
+# Chain expressions with other query methods
+results = (
+    Restaurant.query
+    .filter(Restaurant.rating >= 4.0)
+    .filter(Restaurant.active == True)
+    .order_by("-rating")
+    .limit(10)
+    .all()
+)
+
+# Mix expressions and kwargs in chained calls
+results = (
+    MenuItem.query
+    .filter(MenuItem.price <= 20.0)
+    .filter(available=True)
+    .order_by("price")
+    .first()
+)
+```
+
+### IDE Autocomplete Benefits
+
+One of the main advantages of expression-based queries is improved developer experience with IDE
+support.
+
+**Autocomplete**: When you type `Restaurant.`, your IDE suggests all available fields (name,
+cuisine, rating, location, active). No need to remember field names or check the model definition.
+
+**Type checking**: If you mistype a field name, your IDE and type checker can catch it immediately.
+With kwargs, a typo like `ratng__gte=4.0` would silently fail or raise an error at runtime.
+
+**Refactoring**: When you rename a field, IDE refactoring tools can update all expression-based
+queries automatically. String-based kwargs require manual find-and-replace.
+
+```python
+# IDE catches this typo immediately
+Restaurant.query.filter(Restaurant.ratng >= 4.0)  # AttributeError highlighted
+
+# This typo is only caught at runtime
+Restaurant.query.filter(ratng__gte=4.0)  # No IDE warning
+```
+
+### When to Use Expressions vs Kwargs
+
+Both syntaxes are fully supported. Choose based on your preference and use case.
+
+**Use expressions when:**
+
+- You want IDE autocomplete and type checking
+- Building queries with comparison operators (`>`, `<`, `>=`, `<=`)
+- Combining conditions with `&` and `|` operators
+- Working in a codebase that values static analysis
+
+**Use kwargs when:**
+
+- Writing simple exact-match filters
+- Using special lookups like `__contains`, `__startswith`, `__in`
+- Dynamically building queries from dictionaries
+- Maintaining consistency with existing Django-style code
+
+```python
+# Expressions are natural for comparisons
+Restaurant.query.filter(Restaurant.rating >= 4.0)
+
+# Kwargs are concise for pattern matching
+Restaurant.query.filter(name__startswith="B")
+
+# Mix both as needed
+Restaurant.query.filter(
+    Restaurant.rating >= 4.0,
+    name__contains="Sushi"
+)
+```
 
 ## Count Results
 

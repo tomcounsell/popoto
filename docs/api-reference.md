@@ -164,8 +164,219 @@ Every synchronous Model method has an async counterpart that runs in a thread po
 | `instance.save()` | `await instance.async_save()` |
 | `instance.delete()` | `await instance.async_delete()` |
 | `Model.load(db_key=...)` | `await Model.async_load(db_key=...)` |
+| `Model.bulk_create(...)` | `await Model.async_bulk_create(...)` |
+| `Model.bulk_update(...)` | `await Model.async_bulk_update(...)` |
+| `Model.bulk_delete(...)` | `await Model.async_bulk_delete(...)` |
 
 All async methods accept the same parameters as their sync counterparts.
+
+---
+
+## Bulk Operations
+
+Popoto provides bulk operation methods for efficient batch processing using Redis pipelines.
+These methods significantly reduce network round-trips compared to individual operations,
+making them ideal for importing data, batch updates, and cleanup tasks.
+
+### Model.bulk_create()
+
+```python
+@classmethod
+Model.bulk_create(instances: list, batch_size: int = 1000) -> list
+```
+
+Create multiple instances efficiently using a Redis pipeline. All instances are saved in
+batched transactions, dramatically reducing network overhead.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `instances` | `list` | | List of unsaved model instances to create. |
+| `batch_size` | `int` | `1000` | Maximum instances per pipeline batch. |
+
+**Returns:** `list` of created instances.
+
+```python
+# Create many restaurants at once
+restaurants = [
+    Restaurant(name="Taco Town", cuisine="Mexican", rating=4.2),
+    Restaurant(name="Burger Palace", cuisine="American", rating=4.0),
+    Restaurant(name="Sushi Spot", cuisine="Japanese", rating=4.8),
+]
+created = Restaurant.bulk_create(restaurants)
+print(f"Created {len(created)} restaurants")
+# => Created 3 restaurants
+```
+
+!!! tip "Performance Benefit"
+    Creating 1000 instances with individual `save()` calls requires 1000 network
+    round-trips. With `bulk_create()`, the same operation completes in a single
+    pipeline execution, often 10-100x faster depending on network latency.
+
+!!! note
+    All instances must be of the same Model class. Validation runs on each instance
+    during save, and a `ModelException` is raised if any instance fails validation.
+
+### Model.bulk_update()
+
+```python
+@classmethod
+Model.bulk_update(queryset_or_instances, batch_size: int = 1000, **updates) -> int
+```
+
+Update multiple instances efficiently using a Redis pipeline. Applies the given field
+updates to all instances in the queryset or list.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `queryset_or_instances` | `list` or query result | | Instances to update (from `query.filter()` or a list). |
+| `batch_size` | `int` | `1000` | Maximum instances per pipeline batch. |
+| `**updates` | | | Field names and new values to apply. |
+
+**Returns:** `int` count of updated instances.
+
+```python
+# Update all pending restaurants to active
+count = Restaurant.bulk_update(
+    Restaurant.query.filter(status="pending"),
+    status="active"
+)
+print(f"Activated {count} restaurants")
+
+# Update from a list of instances
+featured_restaurants = [r1, r2, r3]
+count = Restaurant.bulk_update(featured_restaurants, is_featured=True, rating=5.0)
+```
+
+!!! note
+    Each instance is fully validated before saving. If any instance fails validation,
+    a `ModelException` is raised.
+
+### Model.bulk_delete()
+
+```python
+@classmethod
+Model.bulk_delete(queryset_or_instances, batch_size: int = 1000) -> int
+```
+
+Delete multiple instances efficiently using a Redis pipeline. Properly cleans up all
+associated indexes (sorted fields, geo fields, unique constraints, relationships).
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `queryset_or_instances` | `list` or query result | | Instances to delete (from `query.filter()` or a list). |
+| `batch_size` | `int` | `1000` | Maximum instances per pipeline batch. |
+
+**Returns:** `int` count of deleted instances.
+
+```python
+# Delete all inactive restaurants
+count = Restaurant.bulk_delete(
+    Restaurant.query.filter(status="inactive")
+)
+print(f"Deleted {count} inactive restaurants")
+
+# Delete from a list
+old_restaurants = [r1, r2, r3]
+count = Restaurant.bulk_delete(old_restaurants)
+```
+
+!!! warning
+    Bulk delete is permanent. All instances and their indexes are removed from Redis.
+    There is no undo operation.
+
+### Batch Size Parameter
+
+All bulk methods accept a `batch_size` parameter (default 1000) that controls memory
+usage and pipeline size. When processing more instances than `batch_size`, operations
+are automatically split into multiple pipeline executions.
+
+```python
+# Process 10,000 instances in batches of 500
+Restaurant.bulk_create(large_list, batch_size=500)
+```
+
+**When to adjust batch size:**
+
+- **Increase** for faster throughput when memory is not a concern
+- **Decrease** when instances are large or memory is constrained
+- **Default (1000)** works well for most use cases
+
+### Async Bulk Methods
+
+All bulk operations have async counterparts that run in a thread pool to avoid blocking
+the event loop. See [Async Operations](async.md) for details.
+
+| Sync | Async |
+|------|-------|
+| `Model.bulk_create(instances)` | `await Model.async_bulk_create(instances)` |
+| `Model.bulk_update(queryset, **updates)` | `await Model.async_bulk_update(queryset, **updates)` |
+| `Model.bulk_delete(queryset)` | `await Model.async_bulk_delete(queryset)` |
+
+```python
+# Async bulk create
+restaurants = await Restaurant.async_bulk_create([
+    Restaurant(name="Async Eats", cuisine="Fusion", rating=4.5),
+    Restaurant(name="Pipeline Pizzeria", cuisine="Italian", rating=4.3),
+])
+
+# Async bulk update
+count = await Restaurant.async_bulk_update(
+    Restaurant.query.filter(rating__gte=4.0),
+    is_featured=True
+)
+
+# Async bulk delete
+count = await Restaurant.async_bulk_delete(
+    Restaurant.query.filter(status="closed")
+)
+```
+
+### Example Use Cases
+
+**Data Import**
+
+```python
+# Import restaurants from CSV
+import csv
+
+with open("restaurants.csv") as f:
+    reader = csv.DictReader(f)
+    instances = [
+        Restaurant(
+            name=row["name"],
+            cuisine=row["cuisine"],
+            rating=float(row["rating"]),
+        )
+        for row in reader
+    ]
+
+created = Restaurant.bulk_create(instances)
+print(f"Imported {len(created)} restaurants")
+```
+
+**Batch Status Update**
+
+```python
+# Mark all orders older than 30 days as archived
+from datetime import datetime, timedelta
+
+cutoff = datetime.now() - timedelta(days=30)
+old_orders = Order.query.filter(created_at__lt=cutoff)
+count = Order.bulk_update(old_orders, status="archived")
+print(f"Archived {count} old orders")
+```
+
+**Cleanup Task**
+
+```python
+# Remove all soft-deleted records
+deleted_count = Restaurant.bulk_delete(
+    Restaurant.query.filter(is_deleted=True)
+)
+print(f"Permanently removed {deleted_count} restaurants")
+```
+
+---
 
 ### Meta Inner Class
 

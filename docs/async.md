@@ -448,8 +448,59 @@ async def resilient_lookups():
     When using `return_exceptions=True`, remember to check each result for exceptions
     before accessing model attributes.
 
+## Async Bulk Operations
+
+Popoto also provides async versions of all bulk operations. These methods are ideal for
+importing large datasets, batch updates, and cleanup tasks without blocking the event loop.
+
+| Sync | Async |
+|------|-------|
+| `Model.bulk_create(instances)` | `await Model.async_bulk_create(instances)` |
+| `Model.bulk_update(queryset, **updates)` | `await Model.async_bulk_update(queryset, **updates)` |
+| `Model.bulk_delete(queryset)` | `await Model.async_bulk_delete(queryset)` |
+
+```python
+async def import_restaurants(data: list[dict]):
+    """Bulk import restaurants from external data."""
+    instances = [
+        Restaurant(
+            name=item["name"],
+            cuisine=item["cuisine"],
+            rating=item["rating"],
+        )
+        for item in data
+    ]
+
+    created = await Restaurant.async_bulk_create(instances)
+    print(f"Imported {len(created)} restaurants")
+    return created
+
+async def feature_top_restaurants():
+    """Mark highly-rated restaurants as featured."""
+    count = await Restaurant.async_bulk_update(
+        Restaurant.query.filter(rating__gte=4.5),
+        is_featured=True
+    )
+    print(f"Featured {count} top restaurants")
+
+async def cleanup_inactive():
+    """Remove inactive restaurants."""
+    count = await Restaurant.async_bulk_delete(
+        Restaurant.query.filter(status="inactive")
+    )
+    print(f"Deleted {count} inactive restaurants")
+```
+
+All bulk methods use Redis pipelines internally to batch operations, dramatically reducing
+network round-trips. The `batch_size` parameter (default 1000) controls how many instances
+are processed per pipeline execution.
+
+See [Bulk Operations](api-reference.md#bulk-operations) in the API Reference for complete
+documentation.
+
 ## See Also
 
 - [Models and Fields](fields.md) -- define your data models
 - [Making Queries](query.md) -- query patterns and filter lookups
 - [Model Meta Options](meta.md) -- configure `order_by`, `ttl`, and other model behavior
+- [Bulk Operations](api-reference.md#bulk-operations) -- efficient batch processing
