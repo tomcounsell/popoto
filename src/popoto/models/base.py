@@ -58,6 +58,7 @@ from ..fields.sorted_field_mixin import SortedFieldMixin
 from ..fields.geo_field import GeoField
 from ..fields.relationship import Relationship
 from ..redis_db import POPOTO_REDIS_DB
+from ..exceptions import ModelException
 
 logger = logging.getLogger("POPOTO.model_base")
 

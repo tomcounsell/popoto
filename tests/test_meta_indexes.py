@@ -5,7 +5,7 @@ Tests for Model Meta.indexes feature (Peewee-style)
 import pytest
 from src.popoto import Model, KeyField, Field
 from src.popoto.fields.shortcuts import IntField
-from src.popoto.models.base import ModelException
+from src.popoto.exceptions import ModelException
 from src.popoto.redis_db import POPOTO_REDIS_DB
 
 

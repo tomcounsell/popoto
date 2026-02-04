@@ -88,7 +88,7 @@ def test_no_ttl_on_permanent_model():
 
 def test_invalid_meta_ttl_raises():
     """Test that invalid Meta.ttl raises ModelException."""
-    from src.popoto.models.base import ModelException
+    from src.popoto.exceptions import ModelException
 
     # Negative TTL
     with pytest.raises(ModelException, match="must be a positive integer"):
