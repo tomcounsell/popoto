@@ -132,6 +132,64 @@ See the [CLAUDE.md](https://github.com/tomcounsell/popoto) debugging section for
 | `BEGINNING_OF_TIME` | `0` | Unix timestamp used as the minimum time boundary for time-based queries. |
 | `POPOTO_LOG_LEVEL` | `WARNING` | Log level for POPOTO-REDIS_DB logger (DEBUG, INFO, WARNING, ERROR, CRITICAL) |
 
+## Thread Safety
+
+### What IS Thread-Safe
+
+Redis connections in Popoto use a connection pool, which is thread-safe. Multiple
+threads can safely execute Redis operations concurrently:
+
+```python
+from concurrent.futures import ThreadPoolExecutor
+from popoto import Model, KeyField, Field
+
+class Counter(Model):
+    name = KeyField()
+    value = Field(type=int, default=0)
+
+def increment(name):
+    counter = Counter.query.get(name=name)
+    counter.value += 1
+    counter.save()
+
+# Safe: each thread gets its own connection from the pool
+with ThreadPoolExecutor(max_workers=10) as pool:
+    pool.map(increment, ["counter1"] * 10)
+```
+
+!!! warning
+    The example above has a race condition in the read-modify-write pattern.
+    While the Redis *connection* is thread-safe, the *logic* of reading a value,
+    modifying it in Python, and writing it back is not atomic. Use Redis
+    transactions or Lua scripts for atomic operations.
+
+### What is NOT Thread-Safe
+
+Model instances should not be shared across threads. Each thread should create
+or load its own instances:
+
+```python
+# UNSAFE: sharing instance across threads
+user = User.query.get(username="alice")
+# Don't pass `user` to another thread
+
+# SAFE: each thread loads its own instance
+def process_user(username):
+    user = User.query.get(username=username)
+    # work with user
+```
+
+### Best Practices
+
+1. **Create model instances per-thread** — don't share instances across threads
+2. **Use atomic Redis operations** for concurrent updates to the same key
+3. **Consider async** for I/O-bound workloads (see [Async Operations](async.md))
+4. **Use pipelines** for batch operations within a single thread
+
+!!! tip
+    For high-concurrency scenarios, consider using Popoto's async API instead of
+    threading. See [Async Operations](async.md) for details.
+
 ## Logging
 
 Popoto uses Python's standard logging module. You can configure log levels

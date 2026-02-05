@@ -722,3 +722,121 @@ def test_benchmark_query_operations(performance_timer):
     print(f"  Bulk query (1000 items): {timer.elapsed:.3f}s")
     assert len(results) >= 1000
     assert timer.elapsed < 1.0, f"Bulk query too slow: {timer.elapsed:.3f}s"
+
+
+# =============================================================================
+# THREADING / CONCURRENCY TESTS
+# =============================================================================
+
+
+class ThreadingModel(popoto.Model):
+    """Model for threading tests."""
+
+    thread_id = popoto.KeyField()
+    counter = popoto.Field(type=int, default=0)
+    data = popoto.Field(type=str, default="")
+
+
+@pytest.mark.slow
+def test_concurrent_creates_from_threads():
+    """Test that multiple threads can create different objects simultaneously."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    POPOTO_REDIS_DB.flushdb()
+    errors = []
+
+    def create_item(i):
+        try:
+            ThreadingModel.create(thread_id=f"thread_{i}", counter=i, data=f"data_{i}")
+        except Exception as e:
+            errors.append((i, str(e)))
+
+    with ThreadPoolExecutor(max_workers=20) as pool:
+        pool.map(create_item, range(20))
+
+    assert len(errors) == 0, f"Errors during concurrent creates: {errors}"
+    all_items = ThreadingModel.query.all()
+    assert len(all_items) == 20, f"Expected 20 items, got {len(all_items)}"
+
+
+@pytest.mark.slow
+def test_concurrent_reads_from_threads():
+    """Test that multiple threads can read the same objects simultaneously."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    POPOTO_REDIS_DB.flushdb()
+    for i in range(10):
+        ThreadingModel.create(thread_id=f"read_{i}", counter=i, data=f"data_{i}")
+
+    results = []
+    errors = []
+
+    def read_all(thread_num):
+        try:
+            items = ThreadingModel.query.all()
+            results.append(len(items))
+        except Exception as e:
+            errors.append((thread_num, str(e)))
+
+    with ThreadPoolExecutor(max_workers=50) as pool:
+        pool.map(read_all, range(50))
+
+    assert len(errors) == 0, f"Errors during concurrent reads: {errors}"
+    assert all(r == 10 for r in results), f"Inconsistent read counts: {set(results)}"
+
+
+@pytest.mark.slow
+def test_concurrent_updates_last_write_wins():
+    """Test concurrent updates to the same key - documents last-write-wins behavior."""
+    import threading
+
+    POPOTO_REDIS_DB.flushdb()
+    ThreadingModel.create(thread_id="contested", counter=0, data="initial")
+
+    barrier = threading.Barrier(10)
+
+    def update_item(value):
+        barrier.wait()  # All threads start simultaneously
+        item = ThreadingModel.query.get(thread_id="contested")
+        item.counter = value
+        item.save()
+
+    threads = [threading.Thread(target=update_item, args=(i,)) for i in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    # One of the values should have won
+    final = ThreadingModel.query.get(thread_id="contested")
+    assert final.counter in range(10), f"Unexpected counter value: {final.counter}"
+
+
+@pytest.mark.slow
+def test_thread_safety_different_objects():
+    """Test full CRUD lifecycle where each thread operates on its own object."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    POPOTO_REDIS_DB.flushdb()
+    errors = []
+
+    def crud_lifecycle(i):
+        try:
+            tid = f"lifecycle_{i}"
+            item = ThreadingModel.create(thread_id=tid, counter=0, data="created")
+            item.counter = i
+            item.data = f"updated_{i}"
+            item.save()
+            loaded = ThreadingModel.query.get(thread_id=tid)
+            assert loaded.counter == i
+            assert loaded.data == f"updated_{i}"
+            loaded.delete()
+        except Exception as e:
+            errors.append((i, str(e)))
+
+    with ThreadPoolExecutor(max_workers=20) as pool:
+        pool.map(crud_lifecycle, range(20))
+
+    assert len(errors) == 0, f"Errors during CRUD lifecycle: {errors}"
+    remaining = ThreadingModel.query.all()
+    assert len(remaining) == 0, f"Expected 0 items after cleanup, got {len(remaining)}"
