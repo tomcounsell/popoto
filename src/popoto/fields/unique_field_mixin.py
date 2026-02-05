@@ -118,6 +118,6 @@ class UniqueFieldMixin:
             setattr(self, k, kwargs.get(k, v))
 
         if not kwargs.get("unique", True):
-            from ..models.base import ModelException
+            from ..exceptions import ModelException
 
             raise ModelException("UniqueKey field MUST be unique")

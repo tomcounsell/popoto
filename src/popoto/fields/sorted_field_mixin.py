@@ -151,13 +151,13 @@ class SortedFieldMixin:
             self.sort_by = tuple((self.sort_by,))
 
         elif self.sort_by and not isinstance(self.sort_by, tuple):
-            from ..models.base import ModelException
+            from ..exceptions import ModelException
 
             raise ModelException("sort_by must be str or tuple of str field names")
 
         # todo: move this to field init validation
         if self.null is not False:
-            from ..models.base import ModelException
+            from ..exceptions import ModelException
 
             raise ModelException("SortedField cannot be null")
             # todo: when allow null in SortedField. null removes instance from SortedSet

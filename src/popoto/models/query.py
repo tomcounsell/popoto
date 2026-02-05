@@ -54,8 +54,12 @@ import logging
 import asyncio
 import sys
 import functools
+from typing import TYPE_CHECKING, Optional
 
 from .db_key import DB_key
+
+if TYPE_CHECKING:
+    from .base import Model
 from ..redis_db import POPOTO_REDIS_DB, ENCODING
 
 logger = logging.getLogger("POPOTO.Query")
@@ -359,7 +363,7 @@ class Query:
         self._geo_distances = {}  # {redis_key: distance}
         self._geo_distance_unit = None  # unit for distance values
 
-    def get(self, db_key: DB_key = None, redis_key: str = None, **kwargs) -> "Model":
+    def get(self, db_key: DB_key = None, redis_key: str = None, **kwargs) -> Optional["Model"]:
         """Retrieve a single model instance.
 
         Look up by *db_key*, *redis_key*, or keyword field values. Raises

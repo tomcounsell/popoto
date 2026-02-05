@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "popoto"
-version = "0.9.0"
+version = "1.0.0"
 description = "A Python Redis ORM"
 readme = "README.md"
 authors = [{ name = "Tom Counsell", email = "other@tomcounsell.com" }]
@@ -52,7 +52,6 @@ addopts = "-v"
 
 [tool.poetry]
 name = "popoto"
-version = "0.9.0"
 description = "A Python Redis ORM"
 authors = ["Tom Counsell"]
 

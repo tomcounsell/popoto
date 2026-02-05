@@ -41,8 +41,12 @@ import logging
 import asyncio
 import sys
 import functools
+from typing import TYPE_CHECKING, Optional, Union, List, Dict, Any
 
 import redis
+
+if TYPE_CHECKING:
+    from redis.client import Pipeline
 
 from .encoding import encode_popoto_model_obj, decode_lazy_field
 from .db_key import DB_key
@@ -54,6 +58,7 @@ from ..fields.sorted_field_mixin import SortedFieldMixin
 from ..fields.geo_field import GeoField
 from ..fields.relationship import Relationship
 from ..redis_db import POPOTO_REDIS_DB
+from ..exceptions import ModelException
 
 logger = logging.getLogger("POPOTO.model_base")
 
@@ -72,22 +77,6 @@ else:
 global RELATED_MODEL_LOAD_SEQUENCE
 RELATED_MODEL_LOAD_SEQUENCE = set()
 
-
-class ModelException(Exception):
-    """Raised when a model operation fails (validation, save, unique constraint, etc.).
-
-    Raised when:
-        - Field names violate naming conventions (must start lowercase)
-        - Reserved field names are used (limit, order_by, values)
-        - Public attributes are not Field instances
-        - Model validation fails during instantiation or save
-        - TTL and expire_at are both set (mutually exclusive)
-
-    This exception is intentionally broad to provide clear error messages
-    during development. In production, consider catching specific cases.
-    """
-
-    pass
 
 
 # Length of hex digest used for index hashes. 16 hex chars = 64 bits,
@@ -694,26 +683,25 @@ class Model(metaclass=ModelBase):
             serialized field dictionaries directly rather than using ==.
         """
         try:
-            if isinstance(other, self.__class__):
-                # always False if if any KeyFields are None
-                if (
-                    None
-                    in [
-                        self._meta.fields.get(key_field_name)
-                        for key_field_name in self._meta.key_field_names
-                    ]
-                ) or (
-                    None
-                    in [
-                        other._meta.fields.get(key_field_name)
-                        for key_field_name in other._meta.key_field_names
-                    ]
-                ):
-                    return repr(self) == repr(other)
-                return self.db_key == other.db_key
-        except:
-            return False
-        else:
+            if not isinstance(other, self.__class__):
+                return False
+            # Always False if any KeyFields are None - use repr comparison
+            if (
+                None
+                in [
+                    self._meta.fields.get(key_field_name)
+                    for key_field_name in self._meta.key_field_names
+                ]
+            ) or (
+                None
+                in [
+                    other._meta.fields.get(key_field_name)
+                    for key_field_name in other._meta.key_field_names
+                ]
+            ):
+                return repr(self) == repr(other)
+            return self.db_key == other.db_key
+        except (AttributeError, TypeError):
             return False
 
     def __getattribute__(self, name):
@@ -944,10 +932,10 @@ class Model(metaclass=ModelBase):
 
     def save(
         self,
-        pipeline: redis.client.Pipeline = None,
+        pipeline: "Pipeline" = None,
         ignore_errors: bool = False,
         **kwargs,
-    ):
+    ) -> Union["Pipeline", int, bool]:
         """Persist the model instance to Redis.
 
         Executes the complete save workflow:
@@ -1147,7 +1135,11 @@ class Model(metaclass=ModelBase):
             return db_response
 
     @classmethod
-    def create(cls, pipeline: redis.client.Pipeline = None, **kwargs):
+    def create(
+        cls,
+        pipeline: "Pipeline" = None,
+        **kwargs,
+    ) -> Union["Pipeline", "Model"]:
         """Create a new instance, save it to Redis, and return it.
 
         Convenience method combining instantiation and save() in one call.
@@ -1169,7 +1161,11 @@ class Model(metaclass=ModelBase):
         return pipeline_or_db_response if pipeline else instance
 
     @classmethod
-    def load(cls, db_key: str = None, **kwargs):
+    def load(
+        cls,
+        db_key: str = None,
+        **kwargs,
+    ) -> Optional["Model"]:
         """Load an existing instance from Redis by *db_key* or field values.
 
         Provides two loading patterns:
@@ -1192,7 +1188,12 @@ class Model(metaclass=ModelBase):
         """
         return cls.query.get(db_key=db_key or cls(**kwargs).db_key)
 
-    def delete(self, pipeline: redis.client.Pipeline = None, *args, **kwargs):
+    def delete(
+        self,
+        pipeline: "Pipeline" = None,
+        *args,
+        **kwargs,
+    ) -> Union["Pipeline", bool]:
         """Delete this instance from Redis.
 
         Executes the complete deletion workflow:

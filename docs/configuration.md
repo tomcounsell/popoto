@@ -130,30 +130,150 @@ See the [CLAUDE.md](https://github.com/tomcounsell/popoto) debugging section for
 |----------|---------|-------------|
 | `REDIS_URL` | *(empty)* | Redis connection URL. Falls back to localhost:6379. |
 | `BEGINNING_OF_TIME` | `0` | Unix timestamp used as the minimum time boundary for time-based queries. |
+| `POPOTO_LOG_LEVEL` | `WARNING` | Log level for POPOTO-REDIS_DB logger (DEBUG, INFO, WARNING, ERROR, CRITICAL) |
+
+## Thread Safety
+
+### What IS Thread-Safe
+
+Redis connections in Popoto use a connection pool, which is thread-safe. Multiple
+threads can safely execute Redis operations concurrently:
+
+```python
+from concurrent.futures import ThreadPoolExecutor
+from popoto import Model, KeyField, Field
+
+class Counter(Model):
+    name = KeyField()
+    value = Field(type=int, default=0)
+
+def increment(name):
+    counter = Counter.query.get(name=name)
+    counter.value += 1
+    counter.save()
+
+# Safe: each thread gets its own connection from the pool
+with ThreadPoolExecutor(max_workers=10) as pool:
+    pool.map(increment, ["counter1"] * 10)
+```
+
+!!! warning
+    The example above has a race condition in the read-modify-write pattern.
+    While the Redis *connection* is thread-safe, the *logic* of reading a value,
+    modifying it in Python, and writing it back is not atomic. Use Redis
+    transactions or Lua scripts for atomic operations.
+
+### What is NOT Thread-Safe
+
+Model instances should not be shared across threads. Each thread should create
+or load its own instances:
+
+```python
+# UNSAFE: sharing instance across threads
+user = User.query.get(username="alice")
+# Don't pass `user` to another thread
+
+# SAFE: each thread loads its own instance
+def process_user(username):
+    user = User.query.get(username=username)
+    # work with user
+```
+
+### Best Practices
+
+1. **Create model instances per-thread** — don't share instances across threads
+2. **Use atomic Redis operations** for concurrent updates to the same key
+3. **Consider async** for I/O-bound workloads (see [Async Operations](async.md))
+4. **Use pipelines** for batch operations within a single thread
+
+!!! tip
+    For high-concurrency scenarios, consider using Popoto's async API instead of
+    threading. See [Async Operations](async.md) for details.
 
 ## Logging
 
-Popoto uses Python's `logging` module with these logger names:
+Popoto uses Python's standard logging module. You can configure log levels
+globally or per-logger.
 
-| Logger | Purpose |
-|--------|---------|
-| `POPOTO-REDIS_DB` | Connection events and memory info |
-| `POPOTO.model_base` | Model save/load/delete operations |
-| `POPOTO.Query` | Query execution details |
-| `POPOTO.field` | Field validation errors |
-| `POPOTO.KeyFieldMixin` | Key field index operations |
-| `POPOTO.SortedFieldMixin` | Sorted set operations |
-| `POPOTO.GeoField` | Geo index operations |
-| `POPOTO.Relationship` | Relationship field operations |
-| `POPOTO-publisher` | Pub/sub publish events |
-| `POPOTO-subscriber` | Pub/sub message handling |
+### Environment Variable
 
-Configure logging to see Popoto's debug output:
+Set `POPOTO_LOG_LEVEL` to control the default log level for Popoto's Redis
+connection logger:
+
+```bash
+export POPOTO_LOG_LEVEL=DEBUG  # Show all connection details
+export POPOTO_LOG_LEVEL=INFO   # Show connection events
+export POPOTO_LOG_LEVEL=WARNING  # Default - only warnings and errors
+export POPOTO_LOG_LEVEL=ERROR  # Only errors
+```
+
+### Programmatic Configuration
+
+For finer control, configure individual loggers:
 
 ```python
 import logging
 
-logging.basicConfig(level=logging.DEBUG)
-# Or target specific loggers
+# Set all Popoto loggers to DEBUG
+for name in [
+    "POPOTO-REDIS_DB",
+    "POPOTO.model_base",
+    "POPOTO.Query",
+    "POPOTO.field",
+    "POPOTO.KeyFieldMixin",
+    "POPOTO.SortedFieldMixin",
+    "POPOTO.GeoField",
+    "POPOTO.Relationship",
+    "POPOTO-publisher",
+    "POPOTO-subscriber",
+]:
+    logging.getLogger(name).setLevel(logging.DEBUG)
+
+# Or configure a specific logger
 logging.getLogger("POPOTO.Query").setLevel(logging.DEBUG)
 ```
+
+### Logger Reference
+
+| Logger Name | Purpose |
+|------------|---------|
+| `POPOTO-REDIS_DB` | Connection events, errors, health checks |
+| `POPOTO.model_base` | Model creation, metaclass operations |
+| `POPOTO.Query` | Query execution, filtering, results |
+| `POPOTO.field` | Field validation, type checking |
+| `POPOTO.KeyFieldMixin` | Key field operations |
+| `POPOTO.SortedFieldMixin` | Sorted set index operations |
+| `POPOTO.GeoField` | Geographic queries and indexing |
+| `POPOTO.Relationship` | Relationship loading and saving |
+| `POPOTO-publisher` | PubSub publishing events |
+| `POPOTO-subscriber` | PubSub subscription events |
+
+### Integration with Frameworks
+
+**Django:**
+```python
+# settings.py
+LOGGING = {
+    'version': 1,
+    'handlers': {
+        'console': {'class': 'logging.StreamHandler'},
+    },
+    'loggers': {
+        'POPOTO-REDIS_DB': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
+    },
+}
+```
+
+**Flask:**
+```python
+import logging
+logging.getLogger("POPOTO-REDIS_DB").setLevel(logging.INFO)
+app.logger.info("Popoto logging configured")
+```
+
+!!! tip
+    During development, set `POPOTO_LOG_LEVEL=DEBUG` to see all Redis
+    operations. In production, use `WARNING` or `ERROR` to reduce noise.

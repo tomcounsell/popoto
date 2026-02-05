@@ -122,7 +122,7 @@ def test_meta_order_by_with_limit():
 
 def test_invalid_order_by_field_raises():
     """Test that invalid field in Meta.order_by raises ModelException."""
-    from src.popoto.models.base import ModelException
+    from src.popoto.exceptions import ModelException
 
     with pytest.raises(ModelException, match="does not exist"):
 
