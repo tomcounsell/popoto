@@ -6,6 +6,7 @@ Complete reference for all public classes, methods, and functions in the Popoto 
 from popoto import Model, Field, KeyField, AutoKeyField, UniqueKeyField
 from popoto import SortedField, SortedKeyField, GeoField, DatetimeField, Relationship
 from popoto import Publisher, Subscriber
+from popoto import ModelException, QueryException, PublisherException, SubscriberException
 ```
 
 ---
@@ -895,6 +896,52 @@ r.ping()
 # => True
 ```
 
+### check_connection()
+
+```python
+check_connection() -> bool
+```
+
+Ping Redis and return `True` if the connection is healthy, `False` otherwise. Useful for
+health check endpoints in web applications and load balancer probes.
+
+```python
+from popoto.redis_db import check_connection
+
+if check_connection():
+    print("Redis is healthy")
+else:
+    print("Redis is unreachable")
+```
+
+### scan_keys()
+
+```python
+scan_keys(pattern: str, count: int = 1000) -> list
+```
+
+Non-blocking replacement for Redis `KEYS` using cursor-based `SCAN`. The `KEYS` command blocks
+the entire Redis server while scanning, which causes timeouts at scale. `SCAN` iterates
+incrementally, allowing other operations to interleave.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `pattern` | `str` | | Glob-style pattern to match keys (e.g., `"User:*"`). |
+| `count` | `int` | `1000` | Hint for keys per iteration. Higher values reduce round-trips. |
+
+**Returns:** `list` of all matching keys.
+
+```python
+from popoto.redis_db import scan_keys
+
+user_keys = scan_keys("User:*")
+active_keys = scan_keys("*:active")
+```
+
+!!! warning
+    Used internally by Popoto's query system. Most users should use `Model.query` methods
+    instead of calling `scan_keys()` directly.
+
 ### print_redis_info()
 
 ```python
@@ -915,7 +962,11 @@ class ModelException(Exception)
 ```
 
 Raised when a model operation fails: validation errors, save failures, unique constraint violations,
-delete or load errors. Defined in both `popoto.exceptions` and `popoto.models.base`.
+delete or load errors. Defined in `popoto.exceptions` and importable from the main namespace.
+
+```python
+from popoto import ModelException
+```
 
 ### QueryException
 
