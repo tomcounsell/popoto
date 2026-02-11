@@ -285,6 +285,61 @@ count = Restaurant.bulk_delete(old_restaurants)
     Bulk delete is permanent. All instances and their indexes are removed from Redis.
     There is no undo operation.
 
+### Model.delete_all()
+
+```python
+@classmethod
+Model.delete_all(batch_size: int = 1000) -> int
+```
+
+Delete **all instances** of this model, including all secondary indexes. This is a convenience
+wrapper around `bulk_delete()` that handles the full cleanup automatically.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `batch_size` | `int` | `1000` | Maximum instances per pipeline batch. |
+
+**Returns:** `int` count of deleted instances.
+
+```python
+# Delete all restaurants
+deleted = Restaurant.delete_all()
+print(f"Deleted {deleted} restaurants")
+
+# Delete all models (delete referencing models first)
+for model in [Order, MenuItem, Restaurant]:
+    model.delete_all()
+```
+
+!!! warning "Why use delete_all() instead of Redis DEL/FLUSHDB?"
+    **Never delete Popoto data directly with Redis commands like `DEL`, `FLUSHDB`, or `KEYS ... | xargs redis-cli DEL`.**
+
+    Popoto maintains secondary indexes for fast queries:
+
+    - **SortedField** → Redis sorted sets for range queries
+    - **GeoField** → Redis geo sets for location queries
+    - **UniqueKeyField** → Redis keys for uniqueness constraints
+    - **Class sets** → Track all instances of each model
+
+    If you delete instance keys directly, these indexes become orphaned:
+
+    - Range queries return stale results
+    - Geo queries find deleted locations
+    - Unique constraints block valid values
+    - `count()` returns wrong numbers
+
+    `delete_all()` properly invokes each instance's `delete()` method, which triggers all
+    field `on_delete` hooks to clean up indexes. This is the **only safe way** to bulk-delete
+    Popoto data.
+
+    ```python
+    # ✅ CORRECT - cleans up all indexes
+    Restaurant.delete_all()
+
+    # ❌ WRONG - leaves orphaned indexes
+    redis_client.delete(*redis_client.keys("Restaurant:*"))
+    ```
+
 ### Batch Size Parameter
 
 All bulk methods accept a `batch_size` parameter (default 1000) that controls memory
@@ -312,6 +367,7 @@ the event loop. See [Async Operations](async.md) for details.
 | `Model.bulk_create(instances)` | `await Model.async_bulk_create(instances)` |
 | `Model.bulk_update(queryset, **updates)` | `await Model.async_bulk_update(queryset, **updates)` |
 | `Model.bulk_delete(queryset)` | `await Model.async_bulk_delete(queryset)` |
+| `Model.delete_all()` | `await Model.async_delete_all()` |
 
 ```python
 # Async bulk create

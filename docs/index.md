@@ -129,6 +129,22 @@ Delete an instance by calling its `delete()` method.
 restaurant.delete()
 ```
 
+To delete all instances of a model, use `delete_all()`:
+
+```python
+# Delete all restaurants and clean up all indexes
+Restaurant.delete_all()
+
+# Delete multiple models (delete referencing models first)
+for model in [Order, MenuItem, Restaurant]:
+    model.delete_all()
+```
+
+!!! warning
+    Always use Popoto's delete methods instead of Redis `DEL` or `FLUSHDB`. Popoto maintains
+    secondary indexes (sorted sets, geo sets, unique constraints) that must be cleaned up
+    properly. See [Bulk Operations](api-reference.md#modeldelete_all) for details.
+
 ### Async Operations
 
 All operations have async counterparts for use in asyncio applications.
