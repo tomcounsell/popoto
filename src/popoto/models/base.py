@@ -1566,6 +1566,53 @@ class Model(metaclass=ModelBase):
         return deleted_count
 
     @classmethod
+    def delete_all(cls, batch_size: int = 1000) -> int:
+        """Delete all instances of this model, including all secondary indexes.
+
+        This is a convenience wrapper around bulk_delete() that deletes every
+        instance of the model. All secondary indexes (sorted fields, geo fields,
+        unique constraints, etc.) are properly cleaned up.
+
+        Args:
+            batch_size: Number of instances to delete per pipeline batch.
+                Default is 1000.
+
+        Returns:
+            Number of instances deleted.
+
+        Example:
+            # Delete all restaurants
+            deleted = Restaurant.delete_all()
+            print(f"Deleted {deleted} restaurants")
+
+            # Clean up multiple models (delete referencing models first)
+            for model in [Order, MenuItem, Restaurant]:
+                model.delete_all()
+
+        Note:
+            When deleting models with Relationships, delete the referencing
+            models before the referenced ones to avoid dangling references.
+        """
+        instances = list(cls.query.all())
+        if not instances:
+            return 0
+        return cls.bulk_delete(instances, batch_size=batch_size)
+
+    @classmethod
+    async def async_delete_all(cls, batch_size: int = 1000) -> int:
+        """Async version of delete_all().
+
+        Deletes all instances in a thread pool to avoid blocking the event loop.
+
+        Args:
+            batch_size: Number of instances to delete per pipeline batch.
+
+        Returns:
+            Number of instances deleted.
+        """
+        return await to_thread(cls.delete_all, batch_size=batch_size)
+
+    @classmethod
     async def async_bulk_create(cls, instances, batch_size: int = 1000):
         """Async version of bulk_create().
 
