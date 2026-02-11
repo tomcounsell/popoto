@@ -8,6 +8,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 from src import popoto
+from src.popoto.models.query import QueryException
 
 
 class SortedDateModel(popoto.Model):
@@ -132,3 +133,183 @@ assert list(values_result[4].keys()) == ["timestamp", "price"]
 
 for sam in SortedAssetsModel.objects.all():
     sam.delete()
+
+
+# ===================================================================
+# __between range query tests
+# ===================================================================
+
+
+# Test __between with int SortedField
+print("Test: __between with int SortedField")
+
+
+class BetweenIntModel(popoto.Model):
+    name = popoto.KeyField()
+    score = popoto.SortedField(type=int)
+
+
+bi_a = BetweenIntModel.create(name="a", score=1)
+bi_b = BetweenIntModel.create(name="b", score=5)
+bi_c = BetweenIntModel.create(name="c", score=10)
+bi_d = BetweenIntModel.create(name="d", score=15)
+
+results = BetweenIntModel.query.filter(score__between=(5, 10))
+assert len(results) == 2, f"Expected 2, got {len(results)}"
+names = {r.name for r in results}
+assert names == {"b", "c"}, f"Expected {{'b', 'c'}}, got {names}"
+print("  PASSED: __between with int SortedField")
+
+for item in BetweenIntModel.query.all():
+    item.delete()
+
+# Test __between with float SortedField
+print("Test: __between with float SortedField")
+
+
+class BetweenFloatModel(popoto.Model):
+    name = popoto.KeyField()
+    height = popoto.SortedField(type=float)
+
+
+bf_a = BetweenFloatModel.create(name="a", height=1.5)
+bf_b = BetweenFloatModel.create(name="b", height=2.0)
+bf_c = BetweenFloatModel.create(name="c", height=2.5)
+bf_d = BetweenFloatModel.create(name="d", height=3.0)
+
+results = BetweenFloatModel.query.filter(height__between=(2.0, 2.5))
+assert len(results) == 2, f"Expected 2, got {len(results)}"
+names = {r.name for r in results}
+assert names == {"b", "c"}, f"Expected {{'b', 'c'}}, got {names}"
+print("  PASSED: __between with float SortedField")
+
+for item in BetweenFloatModel.query.all():
+    item.delete()
+
+# Test __between with Decimal SortedField
+print("Test: __between with Decimal SortedField")
+
+
+class BetweenDecimalModel(popoto.Model):
+    name = popoto.KeyField()
+    price = popoto.SortedField(type=Decimal)
+
+
+bd_a = BetweenDecimalModel.create(name="a", price=Decimal("9.99"))
+bd_b = BetweenDecimalModel.create(name="b", price=Decimal("19.99"))
+bd_c = BetweenDecimalModel.create(name="c", price=Decimal("29.99"))
+bd_d = BetweenDecimalModel.create(name="d", price=Decimal("39.99"))
+
+results = BetweenDecimalModel.query.filter(
+    price__between=(Decimal("10.00"), Decimal("30.00"))
+)
+assert len(results) == 2, f"Expected 2, got {len(results)}"
+names = {r.name for r in results}
+assert names == {"b", "c"}, f"Expected {{'b', 'c'}}, got {names}"
+print("  PASSED: __between with Decimal SortedField")
+
+for item in BetweenDecimalModel.query.all():
+    item.delete()
+
+# Test __between with datetime SortedField
+print("Test: __between with datetime SortedField")
+
+
+class BetweenDatetimeModel(popoto.Model):
+    name = popoto.KeyField()
+    created = popoto.SortedField(type=datetime)
+
+
+bdt_a = BetweenDatetimeModel.create(name="a", created=datetime(2022, 1, 1, 0))
+bdt_b = BetweenDatetimeModel.create(name="b", created=datetime(2022, 1, 1, 6))
+bdt_c = BetweenDatetimeModel.create(name="c", created=datetime(2022, 1, 1, 12))
+bdt_d = BetweenDatetimeModel.create(name="d", created=datetime(2022, 1, 1, 18))
+
+results = BetweenDatetimeModel.query.filter(
+    created__between=(datetime(2022, 1, 1, 6), datetime(2022, 1, 1, 12))
+)
+assert len(results) == 2, f"Expected 2, got {len(results)}"
+names = {r.name for r in results}
+assert names == {"b", "c"}, f"Expected {{'b', 'c'}}, got {names}"
+print("  PASSED: __between with datetime SortedField")
+
+for item in BetweenDatetimeModel.query.all():
+    item.delete()
+
+# Test __between with date SortedField
+print("Test: __between with date SortedField")
+
+
+class BetweenDateModel(popoto.Model):
+    name = popoto.KeyField()
+    birthday = popoto.SortedField(type=date)
+
+
+bda_a = BetweenDateModel.create(name="a", birthday=date(1990, 1, 1))
+bda_b = BetweenDateModel.create(name="b", birthday=date(1995, 6, 15))
+bda_c = BetweenDateModel.create(name="c", birthday=date(2000, 12, 31))
+bda_d = BetweenDateModel.create(name="d", birthday=date(2005, 3, 20))
+
+results = BetweenDateModel.query.filter(
+    birthday__between=(date(1995, 1, 1), date(2001, 1, 1))
+)
+assert len(results) == 2, f"Expected 2, got {len(results)}"
+names = {r.name for r in results}
+assert names == {"b", "c"}, f"Expected {{'b', 'c'}}, got {names}"
+print("  PASSED: __between with date SortedField")
+
+for item in BetweenDateModel.query.all():
+    item.delete()
+
+# Test __between with partitioned SortedField (sort_by)
+print("Test: __between with partitioned SortedField (sort_by)")
+
+
+class BetweenPartitionedModel(popoto.Model):
+    uuid = popoto.AutoKeyField(auto_uuid_length=6)
+    category = popoto.KeyField()
+    price = popoto.SortedField(type=float, sort_by="category")
+
+
+bp_a = BetweenPartitionedModel.create(category="fruit", price=1.50)
+bp_b = BetweenPartitionedModel.create(category="fruit", price=3.00)
+bp_c = BetweenPartitionedModel.create(category="fruit", price=5.00)
+bp_d = BetweenPartitionedModel.create(category="veggie", price=3.00)
+
+results = BetweenPartitionedModel.query.filter(
+    category="fruit", price__between=(2.00, 4.00)
+)
+assert len(results) == 1, f"Expected 1, got {len(results)}"
+assert results[0].price == 3.00
+print("  PASSED: __between with partitioned SortedField")
+
+for item in BetweenPartitionedModel.query.all():
+    item.delete()
+
+# Test __between error: non-tuple value
+print("Test: __between error with non-tuple value")
+try:
+    BetweenIntModel.create(name="x", score=5)
+    list(BetweenIntModel.query.filter(score__between=42))
+    assert False, "Should have raised QueryException"
+except QueryException as e:
+    assert "tuple or list" in str(e), f"Unexpected error message: {e}"
+    print(f"  PASSED: Raised QueryException: {e}")
+finally:
+    for item in BetweenIntModel.query.all():
+        item.delete()
+
+# Test __between error: tuple of wrong length
+print("Test: __between error with wrong-length tuple")
+try:
+    BetweenIntModel.create(name="x", score=5)
+    list(BetweenIntModel.query.filter(score__between=(1, 2, 3)))
+    assert False, "Should have raised QueryException"
+except QueryException as e:
+    assert "2 elements" in str(e), f"Unexpected error message: {e}"
+    print(f"  PASSED: Raised QueryException: {e}")
+finally:
+    for item in BetweenIntModel.query.all():
+        item.delete()
+
+print("\nAll __between tests passed!")

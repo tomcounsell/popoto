@@ -260,6 +260,67 @@ assert len(results) == 4
 print("  PASSED: Filter returns all matching records")
 
 
+# ===================================================================
+# .between() expression method tests
+# ===================================================================
+
+# Test 21: Expression creation with .between()
+print("Test 21: Expression creation with .between()")
+expr = Restaurant.rating.between(3.5, 4.5)
+assert isinstance(expr, Expression)
+assert expr.field_name == "rating"
+assert expr.operator == "__between"
+assert expr.value == (3.5, 4.5)
+assert expr.to_kwargs() == {"rating__between": (3.5, 4.5)}
+print("  PASSED: .between() creates correct Expression")
+
+# Test 22: .between() expression in filter
+print("Test 22: .between() expression in filter")
+results = Restaurant.query.filter(Restaurant.rating.between(3.5, 4.5))
+# Burger Palace (4.5), Pizza Corner (3.5), Taco Town (4.0)
+assert len(results) == 3, f"Expected 3, got {len(results)}"
+names = {r.name for r in results}
+assert names == {"Burger Palace", "Pizza Corner", "Taco Town"}, f"Got {names}"
+print("  PASSED: .between() expression in filter")
+
+# Test 23: .between() expression on integer field
+print("Test 23: .between() expression on integer field")
+results = Restaurant.query.filter(Restaurant.price_level.between(1, 2))
+# Burger Palace (2), Pizza Corner (1), Taco Town (1)
+assert len(results) == 3, f"Expected 3, got {len(results)}"
+names = {r.name for r in results}
+assert names == {"Burger Palace", "Pizza Corner", "Taco Town"}, f"Got {names}"
+print("  PASSED: .between() expression on integer field")
+
+# Test 24: .between() combined with other expressions using AND
+print("Test 24: .between() combined with other expressions using AND")
+combined = Restaurant.rating.between(4.0, 5.0) & (Restaurant.cuisine == "Japanese")
+assert isinstance(combined, CombinedExpression)
+results = Restaurant.query.filter(combined)
+assert len(results) == 1, f"Expected 1, got {len(results)}"
+assert results[0].name == "Sushi Master"
+print("  PASSED: .between() combined with AND")
+
+# Test 25: .between() combined with other expressions using OR
+print("Test 25: .between() combined with other expressions using OR")
+combined = Restaurant.rating.between(4.4, 5.0) | (Restaurant.cuisine == "Mexican")
+results = Restaurant.query.filter(combined)
+# Burger Palace (4.5), Sushi Master (4.8) from between, Taco Town from Mexican
+assert len(results) == 3, f"Expected 3, got {len(results)}"
+names = {r.name for r in results}
+assert names == {"Burger Palace", "Sushi Master", "Taco Town"}, f"Got {names}"
+print("  PASSED: .between() combined with OR")
+
+# Test 26: .between() repr
+print("Test 26: .between() repr")
+expr = Restaurant.rating.between(3.0, 5.0)
+repr_str = repr(expr)
+assert "rating" in repr_str
+assert "__between" in repr_str
+print(f"  Expression repr: {repr_str}")
+print("  PASSED: .between() repr")
+
+
 # Cleanup
 print("\nCleaning up test data...")
 for r in Restaurant.query.all():

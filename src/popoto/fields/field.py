@@ -341,6 +341,26 @@ class Field(metaclass=FieldBase):
 
         return Expression(self.name, "__lte", value)
 
+    def between(self, low, high):
+        """Create a between expression for inclusive range query filtering.
+
+        Returns an Expression that matches values where low <= field <= high.
+        This is a convenience method equivalent to combining >= and <= operators.
+
+        Args:
+            low: The lower bound of the range (inclusive)
+            high: The upper bound of the range (inclusive)
+
+        Returns:
+            Expression representing low <= field <= high
+
+        Example:
+            Model.price.between(10, 50)  # Returns Expression(price__between=(10, 50))
+        """
+        from ..models.expressions import Expression
+
+        return Expression(self.name, "__between", (low, high))
+
     @classmethod
     def is_valid(cls, field, value, null_check=True, **kwargs) -> bool:
         """
