@@ -194,7 +194,7 @@ class SortedFieldMixin:
                     f"{field_name}__gte",
                     f"{field_name}__lt",
                     f"{field_name}__lte",
-                    # f'{field_name}__range',  # todo: like https://docs.djangoproject.com/en/3.2/ref/models/querysets/#range
+                    f"{field_name}__between",
                     # f'{field_name}__isnull',  # todo: see todo in __init__
                 }
             )
@@ -505,6 +505,20 @@ class SortedFieldMixin:
 
         for query_param, query_value in query_params.items():
             if field_name not in query_param:
+                continue
+
+            if "__between" in query_param:
+                if not isinstance(query_value, (tuple, list)) or len(query_value) != 2:
+                    raise QueryException(
+                        f"{field_name}__between requires a tuple or list of exactly "
+                        f"2 elements (low, high), got {query_value!r}"
+                    )
+                low, high = query_value
+                field_obj = model_class._meta.fields[field_name]
+                numeric_low = cls.convert_to_numeric(field_obj, low)
+                numeric_high = cls.convert_to_numeric(field_obj, high)
+                value_range["min"] = f"{numeric_low}"
+                value_range["max"] = f"{numeric_high}"
                 continue
 
             numeric_value = cls.convert_to_numeric(
