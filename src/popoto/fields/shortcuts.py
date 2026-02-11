@@ -502,10 +502,10 @@ class UniqueKeyField(KeyField):
             ModelException: If unique=False or null=True is specified.
         """
         if kwargs.get("unique") is False:
-            raise ModelException(f"you may not set unique=False on this field type")
+            raise ModelException("you may not set unique=False on this field type")
         kwargs["unique"] = True
         if kwargs.get("null") is True:
-            raise ModelException(f"you may not set null=True on this field type")
+            raise ModelException("you may not set null=True on this field type")
         kwargs["null"] = False
         super().__init__(**kwargs)
 
@@ -564,9 +564,9 @@ class AutoKeyField(AutoFieldMixin, UniqueKeyField):
             ModelException: If unique=False or null=True is specified.
         """
         if kwargs.get("unique") is False:
-            raise ModelException(f"you may not set unique=False on this field type")
+            raise ModelException("you may not set unique=False on this field type")
         if kwargs.get("null") is True:
-            raise ModelException(f"you may not set null=True on this field type")
+            raise ModelException("you may not set null=True on this field type")
         kwargs["auto"] = True
         super().__init__(**kwargs)
 

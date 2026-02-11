@@ -51,29 +51,16 @@ See Also:
 """
 
 import logging
-import asyncio
-import sys
-import functools
+from asyncio import to_thread
 from typing import TYPE_CHECKING, Optional
 
 from .db_key import DB_key
 
 if TYPE_CHECKING:
     from .base import Model
-from ..redis_db import POPOTO_REDIS_DB, ENCODING
+from ..redis_db import POPOTO_REDIS_DB, get_async_redis_db
 
 logger = logging.getLogger("POPOTO.Query")
-
-# Python 3.8 compatibility for asyncio.to_thread()
-if sys.version_info >= (3, 9):
-    to_thread = asyncio.to_thread
-else:
-    # Backport for Python 3.8
-    async def to_thread(func, *args, **kwargs):
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            None, functools.partial(func, *args, **kwargs)
-        )
 
 
 class QueryException(Exception):
@@ -363,7 +350,9 @@ class Query:
         self._geo_distances = {}  # {redis_key: distance}
         self._geo_distance_unit = None  # unit for distance values
 
-    def get(self, db_key: DB_key = None, redis_key: str = None, **kwargs) -> Optional["Model"]:
+    def get(
+        self, db_key: DB_key = None, redis_key: str = None, **kwargs
+    ) -> Optional["Model"]:
         """Retrieve a single model instance.
 
         Look up by *db_key*, *redis_key*, or keyword field values. Raises
@@ -715,7 +704,7 @@ class Query:
            b. If kwargs filters exist, evaluate them too
            c. Intersect all result sets (AND logic between args)
         """
-        from .q import Q, evaluate_q
+        from .q import evaluate_q
 
         # Extract result modifiers from kwargs
         filter_kwargs = {
@@ -901,7 +890,7 @@ class Query:
         )
 
         # Apply client-side filters for plain (unindexed) fields
-        client_filters = getattr(self, '_pending_client_filters', {})
+        client_filters = getattr(self, "_pending_client_filters", {})
         if client_filters:
             filtered = []
             for obj in objects:
@@ -1065,12 +1054,13 @@ class Query:
                 or 0
             )
         db_keys = self.filter_for_keys_set(**kwargs)
-        client_filters = getattr(self, '_pending_client_filters', {})
+        client_filters = getattr(self, "_pending_client_filters", {})
         if client_filters:
             # Must load objects to apply client-side filters
             objects = Query.get_many_objects(self.model_class, db_keys)
             return sum(
-                1 for obj in objects
+                1
+                for obj in objects
                 if all(
                     getattr(obj, fname, None) == fval
                     for fname, fval in client_filters.items()
@@ -1203,15 +1193,15 @@ class Query:
             if redis_hash
         ]
 
-    # Async methods
+    # Async methods using native redis.asyncio
 
     async def async_get(
         self, db_key: DB_key = None, redis_key: str = None, **kwargs
     ) -> "Model":
-        """Async version of get().
+        """Async version of get() using native async Redis.
 
-        Retrieves a single model instance from Redis in a thread pool to avoid
-        blocking the event loop.
+        Retrieves a single model instance from Redis using non-blocking I/O.
+        Uses redis.asyncio for true async operations without thread pool overhead.
 
         Args:
             db_key: Optional DB_key object
@@ -1220,28 +1210,99 @@ class Query:
 
         Returns:
             Model instance or None if not found
+
+        Raises:
+            QueryException: If the filter matches more than one object.
         """
-        return await to_thread(self.get, db_key=db_key, redis_key=redis_key, **kwargs)
+        from ..models.encoding import decode_popoto_model_hashmap
+
+        if (
+            not db_key
+            and not redis_key
+            and all([key in kwargs for key in self.options.key_field_names])
+        ):
+            db_key = self.model_class(**kwargs).db_key
+
+        if db_key and not redis_key:
+            redis_key = db_key.redis_key
+
+        if redis_key:
+            async_redis = await get_async_redis_db()
+            hashmap = await async_redis.hgetall(redis_key)
+            if not hashmap:
+                return None
+            instance = decode_popoto_model_hashmap(self.model_class, hashmap)
+        else:
+            instances = await self.async_filter(**kwargs)
+            if len(instances) > 1:
+                raise QueryException(
+                    f"{self.model_class.__name__} found more than one unique instance. Use `query.filter()`"
+                )
+            instance = instances[0] if len(instances) == 1 else None
+
+        return instance or None
 
     async def async_filter(self, **kwargs) -> list:
-        """Async version of filter().
+        """Async version of filter() using native async Redis.
 
-        Filters model instances based on field values in a thread pool to avoid
-        blocking the event loop.
+        Filters model instances based on field values using non-blocking I/O.
+        Currently uses to_thread() for complex filter operations that involve
+        field-specific query logic, but uses native async for result fetching.
 
         Args:
             **kwargs: Filter parameters (field values, limit, order_by, values)
 
         Returns:
             List of model instances or dicts (if values= specified)
+
+        Note:
+            The filter_for_keys_set() operation currently uses sync Redis due to
+            the complexity of field-specific filter_query() implementations.
+            Object loading uses native async Redis for better performance on
+            bulk data retrieval.
         """
-        return await to_thread(self.filter, **kwargs)
+        # Get keys using sync method in thread pool (field query implementations are sync)
+        db_keys_set = await to_thread(self.filter_for_keys_set, **kwargs)
+        if not len(db_keys_set):
+            return []
+
+        # Apply default order_by from Meta if not explicitly provided
+        if "order_by" not in kwargs and self.model_class._meta.order_by:
+            kwargs["order_by"] = self.model_class._meta.order_by
+
+        # Use native async for bulk object loading
+        objects = await self._async_get_many_objects(
+            self.model_class,
+            db_keys_set,
+            order_by_attr_name=kwargs.get("order_by", None),
+            limit=kwargs.get("limit", None),
+            values=kwargs.get("values", None),
+        )
+
+        # Apply client-side filters for plain (unindexed) fields
+        client_filters = getattr(self, "_pending_client_filters", {})
+        if client_filters:
+            filtered = []
+            for obj in objects:
+                match = True
+                for field_name, expected_value in client_filters.items():
+                    if isinstance(obj, dict):
+                        actual = obj.get(field_name)
+                    else:
+                        actual = getattr(obj, field_name, None)
+                    if actual != expected_value:
+                        match = False
+                        break
+                if match:
+                    filtered.append(obj)
+            objects = filtered
+
+        return self.prepare_results(objects, **kwargs)
 
     async def async_all(self, **kwargs) -> list:
-        """Async version of all().
+        """Async version of all() using native async Redis.
 
-        Retrieves all model instances in a thread pool to avoid blocking
-        the event loop.
+        Retrieves all model instances using non-blocking I/O.
 
         Args:
             **kwargs: Optional order_by and values parameters
@@ -1249,13 +1310,30 @@ class Query:
         Returns:
             List of all model instances or dicts (if values= specified)
         """
-        return await to_thread(self.all, **kwargs)
+        async_redis = await get_async_redis_db()
+        redis_db_keys_list = list(
+            await async_redis.smembers(
+                self.model_class._meta.db_class_set_key.redis_key
+            )
+        )
+
+        # Apply default order_by from Meta if not explicitly provided
+        if "order_by" not in kwargs and self.model_class._meta.order_by:
+            kwargs["order_by"] = self.model_class._meta.order_by
+
+        objects = await self._async_get_many_objects(
+            self.model_class,
+            set(redis_db_keys_list),
+            order_by_attr_name=kwargs.get("order_by", None),
+            values=kwargs.get("values", None),
+        )
+
+        return self.prepare_results(objects, **kwargs)
 
     async def async_count(self, **kwargs) -> int:
-        """Async version of count().
+        """Async version of count() using native async Redis.
 
-        Counts model instances matching filter criteria in a thread pool to avoid
-        blocking the event loop.
+        Counts model instances matching filter criteria using non-blocking I/O.
 
         Args:
             **kwargs: Optional filter parameters
@@ -1263,13 +1341,34 @@ class Query:
         Returns:
             Count of matching instances
         """
-        return await to_thread(self.count, **kwargs)
+        async_redis = await get_async_redis_db()
+
+        if not len(kwargs):
+            count = await async_redis.scard(
+                self.model_class._meta.db_class_set_key.redis_key
+            )
+            return int(count or 0)
+
+        # Use sync filter_for_keys_set in thread pool for complex filter logic
+        db_keys = await to_thread(self.filter_for_keys_set, **kwargs)
+        client_filters = getattr(self, "_pending_client_filters", {})
+        if client_filters:
+            # Must load objects to apply client-side filters
+            objects = await self._async_get_many_objects(self.model_class, db_keys)
+            return sum(
+                1
+                for obj in objects
+                if all(
+                    getattr(obj, fname, None) == fval
+                    for fname, fval in client_filters.items()
+                )
+            )
+        return len(db_keys)
 
     async def async_keys(self, catchall=False, clean=False, **kwargs) -> list:
-        """Async version of keys().
+        """Async version of keys() using native async Redis.
 
-        Retrieves Redis keys for model instances in a thread pool to avoid
-        blocking the event loop.
+        Retrieves Redis keys for model instances using non-blocking I/O.
 
         Args:
             catchall: If True, use KEYS pattern (debug only, not for production)
@@ -1278,5 +1377,117 @@ class Query:
 
         Returns:
             List of Redis keys
+
+        Note:
+            The clean operation uses to_thread() as it involves complex pipeline
+            operations. Regular key retrieval uses native async.
         """
-        return await to_thread(self.keys, catchall=catchall, clean=clean, **kwargs)
+        if clean:
+            # Clean operation is complex with pipelines, use thread pool
+            return await to_thread(self.keys, catchall=catchall, clean=clean, **kwargs)
+
+        async_redis = await get_async_redis_db()
+
+        if catchall:
+            logger.warning(
+                "{catchall} is for debugging purposes only. Not for use in production environment"
+            )
+            return list(await async_redis.keys(f"*{self.model_class.__name__}*"))
+        else:
+            return list(
+                await async_redis.smembers(
+                    self.model_class._meta.db_class_set_key.redis_key
+                )
+            )
+
+    @classmethod
+    async def _async_get_many_objects(
+        cls,
+        model: "Model",
+        db_keys: set,
+        order_by_attr_name: str = None,
+        limit: int = None,
+        values: tuple = None,
+        lazy: bool = True,
+    ) -> list:
+        """Async version of get_many_objects using native async Redis.
+
+        Batch-loads multiple Model instances from Redis using async pipelined
+        commands for true non-blocking I/O.
+
+        Args:
+            model: The Model class to instantiate
+            db_keys: Set of Redis keys to load
+            order_by_attr_name: Field to sort by (prefix with "-" for descending)
+            limit: Maximum objects to load
+            values: Tuple of field names for projection
+
+        Returns:
+            List of Model instances, or list of dicts if values is specified.
+        """
+        from .encoding import decode_popoto_model_hashmap
+        from .db_key import DB_key
+
+        async_redis = await get_async_redis_db()
+        pipeline = async_redis.pipeline()
+
+        reverse_order = False
+        if order_by_attr_name and order_by_attr_name.startswith("-"):
+            order_by_attr_name = order_by_attr_name[1:]
+            reverse_order = True
+
+        if order_by_attr_name and order_by_attr_name in model._meta.key_field_names:
+            field_position = model._meta.get_db_key_index_position(order_by_attr_name)
+            db_keys = list(db_keys)
+            db_keys.sort(key=lambda key: key.split(b":")[field_position])
+            db_keys = (
+                list(reversed(db_keys))[:limit] if reverse_order else db_keys[:limit]
+            )
+
+        if values:
+            if not isinstance(values, tuple):
+                raise QueryException(
+                    "values takes a tuple. eg. query.filter(values=('name',))"
+                )
+            elif set(values).issubset(model._meta.key_field_names):
+                db_keys = [DB_key.from_redis_key(db_key) for db_key in db_keys]
+                return [
+                    {
+                        field_name: (
+                            model._meta.fields[field_name].type(
+                                db_key[
+                                    model._meta.get_db_key_index_position(field_name)
+                                ]
+                            )
+                            if db_key[model._meta.get_db_key_index_position(field_name)]
+                            else None
+                        )
+                        for field_name in values
+                    }
+                    for db_key in db_keys
+                ]
+            else:
+                for db_key in db_keys:
+                    pipeline.hmget(db_key, values)
+                value_lists = await pipeline.execute()
+                hashes_list = [
+                    {field_name: result[i] for i, field_name in enumerate(values)}
+                    for result in value_lists
+                ]
+        else:
+            for db_key in db_keys:
+                pipeline.hgetall(db_key)
+            hashes_list = await pipeline.execute()
+
+        if {} in hashes_list:
+            logger.error(
+                "one or more redis keys points to missing objects. Debug with Model.query.keys(clean=True)"
+            )
+
+        return [
+            decode_popoto_model_hashmap(
+                model, redis_hash, fields_only=bool(values), lazy=lazy and not values
+            )
+            for redis_hash in hashes_list
+            if redis_hash
+        ]

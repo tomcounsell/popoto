@@ -160,7 +160,7 @@ def test_indexed_save():
 def test_unique_field_scaling():
     """Measure if SMEMBERS cost grows as unique index SET grows."""
     print(f"\n{'='*60}")
-    print(f"5. SCALING: UniqueModel SMEMBERS cost as data grows")
+    print("5. SCALING: UniqueModel SMEMBERS cost as data grows")
     print(f"{'='*60}")
     POPOTO_REDIS_DB.flushdb()
 
@@ -191,7 +191,7 @@ def test_unique_field_scaling():
 def test_is_valid_isolation():
     """Measure is_valid() alone vs full save()."""
     print(f"\n{'='*60}")
-    print(f"6. ISOLATION: is_valid() vs pre_save() vs save()")
+    print("6. ISOLATION: is_valid() vs pre_save() vs save()")
     print(f"{'='*60}")
     POPOTO_REDIS_DB.flushdb()
 
@@ -225,7 +225,7 @@ def test_is_valid_isolation():
 def test_smembers_vs_sismember():
     """Compare SMEMBERS (current) vs SISMEMBER (proposed) for unique check."""
     print(f"\n{'='*60}")
-    print(f"7. OPTIMIZATION: SMEMBERS vs SISMEMBER lookup")
+    print("7. OPTIMIZATION: SMEMBERS vs SISMEMBER lookup")
     print(f"{'='*60}")
     POPOTO_REDIS_DB.flushdb()
 
@@ -258,7 +258,7 @@ def test_smembers_vs_sismember():
         elapsed = time.perf_counter() - start
         times_sismember.append(elapsed * 1000)
 
-    print(f"  SET with 1000 members:")
+    print("  SET with 1000 members:")
     print(
         f"    SMEMBERS:  avg={statistics.mean(times_smembers):.3f}ms  (returns all members)"
     )
@@ -273,7 +273,7 @@ def test_smembers_vs_sismember():
 def test_double_validation_overhead():
     """Measure cost of duplicate validation in is_valid() loop."""
     print(f"\n{'='*60}")
-    print(f"8. DUPLICATE WORK: is_valid() iterates fields twice")
+    print("8. DUPLICATE WORK: is_valid() iterates fields twice")
     print(f"{'='*60}")
 
     # Count how many times field attributes are accessed per save
@@ -316,7 +316,7 @@ def test_double_validation_overhead():
     access_count["getattr"] = 0
     instance.is_valid()
     print(f"  Field attribute accesses in is_valid(): {access_count['getattr']}")
-    print(f"  Fields on model: 11")
+    print("  Fields on model: 11")
     print(f"  Accesses per field: {access_count['getattr'] / 11:.1f}")
 
     ManyFieldsModel.__getattribute__ = original_getattr

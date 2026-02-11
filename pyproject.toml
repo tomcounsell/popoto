@@ -17,7 +17,7 @@ classifiers = [
 ]
 
 keywords = ["redis", "ORM", "database"]
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 dependencies = [
     "redis>=4.3.4",
     "msgpack>=1.0.4",
@@ -57,7 +57,7 @@ description = "A Python Redis ORM"
 authors = ["Tom Counsell"]
 
 [tool.poetry.dependencies]
-python = "^3.8"
+python = "^3.9"
 redis = "^4.3.4"
 pandas = "^1.4.3"
 numpy = "^1.23.1"
@@ -79,6 +79,6 @@ line_length = 79
 
 [tool.black]
 line-length = 88
-target-version = ['py38']
+target-version = ['py39']
 include = '\.pyi?$'
 exclude = ''

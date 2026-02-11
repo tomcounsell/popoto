@@ -223,13 +223,13 @@ class GeoField(Field):
             logger.error(
                 f"latitude is {value.latitude} and longitude is {value.longitude}"
             )
-            logger.error(f"BOTH latitude AND longitude MUST have a value or be None")
+            logger.error("BOTH latitude AND longitude MUST have a value or be None")
             return False
         elif null_check and not all([value.latitude, value.longitude]):
             logger.error(
                 f"latitude is {value.latitude} and longitude is {value.longitude}"
             )
-            logger.error(f"BOTH latitude AND longitude MUST have a value")
+            logger.error("BOTH latitude AND longitude MUST have a value")
             return False
         try:
             float(value.latitude), float(value.longitude)
@@ -497,8 +497,8 @@ class GeoField(Field):
             from ..models.query import QueryException
 
             raise QueryException(
-                f"missing one or more required parameters. "
-                f"geofilter requires either coordinates or instance of the same model"
+                "missing one or more required parameters. "
+                "geofilter requires either coordinates or instance of the same model"
             )
 
         if with_distances:

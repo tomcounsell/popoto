@@ -12,7 +12,6 @@ import random
 from datetime import datetime, timedelta
 
 from .models import (
-    CATEGORIES,
     CUISINES,
     Customer,
     Driver,
@@ -322,7 +321,7 @@ def seed_database(
         restaurant.save()
         restaurants.append(restaurant)
 
-    print(f"Seeding menu items...")
+    print("Seeding menu items...")
     menu_items = []
     for restaurant in restaurants:
         cuisine_items = MENU_ITEMS.get(restaurant.cuisine, MENU_ITEMS["American"])
@@ -466,7 +465,7 @@ def seed_database(
         if (i + 1) % 500 == 0:
             print(f"  Created {i + 1} orders...")
 
-    print(f"\nSeeding complete!")
+    print("\nSeeding complete!")
     print(f"  - {len(restaurants)} restaurants")
     print(f"  - {len(menu_items)} menu items")
     print(f"  - {len(customers)} customers")

@@ -18,7 +18,6 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 import pytest
 from src.popoto import Model, KeyField, SortedField, Q
-from src.popoto.redis_db import POPOTO_REDIS_DB
 
 
 class Product(Model):

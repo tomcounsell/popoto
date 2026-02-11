@@ -1,7 +1,7 @@
 """Restaurants screen with CRUD operations and geo filtering."""
 
 from textual.app import ComposeResult
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Container, Horizontal
 from textual.widgets import Button, DataTable, Input, Label, Select, Static
 
 from ..models import CUISINES, Restaurant

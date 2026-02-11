@@ -232,7 +232,6 @@ class CombinedExpression:
             ((Model.price > 100) & (Model.active == True)).to_q()
             # Returns: Q(price__gt=100) & Q(active=True)
         """
-        from .q import Q
 
         # Convert left side
         if isinstance(self.left, Expression):
