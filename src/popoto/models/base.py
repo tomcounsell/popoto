@@ -1315,6 +1315,146 @@ class Model(metaclass=ModelBase):
             "query_filters": query_filters,
         }
 
+    def to_dict(
+        self,
+        include=None,
+        exclude=None,
+        relationships=False,
+        max_depth=None,
+        _seen=None,
+    ) -> dict:
+        """Convert the model instance to a plain dictionary.
+
+        Iterates over all explicit (public) fields and collects their current
+        values via ``getattr()``.  Relationship fields receive special handling
+        so that circular references are safely detected and the caller can
+        choose between shallow (redis_key string) and deep (nested dict)
+        representations.
+
+        Args:
+            include: Optional set or list of field names to include.  When
+                provided, only these fields appear in the output.
+            exclude: Optional set or list of field names to exclude.
+            relationships: If ``True``, recursively call ``to_dict()`` on
+                related Model instances to produce nested dicts.  Defaults
+                to ``False``, which emits the redis_key string instead.
+            max_depth: Maximum recursion depth for nested relationships.
+                ``None`` means unlimited.  When the depth counter reaches
+                ``0``, related instances fall back to their redis_key string
+                regardless of the ``relationships`` flag.
+            _seen: Internal set of redis_key strings used for circular
+                reference detection.  Callers should not pass this directly.
+
+        Returns:
+            A dict mapping field names to their Python values.
+
+        Examples:
+            Basic usage -- all fields, relationships as redis_key strings::
+
+                user = User(email="alice@example.com", name="Alice")
+                user.to_dict()
+                # {'email': 'alice@example.com', 'name': 'Alice'}
+
+            With include/exclude filtering::
+
+                user.to_dict(include={'email'})
+                # {'email': 'alice@example.com'}
+
+                user.to_dict(exclude={'name'})
+                # {'email': 'alice@example.com'}
+
+            Expanding relationships into nested dicts::
+
+                class Author(Model):
+                    name = KeyField()
+
+                class Book(Model):
+                    title = KeyField()
+                    author = Relationship(model=Author)
+
+                book.to_dict(relationships=True)
+                # {'title': 'Hobbit', 'author': {'name': 'Tolkien'}}
+
+            Circular reference protection::
+
+                # When two models reference each other, the second occurrence
+                # is serialised as the redis_key string to break the cycle.
+                a.to_dict(relationships=True)
+                # {'friend': {'friend': 'Person:a'}}
+        """
+        # Import Relationship at function level to avoid circular imports
+        from ..fields.relationship import Relationship
+
+        if include is not None:
+            include = set(include)
+        if exclude is not None:
+            exclude = set(exclude)
+
+        if _seen is None:
+            _seen = set()
+
+        # Register current instance to detect circular references
+        current_key = self.db_key.redis_key
+        _seen = _seen | {current_key}
+
+        result = {}
+        for field_name, field in self._meta.explicit_fields.items():
+            # Apply include/exclude filtering
+            if include is not None and field_name not in include:
+                continue
+            if exclude is not None and field_name in exclude:
+                continue
+
+            value = getattr(self, field_name)
+
+            if isinstance(field, Relationship):
+                if value is None:
+                    result[field_name] = None
+                elif isinstance(value, str):
+                    # Lazy-loaded redis_key string
+                    if relationships and (max_depth is None or max_depth > 0):
+                        if value not in _seen:
+                            # Try to load the related instance for expansion
+                            related_instance = field.model.query.get(redis_key=value)
+                            if related_instance is not None:
+                                next_depth = (
+                                    None if max_depth is None else max_depth - 1
+                                )
+                                result[field_name] = related_instance.to_dict(
+                                    relationships=relationships,
+                                    max_depth=next_depth,
+                                    _seen=_seen,
+                                )
+                            else:
+                                result[field_name] = value
+                        else:
+                            result[field_name] = value
+                    else:
+                        result[field_name] = value
+                elif isinstance(value, Model):
+                    related_key = value.db_key.redis_key
+                    should_expand = (
+                        relationships
+                        and (max_depth is None or max_depth > 0)
+                        and related_key not in _seen
+                    )
+                    if should_expand:
+                        next_depth = None if max_depth is None else max_depth - 1
+                        result[field_name] = value.to_dict(
+                            relationships=relationships,
+                            max_depth=next_depth,
+                            _seen=_seen,
+                        )
+                    else:
+                        result[field_name] = related_key
+                else:
+                    # Unexpected type -- include raw value
+                    result[field_name] = value
+            else:
+                result[field_name] = value
+
+        return result
+
     # Async methods using native redis.asyncio
     #
     # Note: async_save and async_delete use to_thread() because they involve
