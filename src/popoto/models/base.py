@@ -616,6 +616,18 @@ class Model(metaclass=ModelBase):
         # todo: create set of possible custom field keys
 
     @property
+    def pk(self) -> str:
+        """The primary key string for this instance.
+
+        Returns the cached Redis key if available, otherwise computes it
+        from current KeyField values. Follows Django convention.
+
+        Returns:
+            The Redis key string identifying this instance.
+        """
+        return self._redis_key or self.db_key.redis_key
+
+    @property
     def db_key(self) -> DB_key:
         """Compute the Redis key for this instance.
 
