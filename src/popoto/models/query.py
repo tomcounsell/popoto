@@ -593,6 +593,7 @@ class Query:
             matching keys. Use `filter()` for the complete query pipeline.
         """
         db_keys_sets = []
+        self._pending_client_filters = {}
         yet_employed_kwargs_set = set(kwargs.keys()).difference(
             {"limit", "order_by", "values"}
         )
@@ -664,14 +665,30 @@ class Query:
                 params_for_field
             )
 
-        # raise error on additional unknown query parameters
+        # Separate plain field params (client-side filter) from truly unknown params
         if yet_employed_kwargs_set:
-            raise QueryException(
-                f"Invalid filter parameters: {','.join(yet_employed_kwargs_set)}"
-            )
+            plain_field_filters = {}
+            unknown_params = set()
+            for param in yet_employed_kwargs_set:
+                if param in self.options.fields:
+                    plain_field_filters[param] = kwargs[param]
+                    logger.debug(
+                        f"Client-side filter on unindexed field '{param}' "
+                        f"— consider using SortedField for better performance"
+                    )
+                else:
+                    unknown_params.add(param)
+            if unknown_params:
+                raise QueryException(
+                    f"Invalid filter parameters: {','.join(unknown_params)}"
+                )
+            self._pending_client_filters = plain_field_filters
 
         logger.debug(db_keys_sets)
         if not len(db_keys_sets):
+            if self._pending_client_filters:
+                # Only plain field filters — load all keys for client-side filtering
+                return set(self.keys())
             return set()
         # return intersection of all the db keys sets, effectively &&-ing all filters
         return set.intersection(*db_keys_sets)
@@ -883,6 +900,24 @@ class Query:
             values=kwargs.get("values", None),
         )
 
+        # Apply client-side filters for plain (unindexed) fields
+        client_filters = getattr(self, '_pending_client_filters', {})
+        if client_filters:
+            filtered = []
+            for obj in objects:
+                match = True
+                for field_name, expected_value in client_filters.items():
+                    if isinstance(obj, dict):
+                        actual = obj.get(field_name)
+                    else:
+                        actual = getattr(obj, field_name, None)
+                    if actual != expected_value:
+                        match = False
+                        break
+                if match:
+                    filtered.append(obj)
+            objects = filtered
+
         # Attach geo distances to objects if available
         if self._geo_distances:
             # Normalize distance dict keys to strings for consistent lookup
@@ -1029,9 +1064,19 @@ class Query:
                 POPOTO_REDIS_DB.scard(self.model_class._meta.db_class_set_key.redis_key)
                 or 0
             )
-        return len(
-            self.filter_for_keys_set(**kwargs)
-        )  # maybe possible to refactor to use redis.SINTERCARD
+        db_keys = self.filter_for_keys_set(**kwargs)
+        client_filters = getattr(self, '_pending_client_filters', {})
+        if client_filters:
+            # Must load objects to apply client-side filters
+            objects = Query.get_many_objects(self.model_class, db_keys)
+            return sum(
+                1 for obj in objects
+                if all(
+                    getattr(obj, fname, None) == fval
+                    for fname, fval in client_filters.items()
+                )
+            )
+        return len(db_keys)
 
     @classmethod
     def get_many_objects(
