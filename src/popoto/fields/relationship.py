@@ -139,6 +139,46 @@ class Relationship(Field):
         for k, v in relationship_field_defaults.items():
             setattr(self, k, kwargs.get(k, v))
 
+    @classmethod
+    def is_valid(cls, field, value, null_check=True, **kwargs) -> bool:
+        """
+        Validate a Relationship field value.
+
+        Accepts three value types as valid:
+        - A Model instance (the related model)
+        - A str containing a redis_key reference (lazy-loaded, format "ClassName:key")
+        - None (if field.null is True)
+
+        This override is necessary because the base Field.is_valid() only checks
+        isinstance(value, field.type), which rejects the str redis_key values
+        that are set during lazy loading from Redis.
+        """
+        if not null_check and value is None:
+            return True
+        if field.null and value is None:
+            return True
+        if value is None:
+            logger.error(f"Relationship field {field} is null but null=False")
+            return False
+        # Accept redis_key strings (lazy-loaded relationship references)
+        if isinstance(value, str):
+            if ":" not in value:
+                logger.error(
+                    f"Relationship field {field} has invalid redis_key string: {value}"
+                )
+                return False
+            return True
+        # Accept Model instances
+        from ..models.base import Model
+
+        if isinstance(value, Model):
+            return True
+        logger.error(
+            f"Relationship field {field} expected Model instance or redis_key string, "
+            f"got {type(value)}"
+        )
+        return False
+
     def get_filter_query_params(self, field_name) -> set:
         """
         Build the set of valid query parameters for filtering on this relationship.

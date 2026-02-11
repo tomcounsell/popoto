@@ -487,6 +487,112 @@ class TestRedisKeyStringHandling:
         person.delete()
 
 
+class TestRelationshipValidationOnResave(TestRelationshipEdgeCases):
+    """
+    Test for Issue #113: Relationship fields fail validation on save when
+    lazy-loaded as redis_key strings.
+
+    When a model with a Relationship field is loaded from Redis, the relationship
+    value is a redis_key string (lazy-loaded). Re-saving that model should work
+    without requiring the relationship to be resolved first.
+    """
+
+    def test_load_and_resave_without_accessing_relationship(self):
+        """
+        The core bug: load a model from Redis and re-save it without
+        accessing the relationship field. The lazy-loaded string value
+        should pass validation.
+        """
+        person = PersonModel.create(name="Zara")
+        group = GroupModel.create(name="Research")
+        membership = MembershipModel.create(person=person, group=group)
+        membership_key = membership.db_key.redis_key
+
+        # Load from Redis via query.all() — uses lazy loading, so
+        # relationship fields remain as redis_key strings
+        loaded = MembershipModel.query.all()[0]
+
+        # Verify relationship is indeed a lazy-loaded string
+        assert isinstance(loaded.person, str)
+
+        # Re-save without accessing .person or .group
+        # Before fix: ModelException("Model instance parameters invalid...")
+        loaded.save()
+
+        # Verify model data is still intact by loading via get()
+        # which resolves relationships through __init__
+        reloaded = MembershipModel.query.get(redis_key=membership_key)
+        assert reloaded.person.name == "Zara"
+        assert reloaded.group.name == "Research"
+
+        # Cleanup
+        reloaded.delete()
+        person.delete()
+        group.delete()
+
+    def test_load_modify_unrelated_field_and_resave(self):
+        """
+        Load a model, modify a non-relationship field, and re-save.
+        The unchanged lazy-loaded relationship should not block the save.
+        """
+        person = PersonModel.create(name="Yuki")
+        group = GroupModel.create(name="Design")
+
+        class TaskModel(Model):
+            title = KeyField()
+            assignee = Relationship(model=PersonModel)
+            status = Field(type=str)
+
+        # Clean up any existing TaskModel data
+        for key in POPOTO_REDIS_DB.keys("TaskModel:*"):
+            POPOTO_REDIS_DB.delete(key)
+        for key in POPOTO_REDIS_DB.keys("$*:TaskModel:*"):
+            POPOTO_REDIS_DB.delete(key)
+
+        task = TaskModel.create(title="task1", assignee=person, status="open")
+
+        # Load and modify only status
+        loaded_task = TaskModel.query.get(title="task1")
+        loaded_task.status = "closed"
+        loaded_task.save()
+
+        # Verify
+        updated = TaskModel.query.get(title="task1")
+        assert updated.status == "closed"
+        assert updated.assignee.name == "Yuki"
+
+        # Cleanup
+        task.delete()
+        person.delete()
+        group.delete()
+        for key in POPOTO_REDIS_DB.keys("TaskModel:*"):
+            POPOTO_REDIS_DB.delete(key)
+        for key in POPOTO_REDIS_DB.keys("$*:TaskModel:*"):
+            POPOTO_REDIS_DB.delete(key)
+
+    def test_relationship_is_valid_accepts_redis_key_string(self):
+        """Test that Relationship.is_valid() accepts valid redis_key strings."""
+        from src.popoto.fields.relationship import Relationship
+
+        field = Relationship(model=PersonModel)
+        assert Relationship.is_valid(field, "PersonModel:Alice") is True
+        assert Relationship.is_valid(field, None) is True
+
+    def test_relationship_is_valid_rejects_invalid_string(self):
+        """Test that Relationship.is_valid() rejects strings without a colon."""
+        from src.popoto.fields.relationship import Relationship
+
+        field = Relationship(model=PersonModel)
+        assert Relationship.is_valid(field, "InvalidNoColon") is False
+
+    def test_relationship_is_valid_rejects_non_null_when_required(self):
+        """Test that Relationship.is_valid() rejects None when null=False."""
+        from src.popoto.fields.relationship import Relationship
+
+        field = Relationship(model=PersonModel, null=False)
+        assert Relationship.is_valid(field, None) is False
+
+
 # Run tests if executed directly
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
