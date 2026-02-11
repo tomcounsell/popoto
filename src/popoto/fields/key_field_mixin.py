@@ -446,7 +446,7 @@ class KeyFieldMixin:
                     elif query_value is False:
                         # Use SCAN instead of KEYS to avoid blocking Redis
                         keys_lists_to_intersect.append(
-                            scan_keys(get_key_pattern(f"[^None]"))
+                            scan_keys(get_key_pattern("[^None]"))
                         )
                     else:
                         raise QueryException(

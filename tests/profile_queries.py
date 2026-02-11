@@ -391,8 +391,8 @@ def test_keys_vs_scan_raw():
     print(f"  Matches: KEYS={keys_count}, SCAN={scan_count}")
     print(f"  KEYS: avg={statistics.mean(times_keys):.3f}ms  (BLOCKS Redis)")
     print(f"  SCAN: avg={statistics.mean(times_scan):.3f}ms  (non-blocking)")
-    print(f"  Note: KEYS blocks the entire Redis server during execution.")
-    print(f"  At 100K+ keys, KEYS can cause seconds of blocking.")
+    print("  Note: KEYS blocks the entire Redis server during execution.")
+    print("  At 100K+ keys, KEYS can cause seconds of blocking.")
 
 
 def test_deserialization_overhead():
@@ -431,7 +431,7 @@ def test_deserialization_overhead():
         elapsed = time.perf_counter() - start
         times_decode.append(elapsed * 1000)
 
-    print(f"  1000 items:")
+    print("  1000 items:")
     print(f"    Pipeline HGETALL: avg={statistics.mean(times_fetch):.1f}ms")
     print(f"    msgpack decode:   avg={statistics.mean(times_decode):.1f}ms")
     print(

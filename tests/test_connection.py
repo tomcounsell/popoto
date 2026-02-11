@@ -6,7 +6,7 @@ including timeouts, disconnections, and health checks.
 """
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 import redis
 
 from src.popoto.redis_db import (
@@ -19,6 +19,7 @@ from src.popoto import Model, KeyField, Field
 
 class SimpleModel(Model):
     """Simple model for connection tests."""
+
     name = KeyField()
     value = Field(type=str, default="")
 
@@ -46,12 +47,20 @@ class TestCheckConnection:
 
     def test_check_connection_failure(self):
         """Test that check_connection returns False when Redis is unavailable."""
-        with patch.object(POPOTO_REDIS_DB, 'ping', side_effect=redis.ConnectionError("Connection refused")):
+        with patch.object(
+            POPOTO_REDIS_DB,
+            "ping",
+            side_effect=redis.ConnectionError("Connection refused"),
+        ):
             assert check_connection() is False
 
     def test_check_connection_timeout(self):
         """Test that check_connection returns False on timeout."""
-        with patch.object(POPOTO_REDIS_DB, 'ping', side_effect=redis.TimeoutError("Connection timed out")):
+        with patch.object(
+            POPOTO_REDIS_DB,
+            "ping",
+            side_effect=redis.TimeoutError("Connection timed out"),
+        ):
             assert check_connection() is False
 
 
@@ -62,19 +71,31 @@ class TestConnectionFailureHandling:
         """Test that save raises exception when Redis is unavailable."""
         model = SimpleModel(name="test", value="data")
 
-        with patch.object(POPOTO_REDIS_DB, 'hset', side_effect=redis.ConnectionError("Connection refused")):
+        with patch.object(
+            POPOTO_REDIS_DB,
+            "hset",
+            side_effect=redis.ConnectionError("Connection refused"),
+        ):
             with pytest.raises(redis.ConnectionError):
                 model.save()
 
     def test_query_with_connection_error(self):
         """Test that query raises exception when Redis is unavailable."""
-        with patch.object(POPOTO_REDIS_DB, 'smembers', side_effect=redis.ConnectionError("Connection refused")):
+        with patch.object(
+            POPOTO_REDIS_DB,
+            "smembers",
+            side_effect=redis.ConnectionError("Connection refused"),
+        ):
             with pytest.raises(redis.ConnectionError):
                 SimpleModel.query.all()
 
     def test_get_with_connection_error(self):
         """Test that get raises exception when Redis is unavailable."""
-        with patch.object(POPOTO_REDIS_DB, 'hgetall', side_effect=redis.ConnectionError("Connection refused")):
+        with patch.object(
+            POPOTO_REDIS_DB,
+            "hgetall",
+            side_effect=redis.ConnectionError("Connection refused"),
+        ):
             with pytest.raises(redis.ConnectionError):
                 SimpleModel.query.get(name="test")
 
@@ -86,7 +107,7 @@ class TestConnectionReconfiguration:
         """Test that get_REDIS_DB returns the Redis connection object."""
         db = get_REDIS_DB()
         assert db is not None
-        assert hasattr(db, 'ping')
+        assert hasattr(db, "ping")
 
     def test_set_redis_db_settings_with_valid_url(self):
         """Test reconfiguring with a valid Redis URL."""

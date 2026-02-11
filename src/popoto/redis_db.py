@@ -15,6 +15,21 @@ Popoto. Rather than requiring each model, field, or query to manage its own
 connection, this module provides a single global connection instance (POPOTO_REDIS_DB)
 that all components share.
 
+Async Support:
+    Popoto provides native async Redis support via redis.asyncio. Use
+    ``POPOTO_ASYNC_REDIS_DB`` for true non-blocking async I/O operations.
+
+    The async connection is created lazily on first use via ``get_async_redis_db()``
+    to avoid event loop issues at import time.
+
+    Example::
+
+        from popoto.redis_db import get_async_redis_db
+
+        async def example():
+            async_redis = await get_async_redis_db()
+            await async_redis.hset(key, mapping=data)
+
 Design Philosophy:
     Popoto follows a "configure once, use everywhere" pattern for database connections.
     The connection is established at module import time using environment variables,
@@ -37,6 +52,14 @@ Usage:
         from popoto.redis_db import POPOTO_REDIS_DB
         POPOTO_REDIS_DB.hset(key, mapping=data)
 
+    For async operations, use get_async_redis_db()::
+
+        from popoto.redis_db import get_async_redis_db
+
+        async def my_async_function():
+            redis = await get_async_redis_db()
+            await redis.hset(key, mapping=data)
+
     For dynamic reconfiguration (e.g., testing), use set_REDIS_DB_settings()::
 
         from popoto.redis_db import set_REDIS_DB_settings
@@ -49,7 +72,9 @@ Note:
 
 import os
 import logging
+import asyncio
 import redis
+import redis.asyncio as aioredis
 
 # from redisgraph import Graph
 
@@ -63,9 +88,14 @@ if _log_level in _valid_levels:
 
 
 global POPOTO_REDIS_DB
+global _POPOTO_ASYNC_REDIS_DB
 # global REDIS_GRAPH
 BEGINNING_OF_TIME = 0
 ENCODING = "utf-8"
+
+# Async connection is created lazily to avoid event loop issues at import time
+_POPOTO_ASYNC_REDIS_DB = None
+_async_redis_lock = asyncio.Lock()
 
 try:
     BEGINNING_OF_TIME = int(os.environ.get("BEGINNING_OF_TIME", 0))
@@ -150,6 +180,90 @@ def get_REDIS_DB():
     return POPOTO_REDIS_DB
 
 
+async def get_async_redis_db():
+    """Return the global async Redis connection, creating it lazily if needed.
+
+    This function provides access to an async Redis client for use in async/await
+    contexts. The connection is created lazily on first call to avoid event loop
+    issues at module import time.
+
+    The async client uses the same connection parameters as the sync client
+    (via REDIS_URL or localhost:6379 default).
+
+    Returns:
+        redis.asyncio.Redis: The configured async Redis client instance.
+
+    Example:
+        async def save_data():
+            redis = await get_async_redis_db()
+            await redis.hset("key", mapping={"field": "value"})
+
+    Thread Safety:
+        Uses an asyncio lock to ensure only one async connection is created
+        even if called concurrently from multiple coroutines.
+
+    Connection Cleanup:
+        The connection pool is managed automatically by ``redis.asyncio``.
+        No explicit cleanup (e.g., calling ``close()``) is needed in normal
+        usage -- the pool is cleaned up when the process exits. If you need
+        to reconfigure the connection at runtime, use
+        ``set_async_redis_db_settings()`` which handles closing the old
+        connection before creating a new one.
+    """
+    global _POPOTO_ASYNC_REDIS_DB
+
+    if _POPOTO_ASYNC_REDIS_DB is not None:
+        return _POPOTO_ASYNC_REDIS_DB
+
+    async with _async_redis_lock:
+        # Double-check after acquiring lock
+        if _POPOTO_ASYNC_REDIS_DB is not None:
+            return _POPOTO_ASYNC_REDIS_DB
+
+        REDIS_URL = os.environ.get("REDIS_URL", "")
+        if REDIS_URL:
+            _POPOTO_ASYNC_REDIS_DB = aioredis.from_url(
+                REDIS_URL, socket_timeout=5, socket_connect_timeout=5
+            )
+        else:
+            _POPOTO_ASYNC_REDIS_DB = aioredis.Redis(
+                host="127.0.0.1",
+                port=6379,
+                db=0,
+                socket_timeout=5,
+                socket_connect_timeout=5,
+            )
+        logger.debug("Async Redis connection established.")
+        return _POPOTO_ASYNC_REDIS_DB
+
+
+async def set_async_redis_db_settings(
+    env_partition_name: str = "", *args, **kwargs
+) -> None:
+    """Reset the global async Redis connection with new settings.
+
+    This is the async equivalent of set_REDIS_DB_settings(). Use it to
+    reconfigure the async connection for testing or multi-tenant scenarios.
+
+    Args:
+        env_partition_name: Optional namespace prefix for key isolation.
+        *args, **kwargs: Passed directly to ``redis.asyncio.Redis()``.
+
+    Example:
+        await set_async_redis_db_settings(host='localhost', port=6379, db=15)
+    """
+    global _POPOTO_ASYNC_REDIS_DB
+
+    kwargs.setdefault("socket_timeout", 5)
+    kwargs.setdefault("socket_connect_timeout", 5)
+
+    async with _async_redis_lock:
+        if _POPOTO_ASYNC_REDIS_DB is not None:
+            await _POPOTO_ASYNC_REDIS_DB.close()
+        _POPOTO_ASYNC_REDIS_DB = aioredis.Redis(*args, **kwargs)
+    logger.debug("Async Redis connection reset.")
+
+
 def check_connection() -> bool:
     """
     Check if the Redis connection is healthy.
@@ -164,6 +278,26 @@ def check_connection() -> bool:
     """
     try:
         POPOTO_REDIS_DB.ping()
+        return True
+    except Exception:
+        return False
+
+
+async def async_check_connection() -> bool:
+    """
+    Async version of check_connection().
+
+    Returns:
+        True if Redis is reachable and responding, False otherwise.
+
+    Example:
+        >>> from popoto.redis_db import async_check_connection
+        >>> if await async_check_connection():
+        ...     print("Redis is healthy")
+    """
+    try:
+        redis = await get_async_redis_db()
+        await redis.ping()
         return True
     except Exception:
         return False
@@ -200,6 +334,30 @@ def scan_keys(pattern: str, count: int = 1000) -> list:
     cursor = 0
     while True:
         cursor, keys = POPOTO_REDIS_DB.scan(cursor=cursor, match=pattern, count=count)
+        results.extend(keys)
+        if cursor == 0:
+            break
+    return results
+
+
+async def async_scan_keys(pattern: str, count: int = 1000) -> list:
+    """Async version of scan_keys() using cursor-based SCAN.
+
+    Args:
+        pattern: Glob-style pattern to match keys (e.g., "User:*", "*:active").
+        count: Hint for how many keys to return per iteration.
+
+    Returns:
+        list: All keys matching the pattern.
+
+    Example:
+        user_keys = await async_scan_keys("User:*")
+    """
+    redis = await get_async_redis_db()
+    results = []
+    cursor = 0
+    while True:
+        cursor, keys = await redis.scan(cursor=cursor, match=pattern, count=count)
         results.extend(keys)
         if cursor == 0:
             break

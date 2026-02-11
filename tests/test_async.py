@@ -8,12 +8,22 @@ import pytest
 import asyncio
 from src import popoto
 from src.popoto.redis_db import POPOTO_REDIS_DB
+import src.popoto.redis_db as redis_db_module
 
 
 @pytest.fixture(autouse=True)
 def flush_redis():
-    """Clean Redis before each test."""
+    """Clean Redis and reset async connection before each test.
+
+    The async Redis connection is tied to an event loop. Since pytest-asyncio
+    creates a new event loop per test, we must reset the cached async connection
+    to avoid 'Future attached to a different loop' errors.
+    """
     POPOTO_REDIS_DB.flushdb()
+    # Reset the cached async connection and lock so they get recreated in the
+    # new event loop (pytest-asyncio creates a fresh loop per test)
+    redis_db_module._POPOTO_ASYNC_REDIS_DB = None
+    redis_db_module._async_redis_lock = asyncio.Lock()
 
 
 class TestJob(popoto.Model):

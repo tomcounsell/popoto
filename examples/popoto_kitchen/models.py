@@ -10,7 +10,6 @@ These models demonstrate all major Popoto features:
 """
 
 from datetime import datetime
-from typing import Optional
 
 from popoto import Field, KeyField, Model, Relationship, SortedField
 from popoto.fields.geo_field import GeoField
@@ -122,7 +121,15 @@ class Order(Model):
     updated_at = Field(type=str)  # ISO format datetime string
 
     # Valid status values (private to avoid Popoto field detection)
-    _STATUSES = ["pending", "confirmed", "preparing", "ready", "delivering", "delivered", "cancelled"]
+    _STATUSES = [
+        "pending",
+        "confirmed",
+        "preparing",
+        "ready",
+        "delivering",
+        "delivered",
+        "cancelled",
+    ]
 
     class Meta:
         order_by = "-created_at"  # Newest first

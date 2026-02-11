@@ -18,7 +18,6 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 from src.popoto.redis_db import POPOTO_REDIS_DB
 from src import popoto
-from src.popoto.exceptions import ModelException
 
 # =============================================================================
 # MODEL DEFINITIONS
@@ -105,8 +104,14 @@ class UpdateCounterModel(popoto.Model):
 
 @pytest.fixture(autouse=True)
 def flush_redis():
-    """Clean Redis before each test."""
+    """Clean Redis and reset async connection before each test."""
+    import src.popoto.redis_db as redis_db_module
+
     POPOTO_REDIS_DB.flushdb()
+    # Reset the cached async connection and lock so they get recreated in the
+    # new event loop (pytest-asyncio creates a fresh loop per test)
+    redis_db_module._POPOTO_ASYNC_REDIS_DB = None
+    redis_db_module._async_redis_lock = asyncio.Lock()
     yield
     POPOTO_REDIS_DB.flushdb()
 
@@ -649,7 +654,6 @@ def test_field_type_coercion_errors():
 @pytest.mark.slow
 def test_memory_efficiency():
     """Save 5000 items, verify memory usage stays reasonable."""
-    import sys
 
     # Save 5000 items
     for i in range(5000):

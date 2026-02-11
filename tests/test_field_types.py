@@ -1,12 +1,11 @@
 import sys
 import os
 from decimal import Decimal
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
 
-from src.popoto.redis_db import POPOTO_REDIS_DB
 from src import popoto
 
 

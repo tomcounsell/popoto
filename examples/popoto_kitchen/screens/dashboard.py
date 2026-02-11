@@ -1,7 +1,7 @@
 """Dashboard screen showing overview statistics and recent activity."""
 
 from textual.app import ComposeResult
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Container, Horizontal
 from textual.widgets import Button, DataTable, Label, Static
 
 from ..models import Customer, Driver, MenuItem, Order, Restaurant

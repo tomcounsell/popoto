@@ -1,6 +1,5 @@
 """Tests for Model.delete_all() and async_delete_all() methods."""
 
-import asyncio
 import pytest
 
 import popoto
@@ -128,8 +127,12 @@ class TestDeleteAll:
     def test_delete_all_cleans_geo_index(self):
         """delete_all() should clean up GeoField indexes."""
         # Create restaurants with locations
-        Restaurant(name="NYC", cuisine="Test", rating=4.0, location=(40.7128, -74.0060)).save()
-        Restaurant(name="LA", cuisine="Test", rating=4.0, location=(34.0522, -118.2437)).save()
+        Restaurant(
+            name="NYC", cuisine="Test", rating=4.0, location=(40.7128, -74.0060)
+        ).save()
+        Restaurant(
+            name="LA", cuisine="Test", rating=4.0, location=(34.0522, -118.2437)
+        ).save()
 
         # Verify geo query works
         nearby = list(

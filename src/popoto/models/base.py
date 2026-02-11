@@ -38,10 +38,8 @@ Example:
 """
 
 import logging
-import asyncio
-import sys
-import functools
-from typing import TYPE_CHECKING, Optional, Union, List, Dict, Any
+from asyncio import to_thread
+from typing import TYPE_CHECKING, Optional, Union
 
 import redis
 
@@ -61,17 +59,6 @@ from ..redis_db import POPOTO_REDIS_DB
 from ..exceptions import ModelException
 
 logger = logging.getLogger("POPOTO.model_base")
-
-# Python 3.8 compatibility for asyncio.to_thread()
-if sys.version_info >= (3, 9):
-    to_thread = asyncio.to_thread
-else:
-    # Backport for Python 3.8
-    async def to_thread(func, *args, **kwargs):
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            None, functools.partial(func, *args, **kwargs)
-        )
 
 
 global RELATED_MODEL_LOAD_SEQUENCE
@@ -1328,7 +1315,11 @@ class Model(metaclass=ModelBase):
             "query_filters": query_filters,
         }
 
-    # Async methods
+    # Async methods using native redis.asyncio
+    #
+    # Note: async_save and async_delete use to_thread() because they involve
+    # complex field hook operations (on_save, on_delete) that would require
+    # updating all field classes. async_load uses native async for simple GET.
 
     async def async_save(
         self,
@@ -1340,6 +1331,12 @@ class Model(metaclass=ModelBase):
 
         Runs the synchronous save() method in a thread pool to avoid blocking
         the event loop.
+
+        Note:
+            Uses to_thread() rather than native async because save() involves
+            complex field hook operations (on_save) across multiple field types.
+            For most use cases, the thread pool overhead is negligible compared
+            to network latency.
 
         Args:
             pipeline: Optional Redis pipeline for batching operations
@@ -1361,6 +1358,10 @@ class Model(metaclass=ModelBase):
         Runs the synchronous delete() method in a thread pool to avoid blocking
         the event loop.
 
+        Note:
+            Uses to_thread() rather than native async because delete() involves
+            complex field hook operations (on_delete) across multiple field types.
+
         Args:
             pipeline: Optional Redis pipeline for batching operations
             *args: Additional positional arguments passed to delete()
@@ -1378,6 +1379,9 @@ class Model(metaclass=ModelBase):
         Creates a new model instance and saves it to Redis in a thread pool
         to avoid blocking the event loop.
 
+        Note:
+            Uses to_thread() because it internally calls save().
+
         Args:
             pipeline: Optional Redis pipeline for batching operations
             **kwargs: Field values for the new instance
@@ -1389,10 +1393,10 @@ class Model(metaclass=ModelBase):
 
     @classmethod
     async def async_load(cls, db_key: str = None, **kwargs):
-        """Async version of load().
+        """Async version of load() using native async Redis.
 
-        Loads a model instance from Redis by db_key or field values in a
-        thread pool to avoid blocking the event loop.
+        Loads a model instance from Redis by db_key or field values using
+        non-blocking I/O via redis.asyncio.
 
         Args:
             db_key: Optional db_key string to load
@@ -1401,7 +1405,7 @@ class Model(metaclass=ModelBase):
         Returns:
             Model instance or None if not found
         """
-        return await to_thread(cls.load, db_key=db_key, **kwargs)
+        return await cls.query.async_get(db_key=db_key or cls(**kwargs).db_key)
 
     # Bulk operations
 

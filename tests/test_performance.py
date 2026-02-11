@@ -7,7 +7,6 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 time_checkpoints = {"started": time.time()}
 
-from src.popoto.redis_db import POPOTO_REDIS_DB
 from src import popoto
 
 time_checkpoints["popoto imported"] = time.time()

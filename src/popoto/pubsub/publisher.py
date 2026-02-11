@@ -201,7 +201,7 @@ class Publisher(ABC):
         # logger.debug(f"publish to {channel_name}: {publish_data}")
         channel_name = channel_name or self._channel_name
         self._publish_data = data or self._publish_data
-        if self._publish_data is None or self._publish_data is {}:
+        if self._publish_data is None or self._publish_data == {}:
             return None
         elif not channel_name:
             raise PublisherException("missing channel to publish to")
