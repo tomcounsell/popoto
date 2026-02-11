@@ -39,7 +39,7 @@ Example:
 
 import logging
 from asyncio import to_thread
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING, Optional, Tuple, Union
 
 import redis
 
@@ -1168,6 +1168,94 @@ class Model(metaclass=ModelBase):
         return pipeline_or_db_response if pipeline else instance
 
     @classmethod
+    def get_or_create(cls, defaults: dict = None, **lookup) -> Tuple["Model", bool]:
+        """
+        Look up an object by lookup kwargs. If not found, create it with
+        lookup + defaults.
+
+        Args:
+            defaults: Field values to use only when creating (not for lookup)
+            **lookup: Field values to use for lookup AND creation
+
+        Returns:
+            (instance, created) tuple where created is True if object was created
+
+        Example:
+            user, created = User.get_or_create(
+                email="alice@example.com",
+                defaults={'name': 'Alice', 'role': 'member'}
+            )
+        """
+        # 1. Try to get existing
+        instance = cls.query.get(**lookup)
+        if instance:
+            return instance, False
+
+        # 2. Create if missing
+        create_kwargs = {**lookup}
+        if defaults:
+            create_kwargs.update(defaults)
+
+        try:
+            instance = cls.create(**create_kwargs)
+            return instance, True
+        except ModelException as e:
+            # Race condition: another process created it between get and create
+            # Retry get once
+            if "unique" in str(e).lower() or "already exists" in str(e).lower():
+                instance = cls.query.get(**lookup)
+                if instance:
+                    return instance, False
+            raise  # Re-raise if not a uniqueness issue or retry failed
+
+    @classmethod
+    def update_or_create(cls, defaults: dict = None, **lookup) -> Tuple["Model", bool]:
+        """
+        Look up an object by lookup kwargs. If found, update it with defaults
+        and save. If not found, create with lookup + defaults.
+
+        Args:
+            defaults: Field values to update (if exists) or use for creation
+            **lookup: Field values to use for lookup AND creation
+
+        Returns:
+            (instance, created) tuple where created is True if object was created
+
+        Example:
+            tracker, created = Tracker.update_or_create(
+                session_id=session_id,
+                defaults={'last_seen': datetime.now()}
+            )
+        """
+        defaults = defaults or {}
+
+        # 1. Try to get existing
+        instance = cls.query.get(**lookup)
+        if instance:
+            # 2a. Update existing with defaults
+            for key, value in defaults.items():
+                setattr(instance, key, value)
+            instance.save()
+            return instance, False
+
+        # 2b. Create if missing
+        create_kwargs = {**lookup, **defaults}
+
+        try:
+            instance = cls.create(**create_kwargs)
+            return instance, True
+        except ModelException as e:
+            # Race condition: retry as get + update
+            if "unique" in str(e).lower() or "already exists" in str(e).lower():
+                instance = cls.query.get(**lookup)
+                if instance:
+                    for key, value in defaults.items():
+                        setattr(instance, key, value)
+                    instance.save()
+                    return instance, False
+            raise
+
+    @classmethod
     def load(
         cls,
         db_key: str = None,
@@ -1546,6 +1634,36 @@ class Model(metaclass=ModelBase):
             Model instance or None if not found
         """
         return await cls.query.async_get(db_key=db_key or cls(**kwargs).db_key)
+
+    @classmethod
+    async def async_get_or_create(
+        cls, defaults: dict = None, **lookup
+    ) -> Tuple["Model", bool]:
+        """
+        Async version of get_or_create.
+
+        Look up an object by lookup kwargs. If not found, create it with
+        lookup + defaults.
+
+        Returns:
+            (instance, created) tuple where created is True if object was created
+        """
+        return await to_thread(cls.get_or_create, defaults=defaults, **lookup)
+
+    @classmethod
+    async def async_update_or_create(
+        cls, defaults: dict = None, **lookup
+    ) -> Tuple["Model", bool]:
+        """
+        Async version of update_or_create.
+
+        Look up an object by lookup kwargs. If found, update with defaults.
+        If not found, create with lookup + defaults.
+
+        Returns:
+            (instance, created) tuple where created is True if object was created
+        """
+        return await to_thread(cls.update_or_create, defaults=defaults, **lookup)
 
     # Bulk operations
 
