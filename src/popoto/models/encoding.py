@@ -239,12 +239,16 @@ def encode_popoto_model_obj(obj: "Model") -> dict:
         from ..fields.relationship import Relationship
 
         if value is not None and isinstance(field, Relationship):
-            if not isinstance(value, field.model):
+            if isinstance(value, str):
+                # Lazy-loaded redis_key string — already in storage format
+                encoded_value = msgpack.packb(value)
+            elif not isinstance(value, field.model):
                 raise ModelException(
                     f"Relationship field requires {field.model} model instance. got {value} instead"
                 )
-            encoded_value = msgpack.packb(value.db_key.redis_key)
-            # todo: refactor to store db_key list, not redis_key
+            else:
+                encoded_value = msgpack.packb(value.db_key.redis_key)
+                # todo: refactor to store db_key list, not redis_key
 
         elif value is not None and field.type in TYPE_ENCODER_DECODERS.keys():
             encoded_value = msgpack.packb(

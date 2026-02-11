@@ -78,7 +78,6 @@ global RELATED_MODEL_LOAD_SEQUENCE
 RELATED_MODEL_LOAD_SEQUENCE = set()
 
 
-
 # Length of hex digest used for index hashes. 16 hex chars = 64 bits,
 # sufficient for index key uniqueness within a single model's field combinations.
 INDEX_HASH_LENGTH = 16
@@ -802,7 +801,16 @@ class Model(metaclass=ModelBase):
             value = getattr(self, field_name)
 
             # Type coercion: convert compatible types before validation
-            if value is not None and not isinstance(value, field.type):
+            # Skip coercion for Relationship fields — they handle their own
+            # validation and legitimately hold str redis_key values when
+            # lazy-loaded from Redis.
+            from ..fields.relationship import Relationship
+
+            if (
+                value is not None
+                and not isinstance(value, field.type)
+                and not isinstance(field, Relationship)
+            ):
                 try:
                     if field.type in VALID_FIELD_TYPES:
                         coerced = field.type(value)
