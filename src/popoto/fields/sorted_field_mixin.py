@@ -129,11 +129,19 @@ class SortedFieldMixin:
                 - type: Python type (int, float, Decimal, datetime, date, time)
                 - default: Default value (None by default; cannot default datetime)
                 - sort_by: Field name(s) to partition the sorted index
+                - auto_now_add: If True, set to time.time() on first save (for
+                    float/int types only). Value is only set if field is None/falsy.
+                - auto_now: If True, set to time.time() on every save (for
+                    float/int types only). Always overwrites the current value.
 
         Raises:
             ModelException: If sort_by is not a string or tuple, or if null=True
                 is attempted (not yet supported).
         """
+        # Extract auto_now params before super().__init__() to avoid Field validation issues
+        self.auto_now_add = kwargs.pop("auto_now_add", False)
+        self.auto_now = kwargs.pop("auto_now", False)
+
         super().__init__()
         sortedfield_defaults = {
             "type": float,
@@ -210,6 +218,9 @@ class SortedFieldMixin:
         to a numeric score for Redis storage, and type mismatches could
         cause conversion errors or incorrect sorting behavior.
 
+        For fields with auto_now or auto_now_add=True, null values are allowed
+        since they will be automatically populated in format_value_pre_save().
+
         Args:
             field: The Field instance being validated.
             value: The value to validate.
@@ -219,6 +230,10 @@ class SortedFieldMixin:
         Returns:
             True if the value is valid for this sorted field, False otherwise.
         """
+        # Skip null check for auto_now/auto_now_add fields - they'll be populated later
+        if not value and (getattr(field, 'auto_now', False) or getattr(field, 'auto_now_add', False)):
+            null_check = False
+
         if not super().is_valid(field, value, null_check):
             return False
         if value and not isinstance(value, field.type):
@@ -234,6 +249,9 @@ class SortedFieldMixin:
         and temporal types are preserved as-is for msgpack serialization,
         while other types (like Decimal) are converted to float.
 
+        For numeric types (int, float), this method also applies auto_now_add
+        and auto_now logic to automatically set Unix timestamps.
+
         Note that this is separate from convert_to_numeric(), which handles
         the score conversion for the sorted set index.
 
@@ -243,6 +261,17 @@ class SortedFieldMixin:
         Returns:
             The normalized value suitable for msgpack serialization.
         """
+        import time
+
+        # Apply auto_now/auto_now_add for numeric types (Unix timestamps)
+        if self.type in (int, float):
+            if self.auto_now:
+                # Always set current timestamp on every save
+                field_value = int(time.time()) if self.type is int else time.time()
+            elif self.auto_now_add and not field_value:
+                # Set timestamp only on first save (when value is None/falsy)
+                field_value = int(time.time()) if self.type is int else time.time()
+
         if self.type in [int, float, datetime.datetime, datetime.date, datetime.time]:
             return field_value
         else:
