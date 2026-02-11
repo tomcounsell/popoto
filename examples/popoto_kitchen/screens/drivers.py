@@ -23,7 +23,12 @@ class DriversScreen(Container):
             )
             yield Input(placeholder="Min Rating", id="filter-min-rating")
             yield Select(
-                [("All", "all"), ("Car", "car"), ("Bike", "bike"), ("Scooter", "scooter")],
+                [
+                    ("All", "all"),
+                    ("Car", "car"),
+                    ("Bike", "bike"),
+                    ("Scooter", "scooter"),
+                ],
                 prompt="Vehicle",
                 id="filter-vehicle",
             )
@@ -133,7 +138,9 @@ class DriversScreen(Container):
                 status = "🟢 Active" if driver.active else "⚫ Offline"
 
                 # Vehicle emoji
-                vehicle_emoji = {"car": "🚗", "bike": "🚲", "scooter": "🛵"}.get(driver.vehicle, "🚗")
+                vehicle_emoji = {"car": "🚗", "bike": "🚲", "scooter": "🛵"}.get(
+                    driver.vehicle, "🚗"
+                )
                 vehicle_str = f"{vehicle_emoji} {driver.vehicle.title()}"
 
                 table.add_row(
@@ -144,7 +151,7 @@ class DriversScreen(Container):
                     location_str,
                     status,
                     distance_str,
-                    key=driver.redis_key,
+                    key=driver.db_key.redis_key,
                 )
                 count += 1
 
@@ -160,9 +167,13 @@ class DriversScreen(Container):
         vehicle_select = self.query_one("#filter-vehicle", Select)
         return {
             "name": self.query_one("#filter-name", Input).value,
-            "status": status_select.value if status_select.value != Select.BLANK else "all",
+            "status": (
+                status_select.value if status_select.value != Select.BLANK else "all"
+            ),
             "min_rating": self.query_one("#filter-min-rating", Input).value,
-            "vehicle": vehicle_select.value if vehicle_select.value != Select.BLANK else "all",
+            "vehicle": (
+                vehicle_select.value if vehicle_select.value != Select.BLANK else "all"
+            ),
         }
 
     def on_button_pressed(self, event: Button.Pressed) -> None:

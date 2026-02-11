@@ -10,13 +10,18 @@ from ..models import Customer, Driver, MenuItem, Order, Restaurant
 class StatBox(Static):
     """A box displaying a statistic with label and value."""
 
-    def __init__(self, label: str, value: str = "0", classes: str = "") -> None:
-        super().__init__(classes=f"stat-box {classes}")
+    def __init__(self, label: str, value: str = "0", **kwargs) -> None:
+        classes = kwargs.pop("classes", "")
+        super().__init__(classes=f"stat-box {classes}", **kwargs)
         self.label = label
         self.value = value
 
     def compose(self) -> ComposeResult:
-        yield Label(self.value, classes="stat-value", id=f"stat-{self.label.lower().replace(' ', '-')}")
+        yield Label(
+            self.value,
+            classes="stat-value",
+            id=f"stat-{self.label.lower().replace(' ', '-')}",
+        )
         yield Label(self.label, classes="stat-label")
 
     def update_value(self, value: str) -> None:
@@ -82,17 +87,18 @@ class DashboardScreen(Container):
             driver_count = Driver.query.count()
             order_count = Order.query.count()
 
-            # Active orders (not delivered or cancelled)
-            active_statuses = ["pending", "confirmed", "preparing", "ready", "delivering"]
+            # Count by status and active (plain Fields, must filter client-side)
+            orders = list(Order.query.all())
             active_count = sum(
-                Order.query.filter(status=s).count() for s in active_statuses
+                1
+                for o in orders
+                if o.status
+                in ("pending", "confirmed", "preparing", "ready", "delivering")
             )
+            delivered_count = sum(1 for o in orders if o.status == "delivered")
 
-            # Delivered count
-            delivered_count = Order.query.filter(status="delivered").count()
-
-            # Active drivers
-            active_drivers = Driver.query.filter(active=True).count()
+            drivers = list(Driver.query.all())
+            active_drivers = sum(1 for d in drivers if d.active)
 
             # Update UI
             self._set_stat("stat-restaurants", str(restaurant_count))

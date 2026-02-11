@@ -16,30 +16,23 @@ Popoto Kitchen is a food delivery system simulation that demonstrates all major 
 - Python 3.8+
 - Redis server running on localhost:6379 (or set `REDIS_URL`)
 
-### Installation
-
-```bash
-# From the popoto repository root
-pip install -e ".[examples]"
-
-# Or install textual separately
-pip install textual
-```
-
 ### Running
 
 ```bash
+# From the examples/ directory
+cd examples
+
 # Start the app
-python -m popoto_kitchen
+uv run popoto-kitchen
 
 # Seed sample data first
-python -m popoto_kitchen --seed
+uv run popoto-kitchen --seed
 
 # Clear and re-seed
-python -m popoto_kitchen --clear --seed
+uv run popoto-kitchen --clear --seed
 
 # Only seed, don't start the app
-python -m popoto_kitchen --seed-only
+uv run popoto-kitchen --seed-only
 ```
 
 ## Features
@@ -160,8 +153,8 @@ Built with [Textual](https://textual.textualize.io/) - the modern Python TUI fra
 
 ```bash
 # Run with dev console
-textual run --dev -c python -m popoto_kitchen
+uv run textual run --dev -c python -m popoto_kitchen
 
 # Take a screenshot
-textual run -c python -m popoto_kitchen --screenshot
+uv run textual run -c python -m popoto_kitchen --screenshot
 ```

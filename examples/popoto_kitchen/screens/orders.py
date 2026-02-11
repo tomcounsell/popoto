@@ -74,12 +74,13 @@ class OrdersScreen(Container):
         table.clear()
 
         try:
-            # Build query with total range if specified
+            # Build query for SortedField filters only (total)
             query_kwargs = {}
+            status_filter = None
 
             if filters:
                 if filters.get("status") and filters["status"] != "All Statuses":
-                    query_kwargs["status"] = filters["status"]
+                    status_filter = filters["status"]
                 if filters.get("min_total"):
                     try:
                         query_kwargs["total__gte"] = float(filters["min_total"])
@@ -91,7 +92,7 @@ class OrdersScreen(Container):
                     except ValueError:
                         pass
 
-            # Execute query
+            # Execute query (only SortedField params go to filter())
             if query_kwargs:
                 orders = Order.query.filter(**query_kwargs)
             else:
@@ -99,6 +100,9 @@ class OrdersScreen(Container):
 
             count = 0
             for order in orders:
+                # Apply status filter client-side (plain Field, not indexed)
+                if status_filter and order.status != status_filter:
+                    continue
                 # Get related model names
                 customer_name = "Unknown"
                 restaurant_name = "Unknown"
@@ -144,7 +148,7 @@ class OrdersScreen(Container):
                     status,
                     driver_name,
                     created,
-                    key=order.redis_key,
+                    key=order.db_key.redis_key,
                 )
                 count += 1
 
@@ -158,7 +162,9 @@ class OrdersScreen(Container):
         """Get current filter values."""
         status_select = self.query_one("#filter-status", Select)
         return {
-            "status": status_select.value if status_select.value != Select.BLANK else None,
+            "status": (
+                status_select.value if status_select.value != Select.BLANK else None
+            ),
             "min_total": self.query_one("#filter-min-total", Input).value,
             "max_total": self.query_one("#filter-max-total", Input).value,
         }
@@ -213,16 +219,24 @@ class OrdersScreen(Container):
         restaurants = list(Restaurant.query.all())
 
         if not customers or not restaurants:
-            self.app.notify("Create customers and restaurants first!", severity="warning")
+            self.app.notify(
+                "Create customers and restaurants first!", severity="warning"
+            )
             return
 
         customer = random.choice(customers)
         restaurant = random.choice(restaurants)
 
         # Get some menu items from this restaurant
-        menu_items = [m for m in MenuItem.query.all() if m.restaurant and m.restaurant.name == restaurant.name]
+        menu_items = [
+            m
+            for m in MenuItem.query.all()
+            if m.restaurant and m.restaurant.name == restaurant.name
+        ]
         if menu_items:
-            order_items = random.sample(menu_items, min(random.randint(1, 4), len(menu_items)))
+            order_items = random.sample(
+                menu_items, min(random.randint(1, 4), len(menu_items))
+            )
             item_names = [item.name for item in order_items]
             total = sum(item.price for item in order_items)
         else:

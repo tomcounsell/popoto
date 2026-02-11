@@ -32,9 +32,9 @@ def main():
 
     # Check Redis connection first
     try:
-        from popoto import redis_db
+        from popoto.redis_db import POPOTO_REDIS_DB
 
-        redis_db.REDIS.ping()
+        POPOTO_REDIS_DB.ping()
     except Exception as e:
         print(f"Error: Cannot connect to Redis - {e}")
         print("Make sure Redis is running on localhost:6379 or set REDIS_URL")

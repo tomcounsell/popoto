@@ -120,7 +120,7 @@ class RestaurantsScreen(Container):
                     location_str,
                     "Active" if restaurant.active else "Inactive",
                     distance_str,
-                    key=restaurant.redis_key,
+                    key=restaurant.db_key.redis_key,
                 )
                 count += 1
 
@@ -152,9 +152,14 @@ class RestaurantsScreen(Container):
 
     def _apply_filters(self) -> None:
         """Apply current filter values."""
+        cuisine_select = self.query_one("#filter-cuisine", Select)
         filters = {
             "name": self.query_one("#filter-name", Input).value,
-            "cuisine": self.query_one("#filter-cuisine", Select).value,
+            "cuisine": (
+                cuisine_select.value
+                if cuisine_select.value != Select.BLANK
+                else "All Cuisines"
+            ),
             "rating": self.query_one("#filter-rating", Input).value,
         }
         self.refresh_data(filters=filters)

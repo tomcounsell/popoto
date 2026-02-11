@@ -111,12 +111,17 @@ class MenuScreen(Container):
             if filters:
                 if filters.get("name"):
                     name_filter = filters["name"].lower()
-                    items_list = [i for i in items_list if name_filter in i.name.lower()]
+                    items_list = [
+                        i for i in items_list if name_filter in i.name.lower()
+                    ]
                 if filters.get("category") and filters["category"] != "All Categories":
-                    items_list = [i for i in items_list if i.category == filters["category"]]
+                    items_list = [
+                        i for i in items_list if i.category == filters["category"]
+                    ]
                 if filters.get("restaurant") and filters["restaurant"] != "all":
                     items_list = [
-                        i for i in items_list
+                        i
+                        for i in items_list
                         if i.restaurant and i.restaurant.name == filters["restaurant"]
                     ]
 
@@ -142,7 +147,7 @@ class MenuScreen(Container):
                     f"${item.price:.2f}",
                     restaurant_name,
                     "Yes" if item.available else "No",
-                    key=item.redis_key,
+                    key=item.db_key.redis_key,
                 )
                 count += 1
 
@@ -154,13 +159,22 @@ class MenuScreen(Container):
 
     def _get_filters(self) -> dict:
         """Get current filter values."""
+        category_select = self.query_one("#filter-category", Select)
         restaurant_select = self.query_one("#filter-restaurant", Select)
         return {
             "name": self.query_one("#filter-name", Input).value,
             "min_price": self.query_one("#filter-min-price", Input).value,
             "max_price": self.query_one("#filter-max-price", Input).value,
-            "category": self.query_one("#filter-category", Select).value,
-            "restaurant": restaurant_select.value if restaurant_select.value != Select.BLANK else "all",
+            "category": (
+                category_select.value
+                if category_select.value != Select.BLANK
+                else "All Categories"
+            ),
+            "restaurant": (
+                restaurant_select.value
+                if restaurant_select.value != Select.BLANK
+                else "all"
+            ),
         }
 
     def on_button_pressed(self, event: Button.Pressed) -> None:

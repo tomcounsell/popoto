@@ -23,26 +23,99 @@ from .models import (
 
 # Sample data for generating realistic names
 FIRST_NAMES = [
-    "Emma", "Liam", "Olivia", "Noah", "Ava", "Oliver", "Isabella", "Elijah",
-    "Sophia", "Lucas", "Mia", "Mason", "Charlotte", "Logan", "Amelia", "James",
-    "Harper", "Aiden", "Evelyn", "Ethan", "Aria", "Alexander", "Luna", "Henry",
-    "Chloe", "Sebastian", "Penelope", "Jack", "Layla", "Daniel", "Riley",
+    "Emma",
+    "Liam",
+    "Olivia",
+    "Noah",
+    "Ava",
+    "Oliver",
+    "Isabella",
+    "Elijah",
+    "Sophia",
+    "Lucas",
+    "Mia",
+    "Mason",
+    "Charlotte",
+    "Logan",
+    "Amelia",
+    "James",
+    "Harper",
+    "Aiden",
+    "Evelyn",
+    "Ethan",
+    "Aria",
+    "Alexander",
+    "Luna",
+    "Henry",
+    "Chloe",
+    "Sebastian",
+    "Penelope",
+    "Jack",
+    "Layla",
+    "Daniel",
+    "Riley",
 ]
 
 LAST_NAMES = [
-    "Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller",
-    "Davis", "Rodriguez", "Martinez", "Anderson", "Taylor", "Thomas", "Moore",
-    "Jackson", "Martin", "Lee", "Thompson", "White", "Harris", "Clark",
+    "Smith",
+    "Johnson",
+    "Williams",
+    "Brown",
+    "Jones",
+    "Garcia",
+    "Miller",
+    "Davis",
+    "Rodriguez",
+    "Martinez",
+    "Anderson",
+    "Taylor",
+    "Thomas",
+    "Moore",
+    "Jackson",
+    "Martin",
+    "Lee",
+    "Thompson",
+    "White",
+    "Harris",
+    "Clark",
 ]
 
 RESTAURANT_ADJECTIVES = [
-    "Golden", "Royal", "Happy", "Lucky", "Jade", "Dragon", "Phoenix", "Blue",
-    "Red", "Green", "Silver", "Sunset", "Morning", "Garden", "Ocean", "Mountain",
+    "Golden",
+    "Royal",
+    "Happy",
+    "Lucky",
+    "Jade",
+    "Dragon",
+    "Phoenix",
+    "Blue",
+    "Red",
+    "Green",
+    "Silver",
+    "Sunset",
+    "Morning",
+    "Garden",
+    "Ocean",
+    "Mountain",
 ]
 
 RESTAURANT_NOUNS = [
-    "Palace", "Kitchen", "Garden", "House", "Express", "Grill", "Cafe", "Bistro",
-    "Diner", "Eatery", "Corner", "Place", "Spot", "Table", "Bowl", "Wok",
+    "Palace",
+    "Kitchen",
+    "Garden",
+    "House",
+    "Express",
+    "Grill",
+    "Cafe",
+    "Bistro",
+    "Diner",
+    "Eatery",
+    "Corner",
+    "Place",
+    "Spot",
+    "Table",
+    "Bowl",
+    "Wok",
 ]
 
 # Menu items by cuisine
@@ -213,15 +286,11 @@ def restaurant_name(cuisine: str) -> str:
 
 
 def clear_database():
-    """Clear all existing data."""
-    from popoto import redis_db
-
-    # Get all keys for our models
-    for model in [Restaurant, MenuItem, Customer, Driver, Order]:
-        keys = list(model.query.keys())
-        if keys:
-            redis_db.REDIS.delete(*keys)
-    print(f"Cleared all Popoto Kitchen data")
+    """Clear all existing data including secondary indexes."""
+    # Delete models with relationships first, then referenced models
+    for model in [Order, MenuItem, Customer, Driver, Restaurant]:
+        model.delete_all()
+    print("Cleared all Popoto Kitchen data")
 
 
 def seed_database(
@@ -341,9 +410,15 @@ def seed_database(
         status = random.choices(statuses, weights=weights)[0]
 
         # Pick 1-5 random items from the restaurant's menu
-        restaurant_items = [m for m in menu_items if m.restaurant.redis_key == restaurant.redis_key]
+        restaurant_items = [
+            m
+            for m in menu_items
+            if m.restaurant.db_key.redis_key == restaurant.db_key.redis_key
+        ]
         if restaurant_items:
-            order_items = random.sample(restaurant_items, min(random.randint(1, 5), len(restaurant_items)))
+            order_items = random.sample(
+                restaurant_items, min(random.randint(1, 5), len(restaurant_items))
+            )
             item_names = [item.name for item in order_items]
             total = sum(item.price for item in order_items)
         else:
@@ -369,14 +444,20 @@ def seed_database(
             items=item_names,
             total=round(total, 2),
             status=status,
-            notes="" if random.random() > 0.2 else random.choice([
-                "Extra napkins please",
-                "Ring doorbell",
-                "Leave at door",
-                "No onions",
-                "Extra sauce",
-                "Call on arrival",
-            ]),
+            notes=(
+                ""
+                if random.random() > 0.2
+                else random.choice(
+                    [
+                        "Extra napkins please",
+                        "Ring doorbell",
+                        "Leave at door",
+                        "No onions",
+                        "Extra sauce",
+                        "Call on arrival",
+                    ]
+                )
+            ),
             created_at=created.isoformat(),
             updated_at=created.isoformat(),
         )
