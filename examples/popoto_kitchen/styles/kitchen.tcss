@@ -1,0 +1,259 @@
+/* Popoto Kitchen - TUI Styles */
+
+/* Global */
+Screen {
+    background: $surface;
+}
+
+/* Header styling */
+Header {
+    background: $primary;
+    color: $text;
+    text-style: bold;
+}
+
+/* Footer styling */
+Footer {
+    background: $primary-darken-2;
+}
+
+/* Tabbed content */
+TabbedContent {
+    padding: 0;
+}
+
+TabPane {
+    padding: 1;
+}
+
+/* Base screen container */
+.screen-container {
+    width: 100%;
+    height: 100%;
+}
+
+/* Stats panels */
+.stats-container {
+    height: auto;
+    padding: 1;
+    layout: horizontal;
+}
+
+.stat-box {
+    width: 1fr;
+    height: auto;
+    min-height: 5;
+    border: solid $primary;
+    padding: 1;
+    margin: 0 1;
+    text-align: center;
+}
+
+.stat-box .stat-value {
+    text-style: bold;
+    color: $success;
+}
+
+.stat-box .stat-label {
+    color: $text-muted;
+}
+
+/* Data tables */
+DataTable {
+    height: 1fr;
+    margin: 1;
+}
+
+DataTable > .datatable--header {
+    background: $primary;
+    text-style: bold;
+}
+
+DataTable > .datatable--cursor {
+    background: $primary-lighten-2;
+}
+
+/* Buttons */
+Button {
+    margin: 0 1;
+}
+
+Button.primary {
+    background: $success;
+}
+
+Button.warning {
+    background: $warning;
+}
+
+Button.danger {
+    background: $error;
+}
+
+/* Input fields */
+Input {
+    margin: 1;
+    width: 100%;
+}
+
+/* Filter container */
+.filter-container {
+    layout: horizontal;
+    height: auto;
+    padding: 1;
+    background: $surface-darken-1;
+}
+
+.filter-container Input {
+    width: 1fr;
+    margin: 0 1;
+}
+
+.filter-container Select {
+    width: 1fr;
+    margin: 0 1;
+}
+
+.filter-container Button {
+    width: auto;
+}
+
+/* Action bar */
+.action-bar {
+    layout: horizontal;
+    height: auto;
+    padding: 1;
+    dock: bottom;
+    background: $surface-darken-1;
+}
+
+/* Status badges */
+.status-pending {
+    color: $warning;
+}
+
+.status-confirmed {
+    color: $primary;
+}
+
+.status-preparing {
+    color: $secondary;
+}
+
+.status-ready {
+    color: $success-lighten-1;
+}
+
+.status-delivering {
+    color: $primary-lighten-1;
+}
+
+.status-delivered {
+    color: $success;
+}
+
+.status-cancelled {
+    color: $error;
+}
+
+/* Dashboard specific */
+#dashboard-content {
+    layout: vertical;
+}
+
+.welcome-text {
+    text-align: center;
+    padding: 1;
+    color: $text-muted;
+}
+
+/* Recent activity list */
+.recent-activity {
+    height: 1fr;
+    border: solid $primary;
+    margin: 1;
+    padding: 1;
+}
+
+.recent-activity-title {
+    text-style: bold;
+    background: $primary;
+    padding: 0 1;
+}
+
+/* Form container */
+.form-container {
+    width: 100%;
+    height: auto;
+    padding: 1;
+}
+
+.form-row {
+    layout: horizontal;
+    height: auto;
+    margin: 1 0;
+}
+
+.form-label {
+    width: 20;
+    padding: 1;
+}
+
+.form-input {
+    width: 1fr;
+}
+
+/* Geo display */
+.geo-info {
+    color: $secondary;
+    text-style: italic;
+}
+
+/* Rating display */
+.rating-high {
+    color: $success;
+}
+
+.rating-medium {
+    color: $warning;
+}
+
+.rating-low {
+    color: $error;
+}
+
+/* Empty state */
+.empty-state {
+    text-align: center;
+    padding: 3;
+    color: $text-muted;
+}
+
+/* Loading indicator */
+.loading {
+    text-align: center;
+    padding: 2;
+    color: $text-muted;
+    text-style: italic;
+}
+
+/* Modal styles */
+ModalScreen {
+    align: center middle;
+}
+
+#dialog {
+    width: 60;
+    height: auto;
+    border: thick $primary;
+    background: $surface;
+    padding: 1 2;
+}
+
+#dialog-title {
+    text-style: bold;
+    text-align: center;
+    padding: 1;
+    background: $primary;
+    margin-bottom: 1;
+}
