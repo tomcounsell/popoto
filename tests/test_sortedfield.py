@@ -82,8 +82,10 @@ class SortedAssetsModel(popoto.Model):
     uuid = popoto.AutoKeyField(auto_uuid_length=6)
     market = popoto.KeyField()
     asset_id = popoto.KeyField(null=False)
-    timestamp = popoto.SortedKeyField(type=datetime, sort_by=("asset_id", "market"))
-    market_cap = popoto.SortedField(type=Decimal, sort_by="market")
+    timestamp = popoto.SortedKeyField(
+        type=datetime, partition_by=("asset_id", "market")
+    )
+    market_cap = popoto.SortedField(type=Decimal, partition_by="market")
     price = popoto.DecimalField()
 
 
@@ -261,14 +263,14 @@ print("  PASSED: __between with date SortedField")
 for item in BetweenDateModel.query.all():
     item.delete()
 
-# Test __between with partitioned SortedField (sort_by)
-print("Test: __between with partitioned SortedField (sort_by)")
+# Test __between with partitioned SortedField (partition_by)
+print("Test: __between with partitioned SortedField (partition_by)")
 
 
 class BetweenPartitionedModel(popoto.Model):
     uuid = popoto.AutoKeyField(auto_uuid_length=6)
     category = popoto.KeyField()
-    price = popoto.SortedField(type=float, sort_by="category")
+    price = popoto.SortedField(type=float, partition_by="category")
 
 
 bp_a = BetweenPartitionedModel.create(category="fruit", price=1.50)

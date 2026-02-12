@@ -665,7 +665,7 @@ class Customer(Model):
 ### SortedField
 
 ```python
-SortedField(type=float, null=False, default=None, sort_by=(), **kwargs)
+SortedField(type=float, null=False, default=None, partition_by=(), **kwargs)
 ```
 
 A field backed by a Redis sorted set for fast range queries. Must be a numeric type.
@@ -674,7 +674,7 @@ A field backed by a Redis sorted set for fast range queries. Must be a numeric t
 |-----------|------|---------|-------------|
 | `type` | `type` | `float` | Must be `int`, `float`, `Decimal`, `date`, or `datetime`. |
 | `null` | `bool` | `False` | Must be `False` (sorted fields cannot be null). |
-| `sort_by` | `tuple` | `()` | Partition the sorted set by other field names. |
+| `partition_by` | `tuple` | `()` | Partition the sorted set by other field names. `sort_by` is accepted as a deprecated alias. |
 
 **Supported filter lookups:**
 

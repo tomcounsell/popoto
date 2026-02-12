@@ -535,13 +535,13 @@ print(len(early_week))
 # => 2
 ```
 
-## sort_by
+## partition_by
 
 When you always query a `SortedField` together with a specific `KeyField`, you can
-dramatically improve performance by defining `sort_by`. This creates a composite index
+dramatically improve performance by defining `partition_by`. This creates a composite index
 scoped to the values of the fields listed in the tuple.
 
-The tradeoff is that queries on this `SortedField` *must* include the `sort_by`
+The tradeoff is that queries on this `SortedField` *must* include the `partition_by`
 fields. This is ideal for the `MenuItem.price` field, where you typically filter items
 for a specific restaurant.
 
@@ -549,7 +549,7 @@ for a specific restaurant.
 class MenuItem(Model):
     item_id = AutoKeyField()
     name = Field(type=str)
-    price = SortedField(type=float, sort_by=('restaurant',))
+    price = SortedField(type=float, partition_by=('restaurant',))
     restaurant = Relationship(Restaurant)
     available = Field(type=bool, default=True)
 ```
@@ -563,7 +563,7 @@ affordable = MenuItem.query.filter(
     price__lt=12.00,
 )
 
-# This would fail because 'restaurant' is required by sort_by
+# This would fail because 'restaurant' is required by partition_by
 try:
     MenuItem.query.filter(price__lt=12.00)
 except Exception as e:
@@ -571,9 +571,13 @@ except Exception as e:
 ```
 
 !!! tip
-    Use `sort_by` when you have a natural parent-child relationship. Menu items
+    Use `partition_by` when you have a natural parent-child relationship. Menu items
     always belong to a restaurant, so scoping the price index to the restaurant
     reduces the sorted set size and speeds up range queries.
+
+!!! note "Deprecation Notice"
+    The `sort_by` parameter is deprecated and will be removed in a future major version.
+    Use `partition_by` instead. `sort_by` still works but emits a `DeprecationWarning`.
 
 ## DatetimeField
 
