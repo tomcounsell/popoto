@@ -1,4 +1,5 @@
 """Tests for DX polish improvements."""
+
 import pytest
 import popoto
 from popoto import Model, KeyField, Field
@@ -72,7 +73,7 @@ class TestGetRedis:
     def test_get_redis_can_do_operations(self):
         """get_redis() connection should work for Redis operations."""
         redis = popoto.get_redis()
-        
+
         # Test set operations
         redis.sadd("test_set", "value1", "value2")
         assert redis.sismember("test_set", "value1")
@@ -101,10 +102,8 @@ class TestTestingModule:
 
     def test_use_test_db_import(self):
         """use_test_db should be importable."""
-        from popoto.testing import use_test_db
         assert callable(use_test_db)
 
     def test_flush_test_db_import(self):
         """flush_test_db should be importable."""
-        from popoto.testing import flush_test_db
         assert callable(flush_test_db)

@@ -19,6 +19,7 @@ Example usage in pytest::
         yield
         flush_test_db()
 """
+
 from .redis_db import set_REDIS_DB_settings, POPOTO_REDIS_DB
 
 
