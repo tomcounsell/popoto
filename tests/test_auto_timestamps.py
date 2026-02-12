@@ -1,4 +1,5 @@
 """Tests for auto_now_add and auto_now on SortedField."""
+
 import time
 import pytest
 
@@ -7,6 +8,7 @@ from popoto import Model, KeyField, Field, SortedField
 
 class AutoNowAddModel(Model):
     """Model with auto_now_add timestamp."""
+
     key = KeyField(type=str)
     created_at = SortedField(type=float, auto_now_add=True)
     name = Field(type=str, null=True)
@@ -14,6 +16,7 @@ class AutoNowAddModel(Model):
 
 class AutoNowModel(Model):
     """Model with auto_now timestamp."""
+
     key = KeyField(type=str)
     updated_at = SortedField(type=float, auto_now=True)
     name = Field(type=str, null=True)
@@ -21,6 +24,7 @@ class AutoNowModel(Model):
 
 class AutoNowIntModel(Model):
     """Model with int timestamp."""
+
     key = KeyField(type=str)
     created_at = SortedField(type=int, auto_now_add=True)
     updated_at = SortedField(type=int, auto_now=True)
@@ -28,6 +32,7 @@ class AutoNowIntModel(Model):
 
 class BothTimestampsModel(Model):
     """Model with both auto_now_add and auto_now fields."""
+
     key = KeyField(type=str)
     created_at = SortedField(type=float, auto_now_add=True)
     updated_at = SortedField(type=float, auto_now=True)
@@ -178,7 +183,7 @@ class TestBothTimestamps:
         instance.save()
 
         assert instance.created_at == original_created  # Unchanged
-        assert instance.updated_at > original_updated   # Updated
+        assert instance.updated_at > original_updated  # Updated
 
 
 class TestSortedFieldIndex:
@@ -199,10 +204,9 @@ class TestSortedFieldIndex:
         after = time.time()
 
         # Query using the auto-generated timestamps
-        results = list(AutoNowAddModel.query.filter(
-            created_at__gte=before,
-            created_at__lte=after
-        ))
+        results = list(
+            AutoNowAddModel.query.filter(created_at__gte=before, created_at__lte=after)
+        )
 
         assert len(results) == 2
         keys = {r.key for r in results}

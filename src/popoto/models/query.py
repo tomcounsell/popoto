@@ -555,7 +555,7 @@ class Query:
         ----------------
         1. **Sorted fields first**: SortedFields use Redis sorted sets with range
            queries (ZRANGEBYSCORE), which are often more selective than key lookups.
-           Additionally, sorted fields may have partition dependencies (`sort_by`)
+           Additionally, sorted fields may have partition dependencies (`partition_by`)
            that consume other filter parameters.
 
         2. **Remaining fields**: KeyFields and other field types are processed
@@ -624,8 +624,8 @@ class Query:
             yet_employed_kwargs_set = yet_employed_kwargs_set.difference(
                 self.options.filter_query_params_by_field[field_name]
             ).difference(
-                set(field.sort_by)
-            )  # also remove the required sort_by field names
+                set(field.partition_by)
+            )  # also remove the required partition_by field names
 
         for field_name in self.options.filter_query_params_by_field:
             if field_name in self.options.sorted_field_names:
