@@ -234,6 +234,18 @@ class QueryBuilder:
         results = self.limit(1).all()
         return results[0] if results else None
 
+    def last(self) -> "Model":
+        """Return the last matching result, or None if no matches.
+
+        Note: For efficient access to the last item in sorted order, use
+        order_by("-field").first() instead. This method fetches all results.
+
+        Returns:
+            Last Model instance or None
+        """
+        results = self.all()
+        return results[-1] if results else None
+
     # List-like behavior for backward compatibility
     def __iter__(self):
         """Iterate over query results (executes query)."""
