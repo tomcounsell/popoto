@@ -652,4 +652,4 @@ class SortedFieldMixin:
         #     desc=False, withscores=False,
         #     byscore=True, offset=None, num=None
         # )
-        return set(redis_db_keys_list)
+        return list(redis_db_keys_list)

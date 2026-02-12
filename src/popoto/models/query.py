@@ -594,6 +594,8 @@ class Query:
             matching keys. Use `filter()` for the complete query pipeline.
         """
         db_keys_sets = []
+        self._sorted_field_order = None
+        self._sorted_field_name = None
         self._pending_client_filters = {}
         yet_employed_kwargs_set = set(kwargs.keys()).difference(
             {"limit", "order_by", "values"}
@@ -632,7 +634,11 @@ class Query:
                 self._geo_distance_unit = unit
                 db_keys_sets.append(keys_set)
             else:
-                db_keys_sets.append(result)
+                # result is now a list (preserving ZRANGEBYSCORE order)
+                if self._sorted_field_order is None:
+                    self._sorted_field_order = result
+                    self._sorted_field_name = field_name
+                db_keys_sets.append(set(result))  # convert to set for intersection
             yet_employed_kwargs_set = yet_employed_kwargs_set.difference(
                 self.options.filter_query_params_by_field[field_name]
             ).difference(
@@ -692,7 +698,13 @@ class Query:
                 return set(self.keys())
             return set()
         # return intersection of all the db keys sets, effectively &&-ing all filters
-        return set.intersection(*db_keys_sets)
+        intersection = set.intersection(*db_keys_sets)
+        if self._sorted_field_order is not None:
+            matched_keys = intersection
+            self._sorted_field_order = [
+                k for k in self._sorted_field_order if k in matched_keys
+            ]
+        return intersection
 
     def _evaluate_filter_args(self, q_objects: list, kwargs: dict) -> set:
         """Evaluate filter arguments including Q objects and return matching keys.
@@ -884,14 +896,30 @@ class Query:
         # Use _evaluate_filter_args if Q objects present, otherwise filter_for_keys_set
         if q_objects:
             db_keys_set = self._evaluate_filter_args(q_objects, kwargs)
+            # Q objects combine results from multiple filter_for_keys_set calls,
+            # so _sorted_field_order is unreliable — clear it
+            self._sorted_field_order = None
+            self._sorted_field_name = None
         else:
             db_keys_set = self.filter_for_keys_set(**kwargs)
         if not len(db_keys_set):
             return []
 
         # Apply default order_by from Meta if not explicitly provided
-        if "order_by" not in kwargs and self.model_class._meta.order_by:
+        # but not when sorted field ordering is active (it's a smarter default)
+        if (
+            "order_by" not in kwargs
+            and self.model_class._meta.order_by
+            and not getattr(self, "_sorted_field_order", None)
+        ):
             kwargs["order_by"] = self.model_class._meta.order_by
+
+        # Use sorted field order if available and no explicit order_by
+        sorted_field_order = getattr(self, "_sorted_field_order", None)
+        explicit_order_by = kwargs.get("order_by", None)
+        # Meta.order_by is a default - sorted field order takes precedence over it
+        if sorted_field_order and not explicit_order_by:
+            db_keys_set = sorted_field_order  # Use ordered list instead of set
 
         objects = Query.get_many_objects(
             self.model_class,
