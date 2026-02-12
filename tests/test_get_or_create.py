@@ -1,4 +1,5 @@
 """Tests for get_or_create and update_or_create methods."""
+
 import pytest
 
 from popoto import Model, KeyField, Field, SortedField
@@ -49,8 +50,7 @@ class TestGetOrCreate:
     def test_defaults_used_only_on_create(self):
         """Defaults should be used when creating, not for lookup."""
         instance, created = SimpleModel.get_or_create(
-            key="with_defaults",
-            defaults={'name': 'Default Name', 'count': 42}
+            key="with_defaults", defaults={"name": "Default Name", "count": 42}
         )
 
         assert created is True
@@ -62,8 +62,7 @@ class TestGetOrCreate:
         original = SimpleModel.create(key="existing", name="Original", count=10)
 
         instance, created = SimpleModel.get_or_create(
-            key="existing",
-            defaults={'name': 'New Name', 'count': 99}
+            key="existing", defaults={"name": "New Name", "count": 99}
         )
 
         assert created is False
@@ -73,8 +72,7 @@ class TestGetOrCreate:
     def test_with_sorted_field(self):
         """Should work with models containing SortedField."""
         instance, created = SortedModel.get_or_create(
-            key="sorted_key",
-            defaults={'timestamp': 123.456, 'value': 'test'}
+            key="sorted_key", defaults={"timestamp": 123.456, "value": "test"}
         )
 
         assert created is True
@@ -90,8 +88,7 @@ class TestGetOrCreate:
         SimpleModel.create(key="other", name="Other", count=5)
 
         instance, created = SimpleModel.get_or_create(
-            key="multi",
-            defaults={'count': 99}
+            key="multi", defaults={"count": 99}
         )
 
         assert created is False
@@ -112,8 +109,7 @@ class TestUpdateOrCreate:
     def test_creates_when_not_exists(self):
         """Should create new instance when lookup finds nothing."""
         instance, created = SimpleModel.update_or_create(
-            key="new_key",
-            defaults={'name': 'Created', 'count': 1}
+            key="new_key", defaults={"name": "Created", "count": 1}
         )
 
         assert created is True
@@ -126,8 +122,7 @@ class TestUpdateOrCreate:
         original = SimpleModel.create(key="existing", name="Original", count=10)
 
         instance, created = SimpleModel.update_or_create(
-            key="existing",
-            defaults={'name': 'Updated', 'count': 20}
+            key="existing", defaults={"name": "Updated", "count": 20}
         )
 
         assert created is False
@@ -145,8 +140,7 @@ class TestUpdateOrCreate:
         original = SimpleModel.create(key="partial", name="Keep This", count=5)
 
         instance, created = SimpleModel.update_or_create(
-            key="partial",
-            defaults={'count': 100}
+            key="partial", defaults={"count": 100}
         )
 
         assert created is False
@@ -158,8 +152,7 @@ class TestUpdateOrCreate:
         original = SortedModel.create(key="sorted", timestamp=100.0, value="old")
 
         instance, created = SortedModel.update_or_create(
-            key="sorted",
-            defaults={'timestamp': 200.0, 'value': 'new'}
+            key="sorted", defaults={"timestamp": 200.0, "value": "new"}
         )
 
         assert created is False
@@ -196,8 +189,7 @@ class TestAsyncMethods:
     async def test_async_get_or_create_new(self):
         """Async get_or_create should create when not exists."""
         instance, created = await SimpleModel.async_get_or_create(
-            key="async_new",
-            defaults={'name': 'Async Created'}
+            key="async_new", defaults={"name": "Async Created"}
         )
 
         assert created is True
@@ -218,8 +210,7 @@ class TestAsyncMethods:
     async def test_async_update_or_create_new(self):
         """Async update_or_create should create when not exists."""
         instance, created = await SimpleModel.async_update_or_create(
-            key="async_update_new",
-            defaults={'name': 'Created', 'count': 1}
+            key="async_update_new", defaults={"name": "Created", "count": 1}
         )
 
         assert created is True
@@ -231,8 +222,7 @@ class TestAsyncMethods:
         SimpleModel.create(key="async_update_existing", name="Original", count=1)
 
         instance, created = await SimpleModel.async_update_or_create(
-            key="async_update_existing",
-            defaults={'name': 'Updated', 'count': 99}
+            key="async_update_existing", defaults={"name": "Updated", "count": 99}
         )
 
         assert created is False

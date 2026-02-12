@@ -589,9 +589,9 @@ class SortedField(SortedFieldMixin, Field):
         - Cannot be null (Sorted Sets require a score for every member)
         - Must be a numeric or temporal type
 
-    Partitioning (sort_by):
+    Partitioning (partition_by):
         For large datasets, you can partition the Sorted Set by another field's
-        value using sort_by. This improves performance by reducing set size,
+        value using partition_by. This improves performance by reducing set size,
         but requires the partition field in all queries.
 
     Example:
@@ -607,7 +607,7 @@ class SortedField(SortedFieldMixin, Field):
         class Product(Model):
             sku = UniqueKeyField()
             category = KeyField()
-            price = SortedField(type=float, sort_by='category')
+            price = SortedField(type=float, partition_by='category')
 
         # Must include partition field
         Product.query.filter(category='electronics', price__lte=100.0)
@@ -626,7 +626,7 @@ class SortedField(SortedFieldMixin, Field):
                 - type: Field type. Default: float. Must be numeric or temporal.
                 - null: Must be False (Sorted Sets require scores). Raises if True.
                 - default: Default value for new instances.
-                - sort_by (str or tuple): Field name(s) to partition the Sorted Set.
+                - partition_by (str or tuple): Field name(s) to partition the Sorted Set.
                     Improves performance on large datasets but requires partition
                     field(s) in all queries.
         """
@@ -679,6 +679,6 @@ class SortedKeyField(SortedFieldMixin, KeyFieldMixin, Field):
                 - sorted: Automatically True (maintains Sorted Set index).
                 - null: Must be False (Sorted Sets require scores).
                 - unique (bool): Enforce single-field uniqueness. Default: False.
-                - sort_by (str or tuple): Partition field(s) for the Sorted Set.
+                - partition_by (str or tuple): Partition field(s) for the Sorted Set.
         """
         super().__init__(**kwargs)

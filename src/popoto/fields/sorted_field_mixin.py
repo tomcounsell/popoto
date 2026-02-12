@@ -39,7 +39,7 @@ Example:
     # With partitioning for better performance on large datasets
     class Product(Model):
         name = KeyField()
-        price = SortedField(type=float, sort_by='category')
+        price = SortedField(type=float, partition_by='category')
         category = KeyField()
 
     # Query must include partition field
@@ -47,6 +47,7 @@ Example:
 """
 
 import logging
+import warnings
 from decimal import Decimal
 import datetime
 import typing
@@ -75,12 +76,16 @@ class SortedFieldMixin:
         query support with key field identity, without complex inheritance
         hierarchies.
 
-    Partitioning via sort_by:
+    Partitioning via partition_by:
         For large datasets, a single global Sorted Set becomes a bottleneck.
-        The sort_by parameter partitions the index by one or more key fields,
+        The partition_by parameter partitions the index by one or more key fields,
         creating separate Sorted Sets per partition. For example, sorting
         products by price within each category creates one Sorted Set per
         category rather than one global set.
+
+        .. deprecated::
+            The ``sort_by`` parameter is deprecated in favor of ``partition_by``.
+            ``sort_by`` still works but emits a DeprecationWarning.
 
     Supported Types:
         - int, float: Used directly as Redis scores
@@ -93,23 +98,26 @@ class SortedFieldMixin:
         type: The Python type for this field (must be numeric or temporal).
         null: Must be False; sorted fields cannot be null.
         default: Default value when none provided.
-        sort_by: Tuple of field names to partition the sorted index by.
+        partition_by: Tuple of field names to partition the sorted index by.
 
     Example:
         # Basic sorted field
         price = SortedField(type=float)
 
         # Partitioned by category for better scaling
-        price = SortedField(type=float, sort_by='category')
+        price = SortedField(type=float, partition_by='category')
 
         # Partitioned by multiple fields
-        timestamp = SortedField(type=datetime.datetime, sort_by=('exchange', 'symbol'))
+        timestamp = SortedField(type=datetime.datetime, partition_by=('exchange', 'symbol'))
+
+        # Deprecated but still supported
+        price = SortedField(type=float, sort_by='category')  # emits DeprecationWarning
     """
 
     type: type = float
     null: bool = False
     default = ""
-    sort_by = tuple()
+    partition_by = tuple()
 
     def __init__(self, **kwargs):
         """
@@ -120,24 +128,50 @@ class SortedFieldMixin:
         kwargs overrides. The super().__init__() call ensures proper MRO
         (Method Resolution Order) traversal through all mixins.
 
-        The sort_by parameter accepts either a single field name string or a
+        The partition_by parameter accepts either a single field name string or a
         tuple of field names for multi-field partitioning. Single strings are
         automatically converted to tuples for consistent internal handling.
+
+        The deprecated ``sort_by`` parameter is still accepted for backward
+        compatibility. If provided, it is used as the value for ``partition_by``
+        and a DeprecationWarning is emitted.
 
         Args:
             **kwargs: Field configuration options including:
                 - type: Python type (int, float, Decimal, datetime, date, time)
                 - default: Default value (None by default; cannot default datetime)
-                - sort_by: Field name(s) to partition the sorted index
+                - partition_by: Field name(s) to partition the sorted index
+                - sort_by: Deprecated alias for partition_by. Emits DeprecationWarning.
                 - auto_now_add: If True, set to time.time() on first save (for
                     float/int types only). Value is only set if field is None/falsy.
                 - auto_now: If True, set to time.time() on every save (for
                     float/int types only). Always overwrites the current value.
 
         Raises:
-            ModelException: If sort_by is not a string or tuple, or if null=True
+            ModelException: If both sort_by and partition_by are provided, if
+                partition_by is not a string or tuple, or if null=True
                 is attempted (not yet supported).
         """
+        # Handle sort_by -> partition_by deprecation
+        has_sort_by = "sort_by" in kwargs
+        has_partition_by = "partition_by" in kwargs
+
+        if has_sort_by and has_partition_by:
+            from ..exceptions import ModelException
+
+            raise ModelException(
+                "Cannot specify both 'sort_by' and 'partition_by'. "
+                "Use 'partition_by' (sort_by is deprecated)."
+            )
+
+        if has_sort_by:
+            warnings.warn(
+                "sort_by is deprecated, use partition_by instead",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            kwargs["partition_by"] = kwargs.pop("sort_by")
+
         # Extract auto_now params before super().__init__() to avoid Field validation issues
         self.auto_now_add = kwargs.pop("auto_now_add", False)
         self.auto_now = kwargs.pop("auto_now", False)
@@ -147,7 +181,7 @@ class SortedFieldMixin:
             "type": float,
             "null": False,
             "default": None,  # cannot set a default for datetime, so no type gets a default
-            "sort_by": tuple(),
+            "partition_by": tuple(),
         }
         self.field_defaults.update(sortedfield_defaults)
 
@@ -155,13 +189,13 @@ class SortedFieldMixin:
         for k, v in sortedfield_defaults.items():
             setattr(self, k, kwargs.get(k, v))
 
-        if isinstance(self.sort_by, str):
-            self.sort_by = tuple((self.sort_by,))
+        if isinstance(self.partition_by, str):
+            self.partition_by = tuple((self.partition_by,))
 
-        elif self.sort_by and not isinstance(self.sort_by, tuple):
+        elif self.partition_by and not isinstance(self.partition_by, tuple):
             from ..exceptions import ModelException
 
-            raise ModelException("sort_by must be str or tuple of str field names")
+            raise ModelException("partition_by must be str or tuple of str field names")
 
         # todo: move this to field init validation
         if self.null is not False:
@@ -170,6 +204,26 @@ class SortedFieldMixin:
             raise ModelException("SortedField cannot be null")
             # todo: when allow null in SortedField. null removes instance from SortedSet
             # todo: how to filter by null value? use extra index set just for nulls?
+
+    @property
+    def sort_by(self):
+        """Deprecated: use partition_by instead."""
+        warnings.warn(
+            "sort_by is deprecated, use partition_by instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.partition_by
+
+    @sort_by.setter
+    def sort_by(self, value):
+        """Deprecated: use partition_by instead."""
+        warnings.warn(
+            "sort_by is deprecated, use partition_by instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.partition_by = value
 
     def get_filter_query_params(self, field_name) -> set:
         """
@@ -231,7 +285,9 @@ class SortedFieldMixin:
             True if the value is valid for this sorted field, False otherwise.
         """
         # Skip null check for auto_now/auto_now_add fields - they'll be populated later
-        if not value and (getattr(field, 'auto_now', False) or getattr(field, 'auto_now_add', False)):
+        if not value and (
+            getattr(field, "auto_now", False) or getattr(field, "auto_now_add", False)
+        ):
             null_check = False
 
         if not super().is_valid(field, value, null_check):
@@ -341,7 +397,7 @@ class SortedFieldMixin:
         Args:
             model: The Model class or instance.
             field_name: The name of the sorted field.
-            *partition_field_names: Values for partition fields (from sort_by).
+            *partition_field_names: Values for partition fields (from partition_by).
 
         Returns:
             A DB_key instance representing the Redis key for the Sorted Set.
@@ -373,8 +429,10 @@ class SortedFieldMixin:
             QueryException: If a required partition field value is missing.
         """
         sortedset_db_key = cls.get_sortedset_db_key(model_instance, field_name)
-        # use field names and query values sort_by fields to extend sortedset_db_key
-        for partition_field_name in model_instance._meta.fields[field_name].sort_by:
+        # use field names and query values partition_by fields to extend sortedset_db_key
+        for partition_field_name in model_instance._meta.fields[
+            field_name
+        ].partition_by:
             try:
                 sortedset_db_key.append(
                     str(getattr(model_instance, partition_field_name))
@@ -500,14 +558,14 @@ class SortedFieldMixin:
             - price__gt=10 becomes min="(10" (exclusive)
 
         Partition Handling:
-            For partitioned sorted fields (those with sort_by), the query
+            For partitioned sorted fields (those with partition_by), the query
             parameters MUST include values for all partition fields. This is
             required because each partition has its own Sorted Set, and we
             need to know which one to query.
 
         Performance:
             ZRANGEBYSCORE is O(log(N)+M) where N is the set size and M is the
-            number of results. For large datasets, partitioning via sort_by
+            number of results. For large datasets, partitioning via partition_by
             reduces N significantly, improving query performance.
 
         Args:
@@ -567,7 +625,7 @@ class SortedFieldMixin:
                 pass  # this is just a mixin, another subclass may have valid query params
 
         try:
-            # use field names and query values sort_by fields to extend sortedset_db_key
+            # use field names and query values partition_by fields to extend sortedset_db_key
             sortedset_db_key = cls.get_sortedset_db_key(
                 model_class,
                 field_name,
@@ -575,13 +633,15 @@ class SortedFieldMixin:
                     str(query_params[partition_field_name])
                     for partition_field_name in model_class._meta.fields[
                         field_name
-                    ].sort_by
+                    ].partition_by
                 ],
             )
         except KeyError:
             raise QueryException(
-                f"{field_name} field is sorted on {', '.join(model_class._meta.fields[field_name].sort_by)}. "
-                f"Query filter must also specify a value for {', '.join(model_class._meta.fields[field_name].sort_by)}"
+                f"{field_name} field is sorted on "
+                f"{', '.join(model_class._meta.fields[field_name].partition_by)}. "
+                f"Query filter must also specify a value for "
+                f"{', '.join(model_class._meta.fields[field_name].partition_by)}"
             )
 
         redis_db_keys_list = POPOTO_REDIS_DB.zrangebyscore(

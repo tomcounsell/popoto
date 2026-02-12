@@ -82,8 +82,10 @@ class SortedAssetsModel(popoto.Model):
     uuid = popoto.AutoKeyField(auto_uuid_length=6)
     market = popoto.KeyField()
     asset_id = popoto.KeyField(null=False)
-    timestamp = popoto.SortedKeyField(type=datetime, sort_by=("asset_id", "market"))
-    market_cap = popoto.SortedField(type=Decimal, sort_by="market")
+    timestamp = popoto.SortedKeyField(
+        type=datetime, partition_by=("asset_id", "market")
+    )
+    market_cap = popoto.SortedField(type=Decimal, partition_by="market")
     price = popoto.DecimalField()
 
 
@@ -261,14 +263,14 @@ print("  PASSED: __between with date SortedField")
 for item in BetweenDateModel.query.all():
     item.delete()
 
-# Test __between with partitioned SortedField (sort_by)
-print("Test: __between with partitioned SortedField (sort_by)")
+# Test __between with partitioned SortedField (partition_by)
+print("Test: __between with partitioned SortedField (partition_by)")
 
 
 class BetweenPartitionedModel(popoto.Model):
     uuid = popoto.AutoKeyField(auto_uuid_length=6)
     category = popoto.KeyField()
-    price = popoto.SortedField(type=float, sort_by="category")
+    price = popoto.SortedField(type=float, partition_by="category")
 
 
 bp_a = BetweenPartitionedModel.create(category="fruit", price=1.50)
@@ -313,3 +315,66 @@ finally:
         item.delete()
 
 print("\nAll __between tests passed!")
+
+
+# ===================================================================
+# sort_by -> partition_by deprecation tests
+# ===================================================================
+
+
+# Test sort_by deprecation warning
+print("Test: sort_by emits DeprecationWarning")
+import warnings
+
+
+class DeprecationTestModel(popoto.Model):
+    key = popoto.KeyField()
+
+
+with warnings.catch_warnings(record=True) as w:
+    warnings.simplefilter("always")
+
+    # Test that sort_by in field definition triggers deprecation
+    class OldStyleModel(popoto.Model):
+        key = popoto.KeyField()
+        value = popoto.SortedField(type=float, sort_by="key")
+
+    deprecation_warnings = [x for x in w if issubclass(x.category, DeprecationWarning)]
+    assert (
+        len(deprecation_warnings) > 0
+    ), f"Expected DeprecationWarning for sort_by, got {w}"
+    assert "partition_by" in str(deprecation_warnings[0].message)
+
+print("PASS")
+
+# Test that partition_by works without warning
+print("Test: partition_by does NOT emit DeprecationWarning")
+with warnings.catch_warnings(record=True) as w:
+    warnings.simplefilter("always")
+
+    class NewStyleModel(popoto.Model):
+        key = popoto.KeyField()
+        value = popoto.SortedField(type=float, partition_by="key")
+
+    deprecation_warnings = [x for x in w if issubclass(x.category, DeprecationWarning)]
+    assert (
+        len(deprecation_warnings) == 0
+    ), f"Unexpected DeprecationWarning for partition_by: {deprecation_warnings}"
+
+print("PASS")
+
+# Test that providing both sort_by and partition_by raises ModelException
+print("Test: both sort_by and partition_by raises ModelException")
+from src.popoto.exceptions import ModelException
+
+try:
+
+    class BothModel(popoto.Model):
+        key = popoto.KeyField()
+        value = popoto.SortedField(type=float, sort_by="key", partition_by="key")
+
+    assert False, "Should have raised ModelException"
+except ModelException as e:
+    assert "sort_by" in str(e) and "partition_by" in str(e)
+
+print("PASS")

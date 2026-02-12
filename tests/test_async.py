@@ -30,8 +30,8 @@ class TestJob(popoto.Model):
     job_id = popoto.AutoKeyField()
     project_key = popoto.KeyField()
     status = popoto.KeyField(default="pending")
-    priority = popoto.SortedField(type=int, sort_by="project_key")
-    created_at = popoto.SortedField(type=float, sort_by="project_key")
+    priority = popoto.SortedField(type=int, partition_by="project_key")
+    created_at = popoto.SortedField(type=float, partition_by="project_key")
     message_text = popoto.Field()
 
 
