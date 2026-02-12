@@ -315,3 +315,66 @@ finally:
         item.delete()
 
 print("\nAll __between tests passed!")
+
+
+# ===================================================================
+# sort_by -> partition_by deprecation tests
+# ===================================================================
+
+
+# Test sort_by deprecation warning
+print("Test: sort_by emits DeprecationWarning")
+import warnings
+
+
+class DeprecationTestModel(popoto.Model):
+    key = popoto.KeyField()
+
+
+with warnings.catch_warnings(record=True) as w:
+    warnings.simplefilter("always")
+
+    # Test that sort_by in field definition triggers deprecation
+    class OldStyleModel(popoto.Model):
+        key = popoto.KeyField()
+        value = popoto.SortedField(type=float, sort_by="key")
+
+    deprecation_warnings = [x for x in w if issubclass(x.category, DeprecationWarning)]
+    assert (
+        len(deprecation_warnings) > 0
+    ), f"Expected DeprecationWarning for sort_by, got {w}"
+    assert "partition_by" in str(deprecation_warnings[0].message)
+
+print("PASS")
+
+# Test that partition_by works without warning
+print("Test: partition_by does NOT emit DeprecationWarning")
+with warnings.catch_warnings(record=True) as w:
+    warnings.simplefilter("always")
+
+    class NewStyleModel(popoto.Model):
+        key = popoto.KeyField()
+        value = popoto.SortedField(type=float, partition_by="key")
+
+    deprecation_warnings = [x for x in w if issubclass(x.category, DeprecationWarning)]
+    assert (
+        len(deprecation_warnings) == 0
+    ), f"Unexpected DeprecationWarning for partition_by: {deprecation_warnings}"
+
+print("PASS")
+
+# Test that providing both sort_by and partition_by raises ModelException
+print("Test: both sort_by and partition_by raises ModelException")
+from src.popoto.exceptions import ModelException
+
+try:
+
+    class BothModel(popoto.Model):
+        key = popoto.KeyField()
+        value = popoto.SortedField(type=float, sort_by="key", partition_by="key")
+
+    assert False, "Should have raised ModelException"
+except ModelException as e:
+    assert "sort_by" in str(e) and "partition_by" in str(e)
+
+print("PASS")
