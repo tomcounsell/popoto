@@ -1289,6 +1289,11 @@ class Query:
         Currently uses to_thread() for complex filter operations that involve
         field-specific query logic, but uses native async for result fetching.
 
+        Preserves sorted field ordering from ZRANGEBYSCORE when no explicit
+        order_by is provided, matching the sync _execute_filter behavior.
+
+        Precedence: explicit order_by > sorted field order > Meta.order_by
+
         Args:
             **kwargs: Filter parameters (field values, limit, order_by, values)
 
@@ -1301,14 +1306,30 @@ class Query:
             Object loading uses native async Redis for better performance on
             bulk data retrieval.
         """
+        # Reset geo distances for this query
+        self._geo_distances = {}
+        self._geo_distance_unit = None
+
         # Get keys using sync method in thread pool (field query implementations are sync)
         db_keys_set = await to_thread(self.filter_for_keys_set, **kwargs)
         if not len(db_keys_set):
             return []
 
-        # Apply default order_by from Meta if not explicitly provided
-        if "order_by" not in kwargs and self.model_class._meta.order_by:
+        # Apply default order_by from Meta if not explicitly provided,
+        # but not when sorted field ordering is active (it's a smarter default)
+        if (
+            "order_by" not in kwargs
+            and self.model_class._meta.order_by
+            and not getattr(self, "_sorted_field_order", None)
+        ):
             kwargs["order_by"] = self.model_class._meta.order_by
+
+        # Use sorted field order if available and no explicit order_by
+        sorted_field_order = getattr(self, "_sorted_field_order", None)
+        explicit_order_by = kwargs.get("order_by", None)
+        # Meta.order_by is a default - sorted field order takes precedence over it
+        if sorted_field_order and not explicit_order_by:
+            db_keys_set = sorted_field_order  # Use ordered list instead of set
 
         # Use native async for bulk object loading
         objects = await self._async_get_many_objects(
@@ -1336,6 +1357,31 @@ class Query:
                 if match:
                     filtered.append(obj)
             objects = filtered
+
+        # Attach geo distances to objects if available
+        if self._geo_distances:
+            normalized_distances = {}
+            for key, dist in self._geo_distances.items():
+                if isinstance(key, bytes):
+                    normalized_distances[key.decode()] = dist
+                else:
+                    normalized_distances[key] = dist
+
+            for obj in objects:
+                if isinstance(obj, dict):
+                    continue
+                redis_key = obj.db_key.redis_key
+                if isinstance(redis_key, bytes):
+                    redis_key = redis_key.decode()
+                distance = normalized_distances.get(redis_key)
+                if distance is not None:
+                    obj._geo_distance = distance
+                    obj._geo_distance_unit = self._geo_distance_unit
+
+            model_objects = [o for o in objects if not isinstance(o, dict)]
+            dict_objects = [o for o in objects if isinstance(o, dict)]
+            model_objects.sort(key=lambda o: getattr(o, "_geo_distance", float("inf")))
+            objects = model_objects + dict_objects
 
         return self.prepare_results(objects, **kwargs)
 
