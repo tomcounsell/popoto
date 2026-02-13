@@ -86,7 +86,7 @@ class DatetimeField(Field):
         self.auto_now = kwargs.pop("auto_now", False)
         super().__init__(*args, **kwargs)
 
-    def format_value_pre_save(self, field_value):
+    def format_value_pre_save(self, field_value, skip_auto_now=False, **kwargs):
         """
         Apply automatic timestamp logic before persisting to Redis.
 
@@ -97,18 +97,23 @@ class DatetimeField(Field):
 
         Args:
             field_value: The current datetime value, or None if not set.
+            skip_auto_now: If True, suppress auto_now timestamp updates.
+                Useful for data migrations where existing timestamps should
+                be preserved. Does not affect auto_now_add behavior.
+            **kwargs: Additional keyword arguments for forward compatibility.
 
         Returns:
             datetime: The processed datetime value. Returns current time for
-                auto_now fields, current time for auto_now_add when field_value
-                is falsy, or the original field_value otherwise.
+                auto_now fields (unless skip_auto_now is True), current time
+                for auto_now_add when field_value is falsy, or the original
+                field_value otherwise.
 
         Implementation note:
             auto_now takes precedence if both flags are set, as it unconditionally
-            returns datetime.now() regardless of existing value.
+            returns datetime.now() regardless of existing value (unless skipped).
         """
         if self.auto_now_add and not field_value:
             return datetime.now()
-        if self.auto_now:
+        if self.auto_now and not skip_auto_now:
             return datetime.now()
         return field_value

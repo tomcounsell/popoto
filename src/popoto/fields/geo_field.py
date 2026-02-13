@@ -241,7 +241,7 @@ class GeoField(Field):
             return False
         return True
 
-    def format_value_pre_save(self, field_value):
+    def format_value_pre_save(self, field_value, **kwargs):
         """
         Normalize coordinate values to the Coordinates namedtuple before saving.
 
@@ -253,6 +253,8 @@ class GeoField(Field):
         Args:
             field_value: The value being saved. May be a Coordinates namedtuple,
                 a plain (lat, lng) tuple, or None/invalid.
+            **kwargs: Additional keyword arguments for forward compatibility
+                (e.g., skip_auto_now used by other field types).
 
         Returns:
             A GeoField.Coordinates namedtuple. Returns Coordinates(None, None)

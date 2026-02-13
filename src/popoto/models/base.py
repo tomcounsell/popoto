@@ -838,6 +838,7 @@ class Model(metaclass=ModelBase):
         self,
         pipeline: redis.client.Pipeline = None,
         ignore_errors: bool = False,
+        skip_auto_now: bool = False,
         **kwargs,
     ):
         """Prepare instance for saving by validating and formatting fields.
@@ -933,7 +934,12 @@ class Model(metaclass=ModelBase):
         # run any necessary formatting on field data before saving
         for field_name, field in self._meta.fields.items():
             setattr(
-                self, field_name, field.format_value_pre_save(getattr(self, field_name))
+                self,
+                field_name,
+                field.format_value_pre_save(
+                    getattr(self, field_name),
+                    skip_auto_now=skip_auto_now,
+                ),
             )
         return pipeline if pipeline else True
 
@@ -941,6 +947,7 @@ class Model(metaclass=ModelBase):
         self,
         pipeline: "Pipeline" = None,
         ignore_errors: bool = False,
+        skip_auto_now: bool = False,
         **kwargs,
     ) -> Union["Pipeline", int, bool]:
         """Persist the model instance to Redis.
@@ -983,7 +990,10 @@ class Model(metaclass=ModelBase):
         """
 
         pipeline_or_success = self.pre_save(
-            pipeline=pipeline, ignore_errors=ignore_errors, **kwargs
+            pipeline=pipeline,
+            ignore_errors=ignore_errors,
+            skip_auto_now=skip_auto_now,
+            **kwargs,
         )
         if not pipeline_or_success:
             return pipeline or False
@@ -1553,6 +1563,7 @@ class Model(metaclass=ModelBase):
         self,
         pipeline: redis.client.Pipeline = None,
         ignore_errors: bool = False,
+        skip_auto_now: bool = False,
         **kwargs,
     ):
         """Async version of save().
@@ -1569,13 +1580,18 @@ class Model(metaclass=ModelBase):
         Args:
             pipeline: Optional Redis pipeline for batching operations
             ignore_errors: If True, log errors instead of raising exceptions
+            skip_auto_now: If True, suppress auto_now timestamp updates
             **kwargs: Additional arguments passed to save()
 
         Returns:
             Pipeline or db_response depending on whether pipeline was provided
         """
         return await to_thread(
-            self.save, pipeline=pipeline, ignore_errors=ignore_errors, **kwargs
+            self.save,
+            pipeline=pipeline,
+            ignore_errors=ignore_errors,
+            skip_auto_now=skip_auto_now,
+            **kwargs,
         )
 
     async def async_delete(
