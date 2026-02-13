@@ -237,3 +237,94 @@ class TestUpdateFields:
 
         with pytest.raises(ModelException, match="Unknown field"):
             instance.save(update_fields=["nonexistent_field"])
+
+
+class TestRebuildIndexes:
+    """Test Model.rebuild_indexes() behavior."""
+
+    def setup_method(self):
+        MigrationModel.delete_all()
+
+    def teardown_method(self):
+        MigrationModel.delete_all()
+
+    def test_rebuild_sorted_field_indexes(self):
+        """rebuild_indexes() should reconstruct sorted set indexes."""
+        # Create instances with sorted fields
+        MigrationModel.create(key="a", score=1.0)
+        MigrationModel.create(key="b", score=2.0)
+        MigrationModel.create(key="c", score=3.0)
+
+        # Manually delete the sorted set index using the field's own key API
+        score_field = MigrationModel._meta.fields["score"]
+        sorted_key = score_field.get_special_use_field_db_key(MigrationModel, "score")
+        POPOTO_REDIS_DB.delete(sorted_key.redis_key)
+
+        # Verify queries are broken
+        results = list(MigrationModel.query.filter(score__gte=1.0, score__lte=3.0))
+        assert len(results) == 0  # Index is gone
+
+        # Rebuild indexes
+        count = MigrationModel.rebuild_indexes()
+        assert count == 3
+
+        # Verify queries work again
+        results = list(MigrationModel.query.filter(score__gte=1.0, score__lte=3.0))
+        assert len(results) == 3
+
+    def test_rebuild_class_set(self):
+        """rebuild_indexes() should reconstruct the class set."""
+        MigrationModel.create(key="a", score=1.0)
+        MigrationModel.create(key="b", score=2.0)
+
+        # Delete the class set
+        POPOTO_REDIS_DB.delete(MigrationModel._meta.db_class_set_key.redis_key)
+
+        # Verify .all() is broken
+        assert len(list(MigrationModel.query.all())) == 0
+
+        # Rebuild
+        count = MigrationModel.rebuild_indexes()
+        assert count == 2
+
+        # Verify .all() works again
+        assert len(list(MigrationModel.query.all())) == 2
+
+    def test_rebuild_with_batch_size(self):
+        """rebuild_indexes() should respect batch_size parameter."""
+        for i in range(5):
+            MigrationModel.create(key=f"item_{i}", score=float(i))
+
+        # Delete all sorted indexes
+        score_field = MigrationModel._meta.fields["score"]
+        sorted_key = score_field.get_special_use_field_db_key(MigrationModel, "score")
+        POPOTO_REDIS_DB.delete(sorted_key.redis_key)
+
+        # Rebuild with small batch size
+        count = MigrationModel.rebuild_indexes(batch_size=2)
+        assert count == 5
+
+        # Verify all indexes restored
+        results = list(MigrationModel.query.filter(score__gte=0.0, score__lte=10.0))
+        assert len(results) == 5
+
+    def test_rebuild_returns_zero_for_empty_model(self):
+        """rebuild_indexes() on model with no instances should return 0."""
+        count = MigrationModel.rebuild_indexes()
+        assert count == 0
+
+    @pytest.mark.asyncio
+    async def test_async_rebuild_indexes(self):
+        """async_rebuild_indexes() should work via to_thread."""
+        MigrationModel.create(key="a", score=1.0)
+        MigrationModel.create(key="b", score=2.0)
+
+        score_field = MigrationModel._meta.fields["score"]
+        sorted_key = score_field.get_special_use_field_db_key(MigrationModel, "score")
+        POPOTO_REDIS_DB.delete(sorted_key.redis_key)
+
+        count = await MigrationModel.async_rebuild_indexes()
+        assert count == 2
+
+        results = list(MigrationModel.query.filter(score__gte=0.0, score__lte=3.0))
+        assert len(results) == 2
