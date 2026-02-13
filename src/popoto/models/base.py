@@ -2234,3 +2234,84 @@ class Model(metaclass=ModelBase):
             Number of instances processed.
         """
         return await to_thread(cls.rebuild_indexes, batch_size=batch_size)
+
+    @classmethod
+    def raw_update(
+        cls, redis_keys: list, batch_size: int = 1000, **field_values
+    ) -> int:
+        """Perform direct HSET updates on Redis hashes without hooks or validation.
+
+        This is a low-level bulk update method designed for data migrations and
+        transformations. It writes field values directly to Redis using HSET,
+        bypassing all ORM machinery (on_save hooks, sorted set index updates,
+        auto_now fields, validation, and class set membership).
+
+        Values are msgpack-encoded to match the format used by normal Model.save(),
+        so data written by raw_update can be read back by normal Model.query.get().
+
+        Because indexes are NOT updated, you should call rebuild_indexes() after
+        raw_update if any SortedField or other indexed fields were modified.
+
+        Args:
+            redis_keys: List of Redis key strings to update. Each key should be
+                a valid model instance key (e.g., "ClassName:key_value").
+            batch_size: Number of HSET commands to pipeline before executing.
+                Larger values use more memory but reduce round-trips. Default 1000.
+            **field_values: Field name/value pairs to set. Field names must
+                correspond to fields defined on the model. Values are encoded
+                using the same msgpack encoding as Model.save().
+
+        Returns:
+            Number of keys that were updated.
+
+        Example:
+            # Update all instances' name field without triggering hooks
+            keys = [inst.db_key.redis_key for inst in MyModel.query.all()]
+            MyModel.raw_update(keys, name="new_value")
+
+            # Rebuild indexes if sorted/indexed fields were changed
+            MyModel.rebuild_indexes()
+        """
+        if not redis_keys:
+            return 0
+
+        from .encoding import TYPE_ENCODER_DECODERS
+        from ..redis_db import ENCODING
+
+        import msgpack
+
+        # Pre-encode all field values once (same encoding for every key)
+        encoded_mapping = {}
+        for field_name, value in field_values.items():
+            field = cls._meta.fields.get(field_name)
+            field_name_bytes = str(field_name).encode(ENCODING)
+
+            if (
+                value is not None
+                and field is not None
+                and field.type in TYPE_ENCODER_DECODERS
+            ):
+                encoded_value = msgpack.packb(
+                    TYPE_ENCODER_DECODERS[field.type].encoder(value)
+                )
+            else:
+                encoded_value = msgpack.packb(value)
+
+            encoded_mapping[field_name_bytes] = encoded_value
+
+        # Pipeline HSET commands in batches
+        count = 0
+        pipeline = POPOTO_REDIS_DB.pipeline()
+        for i, redis_key in enumerate(redis_keys, start=1):
+            pipeline.hset(redis_key, mapping=encoded_mapping)
+            count += 1
+
+            if i % batch_size == 0:
+                pipeline.execute()
+                pipeline = POPOTO_REDIS_DB.pipeline()
+
+        # Execute any remaining commands in the pipeline
+        if count % batch_size != 0:
+            pipeline.execute()
+
+        return count
