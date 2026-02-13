@@ -839,6 +839,7 @@ class Model(metaclass=ModelBase):
         pipeline: redis.client.Pipeline = None,
         ignore_errors: bool = False,
         skip_auto_now: bool = False,
+        update_fields: list = None,
         **kwargs,
     ):
         """Prepare instance for saving by validating and formatting fields.
@@ -849,6 +850,10 @@ class Model(metaclass=ModelBase):
         Args:
             pipeline: Optional Redis pipeline for batched operations.
             ignore_errors: If True, log validation errors instead of raising.
+            skip_auto_now: If True, suppress auto_now timestamp updates.
+            update_fields: Optional list of field names to validate/format.
+                When provided, only listed fields are processed (partial save).
+                When None, all fields are processed (full save).
             **kwargs: Additional arguments passed to field formatters.
 
         Returns:
@@ -856,8 +861,28 @@ class Model(metaclass=ModelBase):
             validation failure with ignore_errors=True.
 
         Raises:
-            ModelException: If validation fails and ignore_errors=False.
+            ModelException: If validation fails and ignore_errors=False,
+                or if update_fields contains unknown field names.
         """
+        if update_fields is not None:
+            # Partial save: only validate and format listed fields
+            for field_name in update_fields:
+                if field_name not in self._meta.fields:
+                    raise ModelException(
+                        f"Unknown field '{field_name}' in update_fields"
+                    )
+                field = self._meta.fields[field_name]
+                setattr(
+                    self,
+                    field_name,
+                    field.format_value_pre_save(
+                        getattr(self, field_name),
+                        skip_auto_now=skip_auto_now,
+                    ),
+                )
+            return pipeline if pipeline else True
+
+        # Full save path (existing behavior, unchanged)
         if not self.is_valid():
             error_message = "Model instance parameters invalid. Failed to save."
             if ignore_errors:
@@ -948,6 +973,7 @@ class Model(metaclass=ModelBase):
         pipeline: "Pipeline" = None,
         ignore_errors: bool = False,
         skip_auto_now: bool = False,
+        update_fields: list = None,
         **kwargs,
     ) -> Union["Pipeline", int, bool]:
         """Persist the model instance to Redis.
@@ -966,6 +992,11 @@ class Model(metaclass=ModelBase):
                 must call pipeline.execute().
             ignore_errors: If True, log validation errors and return False
                 instead of raising ModelException.
+            skip_auto_now: If True, suppress auto_now timestamp updates.
+            update_fields: Optional list of field names for partial save.
+                When provided, only listed fields are serialized, validated,
+                and indexed. None means full save (default behavior).
+                Empty list is a no-op.
             **kwargs: Passed to field on_save hooks.
 
         Returns:
@@ -987,12 +1018,21 @@ class Model(metaclass=ModelBase):
             user1.save(pipeline=pipe)
             user2.save(pipeline=pipe)
             pipe.execute()
+
+            # Partial save (only update specific fields)
+            user.name = "new_name"
+            user.save(update_fields=["name"])
         """
+
+        # Handle update_fields empty list as no-op
+        if update_fields is not None and len(update_fields) == 0:
+            return pipeline or 0
 
         pipeline_or_success = self.pre_save(
             pipeline=pipeline,
             ignore_errors=ignore_errors,
             skip_auto_now=skip_auto_now,
+            update_fields=update_fields,
             **kwargs,
         )
         if not pipeline_or_success:
@@ -1001,6 +1041,74 @@ class Model(metaclass=ModelBase):
             pipeline = pipeline_or_success
 
         new_db_key = DB_key(self.db_key)  # todo: why have a new key??
+
+        if update_fields is not None:
+            # Partial save path: only write listed fields to Redis
+            from ..redis_db import ENCODING
+
+            # Encode all fields, then filter to only update_fields
+            full_mapping = encode_popoto_model_obj(self)
+            update_field_names_bytes = {
+                field_name.encode(ENCODING) for field_name in update_fields
+            }
+            hset_mapping = {
+                k: v for k, v in full_mapping.items() if k in update_field_names_bytes
+            }
+
+            if isinstance(pipeline, redis.client.Pipeline):
+                pipeline = pipeline.hset(new_db_key.redis_key, mapping=hset_mapping)
+                # Only run on_save for listed fields
+                for field_name in update_fields:
+                    field = self._meta.fields[field_name]
+                    pipeline = field.on_save(
+                        self,
+                        field_name=field_name,
+                        field_value=getattr(self, field_name),
+                        ignore_errors=ignore_errors,
+                        pipeline=pipeline,
+                        **kwargs,
+                    )
+                # Handle TTL/expire_at
+                if self._ttl is not None:
+                    pipeline = pipeline.expire(new_db_key.redis_key, self._ttl)
+                elif self._expire_at is not None:
+                    pipeline = pipeline.expireat(
+                        new_db_key.redis_key, int(self._expire_at.timestamp())
+                    )
+                self._redis_key = new_db_key.redis_key
+                # Merge into saved_field_values (preserve existing, update listed)
+                for field_name in update_fields:
+                    self._saved_field_values[field_name] = getattr(self, field_name)
+                return pipeline
+            else:
+                db_response = POPOTO_REDIS_DB.hset(
+                    new_db_key.redis_key, mapping=hset_mapping
+                )
+                # Only run on_save for listed fields
+                for field_name in update_fields:
+                    field = self._meta.fields[field_name]
+                    field.on_save(
+                        self,
+                        field_name=field_name,
+                        field_value=getattr(self, field_name),
+                        ignore_errors=ignore_errors,
+                        pipeline=None,
+                        **kwargs,
+                    )
+                # Handle TTL/expire_at
+                if self._ttl is not None:
+                    POPOTO_REDIS_DB.expire(new_db_key.redis_key, self._ttl)
+                elif self._expire_at is not None:
+                    POPOTO_REDIS_DB.expireat(
+                        new_db_key.redis_key, int(self._expire_at.timestamp())
+                    )
+                self._redis_key = new_db_key.redis_key
+                # Merge into saved_field_values (preserve existing, update listed)
+                for field_name in update_fields:
+                    self._saved_field_values[field_name] = getattr(self, field_name)
+                return db_response
+
+        # Full save path (existing behavior, unchanged)
         if self._redis_key != new_db_key.redis_key:
             self.obsolete_redis_key = self._redis_key
 
@@ -1564,6 +1672,7 @@ class Model(metaclass=ModelBase):
         pipeline: redis.client.Pipeline = None,
         ignore_errors: bool = False,
         skip_auto_now: bool = False,
+        update_fields: list = None,
         **kwargs,
     ):
         """Async version of save().
@@ -1581,6 +1690,9 @@ class Model(metaclass=ModelBase):
             pipeline: Optional Redis pipeline for batching operations
             ignore_errors: If True, log errors instead of raising exceptions
             skip_auto_now: If True, suppress auto_now timestamp updates
+            update_fields: Optional list of field names for partial save.
+                When provided, only listed fields are serialized, validated,
+                and indexed.
             **kwargs: Additional arguments passed to save()
 
         Returns:
@@ -1591,6 +1703,7 @@ class Model(metaclass=ModelBase):
             pipeline=pipeline,
             ignore_errors=ignore_errors,
             skip_auto_now=skip_auto_now,
+            update_fields=update_fields,
             **kwargs,
         )
 
