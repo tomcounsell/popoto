@@ -410,7 +410,7 @@ class Field(metaclass=FieldBase):
             return False
         return True
 
-    def format_value_pre_save(self, field_value):
+    def format_value_pre_save(self, field_value, **kwargs):
         """
         Transform a field value before Redis storage.
 
@@ -431,6 +431,8 @@ class Field(metaclass=FieldBase):
 
         Args:
             field_value: The validated value to transform
+            **kwargs: Additional keyword arguments accepted for forward
+                compatibility (e.g., skip_auto_now used by SortedFieldMixin).
 
         Returns:
             The transformed value ready for serialization. Base implementation

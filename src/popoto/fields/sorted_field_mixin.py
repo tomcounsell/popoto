@@ -296,7 +296,7 @@ class SortedFieldMixin:
             return False
         return True
 
-    def format_value_pre_save(self, field_value):
+    def format_value_pre_save(self, field_value, skip_auto_now=False):
         """
         Normalize the field value before saving to the model's Redis hash.
 
@@ -313,6 +313,9 @@ class SortedFieldMixin:
 
         Args:
             field_value: The raw value to be saved.
+            skip_auto_now: If True, suppress auto_now timestamp updates.
+                Useful for data migrations where existing timestamps should
+                be preserved. Does not affect auto_now_add behavior.
 
         Returns:
             The normalized value suitable for msgpack serialization.
@@ -321,8 +324,8 @@ class SortedFieldMixin:
 
         # Apply auto_now/auto_now_add for numeric types (Unix timestamps)
         if self.type in (int, float):
-            if self.auto_now:
-                # Always set current timestamp on every save
+            if self.auto_now and not skip_auto_now:
+                # Always set current timestamp on every save (unless skipped)
                 field_value = int(time.time()) if self.type is int else time.time()
             elif self.auto_now_add and not field_value:
                 # Set timestamp only on first save (when value is None/falsy)
