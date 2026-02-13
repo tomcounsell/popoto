@@ -237,3 +237,196 @@ class TestUpdateFields:
 
         with pytest.raises(ModelException, match="Unknown field"):
             instance.save(update_fields=["nonexistent_field"])
+
+
+class TestRebuildIndexes:
+    """Test Model.rebuild_indexes() behavior."""
+
+    def setup_method(self):
+        MigrationModel.delete_all()
+
+    def teardown_method(self):
+        MigrationModel.delete_all()
+
+    def test_rebuild_sorted_field_indexes(self):
+        """rebuild_indexes() should reconstruct sorted set indexes."""
+        # Create instances with sorted fields
+        MigrationModel.create(key="a", score=1.0)
+        MigrationModel.create(key="b", score=2.0)
+        MigrationModel.create(key="c", score=3.0)
+
+        # Manually delete the sorted set index using the field's own key API
+        score_field = MigrationModel._meta.fields["score"]
+        sorted_key = score_field.get_special_use_field_db_key(MigrationModel, "score")
+        POPOTO_REDIS_DB.delete(sorted_key.redis_key)
+
+        # Verify queries are broken
+        results = list(MigrationModel.query.filter(score__gte=1.0, score__lte=3.0))
+        assert len(results) == 0  # Index is gone
+
+        # Rebuild indexes
+        count = MigrationModel.rebuild_indexes()
+        assert count == 3
+
+        # Verify queries work again
+        results = list(MigrationModel.query.filter(score__gte=1.0, score__lte=3.0))
+        assert len(results) == 3
+
+    def test_rebuild_class_set(self):
+        """rebuild_indexes() should reconstruct the class set."""
+        MigrationModel.create(key="a", score=1.0)
+        MigrationModel.create(key="b", score=2.0)
+
+        # Delete the class set
+        POPOTO_REDIS_DB.delete(MigrationModel._meta.db_class_set_key.redis_key)
+
+        # Verify .all() is broken
+        assert len(list(MigrationModel.query.all())) == 0
+
+        # Rebuild
+        count = MigrationModel.rebuild_indexes()
+        assert count == 2
+
+        # Verify .all() works again
+        assert len(list(MigrationModel.query.all())) == 2
+
+    def test_rebuild_with_batch_size(self):
+        """rebuild_indexes() should respect batch_size parameter."""
+        for i in range(5):
+            MigrationModel.create(key=f"item_{i}", score=float(i))
+
+        # Delete all sorted indexes
+        score_field = MigrationModel._meta.fields["score"]
+        sorted_key = score_field.get_special_use_field_db_key(MigrationModel, "score")
+        POPOTO_REDIS_DB.delete(sorted_key.redis_key)
+
+        # Rebuild with small batch size
+        count = MigrationModel.rebuild_indexes(batch_size=2)
+        assert count == 5
+
+        # Verify all indexes restored
+        results = list(MigrationModel.query.filter(score__gte=0.0, score__lte=10.0))
+        assert len(results) == 5
+
+    def test_rebuild_returns_zero_for_empty_model(self):
+        """rebuild_indexes() on model with no instances should return 0."""
+        count = MigrationModel.rebuild_indexes()
+        assert count == 0
+
+    @pytest.mark.asyncio
+    async def test_async_rebuild_indexes(self):
+        """async_rebuild_indexes() should work via to_thread."""
+        MigrationModel.create(key="a", score=1.0)
+        MigrationModel.create(key="b", score=2.0)
+
+        score_field = MigrationModel._meta.fields["score"]
+        sorted_key = score_field.get_special_use_field_db_key(MigrationModel, "score")
+        POPOTO_REDIS_DB.delete(sorted_key.redis_key)
+
+        count = await MigrationModel.async_rebuild_indexes()
+        assert count == 2
+
+        results = list(MigrationModel.query.filter(score__gte=0.0, score__lte=3.0))
+        assert len(results) == 2
+
+
+class TestRawUpdate:
+    """Test Model.raw_update() behavior."""
+
+    def setup_method(self):
+        MigrationModel.delete_all()
+
+    def teardown_method(self):
+        MigrationModel.delete_all()
+
+    def test_raw_update_changes_field_values(self):
+        """raw_update should change field values readable by normal get()."""
+        instance = MigrationModel.create(key="test1", name="original", score=1.0)
+        redis_key = instance.db_key.redis_key
+
+        MigrationModel.raw_update([redis_key], name="updated_via_raw")
+
+        reloaded = MigrationModel.query.get(key="test1")
+        assert reloaded.name == "updated_via_raw"
+
+    def test_raw_update_does_not_trigger_hooks(self):
+        """raw_update should NOT update sorted set indexes."""
+        instance = MigrationModel.create(key="test1", name="original", score=1.0)
+        redis_key = instance.db_key.redis_key
+
+        # raw_update changes score but doesn't update sorted set
+        MigrationModel.raw_update([redis_key], score=99.0)
+
+        # Normal load should show new value
+        reloaded = MigrationModel.query.get(key="test1")
+        assert reloaded.score == 99.0
+
+        # But sorted set still has old score - query by old range finds it
+        results = list(MigrationModel.query.filter(score__gte=0.5, score__lte=1.5))
+        assert len(results) == 1  # Still indexed at old score
+
+        # Query by new range does NOT find it (stale index)
+        results = list(MigrationModel.query.filter(score__gte=98.0, score__lte=100.0))
+        assert len(results) == 0
+
+    def test_raw_update_plus_rebuild_restores_queries(self):
+        """raw_update + rebuild_indexes should restore full query functionality."""
+        instance = MigrationModel.create(key="test1", name="original", score=1.0)
+        redis_key = instance.db_key.redis_key
+
+        MigrationModel.raw_update([redis_key], score=99.0)
+        MigrationModel.rebuild_indexes()
+
+        # Now query by new range should work
+        results = list(MigrationModel.query.filter(score__gte=98.0, score__lte=100.0))
+        assert len(results) == 1
+        assert results[0].key == "test1"
+
+    def test_raw_update_multiple_keys(self):
+        """raw_update should work with multiple redis keys."""
+        inst1 = MigrationModel.create(key="a", name="name_a", score=1.0)
+        inst2 = MigrationModel.create(key="b", name="name_b", score=2.0)
+        inst3 = MigrationModel.create(key="c", name="name_c", score=3.0)
+
+        keys = [
+            inst1.db_key.redis_key,
+            inst2.db_key.redis_key,
+            inst3.db_key.redis_key,
+        ]
+        count = MigrationModel.raw_update(keys, name="bulk_updated")
+        assert count == 3
+
+        for k in ["a", "b", "c"]:
+            assert MigrationModel.query.get(key=k).name == "bulk_updated"
+
+    def test_raw_update_with_batch_size(self):
+        """raw_update should work with batch_size parameter."""
+        instances = [
+            MigrationModel.create(key=f"item_{i}", score=float(i)) for i in range(5)
+        ]
+        keys = [inst.db_key.redis_key for inst in instances]
+
+        count = MigrationModel.raw_update(keys, name="batched", batch_size=2)
+        assert count == 5
+
+        for i in range(5):
+            assert MigrationModel.query.get(key=f"item_{i}").name == "batched"
+
+    def test_raw_update_does_not_update_auto_now(self):
+        """raw_update should NOT trigger auto_now fields."""
+        instance = MigrationModel.create(key="test1", name="original")
+        original_updated = instance.updated_at
+        redis_key = instance.db_key.redis_key
+
+        time.sleep(0.01)
+
+        MigrationModel.raw_update([redis_key], name="raw_changed")
+
+        reloaded = MigrationModel.query.get(key="test1")
+        assert reloaded.updated_at == original_updated  # NOT updated
+        assert reloaded.name == "raw_changed"
+
+    def test_raw_update_returns_zero_for_empty_list(self):
+        """raw_update with empty key list should return 0."""
+        count = MigrationModel.raw_update([], name="nothing")
+        assert count == 0

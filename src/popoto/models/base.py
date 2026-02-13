@@ -2077,3 +2077,241 @@ class Model(metaclass=ModelBase):
         return await to_thread(
             cls.bulk_delete, queryset_or_instances, batch_size=batch_size
         )
+
+    # Index rebuild operations
+
+    @classmethod
+    def rebuild_indexes(cls, batch_size: int = 1000) -> int:
+        """Delete all secondary indexes and reconstruct them from source hash data.
+
+        This method is useful for repairing corrupted indexes, after bulk data
+        imports that bypassed normal save() hooks, or when upgrading field types
+        that change index structure.
+
+        The rebuild process:
+            1. Delete all secondary index keys (sorted sets, key field sets,
+               geo indexes, class set, and composite indexes)
+            2. SCAN all instance keys matching ClassName:*
+            3. For each batch, load instances and re-run on_save() hooks
+               via pipeline to reconstruct all indexes
+            4. Re-add each instance key to the class set
+
+        Args:
+            batch_size: Number of instances to process per pipeline batch.
+                Default is 1000. Lower values use less memory but require
+                more round-trips.
+
+        Returns:
+            Number of instances processed.
+
+        Example:
+            # Rebuild all indexes for User model
+            count = User.rebuild_indexes()
+            print(f"Rebuilt indexes for {count} users")
+
+            # With smaller batches for memory-constrained environments
+            count = User.rebuild_indexes(batch_size=100)
+        """
+        from .encoding import decode_popoto_model_hashmap
+
+        model_name = cls._meta.model_name
+
+        # Step 1: Delete all secondary index keys
+
+        # Delete class set
+        POPOTO_REDIS_DB.delete(cls._meta.db_class_set_key.redis_key)
+
+        # Delete sorted field indexes
+        for field_name in cls._meta.sorted_field_names:
+            field = cls._meta.fields[field_name]
+            # Build the base sorted set key pattern
+            base_key = field.get_special_use_field_db_key(cls, field_name)
+            # Use SCAN to find all keys matching this pattern (handles partitioned fields)
+            pattern = base_key.redis_key + "*"
+            for key in POPOTO_REDIS_DB.scan_iter(match=pattern, count=1000):
+                POPOTO_REDIS_DB.delete(key)
+
+        # Delete key field index sets
+        for field_name in cls._meta.key_field_names:
+            field = cls._meta.fields[field_name]
+            # Skip auto fields - they don't maintain index sets
+            if getattr(field, "auto", False):
+                continue
+            base_key = field.get_special_use_field_db_key(cls, field_name)
+            pattern = base_key.redis_key + ":*"
+            for key in POPOTO_REDIS_DB.scan_iter(match=pattern, count=1000):
+                POPOTO_REDIS_DB.delete(key)
+
+        # Delete geo field indexes
+        for field_name in cls._meta.geo_field_names:
+            field = cls._meta.fields[field_name]
+            geo_key = GeoField.get_geo_db_key(cls, field_name)
+            POPOTO_REDIS_DB.delete(geo_key.redis_key)
+
+        # Delete composite indexes
+        for field_names, is_unique in cls._meta.indexes:
+            index_key = cls._meta.get_index_key(tuple(field_names))
+            POPOTO_REDIS_DB.delete(index_key)
+
+        # Step 2: SCAN all instance keys and rebuild indexes
+        instance_pattern = cls._meta.db_class_key.redis_key + ":*"
+        count = 0
+        pipeline = POPOTO_REDIS_DB.pipeline()
+        batch_count = 0
+
+        for redis_key in POPOTO_REDIS_DB.scan_iter(match=instance_pattern, count=1000):
+            # Decode the key to a string
+            if isinstance(redis_key, bytes):
+                redis_key_str = redis_key.decode("utf-8")
+            else:
+                redis_key_str = redis_key
+
+            # Filter out non-instance keys (e.g., keys with special prefixes
+            # that happen to match the pattern). Instance keys should have
+            # exactly the right number of segments.
+            key_parts = redis_key_str.split(":")
+            if len(key_parts) != cls._meta.db_key_length:
+                continue
+
+            # Load the raw hash from Redis
+            redis_hash = POPOTO_REDIS_DB.hgetall(redis_key)
+            if not redis_hash:
+                continue
+
+            # Decode into a model instance
+            instance = decode_popoto_model_hashmap(cls, redis_hash)
+            if instance is None:
+                continue
+
+            # Set the _redis_key so on_save hooks can use the correct key
+            instance._redis_key = redis_key_str
+
+            # Re-add to class set
+            pipeline.sadd(cls._meta.db_class_set_key.redis_key, redis_key_str)
+
+            # Run on_save for each field to rebuild indexes
+            for field_name, field in cls._meta.fields.items():
+                field.on_save(
+                    instance,
+                    field_name=field_name,
+                    field_value=getattr(instance, field_name),
+                    pipeline=pipeline,
+                )
+
+            # Rebuild composite indexes
+            for field_names_tuple, is_unique in cls._meta.indexes:
+                field_names_t = tuple(field_names_tuple)
+                index_key = cls._meta.get_index_key(field_names_t)
+                index_hash = cls._meta.compute_index_hash(instance, field_names_t)
+                if index_hash:
+                    pipeline.hset(index_key, index_hash, redis_key_str)
+
+            count += 1
+            batch_count += 1
+
+            if batch_count >= batch_size:
+                pipeline.execute()
+                pipeline = POPOTO_REDIS_DB.pipeline()
+                batch_count = 0
+
+        # Execute any remaining commands in the pipeline
+        if batch_count > 0:
+            pipeline.execute()
+
+        return count
+
+    @classmethod
+    async def async_rebuild_indexes(cls, batch_size: int = 1000) -> int:
+        """Async version of rebuild_indexes().
+
+        Runs the synchronous rebuild_indexes() method in a thread pool
+        to avoid blocking the event loop.
+
+        Args:
+            batch_size: Number of instances to process per pipeline batch.
+
+        Returns:
+            Number of instances processed.
+        """
+        return await to_thread(cls.rebuild_indexes, batch_size=batch_size)
+
+    @classmethod
+    def raw_update(
+        cls, redis_keys: list, batch_size: int = 1000, **field_values
+    ) -> int:
+        """Perform direct HSET updates on Redis hashes without hooks or validation.
+
+        This is a low-level bulk update method designed for data migrations and
+        transformations. It writes field values directly to Redis using HSET,
+        bypassing all ORM machinery (on_save hooks, sorted set index updates,
+        auto_now fields, validation, and class set membership).
+
+        Values are msgpack-encoded to match the format used by normal Model.save(),
+        so data written by raw_update can be read back by normal Model.query.get().
+
+        Because indexes are NOT updated, you should call rebuild_indexes() after
+        raw_update if any SortedField or other indexed fields were modified.
+
+        Args:
+            redis_keys: List of Redis key strings to update. Each key should be
+                a valid model instance key (e.g., "ClassName:key_value").
+            batch_size: Number of HSET commands to pipeline before executing.
+                Larger values use more memory but reduce round-trips. Default 1000.
+            **field_values: Field name/value pairs to set. Field names must
+                correspond to fields defined on the model. Values are encoded
+                using the same msgpack encoding as Model.save().
+
+        Returns:
+            Number of keys that were updated.
+
+        Example:
+            # Update all instances' name field without triggering hooks
+            keys = [inst.db_key.redis_key for inst in MyModel.query.all()]
+            MyModel.raw_update(keys, name="new_value")
+
+            # Rebuild indexes if sorted/indexed fields were changed
+            MyModel.rebuild_indexes()
+        """
+        if not redis_keys:
+            return 0
+
+        from .encoding import TYPE_ENCODER_DECODERS
+        from ..redis_db import ENCODING
+
+        import msgpack
+
+        # Pre-encode all field values once (same encoding for every key)
+        encoded_mapping = {}
+        for field_name, value in field_values.items():
+            field = cls._meta.fields.get(field_name)
+            field_name_bytes = str(field_name).encode(ENCODING)
+
+            if (
+                value is not None
+                and field is not None
+                and field.type in TYPE_ENCODER_DECODERS
+            ):
+                encoded_value = msgpack.packb(
+                    TYPE_ENCODER_DECODERS[field.type].encoder(value)
+                )
+            else:
+                encoded_value = msgpack.packb(value)
+
+            encoded_mapping[field_name_bytes] = encoded_value
+
+        # Pipeline HSET commands in batches
+        count = 0
+        pipeline = POPOTO_REDIS_DB.pipeline()
+        for i, redis_key in enumerate(redis_keys, start=1):
+            pipeline.hset(redis_key, mapping=encoded_mapping)
+            count += 1
+
+            if i % batch_size == 0:
+                pipeline.execute()
+                pipeline = POPOTO_REDIS_DB.pipeline()
+
+        # Execute any remaining commands in the pipeline
+        if count % batch_size != 0:
+            pipeline.execute()
+
+        return count
