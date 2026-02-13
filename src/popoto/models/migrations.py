@@ -56,8 +56,7 @@ Example of the pattern applied to renaming a field::
 Three-Tier Save Pattern
 ------------------------
 
-Popoto provides (or will provide) three levels of persistence, similar
-to Django:
+Popoto provides three levels of persistence, similar to Django:
 
 1. **Full save** -- ``instance.save()`` validates all fields, fires
    ``auto_now`` hooks, and updates all secondary indexes.
@@ -65,11 +64,9 @@ to Django:
    validates and persists only the listed fields. ``auto_now`` fields
    are NOT automatically included (following Django convention; you must
    list them explicitly).
-   *Coming Soon: not yet implemented.*
-3. **Raw update** -- ``Model.raw_update(redis_key, {"field": value})``
+3. **Raw update** -- ``Model.raw_update(redis_keys, field=value)``
    writes msgpack-encoded values directly to the hash without loading
    the model, skipping all hooks and validation.
-   *Coming Soon: not yet implemented.*
 
 Each migration recipe below notes which save tier is appropriate.
 
@@ -161,24 +158,14 @@ timestamps you want to preserve.
     pipeline.execute()
 
 To preserve timestamps when backfilling, use ``update_fields`` to skip
-``auto_now`` hooks on fields you did not list:
+``auto_now`` hooks on fields you did not list::
 
-.. note::
-
-    ``save(update_fields=[...])`` and ``save(skip_auto_now=True)`` are
-    **Coming Soon: not yet implemented.** Until then, backfills will
-    trigger ``auto_now`` on every save.
-
-::
-
-    # Coming Soon: not yet implemented
-    #
-    # product.save(update_fields=["description"])
+    product.save(update_fields=["description"])
     #   -> only writes "description" to the hash
     #   -> auto_now fields are NOT auto-included (Django convention)
     #   -> explicitly list auto_now fields if you want them updated
-    #
-    # product.save(skip_auto_now=True)
+
+    product.save(skip_auto_now=True)
     #   -> saves all fields but skips auto_now hooks
 
 
@@ -316,11 +303,8 @@ add a new ``SortedField``. Existing records have no entries in the
 sorted set index.
 
 **Action required**: Rebuild the sorted set index from existing data.
-
-.. note::
-
-    ``Model.rebuild_indexes()`` is **Coming Soon: not yet implemented.**
-    Until then, use the manual pattern below.
+Use ``rebuild_indexes()`` for a one-liner, or the manual pattern below
+for finer control.
 
 ::
 
@@ -334,7 +318,11 @@ sorted set index.
         sku = UniqueKeyField()
         price = SortedField(type=float)
 
-    # --- Manually rebuild the sorted set index ---
+    # One-liner: rebuild all indexes (sorted sets, class set, etc.)
+    Product.rebuild_indexes()
+
+Manual alternative for finer control::
+
     # SortedField index key: ClassName:_field_name
     sorted_set_key = "Product:_price"
     pipeline = POPOTO_REDIS_DB.pipeline()
@@ -349,9 +337,6 @@ sorted set index.
             pipeline.execute()
             pipeline = POPOTO_REDIS_DB.pipeline()
     pipeline.execute()
-
-    # Coming Soon: not yet implemented
-    # Product.rebuild_indexes()  # one-liner replacement for the above
 
 For partitioned sorted fields (``partition_by``), each partition gets
 its own sorted set::
@@ -742,7 +727,7 @@ schema structure itself.
 field across every record (e.g., lowercase all emails).
 
 **Action required**: Load each record, transform the value, and re-save.
-For bulk operations that skip hooks, use ``raw_update()`` (coming soon).
+For bulk operations that skip hooks, use ``raw_update()``.
 
 ::
 
@@ -761,18 +746,20 @@ For bulk operations that skip hooks, use ``raw_update()`` (coming soon).
                 user.email = normalized
                 user.save()
 
-    # Coming Soon: not yet implemented
-    # Raw update version (skips hooks and validation, faster for bulk ops):
-    #
-    # import msgpack
-    # for redis_key in User.query.keys():
-    #     if isinstance(redis_key, bytes):
-    #         redis_key = redis_key.decode("utf-8")
-    #     old_email = msgpack.unpackb(POPOTO_REDIS_DB.hget(redis_key, "email"))
-    #     normalized = old_email.strip().lower()
-    #     if normalized != old_email:
-    #         # raw_update accepts Python values, msgpack-encodes internally
-    #         User.raw_update(redis_key, {"email": normalized})
+Raw update version (skips hooks and validation, faster for bulk ops)::
+
+    keys = User.query.keys()
+    User.raw_update(keys, email="normalized@example.com")
+
+    # For per-record transforms, iterate manually:
+    import msgpack
+    for redis_key in User.query.keys():
+        if isinstance(redis_key, bytes):
+            redis_key = redis_key.decode("utf-8")
+        old_email = msgpack.unpackb(POPOTO_REDIS_DB.hget(redis_key, "email"))
+        normalized = old_email.strip().lower()
+        if normalized != old_email:
+            User.raw_update([redis_key], email=normalized)
 
 
 12. Split a Field (e.g., name -> first_name + last_name)
@@ -927,12 +914,6 @@ without updating indexes.
 
 **Action required**: Clear and rebuild all secondary indexes for a model.
 
-.. note::
-
-    ``Model.rebuild_indexes()`` is **Coming Soon: not yet implemented.**
-    Use the manual pattern below. The future API will also support async
-    via a simple ``asyncio.to_thread()`` wrapper.
-
 ::
 
     class Product(Model):
@@ -940,63 +921,23 @@ without updating indexes.
         category = KeyField()
         price = SortedField(type=float)
 
-    # --- Step 1: Clear existing indexes ---
-    # Sorted set indexes
-    cursor = 0
-    while True:
-        cursor, keys = POPOTO_REDIS_DB.scan(
-            cursor, match="Product:_*", count=500
-        )
-        if keys:
-            POPOTO_REDIS_DB.delete(*keys)
-        if cursor == 0:
-            break
-
-    # Class set (tracks all instance keys)
-    POPOTO_REDIS_DB.delete("$Class:Product")
-
-    # --- Step 2: Rebuild by re-saving every instance ---
-    # Use SCAN to find all instance keys (cannot use query.keys() since
-    # we just cleared the class set)
-    cursor = 0
-    pipeline = POPOTO_REDIS_DB.pipeline()
-    count = 0
-    while True:
-        cursor, keys = POPOTO_REDIS_DB.scan(
-            cursor, match="Product:*", count=500
-        )
-        for redis_key in keys:
-            if isinstance(redis_key, bytes):
-                redis_key_str = redis_key.decode("utf-8")
-            else:
-                redis_key_str = redis_key
-
-            # Skip index keys (sorted sets, etc.)
-            if redis_key_str.startswith("Product:_"):
-                continue
-            if POPOTO_REDIS_DB.type(redis_key) != b"hash":
-                continue
-
-            product = Product.query.get(redis_key=redis_key)
-            if product is not None:
-                product.save(pipeline=pipeline)
-                count += 1
-
-            if count % 500 == 0 and count > 0:
-                pipeline.execute()
-                pipeline = POPOTO_REDIS_DB.pipeline()
-
-        if cursor == 0:
-            break
-    pipeline.execute()
+    # One-liner: clears and rebuilds all indexes
+    count = Product.rebuild_indexes()
     print(f"Rebuilt indexes for {count} Product records")
 
-    # Coming Soon: not yet implemented
-    # Product.rebuild_indexes()
-    #
-    # Async version:
-    # import asyncio
-    # await asyncio.to_thread(Product.rebuild_indexes)
+    # With smaller batches for memory-constrained environments
+    count = Product.rebuild_indexes(batch_size=100)
+
+    # Async version
+    count = await Product.async_rebuild_indexes()
+
+``rebuild_indexes()`` handles the full process automatically:
+
+1. Deletes all secondary index keys (sorted sets, class set, geo
+   indexes, composite indexes)
+2. SCANs all instance keys matching ``ClassName:*``
+3. Loads each instance and re-runs ``on_save()`` hooks via pipeline
+4. Re-adds each instance key to the class set
 
 
 16. Add Compound Index
@@ -1115,11 +1056,8 @@ Performance Considerations
   snapshot to test your migration script on a copy of production data.
 
 
-API Reference: Coming Soon
-----------------------------
-
-The following APIs are planned but not yet implemented. Recipes that
-reference them include manual workarounds you can use today.
+API Reference
+--------------
 
 ``Model.save(update_fields=[...])``
     Partial save. Only writes the listed fields to the Redis hash.
@@ -1130,16 +1068,17 @@ reference them include manual workarounds you can use today.
     Full save that skips ``auto_now`` field hooks. Useful for backfills
     where you want to preserve original timestamps.
 
-``Model.raw_update(redis_key, fields_dict)``
-    Write field values directly to a Redis hash without loading the
+``Model.raw_update(redis_keys, batch_size=1000, **field_values)``
+    Write field values directly to Redis hashes without loading the
     model. Accepts Python values and msgpack-encodes them internally.
-    Skips all hooks and validation.
+    Skips all hooks and validation. Returns number of keys updated.
 
-``Model.rebuild_indexes()``
+``Model.rebuild_indexes(batch_size=1000)``
     Clear and rebuild all secondary indexes (sorted sets, unique
     indexes, class set) by re-saving every instance. Idempotent.
+    Returns number of instances processed.
 
-``await Model.arebuild_indexes()``
+``await Model.async_rebuild_indexes(batch_size=1000)``
     Async wrapper using ``asyncio.to_thread(Model.rebuild_indexes)``.
 
 
