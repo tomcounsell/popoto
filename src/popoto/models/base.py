@@ -1081,9 +1081,9 @@ class Model(metaclass=ModelBase):
                     self._saved_field_values[field_name] = getattr(self, field_name)
                 return pipeline
             else:
-                db_response = POPOTO_REDIS_DB.hset(
-                    new_db_key.redis_key, mapping=hset_mapping
-                )
+                # Use internal pipeline for atomic execution
+                internal_pipeline = POPOTO_REDIS_DB.pipeline()
+                internal_pipeline.hset(new_db_key.redis_key, mapping=hset_mapping)
                 # Only run on_save for listed fields
                 for field_name in update_fields:
                     field = self._meta.fields[field_name]
@@ -1092,16 +1092,18 @@ class Model(metaclass=ModelBase):
                         field_name=field_name,
                         field_value=getattr(self, field_name),
                         ignore_errors=ignore_errors,
-                        pipeline=None,
+                        pipeline=internal_pipeline,
                         **kwargs,
                     )
                 # Handle TTL/expire_at
                 if self._ttl is not None:
-                    POPOTO_REDIS_DB.expire(new_db_key.redis_key, self._ttl)
+                    internal_pipeline.expire(new_db_key.redis_key, self._ttl)
                 elif self._expire_at is not None:
-                    POPOTO_REDIS_DB.expireat(
+                    internal_pipeline.expireat(
                         new_db_key.redis_key, int(self._expire_at.timestamp())
                     )
+                results = internal_pipeline.execute()
+                db_response = results[0]  # HSET result
                 self._redis_key = new_db_key.redis_key
                 # Merge into saved_field_values (preserve existing, update listed)
                 for field_name in update_fields:
@@ -1191,16 +1193,17 @@ class Model(metaclass=ModelBase):
             return pipeline
 
         else:
-            db_response = POPOTO_REDIS_DB.hset(
-                new_db_key.redis_key, mapping=hset_mapping
-            )  # 1
+            # Use internal pipeline for atomic execution (all-or-nothing)
+            internal_pipeline = POPOTO_REDIS_DB.pipeline()
+
+            internal_pipeline.hset(new_db_key.redis_key, mapping=hset_mapping)  # 1
             if self._ttl is not None:
-                POPOTO_REDIS_DB.expire(new_db_key.redis_key, self._ttl)  # 2
+                internal_pipeline.expire(new_db_key.redis_key, self._ttl)  # 2
             elif self._expire_at is not None:
-                POPOTO_REDIS_DB.expireat(
+                internal_pipeline.expireat(
                     new_db_key.redis_key, int(self._expire_at.timestamp())
                 )  # 2
-            POPOTO_REDIS_DB.sadd(
+            internal_pipeline.sadd(
                 self._meta.db_class_set_key.redis_key, new_db_key.redis_key
             )  # 3
 
@@ -1217,11 +1220,11 @@ class Model(metaclass=ModelBase):
                         model_instance=self,
                         field_name=field_name,
                         field_value=field_value,
-                        pipeline=None,
+                        pipeline=internal_pipeline,
                         saved_redis_key=self.obsolete_redis_key,
                         **kwargs,
                     )
-                POPOTO_REDIS_DB.delete(self.obsolete_redis_key)  # 4
+                internal_pipeline.delete(self.obsolete_redis_key)  # 4
                 self.obsolete_redis_key = None
 
             for field_name, field in self._meta.fields.items():  # 5
@@ -1231,7 +1234,7 @@ class Model(metaclass=ModelBase):
                     field_value=getattr(self, field_name),
                     # ttl=ttl, expire_at=expire_at,
                     ignore_errors=ignore_errors,
-                    pipeline=None,
+                    pipeline=internal_pipeline,
                     **kwargs,
                 )
 
@@ -1245,11 +1248,14 @@ class Model(metaclass=ModelBase):
                         field_names_tuple, self._saved_field_values
                     )
                     if old_hash:
-                        POPOTO_REDIS_DB.hdel(index_key, old_hash)
+                        internal_pipeline.hdel(index_key, old_hash)
                 # Add new index entry
                 new_hash = self._meta.compute_index_hash(self, field_names_tuple)
                 if new_hash:
-                    POPOTO_REDIS_DB.hset(index_key, new_hash, new_db_key.redis_key)
+                    internal_pipeline.hset(index_key, new_hash, new_db_key.redis_key)
+
+            results = internal_pipeline.execute()
+            db_response = results[0]  # HSET result (backward compat)
 
             self._redis_key = new_db_key.redis_key  # 7
             # Store field values for proper cleanup on delete  # 8

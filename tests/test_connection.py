@@ -68,12 +68,16 @@ class TestConnectionFailureHandling:
     """Tests for connection failure scenarios."""
 
     def test_save_with_connection_error(self):
-        """Test that save raises exception when Redis is unavailable."""
+        """Test that save raises exception when Redis is unavailable.
+
+        save() uses an internal pipeline for atomic execution, so the
+        ConnectionError surfaces when pipeline.execute() is called.
+        """
         model = SimpleModel(name="test", value="data")
 
         with patch.object(
             POPOTO_REDIS_DB,
-            "hset",
+            "pipeline",
             side_effect=redis.ConnectionError("Connection refused"),
         ):
             with pytest.raises(redis.ConnectionError):
