@@ -5,6 +5,92 @@ All notable changes to Popoto will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **KeyField index corruption on value mutation** (#149): `KeyField.on_save()` now removes the instance from the old index Set when a field value changes. Previously, mutating a KeyField and calling `save()` left a ghost entry in the old index, causing `filter()` queries to return stale results.
+
+## [1.0.0b2] - 2026-02-12
+
+### Added
+
+#### New Model Methods
+- **`get_or_create()` and `update_or_create()`** (#132): Django-style convenience methods
+  ```python
+  obj, created = Model.query.get_or_create(name="test", defaults={"score": 100})
+  obj, created = Model.query.update_or_create(name="test", defaults={"score": 200})
+  ```
+  - Async variants: `async_get_or_create()`, `async_update_or_create()`
+
+- **`to_dict()` method** (#129): Dictionary serialization with relationship expansion
+  ```python
+  obj.to_dict()                          # All fields
+  obj.to_dict(include=["name", "score"]) # Specific fields
+  obj.to_dict(expand=True, max_depth=2)  # Expand relationships
+  ```
+
+- **`delete_all()` classmethod** (#115): Delete all instances of a model with index cleanup
+  ```python
+  count = Model.delete_all()           # Sync
+  count = await Model.async_delete_all()  # Async
+  ```
+
+- **`Model.pk` property** (#121): Clean primary key access
+  ```python
+  obj.pk  # Returns the key field value(s)
+  ```
+
+- **`last()` query method** (#137): Retrieve the last result from a query
+  ```python
+  Model.query.filter(status="active").last()
+  ```
+
+- **`get_redis()` helper** (#137): Direct access to the Redis connection
+  ```python
+  from popoto import get_redis
+  redis = get_redis()
+  ```
+
+- **Testing module** (#137): `popoto.testing` with `use_test_db()` and `flush_test_db()` helpers
+
+#### Field Enhancements
+- **`auto_now_add` and `auto_now` on SortedField** (#133): Automatic timestamps
+  ```python
+  class Event(Model):
+      created_at = SortedField(type=float, auto_now_add=True)
+      updated_at = SortedField(type=float, auto_now=True)
+  ```
+
+- **`__between` range query operator** (#131): Filter SortedField by range
+  ```python
+  Model.query.filter(score__between=(50, 100))
+  ```
+
+#### Async Improvements
+- **Native `redis.asyncio` support** (#130): True async Redis operations instead of `asyncio.to_thread()` wrapper
+  - Significant performance improvement for async workloads
+  - Python 3.9+ required
+
+#### Query Improvements
+- **Plain Field filtering** (#122): Filter on non-indexed fields with client-side fallback
+  ```python
+  Model.query.filter(name="test")  # Works even if name is not a SortedField
+  ```
+
+- **Sorted field ordering preservation**: Queries filtering on SortedField now return results in sorted order by default, matching the natural index ordering
+
+### Changed
+- **Renamed `sort_by` to `partition_by`** (#138): The `sort_by` parameter on SortedField has been renamed to `partition_by` to better reflect its purpose (partitioning the index by a KeyField). A deprecation shim maintains backward compatibility.
+
+### Fixed
+- **Relationship validation on re-save** (#113): Lazy-loaded `redis_key` strings are now correctly accepted during validation, fixing a bug where re-saving a model with an unaccessed relationship would fail
+
+### Examples
+- **Popoto Kitchen TUI** (#112): Interactive terminal UI example application for exploring Popoto features
+
+---
+
 ## [1.0.0] - 2026-02-03
 
 This is the first stable release of Popoto, a Redis/Valkey ORM with Django-like model syntax. This release brings significant new features, performance improvements, and full feature parity with Redis OM Python.
