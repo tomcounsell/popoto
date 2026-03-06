@@ -228,6 +228,23 @@ class KeyFieldMixin:
         if model_instance._meta.fields[field_name].auto:
             return pipeline if pipeline else None
 
+        # Remove from old index if the KeyField value changed.
+        # _saved_field_values tracks values at last save/load. If the current
+        # value differs from the saved value, the old index Set still contains
+        # this instance's key — remove it to prevent ghost entries in queries.
+        saved_values = getattr(model_instance, "_saved_field_values", {})
+        old_value = saved_values.get(field_name)
+        if old_value is not None and old_value != field_value:
+            old_set_key = DB_key(
+                cls.get_special_use_field_db_key(model_instance, field_name),
+                old_value,
+            )
+            member_key = model_instance.db_key.redis_key
+            if pipeline:
+                pipeline.srem(old_set_key.redis_key, member_key)
+            else:
+                POPOTO_REDIS_DB.srem(old_set_key.redis_key, member_key)
+
         unique_set_key = DB_key(
             cls.get_special_use_field_db_key(model_instance, field_name), field_value
         )

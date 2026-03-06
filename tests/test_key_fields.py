@@ -137,3 +137,60 @@ assert len(TestKeySetModel.query.all()) == 0
 assert len(POPOTO_REDIS_DB.smembers(class_redis_set_key.redis_key)) == 0
 assert len(POPOTO_REDIS_DB.smembers(bp_band_redis_set_key)) == 0
 assert len(POPOTO_REDIS_DB.smembers(singer_role_redis_set_key)) == 0
+
+
+# Test KeyField index cleanup when field value is mutated and saved
+# Verifies fix for issue #149: on_save() must remove from old index
+
+
+class MutableKeyModel(popoto.Model):
+    uuid = popoto.AutoKeyField()
+    status = popoto.KeyField(default="pending")
+    data = popoto.Field(null=True)
+
+
+# Setup: create two jobs in "pending"
+job1 = MutableKeyModel.create(status="pending", data="job1")
+job2 = MutableKeyModel.create(status="pending", data="job2")
+
+pending_key = f"{MutableKeyModel._meta.fields['status'].get_special_use_field_db_key(MutableKeyModel, 'status')}:pending"
+running_key = f"{MutableKeyModel._meta.fields['status'].get_special_use_field_db_key(MutableKeyModel, 'status')}:running"
+
+assert len(MutableKeyModel.query.filter(status="pending")) == 2
+assert len(MutableKeyModel.query.filter(status="running")) == 0
+assert len(POPOTO_REDIS_DB.smembers(pending_key)) == 2
+
+# Mutate job1 status and save — this is the bug scenario
+job1.status = "running"
+job1.save()
+
+# After mutation: job1 should be in "running" only, not in "pending"
+assert len(MutableKeyModel.query.filter(status="pending")) == 1, (
+    "Ghost entry: job1 still appears in pending index after status change"
+)
+assert len(MutableKeyModel.query.filter(status="running")) == 1, (
+    "job1 should appear in running index after status change"
+)
+assert len(POPOTO_REDIS_DB.smembers(pending_key)) == 1
+assert len(POPOTO_REDIS_DB.smembers(running_key)) == 1
+
+# Verify the correct instances are in each index
+pending_jobs = MutableKeyModel.query.filter(status="pending")
+assert pending_jobs[0].data == "job2"
+running_jobs = MutableKeyModel.query.filter(status="running")
+assert running_jobs[0].data == "job1"
+
+# Mutate again: running -> completed
+job1.status = "completed"
+job1.save()
+completed_key = f"{MutableKeyModel._meta.fields['status'].get_special_use_field_db_key(MutableKeyModel, 'status')}:completed"
+
+assert len(MutableKeyModel.query.filter(status="running")) == 0
+assert len(MutableKeyModel.query.filter(status="completed")) == 1
+assert len(POPOTO_REDIS_DB.smembers(running_key)) == 0
+assert len(POPOTO_REDIS_DB.smembers(completed_key)) == 1
+
+# Cleanup
+for item in MutableKeyModel.query.all():
+    item.delete()
+assert len(MutableKeyModel.query.all()) == 0
