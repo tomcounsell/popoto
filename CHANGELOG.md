@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **SortedField ghost entries on partition key change** (#154): `SortedField.on_save()` and `on_delete()` now clean up the old partition's sorted set when a `partition_by` field value changes. Previously, moving an item between partitions (e.g., changing category from A to B) left a ghost entry in the old partition's sorted set, inflating range queries. The fix uses `_saved_field_values` to compute the old partition key and ZREM from the correct sorted set.
+
 - **KeyField index corruption on value mutation** (#149): `KeyField.on_save()` now removes the instance from the old index Set when a field value changes. Previously, mutating a KeyField and calling `save()` left a ghost entry in the old index, causing `filter()` queries to return stale results.
 
 ## [1.0.0b2] - 2026-02-12

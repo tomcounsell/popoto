@@ -575,6 +575,11 @@ except Exception as e:
     always belong to a restaurant, so scoping the price index to the restaurant
     reduces the sorted set size and speeds up range queries.
 
+!!! note "Partition key changes are handled automatically"
+    If you change a partition field's value (e.g., moving an item from one restaurant
+    to another), Popoto automatically removes the entry from the old partition's sorted
+    set and adds it to the new one. No manual cleanup is needed.
+
 !!! note "Deprecation Notice"
     The `sort_by` parameter is deprecated and will be removed in a future major version.
     Use `partition_by` instead. `sort_by` still works but emits a `DeprecationWarning`.

@@ -64,9 +64,9 @@ No prerequisites -- this work has no external dependencies beyond a running Redi
 
 ## Test Cases
 
-### 1. SortedField -- Partition key change leaves orphan in old sorted set
+### 1. SortedField -- Partition key change leaves orphan in old sorted set (**Fixed in #154**)
 
-When `partition_by` is set, changing the partition key field should remove the entry from the old partition's sorted set and add it to the new one. ZADD is idempotent within the same sorted set but cannot clean up a different sorted set.
+When `partition_by` is set, changing the partition key field should remove the entry from the old partition's sorted set and add it to the new one. ZADD is idempotent within the same sorted set but cannot clean up a different sorted set. Fixed by enhancing `on_save()` and `on_delete()` to use `_saved_field_values` for computing the old partition's sorted set key.
 
 ### 2. Relationship -- Changing the related object leaves orphan in old relationship set
 
