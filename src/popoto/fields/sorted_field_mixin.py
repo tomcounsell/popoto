@@ -468,6 +468,11 @@ class SortedFieldMixin:
         its score is simply updated. This handles both create and update
         operations without needing to check existence first.
 
+        When a partition key changes (e.g., moving an item from category A to
+        category B), the sorted set key changes entirely. This method detects
+        the change by comparing saved partition field values to current ones
+        and removes the member from the old partition's sorted set.
+
         Pipeline Support:
             When a pipeline is provided, the ZADD command is queued for batch
             execution. This is crucial for atomic saves where the model hash
@@ -483,14 +488,41 @@ class SortedFieldMixin:
         Returns:
             The pipeline (if provided) or the ZADD result.
         """
+        field = model_instance._meta.fields[field_name]
         sortedset_db_key = cls.get_partitioned_sortedset_db_key(
             model_instance, field_name
         )
 
+        # Clean up old partition sorted set if partition key changed
+        if field.partition_by and hasattr(model_instance, "_saved_field_values"):
+            saved = model_instance._saved_field_values
+            if saved:
+                # Check if any partition field value changed
+                partition_changed = any(
+                    saved.get(pf) is not None
+                    and saved.get(pf) != getattr(model_instance, pf, None)
+                    for pf in field.partition_by
+                )
+                if partition_changed:
+                    # Build the OLD sorted set key using saved partition values
+                    old_ss_key = cls.get_sortedset_db_key(model_instance, field_name)
+                    for pf in field.partition_by:
+                        old_val = saved.get(pf)
+                        if old_val is not None:
+                            old_ss_key.append(str(old_val))
+                    # Use saved_redis_key if available (key may have changed too)
+                    old_member = kwargs.get(
+                        "saved_redis_key",
+                        model_instance.obsolete_redis_key
+                        or model_instance.db_key.redis_key,
+                    )
+                    if isinstance(pipeline, redis.client.Pipeline):
+                        pipeline.zrem(old_ss_key.redis_key, old_member)
+                    else:
+                        POPOTO_REDIS_DB.zrem(old_ss_key.redis_key, old_member)
+
         sortedset_member = model_instance.db_key.redis_key
-        sortedset_score = cls.convert_to_numeric(
-            model_instance._meta.fields[field_name], field_value
-        )
+        sortedset_score = cls.convert_to_numeric(field, field_value)
 
         if isinstance(pipeline, redis.client.Pipeline):
             return pipeline.zadd(
@@ -518,6 +550,11 @@ class SortedFieldMixin:
         cleanup, deleted models would remain in the index as orphaned entries,
         causing ghost results in range queries.
 
+        When called during key migration (saved_redis_key is provided), the
+        partition key values may have changed. In that case, the old sorted set
+        key is computed from _saved_field_values rather than the current
+        (mutated) instance attributes.
+
         ZREM is safe to call even if the member doesn't exist (returns 0),
         so this works correctly even if the index is somehow out of sync.
 
@@ -526,18 +563,48 @@ class SortedFieldMixin:
             field_name: The name of this sorted field.
             field_value: The current field value (used to find the right partition).
             pipeline: Optional Redis pipeline for batch execution.
-            **kwargs: Additional context (unused but accepted for compatibility).
+            **kwargs: Additional context including saved_redis_key for key migrations.
 
         Returns:
             The pipeline (if provided) or the ZREM result.
         """
+        field = model_instance._meta.fields[field_name]
+        saved_redis_key = kwargs.get("saved_redis_key")
+
+        # When cleaning up an obsolete key (key migration), use saved partition
+        # values to compute the old sorted set key, since the instance's current
+        # attribute values may have already been mutated.
+        if (
+            saved_redis_key
+            and field.partition_by
+            and hasattr(model_instance, "_saved_field_values")
+            and model_instance._saved_field_values
+        ):
+            saved = model_instance._saved_field_values
+            partition_changed = any(
+                saved.get(pf) is not None
+                and saved.get(pf) != getattr(model_instance, pf, None)
+                for pf in field.partition_by
+            )
+            if partition_changed:
+                # Build old sorted set key from saved partition values
+                sortedset_db_key = cls.get_sortedset_db_key(model_instance, field_name)
+                for pf in field.partition_by:
+                    old_val = saved.get(pf)
+                    if old_val is not None:
+                        sortedset_db_key.append(str(old_val))
+                if pipeline:
+                    return pipeline.zrem(sortedset_db_key.redis_key, saved_redis_key)
+                else:
+                    return POPOTO_REDIS_DB.zrem(
+                        sortedset_db_key.redis_key, saved_redis_key
+                    )
+
         sortedset_db_key = cls.get_partitioned_sortedset_db_key(
             model_instance, field_name
         )
         # Use saved_redis_key if provided, otherwise fall back to current db_key
-        sortedset_member = kwargs.get(
-            "saved_redis_key", model_instance.db_key.redis_key
-        )
+        sortedset_member = saved_redis_key or model_instance.db_key.redis_key
         if pipeline:
             return pipeline.zrem(sortedset_db_key.redis_key, sortedset_member)
         else:
