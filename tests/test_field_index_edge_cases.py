@@ -719,16 +719,11 @@ class TestRapidCreateMutateDelete:
         assert len(running_members) == 0, "Running status index should be empty"
         assert len(geo_members) == 0, "Geo index should be empty"
 
-        # Class set: when a KeyField changes via save(), the obsolete_redis_key
-        # path deletes the old hash but does NOT remove the old key from the
-        # class set. delete() only removes the current key, leaving an orphan.
+        # Class set should be clean after create-mutate-delete cycle
         count = EdgeLifecycle.query.count()
-        if count > 0:
-            pytest.xfail(
-                "Bug: save() with obsolete_redis_key does not remove old key "
-                "from the class set. After delete(), orphaned class set entries "
-                "remain, inflating query.count(). File as separate issue."
-            )
+        assert count == 0, (
+            f"Class set should be empty after delete, got count={count}"
+        )
 
 
 # ===========================================================================
