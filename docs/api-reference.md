@@ -1076,10 +1076,3 @@ class PopotoException(Exception)
 Base exception for Popoto framework errors. Logs the error message on initialization. Defined in
 `popoto.redis_db`.
 
-### FinanceException
-
-```python
-class FinanceException(Exception)
-```
-
-Raised for finance-related operation errors. Defined in `popoto.exceptions`.
