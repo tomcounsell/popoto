@@ -48,6 +48,31 @@ Because `name` is a `KeyField`, the lookup is a single Redis GET -- the fastest
 possible read operation. See [Making Queries](query.md) for additional ways to
 retrieve instances.
 
+### Changing a KeyField Value
+
+When you change a `KeyField` value and call `save()`, the Redis key itself changes.
+Popoto handles the transition automatically: it deletes the old hash, removes the old
+key from the class set, migrates all field indexes (sorted sets, geo sets, unique
+constraints) from the old key to the new one, and adds the new key to the class set.
+Both full saves and partial saves (`save(update_fields=[...])`) handle this correctly.
+
+```python
+restaurant = Restaurant.create(name="Taco Shack", cuisine="Mexican", rating=4.0)
+
+# Change the KeyField value
+restaurant.name = "Taco Palace"
+restaurant.save()
+
+# Old key is cleaned up, new key is active
+loaded = Restaurant.load(name="Taco Palace")
+print(loaded.cuisine)
+# => "Mexican"
+
+# The old key no longer exists
+print(Restaurant.load(name="Taco Shack"))
+# => None
+```
+
 ## Uniqueness
 
 When two restaurants share the same `name`, the second save overwrites the first. If
