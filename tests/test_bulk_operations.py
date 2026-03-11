@@ -351,3 +351,91 @@ def test_bulk_update_modifies_instances_in_place():
     # Instances should be modified in place
     assert r1.rating == 9.0
     assert r2.rating == 9.0
+
+
+# === Async bulk operations tests ===
+
+
+@pytest.fixture(autouse=True)
+def reset_async_connection():
+    """Reset async Redis connection for each test."""
+    import src.popoto.redis_db as redis_db_module
+    import asyncio
+    redis_db_module._POPOTO_ASYNC_REDIS_DB = None
+    redis_db_module._async_redis_lock = asyncio.Lock()
+
+
+class TestAsyncBulkOperations:
+    """Gap 1: Tests for async bulk operations."""
+
+    @pytest.mark.asyncio
+    async def test_async_bulk_create_basic(self):
+        """Gap 1: async_bulk_create basic functionality."""
+        restaurants = [
+            Restaurant(
+                name="Async Restaurant A", rating=4.0, status="pending", cuisine="Italian"
+            ),
+            Restaurant(
+                name="Async Restaurant B", rating=4.5, status="pending", cuisine="Japanese"
+            ),
+            Restaurant(
+                name="Async Restaurant C", rating=3.8, status="pending", cuisine="Mexican"
+            ),
+        ]
+
+        result = await Restaurant.async_bulk_create(restaurants)
+
+        assert len(result) == 3
+        assert Restaurant.query.count() == 3
+
+        # Verify one can be retrieved by name
+        retrieved = Restaurant.query.get(name="Async Restaurant A", status="pending")
+        assert retrieved is not None
+        assert retrieved.cuisine == "Italian"
+
+    @pytest.mark.asyncio
+    async def test_async_bulk_update_from_all(self):
+        """Gap 1: async_bulk_update on all instances."""
+        # Create 3 restaurants via sync bulk_create
+        Restaurant.bulk_create(
+            [
+                Restaurant(name="Async Update 1", status="pending"),
+                Restaurant(name="Async Update 2", status="pending"),
+                Restaurant(name="Async Update 3", status="pending"),
+            ]
+        )
+
+        # Get all via sync query.all()
+        all_restaurants = Restaurant.query.all()
+
+        # Call async_bulk_update
+        count = await Restaurant.async_bulk_update(all_restaurants, rating=9.0)
+
+        assert count == 3
+
+        # Verify all ratings are 9.0 via sync query
+        for r in Restaurant.query.all():
+            assert r.rating == 9.0
+
+    @pytest.mark.asyncio
+    async def test_async_bulk_delete_from_all(self):
+        """Gap 1: async_bulk_delete on all instances."""
+        # Create 3 restaurants via sync bulk_create
+        Restaurant.bulk_create(
+            [
+                Restaurant(name="Async Delete 1", status="active"),
+                Restaurant(name="Async Delete 2", status="active"),
+                Restaurant(name="Async Delete 3", status="active"),
+            ]
+        )
+
+        # Get all via sync query.all()
+        all_restaurants = Restaurant.query.all()
+
+        # Call async_bulk_delete
+        count = await Restaurant.async_bulk_delete(all_restaurants)
+
+        assert count == 3
+
+        # Verify count is 0
+        assert Restaurant.query.count() == 0
