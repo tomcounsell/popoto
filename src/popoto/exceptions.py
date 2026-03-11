@@ -25,9 +25,3 @@ class SubscriberException(Exception):
     """Raised when a subscriber's message handler fails."""
 
     pass
-
-
-class FinanceException(Exception):
-    """Base exception for all finance module errors."""
-
-    pass
