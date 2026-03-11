@@ -266,12 +266,7 @@ class TestRelationshipChangeOrphan:
         now_in_b = POPOTO_REDIS_DB.sismember(set_key_b, player.db_key.redis_key)
 
         assert now_in_b, "Player should be in team_b's relationship set"
-
-        if still_in_a:
-            pytest.xfail(
-                "Bug: Relationship.on_save() does not remove from old related "
-                "object's index set when relationship changes. File as separate issue."
-            )
+        assert not still_in_a, "Player should be removed from team_a's relationship set"
         assert len(team_a_players) == 0, "Player should not appear in team_a query"
 
 
@@ -760,13 +755,7 @@ class TestRelationshipClearToNone:
 
         # Raw Redis: player should be removed from team's relationship set
         still_in_team = POPOTO_REDIS_DB.sismember(set_key_team, player.db_key.redis_key)
-
-        if still_in_team:
-            pytest.xfail(
-                "Bug: Relationship.on_save() does not remove from old related "
-                "object's index set when relationship is set to None. "
-                "File as separate issue."
-            )
+        assert not still_in_team, "Player should be removed from team's relationship set"
 
         assert (
             len(team_players) == 0

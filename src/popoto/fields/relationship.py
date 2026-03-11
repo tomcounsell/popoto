@@ -239,6 +239,12 @@ class Relationship(Field):
         the Redis Set that indexes which instances point to each related object.
         This is the core mechanism that enables efficient reverse lookups.
 
+        When the relationship value changes (e.g., player.team = team_b), the
+        instance is removed from the old related object's index set before being
+        added to the new one. This prevents ghost entries that would cause stale
+        query results. The old value is detected via ``_saved_field_values``,
+        which stores field values at the last save/load.
+
         The index key follows the pattern:
             `$RelationshipF:ModelClass:field_name:related_db_key`
 
@@ -285,6 +291,38 @@ class Relationship(Field):
                 f"Unexpected field_value type in on_save: {type(field_value)} for {field_name}"
             )
             return pipeline if pipeline else None
+
+        # Remove from old index if the Relationship value changed.
+        # _saved_field_values tracks values at last save/load.  If the current
+        # value differs from the saved value, the old index Set still contains
+        # this instance's key -- remove it to prevent ghost entries in queries.
+        # This mirrors the proven pattern from KeyFieldMixin.on_save() (PR #150).
+        saved_values = getattr(model_instance, "_saved_field_values", {})
+        old_value = saved_values.get(field_name)
+        if old_value is not None and old_value != field_value:
+            # Resolve old value to a related_db_key using the same type-dispatch
+            if isinstance(old_value, Model):
+                old_related_db_key = old_value.db_key
+            elif isinstance(old_value, str):
+                if ":" in old_value:
+                    old_related_db_key = DB_key.from_redis_key(old_value)
+                else:
+                    old_related_db_key = None
+            else:
+                old_related_db_key = None
+
+            if old_related_db_key is not None:
+                old_relationship_set_db_key = DB_key(
+                    cls.get_special_use_field_db_key(model_instance, field_name),
+                    old_related_db_key,
+                )
+                member_key = model_instance.db_key.redis_key
+                if pipeline:
+                    pipeline.srem(old_relationship_set_db_key.redis_key, member_key)
+                else:
+                    POPOTO_REDIS_DB.srem(
+                        old_relationship_set_db_key.redis_key, member_key
+                    )
 
         # on a one-to-many, save the set of many with the related instance
         # add this instance's id to a relationship set based on the related model
