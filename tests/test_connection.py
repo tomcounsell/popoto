@@ -13,6 +13,7 @@ from src.popoto.redis_db import (
     POPOTO_REDIS_DB,
     set_REDIS_DB_settings,
     get_REDIS_DB,
+    check_connection,
 )
 from src.popoto import Model, KeyField, Field
 
@@ -22,19 +23,6 @@ class SimpleModel(Model):
 
     name = KeyField()
     value = Field(type=str, default="")
-
-
-def check_connection() -> bool:
-    """Check if Redis connection is available.
-
-    Returns:
-        True if Redis is reachable, False otherwise.
-    """
-    try:
-        POPOTO_REDIS_DB.ping()
-        return True
-    except (redis.ConnectionError, redis.TimeoutError):
-        return False
 
 
 class TestCheckConnection:
