@@ -40,17 +40,20 @@ class MenuItem(Model):
 
     Demonstrates:
     - AutoKeyField with uuid4 strategy
-    - SortedField for price range queries
+    - KeyField for category (partition key) — exercises PR #159 SortedField partition-key fix
+    - SortedField with partition_by="category" for per-category price queries
     - Relationship to parent model
+
+    Redis key pattern: MenuItem:<category>:<item_id>
     """
 
+    category = KeyField()  # Partition key — must be explicit at creation
     item_id = AutoKeyField(strategy="uuid4")
     name = Field(type=str)
     description = Field(type=str, default="")
-    price = SortedField(type=float)
+    price = SortedField(type=float, partition_by="category")  # Per-category price index
     restaurant = Relationship(model=Restaurant)
     available = Field(type=bool, default=True)
-    category = Field(type=str, default="Main")
 
     def __str__(self) -> str:
         return f"{self.name} (${self.price:.2f})"
@@ -146,12 +149,19 @@ class Order(Model):
         return super().save()
 
     def advance_status(self) -> bool:
-        """Move order to next status in workflow."""
+        """Move order to next status in workflow.
+
+        Uses save(update_fields=["status", "updated_at"]) to demonstrate the
+        partial save code path fixed in PR #162. Only the status and updated_at
+        fields are written; the total SortedField index is unaffected.
+        """
         try:
             current_idx = self._STATUSES.index(self.status)
             if current_idx < len(self._STATUSES) - 2:  # Don't go past 'delivered'
                 self.status = self._STATUSES[current_idx + 1]
-                self.save()
+                self.updated_at = datetime.utcnow().isoformat()
+                # Partial save: only write status + updated_at (PR #162 fix demo)
+                super(Order, self).save(update_fields=["status", "updated_at"])
                 return True
         except ValueError:
             pass

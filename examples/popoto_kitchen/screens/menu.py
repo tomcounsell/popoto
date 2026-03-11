@@ -43,6 +43,7 @@ class MenuScreen(Container):
         with Horizontal(classes="action-bar"):
             yield Button("+ New Item", id="btn-new", variant="primary")
             yield Button("Toggle Available", id="btn-toggle")
+            yield Button("Move Category", id="btn-move-category")
             yield Button("Delete Selected", id="btn-delete", variant="error")
             yield Button("Refresh", id="btn-refresh")
             yield Label("", id="result-count")
@@ -143,7 +144,7 @@ class MenuScreen(Container):
 
                 table.add_row(
                     item.name,
-                    item.category or "Main",
+                    item.category,
                     f"${item.price:.2f}",
                     restaurant_name,
                     "Yes" if item.available else "No",
@@ -193,6 +194,8 @@ class MenuScreen(Container):
             self._create_item()
         elif button_id == "btn-toggle":
             self._toggle_available()
+        elif button_id == "btn-move-category":
+            self._move_category()
         elif button_id == "btn-delete":
             self._delete_selected()
         elif button_id == "btn-refresh":
@@ -242,7 +245,8 @@ class MenuScreen(Container):
         if table.cursor_row is not None:
             try:
                 key = list(table._row_locations.keys())[table.cursor_row]
-                item = MenuItem.query.get(key.value.split(":")[-1])
+                # Use full redis_key: category is now a KeyField (MenuItem:<category>:<item_id>)
+                item = MenuItem.query.get(redis_key=key.value)
                 if item:
                     item.available = not item.available
                     item.save()
@@ -254,13 +258,59 @@ class MenuScreen(Container):
         else:
             self.app.notify("Select an item first", severity="warning")
 
+    def _move_category(self) -> None:
+        """Move selected item to the next category.
+
+        Demonstrates the PR #159 fix: SortedField ghost entries on partition key
+        change. When category (KeyField) changes, the old sorted set entry for
+        MenuItem:_price:<old_category> is removed and a new entry is added to
+        MenuItem:_price:<new_category>.
+        """
+        table = self.query_one("#menu-table", DataTable)
+        if table.cursor_row is None:
+            self.app.notify("Select an item first", severity="warning")
+            return
+
+        try:
+            key = list(table._row_locations.keys())[table.cursor_row]
+            # Use full redis_key since category is now a KeyField
+            item = MenuItem.query.get(redis_key=key.value)
+            if not item:
+                self.app.notify("Item not found", severity="error")
+                return
+
+            old_category = item.category
+
+            # Cycle to the next category in the list
+            if len(CATEGORIES) < 2:
+                self.app.notify("No other categories available", severity="warning")
+                return
+
+            current_idx = CATEGORIES.index(old_category) if old_category in CATEGORIES else 0
+            new_category = CATEGORIES[(current_idx + 1) % len(CATEGORIES)]
+
+            if new_category == old_category:
+                self.app.notify("No other categories available", severity="warning")
+                return
+
+            item.category = new_category
+            item.save()
+            self.refresh_data(filters=self._get_filters())
+            self.app.notify(
+                f"Moved: {item.name} from {old_category} → {new_category}",
+                severity="information",
+            )
+        except Exception as e:
+            self.app.notify(f"Error: {e}", severity="error")
+
     def _delete_selected(self) -> None:
         """Delete the selected menu item."""
         table = self.query_one("#menu-table", DataTable)
         if table.cursor_row is not None:
             try:
                 key = list(table._row_locations.keys())[table.cursor_row]
-                item = MenuItem.query.get(key.value.split(":")[-1])
+                # Use full redis_key since category is now a KeyField
+                item = MenuItem.query.get(redis_key=key.value)
                 if item:
                     name = item.name
                     item.delete()
