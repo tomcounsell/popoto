@@ -471,7 +471,6 @@ class Relationship(Field):
         pipeline = POPOTO_REDIS_DB.pipeline()
 
         for query_param, query_value in query_params.items():
-
             if query_param == f"{field_name}":
                 if not isinstance(query_value, Model):
                     raise QueryException(
