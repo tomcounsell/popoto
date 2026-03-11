@@ -1,5 +1,5 @@
 ---
-status: Ready
+status: Completed
 type: chore
 appetite: Small
 owner: valorengels
@@ -116,11 +116,11 @@ No documentation changes needed — no public API or behavior changes.
 
 ## Success Criteria
 
-- [ ] TC1 contains no `pytest.xfail()` call and asserts `len(old_members) == 0` directly
-- [ ] TC6 contains no `pytest.xfail()` call and asserts `len(old_members) == 0` directly
-- [ ] TC9 contains no `pytest.xfail()` call and asserts `len(old_region_members) == 0` directly
-- [ ] `pytest tests/test_field_index_edge_cases.py` reports 12 passed, 0 xfailed
-- [ ] `grep -c "pytest.xfail" tests/test_field_index_edge_cases.py` outputs `0`
+- [x] TC1 contains no `pytest.xfail()` call and asserts `len(old_members) == 0` directly
+- [x] TC6 contains no `pytest.xfail()` call and asserts `len(old_members) == 0` directly
+- [x] TC9 contains no `pytest.xfail()` call and asserts `len(old_region_members) == 0` directly
+- [x] `pytest tests/test_field_index_edge_cases.py` reports 12 passed, 0 xfailed
+- [x] `grep -c "pytest.xfail" tests/test_field_index_edge_cases.py` outputs `0`
 
 ## Team Orchestration
 
