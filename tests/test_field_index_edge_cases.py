@@ -218,7 +218,9 @@ class TestSortedFieldPartitionKeyChange:
         new_members = POPOTO_REDIS_DB.zrangebyscore(new_ss_key, "-inf", "+inf")
 
         # This is the critical assertion -- old partition should not have orphan
-        assert len(old_members) == 0, "Old partition sorted set should be empty after key change"
+        assert len(old_members) == 0, (
+            "Old partition sorted set should be empty after key change"
+        )
         assert len(new_members) == 1, "Item should be in new partition sorted set"
 
 
@@ -435,7 +437,9 @@ class TestUniqueKeyFieldMutationCleanup:
         # The old email index should be cleaned up
         old_members = POPOTO_REDIS_DB.smembers(old_key)
 
-        assert len(old_members) == 0, "Old email index should be empty after value change"
+        assert len(old_members) == 0, (
+            "Old email index should be empty after value change"
+        )
 
         # Another instance should now be able to use the old email
         item2 = EdgeUniqueItem.create(email="alice@example.com", name="New Alice")
@@ -483,9 +487,9 @@ class TestPartialSaveKeyField:
 
         # After fix for #156, partial save detects obsolete_redis_key and
         # cleans up old index entries properly.
-        assert (
-            len(draft_members) == 0
-        ), "Draft index should be empty after partial save to published"
+        assert len(draft_members) == 0, (
+            "Draft index should be empty after partial save to published"
+        )
 
 
 # ===========================================================================
@@ -521,9 +525,9 @@ class TestPartialSaveIndexCleanup:
         processing_members = POPOTO_REDIS_DB.smembers(processing_key)
 
         # After fix for #156, partial save handles obsolete_redis_key cleanup.
-        assert (
-            len(new_members) == 0
-        ), "New index should be empty after partial save to processing"
+        assert len(new_members) == 0, (
+            "New index should be empty after partial save to processing"
+        )
 
         assert len(processing_members) == 1
 
@@ -574,7 +578,9 @@ class TestCompositeKeyFieldChange:
 
         assert len(new_region_members) == 1, "New region index should have the item"
 
-        assert len(old_region_members) == 0, "Old region index should be empty after composite key change"
+        assert len(old_region_members) == 0, (
+            "Old region index should be empty after composite key change"
+        )
 
         # user_id index should contain the new key, not the old key
         user_members = POPOTO_REDIS_DB.smembers(user_key)
@@ -691,9 +697,7 @@ class TestRapidCreateMutateDelete:
 
         # Class set should be clean after create-mutate-delete cycle
         count = EdgeLifecycle.query.count()
-        assert count == 0, (
-            f"Class set should be empty after delete, got count={count}"
-        )
+        assert count == 0, f"Class set should be empty after delete, got count={count}"
 
 
 # ===========================================================================

@@ -197,7 +197,7 @@ class Subscriber(ABC):
             logger.warning(f"unexpected format: {data_event} " + str(e))
             pass  # message not in expected format, just ignore
         except msgpack.exceptions.FormatError:
-            logger.warning(f'unexpected data format: {data_event["data"]}')
+            logger.warning(f"unexpected data format: {data_event['data']}")
             pass  # message not in expected format, just ignore
         except Exception as e:
             raise SubscriberException(

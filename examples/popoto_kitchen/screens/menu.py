@@ -286,7 +286,9 @@ class MenuScreen(Container):
                 self.app.notify("No other categories available", severity="warning")
                 return
 
-            current_idx = CATEGORIES.index(old_category) if old_category in CATEGORIES else 0
+            current_idx = (
+                CATEGORIES.index(old_category) if old_category in CATEGORIES else 0
+            )
             new_category = CATEGORIES[(current_idx + 1) % len(CATEGORIES)]
 
             if new_category == old_category:

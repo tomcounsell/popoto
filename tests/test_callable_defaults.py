@@ -105,9 +105,9 @@ def test_save_and_load_with_callable_default():
 
     # Load back
     loaded = UUIDModel.query.get(unique_id=str(original_uuid))
-    assert str(loaded.unique_id) == str(
-        original_uuid
-    ), "UUID should match after loading"
+    assert str(loaded.unique_id) == str(original_uuid), (
+        "UUID should match after loading"
+    )
     assert loaded.name == "test1", "Name should match after loading"
 
     # Cleanup

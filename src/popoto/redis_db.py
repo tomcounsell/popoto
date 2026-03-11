@@ -381,8 +381,9 @@ def print_redis_info() -> None:
     """
     logger.info(POPOTO_REDIS_DB.info())
 
-    used_memory, maxmemory = int(POPOTO_REDIS_DB.info()["used_memory"]), int(
-        POPOTO_REDIS_DB.info()["maxmemory"]
+    used_memory, maxmemory = (
+        int(POPOTO_REDIS_DB.info()["used_memory"]),
+        int(POPOTO_REDIS_DB.info()["maxmemory"]),
     )
     maxmemory_human = POPOTO_REDIS_DB.info()["maxmemory_human"]
     if maxmemory and maxmemory > 0:
