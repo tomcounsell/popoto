@@ -464,11 +464,10 @@ class TestPartialSaveKeyField:
     """The partial save path only calls on_save() for listed fields.
     Verify index correctness when a KeyField is in update_fields.
 
-    Note: When a KeyField is part of the Redis key (which it always is),
-    changing it via partial save changes the db_key but the partial save
-    path does NOT handle the obsolete_redis_key cleanup. The on_save()
-    hook uses the new db_key.redis_key for SREM, but the old index set
-    contains the old db_key.redis_key. This is a known limitation.
+    Fixed in #156: The partial save path now detects when the db_key
+    changes (because a KeyField was updated) and performs obsolete key
+    cleanup — deleting old hash, removing old class set entry, and
+    running on_delete for old index entries.
     """
 
     def test_partial_save_updates_keyfield_index(self):
@@ -476,9 +475,7 @@ class TestPartialSaveKeyField:
 
         Since status is a KeyField that participates in the Redis key,
         changing it via update_fields changes the db_key. The partial
-        save path does not handle obsolete_redis_key cleanup, so the
-        old index entry contains a stale member (old db_key). This is
-        a bug: the old status index retains a ghost member."""
+        save path now detects this and cleans up the obsolete key."""
         item = EdgePartialSave.create(status="draft", priority=5, data="doc1")
 
         draft_key = _keyfield_set_key(EdgePartialSave, "status", "draft")
@@ -497,14 +494,11 @@ class TestPartialSaveKeyField:
         # The new index should have the item
         assert len(published_members) >= 1, "Published index should have the item"
 
-        # The old index cleanup fails because on_save SREM uses the new
-        # db_key.redis_key, but the old index set contains the old db_key.
-        if len(draft_members) > 0:
-            pytest.xfail(
-                "Bug: Partial save (update_fields) with a KeyField does not "
-                "properly clean up old index entries because the db_key changes "
-                "but obsolete_redis_key cleanup is not performed. File as separate issue."
-            )
+        # After fix for #156, partial save detects obsolete_redis_key and
+        # cleans up old index entries properly.
+        assert (
+            len(draft_members) == 0
+        ), "Draft index should be empty after partial save to published"
 
 
 # ===========================================================================
@@ -516,16 +510,14 @@ class TestPartialSaveIndexCleanup:
     """Verify the partial save path correctly handles index cleanup
     via _saved_field_values.
 
-    Same root cause as TestPartialSaveKeyField: since status is a KeyField
-    that forms part of the Redis key, partial saves cannot properly clean
-    up old index entries."""
+    Fixed in #156: partial saves now detect obsolete_redis_key and
+    clean up old index entries properly."""
 
     def test_partial_save_multiple_mutations(self):
         """Multiple partial saves should keep indexes consistent.
 
         Since status is a KeyField, each partial save changes the db_key.
-        The SREM in on_save() uses the new db_key but the old index set
-        contains the old db_key, leaving ghost entries."""
+        The fix in #156 ensures obsolete key cleanup happens on each save."""
         item = EdgePartialSave.create(status="new", priority=1, data="item1")
 
         new_key = _keyfield_set_key(EdgePartialSave, "status", "new")
@@ -541,15 +533,10 @@ class TestPartialSaveIndexCleanup:
         new_members = POPOTO_REDIS_DB.smembers(new_key)
         processing_members = POPOTO_REDIS_DB.smembers(processing_key)
 
-        # The old index should be cleaned up, but due to the db_key mismatch
-        # bug the old member (with old db_key) remains
-        if len(new_members) > 0:
-            pytest.xfail(
-                "Bug: Partial save (update_fields) with a KeyField leaves ghost "
-                "entries in old index sets because on_save SREM uses the new "
-                "db_key while the old set contains the old db_key. "
-                "File as separate issue."
-            )
+        # After fix for #156, partial save handles obsolete_redis_key cleanup.
+        assert (
+            len(new_members) == 0
+        ), "New index should be empty after partial save to processing"
 
         assert len(processing_members) == 1
 

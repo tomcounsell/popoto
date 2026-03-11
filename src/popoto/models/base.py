@@ -1046,6 +1046,13 @@ class Model(metaclass=ModelBase):
             # Partial save path: only write listed fields to Redis
             from ..redis_db import ENCODING
 
+            # Detect obsolete key: if any updated field is a KeyField,
+            # the db_key may have changed. We need to clean up the old
+            # key's hash, class set entry, and index entries.
+            obsolete_key = None
+            if self._redis_key != new_db_key.redis_key:
+                obsolete_key = self._redis_key
+
             # Encode all fields, then filter to only update_fields
             full_mapping = encode_popoto_model_obj(self)
             update_field_names_bytes = {
@@ -1057,7 +1064,29 @@ class Model(metaclass=ModelBase):
 
             if isinstance(pipeline, redis.client.Pipeline):
                 pipeline = pipeline.hset(new_db_key.redis_key, mapping=hset_mapping)
-                # Only run on_save for listed fields
+                # If db_key changed, clean up the obsolete key
+                if obsolete_key and obsolete_key != new_db_key.redis_key:
+                    # Remove old index entries using saved field values
+                    for field_name, field in self._meta.fields.items():
+                        field_value = self._saved_field_values.get(
+                            field_name, getattr(self, field_name)
+                        )
+                        pipeline = field.on_delete(
+                            model_instance=self,
+                            field_name=field_name,
+                            field_value=field_value,
+                            pipeline=pipeline,
+                            saved_redis_key=obsolete_key,
+                            **kwargs,
+                        )
+                    # Delete old hash and update class set
+                    pipeline.delete(obsolete_key)
+                    pipeline.srem(self._meta.db_class_set_key.redis_key, obsolete_key)
+                    pipeline.sadd(
+                        self._meta.db_class_set_key.redis_key,
+                        new_db_key.redis_key,
+                    )
+                # Run on_save for listed fields (adds new index entries)
                 for field_name in update_fields:
                     field = self._meta.fields[field_name]
                     pipeline = field.on_save(
@@ -1084,7 +1113,31 @@ class Model(metaclass=ModelBase):
                 # Use internal pipeline for atomic execution
                 internal_pipeline = POPOTO_REDIS_DB.pipeline()
                 internal_pipeline.hset(new_db_key.redis_key, mapping=hset_mapping)
-                # Only run on_save for listed fields
+                # If db_key changed, clean up the obsolete key
+                if obsolete_key and obsolete_key != new_db_key.redis_key:
+                    # Remove old index entries using saved field values
+                    for field_name, field in self._meta.fields.items():
+                        field_value = self._saved_field_values.get(
+                            field_name, getattr(self, field_name)
+                        )
+                        field.on_delete(
+                            model_instance=self,
+                            field_name=field_name,
+                            field_value=field_value,
+                            pipeline=internal_pipeline,
+                            saved_redis_key=obsolete_key,
+                            **kwargs,
+                        )
+                    # Delete old hash and update class set
+                    internal_pipeline.delete(obsolete_key)
+                    internal_pipeline.srem(
+                        self._meta.db_class_set_key.redis_key, obsolete_key
+                    )
+                    internal_pipeline.sadd(
+                        self._meta.db_class_set_key.redis_key,
+                        new_db_key.redis_key,
+                    )
+                # Run on_save for listed fields (adds new index entries)
                 for field_name in update_fields:
                     field = self._meta.fields[field_name]
                     field.on_save(
