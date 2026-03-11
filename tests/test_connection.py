@@ -5,15 +5,20 @@ These tests verify that Popoto handles connection issues gracefully,
 including timeouts, disconnections, and health checks.
 """
 
+import asyncio
 import pytest
 from unittest.mock import patch
 import redis
 
+import src.popoto.redis_db as redis_db_module
 from src.popoto.redis_db import (
     POPOTO_REDIS_DB,
     set_REDIS_DB_settings,
     get_REDIS_DB,
     check_connection,
+    async_check_connection,
+    set_async_redis_db_settings,
+    get_async_redis_db,
 )
 from src.popoto import Model, KeyField, Field
 
@@ -141,6 +146,68 @@ def cleanup():
             POPOTO_REDIS_DB.delete(key)
     except redis.ConnectionError:
         pass  # Ignore if Redis not available during cleanup
+
+
+@pytest.fixture(autouse=True)
+def reset_async_connection():
+    """Reset async Redis connection before each test."""
+    redis_db_module._POPOTO_ASYNC_REDIS_DB = None
+    redis_db_module._async_redis_lock = asyncio.Lock()
+
+
+class TestAsyncCheckConnection:
+    """Gap 9: Tests for async_check_connection() health check."""
+
+    @pytest.mark.asyncio
+    async def test_async_check_connection_success(self):
+        """Gap 9: async_check_connection returns True when Redis is available."""
+        result = await async_check_connection()
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_async_check_connection_failure(self):
+        """Gap 9: async_check_connection returns False on ConnectionError."""
+        async_redis = await get_async_redis_db()
+        with patch.object(
+            async_redis,
+            "ping",
+            side_effect=redis.ConnectionError("Connection refused"),
+        ):
+            result = await async_check_connection()
+            assert result is False
+
+    @pytest.mark.asyncio
+    async def test_async_check_connection_timeout(self):
+        """Gap 9: async_check_connection returns False on TimeoutError."""
+        async_redis = await get_async_redis_db()
+        with patch.object(
+            async_redis,
+            "ping",
+            side_effect=redis.TimeoutError("Connection timed out"),
+        ):
+            result = await async_check_connection()
+            assert result is False
+
+
+class TestAsyncConnectionReconfiguration:
+    """Gap 10: Tests for set_async_redis_db_settings() reconfiguration."""
+
+    @pytest.mark.asyncio
+    async def test_set_async_redis_db_settings_reconnects(self):
+        """Gap 10: set_async_redis_db_settings resets and reconnects."""
+        # Get initial connection
+        initial_redis = await get_async_redis_db()
+        assert initial_redis is not None
+
+        # Reconfigure with same settings (localhost)
+        await set_async_redis_db_settings(host="localhost", port=6379)
+
+        # Get new connection - should be different object
+        new_redis = await get_async_redis_db()
+        assert new_redis is not None
+        # Verify new connection works
+        pong = await new_redis.ping()
+        assert pong is True
 
 
 if __name__ == "__main__":

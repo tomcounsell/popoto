@@ -498,6 +498,34 @@ are processed per pipeline execution.
 See [Bulk Operations](api-reference.md#bulk-operations) in the API Reference for complete
 documentation.
 
+## Test Coverage
+
+The async API is thoroughly tested across four test files covering all public methods
+and edge cases. Each scenario listed below has at least one dedicated test.
+
+| Category | Tested Scenarios |
+|----------|-----------------|
+| **CRUD basics** | `async_create`, `async_save`, `async_delete`, `async_load`, `async_get` |
+| **Query methods** | `async_filter`, `async_all`, `async_count`, `async_keys` |
+| **SortedField queries** | `__lte`, `__lt`, `__gt`, `__gte`, range (between), `limit`, `order_by` |
+| **GeoField queries** | Radius search via `async_filter` with coordinates and distance units |
+| **Relationship fields** | Lazy-loading related objects through async queries |
+| **Projection** | `values=` parameter with `async_filter` and `async_all` |
+| **Error paths** | `async_get` returns `None` on miss; raises `QueryException` on multiple matches |
+| **Bulk operations** | `async_bulk_create`, `async_bulk_update`, `async_bulk_delete` |
+| **Connection management** | `async_check_connection` (success, failure, timeout), `set_async_redis_db_settings` |
+| **Key scanning** | `async_scan_keys` pattern matching, `async_keys` with `catchall` and `clean` flags |
+| **Client-side filtering** | Filtering on plain `Field` (non-indexed) via `async_filter` |
+| **Meta options** | `Meta.order_by` default sorting, `Meta.ttl` automatic expiration |
+| **Atomicity** | Pipeline-based `async_save`, concurrent writes (last-write-wins) |
+| **Index maintenance** | `async_rebuild_indexes` via `to_thread` |
+
+Run the async tests with:
+
+```bash
+pytest tests/test_async.py tests/test_connection.py tests/test_bulk_operations.py tests/test_migrations.py -v
+```
+
 ## See Also
 
 - [Models and Fields](fields.md) -- define your data models
