@@ -212,7 +212,11 @@ $RelationshipF:MenuItem:restaurant:Restaurant:Burger Palace
 ```
 
 Indexes are created on `save()`, updated when the relationship changes,
-and cleaned up on `delete()`.
+and cleaned up on `delete()`. When you reassign a relationship (e.g.,
+moving a `MenuItem` from one `Restaurant` to another), `save()` removes
+the instance from the old relationship's index set and adds it to the
+new one. This ensures that `filter(restaurant=old_restaurant)` no longer
+returns the moved item.
 
 ### Circular Reference Protection
 

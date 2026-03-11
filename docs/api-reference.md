@@ -58,22 +58,39 @@ restaurant = Restaurant.create(name="Taco Town", cuisine="Mexican", rating=4.2)
 ### Model.save()
 
 ```python
-Model.save(pipeline: redis.client.Pipeline = None, ignore_errors: bool = False, **kwargs)
+Model.save(
+    pipeline: redis.client.Pipeline = None,
+    ignore_errors: bool = False,
+    skip_auto_now: bool = False,
+    update_fields: list = None,
+    **kwargs,
+)
 ```
 
 Persist the instance to Redis using `HSET`. Also triggers all field `on_save` hooks (sorted-set indexes,
 geo indexes, relationship sets, unique constraints, etc.).
 
+If a `KeyField` value has changed since the instance was loaded, `save()` automatically handles the key
+migration: it deletes the old Redis hash, removes the old key from the class set, migrates all field
+indexes to the new key, and adds the new key to the class set. This applies to both full saves and
+partial saves via `update_fields`.
+
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `pipeline` | `redis.client.Pipeline` | Optional pipeline for batching. |
 | `ignore_errors` | `bool` | If `True`, log validation errors instead of raising `ModelException`. |
+| `skip_auto_now` | `bool` | If `True`, suppress `auto_now` timestamp updates. Useful during migrations. |
+| `update_fields` | `list` | Optional list of field names for partial save. Only the listed fields are written to Redis and only their `on_save` hooks fire. An empty list is a no-op. `auto_now` fields are excluded unless explicitly listed. |
 
 **Returns:** Redis `HSET` response (int) or pipeline.
 
 ```python
 restaurant = Restaurant(name="Sushi Spot", cuisine="Japanese", rating=4.8)
 restaurant.save()
+
+# Partial save -- only update the rating field
+restaurant.rating = 4.9
+restaurant.save(update_fields=["rating"])
 ```
 
 ### Model.delete()
