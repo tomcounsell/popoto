@@ -39,6 +39,7 @@ class RestaurantsScreen(Container):
         with Horizontal(classes="action-bar"):
             yield Button("+ New Restaurant", id="btn-new", variant="primary")
             yield Button("Edit Selected", id="btn-edit")
+            yield Button("Rename", id="btn-rename")
             yield Button("Delete Selected", id="btn-delete", variant="error")
             yield Button("Refresh", id="btn-refresh")
             yield Label("", id="result-count")
@@ -144,6 +145,8 @@ class RestaurantsScreen(Container):
             self._create_restaurant()
         elif button_id == "btn-edit":
             self._edit_selected()
+        elif button_id == "btn-rename":
+            self._rename_restaurant()
         elif button_id == "btn-delete":
             self._delete_selected()
         elif button_id == "btn-refresh":
@@ -211,14 +214,12 @@ class RestaurantsScreen(Container):
             self.app.notify(f"Error creating restaurant: {e}", severity="error")
 
     def _edit_selected(self) -> None:
-        """Edit the selected restaurant."""
+        """Edit the selected restaurant (toggles active status)."""
         table = self.query_one("#restaurants-table", DataTable)
         if table.cursor_row is not None:
             try:
-                row_key = table.get_row_at(table.cursor_row)
-                # For now, just toggle active status
                 key = list(table._row_locations.keys())[table.cursor_row]
-                restaurant = Restaurant.query.get(key.value.split(":")[-1])
+                restaurant = Restaurant.query.get(redis_key=key.value)
                 if restaurant:
                     restaurant.active = not restaurant.active
                     restaurant.save()
@@ -230,13 +231,53 @@ class RestaurantsScreen(Container):
         else:
             self.app.notify("Select a restaurant first", severity="warning")
 
+    def _rename_restaurant(self) -> None:
+        """Rename the selected restaurant to a newly generated name.
+
+        Demonstrates the PR #161 fix: save() removes the obsolete key from the
+        class set when a KeyField value changes. After rename, Restaurant.query.all()
+        returns the record under the new key and the old key is gone.
+
+        Uses programmatic name generation (no modal dialog) to keep demo simple
+        while still exercising the KeyField rename code path.
+        """
+        import random
+        from ..seed import restaurant_name
+
+        table = self.query_one("#restaurants-table", DataTable)
+        if table.cursor_row is None:
+            self.app.notify("Select a restaurant first", severity="warning")
+            return
+
+        try:
+            key = list(table._row_locations.keys())[table.cursor_row]
+            # Restaurant.name is a KeyField so use full redis_key lookup
+            restaurant = Restaurant.query.get(redis_key=key.value)
+            if not restaurant:
+                self.app.notify("Restaurant not found", severity="error")
+                return
+
+            old_name = restaurant.name
+
+            # Generate a new name (try twice to avoid collision with current name)
+            new_name = restaurant_name(restaurant.cuisine)
+            if new_name == old_name:
+                new_name = restaurant_name(restaurant.cuisine)
+
+            restaurant.name = new_name
+            restaurant.save()
+            self.refresh_data()
+            self.app.notify(f"Renamed to: {new_name}", severity="information")
+        except Exception as e:
+            self.app.notify(f"Error: {e}", severity="error")
+
     def _delete_selected(self) -> None:
         """Delete the selected restaurant."""
         table = self.query_one("#restaurants-table", DataTable)
         if table.cursor_row is not None:
             try:
                 key = list(table._row_locations.keys())[table.cursor_row]
-                restaurant = Restaurant.query.get(key.value.split(":")[-1])
+                restaurant = Restaurant.query.get(redis_key=key.value)
                 if restaurant:
                     name = restaurant.name
                     restaurant.delete()

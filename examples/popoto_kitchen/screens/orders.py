@@ -202,7 +202,7 @@ class OrdersScreen(Container):
         if table.cursor_row is not None:
             try:
                 key = list(table._row_locations.keys())[table.cursor_row]
-                return Order.query.get(key.value.split(":")[-1])
+                return Order.query.get(redis_key=key.value)
             except Exception:
                 pass
         return None
@@ -277,7 +277,13 @@ class OrdersScreen(Container):
             self.app.notify("Select an order first", severity="warning")
 
     def _assign_driver(self) -> None:
-        """Assign a driver to the selected order."""
+        """Assign a driver to the selected order.
+
+        Demonstrates the PR #163 fix: Relationship.on_save() index cleanup on
+        value change. When replacing an existing driver, the order key is removed
+        from the old driver's relationship index and added to the new driver's index.
+        The notification shows the old → new driver name so the replacement is visible.
+        """
         import random
 
         order = self._get_selected_order()
@@ -289,6 +295,14 @@ class OrdersScreen(Container):
             self.app.notify("Order is already complete", severity="warning")
             return
 
+        # Capture old driver before replacing (for replacement notification)
+        old_driver_name = None
+        try:
+            if order.driver:
+                old_driver_name = order.driver.name
+        except Exception:
+            pass
+
         # Get active drivers
         active_drivers = [d for d in Driver.query.all() if d.active]
         if not active_drivers:
@@ -297,11 +311,28 @@ class OrdersScreen(Container):
 
         # Assign random driver (in real app, would use geo to find nearest)
         driver = random.choice(active_drivers)
+
+        # Guard: don't reassign the same driver
+        if old_driver_name and old_driver_name == driver.name:
+            self.app.notify(
+                f"Driver already assigned: {driver.name}", severity="warning"
+            )
+            return
+
         try:
             order.driver = driver
             order.save()
             self.refresh_data(filters=self._get_filters())
-            self.app.notify(f"Assigned driver: {driver.name}", severity="information")
+            if old_driver_name:
+                # Replacement: show old → new (PR #163 fix is exercised here)
+                self.app.notify(
+                    f"Replaced driver: {old_driver_name} → {driver.name}",
+                    severity="information",
+                )
+            else:
+                self.app.notify(
+                    f"Assigned: {driver.name}", severity="information"
+                )
         except Exception as e:
             self.app.notify(f"Error assigning driver: {e}", severity="error")
 
