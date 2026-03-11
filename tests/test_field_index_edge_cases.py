@@ -218,11 +218,7 @@ class TestSortedFieldPartitionKeyChange:
         new_members = POPOTO_REDIS_DB.zrangebyscore(new_ss_key, "-inf", "+inf")
 
         # This is the critical assertion -- old partition should not have orphan
-        if len(old_members) > 0:
-            pytest.xfail(
-                "Bug: SortedField.on_save() does not clean up old partition "
-                "sorted set when partition key changes. File as separate issue."
-            )
+        assert len(old_members) == 0, "Old partition sorted set should be empty after key change"
         assert len(new_members) == 1, "Item should be in new partition sorted set"
 
 
@@ -439,11 +435,7 @@ class TestUniqueKeyFieldMutationCleanup:
         # The old email index should be cleaned up
         old_members = POPOTO_REDIS_DB.smembers(old_key)
 
-        if len(old_members) > 0:
-            pytest.xfail(
-                "Bug: UniqueKeyField index cleanup on value change does not "
-                "remove old index entry. File as separate issue."
-            )
+        assert len(old_members) == 0, "Old email index should be empty after value change"
 
         # Another instance should now be able to use the old email
         item2 = EdgeUniqueItem.create(email="alice@example.com", name="New Alice")
@@ -582,11 +574,7 @@ class TestCompositeKeyFieldChange:
 
         assert len(new_region_members) == 1, "New region index should have the item"
 
-        if len(old_region_members) > 0:
-            pytest.xfail(
-                "Bug: Composite key change does not clean up old region index. "
-                "File as separate issue."
-            )
+        assert len(old_region_members) == 0, "Old region index should be empty after composite key change"
 
         # user_id index should contain the new key, not the old key
         user_members = POPOTO_REDIS_DB.smembers(user_key)
