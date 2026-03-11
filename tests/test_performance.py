@@ -51,5 +51,5 @@ for checkpoint, timestamp in time_checkpoints.items():
     if checkpoint == "started":
         print(f"{'%8.1f' % 0.0} starting performance test")
     else:
-        print(f"{'%8.1f' % ((timestamp - last_timestamp)*1000)} ms for {checkpoint}")
+        print(f"{'%8.1f' % ((timestamp - last_timestamp) * 1000)} ms for {checkpoint}")
     last_timestamp = timestamp

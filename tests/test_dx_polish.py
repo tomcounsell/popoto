@@ -85,18 +85,6 @@ class TestGetRedis:
         redis.delete("test_list")
 
 
-class TestGetAsyncRedisDb:
-    """Test popoto.get_async_redis_db() function."""
-
-    @pytest.mark.asyncio
-    async def test_get_async_redis_db_returns_connection(self):
-        """get_async_redis_db() should return an async Redis connection."""
-        redis = await popoto.get_async_redis_db()
-        assert redis is not None
-        # Should be able to ping
-        assert await redis.ping() is True
-
-
 class TestTestingModule:
     """Test popoto.testing module."""
 

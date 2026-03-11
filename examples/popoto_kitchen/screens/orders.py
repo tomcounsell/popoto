@@ -330,9 +330,7 @@ class OrdersScreen(Container):
                     severity="information",
                 )
             else:
-                self.app.notify(
-                    f"Assigned: {driver.name}", severity="information"
-                )
+                self.app.notify(f"Assigned: {driver.name}", severity="information")
         except Exception as e:
             self.app.notify(f"Error assigning driver: {e}", severity="error")
 

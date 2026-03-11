@@ -97,9 +97,9 @@ N = 1000
 
 def test_baseline_save():
     """Measure save() with simplest possible model."""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"1. BASELINE: SimpleModel save ({N} iterations)")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     POPOTO_REDIS_DB.flushdb()
 
     time_operation(lambda i: SimpleModel(key=f"k{i}").save(), N, "SimpleModel.save()")
@@ -107,9 +107,9 @@ def test_baseline_save():
 
 def test_unique_field_save():
     """Measure save() overhead from unique field SMEMBERS check."""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"2. UNIQUE FIELD: UniqueModel save ({N} iterations)")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     POPOTO_REDIS_DB.flushdb()
 
     time_operation(
@@ -119,9 +119,9 @@ def test_unique_field_save():
 
 def test_many_fields_save():
     """Measure per-field validation cost."""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"3. MANY FIELDS: ManyFieldsModel save ({N} iterations)")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     POPOTO_REDIS_DB.flushdb()
 
     time_operation(
@@ -145,9 +145,9 @@ def test_many_fields_save():
 
 def test_indexed_save():
     """Measure unique_together index check overhead."""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"4. INDEXED: IndexedModel save ({N} iterations)")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     POPOTO_REDIS_DB.flushdb()
 
     time_operation(
@@ -159,9 +159,9 @@ def test_indexed_save():
 
 def test_unique_field_scaling():
     """Measure if SMEMBERS cost grows as unique index SET grows."""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("5. SCALING: UniqueModel SMEMBERS cost as data grows")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     POPOTO_REDIS_DB.flushdb()
 
     # Pre-populate with increasing amounts of data, then measure save time
@@ -190,9 +190,9 @@ def test_unique_field_scaling():
 
 def test_is_valid_isolation():
     """Measure is_valid() alone vs full save()."""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("6. ISOLATION: is_valid() vs pre_save() vs save()")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     POPOTO_REDIS_DB.flushdb()
 
     instances = [
@@ -224,9 +224,9 @@ def test_is_valid_isolation():
 
 def test_smembers_vs_sismember():
     """Compare SMEMBERS (current) vs SISMEMBER (proposed) for unique check."""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("7. OPTIMIZATION: SMEMBERS vs SISMEMBER lookup")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     POPOTO_REDIS_DB.flushdb()
 
     # Create a SET with 1000 members (simulating a popular unique field value index)
@@ -272,9 +272,9 @@ def test_smembers_vs_sismember():
 
 def test_double_validation_overhead():
     """Measure cost of duplicate validation in is_valid() loop."""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("8. DUPLICATE WORK: is_valid() iterates fields twice")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     # Count how many times field attributes are accessed per save
     access_count = {"getattr": 0}
@@ -335,6 +335,6 @@ if __name__ == "__main__":
     test_smembers_vs_sismember()
     test_double_validation_overhead()
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("AUDIT COMPLETE")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")

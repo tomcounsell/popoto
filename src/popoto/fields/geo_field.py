@@ -435,7 +435,6 @@ class GeoField(Field):
         member, radius, unit = None, 1, "m"
         with_distances = False
         for query_param, query_value in query_params.items():
-
             if query_param == f"{field_name}":
                 if isinstance(query_value, GeoField.Coordinates):
                     coordinates = query_value

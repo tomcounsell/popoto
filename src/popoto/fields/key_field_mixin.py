@@ -427,7 +427,6 @@ class KeyFieldMixin:
         ].get_special_use_field_db_key(model, field_name)
 
         for query_param, query_value in query_params.items():
-
             if query_param.endswith("__in"):
                 # Use SUNION for efficient server-side set union (single command vs N SMEMBERS)
                 set_keys = [
