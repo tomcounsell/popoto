@@ -1157,7 +1157,11 @@ class Model(metaclass=ModelBase):
                         saved_redis_key=self.obsolete_redis_key,
                         **kwargs,
                     )
-                pipeline.delete(self.obsolete_redis_key)  # 4
+                pipeline = pipeline.srem(
+                    self._meta.db_class_set_key.redis_key,
+                    self.obsolete_redis_key,
+                )  # 4a - remove old key from class set
+                pipeline.delete(self.obsolete_redis_key)  # 4b
                 self.obsolete_redis_key = None
             for field_name, field in self._meta.fields.items():  # 5
                 pipeline = field.on_save(  # 5
@@ -1224,7 +1228,11 @@ class Model(metaclass=ModelBase):
                         saved_redis_key=self.obsolete_redis_key,
                         **kwargs,
                     )
-                internal_pipeline.delete(self.obsolete_redis_key)  # 4
+                internal_pipeline.srem(
+                    self._meta.db_class_set_key.redis_key,
+                    self.obsolete_redis_key,
+                )  # 4a - remove old key from class set
+                internal_pipeline.delete(self.obsolete_redis_key)  # 4b
                 self.obsolete_redis_key = None
 
             for field_name, field in self._meta.fields.items():  # 5
