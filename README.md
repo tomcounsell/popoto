@@ -127,11 +127,9 @@ Popoto ORM is released under the MIT Open Source license.
 
 # Popoto Community
 
-Please post your questions on [Stack Overflow](http://stackoverflow.com/questions/tagged/popoto).
+Questions, bug reports, and feature requests are welcome on [GitHub Issues](https://github.com/tomcounsell/popoto/issues) and [GitHub Discussions](https://github.com/tomcounsell/popoto/discussions). Contributions via pull request are encouraged.
 
 ![](/static/popoto.png)
 
 Popoto gets its name from the [Maui dolphin](https://en.wikipedia.org/wiki/M%C4%81ui_dolphin) subspecies - the world's smallest dolphin subspecies.
-Because dolphins are fast moving, agile, and work together in social groups. In the same way, Popoto wraps Redis and RedisGraph to make it easy to manage streaming timeseries data on a social graph.
-
-For help building applications with Python/Redis, contact [Tom Counsell](https://tomcounsell.com) on [LinkedIn.com/in/tomcounsell](https://linkedin.com/in/tomcounsell)
+Because dolphins are fast moving, agile, and work together in social groups. In the same way, Popoto wraps Redis and Valkey to make it easy to manage streaming timeseries data and object persistence.
