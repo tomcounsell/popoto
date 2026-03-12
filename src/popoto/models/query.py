@@ -111,6 +111,8 @@ class QueryBuilder:
         self._limit_value = None
         self._order_by_value = None
         self._values_tuple = None
+        self._computed_sort_fn = None
+        self._computed_sort_reverse = False
 
     def filter(self, *args, **kwargs) -> "QueryBuilder":
         """Add filter criteria and return a new QueryBuilder.
@@ -149,6 +151,8 @@ class QueryBuilder:
         new_builder._limit_value = self._limit_value
         new_builder._order_by_value = self._order_by_value
         new_builder._values_tuple = self._values_tuple
+        new_builder._computed_sort_fn = self._computed_sort_fn
+        new_builder._computed_sort_reverse = self._computed_sort_reverse
         return new_builder
 
     def limit(self, n: int) -> "QueryBuilder":
@@ -196,16 +200,78 @@ class QueryBuilder:
         self._values_tuple = fields
         return self
 
+    def computed_sort(self, fn, reverse: bool = False) -> "QueryBuilder":
+        """Sort results using a caller-provided key function.
+
+        Applies a Python-side sort after fetching results from Redis, before
+        applying limit(). This enables sorting by computed/derived values that
+        are not stored as indexed fields.
+
+        When both computed_sort() and order_by() are set, computed_sort() takes
+        precedence and order_by() is ignored.
+
+        Performance note: This is O(N log N) on the full result set before
+        limiting. For large result sets (>10K records), consider using
+        SortedField indexes instead.
+
+        Args:
+            fn: A callable that takes a model instance (or dict if values()
+                is used) and returns a sort key. Must not be None.
+            reverse: If True, sort in descending order. Default is False.
+
+        Returns:
+            Self for method chaining.
+
+        Raises:
+            TypeError: If fn is None.
+
+        Example:
+            # Sort by a computed activation score
+            results = (
+                Model.query.filter(status="active")
+                .computed_sort(lambda x: x.priority * 0.5 + x.score * 0.5,
+                               reverse=True)
+                .limit(10)
+                .all()
+            )
+        """
+        if fn is None:
+            raise TypeError("computed_sort() requires a callable, got None")
+        self._computed_sort_fn = fn
+        self._computed_sort_reverse = reverse
+        return self
+
     def all(self) -> list:
         """Execute the query and return all matching results.
 
         Combines all accumulated filters, ordering, and limits into a single
-        query execution.
+        query execution. When computed_sort() is set, it takes precedence over
+        order_by() and applies after fetch but before limit.
 
         Returns:
             List of Model instances, or list of dicts if values() was called.
         """
         kwargs = self._filters.copy()
+
+        if self._computed_sort_fn is not None:
+            # When computed_sort is active:
+            # 1. Remove order_by (computed_sort takes precedence)
+            # 2. Remove limit (we need all results to sort, then slice)
+            if self._values_tuple is not None:
+                kwargs["values"] = self._values_tuple
+            results = self._query._execute_filter(q_objects=self._q_objects, **kwargs)
+            # Apply computed sort (O(N log N) on full result set)
+            results = sorted(
+                results,
+                key=self._computed_sort_fn,
+                reverse=self._computed_sort_reverse,
+            )
+            # Apply limit after sorting
+            if self._limit_value is not None:
+                results = results[: self._limit_value]
+            return results
+
+        # Standard path: no computed_sort
         if self._limit_value is not None:
             kwargs["limit"] = self._limit_value
         if self._order_by_value is not None:
