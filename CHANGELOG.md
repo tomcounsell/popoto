@@ -5,6 +5,13 @@ All notable changes to Popoto will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1](https://github.com/tomcounsell/popoto/compare/popoto-v1.0.0...popoto-v1.0.1) (2026-03-12)
+
+
+### Bug Fixes
+
+* update README community section ([8627346](https://github.com/tomcounsell/popoto/commit/8627346dbcf93b952cb33778405678fb773172c3))
+
 ## [1.0.0] - 2026-03-11
 
 Popoto 1.0.0 is the first General Availability release. It marks the project's graduation from beta to a stable, production-ready Redis/Valkey ORM with Django-like model syntax. This release consolidates all features and fixes from the beta series (1.0.0b1, 1.0.0b2) plus additional hardening work.
