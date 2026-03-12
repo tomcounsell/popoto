@@ -1,5 +1,5 @@
 ---
-status: Planning
+status: Implemented
 type: feature
 appetite: Small
 owner: Solo dev

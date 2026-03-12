@@ -194,6 +194,7 @@ The `QueryBuilder` returned by `filter()` supports these chainable methods:
 | `order_by(field)` | Set sort field (prefix with "-" for descending) |
 | `limit(n)` | Set maximum number of results |
 | `values(*fields)` | Return dicts with specified fields instead of model instances |
+| `computed_sort(fn, reverse)` | Sort by a Python key function (applied after fetch, before limit) |
 | `all()` | Execute query and return all results as a list |
 | `first()` | Execute query and return first result or None |
 | `count()` | Count matching results without loading objects |
@@ -270,6 +271,46 @@ restaurant_data = (
 )
 # => [{"name": "Sushi Zen", "rating": 4.8}, {"name": "Burger Palace", "rating": 4.5}]
 ```
+
+### Sorting by Computed Values
+
+Use `computed_sort()` to sort results by a value computed in Python rather than a stored
+field. The sort is applied after fetching results from Redis but before `limit()`, so you
+get the correct top-N results.
+
+```python
+# Sort restaurants by a weighted score combining rating and review count
+results = (
+    Restaurant.query
+    .filter(active=True)
+    .computed_sort(lambda r: r.rating * 0.7 + r.review_count * 0.3, reverse=True)
+    .limit(10)
+    .all()
+)
+```
+
+The `fn` argument is any callable that takes a model instance (or dict when using
+`values()`) and returns a sort key. Set `reverse=True` for descending order.
+
+```python
+# Works with values() projection -- fn receives dicts
+data = (
+    MenuItem.query
+    .filter(available=True)
+    .computed_sort(lambda d: d["price"] / d["rating"], reverse=False)
+    .values("name", "price", "rating")
+    .limit(5)
+    .all()
+)
+```
+
+When both `computed_sort()` and `order_by()` are set, `computed_sort()` takes precedence
+and `order_by()` is ignored (with a warning logged).
+
+!!! note "Performance"
+    `computed_sort()` applies a Python `sorted()` call (O(N log N)) on the full result
+    set before slicing with `limit()`. For large result sets (>10K records), prefer
+    `SortedField` indexes which leverage Redis sorted sets for O(log N + M) performance.
 
 ### Backward Compatibility
 
