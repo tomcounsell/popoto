@@ -1,0 +1,1049 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="author" content="Tom Counsell" />
+      <link rel="shortcut icon" href="../img/favicon.ico" />
+    <title>Async Operations - Popoto Documentation</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Async Operations";
+        var mkdocs_page_input_path = "async.md";
+        var mkdocs_page_url = null;
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/markdown.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/python.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/bash.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/html.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href=".." class="icon icon-home"> Popoto Documentation
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="..">Home</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="..#simple-example">Simple Example</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="..#features">Features</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="..#getting-started">Getting Started</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="..#install">Install</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="..#define-a-model">Define a Model</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="..#create-instances">Create Instances</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="..#retrieve-instances">Retrieve Instances</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="..#delete-instances">Delete Instances</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="..#async-operations">Async Operations</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../configuration/">Configuration</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#redisvalkey-connection">Redis/Valkey Connection</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#using-redis_url-recommended">Using REDIS_URL (Recommended)</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#default-connection">Default Connection</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#reconfiguring-at-runtime">Reconfiguring at Runtime</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#accessing-the-connection-directly">Accessing the Connection Directly</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#debugging">Debugging</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#print-redis-info">Print Redis Info</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#redisvalkey-cli">Redis/Valkey CLI</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#environment-variables">Environment Variables</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#thread-safety">Thread Safety</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#what-is-thread-safe">What IS Thread-Safe</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#what-is-not-thread-safe">What is NOT Thread-Safe</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#best-practices">Best Practices</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#logging">Logging</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#environment-variable">Environment Variable</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#programmatic-configuration">Programmatic Configuration</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#logger-reference">Logger Reference</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#integration-with-frameworks">Integration with Frameworks</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../fields/">Models and Fields</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#keyfield">KeyField</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../fields/#changing-a-keyfield-value">Changing a KeyField Value</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#uniqueness">Uniqueness</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../fields/#autokeyfield-id-strategies">AutoKeyField ID Strategies</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../fields/#uuid4-default">UUID4 (Default)</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../fields/#ulid-time-sortable">ULID (Time-Sortable)</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../fields/#ksuid-time-sortable">KSUID (Time-Sortable)</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../fields/#choosing-a-strategy">Choosing a Strategy</a>
+    </li>
+        </ul>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#composite-keys">Composite Keys</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#models-without-keyfields">Models Without KeyFields</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#field">Field</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#named-field-shortcuts">Named Field Shortcuts</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#null-values">Null Values</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#default-values">Default Values</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#string-max-length">String Max Length</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#sortedfield">SortedField</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#sortedkeyfield">SortedKeyField</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#partition_by">partition_by</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#datetimefield">DatetimeField</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#timestampable-mixin">Timestampable Mixin</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#geofield">GeoField</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#query-with-distances">Query with Distances</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#dataframefield">DataFrameField</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#reserved-field-names">Reserved Field Names</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#model-methods">Model Methods</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../fields/#creating-and-saving">Creating and Saving</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../fields/#loading">Loading</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../fields/#updating">Updating</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../fields/#deleting">Deleting</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../fields/#validation">Validation</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../fields/#the-db_key-property">The db_key Property</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../meta/">Model Meta Options</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#when-to-use-meta-options">When to Use Meta Options</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#order_by">order_by</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../meta/#override-per-query">Override per Query</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#ttl">ttl</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#instance-level-ttl">Instance-Level TTL</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#absolute-expiration">Absolute Expiration</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#indexes">indexes</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../meta/#non-unique-indexes">Non-Unique Indexes</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../meta/#null-handling">NULL Handling</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#update-and-delete-handling">Update and Delete Handling</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#complete-example">Complete Example</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#accessing-meta-at-runtime">Accessing Meta at Runtime</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#meta-validation">Meta Validation</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../query/">Making Queries</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../query/#get-a-single-object">Get a Single Object</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../query/#get-all-objects">Get All Objects</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../query/#filter-query-results">Filter Query Results</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../query/#chainable-query-builder">Chainable Query Builder</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#chainable-vs-kwargs-syntax">Chainable vs Kwargs Syntax</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#chainable-methods">Chainable Methods</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#chaining-multiple-filters">Chaining Multiple Filters</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#getting-the-first-result">Getting the First Result</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#counting-without-loading">Counting Without Loading</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#using-values-with-chainable-api">Using Values with Chainable API</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#backward-compatibility">Backward Compatibility</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../query/#q-objects-or-and-not">Q Objects (OR, AND, NOT)</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#importing-q">Importing Q</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#basic-q-object-usage">Basic Q Object Usage</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#or-queries-with">OR Queries with |</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#and-queries-with">AND Queries with &amp;</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../relationship/">Relationship Field</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../relationship/#basic-usage">Basic Usage</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../relationship/#creating-related-instances">Creating Related Instances</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../relationship/#querying-by-relationship">Querying by Relationship</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../relationship/#nested-field-access">Nested Field Access</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../relationship/#traversing-relationships">Traversing Relationships</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul class="current">
+                <li class="toctree-l1 current"><a class="reference internal current" href="#">Async Operations</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#async-model-methods">Async Model Methods</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#async_create">async_create()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#async_save">async_save()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#async_delete">async_delete()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#async_load">async_load()</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#async-query-methods">Async Query Methods</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#async_get">async_get()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#async_filter">async_filter()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#async_all">async_all()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#async_count">async_count()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#async_keys">async_keys()</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#concurrent-operations">Concurrent Operations</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#framework-integration-fastapi">Framework Integration: FastAPI</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#framework-integration-background-workers">Framework Integration: Background Workers</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#implementation-details">Implementation Details</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#thread-pool-execution">Thread Pool Execution</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#python-38-compatibility">Python 3.8+ Compatibility</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#performance-considerations">Performance Considerations</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#error-handling">Error Handling</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#async-bulk-operations">Async Bulk Operations</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#test-coverage">Test Coverage</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#see-also">See Also</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../pubsub/">PubSub</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#publisher">Publisher</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#custom-channel-names">Custom Channel Names</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#pipeline-support">Pipeline Support</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#subscriber">Subscriber</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#subscriber-lifecycle">Subscriber Lifecycle</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#pre_handle-hook">pre_handle Hook</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#multi-channel-subscription">Multi-Channel Subscription</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#exception-handling">Exception Handling</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#logging">Logging</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../api-reference/">API Reference</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../api-reference/#model-class">Model Class</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#model__init__kwargs">Model.__init__(**kwargs)</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelcreate">Model.create()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelsave">Model.save()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modeldelete">Model.delete()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelload">Model.load()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelis_valid">Model.is_valid()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelget_info">Model.get_info()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modeldb_key">Model.db_key</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#async-methods">Async Methods</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../api-reference/#bulk-operations">Bulk Operations</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelbulk_create">Model.bulk_create()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelbulk_update">Model.bulk_update()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelbulk_delete">Model.bulk_delete()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modeldelete_all">Model.delete_all()</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Contributing</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../style-guide/">Style Guide</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#canonical-example-models">Canonical Example Models</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#tone-and-voice">Tone and Voice</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#page-structure">Page Structure</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../style-guide/#headings">Headings</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../style-guide/#prose-between-code-blocks">Prose Between Code Blocks</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#code-examples">Code Examples</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../style-guide/#imports">Imports</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../style-guide/#expected-output">Expected Output</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../style-guide/#self-contained-examples">Self-Contained Examples</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../style-guide/#use-canonical-models">Use Canonical Models</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#admonitions">Admonitions</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#cross-references">Cross-References</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#general-formatting">General Formatting</a>
+    </li>
+    </ul>
+                  </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="..">Popoto Documentation</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href=".." class="icon icon-home" aria-label="Docs"></a></li>
+      <li class="breadcrumb-item active">Async Operations</li>
+    <li class="wy-breadcrumbs-aside">
+          <a href="https://github.com/tomcounsell/popoto/edit/master/docs/async.md" class="icon icon-github"> Edit on GitHub</a>
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="async-operations">Async Operations</h1>
+<p>Food delivery apps handle many simultaneous requests: customers browsing menus, drivers
+updating locations, orders streaming in. Blocking on each Redis call wastes time your
+users do not have. Popoto provides async counterparts for every Model and Query method so
+you can serve all of these requests concurrently without blocking the event loop.</p>
+<h2 id="async-model-methods">Async Model Methods</h2>
+<p>Every synchronous model operation has an <code>async_</code> prefixed equivalent. These methods
+behave identically to their sync counterparts but return awaitables, letting you use
+them inside <code>async def</code> functions.</p>
+<h3 id="async_create">async_create()</h3>
+<p>Create and persist a new model instance in a single step.</p>
+<pre><code class="language-python">import asyncio
+from popoto import (
+    Model, KeyField, AutoKeyField, UniqueKeyField,
+    Field, SortedField, GeoField, Relationship, DatetimeField,
+)
+
+class Restaurant(Model):
+    name = KeyField()
+    cuisine = Field(type=str)
+    rating = SortedField(type=float)
+    location = GeoField()
+    active = Field(type=bool, default=True)
+
+class Customer(Model):
+    username = KeyField()
+    email = UniqueKeyField()
+    name = Field(type=str)
+    address = GeoField()
+
+class Driver(Model):
+    driver_id = AutoKeyField()
+    name = Field(type=str)
+    phone = UniqueKeyField()
+    rating = SortedField(type=float)
+    location = GeoField()
+    active = Field(type=bool, default=True)
+
+class Order(Model):
+    order_id = AutoKeyField()
+    customer = Relationship(Customer)
+    restaurant = Relationship(Restaurant)
+    driver = Relationship(Driver, null=True)
+    total = SortedField(type=float)
+    status = Field(type=str, default=&quot;pending&quot;)
+    created_at = DatetimeField(auto_now_add=True)
+    updated_at = DatetimeField(auto_now=True)
+
+    class Meta:
+        order_by = &quot;-created_at&quot;
+        ttl = 2592000  # 30 days
+
+async def main():
+    restaurant = await Restaurant.async_create(
+        name=&quot;Siam Garden&quot;,
+        cuisine=&quot;Thai&quot;,
+        rating=4.7,
+        location=(40.748, -73.985),
+    )
+    print(restaurant.name)
+    # =&gt; &quot;Siam Garden&quot;
+
+asyncio.run(main())
+</code></pre>
+<h3 id="async_save">async_save()</h3>
+<p>Save changes to an existing instance. This is useful when you need to update fields
+after the initial creation.</p>
+<pre><code class="language-python">async def update_restaurant():
+    restaurant = await Restaurant.async_create(
+        name=&quot;Bella Napoli&quot;,
+        cuisine=&quot;Italian&quot;,
+        rating=4.3,
+        location=(40.750, -73.990),
+    )
+
+    # Received a new review, bump the rating
+    restaurant.rating = 4.5
+    await restaurant.async_save()
+
+    print(restaurant.rating)
+    # =&gt; 4.5
+</code></pre>
+<h3 id="async_delete">async_delete()</h3>
+<p>Remove an instance and all of its associated indexes from Redis.</p>
+<pre><code class="language-python">async def close_restaurant():
+    restaurant = await Restaurant.query.async_get(name=&quot;Bella Napoli&quot;)
+    deleted = await restaurant.async_delete()
+    print(deleted)
+    # =&gt; True
+</code></pre>
+<h3 id="async_load">async_load()</h3>
+<p>Load a single instance by its key fields. Returns <code>None</code> if the object does not exist.</p>
+<pre><code class="language-python">async def load_restaurant():
+    restaurant = await Restaurant.async_load(name=&quot;Siam Garden&quot;)
+    if restaurant:
+        print(f&quot;{restaurant.name} serves {restaurant.cuisine}&quot;)
+        # =&gt; &quot;Siam Garden serves Thai&quot;
+</code></pre>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><code>async_load()</code> performs a direct key lookup, making it the fastest way to retrieve
+a single object when you already know the key values.</p>
+</div>
+<h2 id="async-query-methods">Async Query Methods</h2>
+<p>The <code>query</code> manager exposes async versions of every query method. Use them exactly as
+you would the synchronous API, but with <code>await</code>.</p>
+<h3 id="async_get">async_get()</h3>
+<p>Retrieve a single instance by key fields or filtered criteria.</p>
+<pre><code class="language-python">async def find_customer():
+    customer = await Customer.query.async_get(username=&quot;foodie42&quot;)
+    if customer:
+        print(customer.email)
+</code></pre>
+<h3 id="async_filter">async_filter()</h3>
+<p>Return a list of instances matching the given criteria. Supports the same lookups as
+the synchronous <code>filter()</code> -- see <a href="../query/">Making Queries</a> for the full list.</p>
+<pre><code class="language-python">async def find_expensive_orders():
+    big_orders = await Order.query.async_filter(total__gte=50.0)
+    for order in big_orders:
+        print(f&quot;Order {order.order_id}: ${order.total}&quot;)
+</code></pre>
+<h3 id="async_all">async_all()</h3>
+<p>Retrieve every instance of a model.</p>
+<pre><code class="language-python">async def list_restaurants():
+    restaurants = await Restaurant.query.async_all()
+    print(f&quot;Total restaurants: {len(restaurants)}&quot;)
+</code></pre>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p><code>async_all()</code> loads every instance into memory. For models with many records, prefer
+<code>async_filter()</code> with appropriate constraints.</p>
+</div>
+<h3 id="async_count">async_count()</h3>
+<p>Count instances without loading full objects. Accepts the same filter arguments as
+<code>async_filter()</code>.</p>
+<pre><code class="language-python">async def dashboard_stats():
+    total_orders = await Order.query.async_count()
+    big_orders = await Order.query.async_count(total__gte=50.0)
+    print(f&quot;{big_orders} of {total_orders} orders are over $50&quot;)
+</code></pre>
+<h3 id="async_keys">async_keys()</h3>
+<p>Return a list of Redis keys matching the model, without deserializing objects.</p>
+<pre><code class="language-python">async def audit_keys():
+    keys = await Order.query.async_keys()
+    print(f&quot;Order keys in Redis: {len(keys)}&quot;)
+</code></pre>
+<h2 id="concurrent-operations">Concurrent Operations</h2>
+<p>The real power of async shows up when you need to perform independent operations at the
+same time. Use <code>asyncio.gather()</code> to run them concurrently instead of sequentially.</p>
+<p>A customer opens the app and expects to see nearby restaurants and available drivers on
+the same screen. With sync code you would wait for one query, then the other. With
+async, both queries run at the same time.</p>
+<pre><code class="language-python">async def home_screen(customer_username: str):
+    customer = await Customer.async_load(username=customer_username)
+
+    nearby_restaurants, available_drivers = await asyncio.gather(
+        Restaurant.query.async_filter(
+            location=customer.address,
+            location_radius=10,
+            location_radius_unit='km',
+        ),
+        Driver.query.async_filter(
+            location=customer.address,
+            location_radius=5,
+            location_radius_unit='km',
+        ),
+    )
+
+    print(f&quot;{len(nearby_restaurants)} restaurants nearby&quot;)
+    print(f&quot;{len(available_drivers)} drivers available&quot;)
+</code></pre>
+<p>You can also create several records at once without waiting for each one individually.</p>
+<pre><code class="language-python">async def seed_restaurants():
+    restaurants = await asyncio.gather(
+        Restaurant.async_create(
+            name=&quot;Siam Garden&quot;, cuisine=&quot;Thai&quot;,
+            rating=4.7, location=(-73.985, 40.748),
+        ),
+        Restaurant.async_create(
+            name=&quot;Bella Napoli&quot;, cuisine=&quot;Italian&quot;,
+            rating=4.3, location=(-73.990, 40.750),
+        ),
+        Restaurant.async_create(
+            name=&quot;Tokyo Bowl&quot;, cuisine=&quot;Japanese&quot;,
+            rating=4.8, location=(40.752, -73.978),
+        ),
+    )
+    print(f&quot;Created {len(restaurants)} restaurants&quot;)
+    # =&gt; &quot;Created 3 restaurants&quot;
+</code></pre>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p><code>asyncio.gather()</code> is most beneficial when each individual operation involves
+network latency. When talking to a remote Redis instance the time savings add up
+quickly.</p>
+</div>
+<h2 id="framework-integration-fastapi">Framework Integration: FastAPI</h2>
+<p>FastAPI is a natural fit because its route handlers are already async. Below is a
+minimal food delivery API with two endpoints.</p>
+<pre><code class="language-python">from fastapi import FastAPI, HTTPException
+
+app = FastAPI()
+
+@app.post(&quot;/orders&quot;)
+async def create_order(
+    customer_username: str,
+    restaurant_name: str,
+    total: float,
+):
+    customer, restaurant = await asyncio.gather(
+        Customer.async_load(username=customer_username),
+        Restaurant.async_load(name=restaurant_name),
+    )
+    if not customer:
+        raise HTTPException(status_code=404, detail=&quot;Customer not found&quot;)
+    if not restaurant:
+        raise HTTPException(status_code=404, detail=&quot;Restaurant not found&quot;)
+
+    order = await Order.async_create(
+        customer=customer,
+        restaurant=restaurant,
+        total=total,
+    )
+    return {
+        &quot;order_id&quot;: order.order_id,
+        &quot;status&quot;: order.status,
+        &quot;total&quot;: order.total,
+    }
+
+@app.get(&quot;/restaurants/nearby&quot;)
+async def nearby_restaurants(lat: float, lon: float, radius_km: float = 5):
+    restaurants = await Restaurant.query.async_filter(
+        location=(lat, lon),
+        location_radius=radius_km,
+        location_radius_unit='km',
+    )
+    return [
+        {
+            &quot;name&quot;: r.name,
+            &quot;cuisine&quot;: r.cuisine,
+            &quot;rating&quot;: r.rating,
+        }
+        for r in restaurants
+    ]
+</code></pre>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Because Popoto's async methods are awaitable, FastAPI can handle many incoming
+requests without any of them blocking on Redis I/O.</p>
+</div>
+<h2 id="framework-integration-background-workers">Framework Integration: Background Workers</h2>
+<p>Long-running order processing tasks can run as async background workers. The pattern
+below polls for recent orders, assigns a driver, and updates the status.</p>
+<pre><code class="language-python">async def order_processing_worker():
+    &quot;&quot;&quot;Continuously process recent orders.&quot;&quot;&quot;
+    while True:
+        recent_orders = await Order.query.async_filter(
+            total__gte=0.0,
+            limit=10,
+        )
+
+        for order in recent_orders:
+            driver = await find_nearest_driver(order)
+            if driver:
+                order.driver = driver
+                order.status = &quot;assigned&quot;
+                driver.active = False
+                await asyncio.gather(
+                    order.async_save(),
+                    driver.async_save(),
+                )
+                print(f&quot;Order {order.order_id} assigned to {driver.name}&quot;)
+
+        await asyncio.sleep(2)
+
+async def find_nearest_driver(order):
+    &quot;&quot;&quot;Find the closest active driver to the restaurant.&quot;&quot;&quot;
+    restaurant = order.restaurant
+    if isinstance(restaurant, str):
+        restaurant = await Restaurant.async_load(name=restaurant)
+
+    drivers = await Driver.query.async_filter(
+        location=restaurant.location,
+        location_radius=10,
+        location_radius_unit='km',
+        order_by=&quot;-rating&quot;,
+        limit=1,
+    )
+    return drivers[0] if drivers else None
+</code></pre>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>In production you would run this worker alongside your web server using
+<code>asyncio.create_task()</code> or a task runner like <code>arq</code> or <code>taskiq</code>.</p>
+</div>
+<h2 id="implementation-details">Implementation Details</h2>
+<h3 id="thread-pool-execution">Thread Pool Execution</h3>
+<p>All async methods use <code>asyncio.to_thread()</code> internally to run the synchronous Redis
+operations in a thread pool. This approach provides three key properties:</p>
+<ul>
+<li><strong>No event loop blocking</strong> -- Redis calls execute in a worker thread so your event
+  loop stays free to handle other coroutines.</li>
+<li><strong>Automatic thread management</strong> -- Python's default thread pool executor handles
+  scheduling. You do not need to create or manage threads yourself.</li>
+<li><strong>Identical behavior</strong> -- Validation, serialization, error handling, and Redis
+  commands work exactly the same as the synchronous path.</li>
+</ul>
+<h3 id="python-38-compatibility">Python 3.8+ Compatibility</h3>
+<p><code>asyncio.to_thread()</code> was introduced in Python 3.9. For Python 3.8, Popoto includes
+a compatibility shim that replicates the same behavior using
+<code>loop.run_in_executor()</code>. No code changes are needed on your end -- the correct
+implementation is selected automatically.</p>
+<h2 id="performance-considerations">Performance Considerations</h2>
+<p>Async does not make individual Redis commands faster. It makes your <strong>application</strong>
+faster by letting other work proceed while waiting for Redis responses.</p>
+<p>When async helps the most:</p>
+<ul>
+<li><strong>Remote Redis instances</strong> -- network round-trips of 1-5 ms benefit significantly
+  from concurrency. Three sequential 3 ms calls take 9 ms; with <code>gather()</code> they
+  complete in roughly 3 ms.</li>
+<li><strong>High-concurrency web servers</strong> -- frameworks like FastAPI can serve other requests
+  while one request awaits Redis.</li>
+<li><strong>Fan-out queries</strong> -- searching restaurants, drivers, and orders at the same time
+  (as shown in the concurrent operations section above).</li>
+</ul>
+<p>When async adds little benefit:</p>
+<ul>
+<li><strong>Local Redis, single operation</strong> -- a sub-millisecond <code>GET</code> on localhost is already
+  fast. The thread pool overhead is negligible but the async machinery does not speed
+  it up either.</li>
+<li><strong>CPU-bound processing</strong> -- if most time is spent computing rather than waiting on
+  I/O, async will not help. Consider <code>multiprocessing</code> instead.</li>
+</ul>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>Profile before optimizing. If your Redis calls are already sub-millisecond on
+localhost, switching from sync to async will not produce a noticeable improvement
+for single operations. Focus on <code>gather()</code> for parallel queries first.</p>
+</div>
+<h2 id="error-handling">Error Handling</h2>
+<p>Async methods raise the same exceptions as their synchronous equivalents. Wrap calls in
+standard <code>try</code>/<code>except</code> blocks.</p>
+<pre><code class="language-python">from popoto.models.base import ModelException
+from popoto.models.query import QueryException
+
+async def safe_order_create(customer_username, restaurant_name, total):
+    try:
+        customer = await Customer.async_load(username=customer_username)
+        restaurant = await Restaurant.async_load(name=restaurant_name)
+
+        order = await Order.async_create(
+            customer=customer,
+            restaurant=restaurant,
+            total=total,
+        )
+        return order
+
+    except ModelException as e:
+        print(f&quot;Model error: {e}&quot;)
+        return None
+    except QueryException as e:
+        print(f&quot;Query error: {e}&quot;)
+        return None
+</code></pre>
+<p>You can also handle errors inside <code>asyncio.gather()</code> by passing
+<code>return_exceptions=True</code>. This prevents one failure from cancelling sibling tasks.</p>
+<pre><code class="language-python">async def resilient_lookups():
+    results = await asyncio.gather(
+        Restaurant.async_load(name=&quot;Siam Garden&quot;),
+        Restaurant.async_load(name=&quot;Nonexistent Place&quot;),
+        return_exceptions=True,
+    )
+
+    for result in results:
+        if isinstance(result, Exception):
+            print(f&quot;Lookup failed: {result}&quot;)
+        elif result is None:
+            print(&quot;Restaurant not found&quot;)
+        else:
+            print(f&quot;Found: {result.name}&quot;)
+</code></pre>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>When using <code>return_exceptions=True</code>, remember to check each result for exceptions
+before accessing model attributes.</p>
+</div>
+<h2 id="async-bulk-operations">Async Bulk Operations</h2>
+<p>Popoto also provides async versions of all bulk operations. These methods are ideal for
+importing large datasets, batch updates, and cleanup tasks without blocking the event loop.</p>
+<table>
+<thead>
+<tr>
+<th>Sync</th>
+<th>Async</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Model.bulk_create(instances)</code></td>
+<td><code>await Model.async_bulk_create(instances)</code></td>
+</tr>
+<tr>
+<td><code>Model.bulk_update(queryset, **updates)</code></td>
+<td><code>await Model.async_bulk_update(queryset, **updates)</code></td>
+</tr>
+<tr>
+<td><code>Model.bulk_delete(queryset)</code></td>
+<td><code>await Model.async_bulk_delete(queryset)</code></td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-python">async def import_restaurants(data: list[dict]):
+    &quot;&quot;&quot;Bulk import restaurants from external data.&quot;&quot;&quot;
+    instances = [
+        Restaurant(
+            name=item[&quot;name&quot;],
+            cuisine=item[&quot;cuisine&quot;],
+            rating=item[&quot;rating&quot;],
+        )
+        for item in data
+    ]
+
+    created = await Restaurant.async_bulk_create(instances)
+    print(f&quot;Imported {len(created)} restaurants&quot;)
+    return created
+
+async def feature_top_restaurants():
+    &quot;&quot;&quot;Mark highly-rated restaurants as featured.&quot;&quot;&quot;
+    count = await Restaurant.async_bulk_update(
+        Restaurant.query.filter(rating__gte=4.5),
+        is_featured=True
+    )
+    print(f&quot;Featured {count} top restaurants&quot;)
+
+async def cleanup_inactive():
+    &quot;&quot;&quot;Remove inactive restaurants.&quot;&quot;&quot;
+    count = await Restaurant.async_bulk_delete(
+        Restaurant.query.filter(status=&quot;inactive&quot;)
+    )
+    print(f&quot;Deleted {count} inactive restaurants&quot;)
+</code></pre>
+<p>All bulk methods use Redis pipelines internally to batch operations, dramatically reducing
+network round-trips. The <code>batch_size</code> parameter (default 1000) controls how many instances
+are processed per pipeline execution.</p>
+<p>See <a href="../api-reference/#bulk-operations">Bulk Operations</a> in the API Reference for complete
+documentation.</p>
+<h2 id="test-coverage">Test Coverage</h2>
+<p>The async API is thoroughly tested across four test files covering all public methods
+and edge cases. Each scenario listed below has at least one dedicated test.</p>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Tested Scenarios</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>CRUD basics</strong></td>
+<td><code>async_create</code>, <code>async_save</code>, <code>async_delete</code>, <code>async_load</code>, <code>async_get</code></td>
+</tr>
+<tr>
+<td><strong>Query methods</strong></td>
+<td><code>async_filter</code>, <code>async_all</code>, <code>async_count</code>, <code>async_keys</code></td>
+</tr>
+<tr>
+<td><strong>SortedField queries</strong></td>
+<td><code>__lte</code>, <code>__lt</code>, <code>__gt</code>, <code>__gte</code>, range (between), <code>limit</code>, <code>order_by</code></td>
+</tr>
+<tr>
+<td><strong>GeoField queries</strong></td>
+<td>Radius search via <code>async_filter</code> with coordinates and distance units</td>
+</tr>
+<tr>
+<td><strong>Relationship fields</strong></td>
+<td>Lazy-loading related objects through async queries</td>
+</tr>
+<tr>
+<td><strong>Projection</strong></td>
+<td><code>values=</code> parameter with <code>async_filter</code> and <code>async_all</code></td>
+</tr>
+<tr>
+<td><strong>Error paths</strong></td>
+<td><code>async_get</code> returns <code>None</code> on miss; raises <code>QueryException</code> on multiple matches</td>
+</tr>
+<tr>
+<td><strong>Bulk operations</strong></td>
+<td><code>async_bulk_create</code>, <code>async_bulk_update</code>, <code>async_bulk_delete</code></td>
+</tr>
+<tr>
+<td><strong>Connection management</strong></td>
+<td><code>async_check_connection</code> (success, failure, timeout), <code>set_async_redis_db_settings</code></td>
+</tr>
+<tr>
+<td><strong>Key scanning</strong></td>
+<td><code>async_scan_keys</code> pattern matching, <code>async_keys</code> with <code>catchall</code> and <code>clean</code> flags</td>
+</tr>
+<tr>
+<td><strong>Client-side filtering</strong></td>
+<td>Filtering on plain <code>Field</code> (non-indexed) via <code>async_filter</code></td>
+</tr>
+<tr>
+<td><strong>Meta options</strong></td>
+<td><code>Meta.order_by</code> default sorting, <code>Meta.ttl</code> automatic expiration</td>
+</tr>
+<tr>
+<td><strong>Atomicity</strong></td>
+<td>Pipeline-based <code>async_save</code>, concurrent writes (last-write-wins)</td>
+</tr>
+<tr>
+<td><strong>Index maintenance</strong></td>
+<td><code>async_rebuild_indexes</code> via <code>to_thread</code></td>
+</tr>
+</tbody>
+</table>
+<p>Run the async tests with:</p>
+<pre><code class="language-bash">pytest tests/test_async.py tests/test_connection.py tests/test_bulk_operations.py tests/test_migrations.py -v
+</code></pre>
+<h2 id="see-also">See Also</h2>
+<ul>
+<li><a href="../fields/">Models and Fields</a> -- define your data models</li>
+<li><a href="../query/">Making Queries</a> -- query patterns and filter lookups</li>
+<li><a href="../meta/">Model Meta Options</a> -- configure <code>order_by</code>, <code>ttl</code>, and other model behavior</li>
+<li><a href="../api-reference/#bulk-operations">Bulk Operations</a> -- efficient batch processing</li>
+</ul>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../relationship/" class="btn btn-neutral float-left" title="Relationship Field"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../pubsub/" class="btn btn-neutral float-right" title="PubSub">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+        <span>
+          <a href="https://github.com/tomcounsell/popoto/" class="fa fa-github" style="color: #fcfcfc"> GitHub</a>
+        </span>
+    
+    
+      <span><a href="../relationship/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../pubsub/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "..";</script>
+    <script src="../js/theme_extra.js"></script>
+    <script src="../js/theme.js"></script>
+      <script src="../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>

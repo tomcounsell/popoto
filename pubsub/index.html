@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="author" content="Tom Counsell" />
+      <link rel="shortcut icon" href="../img/favicon.ico" />
+    <title>PubSub - Popoto Documentation</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "PubSub";
+        var mkdocs_page_input_path = "pubsub.md";
+        var mkdocs_page_url = null;
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/markdown.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/python.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/bash.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/html.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href=".." class="icon icon-home"> Popoto Documentation
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="..">Home</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="..#simple-example">Simple Example</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="..#features">Features</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="..#getting-started">Getting Started</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="..#install">Install</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="..#define-a-model">Define a Model</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="..#create-instances">Create Instances</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="..#retrieve-instances">Retrieve Instances</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="..#delete-instances">Delete Instances</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="..#async-operations">Async Operations</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../configuration/">Configuration</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#redisvalkey-connection">Redis/Valkey Connection</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#using-redis_url-recommended">Using REDIS_URL (Recommended)</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#default-connection">Default Connection</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#reconfiguring-at-runtime">Reconfiguring at Runtime</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#accessing-the-connection-directly">Accessing the Connection Directly</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#debugging">Debugging</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#print-redis-info">Print Redis Info</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#redisvalkey-cli">Redis/Valkey CLI</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#environment-variables">Environment Variables</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#thread-safety">Thread Safety</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#what-is-thread-safe">What IS Thread-Safe</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#what-is-not-thread-safe">What is NOT Thread-Safe</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#best-practices">Best Practices</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#logging">Logging</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#environment-variable">Environment Variable</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#programmatic-configuration">Programmatic Configuration</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#logger-reference">Logger Reference</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#integration-with-frameworks">Integration with Frameworks</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../fields/">Models and Fields</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#keyfield">KeyField</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../fields/#changing-a-keyfield-value">Changing a KeyField Value</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#uniqueness">Uniqueness</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../fields/#autokeyfield-id-strategies">AutoKeyField ID Strategies</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../fields/#uuid4-default">UUID4 (Default)</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../fields/#ulid-time-sortable">ULID (Time-Sortable)</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../fields/#ksuid-time-sortable">KSUID (Time-Sortable)</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../fields/#choosing-a-strategy">Choosing a Strategy</a>
+    </li>
+        </ul>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#composite-keys">Composite Keys</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#models-without-keyfields">Models Without KeyFields</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#field">Field</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#named-field-shortcuts">Named Field Shortcuts</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#null-values">Null Values</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#default-values">Default Values</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#string-max-length">String Max Length</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#sortedfield">SortedField</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#sortedkeyfield">SortedKeyField</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#partition_by">partition_by</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#datetimefield">DatetimeField</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#timestampable-mixin">Timestampable Mixin</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#geofield">GeoField</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#query-with-distances">Query with Distances</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#dataframefield">DataFrameField</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#reserved-field-names">Reserved Field Names</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#model-methods">Model Methods</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../fields/#creating-and-saving">Creating and Saving</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../fields/#loading">Loading</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../fields/#updating">Updating</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../fields/#deleting">Deleting</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../fields/#validation">Validation</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../fields/#the-db_key-property">The db_key Property</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../meta/">Model Meta Options</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#when-to-use-meta-options">When to Use Meta Options</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#order_by">order_by</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../meta/#override-per-query">Override per Query</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#ttl">ttl</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#instance-level-ttl">Instance-Level TTL</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#absolute-expiration">Absolute Expiration</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#indexes">indexes</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../meta/#non-unique-indexes">Non-Unique Indexes</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../meta/#null-handling">NULL Handling</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#update-and-delete-handling">Update and Delete Handling</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#complete-example">Complete Example</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#accessing-meta-at-runtime">Accessing Meta at Runtime</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#meta-validation">Meta Validation</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../query/">Making Queries</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../query/#get-a-single-object">Get a Single Object</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../query/#get-all-objects">Get All Objects</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../query/#filter-query-results">Filter Query Results</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../query/#chainable-query-builder">Chainable Query Builder</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#chainable-vs-kwargs-syntax">Chainable vs Kwargs Syntax</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#chainable-methods">Chainable Methods</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#chaining-multiple-filters">Chaining Multiple Filters</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#getting-the-first-result">Getting the First Result</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#counting-without-loading">Counting Without Loading</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#using-values-with-chainable-api">Using Values with Chainable API</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#backward-compatibility">Backward Compatibility</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../query/#q-objects-or-and-not">Q Objects (OR, AND, NOT)</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#importing-q">Importing Q</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#basic-q-object-usage">Basic Q Object Usage</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#or-queries-with">OR Queries with |</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#and-queries-with">AND Queries with &amp;</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../relationship/">Relationship Field</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../relationship/#basic-usage">Basic Usage</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../relationship/#creating-related-instances">Creating Related Instances</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../relationship/#querying-by-relationship">Querying by Relationship</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../relationship/#nested-field-access">Nested Field Access</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../relationship/#traversing-relationships">Traversing Relationships</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../async/">Async Operations</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#async-model-methods">Async Model Methods</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_create">async_create()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_save">async_save()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_delete">async_delete()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_load">async_load()</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#async-query-methods">Async Query Methods</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_get">async_get()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_filter">async_filter()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_all">async_all()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_count">async_count()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_keys">async_keys()</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#concurrent-operations">Concurrent Operations</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#framework-integration-fastapi">Framework Integration: FastAPI</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#framework-integration-background-workers">Framework Integration: Background Workers</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#implementation-details">Implementation Details</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#thread-pool-execution">Thread Pool Execution</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#python-38-compatibility">Python 3.8+ Compatibility</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#performance-considerations">Performance Considerations</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#error-handling">Error Handling</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#async-bulk-operations">Async Bulk Operations</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#test-coverage">Test Coverage</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#see-also">See Also</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul class="current">
+                <li class="toctree-l1 current"><a class="reference internal current" href="#">PubSub</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#publisher">Publisher</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#custom-channel-names">Custom Channel Names</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#pipeline-support">Pipeline Support</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#subscriber">Subscriber</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#subscriber-lifecycle">Subscriber Lifecycle</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#pre_handle-hook">pre_handle Hook</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#multi-channel-subscription">Multi-Channel Subscription</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#exception-handling">Exception Handling</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#logging">Logging</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../api-reference/">API Reference</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../api-reference/#model-class">Model Class</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#model__init__kwargs">Model.__init__(**kwargs)</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelcreate">Model.create()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelsave">Model.save()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modeldelete">Model.delete()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelload">Model.load()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelis_valid">Model.is_valid()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelget_info">Model.get_info()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modeldb_key">Model.db_key</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#async-methods">Async Methods</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../api-reference/#bulk-operations">Bulk Operations</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelbulk_create">Model.bulk_create()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelbulk_update">Model.bulk_update()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelbulk_delete">Model.bulk_delete()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modeldelete_all">Model.delete_all()</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Contributing</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../style-guide/">Style Guide</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#canonical-example-models">Canonical Example Models</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#tone-and-voice">Tone and Voice</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#page-structure">Page Structure</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../style-guide/#headings">Headings</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../style-guide/#prose-between-code-blocks">Prose Between Code Blocks</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#code-examples">Code Examples</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../style-guide/#imports">Imports</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../style-guide/#expected-output">Expected Output</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../style-guide/#self-contained-examples">Self-Contained Examples</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../style-guide/#use-canonical-models">Use Canonical Models</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#admonitions">Admonitions</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#cross-references">Cross-References</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#general-formatting">General Formatting</a>
+    </li>
+    </ul>
+                  </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="..">Popoto Documentation</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href=".." class="icon icon-home" aria-label="Docs"></a></li>
+      <li class="breadcrumb-item active">PubSub</li>
+    <li class="wy-breadcrumbs-aside">
+          <a href="https://github.com/tomcounsell/popoto/edit/master/docs/pubsub.md" class="icon icon-github"> Edit on GitHub</a>
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="pubsub">PubSub</h1>
+<p>Popoto provides real-time messaging through Redis pub/sub channels. In a food delivery app, order status
+changes need to reach drivers, customers, and restaurant dashboards the moment they happen. The pub/sub
+pattern lets you broadcast these updates without tight coupling between services -- publishers send messages
+to named channels, and all active subscribers receive them simultaneously.</p>
+<p>Data is serialized with <a href="https://msgpack.org/">msgpack</a> (with numpy support), so you can publish dicts
+containing numbers, strings, lists, and numpy arrays.</p>
+<h2 id="publisher">Publisher</h2>
+<p>The <code>Publisher</code> class sends messages to Redis channels. Subclass it and call <code>publish()</code> to broadcast
+order status changes across your system.</p>
+<pre><code class="language-python">from popoto.pubsub import Publisher
+
+class OrderStatusPublisher(Publisher):
+    pass
+
+publisher = OrderStatusPublisher(channel_name=&quot;order_updates&quot;)
+publisher.publish(data={
+    &quot;order_id&quot;: &quot;abc123&quot;,
+    &quot;status&quot;: &quot;picked_up&quot;,
+    &quot;driver&quot;: &quot;Maria&quot;,
+})
+</code></pre>
+<p>The <code>publish()</code> method returns the number of active subscribers that received the message.</p>
+<pre><code class="language-python">subscriber_count = publisher.publish(data={
+    &quot;order_id&quot;: &quot;abc123&quot;,
+    &quot;status&quot;: &quot;delivered&quot;,
+})
+print(subscriber_count)
+# =&gt; 3
+</code></pre>
+<h2 id="custom-channel-names">Custom Channel Names</h2>
+<p>By default, the channel name is the class name. You can override it at initialization with the
+<code>channel_name</code> parameter, or on a per-call basis when publishing.</p>
+<pre><code class="language-python"># Defaults to class name
+publisher = OrderStatusPublisher()
+print(publisher.channel_name)
+# =&gt; &quot;OrderStatusPublisher&quot;
+
+# Override at init
+publisher = OrderStatusPublisher(channel_name=&quot;order_updates&quot;)
+print(publisher.channel_name)
+# =&gt; &quot;order_updates&quot;
+
+# Override per call
+publisher.publish(
+    data={&quot;order_id&quot;: &quot;abc123&quot;, &quot;status&quot;: &quot;cancelled&quot;},
+    channel_name=&quot;order_cancellations&quot;,
+)
+</code></pre>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The per-call <code>channel_name</code> override only applies to that single publish. Subsequent calls
+without a <code>channel_name</code> argument revert to the instance default.</p>
+</div>
+<h2 id="pipeline-support">Pipeline Support</h2>
+<p>Use a Redis pipeline to batch multiple order updates into a single round-trip to Redis. This is
+useful when processing a batch of orders at once, such as marking all orders from a closing
+restaurant as delayed.</p>
+<pre><code class="language-python">from popoto.redis_db import POPOTO_REDIS_DB
+
+publisher = OrderStatusPublisher(channel_name=&quot;order_updates&quot;)
+pipeline = POPOTO_REDIS_DB.pipeline()
+
+publisher.publish(data={&quot;order_id&quot;: &quot;order_1&quot;, &quot;status&quot;: &quot;delayed&quot;}, pipeline=pipeline)
+publisher.publish(data={&quot;order_id&quot;: &quot;order_2&quot;, &quot;status&quot;: &quot;delayed&quot;}, pipeline=pipeline)
+publisher.publish(data={&quot;order_id&quot;: &quot;order_3&quot;, &quot;status&quot;: &quot;delayed&quot;}, pipeline=pipeline)
+
+pipeline.execute()  # All three messages sent in one round-trip
+</code></pre>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>Pipeline batching significantly improves throughput when publishing many messages in quick
+succession. Instead of one network round-trip per message, you pay the latency cost once
+for the entire batch.</p>
+</div>
+<h2 id="subscriber">Subscriber</h2>
+<p>The <code>Subscriber</code> class listens for messages on one or more channels. Subclass it and override
+<code>handle()</code> to process incoming order updates.</p>
+<pre><code class="language-python">from popoto.pubsub import Subscriber
+
+class OrderStatusSubscriber(Subscriber):
+    sub_channel_names = [&quot;order_updates&quot;]
+
+    def handle(self, channel, data, *args, **kwargs):
+        order_id = data.get(&quot;order_id&quot;)
+        status = data.get(&quot;status&quot;)
+        print(f&quot;Order {order_id} is now: {status}&quot;)
+</code></pre>
+<p>The <code>data</code> argument is automatically deserialized from msgpack, so you receive the original
+Python dict that was published. See <a href="#publisher">Publisher</a> for how messages are sent.</p>
+<h2 id="subscriber-lifecycle">Subscriber Lifecycle</h2>
+<p>A subscriber follows three steps: initialize, poll, and handle.</p>
+<ol>
+<li><strong>Init</strong> -- Creates a Redis pubsub connection and subscribes to all channels in
+   <code>sub_channel_names</code></li>
+<li><strong>Poll</strong> -- Call the instance to check for the next message (non-blocking)</li>
+<li><strong>Handle</strong> -- If a message is available, <code>pre_handle()</code> then <code>handle()</code> are called</li>
+</ol>
+<pre><code class="language-python">subscriber = OrderStatusSubscriber()
+
+# Poll for messages in a loop
+import time
+while True:
+    subscriber()  # Checks for next message, calls handle() if available
+    time.sleep(0.01)  # Small delay to avoid busy-waiting
+</code></pre>
+<p>Each call to the subscriber instance polls Redis once. If no message is waiting, the call
+returns immediately without invoking the handler.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>The poll loop is blocking in the sense that your code must actively call the subscriber.
+If your application needs to do other work between polls, keep the <code>sleep</code> interval short
+or integrate the poll into your event loop.</p>
+</div>
+<h2 id="pre_handle-hook">pre_handle Hook</h2>
+<p>Override <code>pre_handle()</code> to run logic before the main handler. This is useful for logging
+incoming events, filtering out irrelevant updates, or collecting metrics.</p>
+<pre><code class="language-python">class OrderStatusSubscriber(Subscriber):
+    sub_channel_names = [&quot;order_updates&quot;]
+
+    def pre_handle(self, channel, data, *args, **kwargs):
+        print(f&quot;[{channel}] Incoming: order {data.get('order_id')}&quot;)
+
+    def handle(self, channel, data, *args, **kwargs):
+        if data.get(&quot;status&quot;) == &quot;delivered&quot;:
+            print(f&quot;Order {data['order_id']} delivered successfully&quot;)
+</code></pre>
+<p>Both <code>pre_handle()</code> and <code>handle()</code> receive the same <code>channel</code> and <code>data</code> arguments. If you
+need to filter messages, raise an exception in <code>pre_handle()</code> to prevent <code>handle()</code> from
+running (though the exception will be wrapped in a <code>SubscriberException</code>).</p>
+<h2 id="multi-channel-subscription">Multi-Channel Subscription</h2>
+<p>A single subscriber can listen to multiple channels. The <code>channel</code> argument in <code>handle()</code> tells
+you which channel the message arrived on, so you can route to different processing logic.</p>
+<pre><code class="language-python">class DeliverySubscriber(Subscriber):
+    sub_channel_names = [&quot;order_updates&quot;, &quot;driver_location&quot;, &quot;restaurant_alerts&quot;]
+
+    def handle(self, channel, data, *args, **kwargs):
+        if channel == &quot;order_updates&quot;:
+            self.process_order_update(data)
+        elif channel == &quot;driver_location&quot;:
+            self.update_driver_position(data)
+        elif channel == &quot;restaurant_alerts&quot;:
+            self.handle_restaurant_alert(data)
+
+    def process_order_update(self, data):
+        print(f&quot;Order {data['order_id']}: {data['status']}&quot;)
+
+    def update_driver_position(self, data):
+        print(f&quot;Driver {data['driver']}: lat={data['lat']}, lon={data['lon']}&quot;)
+
+    def handle_restaurant_alert(self, data):
+        print(f&quot;Alert from {data['restaurant']}: {data['message']}&quot;)
+</code></pre>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>Using one subscriber for related channels is more efficient than running separate instances
+when you need coordinated handling, such as matching a driver location update with an
+active order.</p>
+</div>
+<h2 id="exception-handling">Exception Handling</h2>
+<p>The subscriber handles exceptions at two levels. Format errors from malformed msgpack data or
+missing fields are logged as warnings and silently discarded. Exceptions raised in your
+<code>handle()</code> or <code>pre_handle()</code> methods are wrapped in a <code>SubscriberException</code>.</p>
+<pre><code class="language-python">from popoto.pubsub import Subscriber, SubscriberException
+
+subscriber = OrderStatusSubscriber()
+
+while True:
+    try:
+        subscriber()
+    except SubscriberException as e:
+        print(f&quot;Error processing order update: {e}&quot;)
+        # Log the error, notify ops, or add to a dead letter queue
+    time.sleep(0.01)
+</code></pre>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>An unhandled <code>SubscriberException</code> will break your poll loop. Always wrap <code>subscriber()</code>
+calls in a try/except block in production to keep the listener running.</p>
+</div>
+<h2 id="logging">Logging</h2>
+<p>The pub/sub system uses two standard Python loggers that you can configure independently.</p>
+<ul>
+<li><code>POPOTO-publisher</code> -- Logs publish events and subscriber counts at DEBUG level</li>
+<li><code>POPOTO-subscriber</code> -- Logs subscription setup, message handling, and format warnings</li>
+</ul>
+<pre><code class="language-python">import logging
+logging.getLogger(&quot;POPOTO-publisher&quot;).setLevel(logging.DEBUG)
+logging.getLogger(&quot;POPOTO-subscriber&quot;).setLevel(logging.DEBUG)
+</code></pre>
+<p>Enable DEBUG level during development to see every message published and received. In
+production, INFO level shows subscription setup without the per-message noise.</p>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../async/" class="btn btn-neutral float-left" title="Async Operations"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../api-reference/" class="btn btn-neutral float-right" title="API Reference">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+        <span>
+          <a href="https://github.com/tomcounsell/popoto/" class="fa fa-github" style="color: #fcfcfc"> GitHub</a>
+        </span>
+    
+    
+      <span><a href="../async/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../api-reference/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "..";</script>
+    <script src="../js/theme_extra.js"></script>
+    <script src="../js/theme.js"></script>
+      <script src="../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>

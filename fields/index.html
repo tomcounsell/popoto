@@ -1,0 +1,1369 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="author" content="Tom Counsell" />
+      <link rel="shortcut icon" href="../img/favicon.ico" />
+    <title>Models and Fields - Popoto Documentation</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Models and Fields";
+        var mkdocs_page_input_path = "fields.md";
+        var mkdocs_page_url = null;
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/markdown.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/python.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/bash.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/html.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href=".." class="icon icon-home"> Popoto Documentation
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="..">Home</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="..#simple-example">Simple Example</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="..#features">Features</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="..#getting-started">Getting Started</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="..#install">Install</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="..#define-a-model">Define a Model</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="..#create-instances">Create Instances</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="..#retrieve-instances">Retrieve Instances</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="..#delete-instances">Delete Instances</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="..#async-operations">Async Operations</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../configuration/">Configuration</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#redisvalkey-connection">Redis/Valkey Connection</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#using-redis_url-recommended">Using REDIS_URL (Recommended)</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#default-connection">Default Connection</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#reconfiguring-at-runtime">Reconfiguring at Runtime</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#accessing-the-connection-directly">Accessing the Connection Directly</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#debugging">Debugging</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#print-redis-info">Print Redis Info</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#redisvalkey-cli">Redis/Valkey CLI</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#environment-variables">Environment Variables</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#thread-safety">Thread Safety</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#what-is-thread-safe">What IS Thread-Safe</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#what-is-not-thread-safe">What is NOT Thread-Safe</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#best-practices">Best Practices</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#logging">Logging</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#environment-variable">Environment Variable</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#programmatic-configuration">Programmatic Configuration</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#logger-reference">Logger Reference</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#integration-with-frameworks">Integration with Frameworks</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul class="current">
+                <li class="toctree-l1 current"><a class="reference internal current" href="#">Models and Fields</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#keyfield">KeyField</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#changing-a-keyfield-value">Changing a KeyField Value</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#uniqueness">Uniqueness</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#autokeyfield-id-strategies">AutoKeyField ID Strategies</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="#uuid4-default">UUID4 (Default)</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="#ulid-time-sortable">ULID (Time-Sortable)</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="#ksuid-time-sortable">KSUID (Time-Sortable)</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="#choosing-a-strategy">Choosing a Strategy</a>
+    </li>
+        </ul>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#composite-keys">Composite Keys</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#models-without-keyfields">Models Without KeyFields</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#field">Field</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#named-field-shortcuts">Named Field Shortcuts</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#null-values">Null Values</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#default-values">Default Values</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#string-max-length">String Max Length</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#sortedfield">SortedField</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#sortedkeyfield">SortedKeyField</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#partition_by">partition_by</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#datetimefield">DatetimeField</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#timestampable-mixin">Timestampable Mixin</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#geofield">GeoField</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#query-with-distances">Query with Distances</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#dataframefield">DataFrameField</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#reserved-field-names">Reserved Field Names</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#model-methods">Model Methods</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#creating-and-saving">Creating and Saving</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#loading">Loading</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#updating">Updating</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#deleting">Deleting</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#validation">Validation</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#the-db_key-property">The db_key Property</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../meta/">Model Meta Options</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#when-to-use-meta-options">When to Use Meta Options</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#order_by">order_by</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../meta/#override-per-query">Override per Query</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#ttl">ttl</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#instance-level-ttl">Instance-Level TTL</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#absolute-expiration">Absolute Expiration</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#indexes">indexes</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../meta/#non-unique-indexes">Non-Unique Indexes</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../meta/#null-handling">NULL Handling</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#update-and-delete-handling">Update and Delete Handling</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#complete-example">Complete Example</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#accessing-meta-at-runtime">Accessing Meta at Runtime</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#meta-validation">Meta Validation</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../query/">Making Queries</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../query/#get-a-single-object">Get a Single Object</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../query/#get-all-objects">Get All Objects</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../query/#filter-query-results">Filter Query Results</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../query/#chainable-query-builder">Chainable Query Builder</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#chainable-vs-kwargs-syntax">Chainable vs Kwargs Syntax</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#chainable-methods">Chainable Methods</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#chaining-multiple-filters">Chaining Multiple Filters</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#getting-the-first-result">Getting the First Result</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#counting-without-loading">Counting Without Loading</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#using-values-with-chainable-api">Using Values with Chainable API</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#backward-compatibility">Backward Compatibility</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../query/#q-objects-or-and-not">Q Objects (OR, AND, NOT)</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#importing-q">Importing Q</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#basic-q-object-usage">Basic Q Object Usage</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#or-queries-with">OR Queries with |</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#and-queries-with">AND Queries with &amp;</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../relationship/">Relationship Field</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../relationship/#basic-usage">Basic Usage</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../relationship/#creating-related-instances">Creating Related Instances</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../relationship/#querying-by-relationship">Querying by Relationship</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../relationship/#nested-field-access">Nested Field Access</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../relationship/#traversing-relationships">Traversing Relationships</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../async/">Async Operations</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#async-model-methods">Async Model Methods</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_create">async_create()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_save">async_save()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_delete">async_delete()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_load">async_load()</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#async-query-methods">Async Query Methods</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_get">async_get()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_filter">async_filter()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_all">async_all()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_count">async_count()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_keys">async_keys()</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#concurrent-operations">Concurrent Operations</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#framework-integration-fastapi">Framework Integration: FastAPI</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#framework-integration-background-workers">Framework Integration: Background Workers</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#implementation-details">Implementation Details</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#thread-pool-execution">Thread Pool Execution</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#python-38-compatibility">Python 3.8+ Compatibility</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#performance-considerations">Performance Considerations</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#error-handling">Error Handling</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#async-bulk-operations">Async Bulk Operations</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#test-coverage">Test Coverage</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#see-also">See Also</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../pubsub/">PubSub</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#publisher">Publisher</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#custom-channel-names">Custom Channel Names</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#pipeline-support">Pipeline Support</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#subscriber">Subscriber</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#subscriber-lifecycle">Subscriber Lifecycle</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#pre_handle-hook">pre_handle Hook</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#multi-channel-subscription">Multi-Channel Subscription</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#exception-handling">Exception Handling</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#logging">Logging</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../api-reference/">API Reference</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../api-reference/#model-class">Model Class</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#model__init__kwargs">Model.__init__(**kwargs)</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelcreate">Model.create()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelsave">Model.save()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modeldelete">Model.delete()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelload">Model.load()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelis_valid">Model.is_valid()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelget_info">Model.get_info()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modeldb_key">Model.db_key</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#async-methods">Async Methods</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../api-reference/#bulk-operations">Bulk Operations</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelbulk_create">Model.bulk_create()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelbulk_update">Model.bulk_update()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelbulk_delete">Model.bulk_delete()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modeldelete_all">Model.delete_all()</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Contributing</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../style-guide/">Style Guide</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#canonical-example-models">Canonical Example Models</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#tone-and-voice">Tone and Voice</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#page-structure">Page Structure</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../style-guide/#headings">Headings</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../style-guide/#prose-between-code-blocks">Prose Between Code Blocks</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#code-examples">Code Examples</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../style-guide/#imports">Imports</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../style-guide/#expected-output">Expected Output</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../style-guide/#self-contained-examples">Self-Contained Examples</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../style-guide/#use-canonical-models">Use Canonical Models</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#admonitions">Admonitions</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#cross-references">Cross-References</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#general-formatting">General Formatting</a>
+    </li>
+    </ul>
+                  </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="..">Popoto Documentation</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href=".." class="icon icon-home" aria-label="Docs"></a></li>
+      <li class="breadcrumb-item active">Models and Fields</li>
+    <li class="wy-breadcrumbs-aside">
+          <a href="https://github.com/tomcounsell/popoto/edit/master/docs/fields.md" class="icon icon-github"> Edit on GitHub</a>
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="models-and-fields">Models and Fields</h1>
+<p>Models are the foundation of Popoto. They define the structure of your Redis-stored
+data using Python classes with field declarations. If you are familiar with Django or
+SQLAlchemy, the pattern will feel natural: inherit from <code>Model</code>, declare fields as
+class attributes, and Popoto handles persistence, indexing, and querying.</p>
+<p>Here is a simple restaurant model to illustrate the basics:</p>
+<pre><code class="language-python">from popoto import Model, KeyField, Field, SortedField, GeoField
+
+class Restaurant(Model):
+    name = KeyField()
+    cuisine = Field(type=str)
+    rating = SortedField(type=float)
+    location = GeoField()
+    active = Field(type=bool, default=True)
+</code></pre>
+<p>Each field type controls how data is validated, stored, and indexed in Redis. This
+guide covers every field type and its configuration options, working through a food
+delivery system as a running example.</p>
+<h2 id="keyfield">KeyField</h2>
+<p>A <code>KeyField</code> determines how Popoto stores and retrieves your objects in Redis. The
+values of all KeyFields on a model are concatenated to form the Redis key, making
+lookups on KeyFields extremely fast -- a direct Redis GET rather than a scan.</p>
+<p>For the <code>Restaurant</code> model above, a restaurant with <code>name="Siam Garden"</code> is stored at
+the Redis key <code>Restaurant:Siam Garden</code>. Create a restaurant and retrieve it by name:</p>
+<pre><code class="language-python">restaurant = Restaurant.create(
+    name=&quot;Siam Garden&quot;,
+    cuisine=&quot;Thai&quot;,
+    rating=4.5,
+    location=GeoField.Coordinates(latitude=40.7128, longitude=-74.0060),
+)
+
+loaded = Restaurant.load(name=&quot;Siam Garden&quot;)
+print(loaded.cuisine)
+# =&gt; &quot;Thai&quot;
+</code></pre>
+<p>Because <code>name</code> is a <code>KeyField</code>, the lookup is a single Redis GET -- the fastest
+possible read operation. See <a href="../query/">Making Queries</a> for additional ways to
+retrieve instances.</p>
+<h3 id="changing-a-keyfield-value">Changing a KeyField Value</h3>
+<p>When you change a <code>KeyField</code> value and call <code>save()</code>, the Redis key itself changes.
+Popoto handles the transition automatically: it deletes the old hash, removes the old
+key from the class set, migrates all field indexes (sorted sets, geo sets, unique
+constraints) from the old key to the new one, and adds the new key to the class set.
+Both full saves and partial saves (<code>save(update_fields=[...])</code>) handle this correctly.</p>
+<pre><code class="language-python">restaurant = Restaurant.create(name=&quot;Taco Shack&quot;, cuisine=&quot;Mexican&quot;, rating=4.0)
+
+# Change the KeyField value
+restaurant.name = &quot;Taco Palace&quot;
+restaurant.save()
+
+# Old key is cleaned up, new key is active
+loaded = Restaurant.load(name=&quot;Taco Palace&quot;)
+print(loaded.cuisine)
+# =&gt; &quot;Mexican&quot;
+
+# The old key no longer exists
+print(Restaurant.load(name=&quot;Taco Shack&quot;))
+# =&gt; None
+</code></pre>
+<h2 id="uniqueness">Uniqueness</h2>
+<p>When two restaurants share the same <code>name</code>, the second save overwrites the first. If
+you need to guarantee that a field value is globally unique across all instances, use
+<code>UniqueKeyField</code> or <code>AutoKeyField</code>.</p>
+<p><code>UniqueKeyField</code> enforces a per-value uniqueness constraint. <code>AutoKeyField</code> generates
+a unique value automatically, ensuring every instance has a distinct key.</p>
+<pre><code class="language-python">from popoto import Model, KeyField, AutoKeyField, UniqueKeyField
+from popoto import Field, SortedField, GeoField
+
+class Customer(Model):
+    username = KeyField()
+    email = UniqueKeyField()
+    name = Field(type=str)
+    address = GeoField()
+
+class Driver(Model):
+    driver_id = AutoKeyField()
+    name = Field(type=str)
+    phone = UniqueKeyField()
+    rating = SortedField(type=float)
+    location = GeoField()
+    active = Field(type=bool, default=True)
+</code></pre>
+<p>The <code>Customer</code> model uses <code>username</code> as its primary KeyField and enforces that every
+<code>email</code> is unique across all customers. The <code>Driver</code> model uses <code>AutoKeyField</code> so each
+driver gets a unique ID without you supplying one.</p>
+<pre><code class="language-python">customer = Customer.create(
+    username=&quot;foodie42&quot;,
+    email=&quot;foodie42@example.com&quot;,
+    name=&quot;Jane Doe&quot;,
+)
+
+# Attempting a duplicate email raises an exception
+try:
+    Customer.create(
+        username=&quot;another_user&quot;,
+        email=&quot;foodie42@example.com&quot;,
+        name=&quot;Someone Else&quot;,
+    )
+except Exception as e:
+    print(e)
+    # =&gt; UniqueKeyField 'email' value 'foodie42@example.com' already exists
+</code></pre>
+<p>Drivers get an auto-generated key, so you never need to supply <code>driver_id</code>:</p>
+<pre><code class="language-python">driver = Driver.create(
+    name=&quot;Carlos&quot;,
+    phone=&quot;+1-555-0101&quot;,
+    rating=4.8,
+    location=GeoField.Coordinates(latitude=40.7580, longitude=-73.9855),
+)
+
+print(driver.driver_id)
+# =&gt; &quot;a1b2c3d4e5f6...&quot;  (auto-generated UUID4 hex)
+</code></pre>
+<h3 id="autokeyfield-id-strategies">AutoKeyField ID Strategies</h3>
+<p><code>AutoKeyField</code> supports multiple ID generation strategies via the <code>strategy</code> parameter.
+The default strategy is <code>uuid4</code> for backward compatibility.</p>
+<table>
+<thead>
+<tr>
+<th>Strategy</th>
+<th>Length</th>
+<th>Time-Sortable</th>
+<th>Installation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>uuid4</code></td>
+<td>32 chars</td>
+<td>No</td>
+<td>Built-in (default)</td>
+</tr>
+<tr>
+<td><code>ulid</code></td>
+<td>26 chars</td>
+<td>Yes</td>
+<td><code>pip install popoto[ulid]</code></td>
+</tr>
+<tr>
+<td><code>ksuid</code></td>
+<td>27 chars</td>
+<td>Yes</td>
+<td><code>pip install popoto[ksuid]</code></td>
+</tr>
+</tbody>
+</table>
+<h4 id="uuid4-default">UUID4 (Default)</h4>
+<p>The default strategy generates a 32-character random hexadecimal string using Python's
+<code>uuid.uuid4()</code>. UUIDs are excellent for general-purpose unique identifiers but are not
+time-sortable, meaning queries cannot rely on ID order to determine creation order.</p>
+<pre><code class="language-python">class Article(Model):
+    id = AutoKeyField()  # Default: strategy=&quot;uuid4&quot;
+    title = Field(type=str)
+
+article = Article.create(title=&quot;Hello World&quot;)
+print(article.id)
+# =&gt; &quot;a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6&quot;  (32 chars)
+</code></pre>
+<p>Use UUID4 when:</p>
+<ul>
+<li>You do not need chronological ordering by ID</li>
+<li>You want zero external dependencies</li>
+<li>Backward compatibility with existing Popoto models is important</li>
+</ul>
+<h4 id="ulid-time-sortable">ULID (Time-Sortable)</h4>
+<p>ULID (Universally Unique Lexicographically Sortable Identifier) generates 26-character
+IDs that are time-sortable. The first 10 characters encode a millisecond-precision
+timestamp, and the remaining 16 characters are random. ULIDs use Crockford's Base32
+encoding for URL-safety and readability.</p>
+<pre><code class="language-bash">pip install popoto[ulid]
+</code></pre>
+<pre><code class="language-python">class Order(Model):
+    id = AutoKeyField(strategy=&quot;ulid&quot;)
+    product = Field(type=str)
+    quantity = Field(type=int)
+
+order1 = Order.create(product=&quot;Widget&quot;, quantity=5)
+order2 = Order.create(product=&quot;Gadget&quot;, quantity=3)
+
+print(order1.id)
+# =&gt; &quot;01ARZ3NDEKTSV4RRFFQ69G5FAV&quot;  (26 chars)
+
+# IDs are lexicographically sortable by creation time
+print(order1.id &lt; order2.id)
+# =&gt; True
+</code></pre>
+<p>Use ULID when:</p>
+<ul>
+<li>You need IDs that sort chronologically (e.g., orders, events, logs)</li>
+<li>You want shorter IDs than UUID4 (26 vs 32 characters)</li>
+<li>You need URL-safe identifiers without special characters</li>
+</ul>
+<h4 id="ksuid-time-sortable">KSUID (Time-Sortable)</h4>
+<p>KSUID (K-Sortable Unique Identifier) generates 27-character IDs that are also
+time-sortable. KSUIDs encode a timestamp with second-precision and 16 bytes of random
+data using Base62 encoding. They have a longer time range than ULIDs (until year 2150).</p>
+<pre><code class="language-bash">pip install popoto[ksuid]
+</code></pre>
+<pre><code class="language-python">class Event(Model):
+    id = AutoKeyField(strategy=&quot;ksuid&quot;)
+    name = Field(type=str)
+    timestamp = Field(type=str)
+
+event1 = Event.create(name=&quot;user_signup&quot;, timestamp=&quot;2025-01-15T10:30:00Z&quot;)
+event2 = Event.create(name=&quot;purchase&quot;, timestamp=&quot;2025-01-15T10:31:00Z&quot;)
+
+print(event1.id)
+# =&gt; &quot;0ujsswThIGTUYm2K8FjOOfXtY1K&quot;  (27 chars)
+
+# IDs are lexicographically sortable by creation time
+print(event1.id &lt; event2.id)
+# =&gt; True
+</code></pre>
+<p>Use KSUID when:</p>
+<ul>
+<li>You need IDs that sort chronologically</li>
+<li>You prefer Base62 encoding (alphanumeric only, case-sensitive)</li>
+<li>You need the extended time range (valid until year 2150)</li>
+</ul>
+<h4 id="choosing-a-strategy">Choosing a Strategy</h4>
+<table>
+<thead>
+<tr>
+<th>Use Case</th>
+<th>Recommended Strategy</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>General-purpose unique IDs</td>
+<td><code>uuid4</code> (default)</td>
+</tr>
+<tr>
+<td>Event logs, audit trails</td>
+<td><code>ulid</code> or <code>ksuid</code></td>
+</tr>
+<tr>
+<td>Orders, transactions</td>
+<td><code>ulid</code> or <code>ksuid</code></td>
+</tr>
+<tr>
+<td>Time-series data</td>
+<td><code>ulid</code> or <code>ksuid</code></td>
+</tr>
+<tr>
+<td>Existing Popoto models</td>
+<td><code>uuid4</code> (backward compatible)</td>
+</tr>
+<tr>
+<td>Minimal dependencies</td>
+<td><code>uuid4</code> (built-in)</td>
+</tr>
+<tr>
+<td>Shortest IDs</td>
+<td><code>ulid</code> (26 chars)</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>Time-sortable IDs like ULID and KSUID are particularly useful when you want to
+query "most recent" records efficiently, since lexicographic sorting on the ID
+field naturally orders by creation time.</p>
+</div>
+<h2 id="composite-keys">Composite Keys</h2>
+<p>When no single field is unique, you can use multiple KeyFields to form a composite
+key. The combination of all KeyField values must be unique together. This is useful
+for junction or reservation models.</p>
+<pre><code class="language-python">from popoto import Model, KeyField, Field
+from popoto import Relationship
+
+class Reservation(Model):
+    restaurant = KeyField()
+    customer = KeyField()
+    party_size = Field(type=int)
+    notes = Field(type=str, null=True)
+</code></pre>
+<p>Two distinct reservations exist as long as the restaurant-customer pair differs:</p>
+<pre><code class="language-python">Reservation.create(
+    restaurant=&quot;Siam Garden&quot;,
+    customer=&quot;foodie42&quot;,
+    party_size=4,
+    notes=&quot;Window seat please&quot;,
+)
+
+Reservation.create(
+    restaurant=&quot;Bella Napoli&quot;,
+    customer=&quot;foodie42&quot;,
+    party_size=2,
+)
+
+# Retrieve by the composite key
+reservation = Reservation.load(
+    restaurant=&quot;Siam Garden&quot;, customer=&quot;foodie42&quot;
+)
+print(reservation.party_size)
+# =&gt; 4
+</code></pre>
+<p>The Redis key for this instance is <code>Reservation:Siam Garden:foodie42</code>.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>If two reservations share the same restaurant <em>and</em> customer values, the second
+save silently overwrites the first. Add a <code>UniqueKeyField</code> or <code>AutoKeyField</code> if
+you need to allow duplicates on the composite fields.</p>
+</div>
+<h2 id="models-without-keyfields">Models Without KeyFields</h2>
+<p>You can declare a model without any explicit KeyField. Popoto automatically adds a
+hidden <code>AutoKeyField</code> named <code>_auto_key</code>, giving every instance a unique UUID4-based
+Redis key. This is convenient when you always query by other fields like <code>SortedField</code>
+or <code>GeoField</code>.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The automatically added <code>_auto_key</code> uses the default <code>uuid4</code> strategy. If you need
+time-sortable IDs, declare an explicit <code>AutoKeyField(strategy="ulid")</code> or
+<code>AutoKeyField(strategy="ksuid")</code> instead.</p>
+</div>
+<p>The <code>MenuItem</code> model uses an explicit <code>AutoKeyField</code>, but the effect is the same as
+omitting all key fields entirely:</p>
+<pre><code class="language-python">from popoto import Model, AutoKeyField, Field, SortedField
+from popoto import Relationship
+
+class MenuItem(Model):
+    item_id = AutoKeyField()
+    name = Field(type=str)
+    price = SortedField(type=float)
+    restaurant = Relationship(Restaurant)
+    available = Field(type=bool, default=True)
+</code></pre>
+<p>Create items without worrying about key collisions:</p>
+<pre><code class="language-python">pad_thai = MenuItem.create(
+    name=&quot;Pad Thai&quot;,
+    price=14.99,
+    restaurant=restaurant,
+    available=True,
+)
+
+green_curry = MenuItem.create(
+    name=&quot;Green Curry&quot;,
+    price=16.50,
+    restaurant=restaurant,
+)
+
+print(pad_thai.item_id)
+# =&gt; &quot;e5f6a7b8-...&quot;  (auto-generated)
+</code></pre>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>Use <code>AutoKeyField</code> when your model represents items that do not have a natural
+unique identifier, such as orders, menu items, or log entries. Consider using
+<code>strategy="ulid"</code> or <code>strategy="ksuid"</code> for models where chronological ordering
+by ID is useful.</p>
+</div>
+<h2 id="field">Field</h2>
+<p>The base <code>Field</code> class stores a typed value with optional validation. If you do not
+specify a <code>type</code>, it defaults to <code>str</code>.</p>
+<p>Popoto supports the following types: <code>int</code>, <code>float</code>, <code>Decimal</code>, <code>str</code>, <code>bool</code>, <code>list</code>,
+<code>set</code>, <code>tuple</code>, <code>dict</code>, <code>bytes</code>, <code>datetime.date</code>, <code>datetime.datetime</code>, <code>datetime.time</code>.</p>
+<p>Here are the types used across our food delivery models: <code>Restaurant.cuisine</code> is
+<code>str</code>, <code>Restaurant.rating</code> is <code>float</code>, <code>Restaurant.active</code> is <code>bool</code>, <code>Order.total</code>
+is <code>float</code>, and <code>Order.status</code> is <code>str</code>. Popoto validates field types when you save:</p>
+<pre><code class="language-python">restaurant = Restaurant(name=&quot;Bella Napoli&quot;, cuisine=&quot;Italian&quot;, rating=4.2)
+restaurant.active = &quot;yes&quot;  # wrong type, should be bool
+
+print(restaurant.is_valid())
+# =&gt; False
+</code></pre>
+<h2 id="named-field-shortcuts">Named Field Shortcuts</h2>
+<p>Popoto provides shortcut classes so you can avoid the <code>type=</code> parameter. These are
+functionally identical to <code>Field(type=...)</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Shortcut</th>
+<th>Equivalent</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>IntField</code></td>
+<td><code>Field(type=int)</code></td>
+</tr>
+<tr>
+<td><code>FloatField</code></td>
+<td><code>Field(type=float)</code></td>
+</tr>
+<tr>
+<td><code>DecimalField</code></td>
+<td><code>Field(type=Decimal)</code></td>
+</tr>
+<tr>
+<td><code>StringField</code></td>
+<td><code>Field(type=str)</code></td>
+</tr>
+<tr>
+<td><code>BooleanField</code></td>
+<td><code>Field(type=bool)</code></td>
+</tr>
+<tr>
+<td><code>ListField</code></td>
+<td><code>Field(type=list)</code></td>
+</tr>
+<tr>
+<td><code>SetField</code></td>
+<td><code>Field(type=set)</code></td>
+</tr>
+<tr>
+<td><code>TupleField</code></td>
+<td><code>Field(type=tuple)</code></td>
+</tr>
+<tr>
+<td><code>DictField</code></td>
+<td><code>Field(type=dict)</code></td>
+</tr>
+<tr>
+<td><code>BytesField</code></td>
+<td><code>Field(type=bytes)</code></td>
+</tr>
+<tr>
+<td><code>DateField</code></td>
+<td><code>Field(type=date)</code></td>
+</tr>
+<tr>
+<td><code>DatetimeField</code></td>
+<td><code>Field(type=datetime)</code></td>
+</tr>
+<tr>
+<td><code>TimeField</code></td>
+<td><code>Field(type=time)</code></td>
+</tr>
+</tbody>
+</table>
+<p>Import shortcuts from <code>popoto.fields.shortcuts</code>:</p>
+<pre><code class="language-python">from popoto import Model, KeyField
+from popoto.fields.shortcuts import IntField, FloatField, BooleanField, StringField
+
+class Restaurant(Model):
+    name = KeyField()
+    cuisine = StringField()
+    seat_count = IntField()
+    avg_price = FloatField()
+    active = BooleanField()
+</code></pre>
+<p>Use whichever style you prefer -- the behavior is identical.</p>
+<h2 id="null-values">Null Values</h2>
+<p><code>KeyField</code> and <code>SortedField</code> are required (<code>null=False</code>) by default. All other fields
+are optional (<code>null=True</code>) by default. You can override this with the <code>null</code> keyword.</p>
+<p>The <code>Driver</code> model illustrates this: <code>driver_id</code> (AutoKeyField) and <code>phone</code>
+(UniqueKeyField) are always required, <code>rating</code> (SortedField) is required by default,
+while <code>name</code> (Field) and <code>location</code> (GeoField) are optional by default.</p>
+<pre><code class="language-python">driver = Driver(name=None, phone=&quot;+1-555-0199&quot;, rating=4.0)
+print(driver.is_valid())
+# =&gt; True  (name is optional, None is acceptable)
+</code></pre>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><code>UniqueKeyField</code> and <code>AutoKeyField</code> cannot be set to <code>null=True</code>. Attempting to
+do so raises a <code>ModelException</code> at class definition time.</p>
+</div>
+<h2 id="default-values">Default Values</h2>
+<p>Fields accept a <code>default</code> value used when creating instances without specifying that
+field. The <code>Order</code> model demonstrates this with its <code>status</code> field:</p>
+<pre><code class="language-python">order = Order.create(
+    customer=customer,
+    restaurant=restaurant,
+    total=42.50,
+)
+
+print(order.status)
+# =&gt; &quot;pending&quot;
+</code></pre>
+<p>Defaults can also be callables. The callable is invoked each time a new instance is
+created, ensuring each instance gets a fresh value. This is critical for mutable types
+like lists and dicts.</p>
+<pre><code class="language-python">import uuid
+from popoto import Model, KeyField, Field
+
+class Restaurant(Model):
+    name = KeyField()
+    tags = Field(type=list, default=list)        # fresh list per instance
+    metadata = Field(type=dict, default=dict)    # fresh dict per instance
+    internal_id = Field(default=uuid.uuid4)      # unique UUID per instance
+    display_order = Field(type=int, default=lambda: 0)  # lambda also works
+</code></pre>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Never use a mutable literal as a default (e.g., <code>default=[]</code> or <code>default={}</code>).
+This shares a single object across all instances. Always use <code>default=list</code> or
+<code>default=dict</code> instead.</p>
+</div>
+<h2 id="string-max-length">String Max Length</h2>
+<p>You can set a maximum character length for string fields. Redis itself has no
+practical string length limit, so <code>max_length</code> is purely a validation guard.</p>
+<pre><code class="language-python">class MenuItem(Model):
+    item_id = AutoKeyField()
+    name = Field(type=str, max_length=100)
+    description = Field(type=str, max_length=500)
+
+item = MenuItem(name=&quot;A&quot; * 150)
+print(item.is_valid())
+# =&gt; False
+</code></pre>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>The default <code>max_length</code> for string fields is 1024 characters. Set it explicitly
+only when you need a stricter or looser limit.</p>
+</div>
+<h2 id="sortedfield">SortedField</h2>
+<p><code>SortedField</code> enables fast range queries using Redis sorted sets. This is one of
+Redis's most powerful features, allowing queries like "menu items under $15" or
+"restaurants rated above 4.0" without scanning every instance.</p>
+<p>A <code>SortedField</code> is required for the range filters <code>__lt</code>, <code>__lte</code>, <code>__gt</code>, <code>__gte</code>.
+See <a href="../query/">Making Queries</a> for complete filter documentation.</p>
+<p>Using the <code>MenuItem</code> model (which has <code>price = SortedField(type=float)</code>), create some
+items and query by price range:</p>
+<pre><code class="language-python">MenuItem.create(name=&quot;Pad Thai&quot;, price=14.99, restaurant=restaurant)
+MenuItem.create(name=&quot;Green Curry&quot;, price=16.50, restaurant=restaurant)
+MenuItem.create(name=&quot;Spring Rolls&quot;, price=8.99, restaurant=restaurant)
+MenuItem.create(name=&quot;Mango Sticky Rice&quot;, price=9.50, restaurant=restaurant)
+
+# Find affordable items under $10
+budget_items = MenuItem.query.filter(price__lt=10.0)
+print(len(budget_items))
+# =&gt; 2
+
+# Find premium items $15 and above
+premium = MenuItem.query.filter(price__gte=15.0)
+print([item.name for item in premium])
+# =&gt; [&quot;Pad Thai&quot;, &quot;Green Curry&quot;]
+</code></pre>
+<p>You can also query restaurant ratings the same way:</p>
+<pre><code class="language-python"># Find highly rated restaurants
+top_restaurants = Restaurant.query.filter(rating__gte=4.0)
+</code></pre>
+<p>Range queries work with <code>int</code>, <code>float</code>, <code>Decimal</code>, <code>datetime</code>, <code>date</code>, and <code>time</code>.</p>
+<h2 id="sortedkeyfield">SortedKeyField</h2>
+<p><code>SortedKeyField</code> combines the direct-lookup speed of <code>KeyField</code> with the range query
+capabilities of <code>SortedField</code>. Use it when a field serves as both a primary identifier
+and a range-query target.</p>
+<pre><code class="language-python">from popoto import Model, SortedKeyField, Field
+
+class DailySpecial(Model):
+    day_number = SortedKeyField(type=int)
+    dish = Field(type=str)
+    price = Field(type=float)
+</code></pre>
+<p>Query by exact key or by range:</p>
+<pre><code class="language-python">DailySpecial.create(day_number=1, dish=&quot;Tacos&quot;, price=9.99)
+DailySpecial.create(day_number=2, dish=&quot;Pasta&quot;, price=12.99)
+DailySpecial.create(day_number=3, dish=&quot;Sushi&quot;, price=15.99)
+
+# Direct key lookup
+monday = DailySpecial.load(day_number=1)
+print(monday.dish)
+# =&gt; &quot;Tacos&quot;
+
+# Range query
+early_week = DailySpecial.query.filter(day_number__lte=2)
+print(len(early_week))
+# =&gt; 2
+</code></pre>
+<h2 id="partition_by">partition_by</h2>
+<p>When you always query a <code>SortedField</code> together with a specific <code>KeyField</code>, you can
+dramatically improve performance by defining <code>partition_by</code>. This creates a composite index
+scoped to the values of the fields listed in the tuple.</p>
+<p>The tradeoff is that queries on this <code>SortedField</code> <em>must</em> include the <code>partition_by</code>
+fields. This is ideal for the <code>MenuItem.price</code> field, where you typically filter items
+for a specific restaurant.</p>
+<pre><code class="language-python">class MenuItem(Model):
+    item_id = AutoKeyField()
+    name = Field(type=str)
+    price = SortedField(type=float, partition_by=('restaurant',))
+    restaurant = Relationship(Restaurant)
+    available = Field(type=bool, default=True)
+</code></pre>
+<p>Now price queries must include the restaurant:</p>
+<pre><code class="language-python"># Fast query: uses the composite index
+affordable = MenuItem.query.filter(
+    restaurant=restaurant,
+    price__lt=12.00,
+)
+
+# This would fail because 'restaurant' is required by partition_by
+try:
+    MenuItem.query.filter(price__lt=12.00)
+except Exception as e:
+    print(e)
+</code></pre>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>Use <code>partition_by</code> when you have a natural parent-child relationship. Menu items
+always belong to a restaurant, so scoping the price index to the restaurant
+reduces the sorted set size and speeds up range queries.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Partition key changes are handled automatically</p>
+<p>If you change a partition field's value (e.g., moving an item from one restaurant
+to another), Popoto automatically removes the entry from the old partition's sorted
+set and adds it to the new one. No manual cleanup is needed.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Deprecation Notice</p>
+<p>The <code>sort_by</code> parameter is deprecated and will be removed in a future major version.
+Use <code>partition_by</code> instead. <code>sort_by</code> still works but emits a <code>DeprecationWarning</code>.</p>
+</div>
+<h2 id="datetimefield">DatetimeField</h2>
+<p><code>DatetimeField</code> extends the base <code>Field</code> with automatic timestamp management.
+It supports two special parameters: <code>auto_now_add</code> and <code>auto_now</code>.</p>
+<ul>
+<li><code>auto_now_add=True</code> -- Sets the field to the current datetime on first save only.</li>
+<li><code>auto_now=True</code> -- Updates the field to the current datetime on every save.</li>
+</ul>
+<p>The <code>Order</code> model uses both:</p>
+<pre><code class="language-python">from popoto.fields.datetime_field import DatetimeField
+
+class Order(Model):
+    order_id = AutoKeyField()
+    # ... other fields ...
+    created_at = DatetimeField(auto_now_add=True)  # set on first save
+    updated_at = DatetimeField(auto_now=True)       # refreshed on every save
+</code></pre>
+<p>Timestamps are managed automatically:</p>
+<pre><code class="language-python">order = Order.create(
+    customer=customer,
+    restaurant=restaurant,
+    total=28.99,
+)
+
+print(order.created_at)
+# =&gt; 2025-06-15 14:30:00.123456
+
+print(order.updated_at)
+# =&gt; 2025-06-15 14:30:00.123456
+
+# Update the order status
+order.status = &quot;confirmed&quot;
+order.save()
+
+print(order.created_at)
+# =&gt; 2025-06-15 14:30:00.123456  (unchanged)
+
+print(order.updated_at)
+# =&gt; 2025-06-15 14:32:10.654321  (refreshed)
+</code></pre>
+<p>See <a href="../meta/">Model Meta Options</a> for configuring <code>order_by</code> and <code>ttl</code> on the <code>Meta</code>
+class.</p>
+<h2 id="timestampable-mixin">Timestampable Mixin</h2>
+<p>If you find yourself adding <code>created_at</code> and <code>updated_at</code> to many models, use the
+<code>Timestampable</code> mixin to include both fields automatically. It provides
+<code>DatetimeField(auto_now_add=True)</code> for <code>created_at</code> and
+<code>DatetimeField(auto_now=True)</code> for <code>updated_at</code>.</p>
+<pre><code class="language-python">from popoto import Model, KeyField, Field
+from popoto.utils.mixins.timestampable import Timestampable
+
+class Restaurant(Timestampable, Model):
+    name = KeyField()
+    cuisine = Field(type=str)
+    # created_at and updated_at are included automatically
+</code></pre>
+<h2 id="geofield">GeoField</h2>
+<p><code>GeoField</code> uses Redis geospatial indexes for location-based queries. This is perfect
+for finding nearby restaurants, tracking driver positions, or searching by delivery
+address.</p>
+<p>Values are <code>GeoField.Coordinates(latitude, longitude)</code> namedtuples, though plain
+<code>(latitude, longitude)</code> tuples also work.</p>
+<p>Using the <code>Restaurant</code> model (which has <code>location = GeoField()</code>), create restaurants
+with locations and search by radius:</p>
+<pre><code class="language-python">siam = Restaurant.create(
+    name=&quot;Siam Garden&quot;,
+    cuisine=&quot;Thai&quot;,
+    rating=4.5,
+    location=GeoField.Coordinates(latitude=40.7484, longitude=-73.9857),
+)
+
+bella = Restaurant.create(
+    name=&quot;Bella Napoli&quot;,
+    cuisine=&quot;Italian&quot;,
+    rating=4.2,
+    location=GeoField.Coordinates(latitude=40.7527, longitude=-73.9772),
+)
+
+taco = Restaurant.create(
+    name=&quot;Taco Loco&quot;,
+    cuisine=&quot;Mexican&quot;,
+    rating=4.0,
+    location=GeoField.Coordinates(latitude=40.7589, longitude=-73.9851),
+)
+
+# Find restaurants within 2km of Midtown Manhattan
+nearby = Restaurant.query.filter(
+    location=(40.7505, -73.9834),
+    location_radius=2,
+    location_radius_unit='km',
+)
+
+print(len(nearby))
+# =&gt; 3
+</code></pre>
+<p>Supported radius units are <code>"m"</code> (meters), <code>"km"</code> (kilometers), <code>"ft"</code> (feet), and
+<code>"mi"</code> (miles).</p>
+<h2 id="query-with-distances">Query with Distances</h2>
+<p>Add <code>{field_name}_with_distances=True</code> to include distance information in results.
+Each returned object gets <code>_geo_distance</code> and <code>_geo_distance_unit</code> attributes, and
+results are sorted closest first.</p>
+<pre><code class="language-python">results = Restaurant.query.filter(
+    location=(40.7505, -73.9834),
+    location_radius=5,
+    location_radius_unit='km',
+    location_with_distances=True,
+)
+
+for r in results:
+    print(f&quot;{r.name}: {r._geo_distance} {r._geo_distance_unit}&quot;)
+# =&gt; Siam Garden: 0.3 km
+# =&gt; Bella Napoli: 0.7 km
+# =&gt; Taco Loco: 0.9 km
+</code></pre>
+<p>You can also use a model instance as the center point with <code>_member</code>:</p>
+<pre><code class="language-python">results = Restaurant.query.filter(
+    location_member=siam,
+    location_radius=3,
+    location_radius_unit='km',
+    location_with_distances=True,
+)
+
+for r in results:
+    print(f&quot;{r.name}: {r._geo_distance} km&quot;)
+# =&gt; Siam Garden: 0.0 km
+# =&gt; Bella Napoli: 0.8 km
+# =&gt; Taco Loco: 1.2 km
+</code></pre>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>Geo queries are backed by Redis GEORADIUS commands, which run in O(N+log(M))
+time. This is very fast even with millions of locations.</p>
+</div>
+<h2 id="dataframefield">DataFrameField</h2>
+<p><code>DataFrameField</code> stores <a href="https://pandas.pydata.org/docs/reference/frame.html">Pandas DataFrame</a>
+objects directly in Redis. This is useful for analytics or caching computed datasets.
+Because it depends on Pandas, it uses a separate model outside the canonical set.</p>
+<pre><code class="language-python">import pandas as pd
+from popoto import Model, KeyField
+from popoto.fields.dataframe_field import DataFrameField
+
+class SalesReport(Model):
+    name = KeyField()
+    data = DataFrameField()
+</code></pre>
+<p>Store and retrieve a sales report:</p>
+<pre><code class="language-python">sales_data = pd.DataFrame({
+    'restaurant': ['Siam Garden', 'Bella Napoli', 'Taco Loco'],
+    'orders': [142, 98, 215],
+    'revenue': [3408.58, 2156.02, 3225.85],
+})
+
+report = SalesReport.create(name=&quot;weekly_summary&quot;, data=sales_data)
+
+loaded = SalesReport.load(name=&quot;weekly_summary&quot;)
+print(loaded.data['revenue'].sum())
+# =&gt; 8790.45
+
+report.delete()
+</code></pre>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><code>DataFrameField</code> requires the <code>pandas</code> package. Install it separately if it is
+not already in your environment.</p>
+</div>
+<h2 id="reserved-field-names">Reserved Field Names</h2>
+<p>The following names are reserved and cannot be used as field names:</p>
+<ul>
+<li><code>limit</code> -- Used in <code>query.filter()</code> to limit the number of returned objects</li>
+<li><code>values</code> -- Used in <code>query.filter()</code> to restrict which fields are returned</li>
+<li><code>order_by</code> -- Used in <code>query.filter()</code> to sort results</li>
+</ul>
+<h2 id="model-methods">Model Methods</h2>
+<p>This section summarizes the core methods available on every Popoto model.</p>
+<h3 id="creating-and-saving">Creating and Saving</h3>
+<p>Create and save in one step with <code>create()</code>, or instantiate and call <code>save()</code> later:</p>
+<pre><code class="language-python"># One-step creation
+restaurant = Restaurant.create(
+    name=&quot;Siam Garden&quot;,
+    cuisine=&quot;Thai&quot;,
+    rating=4.5,
+    location=GeoField.Coordinates(latitude=40.7484, longitude=-73.9857),
+)
+
+# Two-step creation
+restaurant = Restaurant(name=&quot;Bella Napoli&quot;)
+restaurant.cuisine = &quot;Italian&quot;
+restaurant.rating = 4.2
+restaurant.save()
+</code></pre>
+<h3 id="loading">Loading</h3>
+<p>Load an instance by its KeyField values. For <code>AutoKeyField</code> models, load by the
+generated key:</p>
+<pre><code class="language-python">restaurant = Restaurant.load(name=&quot;Siam Garden&quot;)
+print(restaurant.cuisine)
+# =&gt; &quot;Thai&quot;
+
+order = Order.load(order_id=order.order_id)
+print(order.status)
+# =&gt; &quot;pending&quot;
+</code></pre>
+<h3 id="updating">Updating</h3>
+<p>Modify fields and call <code>save()</code> to persist changes. For models with
+<code>DatetimeField(auto_now=True)</code>, the timestamp is refreshed automatically:</p>
+<pre><code class="language-python">restaurant = Restaurant.load(name=&quot;Siam Garden&quot;)
+restaurant.rating = 4.7
+restaurant.save()
+
+order.status = &quot;delivered&quot;
+order.save()
+# order.updated_at is automatically refreshed
+</code></pre>
+<h3 id="deleting">Deleting</h3>
+<p>Call <code>delete()</code> to remove an instance and clean up all associated indexes (sorted
+set entries, geo set entries, unique field indexes, and relationship indexes):</p>
+<pre><code class="language-python">restaurant = Restaurant.load(name=&quot;Siam Garden&quot;)
+restaurant.delete()
+</code></pre>
+<h3 id="validation">Validation</h3>
+<p>Use <code>is_valid()</code> to check whether a model instance passes all field validations
+before saving:</p>
+<pre><code class="language-python">restaurant = Restaurant(name=None, cuisine=&quot;Thai&quot;, rating=4.5)
+print(restaurant.is_valid())
+# =&gt; False  (name is a required KeyField)
+
+restaurant.name = &quot;Siam Garden&quot;
+print(restaurant.is_valid())
+# =&gt; True
+</code></pre>
+<h3 id="the-db_key-property">The db_key Property</h3>
+<p>Every saved instance has a <code>db_key</code> property that exposes its Redis key:</p>
+<pre><code class="language-python">restaurant = Restaurant.create(name=&quot;Siam Garden&quot;, cuisine=&quot;Thai&quot;, rating=4.5)
+print(restaurant.db_key.redis_key)
+# =&gt; &quot;Restaurant:Siam Garden&quot;
+
+reservation = Reservation.create(
+    restaurant=&quot;Siam Garden&quot;, customer=&quot;foodie42&quot;, party_size=4
+)
+print(reservation.db_key.redis_key)
+# =&gt; &quot;Reservation:Siam Garden:foodie42&quot;
+</code></pre>
+<p>The <code>db_key</code> is useful for debugging, logging, or performing custom Redis operations
+outside of Popoto's query API.</p>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../configuration/" class="btn btn-neutral float-left" title="Configuration"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../meta/" class="btn btn-neutral float-right" title="Model Meta Options">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+        <span>
+          <a href="https://github.com/tomcounsell/popoto/" class="fa fa-github" style="color: #fcfcfc"> GitHub</a>
+        </span>
+    
+    
+      <span><a href="../configuration/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../meta/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "..";</script>
+    <script src="../js/theme_extra.js"></script>
+    <script src="../js/theme.js"></script>
+      <script src="../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>

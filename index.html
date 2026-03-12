@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="description" content="None" /><meta name="author" content="Tom Counsell" />
+      <link rel="shortcut icon" href="img/favicon.ico" />
+    <title>Popoto Documentation</title>
+    <link rel="stylesheet" href="css/theme.css" />
+    <link rel="stylesheet" href="css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Home";
+        var mkdocs_page_input_path = "index.md";
+        var mkdocs_page_url = null;
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/markdown.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/python.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/bash.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/html.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href="." class="icon icon-home"> Popoto Documentation
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="./search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+                <li class="toctree-l1 current"><a class="reference internal current" href="#">Home</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#simple-example">Simple Example</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#features">Features</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#getting-started">Getting Started</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#install">Install</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#define-a-model">Define a Model</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#create-instances">Create Instances</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#retrieve-instances">Retrieve Instances</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#delete-instances">Delete Instances</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#async-operations">Async Operations</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="configuration/">Configuration</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="configuration/#redisvalkey-connection">Redis/Valkey Connection</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="configuration/#using-redis_url-recommended">Using REDIS_URL (Recommended)</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="configuration/#default-connection">Default Connection</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="configuration/#reconfiguring-at-runtime">Reconfiguring at Runtime</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="configuration/#accessing-the-connection-directly">Accessing the Connection Directly</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="configuration/#debugging">Debugging</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="configuration/#print-redis-info">Print Redis Info</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="configuration/#redisvalkey-cli">Redis/Valkey CLI</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="configuration/#environment-variables">Environment Variables</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="configuration/#thread-safety">Thread Safety</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="configuration/#what-is-thread-safe">What IS Thread-Safe</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="configuration/#what-is-not-thread-safe">What is NOT Thread-Safe</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="configuration/#best-practices">Best Practices</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="configuration/#logging">Logging</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="configuration/#environment-variable">Environment Variable</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="configuration/#programmatic-configuration">Programmatic Configuration</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="configuration/#logger-reference">Logger Reference</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="configuration/#integration-with-frameworks">Integration with Frameworks</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="fields/">Models and Fields</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="fields/#keyfield">KeyField</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="fields/#changing-a-keyfield-value">Changing a KeyField Value</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="fields/#uniqueness">Uniqueness</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="fields/#autokeyfield-id-strategies">AutoKeyField ID Strategies</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="fields/#uuid4-default">UUID4 (Default)</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="fields/#ulid-time-sortable">ULID (Time-Sortable)</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="fields/#ksuid-time-sortable">KSUID (Time-Sortable)</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="fields/#choosing-a-strategy">Choosing a Strategy</a>
+    </li>
+        </ul>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="fields/#composite-keys">Composite Keys</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="fields/#models-without-keyfields">Models Without KeyFields</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="fields/#field">Field</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="fields/#named-field-shortcuts">Named Field Shortcuts</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="fields/#null-values">Null Values</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="fields/#default-values">Default Values</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="fields/#string-max-length">String Max Length</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="fields/#sortedfield">SortedField</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="fields/#sortedkeyfield">SortedKeyField</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="fields/#partition_by">partition_by</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="fields/#datetimefield">DatetimeField</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="fields/#timestampable-mixin">Timestampable Mixin</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="fields/#geofield">GeoField</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="fields/#query-with-distances">Query with Distances</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="fields/#dataframefield">DataFrameField</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="fields/#reserved-field-names">Reserved Field Names</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="fields/#model-methods">Model Methods</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="fields/#creating-and-saving">Creating and Saving</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="fields/#loading">Loading</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="fields/#updating">Updating</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="fields/#deleting">Deleting</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="fields/#validation">Validation</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="fields/#the-db_key-property">The db_key Property</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="meta/">Model Meta Options</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="meta/#when-to-use-meta-options">When to Use Meta Options</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="meta/#order_by">order_by</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="meta/#override-per-query">Override per Query</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="meta/#ttl">ttl</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="meta/#instance-level-ttl">Instance-Level TTL</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="meta/#absolute-expiration">Absolute Expiration</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="meta/#indexes">indexes</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="meta/#non-unique-indexes">Non-Unique Indexes</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="meta/#null-handling">NULL Handling</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="meta/#update-and-delete-handling">Update and Delete Handling</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="meta/#complete-example">Complete Example</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="meta/#accessing-meta-at-runtime">Accessing Meta at Runtime</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="meta/#meta-validation">Meta Validation</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="query/">Making Queries</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="query/#get-a-single-object">Get a Single Object</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="query/#get-all-objects">Get All Objects</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="query/#filter-query-results">Filter Query Results</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="query/#chainable-query-builder">Chainable Query Builder</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="query/#chainable-vs-kwargs-syntax">Chainable vs Kwargs Syntax</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="query/#chainable-methods">Chainable Methods</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="query/#chaining-multiple-filters">Chaining Multiple Filters</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="query/#getting-the-first-result">Getting the First Result</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="query/#counting-without-loading">Counting Without Loading</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="query/#using-values-with-chainable-api">Using Values with Chainable API</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="query/#backward-compatibility">Backward Compatibility</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="query/#q-objects-or-and-not">Q Objects (OR, AND, NOT)</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="query/#importing-q">Importing Q</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="query/#basic-q-object-usage">Basic Q Object Usage</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="query/#or-queries-with">OR Queries with |</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="query/#and-queries-with">AND Queries with &amp;</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="relationship/">Relationship Field</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="relationship/#basic-usage">Basic Usage</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="relationship/#creating-related-instances">Creating Related Instances</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="relationship/#querying-by-relationship">Querying by Relationship</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="relationship/#nested-field-access">Nested Field Access</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="relationship/#traversing-relationships">Traversing Relationships</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="async/">Async Operations</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="async/#async-model-methods">Async Model Methods</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="async/#async_create">async_create()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="async/#async_save">async_save()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="async/#async_delete">async_delete()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="async/#async_load">async_load()</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="async/#async-query-methods">Async Query Methods</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="async/#async_get">async_get()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="async/#async_filter">async_filter()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="async/#async_all">async_all()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="async/#async_count">async_count()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="async/#async_keys">async_keys()</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="async/#concurrent-operations">Concurrent Operations</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="async/#framework-integration-fastapi">Framework Integration: FastAPI</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="async/#framework-integration-background-workers">Framework Integration: Background Workers</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="async/#implementation-details">Implementation Details</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="async/#thread-pool-execution">Thread Pool Execution</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="async/#python-38-compatibility">Python 3.8+ Compatibility</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="async/#performance-considerations">Performance Considerations</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="async/#error-handling">Error Handling</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="async/#async-bulk-operations">Async Bulk Operations</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="async/#test-coverage">Test Coverage</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="async/#see-also">See Also</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="pubsub/">PubSub</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="pubsub/#publisher">Publisher</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="pubsub/#custom-channel-names">Custom Channel Names</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="pubsub/#pipeline-support">Pipeline Support</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="pubsub/#subscriber">Subscriber</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="pubsub/#subscriber-lifecycle">Subscriber Lifecycle</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="pubsub/#pre_handle-hook">pre_handle Hook</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="pubsub/#multi-channel-subscription">Multi-Channel Subscription</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="pubsub/#exception-handling">Exception Handling</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="pubsub/#logging">Logging</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="api-reference/">API Reference</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="api-reference/#model-class">Model Class</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="api-reference/#model__init__kwargs">Model.__init__(**kwargs)</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="api-reference/#modelcreate">Model.create()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="api-reference/#modelsave">Model.save()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="api-reference/#modeldelete">Model.delete()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="api-reference/#modelload">Model.load()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="api-reference/#modelis_valid">Model.is_valid()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="api-reference/#modelget_info">Model.get_info()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="api-reference/#modeldb_key">Model.db_key</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="api-reference/#async-methods">Async Methods</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="api-reference/#bulk-operations">Bulk Operations</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="api-reference/#modelbulk_create">Model.bulk_create()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="api-reference/#modelbulk_update">Model.bulk_update()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="api-reference/#modelbulk_delete">Model.bulk_delete()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="api-reference/#modeldelete_all">Model.delete_all()</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Contributing</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="style-guide/">Style Guide</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="style-guide/#canonical-example-models">Canonical Example Models</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="style-guide/#tone-and-voice">Tone and Voice</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="style-guide/#page-structure">Page Structure</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="style-guide/#headings">Headings</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="style-guide/#prose-between-code-blocks">Prose Between Code Blocks</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="style-guide/#code-examples">Code Examples</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="style-guide/#imports">Imports</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="style-guide/#expected-output">Expected Output</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="style-guide/#self-contained-examples">Self-Contained Examples</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="style-guide/#use-canonical-models">Use Canonical Models</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="style-guide/#admonitions">Admonitions</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="style-guide/#cross-references">Cross-References</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="style-guide/#general-formatting">General Formatting</a>
+    </li>
+    </ul>
+                  </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href=".">Popoto Documentation</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="." class="icon icon-home" aria-label="Docs"></a></li>
+      <li class="breadcrumb-item active">Home</li>
+    <li class="wy-breadcrumbs-aside">
+          <a href="https://github.com/tomcounsell/popoto/edit/master/docs/index.md" class="icon icon-github"> Edit on GitHub</a>
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="introduction">Introduction</h1>
+<p>Popoto is an ORM for <a href="https://redis.io">Redis</a> and <a href="https://valkey.io">Valkey</a> databases.
+The familiar syntax makes it easy to use for <a href="https://www.djangoproject.com/">Django</a> and <a href="https://flask.palletsprojects.com/">Flask</a> developers.</p>
+<p>Redis and Valkey are storage systems that operate in RAM memory.
+Since they work at RAM memory level, reading/writing is typically 10-20x faster
+compared to PostgreSQL and other traditional relational databases.</p>
+<div class="admonition tip">
+<p class="admonition-title">Valkey Support</p>
+<p>Popoto fully supports Valkey, the open-source Redis fork. Simply point your <code>REDIS_URL</code> at a Valkey server - no code changes needed.</p>
+</div>
+<h2 id="simple-example">Simple Example</h2>
+<p>Here's a complete example showing how to define a model, create an instance, and retrieve it.</p>
+<pre><code class="language-python">from popoto import Model, KeyField, Field, SortedField, GeoField
+
+class Restaurant(Model):
+    name = KeyField()
+    cuisine = Field(type=str)
+    rating = SortedField(type=float)
+    location = GeoField()
+
+Restaurant.create(
+    name=&quot;Burger Palace&quot;,
+    cuisine=&quot;American&quot;,
+    rating=4.5,
+    location=(40.7128, -74.0060)
+)
+
+restaurant = Restaurant.query.get(name=&quot;Burger Palace&quot;)
+
+print(f&quot;{restaurant.name} serves {restaurant.cuisine} food.&quot;)
+# =&gt; 'Burger Palace serves American food.'
+</code></pre>
+<h2 id="features">Features</h2>
+<p>Popoto provides a fast, familiar interface for working with Redis and Valkey.</p>
+<ul>
+<li><strong>Full Redis and Valkey support</strong> - works with both out of the box</li>
+<li>very fast stores and queries</li>
+<li>familiar syntax, similar to Django models</li>
+<li><a href="async/">Async operations</a> for asyncio-based applications</li>
+<li>Geometric distance search</li>
+<li>Timeseries for streaming data</li>
+<li>compatible with Pandas, Xarray for N-dimensional matrix search</li>
+<li><a href="pubsub/">PubSub</a> for message queues, streaming data processing</li>
+</ul>
+<p><strong>Popoto</strong> is ideal for streaming data. The pub/sub module allows you to trigger state updates in real time.
+Currently being used in production for:</p>
+<ul>
+<li>trigger buy/sell actions from streaming price data</li>
+<li>robots sending each other messages for teamwork</li>
+<li>compressing sensor data and training neural networks</li>
+</ul>
+<h2 id="getting-started">Getting Started</h2>
+<h3 id="install">Install</h3>
+<p>Install Popoto using pip.</p>
+<pre><code class="language-bash">pip install popoto
+</code></pre>
+<p><a href="https://pypi.org/project/popoto/">see Popoto on PyPi</a></p>
+<p>Set <code>REDIS_URL</code> in your deployed environment. This is optional on local development.</p>
+<pre><code class="language-python">REDIS_URL = &quot;redis://HOST[:PORT]/DATABASE[?password=PASSWORD]&quot;
+</code></pre>
+<p>See <a href="configuration/">Configuration</a> for full connection options.</p>
+<h3 id="define-a-model">Define a Model</h3>
+<p>Start by defining a model class. Models inherit from <code>popoto.Model</code> and define fields for the data you want to store.</p>
+<pre><code class="language-python">from popoto import Model, KeyField, Field, SortedField
+
+class Restaurant(Model):
+    name = KeyField()
+    cuisine = Field(type=str)
+    rating = SortedField(type=float)
+</code></pre>
+<p>See <a href="fields/">Models and Fields</a> for all Model and Field options.</p>
+<p>See <a href="meta/">Model Meta Options</a> for configuration like default ordering and TTL.</p>
+<h3 id="create-instances">Create Instances</h3>
+<p>You can create instances by constructing the model and calling <code>save()</code>, or use the <code>create()</code> shortcut.</p>
+<pre><code class="language-python">restaurant = Restaurant(name=&quot;Burger Palace&quot;)
+restaurant.cuisine = &quot;American&quot;
+restaurant.rating = 4.5
+restaurant.save()
+
+# single line command
+restaurant = Restaurant.create(name=&quot;Burger Palace&quot;, cuisine=&quot;American&quot;, rating=4.5)
+</code></pre>
+<h3 id="retrieve-instances">Retrieve Instances</h3>
+<p>Use the query interface to retrieve instances by their key fields.</p>
+<pre><code class="language-python">restaurant = Restaurant.query.get(name=&quot;Burger Palace&quot;)
+print(f&quot;{restaurant.name} serves {restaurant.cuisine} food.&quot;)
+# =&gt; 'Burger Palace serves American food.'
+</code></pre>
+<p>See <a href="query/">Making Queries</a> for all Query and Filter options.</p>
+<h3 id="delete-instances">Delete Instances</h3>
+<p>Delete an instance by calling its <code>delete()</code> method.</p>
+<pre><code class="language-python">restaurant.delete()
+</code></pre>
+<p>To delete all instances of a model, use <code>delete_all()</code>:</p>
+<pre><code class="language-python"># Delete all restaurants and clean up all indexes
+Restaurant.delete_all()
+
+# Delete multiple models (delete referencing models first)
+for model in [Order, MenuItem, Restaurant]:
+    model.delete_all()
+</code></pre>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Always use Popoto's delete methods instead of Redis <code>DEL</code> or <code>FLUSHDB</code>. Popoto maintains
+secondary indexes (sorted sets, geo sets, unique constraints) that must be cleaned up
+properly. See <a href="api-reference/#modeldelete_all">Bulk Operations</a> for details.</p>
+</div>
+<h3 id="async-operations">Async Operations</h3>
+<p>All operations have async counterparts for use in asyncio applications.</p>
+<pre><code class="language-python">import asyncio
+
+async def main():
+    restaurant = await Restaurant.async_create(
+        name=&quot;Burger Palace&quot;, cuisine=&quot;American&quot;, rating=4.5
+    )
+    loaded = await Restaurant.query.async_get(name=&quot;Burger Palace&quot;)
+    await loaded.async_delete()
+
+asyncio.run(main())
+</code></pre>
+<p>See <a href="async/">Async Operations</a> for complete async API documentation and examples.</p>
+<p><img alt="" src="/static/popoto.png" /></p>
+<p>Popoto gets its name from the <a href="https://en.wikipedia.org/wiki/M%C4%81ui_dolphin">Maui dolphin</a> subspecies - the world's smallest dolphin subspecies.
+Because dolphins are fast moving, agile, and work together in social groups. In the same way, Popoto wraps Redis and RedisGraph to make it easy to manage streaming timeseries data on a social graph.</p>
+<p>For help building applications with Python/Redis, contact <a href="https://tomcounsell.com">Tom Counsell</a> on <a href="https://linkedin.com/in/tomcounsell">LinkedIn.com/in/tomcounsell</a></p>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="configuration/" class="btn btn-neutral float-right" title="Configuration">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+        <span>
+          <a href="https://github.com/tomcounsell/popoto/" class="fa fa-github" style="color: #fcfcfc"> GitHub</a>
+        </span>
+    
+    
+    
+      <span><a href="configuration/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = ".";</script>
+    <script src="js/theme_extra.js"></script>
+    <script src="js/theme.js"></script>
+      <script src="search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>
+
+<!--
+MkDocs version : 1.6.1
+Build Date UTC : 2026-03-12 05:15:03.270360+00:00
+-->

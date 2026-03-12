@@ -1,0 +1,1660 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="author" content="Tom Counsell" />
+      <link rel="shortcut icon" href="../img/favicon.ico" />
+    <title>Making Queries - Popoto Documentation</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Making Queries";
+        var mkdocs_page_input_path = "query.md";
+        var mkdocs_page_url = null;
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/markdown.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/python.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/bash.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/html.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href=".." class="icon icon-home"> Popoto Documentation
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="..">Home</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="..#simple-example">Simple Example</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="..#features">Features</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="..#getting-started">Getting Started</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="..#install">Install</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="..#define-a-model">Define a Model</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="..#create-instances">Create Instances</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="..#retrieve-instances">Retrieve Instances</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="..#delete-instances">Delete Instances</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="..#async-operations">Async Operations</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../configuration/">Configuration</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#redisvalkey-connection">Redis/Valkey Connection</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#using-redis_url-recommended">Using REDIS_URL (Recommended)</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#default-connection">Default Connection</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#reconfiguring-at-runtime">Reconfiguring at Runtime</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#accessing-the-connection-directly">Accessing the Connection Directly</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#debugging">Debugging</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#print-redis-info">Print Redis Info</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#redisvalkey-cli">Redis/Valkey CLI</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#environment-variables">Environment Variables</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#thread-safety">Thread Safety</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#what-is-thread-safe">What IS Thread-Safe</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#what-is-not-thread-safe">What is NOT Thread-Safe</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#best-practices">Best Practices</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#logging">Logging</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#environment-variable">Environment Variable</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#programmatic-configuration">Programmatic Configuration</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#logger-reference">Logger Reference</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#integration-with-frameworks">Integration with Frameworks</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../fields/">Models and Fields</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#keyfield">KeyField</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../fields/#changing-a-keyfield-value">Changing a KeyField Value</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#uniqueness">Uniqueness</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../fields/#autokeyfield-id-strategies">AutoKeyField ID Strategies</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../fields/#uuid4-default">UUID4 (Default)</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../fields/#ulid-time-sortable">ULID (Time-Sortable)</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../fields/#ksuid-time-sortable">KSUID (Time-Sortable)</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../fields/#choosing-a-strategy">Choosing a Strategy</a>
+    </li>
+        </ul>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#composite-keys">Composite Keys</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#models-without-keyfields">Models Without KeyFields</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#field">Field</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#named-field-shortcuts">Named Field Shortcuts</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#null-values">Null Values</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#default-values">Default Values</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#string-max-length">String Max Length</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#sortedfield">SortedField</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#sortedkeyfield">SortedKeyField</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#partition_by">partition_by</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#datetimefield">DatetimeField</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#timestampable-mixin">Timestampable Mixin</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#geofield">GeoField</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#query-with-distances">Query with Distances</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#dataframefield">DataFrameField</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#reserved-field-names">Reserved Field Names</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#model-methods">Model Methods</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../fields/#creating-and-saving">Creating and Saving</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../fields/#loading">Loading</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../fields/#updating">Updating</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../fields/#deleting">Deleting</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../fields/#validation">Validation</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../fields/#the-db_key-property">The db_key Property</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../meta/">Model Meta Options</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#when-to-use-meta-options">When to Use Meta Options</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#order_by">order_by</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../meta/#override-per-query">Override per Query</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#ttl">ttl</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#instance-level-ttl">Instance-Level TTL</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#absolute-expiration">Absolute Expiration</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#indexes">indexes</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../meta/#non-unique-indexes">Non-Unique Indexes</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../meta/#null-handling">NULL Handling</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#update-and-delete-handling">Update and Delete Handling</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#complete-example">Complete Example</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#accessing-meta-at-runtime">Accessing Meta at Runtime</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#meta-validation">Meta Validation</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul class="current">
+                <li class="toctree-l1 current"><a class="reference internal current" href="#">Making Queries</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#get-a-single-object">Get a Single Object</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#get-all-objects">Get All Objects</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#filter-query-results">Filter Query Results</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#chainable-query-builder">Chainable Query Builder</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#chainable-vs-kwargs-syntax">Chainable vs Kwargs Syntax</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#chainable-methods">Chainable Methods</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#chaining-multiple-filters">Chaining Multiple Filters</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#getting-the-first-result">Getting the First Result</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#counting-without-loading">Counting Without Loading</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#using-values-with-chainable-api">Using Values with Chainable API</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#backward-compatibility">Backward Compatibility</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#q-objects-or-and-not">Q Objects (OR, AND, NOT)</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#importing-q">Importing Q</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#basic-q-object-usage">Basic Q Object Usage</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#or-queries-with">OR Queries with |</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#and-queries-with">AND Queries with &amp;</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../relationship/">Relationship Field</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../relationship/#basic-usage">Basic Usage</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../relationship/#creating-related-instances">Creating Related Instances</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../relationship/#querying-by-relationship">Querying by Relationship</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../relationship/#nested-field-access">Nested Field Access</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../relationship/#traversing-relationships">Traversing Relationships</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../async/">Async Operations</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#async-model-methods">Async Model Methods</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_create">async_create()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_save">async_save()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_delete">async_delete()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_load">async_load()</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#async-query-methods">Async Query Methods</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_get">async_get()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_filter">async_filter()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_all">async_all()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_count">async_count()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_keys">async_keys()</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#concurrent-operations">Concurrent Operations</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#framework-integration-fastapi">Framework Integration: FastAPI</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#framework-integration-background-workers">Framework Integration: Background Workers</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#implementation-details">Implementation Details</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#thread-pool-execution">Thread Pool Execution</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#python-38-compatibility">Python 3.8+ Compatibility</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#performance-considerations">Performance Considerations</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#error-handling">Error Handling</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#async-bulk-operations">Async Bulk Operations</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#test-coverage">Test Coverage</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#see-also">See Also</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../pubsub/">PubSub</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#publisher">Publisher</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#custom-channel-names">Custom Channel Names</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#pipeline-support">Pipeline Support</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#subscriber">Subscriber</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#subscriber-lifecycle">Subscriber Lifecycle</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#pre_handle-hook">pre_handle Hook</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#multi-channel-subscription">Multi-Channel Subscription</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#exception-handling">Exception Handling</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#logging">Logging</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../api-reference/">API Reference</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../api-reference/#model-class">Model Class</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#model__init__kwargs">Model.__init__(**kwargs)</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelcreate">Model.create()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelsave">Model.save()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modeldelete">Model.delete()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelload">Model.load()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelis_valid">Model.is_valid()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelget_info">Model.get_info()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modeldb_key">Model.db_key</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#async-methods">Async Methods</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../api-reference/#bulk-operations">Bulk Operations</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelbulk_create">Model.bulk_create()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelbulk_update">Model.bulk_update()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelbulk_delete">Model.bulk_delete()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modeldelete_all">Model.delete_all()</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Contributing</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../style-guide/">Style Guide</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#canonical-example-models">Canonical Example Models</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#tone-and-voice">Tone and Voice</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#page-structure">Page Structure</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../style-guide/#headings">Headings</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../style-guide/#prose-between-code-blocks">Prose Between Code Blocks</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#code-examples">Code Examples</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../style-guide/#imports">Imports</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../style-guide/#expected-output">Expected Output</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../style-guide/#self-contained-examples">Self-Contained Examples</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../style-guide/#use-canonical-models">Use Canonical Models</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#admonitions">Admonitions</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#cross-references">Cross-References</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#general-formatting">General Formatting</a>
+    </li>
+    </ul>
+                  </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="..">Popoto Documentation</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href=".." class="icon icon-home" aria-label="Docs"></a></li>
+      <li class="breadcrumb-item active">Making Queries</li>
+    <li class="wy-breadcrumbs-aside">
+          <a href="https://github.com/tomcounsell/popoto/edit/master/docs/query.md" class="icon icon-github"> Edit on GitHub</a>
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="making-queries">Making Queries</h1>
+<p>Every Popoto model has a <code>query</code> attribute that provides a Django-like interface for retrieving
+instances from Redis. You can look up a single object by its key, fetch all instances, filter by
+field values, count results, and return lightweight dictionaries instead of full model objects.</p>
+<p>Queries combine multiple filters with AND logic. If you pass several filter parameters, only
+instances matching all criteria are returned.</p>
+<pre><code class="language-python">from popoto import (
+    Model, KeyField, AutoKeyField, UniqueKeyField,
+    Field, SortedField, GeoField, Relationship,
+)
+from popoto.fields.datetime_field import DatetimeField
+
+class Restaurant(Model):
+    name = KeyField()
+    cuisine = Field(type=str)
+    rating = SortedField(type=float)
+    location = GeoField()
+    active = Field(type=bool, default=True)
+
+class MenuItem(Model):
+    item_id = AutoKeyField()
+    name = Field(type=str)
+    price = SortedField(type=float)
+    restaurant = Relationship(Restaurant)
+    available = Field(type=bool, default=True)
+
+class Customer(Model):
+    username = KeyField()
+    email = UniqueKeyField()
+    name = Field(type=str)
+    address = GeoField()
+
+class Driver(Model):
+    driver_id = AutoKeyField()
+    name = Field(type=str)
+    phone = UniqueKeyField()
+    rating = SortedField(type=float)
+    location = GeoField()
+    active = Field(type=bool, default=True)
+
+class Order(Model):
+    order_id = AutoKeyField()
+    customer = Relationship(Customer)
+    restaurant = Relationship(Restaurant)
+    driver = Relationship(Driver, null=True)
+    total = SortedField(type=float)
+    status = Field(type=str, default=&quot;pending&quot;)
+    created_at = DatetimeField(auto_now_add=True)
+    updated_at = DatetimeField(auto_now=True)
+
+    class Meta:
+        order_by = &quot;-created_at&quot;
+        ttl = 2592000  # 30 days
+</code></pre>
+<p>These models are used throughout the examples on this page. See
+<a href="../fields/">Models and Fields</a> for full details on each field type.</p>
+<h2 id="get-a-single-object">Get a Single Object</h2>
+<p>When you know the exact key values, use <code>query.get()</code> to retrieve one instance. This performs a
+direct Redis key lookup, making it the fastest way to load a model.</p>
+<pre><code class="language-python">burger_palace = Restaurant.create(
+    name=&quot;Burger Palace&quot;,
+    cuisine=&quot;American&quot;,
+    rating=4.5,
+    location=(40.7128, -74.0060),
+)
+
+restaurant = Restaurant.query.get(name=&quot;Burger Palace&quot;)
+print(restaurant.cuisine)
+# =&gt; &quot;American&quot;
+</code></pre>
+<p>You can also retrieve an object by its raw Redis key.</p>
+<pre><code class="language-python">restaurant = Restaurant.query.get(redis_key=&quot;Restaurant:Burger Palace&quot;)
+print(restaurant.rating)
+# =&gt; 4.5
+</code></pre>
+<p>If no matching instance exists, <code>get()</code> returns <code>None</code>. If more than one instance matches
+(possible when filtering on non-key fields), it raises a <code>QueryException</code>.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>For models with composite keys, pass all key field values to <code>get()</code>. For models with
+<code>AutoKeyField</code>, use the auto-generated key value or <code>redis_key</code>.</p>
+</div>
+<h2 id="get-all-objects">Get All Objects</h2>
+<p>Use <code>query.all()</code> to retrieve every instance of a model. This fetches all Redis keys registered
+to that model and loads each one.</p>
+<pre><code class="language-python">all_restaurants = Restaurant.query.all()
+print(len(all_restaurants))
+# =&gt; 1
+</code></pre>
+<p>The <code>all()</code> method accepts the same <code>order_by</code>, <code>limit</code>, and <code>values</code> parameters as <code>filter()</code>.</p>
+<pre><code class="language-python"># All restaurants ordered by name
+restaurants = Restaurant.query.all(order_by=&quot;name&quot;)
+
+# First 5 restaurants
+restaurants = Restaurant.query.all(limit=5)
+
+# All restaurants as dicts with only the name field
+restaurants = Restaurant.query.all(values=(&quot;name&quot;,))
+# =&gt; [{&quot;name&quot;: &quot;Burger Palace&quot;}]
+</code></pre>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>If a model defines <code>order_by</code> in its <code>Meta</code> class, <code>all()</code> uses that ordering by default.
+The <code>Order</code> model above defaults to <code>"-created_at"</code> (newest first). You can override this
+at query time by passing a different <code>order_by</code> value.</p>
+</div>
+<h2 id="filter-query-results">Filter Query Results</h2>
+<p>Use <code>query.filter()</code> to retrieve instances matching specific criteria. Filters are expressed as
+keyword arguments using Django-style lookup expressions.</p>
+<pre><code class="language-python">sushi_zen = Restaurant.create(
+    name=&quot;Sushi Zen&quot;,
+    cuisine=&quot;Japanese&quot;,
+    rating=4.8,
+    location=(40.7580, -73.9855),
+)
+
+japanese = Restaurant.query.filter(name__contains=&quot;Sushi&quot;)
+print(len(japanese))
+# =&gt; 1
+print(japanese[0].name)
+# =&gt; &quot;Sushi Zen&quot;
+</code></pre>
+<p>You can combine multiple filters. Only instances matching all criteria are returned.</p>
+<pre><code class="language-python">top_restaurants = Restaurant.query.filter(rating__gte=4.5)
+print(len(top_restaurants))
+# =&gt; 2
+</code></pre>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>All filter parameters are AND-ed together by default. For OR logic, use Q objects
+described in the <a href="#q-objects-or-and-not">Q Objects section</a> below.</p>
+</div>
+<h2 id="chainable-query-builder">Chainable Query Builder</h2>
+<p>Popoto supports two query syntaxes: the traditional kwargs-based API shown above, and a fluent
+chainable API that allows method chaining. Both syntaxes are fully supported and can be used
+interchangeably based on your preference.</p>
+<h3 id="chainable-vs-kwargs-syntax">Chainable vs Kwargs Syntax</h3>
+<p>The original kwargs API passes all parameters to a single <code>filter()</code> call.</p>
+<pre><code class="language-python"># Kwargs API - all parameters in one call
+results = Restaurant.query.filter(
+    rating__gte=4.0,
+    order_by=&quot;-rating&quot;,
+    limit=10
+)
+</code></pre>
+<p>The chainable API builds queries incrementally with method chaining.</p>
+<pre><code class="language-python"># Chainable API - fluent method chaining
+results = Restaurant.query.filter(rating__gte=4.0).order_by(&quot;-rating&quot;).limit(10).all()
+</code></pre>
+<p>Both approaches produce identical results. The chainable API can be more readable when building
+complex queries dynamically or when you prefer a fluent interface style.</p>
+<h3 id="chainable-methods">Chainable Methods</h3>
+<p>The <code>QueryBuilder</code> returned by <code>filter()</code> supports these chainable methods:</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>filter(**kwargs)</code></td>
+<td>Add filter criteria, returns new QueryBuilder</td>
+</tr>
+<tr>
+<td><code>order_by(field)</code></td>
+<td>Set sort field (prefix with "-" for descending)</td>
+</tr>
+<tr>
+<td><code>limit(n)</code></td>
+<td>Set maximum number of results</td>
+</tr>
+<tr>
+<td><code>values(*fields)</code></td>
+<td>Return dicts with specified fields instead of model instances</td>
+</tr>
+<tr>
+<td><code>all()</code></td>
+<td>Execute query and return all results as a list</td>
+</tr>
+<tr>
+<td><code>first()</code></td>
+<td>Execute query and return first result or None</td>
+</tr>
+<tr>
+<td><code>count()</code></td>
+<td>Count matching results without loading objects</td>
+</tr>
+</tbody>
+</table>
+<h3 id="chaining-multiple-filters">Chaining Multiple Filters</h3>
+<p>You can chain multiple <code>filter()</code> calls to incrementally add criteria. Each call returns a new
+QueryBuilder with the combined filters.</p>
+<pre><code class="language-python"># Chain multiple filters - equivalent to AND-ing criteria
+results = (
+    Restaurant.query
+    .filter(rating__gte=4.0)
+    .filter(cuisine=&quot;Japanese&quot;)
+    .order_by(&quot;-rating&quot;)
+    .limit(5)
+    .all()
+)
+</code></pre>
+<p>This is equivalent to the kwargs version.</p>
+<pre><code class="language-python"># Same query using kwargs API
+results = Restaurant.query.filter(
+    rating__gte=4.0,
+    cuisine=&quot;Japanese&quot;,
+    order_by=&quot;-rating&quot;,
+    limit=5
+)
+</code></pre>
+<h3 id="getting-the-first-result">Getting the First Result</h3>
+<p>Use <code>first()</code> to retrieve only the first matching result, or <code>None</code> if no matches exist.
+This is more efficient than calling <code>all()[0]</code> when you only need one object.</p>
+<pre><code class="language-python"># Get the highest-rated Japanese restaurant
+top_japanese = (
+    Restaurant.query
+    .filter(cuisine=&quot;Japanese&quot;)
+    .order_by(&quot;-rating&quot;)
+    .first()
+)
+
+if top_japanese:
+    print(f&quot;Best Japanese: {top_japanese.name} ({top_japanese.rating})&quot;)
+</code></pre>
+<h3 id="counting-without-loading">Counting Without Loading</h3>
+<p>Use <code>count()</code> on a QueryBuilder to count matching results without loading objects into memory.</p>
+<pre><code class="language-python"># Count premium menu items without loading them
+expensive_count = MenuItem.query.filter(price__gte=20.0).count()
+print(f&quot;Premium items: {expensive_count}&quot;)
+</code></pre>
+<h3 id="using-values-with-chainable-api">Using Values with Chainable API</h3>
+<p>The <code>values()</code> method specifies which fields to return as dictionaries.</p>
+<pre><code class="language-python"># Get only names and ratings as dicts
+restaurant_data = (
+    Restaurant.query
+    .filter(rating__gte=4.0)
+    .values(&quot;name&quot;, &quot;rating&quot;)
+    .order_by(&quot;-rating&quot;)
+    .all()
+)
+# =&gt; [{&quot;name&quot;: &quot;Sushi Zen&quot;, &quot;rating&quot;: 4.8}, {&quot;name&quot;: &quot;Burger Palace&quot;, &quot;rating&quot;: 4.5}]
+</code></pre>
+<h3 id="backward-compatibility">Backward Compatibility</h3>
+<p>The QueryBuilder is fully backward compatible with code that treats <code>filter()</code> results as a list.
+You can iterate over a QueryBuilder directly, use <code>len()</code>, or access items by index.</p>
+<pre><code class="language-python"># These all work - QueryBuilder acts like a list
+results = Restaurant.query.filter(rating__gte=4.0)
+
+# Iteration
+for restaurant in results:
+    print(restaurant.name)
+
+# Length
+print(len(results))
+
+# Indexing
+first = results[0]
+
+# Boolean check
+if results:
+    print(&quot;Found matches!&quot;)
+
+# Comparison with list
+assert results == Restaurant.query.filter(rating__gte=4.0).all()
+</code></pre>
+<p>Each of these operations executes the query when first accessed. For repeated access, call
+<code>all()</code> once and store the result.</p>
+<pre><code class="language-python"># More efficient for multiple operations
+results = Restaurant.query.filter(rating__gte=4.0).all()
+print(len(results))
+for r in results:
+    print(r.name)
+</code></pre>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>The chainable API is especially useful when building queries conditionally. You can
+start with a base query and add filters based on runtime conditions, then call <code>all()</code>
+at the end.</p>
+</div>
+<pre><code class="language-python"># Build query conditionally
+query = Restaurant.query.filter(active=True)
+
+if min_rating:
+    query = query.filter(rating__gte=min_rating)
+
+if cuisine_type:
+    query = query.filter(cuisine=cuisine_type)
+
+results = query.order_by(&quot;-rating&quot;).limit(20).all()
+</code></pre>
+<h2 id="q-objects-or-and-not">Q Objects (OR, AND, NOT)</h2>
+<p>Q objects enable complex query logic with OR, AND, and NOT operators. They provide a Django-style
+interface for building expressive filter expressions that go beyond simple AND-ed kwargs.</p>
+<h3 id="importing-q">Importing Q</h3>
+<p>Import the <code>Q</code> class from popoto alongside your other imports.</p>
+<pre><code class="language-python">from popoto import Q, Model, KeyField, Field, SortedField
+</code></pre>
+<h3 id="basic-q-object-usage">Basic Q Object Usage</h3>
+<p>A Q object wraps filter kwargs, which can then be combined with other Q objects using operators.</p>
+<pre><code class="language-python"># Simple Q object - equivalent to filter(status=&quot;active&quot;)
+active = Restaurant.query.filter(Q(active=True))
+
+# Q objects support all the same lookups as regular filter kwargs
+high_rated = Restaurant.query.filter(Q(rating__gte=4.5))
+</code></pre>
+<h3 id="or-queries-with">OR Queries with <code>|</code></h3>
+<p>Use the <code>|</code> (pipe) operator to combine Q objects with OR logic. This returns instances matching
+either condition.</p>
+<pre><code class="language-python"># Find restaurants that are Japanese OR have a high rating
+results = Restaurant.query.filter(
+    Q(cuisine=&quot;Japanese&quot;) | Q(rating__gte=4.5)
+)
+</code></pre>
+<p>You can chain multiple OR conditions.</p>
+<pre><code class="language-python"># Find restaurants matching any of three cuisines
+results = Restaurant.query.filter(
+    Q(cuisine=&quot;Japanese&quot;) | Q(cuisine=&quot;Italian&quot;) | Q(cuisine=&quot;Mexican&quot;)
+)
+</code></pre>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>For simple "match any of these values" queries, the <code>__in</code> lookup is more efficient than
+multiple OR conditions: <code>filter(cuisine__in=["Japanese", "Italian", "Mexican"])</code>.</p>
+</div>
+<h3 id="and-queries-with">AND Queries with <code>&amp;</code></h3>
+<p>Use the <code>&amp;</code> operator for explicit AND logic. This returns instances matching both conditions.</p>
+<pre><code class="language-python"># Find active restaurants with high ratings
+results = Restaurant.query.filter(
+    Q(active=True) &amp; Q(rating__gte=4.0)
+)
+</code></pre>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Explicit AND with <code>&amp;</code> is equivalent to passing multiple kwargs to <code>filter()</code>. Both of
+these queries produce identical results:
+```python</p>
+<h1 id="using-q-with">Using Q with &amp;</h1>
+<p>Restaurant.query.filter(Q(active=True) &amp; Q(rating__gte=4.0))</p>
+<h1 id="using-kwargs-simpler">Using kwargs (simpler)</h1>
+<p>Restaurant.query.filter(active=True, rating__gte=4.0)
+<code>``
+Use</code>&amp;` when you need to combine it with OR logic in the same expression.</p>
+</div>
+<h3 id="negation-with">Negation with <code>~</code></h3>
+<p>Use the <code>~</code> (tilde) operator to negate a Q object. This returns instances that do NOT match the
+condition.</p>
+<pre><code class="language-python"># Find all restaurants that are NOT inactive
+results = Restaurant.query.filter(~Q(active=False))
+
+# Find restaurants not in the &quot;Fast Food&quot; cuisine
+results = Restaurant.query.filter(~Q(cuisine=&quot;Fast Food&quot;))
+</code></pre>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Negation (<code>~Q</code>) requires scanning all keys for the model to compute the set difference.
+On large datasets with many instances, this can be slow and memory-intensive. Use with
+caution in production, and prefer positive filters when possible.</p>
+</div>
+<h3 id="complex-nested-expressions">Complex Nested Expressions</h3>
+<p>Q objects can be nested to build arbitrarily complex expressions. Use parentheses to control
+operator precedence.</p>
+<pre><code class="language-python"># Active OR premium restaurants, with high ratings
+results = Restaurant.query.filter(
+    (Q(active=True) | Q(cuisine=&quot;Premium&quot;)) &amp; Q(rating__gte=4.0)
+)
+
+# Complex: (active AND high-rated) OR (premium AND any rating)
+results = Restaurant.query.filter(
+    (Q(active=True) &amp; Q(rating__gte=4.5)) | Q(cuisine=&quot;Premium&quot;)
+)
+
+# Exclude specific combinations
+results = Restaurant.query.filter(
+    Q(rating__gte=3.0) &amp; ~Q(cuisine=&quot;Fast Food&quot;)
+)
+</code></pre>
+<h3 id="mixing-q-objects-with-kwargs">Mixing Q Objects with Kwargs</h3>
+<p>You can pass Q objects alongside regular kwargs to <code>filter()</code>. The Q objects are evaluated first,
+then AND-ed with the kwargs filters.</p>
+<pre><code class="language-python"># Q object OR combined with kwarg filter
+# Equivalent to: (cuisine=&quot;Japanese&quot; OR cuisine=&quot;Italian&quot;) AND active=True
+results = Restaurant.query.filter(
+    Q(cuisine=&quot;Japanese&quot;) | Q(cuisine=&quot;Italian&quot;),
+    active=True
+)
+</code></pre>
+<p>This is useful when you have a dynamic OR condition but always want to apply a static filter.</p>
+<pre><code class="language-python"># Dynamic cuisine filter with static active=True
+cuisines = [&quot;Japanese&quot;, &quot;Italian&quot;, &quot;Mexican&quot;]
+cuisine_q = Q(cuisine=cuisines[0])
+for c in cuisines[1:]:
+    cuisine_q = cuisine_q | Q(cuisine=c)
+
+results = Restaurant.query.filter(cuisine_q, active=True)
+</code></pre>
+<h3 id="q-objects-with-chainable-api">Q Objects with Chainable API</h3>
+<p>Q objects work seamlessly with the chainable query builder.</p>
+<pre><code class="language-python">results = (
+    Restaurant.query
+    .filter(Q(cuisine=&quot;Japanese&quot;) | Q(cuisine=&quot;Italian&quot;))
+    .filter(rating__gte=4.0)
+    .order_by(&quot;-rating&quot;)
+    .limit(10)
+    .all()
+)
+</code></pre>
+<h3 id="supported-lookups-in-q-objects">Supported Lookups in Q Objects</h3>
+<p>Q objects support all the same lookups as regular filter kwargs:</p>
+<table>
+<thead>
+<tr>
+<th>Field Type</th>
+<th>Supported Lookups</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>KeyField</td>
+<td><code>=</code>, <code>__in</code>, <code>__contains</code>, <code>__startswith</code>, <code>__endswith</code>, <code>__isnull</code></td>
+</tr>
+<tr>
+<td>SortedField</td>
+<td><code>=</code>, <code>__gt</code>, <code>__gte</code>, <code>__lt</code>, <code>__lte</code></td>
+</tr>
+<tr>
+<td>GeoField</td>
+<td><code>location=</code>, <code>location_radius=</code>, etc.</td>
+</tr>
+<tr>
+<td>Field</td>
+<td><code>=</code> (exact match)</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-python"># Q with SortedField range
+Restaurant.query.filter(Q(rating__gte=4.0) | Q(rating__lte=2.0))
+
+# Q with KeyField pattern matching
+Restaurant.query.filter(Q(name__startswith=&quot;A&quot;) | Q(name__startswith=&quot;B&quot;))
+</code></pre>
+<h3 id="performance-considerations">Performance Considerations</h3>
+<p>Q objects provide expressive query syntax, but understanding their performance characteristics
+helps you write efficient code.</p>
+<p><strong>OR queries execute both sides</strong>: When you use <code>|</code>, Popoto evaluates both Q objects and computes
+the union of their result sets. This means two separate filter operations are performed.</p>
+<pre><code class="language-python"># This executes TWO filter operations, then unions the results
+Restaurant.query.filter(Q(cuisine=&quot;Japanese&quot;) | Q(cuisine=&quot;Italian&quot;))
+
+# This is more efficient for simple value matching
+Restaurant.query.filter(cuisine__in=[&quot;Japanese&quot;, &quot;Italian&quot;])
+</code></pre>
+<p><strong>AND queries use set intersection</strong>: When you use <code>&amp;</code>, Popoto evaluates both Q objects and
+computes the intersection. This is similar to passing multiple kwargs.</p>
+<p><strong>Negation scans all keys</strong>: The <code>~</code> operator requires fetching all keys for the model to
+compute the set difference. Avoid <code>~Q</code> on models with many instances.</p>
+<table>
+<thead>
+<tr>
+<th>Expression</th>
+<th>Redis Operations</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Q(a=1)</code></td>
+<td>Single filter</td>
+</tr>
+<tr>
+<td><code>Q(a=1) \| Q(b=2)</code></td>
+<td>Two filters + set union</td>
+</tr>
+<tr>
+<td><code>Q(a=1) &amp; Q(b=2)</code></td>
+<td>Two filters + set intersection</td>
+</tr>
+<tr>
+<td><code>~Q(a=1)</code></td>
+<td>One filter + all keys scan + set difference</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>For best performance, prefer <code>__in</code> over multiple OR conditions when matching against a
+list of values, and avoid <code>~Q</code> on large datasets.</p>
+</div>
+<h2 id="expression-based-queries">Expression-Based Queries</h2>
+<p>Expression-based queries let you use Python comparison operators directly on Field classes to build
+filter conditions. This provides a more Pythonic, type-safe way to write queries with excellent IDE
+support for autocomplete and error detection.</p>
+<h3 id="expression-vs-kwargs-syntax">Expression vs Kwargs Syntax</h3>
+<p>The traditional kwargs syntax uses field names as strings with lookup suffixes.</p>
+<pre><code class="language-python"># Kwargs syntax
+Restaurant.query.filter(rating__gte=4.0, status=&quot;active&quot;)
+</code></pre>
+<p>The expression syntax uses Python operators on Field classes accessed through the Model.</p>
+<pre><code class="language-python"># Expression syntax
+Restaurant.query.filter(Restaurant.rating &gt;= 4.0, Restaurant.status == &quot;active&quot;)
+</code></pre>
+<p>Both approaches produce identical results. The expression syntax offers IDE autocomplete on field
+names, compile-time detection of typos, and a more natural Python feel.</p>
+<h3 id="supported-operators">Supported Operators</h3>
+<p>Expression-based queries support all standard Python comparison operators.</p>
+<table>
+<thead>
+<tr>
+<th>Operator</th>
+<th>Description</th>
+<th>Equivalent Lookup</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>==</code></td>
+<td>Equal to</td>
+<td><code>field=value</code></td>
+</tr>
+<tr>
+<td><code>!=</code></td>
+<td>Not equal to</td>
+<td><code>~Q(field=value)</code></td>
+</tr>
+<tr>
+<td><code>&gt;</code></td>
+<td>Greater than</td>
+<td><code>field__gt=value</code></td>
+</tr>
+<tr>
+<td><code>&gt;=</code></td>
+<td>Greater than or equal</td>
+<td><code>field__gte=value</code></td>
+</tr>
+<tr>
+<td><code>&lt;</code></td>
+<td>Less than</td>
+<td><code>field__lt=value</code></td>
+</tr>
+<tr>
+<td><code>&lt;=</code></td>
+<td>Less than or equal</td>
+<td><code>field__lte=value</code></td>
+</tr>
+</tbody>
+</table>
+<p>Here are examples using different operators.</p>
+<pre><code class="language-python"># Equal to
+Restaurant.query.filter(Restaurant.name == &quot;Burger Palace&quot;)
+
+# Not equal to
+Restaurant.query.filter(Restaurant.status != &quot;closed&quot;)
+
+# Greater than
+MenuItem.query.filter(MenuItem.price &gt; 20.0)
+
+# Greater than or equal
+Restaurant.query.filter(Restaurant.rating &gt;= 4.5)
+
+# Less than
+MenuItem.query.filter(MenuItem.price &lt; 10.0)
+
+# Less than or equal
+Order.query.filter(Order.total &lt;= 50.0)
+</code></pre>
+<h3 id="combining-expressions-with-and">Combining Expressions with &amp; and |</h3>
+<p>Use the <code>&amp;</code> operator for AND logic and <code>|</code> for OR logic, just like with Q objects. Parentheses
+control operator precedence.</p>
+<pre><code class="language-python"># AND: restaurants with high rating AND active status
+Restaurant.query.filter(
+    (Restaurant.rating &gt;= 4.0) &amp; (Restaurant.active == True)
+)
+
+# OR: restaurants that are Japanese OR Italian
+Restaurant.query.filter(
+    (Restaurant.cuisine == &quot;Japanese&quot;) | (Restaurant.cuisine == &quot;Italian&quot;)
+)
+
+# Complex: (high-rated AND active) OR premium cuisine
+Restaurant.query.filter(
+    ((Restaurant.rating &gt;= 4.5) &amp; (Restaurant.active == True))
+    | (Restaurant.cuisine == &quot;Premium&quot;)
+)
+</code></pre>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Always use parentheses around individual expressions when combining with <code>&amp;</code> or <code>|</code>.
+Without parentheses, Python's operator precedence may produce unexpected results.</p>
+</div>
+<h3 id="mixing-expressions-with-kwargs">Mixing Expressions with Kwargs</h3>
+<p>You can mix expression-based filters with traditional kwargs in the same <code>filter()</code> call. This is
+useful when some conditions are more naturally expressed one way or the other.</p>
+<pre><code class="language-python"># Expression for comparison, kwarg for exact match
+Restaurant.query.filter(
+    Restaurant.rating &gt; 4.0,
+    active=True
+)
+
+# Multiple expressions with kwargs
+MenuItem.query.filter(
+    MenuItem.price &gt;= 5.0,
+    MenuItem.price &lt;= 15.0,
+    available=True
+)
+</code></pre>
+<p>The expressions and kwargs are combined with AND logic, just like multiple kwargs would be.</p>
+<h3 id="expressions-with-chainable-api">Expressions with Chainable API</h3>
+<p>Expression-based queries work seamlessly with the chainable query builder.</p>
+<pre><code class="language-python"># Chain expressions with other query methods
+results = (
+    Restaurant.query
+    .filter(Restaurant.rating &gt;= 4.0)
+    .filter(Restaurant.active == True)
+    .order_by(&quot;-rating&quot;)
+    .limit(10)
+    .all()
+)
+
+# Mix expressions and kwargs in chained calls
+results = (
+    MenuItem.query
+    .filter(MenuItem.price &lt;= 20.0)
+    .filter(available=True)
+    .order_by(&quot;price&quot;)
+    .first()
+)
+</code></pre>
+<h3 id="ide-autocomplete-benefits">IDE Autocomplete Benefits</h3>
+<p>One of the main advantages of expression-based queries is improved developer experience with IDE
+support.</p>
+<p><strong>Autocomplete</strong>: When you type <code>Restaurant.</code>, your IDE suggests all available fields (name,
+cuisine, rating, location, active). No need to remember field names or check the model definition.</p>
+<p><strong>Type checking</strong>: If you mistype a field name, your IDE and type checker can catch it immediately.
+With kwargs, a typo like <code>ratng__gte=4.0</code> would silently fail or raise an error at runtime.</p>
+<p><strong>Refactoring</strong>: When you rename a field, IDE refactoring tools can update all expression-based
+queries automatically. String-based kwargs require manual find-and-replace.</p>
+<pre><code class="language-python"># IDE catches this typo immediately
+Restaurant.query.filter(Restaurant.ratng &gt;= 4.0)  # AttributeError highlighted
+
+# This typo is only caught at runtime
+Restaurant.query.filter(ratng__gte=4.0)  # No IDE warning
+</code></pre>
+<h3 id="when-to-use-expressions-vs-kwargs">When to Use Expressions vs Kwargs</h3>
+<p>Both syntaxes are fully supported. Choose based on your preference and use case.</p>
+<p><strong>Use expressions when:</strong></p>
+<ul>
+<li>You want IDE autocomplete and type checking</li>
+<li>Building queries with comparison operators (<code>&gt;</code>, <code>&lt;</code>, <code>&gt;=</code>, <code>&lt;=</code>)</li>
+<li>Combining conditions with <code>&amp;</code> and <code>|</code> operators</li>
+<li>Working in a codebase that values static analysis</li>
+</ul>
+<p><strong>Use kwargs when:</strong></p>
+<ul>
+<li>Writing simple exact-match filters</li>
+<li>Using special lookups like <code>__contains</code>, <code>__startswith</code>, <code>__in</code></li>
+<li>Dynamically building queries from dictionaries</li>
+<li>Maintaining consistency with existing Django-style code</li>
+</ul>
+<pre><code class="language-python"># Expressions are natural for comparisons
+Restaurant.query.filter(Restaurant.rating &gt;= 4.0)
+
+# Kwargs are concise for pattern matching
+Restaurant.query.filter(name__startswith=&quot;B&quot;)
+
+# Mix both as needed
+Restaurant.query.filter(
+    Restaurant.rating &gt;= 4.0,
+    name__contains=&quot;Sushi&quot;
+)
+</code></pre>
+<h2 id="count-results">Count Results</h2>
+<p>Use <code>query.count()</code> to get the number of matching instances without loading them into memory.
+This is more efficient than calling <code>len()</code> on a full result set.</p>
+<pre><code class="language-python">total_restaurants = Restaurant.query.count()
+print(total_restaurants)
+# =&gt; 2
+
+# Count with filters
+top_count = MenuItem.query.count(price__lte=15.0)
+</code></pre>
+<p>When called without arguments, <code>count()</code> uses Redis <code>SCARD</code> for a fast cardinality check. With
+filter arguments, it computes the intersection of matching key sets.</p>
+<h2 id="get-redis-keys">Get Redis Keys</h2>
+<p>Use <code>query.keys()</code> to retrieve the raw Redis keys for all instances of a model. This is useful
+for debugging or performing custom Redis operations.</p>
+<pre><code class="language-python">keys = Restaurant.query.keys()
+# =&gt; [b&quot;Restaurant:Burger Palace&quot;, b&quot;Restaurant:Sushi Zen&quot;]
+</code></pre>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>The <code>keys()</code> method returns bytes objects. For debugging stale data, you can pass
+<code>clean=True</code> to remove orphaned keys, but this should never be used in production.</p>
+</div>
+<h2 id="values">Values</h2>
+<p>Return results as dictionaries instead of model instances by passing a <code>values</code> tuple. Specify
+which fields to include. This is faster and uses less memory when you only need a few fields.</p>
+<pre><code class="language-python">names_and_cuisines = Restaurant.query.all(values=(&quot;name&quot;, &quot;cuisine&quot;))
+# =&gt; [{&quot;name&quot;: &quot;Burger Palace&quot;, &quot;cuisine&quot;: &quot;American&quot;}, ...]
+</code></pre>
+<p>You can combine <code>values</code> with <code>filter()</code> for targeted queries.</p>
+<pre><code class="language-python">cheap_items = MenuItem.query.filter(
+    price__lte=10.0,
+    values=(&quot;name&quot;, &quot;price&quot;),
+)
+# =&gt; [{&quot;name&quot;: &quot;Fries&quot;, &quot;price&quot;: 4.99}, ...]
+</code></pre>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>When all fields in <code>values</code> are key fields, Popoto extracts values directly from the Redis
+key string without deserializing stored data. This can be 2x faster or more for large
+result sets.</p>
+</div>
+<h2 id="order-by">Order By</h2>
+<p>Use <code>order_by</code> to sort results by any field. Prefix the field name with <code>-</code> for descending
+order. Ascending order is the default.</p>
+<pre><code class="language-python"># Cheapest menu items first
+items = MenuItem.query.all(order_by=&quot;price&quot;)
+
+# Highest-rated restaurants first
+restaurants = Restaurant.query.all(order_by=&quot;-rating&quot;)
+</code></pre>
+<p>Ordering works with <code>filter()</code> as well.</p>
+<pre><code class="language-python">affordable = MenuItem.query.filter(
+    price__lte=20.0,
+    order_by=&quot;price&quot;,
+)
+</code></pre>
+<p>You can set a default ordering in the model's <code>Meta</code> class. The <code>Order</code> model above uses
+<code>order_by = "-created_at"</code> so that queries return the most recent orders first. You can
+override this at query time.</p>
+<pre><code class="language-python"># Uses Meta default: newest orders first
+recent_orders = Order.query.all()
+
+# Override: sort by total ascending
+orders_by_total = Order.query.all(order_by=&quot;total&quot;)
+</code></pre>
+<p>See <a href="../meta/">Model Meta Options</a> for more on configuring default ordering.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The <code>order_by</code> field must be included in <code>values</code> if you are using both parameters
+together. Otherwise Popoto raises a <code>QueryException</code>.</p>
+</div>
+<h2 id="limit-results">Limit Results</h2>
+<p>Use <code>limit</code> to cap the number of returned instances. The limit is applied after filtering and
+ordering.</p>
+<pre><code class="language-python">top_5 = Restaurant.query.all(order_by=&quot;-rating&quot;, limit=5)
+print(len(top_5))
+# =&gt; 2
+</code></pre>
+<p>You can also use Python slice notation on the result list.</p>
+<pre><code class="language-python">top_5 = Restaurant.query.all(order_by=&quot;-rating&quot;)[:5]
+</code></pre>
+<p>Both approaches return the same results. The explicit <code>limit</code> parameter may be slightly more
+efficient because it can short-circuit internal sorting. Combine <code>limit</code> with <code>order_by</code> to
+get "top N" style queries.</p>
+<pre><code class="language-python"># The 3 cheapest items on the menu
+cheapest = MenuItem.query.filter(order_by=&quot;price&quot;, limit=3)
+</code></pre>
+<h2 id="keyfield-filters">KeyField Filters</h2>
+<p>KeyField filters support string matching operations on the values that make up the Redis key.
+All lookups are case-sensitive.</p>
+<table>
+<thead>
+<tr>
+<th>Lookup</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name=</code></td>
+<td>Exact match</td>
+</tr>
+<tr>
+<td><code>name__isnull=</code></td>
+<td>Filter for null (<code>True</code>) or non-null (<code>False</code>) values</td>
+</tr>
+<tr>
+<td><code>name__contains=</code></td>
+<td>Substring match anywhere in the value</td>
+</tr>
+<tr>
+<td><code>name__startswith=</code></td>
+<td>Prefix match</td>
+</tr>
+<tr>
+<td><code>name__endswith=</code></td>
+<td>Suffix match</td>
+</tr>
+<tr>
+<td><code>name__in=</code></td>
+<td>Match any value in the provided list</td>
+</tr>
+</tbody>
+</table>
+<p>Here are examples using the <code>Restaurant</code> model's <code>name</code> KeyField.</p>
+<pre><code class="language-python"># Exact match
+Restaurant.query.filter(name=&quot;Burger Palace&quot;)
+
+# Restaurants whose name contains &quot;Sushi&quot;
+Restaurant.query.filter(name__contains=&quot;Sushi&quot;)
+
+# Restaurants whose name starts with &quot;B&quot;
+Restaurant.query.filter(name__startswith=&quot;B&quot;)
+
+# Restaurants whose name ends with &quot;Zen&quot;
+Restaurant.query.filter(name__endswith=&quot;Zen&quot;)
+
+# Match any of several names
+Restaurant.query.filter(name__in=[&quot;Burger Palace&quot;, &quot;Sushi Zen&quot;, &quot;Taco Town&quot;])
+
+# All restaurants that have a name set (non-null)
+Restaurant.query.filter(name__isnull=False)
+</code></pre>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>KeyField lookups like <code>__contains</code>, <code>__startswith</code>, and <code>__endswith</code> scan all keys for
+the model and filter in Python. For large datasets, prefer exact match or <code>__in</code> lookups
+which use Redis set operations directly.</p>
+</div>
+<h2 id="sortedfield-filters">SortedField Filters</h2>
+<p>SortedField filters use Redis sorted sets for efficient numeric and date/time range queries.
+These are the fastest way to filter on continuous values.</p>
+<table>
+<thead>
+<tr>
+<th>Lookup</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>price=</code></td>
+<td>Exact match</td>
+</tr>
+<tr>
+<td><code>price__gt=</code></td>
+<td>Greater than</td>
+</tr>
+<tr>
+<td><code>price__gte=</code></td>
+<td>Greater than or equal to</td>
+</tr>
+<tr>
+<td><code>price__lt=</code></td>
+<td>Less than</td>
+</tr>
+<tr>
+<td><code>price__lte=</code></td>
+<td>Less than or equal to</td>
+</tr>
+</tbody>
+</table>
+<p>Filter menu items by price.</p>
+<pre><code class="language-python"># Items under $10
+budget_items = MenuItem.query.filter(price__lt=10.0)
+
+# Items $10 or more
+premium_items = MenuItem.query.filter(price__gte=10.0)
+
+# Items between $5 and $15
+mid_range = MenuItem.query.filter(price__gte=5.0, price__lte=15.0)
+</code></pre>
+<p>Filter restaurants by rating.</p>
+<pre><code class="language-python"># Highly rated restaurants (4.0 and above)
+top_rated = Restaurant.query.filter(rating__gte=4.0)
+
+# Restaurants rated above 4.5
+excellent = Restaurant.query.filter(rating__gt=4.5)
+</code></pre>
+<p>Combine range filters with other parameters for precise queries.</p>
+<pre><code class="language-python"># Top-rated restaurants, highest first, limit to 10
+best = Restaurant.query.filter(
+    rating__gte=4.0,
+    order_by=&quot;-rating&quot;,
+    limit=10,
+)
+</code></pre>
+<p>Range queries work with any sortable type including <code>int</code>, <code>float</code>, <code>Decimal</code>, <code>datetime</code>,
+<code>date</code>, and <code>time</code>. The <code>Order</code> model's <code>total</code> field is a good example.</p>
+<pre><code class="language-python"># Orders over $50
+big_orders = Order.query.filter(total__gt=50.0)
+
+# Orders between $20 and $100
+typical_orders = Order.query.filter(total__gte=20.0, total__lte=100.0)
+</code></pre>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>SortedField range queries are backed by Redis <code>ZRANGEBYSCORE</code>, which runs in
+O(log(N) + M) time where N is the total set size and M is the number of results. This
+makes them efficient even on large datasets.</p>
+</div>
+<h2 id="geofield-filters">GeoField Filters</h2>
+<p>GeoField filters perform geographic proximity searches using Redis geospatial indexes. You can
+find all instances within a given radius of a point, specified either as coordinates or by
+referencing another model instance.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>location=</code></td>
+<td>Tuple <code>(latitude, longitude)</code> or <code>GeoField.Coordinates</code></td>
+</tr>
+<tr>
+<td><code>location_latitude=</code></td>
+<td>Float latitude value</td>
+</tr>
+<tr>
+<td><code>location_longitude=</code></td>
+<td>Float longitude value</td>
+</tr>
+<tr>
+<td><code>location_radius=</code></td>
+<td>Search radius distance (default: <code>10</code>)</td>
+</tr>
+<tr>
+<td><code>location_radius_unit=</code></td>
+<td><code>"m"</code>, <code>"km"</code>, <code>"ft"</code>, or <code>"mi"</code> (default: <code>"km"</code>)</td>
+</tr>
+<tr>
+<td><code>location_member=</code></td>
+<td>Use another instance's coordinates as center point</td>
+</tr>
+<tr>
+<td><code>location_with_distances=</code></td>
+<td><code>True</code> to attach distance info to results</td>
+</tr>
+</tbody>
+</table>
+<p>Find restaurants near a delivery address.</p>
+<pre><code class="language-python"># Restaurants within 5km of Times Square
+nearby = Restaurant.query.filter(
+    location=(40.7580, -73.9855),
+    location_radius=5,
+    location_radius_unit='km',
+)
+for r in nearby:
+    print(r.name)
+</code></pre>
+<p>You can specify latitude and longitude as separate parameters.</p>
+<pre><code class="language-python">nearby = Restaurant.query.filter(
+    location_latitude=40.7580,
+    location_longitude=-73.9855,
+    location_radius=3,
+    location_radius_unit='mi',
+)
+</code></pre>
+<p>Use another model instance as the center point for the search. This is handy when you already
+have a loaded customer or driver and want to find nearby restaurants.</p>
+<pre><code class="language-python">customer = Customer.create(
+    username=&quot;janedoe&quot;,
+    email=&quot;jane@example.com&quot;,
+    name=&quot;Jane Doe&quot;,
+    address=(40.7484, -73.9857),
+)
+
+# Restaurants within 2km of Jane's address
+nearby = Restaurant.query.filter(
+    location_member=customer,
+    location_radius=2,
+    location_radius_unit='km',
+)
+</code></pre>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>When using <code>location_member</code>, Popoto looks up the member's coordinates in the geo index.
+The member must have been saved with a valid GeoField value. The GeoField name on the
+member model must match the GeoField name used in the filter (e.g., both named <code>location</code>,
+or use <code>address</code> for the customer model's field name accordingly).</p>
+</div>
+<h3 id="distances-in-results">Distances in Results</h3>
+<p>Pass <code>location_with_distances=True</code> to attach distance information to each returned instance.
+Results are automatically sorted by distance, closest first.</p>
+<pre><code class="language-python">results = Restaurant.query.filter(
+    location=(40.7128, -74.0060),
+    location_radius=10,
+    location_radius_unit='km',
+    location_with_distances=True,
+)
+
+for restaurant in results:
+    print(f&quot;{restaurant.name}: {restaurant._geo_distance} &quot;
+          f&quot;{restaurant._geo_distance_unit}&quot;)
+# =&gt; Burger Palace: 0.0 km
+# =&gt; Sushi Zen: 5.2 km
+</code></pre>
+<p>Distance information is stored on each instance as <code>_geo_distance</code> (a float) and
+<code>_geo_distance_unit</code> (a string matching the <code>radius_unit</code> you specified). This is useful for
+displaying "2.3 km away" in a delivery app interface.</p>
+<h3 id="finding-nearby-drivers">Finding Nearby Drivers</h3>
+<p>A common delivery-app pattern is finding the closest available driver to a restaurant.</p>
+<pre><code class="language-python">driver = Driver.create(
+    name=&quot;Alex&quot;,
+    phone=&quot;555-0101&quot;,
+    rating=4.9,
+    location=(40.7120, -74.0050),
+)
+
+nearby_drivers = Driver.query.filter(
+    location=(40.7128, -74.0060),
+    location_radius=5,
+    location_radius_unit='km',
+    location_with_distances=True,
+)
+
+if nearby_drivers:
+    closest = nearby_drivers[0]
+    print(f&quot;Assigning {closest.name} &quot;
+          f&quot;({closest._geo_distance} {closest._geo_distance_unit} away)&quot;)
+    # =&gt; Assigning Alex (0.1 km away)
+</code></pre>
+<p>See <a href="../fields/#geofield">Models and Fields</a> for more on defining GeoFields, and
+<a href="../relationship/">Relationship Field</a> for linking drivers to orders.</p>
+<h2 id="performance-best-practices">Performance Best Practices</h2>
+<p>Popoto is optimized for common query patterns, but understanding the underlying Redis operations
+helps you write efficient code. Here are the key patterns to follow.</p>
+<h3 id="use-count-instead-of-lenall">Use <code>count()</code> Instead of <code>len(all())</code></h3>
+<p>The <code>count()</code> method uses Redis <code>SCARD</code> for O(1) cardinality checks when called without filters.
+This is approximately 186x faster than loading all objects just to count them.</p>
+<pre><code class="language-python"># Good: O(1) using Redis SCARD
+total = Restaurant.query.count()
+
+# Bad: Loads all objects into memory first
+total = len(Restaurant.query.all())
+</code></pre>
+<h3 id="use-values-for-partial-field-access">Use <code>values()</code> for Partial Field Access</h3>
+<p>When you only need a few fields, use the <code>values</code> parameter. This is 2-4x faster than loading
+full model instances because it uses <code>HMGET</code> instead of <code>HGETALL</code> and skips model instantiation.</p>
+<pre><code class="language-python"># Good: Only fetches name and rating fields
+data = Restaurant.query.all(values=(&quot;name&quot;, &quot;rating&quot;))
+# =&gt; [{&quot;name&quot;: &quot;Burger Palace&quot;, &quot;rating&quot;: 4.5}, ...]
+
+# Better: If all fields are KeyFields, no Redis commands needed at all
+names = Restaurant.query.all(values=(&quot;name&quot;,))
+</code></pre>
+<p>When all requested fields are KeyFields, Popoto extracts values directly from the Redis key
+strings without any additional Redis commands.</p>
+<h3 id="prefer-exact-match-and-__in-over-pattern-filters">Prefer Exact Match and <code>__in</code> Over Pattern Filters</h3>
+<p>Exact match and <code>__in</code> lookups use Redis set operations (O(1) per value). Pattern filters
+like <code>__startswith</code>, <code>__endswith</code>, and <code>__contains</code> use Redis <code>SCAN</code> which iterates through
+keys.</p>
+<pre><code class="language-python"># Good: Uses Redis set lookup - O(1)
+Restaurant.query.filter(name=&quot;Burger Palace&quot;)
+
+# Good: Uses SUNION for efficient OR queries
+Restaurant.query.filter(name__in=[&quot;Burger Palace&quot;, &quot;Sushi Zen&quot;])
+
+# Slower: Scans all keys matching pattern
+Restaurant.query.filter(name__startswith=&quot;B&quot;)
+</code></pre>
+<h3 id="use-sortedfield-for-range-queries">Use SortedField for Range Queries</h3>
+<p>SortedField filters use Redis sorted sets with O(log N + M) time complexity where N is the
+index size and M is the result count. This is much faster than filtering in Python.</p>
+<pre><code class="language-python"># Good: Uses Redis ZRANGEBYSCORE - O(log N + M)
+MenuItem.query.filter(price__gte=5.0, price__lte=15.0)
+
+# Avoid: Would require loading all items and filtering in Python
+# (Popoto doesn't support this pattern, but the principle applies)
+</code></pre>
+<h3 id="limit-results-when-possible">Limit Results When Possible</h3>
+<p>Apply <code>limit</code> to reduce the number of objects loaded from Redis. When combined with
+<code>order_by</code> on a KeyField, the limit is applied before loading objects.</p>
+<pre><code class="language-python"># Good: Only loads 10 objects
+top_10 = Restaurant.query.all(order_by=&quot;-rating&quot;, limit=10)
+</code></pre>
+<h3 id="lazy-loading-for-bulk-queries">Lazy Loading for Bulk Queries</h3>
+<p>When iterating over query results, Popoto uses lazy deserialization by default. Field values
+are only decoded from msgpack when you access them. This significantly reduces overhead when
+you only use a subset of fields.</p>
+<pre><code class="language-python"># Only decodes 'name' and 'rating' fields, not 'location' or 'cuisine'
+for restaurant in Restaurant.query.all():
+    print(f&quot;{restaurant.name}: {restaurant.rating}&quot;)
+</code></pre>
+<h3 id="query-performance-summary">Query Performance Summary</h3>
+<table>
+<thead>
+<tr>
+<th>Operation</th>
+<th>Redis Command</th>
+<th>Time Complexity</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>count()</code> (no filters)</td>
+<td>SCARD</td>
+<td>O(1)</td>
+</tr>
+<tr>
+<td><code>get(key=...)</code></td>
+<td>HGETALL</td>
+<td>O(1)</td>
+</tr>
+<tr>
+<td><code>filter(field=...)</code></td>
+<td>SMEMBERS</td>
+<td>O(1)</td>
+</tr>
+<tr>
+<td><code>filter(field__in=[...])</code></td>
+<td>SUNION</td>
+<td>O(N) where N = total members</td>
+</tr>
+<tr>
+<td><code>filter(field__startswith=...)</code></td>
+<td>SCAN</td>
+<td>O(N) where N = total keys</td>
+</tr>
+<tr>
+<td><code>filter(sorted__gte=...)</code></td>
+<td>ZRANGEBYSCORE</td>
+<td>O(log N + M)</td>
+</tr>
+<tr>
+<td><code>filter(geo=..., radius=...)</code></td>
+<td>GEORADIUS</td>
+<td>O(N + log M)</td>
+</tr>
+<tr>
+<td><code>all()</code></td>
+<td>SMEMBERS + pipeline HGETALL</td>
+<td>O(N)</td>
+</tr>
+<tr>
+<td><code>values(...)</code> on KeyFields only</td>
+<td>No Redis call</td>
+<td>O(1)</td>
+</tr>
+</tbody>
+</table>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../meta/" class="btn btn-neutral float-left" title="Model Meta Options"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../relationship/" class="btn btn-neutral float-right" title="Relationship Field">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+        <span>
+          <a href="https://github.com/tomcounsell/popoto/" class="fa fa-github" style="color: #fcfcfc"> GitHub</a>
+        </span>
+    
+    
+      <span><a href="../meta/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../relationship/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "..";</script>
+    <script src="../js/theme_extra.js"></script>
+    <script src="../js/theme.js"></script>
+      <script src="../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>

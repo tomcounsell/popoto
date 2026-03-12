@@ -1,0 +1,1963 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="author" content="Tom Counsell" />
+      <link rel="shortcut icon" href="../img/favicon.ico" />
+    <title>API Reference - Popoto Documentation</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "API Reference";
+        var mkdocs_page_input_path = "api-reference.md";
+        var mkdocs_page_url = null;
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/markdown.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/python.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/bash.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/html.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href=".." class="icon icon-home"> Popoto Documentation
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="..">Home</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="..#simple-example">Simple Example</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="..#features">Features</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="..#getting-started">Getting Started</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="..#install">Install</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="..#define-a-model">Define a Model</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="..#create-instances">Create Instances</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="..#retrieve-instances">Retrieve Instances</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="..#delete-instances">Delete Instances</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="..#async-operations">Async Operations</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../configuration/">Configuration</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#redisvalkey-connection">Redis/Valkey Connection</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#using-redis_url-recommended">Using REDIS_URL (Recommended)</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#default-connection">Default Connection</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#reconfiguring-at-runtime">Reconfiguring at Runtime</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#accessing-the-connection-directly">Accessing the Connection Directly</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#debugging">Debugging</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#print-redis-info">Print Redis Info</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#redisvalkey-cli">Redis/Valkey CLI</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#environment-variables">Environment Variables</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#thread-safety">Thread Safety</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#what-is-thread-safe">What IS Thread-Safe</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#what-is-not-thread-safe">What is NOT Thread-Safe</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#best-practices">Best Practices</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#logging">Logging</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#environment-variable">Environment Variable</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#programmatic-configuration">Programmatic Configuration</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#logger-reference">Logger Reference</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#integration-with-frameworks">Integration with Frameworks</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../fields/">Models and Fields</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#keyfield">KeyField</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../fields/#changing-a-keyfield-value">Changing a KeyField Value</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#uniqueness">Uniqueness</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../fields/#autokeyfield-id-strategies">AutoKeyField ID Strategies</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../fields/#uuid4-default">UUID4 (Default)</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../fields/#ulid-time-sortable">ULID (Time-Sortable)</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../fields/#ksuid-time-sortable">KSUID (Time-Sortable)</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../fields/#choosing-a-strategy">Choosing a Strategy</a>
+    </li>
+        </ul>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#composite-keys">Composite Keys</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#models-without-keyfields">Models Without KeyFields</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#field">Field</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#named-field-shortcuts">Named Field Shortcuts</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#null-values">Null Values</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#default-values">Default Values</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#string-max-length">String Max Length</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#sortedfield">SortedField</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#sortedkeyfield">SortedKeyField</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#partition_by">partition_by</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#datetimefield">DatetimeField</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#timestampable-mixin">Timestampable Mixin</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#geofield">GeoField</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#query-with-distances">Query with Distances</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#dataframefield">DataFrameField</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#reserved-field-names">Reserved Field Names</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../fields/#model-methods">Model Methods</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../fields/#creating-and-saving">Creating and Saving</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../fields/#loading">Loading</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../fields/#updating">Updating</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../fields/#deleting">Deleting</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../fields/#validation">Validation</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../fields/#the-db_key-property">The db_key Property</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../meta/">Model Meta Options</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#when-to-use-meta-options">When to Use Meta Options</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#order_by">order_by</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../meta/#override-per-query">Override per Query</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#ttl">ttl</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#instance-level-ttl">Instance-Level TTL</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#absolute-expiration">Absolute Expiration</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#indexes">indexes</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../meta/#non-unique-indexes">Non-Unique Indexes</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../meta/#null-handling">NULL Handling</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#update-and-delete-handling">Update and Delete Handling</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#complete-example">Complete Example</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#accessing-meta-at-runtime">Accessing Meta at Runtime</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../meta/#meta-validation">Meta Validation</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../query/">Making Queries</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../query/#get-a-single-object">Get a Single Object</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../query/#get-all-objects">Get All Objects</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../query/#filter-query-results">Filter Query Results</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../query/#chainable-query-builder">Chainable Query Builder</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#chainable-vs-kwargs-syntax">Chainable vs Kwargs Syntax</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#chainable-methods">Chainable Methods</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#chaining-multiple-filters">Chaining Multiple Filters</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#getting-the-first-result">Getting the First Result</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#counting-without-loading">Counting Without Loading</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#using-values-with-chainable-api">Using Values with Chainable API</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#backward-compatibility">Backward Compatibility</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../query/#q-objects-or-and-not">Q Objects (OR, AND, NOT)</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#importing-q">Importing Q</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#basic-q-object-usage">Basic Q Object Usage</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#or-queries-with">OR Queries with |</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#and-queries-with">AND Queries with &amp;</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../relationship/">Relationship Field</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../relationship/#basic-usage">Basic Usage</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../relationship/#creating-related-instances">Creating Related Instances</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../relationship/#querying-by-relationship">Querying by Relationship</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../relationship/#nested-field-access">Nested Field Access</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../relationship/#traversing-relationships">Traversing Relationships</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../async/">Async Operations</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#async-model-methods">Async Model Methods</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_create">async_create()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_save">async_save()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_delete">async_delete()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_load">async_load()</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#async-query-methods">Async Query Methods</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_get">async_get()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_filter">async_filter()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_all">async_all()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_count">async_count()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#async_keys">async_keys()</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#concurrent-operations">Concurrent Operations</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#framework-integration-fastapi">Framework Integration: FastAPI</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#framework-integration-background-workers">Framework Integration: Background Workers</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#implementation-details">Implementation Details</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#thread-pool-execution">Thread Pool Execution</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#python-38-compatibility">Python 3.8+ Compatibility</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#performance-considerations">Performance Considerations</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#error-handling">Error Handling</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#async-bulk-operations">Async Bulk Operations</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#test-coverage">Test Coverage</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../async/#see-also">See Also</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../pubsub/">PubSub</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#publisher">Publisher</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#custom-channel-names">Custom Channel Names</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#pipeline-support">Pipeline Support</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#subscriber">Subscriber</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#subscriber-lifecycle">Subscriber Lifecycle</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#pre_handle-hook">pre_handle Hook</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#multi-channel-subscription">Multi-Channel Subscription</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#exception-handling">Exception Handling</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../pubsub/#logging">Logging</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul class="current">
+                <li class="toctree-l1 current"><a class="reference internal current" href="#">API Reference</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#model-class">Model Class</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#model__init__kwargs">Model.__init__(**kwargs)</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#modelcreate">Model.create()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#modelsave">Model.save()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#modeldelete">Model.delete()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#modelload">Model.load()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#modelis_valid">Model.is_valid()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#modelget_info">Model.get_info()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#modeldb_key">Model.db_key</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#async-methods">Async Methods</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#bulk-operations">Bulk Operations</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#modelbulk_create">Model.bulk_create()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#modelbulk_update">Model.bulk_update()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#modelbulk_delete">Model.bulk_delete()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#modeldelete_all">Model.delete_all()</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Contributing</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../style-guide/">Style Guide</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#canonical-example-models">Canonical Example Models</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#tone-and-voice">Tone and Voice</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#page-structure">Page Structure</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../style-guide/#headings">Headings</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../style-guide/#prose-between-code-blocks">Prose Between Code Blocks</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#code-examples">Code Examples</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../style-guide/#imports">Imports</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../style-guide/#expected-output">Expected Output</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../style-guide/#self-contained-examples">Self-Contained Examples</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../style-guide/#use-canonical-models">Use Canonical Models</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#admonitions">Admonitions</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#cross-references">Cross-References</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../style-guide/#general-formatting">General Formatting</a>
+    </li>
+    </ul>
+                  </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="..">Popoto Documentation</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href=".." class="icon icon-home" aria-label="Docs"></a></li>
+      <li class="breadcrumb-item active">API Reference</li>
+    <li class="wy-breadcrumbs-aside">
+          <a href="https://github.com/tomcounsell/popoto/edit/master/docs/api-reference.md" class="icon icon-github"> Edit on GitHub</a>
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="api-reference">API Reference</h1>
+<p>Complete reference for all public classes, methods, and functions in the Popoto Redis ORM.</p>
+<pre><code class="language-python">from popoto import Model, Field, KeyField, AutoKeyField, UniqueKeyField
+from popoto import SortedField, SortedKeyField, GeoField, DatetimeField, Relationship
+from popoto import Publisher, Subscriber
+from popoto import ModelException, QueryException, PublisherException, SubscriberException
+</code></pre>
+<hr />
+<h2 id="model-class">Model Class</h2>
+<p><code>popoto.Model</code> is the base class for all Popoto models. Define public attributes as <code>Field</code> instances.
+Each model is persisted as a Redis hash at the key <code>ClassName:key1:key2:...</code>.</p>
+<p>See <a href="../query/">Making Queries</a> for query usage and <a href="../fields/">Fields</a> for field types.</p>
+<h3 id="model__init__kwargs">Model.__init__(**kwargs)</h3>
+<pre><code class="language-python">Model(**kwargs)
+</code></pre>
+<p>Create a new in-memory instance with the given field values. Does not persist to Redis. An <code>AutoKeyField</code>
+named <code>_auto_key</code> is added automatically if no <code>KeyField</code> is defined on the model.</p>
+<pre><code class="language-python">restaurant = Restaurant(name=&quot;Burger Palace&quot;, cuisine=&quot;American&quot;, rating=4.5)
+</code></pre>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Validation runs on instantiation with <code>null_check=False</code>. A <code>ModelException</code> is raised if type
+constraints fail.</p>
+</div>
+<h3 id="modelcreate">Model.create()</h3>
+<pre><code class="language-python">@classmethod
+Model.create(pipeline: redis.client.Pipeline = None, **kwargs) -&gt; Model
+</code></pre>
+<p>Create a new instance, save it to Redis, and return it. This is the primary way to persist new objects.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pipeline</code></td>
+<td><code>redis.client.Pipeline</code></td>
+<td>Optional Redis pipeline for batching operations.</td>
+</tr>
+<tr>
+<td><code>**kwargs</code></td>
+<td></td>
+<td>Field values for the new instance.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Returns:</strong> <code>Model</code> instance (or the pipeline if one was provided).</p>
+<pre><code class="language-python">restaurant = Restaurant.create(name=&quot;Taco Town&quot;, cuisine=&quot;Mexican&quot;, rating=4.2)
+</code></pre>
+<h3 id="modelsave">Model.save()</h3>
+<pre><code class="language-python">Model.save(
+    pipeline: redis.client.Pipeline = None,
+    ignore_errors: bool = False,
+    skip_auto_now: bool = False,
+    update_fields: list = None,
+    **kwargs,
+)
+</code></pre>
+<p>Persist the instance to Redis using <code>HSET</code>. Also triggers all field <code>on_save</code> hooks (sorted-set indexes,
+geo indexes, relationship sets, unique constraints, etc.).</p>
+<p>If a <code>KeyField</code> value has changed since the instance was loaded, <code>save()</code> automatically handles the key
+migration: it deletes the old Redis hash, removes the old key from the class set, migrates all field
+indexes to the new key, and adds the new key to the class set. This applies to both full saves and
+partial saves via <code>update_fields</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pipeline</code></td>
+<td><code>redis.client.Pipeline</code></td>
+<td>Optional pipeline for batching.</td>
+</tr>
+<tr>
+<td><code>ignore_errors</code></td>
+<td><code>bool</code></td>
+<td>If <code>True</code>, log validation errors instead of raising <code>ModelException</code>.</td>
+</tr>
+<tr>
+<td><code>skip_auto_now</code></td>
+<td><code>bool</code></td>
+<td>If <code>True</code>, suppress <code>auto_now</code> timestamp updates. Useful during migrations.</td>
+</tr>
+<tr>
+<td><code>update_fields</code></td>
+<td><code>list</code></td>
+<td>Optional list of field names for partial save. Only the listed fields are written to Redis and only their <code>on_save</code> hooks fire. An empty list is a no-op. <code>auto_now</code> fields are excluded unless explicitly listed.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Returns:</strong> Redis <code>HSET</code> response (int) or pipeline.</p>
+<pre><code class="language-python">restaurant = Restaurant(name=&quot;Sushi Spot&quot;, cuisine=&quot;Japanese&quot;, rating=4.8)
+restaurant.save()
+
+# Partial save -- only update the rating field
+restaurant.rating = 4.9
+restaurant.save(update_fields=[&quot;rating&quot;])
+</code></pre>
+<h3 id="modeldelete">Model.delete()</h3>
+<pre><code class="language-python">Model.delete(pipeline: redis.client.Pipeline = None, **kwargs)
+</code></pre>
+<p>Delete the instance from Redis. Removes the hash key, removes the instance from the class set, triggers
+all field <code>on_delete</code> hooks, and cleans up indexes.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pipeline</code></td>
+<td><code>redis.client.Pipeline</code></td>
+<td>Optional pipeline for batching.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Returns:</strong> <code>bool</code> indicating whether the object existed and was deleted (or pipeline if one was provided).</p>
+<pre><code class="language-python">restaurant.delete()
+</code></pre>
+<h3 id="modelload">Model.load()</h3>
+<pre><code class="language-python">@classmethod
+Model.load(db_key: str = None, **kwargs) -&gt; Model
+</code></pre>
+<p>Load an existing instance from Redis by <code>db_key</code> or by field values that construct the key.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>db_key</code></td>
+<td><code>str</code></td>
+<td>The full Redis key string.</td>
+</tr>
+<tr>
+<td><code>**kwargs</code></td>
+<td></td>
+<td>Key field values to construct the key.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Returns:</strong> <code>Model</code> instance or <code>None</code> if not found.</p>
+<pre><code class="language-python">restaurant = Restaurant.load(name=&quot;Taco Town&quot;)
+</code></pre>
+<h3 id="modelis_valid">Model.is_valid()</h3>
+<pre><code class="language-python">Model.is_valid(null_check: bool = True) -&gt; bool
+</code></pre>
+<p>Validate the instance's field values against type, null, and max_length constraints.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>null_check</code></td>
+<td><code>bool</code></td>
+<td>When <code>False</code>, skip null validation (used during init).</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Returns:</strong> <code>True</code> if all validations pass.</p>
+<h3 id="modelget_info">Model.get_info()</h3>
+<pre><code class="language-python">@classmethod
+Model.get_info() -&gt; dict
+</code></pre>
+<p>Return metadata about the model: its name, field names, and available query filter parameters.</p>
+<p><strong>Returns:</strong> <code>dict</code> with keys <code>"name"</code>, <code>"fields"</code>, and <code>"query_filters"</code>.</p>
+<pre><code class="language-python">Restaurant.get_info()
+# =&gt; {&quot;name&quot;: &quot;Restaurant&quot;, &quot;fields&quot;: [&quot;name&quot;, &quot;cuisine&quot;, ...], &quot;query_filters&quot;: [...]}
+</code></pre>
+<h3 id="modeldb_key">Model.db_key</h3>
+<pre><code class="language-python">@property
+Model.db_key -&gt; DB_key
+</code></pre>
+<p>The computed Redis key for this instance, based on the class name and sorted key field values.</p>
+<h3 id="async-methods">Async Methods</h3>
+<p>Every synchronous Model method has an async counterpart that runs in a thread pool. See
+<a href="../async/">Async Operations</a> for details.</p>
+<table>
+<thead>
+<tr>
+<th>Sync</th>
+<th>Async</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Model.create(**kwargs)</code></td>
+<td><code>await Model.async_create(**kwargs)</code></td>
+</tr>
+<tr>
+<td><code>instance.save()</code></td>
+<td><code>await instance.async_save()</code></td>
+</tr>
+<tr>
+<td><code>instance.delete()</code></td>
+<td><code>await instance.async_delete()</code></td>
+</tr>
+<tr>
+<td><code>Model.load(db_key=...)</code></td>
+<td><code>await Model.async_load(db_key=...)</code></td>
+</tr>
+<tr>
+<td><code>Model.bulk_create(...)</code></td>
+<td><code>await Model.async_bulk_create(...)</code></td>
+</tr>
+<tr>
+<td><code>Model.bulk_update(...)</code></td>
+<td><code>await Model.async_bulk_update(...)</code></td>
+</tr>
+<tr>
+<td><code>Model.bulk_delete(...)</code></td>
+<td><code>await Model.async_bulk_delete(...)</code></td>
+</tr>
+</tbody>
+</table>
+<p>All async methods accept the same parameters as their sync counterparts.</p>
+<hr />
+<h2 id="bulk-operations">Bulk Operations</h2>
+<p>Popoto provides bulk operation methods for efficient batch processing using Redis pipelines.
+These methods significantly reduce network round-trips compared to individual operations,
+making them ideal for importing data, batch updates, and cleanup tasks.</p>
+<h3 id="modelbulk_create">Model.bulk_create()</h3>
+<pre><code class="language-python">@classmethod
+Model.bulk_create(instances: list, batch_size: int = 1000) -&gt; list
+</code></pre>
+<p>Create multiple instances efficiently using a Redis pipeline. All instances are saved in
+batched transactions, dramatically reducing network overhead.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>instances</code></td>
+<td><code>list</code></td>
+<td></td>
+<td>List of unsaved model instances to create.</td>
+</tr>
+<tr>
+<td><code>batch_size</code></td>
+<td><code>int</code></td>
+<td><code>1000</code></td>
+<td>Maximum instances per pipeline batch.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Returns:</strong> <code>list</code> of created instances.</p>
+<pre><code class="language-python"># Create many restaurants at once
+restaurants = [
+    Restaurant(name=&quot;Taco Town&quot;, cuisine=&quot;Mexican&quot;, rating=4.2),
+    Restaurant(name=&quot;Burger Palace&quot;, cuisine=&quot;American&quot;, rating=4.0),
+    Restaurant(name=&quot;Sushi Spot&quot;, cuisine=&quot;Japanese&quot;, rating=4.8),
+]
+created = Restaurant.bulk_create(restaurants)
+print(f&quot;Created {len(created)} restaurants&quot;)
+# =&gt; Created 3 restaurants
+</code></pre>
+<div class="admonition tip">
+<p class="admonition-title">Performance Benefit</p>
+<p>Creating 1000 instances with individual <code>save()</code> calls requires 1000 network
+round-trips. With <code>bulk_create()</code>, the same operation completes in a single
+pipeline execution, often 10-100x faster depending on network latency.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>All instances must be of the same Model class. Validation runs on each instance
+during save, and a <code>ModelException</code> is raised if any instance fails validation.</p>
+</div>
+<h3 id="modelbulk_update">Model.bulk_update()</h3>
+<pre><code class="language-python">@classmethod
+Model.bulk_update(queryset_or_instances, batch_size: int = 1000, **updates) -&gt; int
+</code></pre>
+<p>Update multiple instances efficiently using a Redis pipeline. Applies the given field
+updates to all instances in the queryset or list.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>queryset_or_instances</code></td>
+<td><code>list</code> or query result</td>
+<td></td>
+<td>Instances to update (from <code>query.filter()</code> or a list).</td>
+</tr>
+<tr>
+<td><code>batch_size</code></td>
+<td><code>int</code></td>
+<td><code>1000</code></td>
+<td>Maximum instances per pipeline batch.</td>
+</tr>
+<tr>
+<td><code>**updates</code></td>
+<td></td>
+<td></td>
+<td>Field names and new values to apply.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Returns:</strong> <code>int</code> count of updated instances.</p>
+<pre><code class="language-python"># Update all pending restaurants to active
+count = Restaurant.bulk_update(
+    Restaurant.query.filter(status=&quot;pending&quot;),
+    status=&quot;active&quot;
+)
+print(f&quot;Activated {count} restaurants&quot;)
+
+# Update from a list of instances
+featured_restaurants = [r1, r2, r3]
+count = Restaurant.bulk_update(featured_restaurants, is_featured=True, rating=5.0)
+</code></pre>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Each instance is fully validated before saving. If any instance fails validation,
+a <code>ModelException</code> is raised.</p>
+</div>
+<h3 id="modelbulk_delete">Model.bulk_delete()</h3>
+<pre><code class="language-python">@classmethod
+Model.bulk_delete(queryset_or_instances, batch_size: int = 1000) -&gt; int
+</code></pre>
+<p>Delete multiple instances efficiently using a Redis pipeline. Properly cleans up all
+associated indexes (sorted fields, geo fields, unique constraints, relationships).</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>queryset_or_instances</code></td>
+<td><code>list</code> or query result</td>
+<td></td>
+<td>Instances to delete (from <code>query.filter()</code> or a list).</td>
+</tr>
+<tr>
+<td><code>batch_size</code></td>
+<td><code>int</code></td>
+<td><code>1000</code></td>
+<td>Maximum instances per pipeline batch.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Returns:</strong> <code>int</code> count of deleted instances.</p>
+<pre><code class="language-python"># Delete all inactive restaurants
+count = Restaurant.bulk_delete(
+    Restaurant.query.filter(status=&quot;inactive&quot;)
+)
+print(f&quot;Deleted {count} inactive restaurants&quot;)
+
+# Delete from a list
+old_restaurants = [r1, r2, r3]
+count = Restaurant.bulk_delete(old_restaurants)
+</code></pre>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Bulk delete is permanent. All instances and their indexes are removed from Redis.
+There is no undo operation.</p>
+</div>
+<h3 id="modeldelete_all">Model.delete_all()</h3>
+<pre><code class="language-python">@classmethod
+Model.delete_all(batch_size: int = 1000) -&gt; int
+</code></pre>
+<p>Delete <strong>all instances</strong> of this model, including all secondary indexes. This is a convenience
+wrapper around <code>bulk_delete()</code> that handles the full cleanup automatically.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>batch_size</code></td>
+<td><code>int</code></td>
+<td><code>1000</code></td>
+<td>Maximum instances per pipeline batch.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Returns:</strong> <code>int</code> count of deleted instances.</p>
+<pre><code class="language-python"># Delete all restaurants
+deleted = Restaurant.delete_all()
+print(f&quot;Deleted {deleted} restaurants&quot;)
+
+# Delete all models (delete referencing models first)
+for model in [Order, MenuItem, Restaurant]:
+    model.delete_all()
+</code></pre>
+<div class="admonition warning">
+<p class="admonition-title">Why use delete_all() instead of Redis DEL/FLUSHDB?</p>
+<p><strong>Never delete Popoto data directly with Redis commands like <code>DEL</code>, <code>FLUSHDB</code>, or <code>KEYS ... | xargs redis-cli DEL</code>.</strong></p>
+<p>Popoto maintains secondary indexes for fast queries:</p>
+<ul>
+<li><strong>SortedField</strong> → Redis sorted sets for range queries</li>
+<li><strong>GeoField</strong> → Redis geo sets for location queries</li>
+<li><strong>UniqueKeyField</strong> → Redis keys for uniqueness constraints</li>
+<li><strong>Class sets</strong> → Track all instances of each model</li>
+</ul>
+<p>If you delete instance keys directly, these indexes become orphaned:</p>
+<ul>
+<li>Range queries return stale results</li>
+<li>Geo queries find deleted locations</li>
+<li>Unique constraints block valid values</li>
+<li><code>count()</code> returns wrong numbers</li>
+</ul>
+<p><code>delete_all()</code> properly invokes each instance's <code>delete()</code> method, which triggers all
+field <code>on_delete</code> hooks to clean up indexes. This is the <strong>only safe way</strong> to bulk-delete
+Popoto data.</p>
+<p>```python</p>
+<h1 id="correct-cleans-up-all-indexes">✅ CORRECT - cleans up all indexes</h1>
+<p>Restaurant.delete_all()</p>
+<h1 id="wrong-leaves-orphaned-indexes">❌ WRONG - leaves orphaned indexes</h1>
+<p>redis_client.delete(<em>redis_client.keys("Restaurant:</em>"))
+```</p>
+</div>
+<h3 id="batch-size-parameter">Batch Size Parameter</h3>
+<p>All bulk methods accept a <code>batch_size</code> parameter (default 1000) that controls memory
+usage and pipeline size. When processing more instances than <code>batch_size</code>, operations
+are automatically split into multiple pipeline executions.</p>
+<pre><code class="language-python"># Process 10,000 instances in batches of 500
+Restaurant.bulk_create(large_list, batch_size=500)
+</code></pre>
+<p><strong>When to adjust batch size:</strong></p>
+<ul>
+<li><strong>Increase</strong> for faster throughput when memory is not a concern</li>
+<li><strong>Decrease</strong> when instances are large or memory is constrained</li>
+<li><strong>Default (1000)</strong> works well for most use cases</li>
+</ul>
+<h3 id="async-bulk-methods">Async Bulk Methods</h3>
+<p>All bulk operations have async counterparts that run in a thread pool to avoid blocking
+the event loop. See <a href="../async/">Async Operations</a> for details.</p>
+<table>
+<thead>
+<tr>
+<th>Sync</th>
+<th>Async</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Model.bulk_create(instances)</code></td>
+<td><code>await Model.async_bulk_create(instances)</code></td>
+</tr>
+<tr>
+<td><code>Model.bulk_update(queryset, **updates)</code></td>
+<td><code>await Model.async_bulk_update(queryset, **updates)</code></td>
+</tr>
+<tr>
+<td><code>Model.bulk_delete(queryset)</code></td>
+<td><code>await Model.async_bulk_delete(queryset)</code></td>
+</tr>
+<tr>
+<td><code>Model.delete_all()</code></td>
+<td><code>await Model.async_delete_all()</code></td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-python"># Async bulk create
+restaurants = await Restaurant.async_bulk_create([
+    Restaurant(name=&quot;Async Eats&quot;, cuisine=&quot;Fusion&quot;, rating=4.5),
+    Restaurant(name=&quot;Pipeline Pizzeria&quot;, cuisine=&quot;Italian&quot;, rating=4.3),
+])
+
+# Async bulk update
+count = await Restaurant.async_bulk_update(
+    Restaurant.query.filter(rating__gte=4.0),
+    is_featured=True
+)
+
+# Async bulk delete
+count = await Restaurant.async_bulk_delete(
+    Restaurant.query.filter(status=&quot;closed&quot;)
+)
+</code></pre>
+<h3 id="example-use-cases">Example Use Cases</h3>
+<p><strong>Data Import</strong></p>
+<pre><code class="language-python"># Import restaurants from CSV
+import csv
+
+with open(&quot;restaurants.csv&quot;) as f:
+    reader = csv.DictReader(f)
+    instances = [
+        Restaurant(
+            name=row[&quot;name&quot;],
+            cuisine=row[&quot;cuisine&quot;],
+            rating=float(row[&quot;rating&quot;]),
+        )
+        for row in reader
+    ]
+
+created = Restaurant.bulk_create(instances)
+print(f&quot;Imported {len(created)} restaurants&quot;)
+</code></pre>
+<p><strong>Batch Status Update</strong></p>
+<pre><code class="language-python"># Mark all orders older than 30 days as archived
+from datetime import datetime, timedelta
+
+cutoff = datetime.now() - timedelta(days=30)
+old_orders = Order.query.filter(created_at__lt=cutoff)
+count = Order.bulk_update(old_orders, status=&quot;archived&quot;)
+print(f&quot;Archived {count} old orders&quot;)
+</code></pre>
+<p><strong>Cleanup Task</strong></p>
+<pre><code class="language-python"># Remove all soft-deleted records
+deleted_count = Restaurant.bulk_delete(
+    Restaurant.query.filter(is_deleted=True)
+)
+print(f&quot;Permanently removed {deleted_count} restaurants&quot;)
+</code></pre>
+<hr />
+<h3 id="meta-inner-class">Meta Inner Class</h3>
+<p>Configure model-level behavior by defining a <code>Meta</code> inner class. See <a href="../meta/">Meta Options</a> for
+full documentation.</p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>order_by</code></td>
+<td><code>str</code></td>
+<td>Default ordering field. Prefix with <code>-</code> for descending.</td>
+</tr>
+<tr>
+<td><code>ttl</code></td>
+<td><code>int</code></td>
+<td>Default time-to-live in seconds for all instances.</td>
+</tr>
+<tr>
+<td><code>indexes</code></td>
+<td><code>tuple</code></td>
+<td>Composite indexes as <code>((field_names,), is_unique)</code> tuples.</td>
+</tr>
+<tr>
+<td><code>abstract</code></td>
+<td><code>bool</code></td>
+<td>If <code>True</code>, the model cannot be instantiated directly.</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-python">class Order(Model):
+    order_id = AutoKeyField()
+    total = SortedField(type=float)
+    created_at = DatetimeField(auto_now_add=True)
+
+    class Meta:
+        order_by = &quot;-created_at&quot;
+        ttl = 2592000  # 30 days
+</code></pre>
+<hr />
+<h2 id="query-class">Query Class</h2>
+<p><code>popoto.models.query.Query</code> is attached to every model as <code>Model.query</code> (also aliased as <code>Model.objects</code>).
+It provides the interface for retrieving and filtering stored instances.</p>
+<p>See <a href="../query/">Making Queries</a> for usage patterns.</p>
+<h3 id="queryget">Query.get()</h3>
+<pre><code class="language-python">Query.get(db_key: DB_key = None, redis_key: str = None, **kwargs) -&gt; Model
+</code></pre>
+<p>Retrieve a single model instance. Look up by <code>db_key</code>, <code>redis_key</code>, or keyword field values. Raises
+<code>QueryException</code> if more than one match is found.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>db_key</code></td>
+<td><code>DB_key</code></td>
+<td>A <code>DB_key</code> object to look up.</td>
+</tr>
+<tr>
+<td><code>redis_key</code></td>
+<td><code>str</code></td>
+<td>A raw Redis key string.</td>
+</tr>
+<tr>
+<td><code>**kwargs</code></td>
+<td></td>
+<td>Field values for lookup.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Returns:</strong> <code>Model</code> instance or <code>None</code>.</p>
+<pre><code class="language-python">restaurant = Restaurant.query.get(name=&quot;Taco Town&quot;)
+</code></pre>
+<h3 id="queryfilter">Query.filter()</h3>
+<pre><code class="language-python">Query.filter(**kwargs) -&gt; list
+</code></pre>
+<p>Return all instances matching the given filter parameters. Supports field lookups, ordering, limiting,
+and value projection.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>**kwargs</code></td>
+<td></td>
+<td>Filter parameters (see below), plus optional <code>order_by</code>, <code>limit</code>, <code>values</code>.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Reserved keyword arguments:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Keyword</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>order_by</code></td>
+<td><code>str</code></td>
+<td>Field name to sort by. Prefix with <code>-</code> for descending.</td>
+</tr>
+<tr>
+<td><code>limit</code></td>
+<td><code>int</code></td>
+<td>Maximum number of results.</td>
+</tr>
+<tr>
+<td><code>values</code></td>
+<td><code>tuple</code></td>
+<td>Tuple of field names to return as dicts instead of model instances.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Returns:</strong> <code>list</code> of <code>Model</code> instances (or dicts when <code>values</code> is specified).</p>
+<pre><code class="language-python">cheap_items = MenuItem.query.filter(price__lte=9.99, order_by=&quot;price&quot;, limit=10)
+</code></pre>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>Available filter lookups depend on the field type. See the <a href="#field-classes">Field Classes</a> section
+for each field's supported lookups.</p>
+</div>
+<h3 id="queryall">Query.all()</h3>
+<pre><code class="language-python">Query.all(**kwargs) -&gt; list
+</code></pre>
+<p>Return all instances of the model. Accepts <code>order_by</code>, <code>limit</code>, and <code>values</code> keyword arguments.</p>
+<p><strong>Returns:</strong> <code>list</code> of <code>Model</code> instances (or dicts when <code>values</code> is specified).</p>
+<pre><code class="language-python">all_restaurants = Restaurant.query.all()
+</code></pre>
+<h3 id="querycount">Query.count()</h3>
+<pre><code class="language-python">Query.count(**kwargs) -&gt; int
+</code></pre>
+<p>Count instances matching the given filters, or all instances if no filters are provided. Uses
+<code>SCARD</code> when counting all instances (no filters), which is O(1).</p>
+<p><strong>Returns:</strong> <code>int</code> count of matching instances.</p>
+<pre><code class="language-python">total = Restaurant.query.count()
+expensive = MenuItem.query.count(price__gte=20.0)
+</code></pre>
+<h3 id="querykeys">Query.keys()</h3>
+<pre><code class="language-python">Query.keys(catchall: bool = False, clean: bool = False, **kwargs) -&gt; list
+</code></pre>
+<p>Return a list of Redis key bytes for all instances of this model.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>catchall</code></td>
+<td><code>bool</code></td>
+<td>Use <code>KEYS *ClassName*</code> pattern (debug only).</td>
+</tr>
+<tr>
+<td><code>clean</code></td>
+<td><code>bool</code></td>
+<td>Remove orphaned keys from the class set (debug only).</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Returns:</strong> <code>list</code> of Redis key bytes.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Both <code>catchall</code> and <code>clean</code> are intended for debugging only and should not be used in production.</p>
+</div>
+<h3 id="async-query-methods">Async Query Methods</h3>
+<table>
+<thead>
+<tr>
+<th>Sync</th>
+<th>Async</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Model.query.get(...)</code></td>
+<td><code>await Model.query.async_get(...)</code></td>
+</tr>
+<tr>
+<td><code>Model.query.filter(...)</code></td>
+<td><code>await Model.query.async_filter(...)</code></td>
+</tr>
+<tr>
+<td><code>Model.query.all(...)</code></td>
+<td><code>await Model.query.async_all(...)</code></td>
+</tr>
+<tr>
+<td><code>Model.query.count(...)</code></td>
+<td><code>await Model.query.async_count(...)</code></td>
+</tr>
+<tr>
+<td><code>Model.query.keys(...)</code></td>
+<td><code>await Model.query.async_keys(...)</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="field-classes">Field Classes</h2>
+<p>All fields inherit from <code>Field</code>. Fields define value type, validation, defaults, and optional
+Redis-backed indexes. See <a href="../fields/">Fields</a> for a conceptual overview.</p>
+<h3 id="field">Field</h3>
+<pre><code class="language-python">Field(type=str, null=True, default=None, max_length=1024)
+</code></pre>
+<p>Base class for all model fields. Stores a value in the model's Redis hash.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>type</code></td>
+<td><code>type</code></td>
+<td><code>str</code></td>
+<td>Python type for the value. Must be one of: <code>int</code>, <code>float</code>, <code>Decimal</code>, <code>str</code>, <code>bool</code>, <code>bytes</code>, <code>list</code>, <code>dict</code>, <code>set</code>, <code>tuple</code>, <code>date</code>, <code>datetime</code>, <code>time</code>.</td>
+</tr>
+<tr>
+<td><code>null</code></td>
+<td><code>bool</code></td>
+<td><code>True</code></td>
+<td>Allow <code>None</code> values.</td>
+</tr>
+<tr>
+<td><code>default</code></td>
+<td>any</td>
+<td><code>None</code></td>
+<td>Default value (or callable) for new instances.</td>
+</tr>
+<tr>
+<td><code>max_length</code></td>
+<td><code>int</code></td>
+<td><code>1024</code></td>
+<td>Maximum string length enforced on save.</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-python">class Restaurant(Model):
+    name = KeyField()
+    cuisine = Field(type=str)
+    active = Field(type=bool, default=True)
+</code></pre>
+<h3 id="keyfield">KeyField</h3>
+<pre><code class="language-python">KeyField(type=str, null=True, max_length=128, **kwargs)
+</code></pre>
+<p>A field that forms part of the model's Redis key. All <code>KeyField</code> values together enforce a
+unique-together constraint. Backed by Redis sets for fast lookups.</p>
+<p><strong>Supported filter lookups:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Lookup</th>
+<th>Example</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>exact</td>
+<td><code>name="Taco Town"</code></td>
+<td>Exact match.</td>
+</tr>
+<tr>
+<td><code>__isnull</code></td>
+<td><code>name__isnull=True</code></td>
+<td>Match <code>None</code> values.</td>
+</tr>
+<tr>
+<td><code>__contains</code></td>
+<td><code>name__contains="Taco"</code></td>
+<td>Substring match (uses Redis <code>KEYS</code> pattern).</td>
+</tr>
+<tr>
+<td><code>__startswith</code></td>
+<td><code>name__startswith="Taco"</code></td>
+<td>Prefix match.</td>
+</tr>
+<tr>
+<td><code>__endswith</code></td>
+<td><code>name__endswith="Town"</code></td>
+<td>Suffix match.</td>
+</tr>
+<tr>
+<td><code>__in</code></td>
+<td><code>name__in=["Taco Town", "Burger Palace"]</code></td>
+<td>Match any value in the list.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Valid types:</strong> <code>int</code>, <code>float</code>, <code>Decimal</code>, <code>str</code>, <code>bool</code>, <code>date</code>, <code>datetime</code>, <code>time</code>.</p>
+<h3 id="autokeyfield">AutoKeyField</h3>
+<pre><code class="language-python">AutoKeyField(**kwargs)
+</code></pre>
+<p>A <code>UniqueKeyField</code> whose value is auto-generated using a UUID. Automatically added (as <code>_auto_key</code>)
+to models that define no <code>KeyField</code> of their own.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>auto_uuid_length</code></td>
+<td><code>int</code></td>
+<td><code>32</code></td>
+<td>Length of the generated hex UUID.</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>You cannot set <code>unique=False</code> or <code>null=True</code> on an <code>AutoKeyField</code>.</p>
+</div>
+<h3 id="uniquekeyfield">UniqueKeyField</h3>
+<pre><code class="language-python">UniqueKeyField(type=str, **kwargs)
+</code></pre>
+<p>A <code>KeyField</code> with a per-value uniqueness constraint. Cannot be null. Useful for fields like email
+addresses or phone numbers that must be globally unique.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Setting <code>unique=False</code> or <code>null=True</code> raises <code>ModelException</code>.</p>
+</div>
+<pre><code class="language-python">class Customer(Model):
+    username = KeyField()
+    email = UniqueKeyField()
+</code></pre>
+<h3 id="sortedfield">SortedField</h3>
+<pre><code class="language-python">SortedField(type=float, null=False, default=None, partition_by=(), **kwargs)
+</code></pre>
+<p>A field backed by a Redis sorted set for fast range queries. Must be a numeric type.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>type</code></td>
+<td><code>type</code></td>
+<td><code>float</code></td>
+<td>Must be <code>int</code>, <code>float</code>, <code>Decimal</code>, <code>date</code>, or <code>datetime</code>.</td>
+</tr>
+<tr>
+<td><code>null</code></td>
+<td><code>bool</code></td>
+<td><code>False</code></td>
+<td>Must be <code>False</code> (sorted fields cannot be null).</td>
+</tr>
+<tr>
+<td><code>partition_by</code></td>
+<td><code>tuple</code></td>
+<td><code>()</code></td>
+<td>Partition the sorted set by other field names. <code>sort_by</code> is accepted as a deprecated alias.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Supported filter lookups:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Lookup</th>
+<th>Example</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>exact</td>
+<td><code>price=9.99</code></td>
+<td>Exact value.</td>
+</tr>
+<tr>
+<td><code>__gt</code></td>
+<td><code>price__gt=10.0</code></td>
+<td>Greater than (exclusive).</td>
+</tr>
+<tr>
+<td><code>__gte</code></td>
+<td><code>price__gte=10.0</code></td>
+<td>Greater than or equal (inclusive).</td>
+</tr>
+<tr>
+<td><code>__lt</code></td>
+<td><code>price__lt=20.0</code></td>
+<td>Less than (exclusive).</td>
+</tr>
+<tr>
+<td><code>__lte</code></td>
+<td><code>price__lte=20.0</code></td>
+<td>Less than or equal (inclusive).</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-python">affordable = MenuItem.query.filter(price__lte=9.99)
+</code></pre>
+<h3 id="sortedkeyfield">SortedKeyField</h3>
+<pre><code class="language-python">SortedKeyField(**kwargs)
+</code></pre>
+<p>A field that combines <code>KeyField</code> and <code>SortedField</code> behaviors. It forms part of the Redis key and
+is also indexed in a sorted set for range queries. Supports all lookups from both <code>KeyField</code> and
+<code>SortedField</code>.</p>
+<h3 id="geofield">GeoField</h3>
+<pre><code class="language-python">GeoField(null=True, **kwargs)
+</code></pre>
+<p>A field that stores geospatial coordinates and enables radius search. Values are
+<code>GeoField.Coordinates(latitude, longitude)</code> namedtuples (plain tuples are also accepted). Backed by
+a Redis GEO set.</p>
+<p>See <a href="../fields/">Fields &gt; GeoField</a> for detailed usage.</p>
+<p><strong>Supported filter lookups:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Lookup</th>
+<th>Example</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>exact</td>
+<td><code>location=(40.7, -74.0)</code></td>
+<td>Center point for radius search.</td>
+</tr>
+<tr>
+<td><code>_latitude</code></td>
+<td><code>location_latitude=40.7</code></td>
+<td>Latitude component.</td>
+</tr>
+<tr>
+<td><code>_longitude</code></td>
+<td><code>location_longitude=-74.0</code></td>
+<td>Longitude component.</td>
+</tr>
+<tr>
+<td><code>_radius</code></td>
+<td><code>location_radius=5</code></td>
+<td>Search radius (default <code>1</code>).</td>
+</tr>
+<tr>
+<td><code>_radius_unit</code></td>
+<td><code>location_radius_unit="km"</code></td>
+<td>Unit: <code>m</code>, <code>km</code>, <code>ft</code>, or <code>mi</code> (default <code>m</code>).</td>
+</tr>
+<tr>
+<td><code>_member</code></td>
+<td><code>location_member=instance</code></td>
+<td>Search around another instance.</td>
+</tr>
+<tr>
+<td><code>_with_distances</code></td>
+<td><code>location_with_distances=True</code></td>
+<td>Attach <code>_geo_distance</code> to results.</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-python">nearby = Restaurant.query.filter(
+    location=(40.7128, -74.0060),
+    location_radius=5,
+    location_radius_unit=&quot;km&quot;,
+    location_with_distances=True,
+)
+</code></pre>
+<h3 id="datetimefield">DatetimeField</h3>
+<pre><code class="language-python">DatetimeField(auto_now_add: bool = False, auto_now: bool = False, **kwargs)
+</code></pre>
+<p>A field that stores <code>datetime</code> values with optional auto-timestamping.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>auto_now_add</code></td>
+<td><code>bool</code></td>
+<td><code>False</code></td>
+<td>Set to current datetime on first save only.</td>
+</tr>
+<tr>
+<td><code>auto_now</code></td>
+<td><code>bool</code></td>
+<td><code>False</code></td>
+<td>Update to current datetime on every save.</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-python">class Order(Model):
+    order_id = AutoKeyField()
+    created_at = DatetimeField(auto_now_add=True)
+    updated_at = DatetimeField(auto_now=True)
+</code></pre>
+<h3 id="relationship">Relationship</h3>
+<pre><code class="language-python">Relationship(model: Model, null=True, many=False, **kwargs)
+</code></pre>
+<p>A field that stores a reference to another model instance. Internally persisted as the related
+instance's <code>redis_key</code> string. Lazy-loaded on access to prevent infinite recursion with circular
+references.</p>
+<p>See <a href="../relationship/">Relationships</a> for detailed usage.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>model</code></td>
+<td><code>Model</code></td>
+<td><code>None</code></td>
+<td>The related model class (required).</td>
+</tr>
+<tr>
+<td><code>null</code></td>
+<td><code>bool</code></td>
+<td><code>True</code></td>
+<td>Allow <code>None</code> (no relationship).</td>
+</tr>
+<tr>
+<td><code>many</code></td>
+<td><code>bool</code></td>
+<td><code>False</code></td>
+<td>Reserved for future many-to-many support.</td>
+</tr>
+</tbody>
+</table>
+<p>A field value can be one of three types at runtime:</p>
+<ul>
+<li><strong><code>Model</code> instance</strong> -- fully loaded relationship.</li>
+<li><strong><code>str</code></strong> -- a <code>redis_key</code> (lazy-loaded, not yet resolved).</li>
+<li><strong><code>None</code></strong> -- no relationship set.</li>
+</ul>
+<pre><code class="language-python">class Order(Model):
+    order_id = AutoKeyField()
+    customer = Relationship(model=Customer)
+    driver = Relationship(model=Driver, null=True)
+</code></pre>
+<p>Filter through relationships using double-underscore syntax:</p>
+<pre><code class="language-python">orders = Order.query.filter(customer=some_customer)
+orders = Order.query.filter(customer__username=&quot;alice&quot;)
+</code></pre>
+<h3 id="typed-shortcut-fields">Typed Shortcut Fields</h3>
+<p>These convenience fields set the <code>type</code> parameter automatically.</p>
+<table>
+<thead>
+<tr>
+<th>Class</th>
+<th>Stored Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>IntField</code></td>
+<td><code>int</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>FloatField</code></td>
+<td><code>float</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>DecimalField</code></td>
+<td><code>Decimal</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>StringField</code></td>
+<td><code>str</code></td>
+<td>Same as base <code>Field</code>.</td>
+</tr>
+<tr>
+<td><code>BooleanField</code></td>
+<td><code>bool</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>BytesField</code></td>
+<td><code>bytes</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>ListField</code></td>
+<td><code>list</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>DictField</code></td>
+<td><code>dict</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>SetField</code></td>
+<td><code>set</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>TupleField</code></td>
+<td><code>tuple</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>DateField</code></td>
+<td><code>datetime.date</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>TimeField</code></td>
+<td><code>datetime.time</code></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>All accept the same keyword arguments as <code>Field</code> (except <code>type</code>, which is preset).</p>
+<hr />
+<h2 id="pubsub">PubSub</h2>
+<p>Popoto provides an abstract publisher/subscriber system built on Redis pub/sub. Messages are
+serialized with msgpack. See <a href="../pubsub/">Pub/Sub</a> for usage patterns.</p>
+<h3 id="publisher">Publisher</h3>
+<pre><code class="language-python">class Publisher(ABC)
+</code></pre>
+<p>Abstract base class for publishing msgpack-encoded messages to Redis channels. Subclass and call
+<code>publish()</code> to send data.</p>
+<h4 id="publisher__init__args-kwargs">Publisher.__init__(*args, **kwargs)</h4>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>channel_name</code></td>
+<td><code>str</code></td>
+<td>Class name</td>
+<td>Override the default channel name.</td>
+</tr>
+</tbody>
+</table>
+<h4 id="publisherpublish">Publisher.publish()</h4>
+<pre><code class="language-python">Publisher.publish(
+    data: dict = None,
+    channel_name: str = None,
+    pipeline: redis.client.Pipeline = None,
+)
+</code></pre>
+<p>Publish <code>data</code> as msgpack to the given (or default) channel.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>data</code></td>
+<td><code>dict</code></td>
+<td>Payload to publish. Falls back to <code>_publish_data</code>.</td>
+</tr>
+<tr>
+<td><code>channel_name</code></td>
+<td><code>str</code></td>
+<td>Override the default channel for this call.</td>
+</tr>
+<tr>
+<td><code>pipeline</code></td>
+<td><code>redis.client.Pipeline</code></td>
+<td>Optional Redis pipeline for batching.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Returns:</strong> Number of subscribers that received the message (or pipeline when batching).</p>
+<h4 id="publisherchannel_name">Publisher.channel_name</h4>
+<p>A read/write property for the channel name. Defaults to the class name.</p>
+<h3 id="subscriber">Subscriber</h3>
+<pre><code class="language-python">class Subscriber(ABC)
+</code></pre>
+<p>Abstract base class for consuming messages from Redis pub/sub channels. Set <code>sub_channel_names</code>
+and override <code>handle()</code> to process incoming messages.</p>
+<h4 id="subscriber__init__args-kwargs">Subscriber.__init__(*args, **kwargs)</h4>
+<p>Subscribes to all channels listed in <code>sub_channel_names</code> on initialization.</p>
+<h4 id="subscriber__call__">Subscriber.__call__()</h4>
+<pre><code class="language-python">subscriber()
+</code></pre>
+<p>Poll for the next message. If a message is available, it is deserialized and dispatched to
+<code>pre_handle()</code> then <code>handle()</code>.</p>
+<h4 id="subscriberhandle">Subscriber.handle()</h4>
+<pre><code class="language-python">Subscriber.handle(channel: str, data, *args, **kwargs)
+</code></pre>
+<p>Process an incoming message. Override this in your subclass.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>channel</code></td>
+<td><code>str</code></td>
+<td>The channel name the message arrived on.</td>
+</tr>
+<tr>
+<td><code>data</code></td>
+<td>any</td>
+<td>The deserialized (msgpack-unpacked) message payload.</td>
+</tr>
+</tbody>
+</table>
+<h4 id="subscriberpre_handle">Subscriber.pre_handle()</h4>
+<pre><code class="language-python">Subscriber.pre_handle(channel: str, data, *args, **kwargs)
+</code></pre>
+<p>Hook called before <code>handle()</code>. Override for logging, filtering, or preprocessing.</p>
+<h4 id="subscribersub_channel_names">Subscriber.sub_channel_names</h4>
+<pre><code class="language-python">sub_channel_names: list = []
+</code></pre>
+<p>Class attribute listing the channel names to subscribe to.</p>
+<hr />
+<h2 id="utility-functions">Utility Functions</h2>
+<p>These functions manage the global Redis connection. See <a href="../configuration/">Configuration</a> for setup
+guidance.</p>
+<h3 id="set_redis_db_settings">set_REDIS_DB_settings()</h3>
+<pre><code class="language-python">set_REDIS_DB_settings(env_partition_name: str = &quot;&quot;, *args, **kwargs) -&gt; None
+</code></pre>
+<p>Reset the global Redis connection with new settings. All positional and keyword arguments after
+<code>env_partition_name</code> are passed directly to <code>redis.Redis()</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>env_partition_name</code></td>
+<td><code>str</code></td>
+<td>Optional namespace prefix. Falls back to the <code>ENV</code> environment variable.</td>
+</tr>
+<tr>
+<td><code>*args, **kwargs</code></td>
+<td></td>
+<td>Passed to <code>redis.Redis()</code>.</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-python">from popoto.redis_db import set_REDIS_DB_settings
+
+set_REDIS_DB_settings(host=&quot;redis.example.com&quot;, port=6380, db=1)
+</code></pre>
+<h3 id="get_redis_db">get_REDIS_DB()</h3>
+<pre><code class="language-python">get_REDIS_DB() -&gt; redis.Redis
+</code></pre>
+<p>Return the current global Redis connection instance.</p>
+<pre><code class="language-python">from popoto.redis_db import get_REDIS_DB
+
+r = get_REDIS_DB()
+r.ping()
+# =&gt; True
+</code></pre>
+<h3 id="check_connection">check_connection()</h3>
+<pre><code class="language-python">check_connection() -&gt; bool
+</code></pre>
+<p>Ping Redis and return <code>True</code> if the connection is healthy, <code>False</code> otherwise. Useful for
+health check endpoints in web applications and load balancer probes.</p>
+<pre><code class="language-python">from popoto.redis_db import check_connection
+
+if check_connection():
+    print(&quot;Redis is healthy&quot;)
+else:
+    print(&quot;Redis is unreachable&quot;)
+</code></pre>
+<h3 id="scan_keys">scan_keys()</h3>
+<pre><code class="language-python">scan_keys(pattern: str, count: int = 1000) -&gt; list
+</code></pre>
+<p>Non-blocking replacement for Redis <code>KEYS</code> using cursor-based <code>SCAN</code>. The <code>KEYS</code> command blocks
+the entire Redis server while scanning, which causes timeouts at scale. <code>SCAN</code> iterates
+incrementally, allowing other operations to interleave.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pattern</code></td>
+<td><code>str</code></td>
+<td></td>
+<td>Glob-style pattern to match keys (e.g., <code>"User:*"</code>).</td>
+</tr>
+<tr>
+<td><code>count</code></td>
+<td><code>int</code></td>
+<td><code>1000</code></td>
+<td>Hint for keys per iteration. Higher values reduce round-trips.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Returns:</strong> <code>list</code> of all matching keys.</p>
+<pre><code class="language-python">from popoto.redis_db import scan_keys
+
+user_keys = scan_keys(&quot;User:*&quot;)
+active_keys = scan_keys(&quot;*:active&quot;)
+</code></pre>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Used internally by Popoto's query system. Most users should use <code>Model.query</code> methods
+instead of calling <code>scan_keys()</code> directly.</p>
+</div>
+<h3 id="print_redis_info">print_redis_info()</h3>
+<pre><code class="language-python">print_redis_info() -&gt; None
+</code></pre>
+<p>Log Redis server info and memory usage to the <code>POPOTO-REDIS_DB</code> logger. Useful for debugging
+connection issues or monitoring memory consumption.</p>
+<hr />
+<h2 id="exceptions">Exceptions</h2>
+<h3 id="modelexception">ModelException</h3>
+<pre><code class="language-python">class ModelException(Exception)
+</code></pre>
+<p>Raised when a model operation fails: validation errors, save failures, unique constraint violations,
+delete or load errors. Defined in <code>popoto.exceptions</code> and importable from the main namespace.</p>
+<pre><code class="language-python">from popoto import ModelException
+</code></pre>
+<h3 id="queryexception">QueryException</h3>
+<pre><code class="language-python">class QueryException(Exception)
+</code></pre>
+<p>Raised when a query is malformed or produces an unexpected result (e.g., invalid filter parameters,
+<code>get()</code> returning multiple results). Defined in <code>popoto.models.query</code>.</p>
+<h3 id="publisherexception">PublisherException</h3>
+<pre><code class="language-python">class PublisherException(Exception)
+</code></pre>
+<p>Raised when a publish operation fails (e.g., missing channel name). Defined in
+<code>popoto.pubsub.publisher</code>.</p>
+<h3 id="subscriberexception">SubscriberException</h3>
+<pre><code class="language-python">class SubscriberException(Exception)
+</code></pre>
+<p>Raised when a subscriber's message handler fails. Defined in <code>popoto.pubsub.subscriber</code>.</p>
+<h3 id="popotoexception">PopotoException</h3>
+<pre><code class="language-python">class PopotoException(Exception)
+</code></pre>
+<p>Base exception for Popoto framework errors. Logs the error message on initialization. Defined in
+<code>popoto.redis_db</code>.</p>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../pubsub/" class="btn btn-neutral float-left" title="PubSub"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../style-guide/" class="btn btn-neutral float-right" title="Style Guide">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+        <span>
+          <a href="https://github.com/tomcounsell/popoto/" class="fa fa-github" style="color: #fcfcfc"> GitHub</a>
+        </span>
+    
+    
+      <span><a href="../pubsub/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../style-guide/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "..";</script>
+    <script src="../js/theme_extra.js"></script>
+    <script src="../js/theme.js"></script>
+      <script src="../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>
