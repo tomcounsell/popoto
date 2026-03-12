@@ -14,7 +14,7 @@ nav:
     - PubSub: 'pubsub.md'
     - API Reference: 'api-reference.md'
     - Contributing:
-        - Style Guide: 'STYLE_GUIDE.md'
+        - Style Guide: 'style-guide.md'
 
 markdown_extensions:
     - admonition
