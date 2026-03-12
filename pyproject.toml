@@ -4,12 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "popoto"
-version = "1.0.0b2"
+version = "1.0.0"
 description = "A Python Redis ORM"
 readme = "README.md"
 authors = [{ name = "Tom Counsell", email = "other@tomcounsell.com" }]
 license = { file = "LICENSE" }
 classifiers = [
+    "Development Status :: 5 - Production/Stable",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
