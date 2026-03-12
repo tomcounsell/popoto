@@ -112,6 +112,52 @@ all field `on_delete` hooks, and cleans up indexes.
 restaurant.delete()
 ```
 
+### Model.atomic_increment()
+
+```python
+Model.atomic_increment(field_name: str, delta, pipeline: redis.client.Pipeline = None)
+```
+
+Atomically increment a numeric field value in Redis using a Lua script. This prevents lost
+updates from concurrent read-modify-write cycles. The in-memory instance is updated to
+reflect the new value after the operation.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `field_name` | `str` | Name of the field to increment. Must be a numeric field (`int`, `float`, or `Decimal`). |
+| `delta` | numeric | The amount to add. Use negative values to decrement. Must not be `None`. |
+| `pipeline` | `redis.client.Pipeline` | Optional pipeline for batching. When provided, operations are queued but not executed. |
+
+**Returns:** The new field value after incrementing, matching the field's type.
+
+**Raises:**
+
+- `TypeError` if the model has not been saved, the field is not numeric, or `delta` is `None`.
+- `AttributeError` if `field_name` does not exist on the model.
+
+```python
+# Increment an integer field
+restaurant = Restaurant.query.get(name="Burger Palace")
+new_count = restaurant.atomic_increment("order_count", 1)
+print(new_count)
+# => 43
+
+# Decrement a field
+new_count = restaurant.atomic_increment("order_count", -5)
+
+# Float fields work too
+new_rating = restaurant.atomic_increment("score", 0.5)
+```
+
+!!! tip
+    `atomic_increment()` is safe for concurrent access. Multiple processes can increment
+    the same field simultaneously without lost updates, unlike the read-modify-write
+    pattern of loading, changing, and saving.
+
+!!! note
+    If the field is a `SortedField`, the sorted set index score is also updated
+    atomically via `ZINCRBY`, keeping the index in sync with the field value.
+
 ### Model.load()
 
 ```python

@@ -1552,6 +1552,199 @@ class Model(metaclass=ModelBase):
         else:
             return pipeline
 
+    def atomic_increment(
+        self,
+        field_name: str,
+        delta,
+        pipeline: "Pipeline" = None,
+    ):
+        """Atomically increment a numeric field value in Redis.
+
+        Uses a Lua script to read, decode (msgpack), increment, re-encode,
+        and write back the field value in a single atomic Redis operation.
+        This prevents lost updates from concurrent read-modify-write cycles.
+
+        After the atomic Redis update, the in-memory instance attribute and
+        _saved_field_values are updated to reflect the new value. If the
+        field is a SortedField, its sorted set index score is also updated
+        via ZINCRBY.
+
+        Args:
+            field_name: Name of the field to increment. Must be a numeric
+                field (int, float, or Decimal type).
+            delta: The amount to add. Use negative values to decrement.
+                Must not be None. Type should be compatible with the field.
+            pipeline: Optional Redis pipeline for batched operations. When
+                provided, the Lua script and ZINCRBY are queued but not
+                executed -- the caller must call pipeline.execute().
+
+        Returns:
+            The new field value after incrementing. Returns the same type
+            as the field (int for IntField, float for FloatField, Decimal
+            for DecimalField).
+
+        Raises:
+            TypeError: If the model has not been saved (no redis_key),
+                if the field is not a numeric type, or if delta is None.
+            AttributeError: If field_name does not exist on the model.
+
+        Example:
+            episode = Episode.query.get(id="abc")
+            new_count = episode.atomic_increment('deviation_count', 1)
+            # Atomically increments in Redis, returns 1, updates instance
+
+            # Decrement
+            new_count = episode.atomic_increment('deviation_count', -1)
+
+            # Float fields
+            new_score = episode.atomic_increment('score', 0.5)
+        """
+        from decimal import Decimal as _Decimal
+
+        from ..redis_db import ENCODING
+
+        # Validate field exists
+        if field_name not in self._meta.fields:
+            raise AttributeError(
+                f"'{self.__class__.__name__}' has no field '{field_name}'"
+            )
+
+        # Validate model is saved (must have been persisted to Redis).
+        # _db_content is populated only after save(); _redis_key is set in
+        # __init__ when KeyField values are provided, so it's not reliable.
+        if not self._db_content and not self._saved_field_values:
+            raise TypeError(
+                "Cannot call atomic_increment on an unsaved model instance. "
+                "Save the model first."
+            )
+        redis_key = self._redis_key or self.db_key.redis_key
+
+        # Validate delta is not None
+        if delta is None:
+            raise TypeError("delta must be a numeric value, not None")
+
+        # Validate field is numeric
+        field = self._meta.fields[field_name]
+        numeric_types = (int, float, _Decimal)
+        if field.type not in numeric_types:
+            raise TypeError(
+                f"atomic_increment requires a numeric field (int, float, Decimal). "
+                f"'{field_name}' is type {field.type.__name__}"
+            )
+
+        field_name_bytes = field_name.encode(ENCODING)
+
+        # Lua script that atomically reads, decodes msgpack, increments,
+        # re-encodes, and writes back. Uses cmsgpack which is built into
+        # Redis since version 2.6.
+        #
+        # KEYS[1] = redis hash key
+        # ARGV[1] = field name (bytes)
+        # ARGV[2] = delta value (string representation)
+        # ARGV[3] = 1 if field is Decimal type (uses tagged dict encoding), 0 otherwise
+        #
+        # Returns the new numeric value as a string.
+        lua_script = """
+        local current_packed = redis.call('HGET', KEYS[1], ARGV[1])
+        local current_val = 0
+        local is_decimal = tonumber(ARGV[3])
+
+        if current_packed then
+            local decoded = cmsgpack.unpack(current_packed)
+            if is_decimal == 1 and type(decoded) == 'table' and decoded['as_encodable'] then
+                current_val = tonumber(decoded['as_encodable'])
+            elseif type(decoded) == 'number' then
+                current_val = decoded
+            end
+        end
+
+        local delta = tonumber(ARGV[2])
+        local new_val = current_val + delta
+
+        if is_decimal == 1 then
+            local encoded = cmsgpack.pack({['__Decimal__'] = true, ['as_encodable'] = tostring(new_val)})
+            redis.call('HSET', KEYS[1], ARGV[1], encoded)
+        else
+            local encoded = cmsgpack.pack(new_val)
+            redis.call('HSET', KEYS[1], ARGV[1], encoded)
+        end
+
+        return tostring(new_val)
+        """
+
+        is_decimal = 1 if field.type is _Decimal else 0
+        delta_str = str(float(delta) if isinstance(delta, _Decimal) else delta)
+
+        if isinstance(pipeline, redis.client.Pipeline):
+            # When using a pipeline, register the script and call it
+            script = POPOTO_REDIS_DB.register_script(lua_script)
+            pipeline = script(
+                keys=[redis_key],
+                args=[field_name_bytes, delta_str, is_decimal],
+                client=pipeline,
+            )
+
+            # Update in-memory values optimistically
+            current_val = getattr(self, field_name) or field.type()
+            if field.type is int:
+                new_val = int(current_val) + int(delta)
+            elif field.type is _Decimal:
+                new_val = _Decimal(str(current_val)) + _Decimal(str(delta))
+            else:
+                new_val = float(current_val) + float(delta)
+
+            setattr(self, field_name, new_val)
+            if field_name in self._saved_field_values or self._saved_field_values:
+                self._saved_field_values[field_name] = new_val
+
+            # Update sorted index if field is a SortedField
+            if field_name in self._meta.sorted_field_names:
+                field_cls = field.__class__
+                sortedset_db_key = field_cls.get_partitioned_sortedset_db_key(
+                    self, field_name
+                )
+                score_delta = float(delta) if isinstance(delta, _Decimal) else delta
+                pipeline = pipeline.zincrby(
+                    sortedset_db_key.redis_key, score_delta, redis_key
+                )
+
+            return pipeline
+        else:
+            # Execute the Lua script directly
+            result_str = POPOTO_REDIS_DB.eval(
+                lua_script, 1, redis_key, field_name_bytes, delta_str, is_decimal
+            )
+
+            # Parse result and convert to field type
+            if isinstance(result_str, bytes):
+                result_str = result_str.decode(ENCODING)
+
+            if field.type is int:
+                # Lua may return "15.0" for integer arithmetic; parse via float then int
+                new_val = int(float(result_str))
+            elif field.type is _Decimal:
+                new_val = _Decimal(result_str)
+            else:
+                new_val = float(result_str)
+
+            # Update in-memory instance
+            setattr(self, field_name, new_val)
+            if field_name in self._saved_field_values or self._saved_field_values:
+                self._saved_field_values[field_name] = new_val
+
+            # Update sorted index if field is a SortedField
+            if field_name in self._meta.sorted_field_names:
+                field_cls = field.__class__
+                sortedset_db_key = field_cls.get_partitioned_sortedset_db_key(
+                    self, field_name
+                )
+                score_delta = float(delta) if isinstance(delta, _Decimal) else delta
+                POPOTO_REDIS_DB.zincrby(
+                    sortedset_db_key.redis_key, score_delta, redis_key
+                )
+
+            return new_val
+
     @classmethod
     def get_info(cls) -> dict:
         """Return a dict with the model name, field names, and available query filters.
