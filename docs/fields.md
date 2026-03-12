@@ -413,6 +413,41 @@ class Restaurant(Model):
 
 Use whichever style you prefer -- the behavior is identical.
 
+## Capped ListField (max_length)
+
+When you pass `max_length=N` to a `ListField`, the list is stored in a separate Redis
+list key instead of the model hash. This enables efficient `push()` operations using
+Redis `LPUSH` + `LTRIM` without reading the full list.
+
+```python
+from popoto import Model, KeyField, ListField
+
+class EventLog(Model):
+    session_id = KeyField()
+    events = ListField(max_length=100)  # Capped at 100 items
+
+# Save the model first
+log = EventLog(session_id="abc", events=[])
+log.save()
+
+# Push items directly to Redis (newest first)
+log.events.push({"action": "click", "target": "button"})
+log.events.push({"action": "scroll", "offset": 500})
+
+# Reload to see the data
+loaded = EventLog.query.get(session_id="abc")
+print(loaded.events)  # [{"action": "scroll", ...}, {"action": "click", ...}]
+```
+
+Key behaviors:
+
+- **push()** prepends items (newest first) and automatically trims to `max_length`
+- **save()** replaces the entire Redis list with the current field value
+- **delete()** cleans up the separate Redis list key
+- **Complex types** (tuples, dicts, Decimals) round-trip correctly through push/read
+- **Without max_length**, ListField works exactly as before (stored in model hash)
+- The model must be saved before calling `push()` (needs a Redis key)
+
 ## Null Values
 
 `KeyField` and `SortedField` are required (`null=False`) by default. All other fields

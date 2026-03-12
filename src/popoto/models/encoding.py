@@ -233,6 +233,12 @@ def encode_popoto_model_obj(obj: "Model") -> dict:
 
     encoded_hashmap = dict()
     for field_name, field in obj._meta.fields.items():
+        # Skip capped ListField values -- they are stored in a separate Redis list key
+        from ..fields.shortcuts import ListField
+
+        if isinstance(field, ListField) and field._capped:
+            continue
+
         value = getattr(obj, field_name)
 
         # use db_key string for relationships
@@ -328,6 +334,9 @@ def decode_popoto_model_hashmap(
         # Create the model instance
         model_instance = model_class(**model_attrs)
 
+        # Load capped ListField data from separate Redis list keys
+        _load_capped_list_fields(model_class, model_instance)
+
         # Store the loaded field values for proper cleanup on delete
         # This ensures that if the model is modified and then deleted,
         # the on_delete hooks use the original saved values
@@ -339,6 +348,35 @@ def decode_popoto_model_hashmap(
         return model_instance
 
     return None
+
+
+def _load_capped_list_fields(model_class, model_instance):
+    """Load capped ListField data from separate Redis list keys.
+
+    For each ListField with max_length set (capped), fetches the list data
+    from the Redis list key ``{model_redis_key}::field_name`` and wraps it
+    in a CappedListProxy.
+
+    Args:
+        model_class: The Model class.
+        model_instance: The model instance to populate.
+    """
+    from ..fields.shortcuts import ListField, CappedListProxy, _decode_list_element
+    from ..redis_db import POPOTO_REDIS_DB
+
+    for field_name, field in model_class._meta.fields.items():
+        if isinstance(field, ListField) and field._capped:
+            redis_key = model_instance._redis_key or model_instance.db_key.redis_key
+            list_key = f"{redis_key}::{field_name}"
+            raw_values = POPOTO_REDIS_DB.lrange(list_key, 0, -1)
+            data = [_decode_list_element(v) for v in raw_values]
+            proxy = CappedListProxy(
+                data=data,
+                model_instance=model_instance,
+                field_name=field_name,
+                max_length=field.max_length,
+            )
+            setattr(model_instance, field_name, proxy)
 
 
 def _create_lazy_model(model_class: "Model", redis_hash: dict) -> "Model":
