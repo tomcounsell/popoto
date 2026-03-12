@@ -4,7 +4,7 @@ type: feature
 appetite: Small
 owner: Solo dev
 created: 2026-03-12
-tracking:
+tracking: https://github.com/tomcounsell/popoto/issues/182
 last_comment_id:
 ---
 
