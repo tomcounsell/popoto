@@ -46,11 +46,14 @@ See Also:
     - sorted_field_mixin.py: Range query support via Sorted Sets
 """
 
+import msgpack
+
 from .field import Field
 from .key_field_mixin import KeyFieldMixin
 from .auto_field_mixin import AutoFieldMixin
 from .sorted_field_mixin import SortedFieldMixin
 from ..exceptions import ModelException
+from ..redis_db import POPOTO_REDIS_DB
 
 
 class IntField(Field):
@@ -224,12 +227,162 @@ class BytesField(Field):
         super().__init__(**kwargs)
 
 
+class CappedListProxy:
+    """A list-like wrapper for capped ListField values.
+
+    Provides a push() method for direct Redis LPUSH + LTRIM operations
+    without requiring a full read/write cycle. Behaves like a regular
+    list for all other operations.
+
+    The proxy holds a reference to the model instance, field name, and
+    max_length to compute the correct Redis list key and enforce the cap.
+
+    Attributes:
+        _data: The underlying Python list.
+        _model_instance: The Model instance this proxy belongs to.
+        _field_name: The name of the ListField on the model.
+        _max_length: Maximum number of items to keep in the list.
+    """
+
+    def __init__(
+        self, data=None, model_instance=None, field_name=None, max_length=None
+    ):
+        self._data = list(data) if data else []
+        self._model_instance = model_instance
+        self._field_name = field_name
+        self._max_length = max_length
+
+    def push(self, value):
+        """Prepend a value to the capped list using LPUSH + LTRIM.
+
+        This method writes directly to Redis without requiring a full
+        model save. The value is serialized with msgpack individually.
+
+        Args:
+            value: The value to prepend. Can be any msgpack-serializable type.
+
+        Raises:
+            ModelException: If the model instance has not been saved yet
+                (no _redis_key available).
+        """
+        if self._model_instance is None or self._model_instance._redis_key is None:
+            raise ModelException(
+                "Cannot push() on an unsaved model instance. Call save() first."
+            )
+
+        list_key = f"{self._model_instance._redis_key}::{self._field_name}"
+        encoded_value = _encode_list_element(value)
+
+        pipe = POPOTO_REDIS_DB.pipeline()
+        pipe.lpush(list_key, encoded_value)
+        pipe.ltrim(list_key, 0, self._max_length - 1)
+        pipe.execute()
+
+        # Update local data
+        self._data.insert(0, value)
+        if len(self._data) > self._max_length:
+            self._data = self._data[: self._max_length]
+
+    # List-like interface methods
+    def __len__(self):
+        return len(self._data)
+
+    def __getitem__(self, index):
+        return self._data[index]
+
+    def __setitem__(self, index, value):
+        self._data[index] = value
+
+    def __iter__(self):
+        return iter(self._data)
+
+    def __eq__(self, other):
+        if isinstance(other, CappedListProxy):
+            return self._data == other._data
+        if isinstance(other, list):
+            return self._data == other
+        return NotImplemented
+
+    def __repr__(self):
+        return f"CappedListProxy({self._data!r})"
+
+    def __bool__(self):
+        return bool(self._data)
+
+    def append(self, value):
+        self._data.append(value)
+
+    def extend(self, values):
+        self._data.extend(values)
+
+
+def _encode_list_element(value):
+    """Encode a single list element for Redis storage using msgpack.
+
+    Handles custom types (Decimal, tuple, set, datetime, etc.) using
+    the same TYPE_ENCODER_DECODERS registry as the model encoding system.
+
+    Args:
+        value: Any msgpack-serializable value, including custom Popoto types.
+
+    Returns:
+        bytes: The msgpack-encoded value.
+    """
+    from ..models.encoding import TYPE_ENCODER_DECODERS
+
+    if value is not None and type(value) in TYPE_ENCODER_DECODERS:
+        encoded = TYPE_ENCODER_DECODERS[type(value)].encoder(value)
+        return msgpack.packb(encoded)
+    return msgpack.packb(value)
+
+
+def _decode_list_element(raw_bytes):
+    """Decode a single msgpack-encoded list element from Redis.
+
+    Handles custom types via decode_custom_types.
+
+    Args:
+        raw_bytes: msgpack-encoded bytes from Redis.
+
+    Returns:
+        The decoded Python value.
+    """
+    from ..models.encoding import decode_custom_types
+
+    return decode_custom_types(msgpack.unpackb(raw_bytes, strict_map_key=False))
+
+
+def _wrap_capped_field(model_instance, field_name, data, max_length):
+    """Wrap a capped list field value in a CappedListProxy on the model instance.
+
+    Args:
+        model_instance: The model instance.
+        field_name: The field name.
+        data: The list data.
+        max_length: The max_length setting.
+    """
+    proxy = CappedListProxy(
+        data=data,
+        model_instance=model_instance,
+        field_name=field_name,
+        max_length=max_length,
+    )
+    setattr(model_instance, field_name, proxy)
+
+
 class ListField(Field):
     """A Field that stores ``list`` values.
 
     ListField stores ordered collections that serialize via msgpack. The list
-    contents can be any msgpack-serializable types. Lists are stored atomically
-    with the model instance, not as separate Redis structures.
+    contents can be any msgpack-serializable types.
+
+    When ``max_length`` is set, the list is stored in a separate Redis list
+    key (``{model_db_key}::field_name``) instead of in the model hash. This
+    enables efficient ``push()`` operations using LPUSH + LTRIM without
+    reading the full list.
+
+    When ``max_length`` is not set, the list is stored atomically in the
+    model's Redis hash as before (backward compatible).
 
     Note: ListField cannot be used as a KeyField since lists cannot be
     converted to Redis key strings.
@@ -239,7 +392,14 @@ class ListField(Field):
             user_id = UniqueKeyField()
             items = ListField(default=[])
             recently_viewed = ListField(null=True)
+
+        class EventLog(Model):
+            session_id = UniqueKeyField()
+            events = ListField(max_length=100)  # Capped at 100 items
     """
+
+    # Track whether this is a capped list field
+    _capped = False
 
     def __init__(self, *args, **kwargs):
         """
@@ -249,9 +409,112 @@ class ListField(Field):
             **kwargs: Passed to Field.__init__. Common options:
                 - null (bool): Allow None values. Default: True
                 - default: Default value (use list, e.g., default=[])
+                - max_length (int): Maximum number of items. When set,
+                    stores data in a separate Redis list key and enables
+                    the push() method for atomic append + trim.
         """
+        self._capped = kwargs.get("max_length") is not None
         kwargs["type"] = list
         super().__init__(**kwargs)
+
+    @classmethod
+    def is_valid(cls, field, value, null_check=True, **kwargs) -> bool:
+        """Validate list field values, accepting CappedListProxy as valid."""
+        # CappedListProxy should pass validation as if it were a list
+        if isinstance(value, CappedListProxy):
+            return True
+        return super().is_valid(field, value, null_check, **kwargs)
+
+    def format_value_pre_save(self, field_value, **kwargs):
+        """For capped lists, return the value unchanged.
+
+        The actual data is written to a separate Redis list key in on_save().
+        The value is excluded from the hash in encode_popoto_model_obj().
+        """
+        return field_value
+
+    @classmethod
+    def on_save(
+        cls,
+        model_instance,
+        field_name,
+        field_value,
+        pipeline=None,
+        **kwargs,
+    ):
+        """Write capped list data to a separate Redis list key.
+
+        For capped lists (max_length is set), this replaces the list at the
+        Redis list key using DEL + RPUSH in a pipeline. For uncapped lists,
+        delegates to the base Field.on_save() (no-op).
+        """
+        field = model_instance._meta.fields[field_name]
+        if not field._capped:
+            return super(ListField, cls).on_save(
+                model_instance, field_name, field_value, pipeline, **kwargs
+            )
+
+        list_key = f"{model_instance.db_key.redis_key}::{field_name}"
+
+        # Get the actual list data (may be a CappedListProxy or plain list)
+        if isinstance(field_value, CappedListProxy):
+            data = field_value._data
+        elif isinstance(field_value, list):
+            data = field_value
+        else:
+            data = []
+
+        # Encode each element individually
+        encoded_values = [_encode_list_element(v) for v in data]
+
+        import redis as redis_module
+
+        if isinstance(pipeline, redis_module.client.Pipeline):
+            pipeline.delete(list_key)
+            if encoded_values:
+                pipeline.rpush(list_key, *encoded_values)
+            # Wrap the field value in a CappedListProxy on the instance
+            _wrap_capped_field(model_instance, field_name, data, field.max_length)
+            return pipeline
+        else:
+            internal_pipe = POPOTO_REDIS_DB.pipeline()
+            internal_pipe.delete(list_key)
+            if encoded_values:
+                internal_pipe.rpush(list_key, *encoded_values)
+            internal_pipe.execute()
+            # Wrap the field value in a CappedListProxy on the instance
+            _wrap_capped_field(model_instance, field_name, data, field.max_length)
+            return None
+
+    @classmethod
+    def on_delete(
+        cls,
+        model_instance,
+        field_name,
+        field_value,
+        pipeline=None,
+        **kwargs,
+    ):
+        """Delete the Redis list key when the model is deleted.
+
+        For capped lists, removes the separate Redis list key. For uncapped
+        lists, delegates to the base Field.on_delete() (no-op).
+        """
+        field = model_instance._meta.fields[field_name]
+        if not field._capped:
+            return super(ListField, cls).on_delete(
+                model_instance, field_name, field_value, pipeline, **kwargs
+            )
+
+        # Use saved_redis_key if available (for key migration scenarios)
+        redis_key = kwargs.get("saved_redis_key") or model_instance.db_key.redis_key
+        list_key = f"{redis_key}::{field_name}"
+
+        if pipeline:
+            return pipeline.delete(list_key)
+        else:
+            POPOTO_REDIS_DB.delete(list_key)
+            return None
 
 
 class DictField(Field):

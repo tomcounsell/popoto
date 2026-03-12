@@ -820,7 +820,7 @@ These convenience fields set the `type` parameter automatically.
 | `StringField` | `str` | Same as base `Field`. |
 | `BooleanField` | `bool` | |
 | `BytesField` | `bytes` | |
-| `ListField` | `list` | |
+| `ListField` | `list` | Supports `max_length=N` for capped lists with `push()`. |
 | `DictField` | `dict` | |
 | `SetField` | `set` | |
 | `TupleField` | `tuple` | |

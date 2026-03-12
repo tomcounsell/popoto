@@ -572,6 +572,21 @@ class Model(metaclass=ModelBase):
             if is_parent_model:
                 RELATED_MODEL_LOAD_SEQUENCE = set()
 
+        # Wrap capped ListField values in CappedListProxy
+        from ..fields.shortcuts import ListField, CappedListProxy
+
+        for field_name, field in self._meta.fields.items():
+            if isinstance(field, ListField) and field._capped:
+                current_value = getattr(self, field_name, None)
+                if not isinstance(current_value, CappedListProxy):
+                    proxy = CappedListProxy(
+                        data=current_value if current_value else [],
+                        model_instance=self,
+                        field_name=field_name,
+                        max_length=field.max_length,
+                    )
+                    setattr(self, field_name, proxy)
+
         # Set TTL from Meta.ttl as default if not already set via kwargs
         if not hasattr(self, "_ttl") or self._ttl is None:
             self._ttl = self._meta.ttl
@@ -805,10 +820,13 @@ class Model(metaclass=ModelBase):
             # lazy-loaded from Redis.
             from ..fields.relationship import Relationship
 
+            from ..fields.shortcuts import CappedListProxy
+
             if (
                 value is not None
                 and not isinstance(value, field.type)
                 and not isinstance(field, Relationship)
+                and not isinstance(value, CappedListProxy)
             ):
                 try:
                     if field.type in VALID_FIELD_TYPES:

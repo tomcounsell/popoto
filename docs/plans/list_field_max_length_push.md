@@ -1,5 +1,5 @@
 ---
-status: Planning
+status: Implemented
 type: feature
 appetite: Medium
 owner: Solo dev
