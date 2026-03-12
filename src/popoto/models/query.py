@@ -257,6 +257,11 @@ class QueryBuilder:
             # When computed_sort is active:
             # 1. Remove order_by (computed_sort takes precedence)
             # 2. Remove limit (we need all results to sort, then slice)
+            if self._order_by_value is not None:
+                logger.warning(
+                    "Both computed_sort() and order_by() are set; "
+                    "computed_sort() takes precedence, order_by() is ignored."
+                )
             if self._values_tuple is not None:
                 kwargs["values"] = self._values_tuple
             results = self._query._execute_filter(q_objects=self._q_objects, **kwargs)
