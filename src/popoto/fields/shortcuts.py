@@ -258,6 +258,12 @@ class CappedListProxy:
         This method writes directly to Redis without requiring a full
         model save. The value is serialized with msgpack individually.
 
+        The Redis write and local state update are kept in sync: if the
+        Redis pipeline succeeds but the local update fails, the local
+        state is rolled back to match what Redis held before the push,
+        and the exception is re-raised so the caller knows something
+        went wrong.
+
         Args:
             value: The value to prepend. Can be any msgpack-serializable type.
 
@@ -273,15 +279,23 @@ class CappedListProxy:
         list_key = f"{self._model_instance._redis_key}::{self._field_name}"
         encoded_value = _encode_list_element(value)
 
+        # Snapshot local state before mutation so we can roll back
+        previous_data = list(self._data)
+
         pipe = POPOTO_REDIS_DB.pipeline()
         pipe.lpush(list_key, encoded_value)
         pipe.ltrim(list_key, 0, self._max_length - 1)
         pipe.execute()
 
-        # Update local data
-        self._data.insert(0, value)
-        if len(self._data) > self._max_length:
-            self._data = self._data[: self._max_length]
+        # Update local data; roll back if anything goes wrong so that
+        # local state does not silently diverge from Redis.
+        try:
+            self._data.insert(0, value)
+            if len(self._data) > self._max_length:
+                self._data = self._data[: self._max_length]
+        except Exception:
+            self._data = previous_data
+            raise
 
     # List-like interface methods
     def __len__(self):
@@ -467,9 +481,7 @@ class ListField(Field):
         # Encode each element individually
         encoded_values = [_encode_list_element(v) for v in data]
 
-        import redis as redis_module
-
-        if isinstance(pipeline, redis_module.client.Pipeline):
+        if hasattr(pipeline, 'execute'):
             pipeline.delete(list_key)
             if encoded_values:
                 pipeline.rpush(list_key, *encoded_values)
