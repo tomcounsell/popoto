@@ -4,7 +4,7 @@ type: feature
 appetite: Medium
 owner: tomcounsell
 created: 2026-03-12
-tracking:
+tracking: https://github.com/tomcounsell/popoto/issues/181
 last_comment_id:
 ---
 
