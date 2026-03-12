@@ -46,6 +46,7 @@ Popoto provides a fast, familiar interface for working with Redis and Valkey.
  - very fast stores and queries
  - familiar syntax, similar to Django models
  - [Async operations](async.md) for asyncio-based applications
+ - [Multi-tenancy](multi-tenancy.md) support via KeyField namespacing
  - Geometric distance search
  - Timeseries for streaming data
  - compatible with Pandas, Xarray for N-dimensional matrix search

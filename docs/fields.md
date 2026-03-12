@@ -598,7 +598,9 @@ except Exception as e:
 !!! tip
     Use `partition_by` when you have a natural parent-child relationship. Menu items
     always belong to a restaurant, so scoping the price index to the restaurant
-    reduces the sorted set size and speeds up range queries.
+    reduces the sorted set size and speeds up range queries. See
+    [Multi-Tenancy](multi-tenancy.md) for using `partition_by` with a KeyField
+    to isolate data by tenant or project.
 
 !!! note "Partition key changes are handled automatically"
     If you change a partition field's value (e.g., moving an item from one restaurant

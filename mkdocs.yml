@@ -10,6 +10,7 @@ nav:
     - Model Meta Options: 'meta.md'
     - Making Queries: 'query.md'
     - Relationship Field: 'relationship.md'
+    - Multi-Tenancy: 'multi-tenancy.md'
     - Async Operations: 'async.md'
     - PubSub: 'pubsub.md'
     - API Reference: 'api-reference.md'
