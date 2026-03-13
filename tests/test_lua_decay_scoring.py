@@ -220,7 +220,8 @@ class TestDecayScoring:
         first_low = result_low[0].decode() if isinstance(result_low[0], bytes) else result_low[0]
         first_high = result_high[0].decode() if isinstance(result_high[0], bytes) else result_high[0]
 
-        # Low decay: base score matters more -> "old" (5.0 base) could win
+        # Low decay: base score matters more -> "old" (5.0 base) wins
+        assert first_low == "old"
         # High decay: recency matters more -> "recent" wins
         assert first_high == "recent"
 
