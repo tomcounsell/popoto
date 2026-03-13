@@ -204,7 +204,9 @@ class TemporalPeriod:
     YEARLY    = 31_536_000   # 365 days
 ```
 
-**Issues:** ~3-4 (DecayingSortedField base, CyclicDecayField extension, Lua script with all three components, tests + benchmarks)
+**Issues:**
+- [#193](https://github.com/tomcounsell/popoto/issues/193): DecayingSortedField — time-weighted scoring via Lua
+- [#196](https://github.com/tomcounsell/popoto/issues/196): CyclicDecayField — temporal rhythms + homeostatic pressure
 
 ---
 
@@ -293,7 +295,9 @@ class RecallProposal:
 
 **Measurable agent improvement:** Compare agent retrieval quality on a knowledge-base QA task. Baseline: retrieve by recency only (every read strengthens). With observation protocol: only meaningful reads strengthen. Measure: (a) precision@5 improvement from reduced noise in access patterns, (b) stale memories correctly deprioritized after dismissal.
 
-**Issues:** ~3-4 (observation protocol with three hooks, AccessTracker with staged vs. confirmed reads, RecallProposal queue, synergy tests with Step 1)
+**Issues:**
+- [#197](https://github.com/tomcounsell/popoto/issues/197): AccessTrackerMixin — read pattern tracking with staged vs confirmed reads
+- [#198](https://github.com/tomcounsell/popoto/issues/198): ObservationProtocol + RecallProposal — outcome-driven memory effects
 
 ---
 
