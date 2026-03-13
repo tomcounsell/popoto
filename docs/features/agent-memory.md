@@ -23,8 +23,8 @@ The primitives ship incrementally. Each builds on the ones before it.
 | Primitive | What it does | Status |
 |-----------|-------------|--------|
 | [DecayingSortedField](#decayingsortedfield) | Time-weighted scoring — records lose relevance over time unless refreshed | Shipped ([PR #199](https://github.com/tomcounsell/popoto/pull/199)) |
-| [CyclicDecayField](#decayingsortedfield) | Temporal rhythms + homeostatic pressure on top of decay | [#196](https://github.com/tomcounsell/popoto/issues/196) |
-| [AccessTracker](#accesstracker) | Tracks read patterns — access count, timestamps, spacing effects | [#197](https://github.com/tomcounsell/popoto/issues/197) |
+| [CyclicDecayField](#cyclicdecayfield) | Temporal rhythms + homeostatic pressure on top of decay | Shipped ([PR #201](https://github.com/tomcounsell/popoto/pull/201)) |
+| [AccessTracker](#accesstracker) | Tracks read patterns — access count, timestamps, spacing effects | Shipped ([PR #203](https://github.com/tomcounsell/popoto/pull/203)) |
 | [ObservationProtocol](#accesstracker) | Outcome-driven memory effects — acted/dismissed/deferred/contradicted | [#198](https://github.com/tomcounsell/popoto/issues/198) |
 | [WriteFilter](#writefilter) | Gates persistence — low-value records silently discarded at write time | Planned |
 | [ConfidenceField](#confidencefield) | Bayesian certainty — corroboration strengthens, contradiction weakens | Planned |
@@ -190,19 +190,131 @@ one_week_ago = time.time() - 86400 * 7
 recent = Memory.query.filter(agent_id="agent-1", relevance__gte=one_week_ago)
 ```
 
-## AccessTracker
+## CyclicDecayField
 
-Tracks read access patterns on any model: access count, last-accessed timestamp, and a capped list of access timestamps. Combined with `DecayingSortedField`, this enables spacing-effect-aware scoring — records accessed repeatedly over time rank higher than records accessed many times in a burst.
+A `DecayingSortedField` subclass that adds **cyclical resonance** and **homeostatic pressure** to time-weighted scoring. When cycles and pressure are both zero, behavior is identical to `DecayingSortedField`.
+
+The effective score at query time: `decay + cyclic_resonance + pressure`
+
+- **Cyclical resonance** — periodic boosts following cosine curves. A record about Q1 renewals resurfaces every January.
+- **Homeostatic pressure** — urgency that builds linearly while an item goes unresolved. Discharged by calling `resolve_pressure()`.
+
+### Basic usage
 
 ```python
+from popoto import Model, KeyField, Field, CyclicDecayField
+from popoto.fields.constants import TemporalPeriod
+
+class Directive(Model):
+    agent_id = KeyField()
+    content = Field(type=str)
+    relevance = CyclicDecayField(
+        decay_rate=0.5,
+        cycles=[(TemporalPeriod.QUARTERLY, 5.0, 0)],
+        pressure_rate=0.1,
+    )
+```
+
+Query with the same `top_by_decay()` interface:
+
+```python
+top = Directive.query.filter(agent_id="agent-1").top_by_decay("relevance", n=10)
+```
+
+Discharge accumulated urgency when the agent acts on a record:
+
+```python
+directive.resolve_pressure("relevance")
+```
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `decay_rate` | `float` | `0.5` | Power-law decay exponent (inherited). |
+| `base_score_field` | `str` | `None` | Companion field whose value multiplies the decay curve (inherited). |
+| `cycles` | `list` | `[]` | List of `(period, amplitude, phase)` tuples. Use `TemporalPeriod` constants for period values. |
+| `pressure_rate` | `float` | `0.0` | Rate of urgency buildup per unresolved day. |
+| `partition_by` | `str`/`tuple` | `()` | Partition sorted set by key fields (inherited). |
+
+### TemporalPeriod constants
+
+Import from `popoto.fields.constants`:
+
+| Constant | Value (seconds) | Usage |
+|----------|----------------|-------|
+| `TemporalPeriod.DAILY` | 86,400 | Daily check-ins |
+| `TemporalPeriod.WEEKLY` | 604,800 | Weekly reviews |
+| `TemporalPeriod.MONTHLY` | 2,592,000 | Monthly reports |
+| `TemporalPeriod.QUARTERLY` | 7,776,000 | Quarterly planning |
+| `TemporalPeriod.YEARLY` | 31,536,000 | Annual cycles |
+
+See [CyclicDecayField feature docs](cyclic-decay-field.md) for the full reference including the scoring formula, Redis data model, and error handling.
+
+## AccessTracker
+
+Tracks read access patterns on any model using a two-stage pipeline: reads are first staged (cheap), then atomically promoted to a confirmed access log. This prevents naive "every read strengthens" behavior — only meaningful reads count.
+
+Shipped in [PR #203](https://github.com/tomcounsell/popoto/pull/203).
+
+### Basic usage
+
+```python
+from popoto import Model, KeyField, Field, AccessTrackerMixin, DecayingSortedField
+
 class Memory(Model, AccessTrackerMixin):
     agent_id = KeyField()
     content = Field(type=str)
     relevance = DecayingSortedField()
+
+# Reading triggers on_read() automatically via query hooks
+memories = Memory.query.filter(agent_id="agent-1").top_by_decay("relevance", 5)
+
+# After the agent acts on a memory, confirm the read
+memories[0].confirm_access()       # promotes staged → confirmed
+memories[1].discard_staged_access() # clears staging without promoting
+
+# Inspect access patterns
+print(memories[0].access_count)    # 42
+print(memories[0].last_accessed)   # 1741872000.0
 ```
 
-!!! note
-    AccessTracker introduces an `on_read()` hook to the field protocol. Details TBD during implementation.
+### How staging works
+
+`on_read()` fires automatically when instances are hydrated via `Query.get()`, `Query.filter()`, `top_by_decay()`, and their async variants. Each call appends a timestamp to a per-instance staging list (`RPUSH` — single Redis command, batched via pipeline).
+
+Staged reads are not yet "real" — they represent candidate accesses. Your application decides which reads were meaningful:
+
+- `confirm_access()` — atomically promotes all staged timestamps to the confirmed access log using a Lua script. Updates `access_count` and `last_accessed`.
+- `discard_staged_access()` — clears staging without affecting confirmed data.
+
+### Configuration
+
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `_max_access_log` | `int` | `100` | Maximum timestamps kept in the confirmed access log. Older entries trimmed on confirm. |
+| `_track_reads` | `bool` | `True` | Set to `False` to disable automatic `on_read()` from queries. |
+
+### Suppressing tracking for bulk operations
+
+Use `no_track()` on the query builder to prevent `on_read()` from firing during internal operations like reindexing or migration:
+
+```python
+# These reads won't be tracked
+Memory.query.filter(agent_id="agent-1").no_track().all()
+```
+
+### Delete cleanup
+
+When a tracked model instance is deleted, all three AccessTracker Redis keys (staged, access_log, meta) are automatically removed.
+
+### Redis key patterns
+
+| Key | Type | Purpose |
+|-----|------|---------|
+| `$AT:{ClassName}:staged:{pk}` | List | Pending read timestamps |
+| `$AT:{ClassName}:access_log:{pk}` | List | Confirmed access timestamps (capped) |
+| `$AT:{ClassName}:meta:{pk}` | Hash | `access_count` (int) and `last_accessed` (float) |
 
 ## WriteFilter
 
@@ -377,7 +489,7 @@ These primitives follow Popoto's existing patterns:
 
 2. **Redis-native everything.** No external brokers or job queues. Lua scripts, sorted sets, streams, Bloom filters — all within the Redis process.
 
-3. **Composable.** Each primitive is independently useful. Use `DecayingSortedField` alone for time-weighted ranking, or combine all twelve for a full cognitive memory system.
+3. **Composable.** Each primitive is independently useful. Use `DecayingSortedField` alone for time-weighted ranking, add `CyclicDecayField` for temporal rhythms and urgency, or combine all twelve for a full cognitive memory system.
 
 4. **Pipeline-safe.** Every operation accepts an optional `pipeline` parameter for atomic execution, consistent with all Popoto field hooks.
 

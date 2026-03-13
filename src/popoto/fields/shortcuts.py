@@ -481,7 +481,7 @@ class ListField(Field):
         # Encode each element individually
         encoded_values = [_encode_list_element(v) for v in data]
 
-        if hasattr(pipeline, 'execute'):
+        if hasattr(pipeline, "execute"):
             pipeline.delete(list_key)
             if encoded_values:
                 pipeline.rpush(list_key, *encoded_values)

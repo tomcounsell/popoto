@@ -361,6 +361,7 @@ def reset_async_connection():
     """Reset async Redis connection for each test."""
     import src.popoto.redis_db as redis_db_module
     import asyncio
+
     redis_db_module._POPOTO_ASYNC_REDIS_DB = None
     redis_db_module._async_redis_lock = asyncio.Lock()
 
@@ -373,13 +374,22 @@ class TestAsyncBulkOperations:
         """Gap 1: async_bulk_create basic functionality."""
         restaurants = [
             Restaurant(
-                name="Async Restaurant A", rating=4.0, status="pending", cuisine="Italian"
+                name="Async Restaurant A",
+                rating=4.0,
+                status="pending",
+                cuisine="Italian",
             ),
             Restaurant(
-                name="Async Restaurant B", rating=4.5, status="pending", cuisine="Japanese"
+                name="Async Restaurant B",
+                rating=4.5,
+                status="pending",
+                cuisine="Japanese",
             ),
             Restaurant(
-                name="Async Restaurant C", rating=3.8, status="pending", cuisine="Mexican"
+                name="Async Restaurant C",
+                rating=3.8,
+                status="pending",
+                cuisine="Mexican",
             ),
         ]
 

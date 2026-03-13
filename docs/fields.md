@@ -646,6 +646,56 @@ All standard `SortedField` range filters (`__gt`, `__gte`, `__lt`, `__lte`, `__b
 work against the timestamp score. See [Agent Memory](features/agent-memory.md) for the
 full agent memory primitives overview.
 
+## CyclicDecayField
+
+`CyclicDecayField` extends `DecayingSortedField` with two additional temporal forces computed
+atomically in a single Lua script:
+
+1. **Cyclical resonance**: Periodic boosts following cosine curves.
+2. **Homeostatic pressure**: Urgency that builds linearly while an item goes unresolved.
+
+The effective score is: `decay + cyclic_resonance + pressure`. When `cycles=[]` and
+`pressure_rate=0.0`, behavior is identical to `DecayingSortedField`.
+
+```python
+from popoto import Model, KeyField, Field, CyclicDecayField
+from popoto.fields.constants import TemporalPeriod
+
+class Directive(Model):
+    agent_id = KeyField()
+    content = Field(type=str)
+    relevance = CyclicDecayField(
+        decay_rate=0.5,
+        cycles=[(TemporalPeriod.QUARTERLY, 5.0, 0)],
+        pressure_rate=0.1,
+    )
+```
+
+Query with the same `top_by_decay()` interface, and discharge pressure with `resolve_pressure()`:
+
+```python
+# Top 10 by combined decay + cyclic + pressure score
+top = Directive.query.filter(agent_id="agent-1").top_by_decay("relevance", n=10)
+
+# Discharge accumulated urgency
+directive.resolve_pressure("relevance")
+
+# Refresh the decay clock (same as DecayingSortedField)
+directive.touch("relevance")
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `decay_rate` | `float` | `0.5` | Power-law decay exponent (inherited). |
+| `base_score_field` | `str` | `None` | Companion field whose value multiplies the decay curve (inherited). |
+| `cycles` | `list` | `[]` | List of `(period, amplitude, phase)` tuples. Use `TemporalPeriod` constants for period. |
+| `pressure_rate` | `float` | `0.0` | Rate of urgency buildup per unresolved day. |
+| `partition_by` | `str` or `tuple` | `()` | Partition the sorted set by key field values (inherited). |
+
+See [CyclicDecayField feature docs](features/cyclic-decay-field.md) for the full reference including
+the scoring formula, Redis data model, `TemporalPeriod` constants, and error handling.
+See [Agent Memory](features/agent-memory.md) for the broader agent memory primitives overview.
+
 ## partition_by
 
 When you always query a `SortedField` together with a specific `KeyField`, you can

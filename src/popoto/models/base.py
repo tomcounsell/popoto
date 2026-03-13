@@ -1810,7 +1810,7 @@ class Model(metaclass=ModelBase):
         now = time.time()
         redis_key = self._redis_key or self.db_key.redis_key
 
-        sortedset_db_key = DecayingSortedField.get_partitioned_sortedset_db_key(
+        sortedset_db_key = field.__class__.get_partitioned_sortedset_db_key(
             self, field_name
         )
 
@@ -1825,6 +1825,71 @@ class Model(metaclass=ModelBase):
             setattr(self, field_name, now)
             if self._saved_field_values is not None:
                 self._saved_field_values[field_name] = now
+            return now
+
+    def resolve_pressure(self, field_name, pipeline=None):
+        """Reset homeostatic pressure for a CyclicDecayField member.
+
+        Discharges accumulated urgency by updating ``last_resolved`` to
+        the current time in the pressure companion hash.
+
+        Args:
+            field_name: Name of a CyclicDecayField on the model.
+            pipeline: Optional Redis pipeline for batched operations.
+
+        Returns:
+            The new last_resolved timestamp (float), or the pipeline
+            if one was provided.
+
+        Raises:
+            TypeError: If model is unsaved, field is not a CyclicDecayField,
+                or pressure_rate is 0.
+            AttributeError: If field_name does not exist.
+        """
+        from ..fields.cyclic_decay_field import CyclicDecayField
+
+        if field_name not in self._meta.fields:
+            raise AttributeError(
+                f"'{self.__class__.__name__}' has no field '{field_name}'"
+            )
+
+        field = self._meta.fields[field_name]
+        if not isinstance(field, CyclicDecayField):
+            raise TypeError(
+                f"resolve_pressure() requires a CyclicDecayField. "
+                f"'{field_name}' is {type(field).__name__}"
+            )
+
+        if field.pressure_rate <= 0:
+            raise TypeError(
+                f"resolve_pressure() requires pressure_rate > 0. "
+                f"'{field_name}' has pressure_rate={field.pressure_rate}"
+            )
+
+        if not self._db_content and not self._saved_field_values:
+            raise TypeError(
+                "Cannot call resolve_pressure() on an unsaved model instance. "
+                "Save the model first."
+            )
+
+        import time
+        import msgpack
+
+        now = time.time()
+        member_key = self._redis_key or self.db_key.redis_key
+        pressure_hash_key = field._get_pressure_hash_key(self, field_name)
+
+        pressure_data = {
+            "rate": field.pressure_rate,
+            "last_resolved": now,
+        }
+        packed = msgpack.packb(pressure_data)
+
+        if isinstance(pipeline, redis.client.Pipeline):
+            pipeline.hset(pressure_hash_key, member_key, packed)
+            return pipeline
+        else:
+            POPOTO_REDIS_DB.hset(pressure_hash_key, member_key, packed)
             return now
 
     @classmethod

@@ -113,7 +113,6 @@ def _keyfield_set_key(model_class, field_name, value):
 
 def _relationship_set_key(model_class, field_name, related_instance):
     """Build the Redis Set key for a Relationship index entry."""
-    from popoto.models.db_key import DB_key
 
     prefix = model_class._meta.fields[field_name].get_special_use_field_db_key(
         model_class, field_name
@@ -125,7 +124,6 @@ def _relationship_set_key(model_class, field_name, related_instance):
 
 def _sorted_set_key(model_class, field_name, *partition_values):
     """Build the Redis Sorted Set key for a SortedField index."""
-    from popoto.fields.sorted_field_mixin import SortedFieldMixin
 
     key = model_class._meta.fields[field_name].get_sortedset_db_key(
         model_class, field_name, *partition_values

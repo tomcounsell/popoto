@@ -29,6 +29,7 @@ class UncappedListModel(popoto.Model):
 @pytest.fixture(autouse=True)
 def cleanup():
     """Remove all test model instances before and after each test."""
+
     def _do_cleanup():
         for item in CappedListModel.query.all():
             item.delete()

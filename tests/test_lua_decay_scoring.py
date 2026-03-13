@@ -87,9 +87,7 @@ class TestLuaBasic:
 
     def test_lua_power_function(self):
         """Lua math.pow works (needed for decay formula)."""
-        result = POPOTO_REDIS_DB.eval(
-            "return tostring(math.pow(4.0, -0.5))", 0
-        )
+        result = POPOTO_REDIS_DB.eval("return tostring(math.pow(4.0, -0.5))", 0)
         assert abs(float(result) - 0.5) < 0.001
 
     def test_lua_table_sort(self):
@@ -124,9 +122,7 @@ class TestDecayScoring:
         POPOTO_REDIS_DB.hset(self.HASH_KEY, "item:1", "1.0")
 
         result = POPOTO_REDIS_DB.eval(
-            DECAY_SCORE_LUA, 2,
-            self.ZSET_KEY, self.HASH_KEY,
-            str(now), "0.5", "10"
+            DECAY_SCORE_LUA, 2, self.ZSET_KEY, self.HASH_KEY, str(now), "0.5", "10"
         )
 
         assert len(result) == 2
@@ -141,19 +137,23 @@ class TestDecayScoring:
         """Recently updated member should outscore older one with same base."""
         now = time.time()
 
-        POPOTO_REDIS_DB.zadd(self.ZSET_KEY, {
-            "recent": now - 3600,       # 1 hour ago
-            "old": now - 86400 * 30,    # 30 days ago
-        })
-        POPOTO_REDIS_DB.hset(self.HASH_KEY, mapping={
-            "recent": "1.0",
-            "old": "1.0",
-        })
+        POPOTO_REDIS_DB.zadd(
+            self.ZSET_KEY,
+            {
+                "recent": now - 3600,  # 1 hour ago
+                "old": now - 86400 * 30,  # 30 days ago
+            },
+        )
+        POPOTO_REDIS_DB.hset(
+            self.HASH_KEY,
+            mapping={
+                "recent": "1.0",
+                "old": "1.0",
+            },
+        )
 
         result = POPOTO_REDIS_DB.eval(
-            DECAY_SCORE_LUA, 2,
-            self.ZSET_KEY, self.HASH_KEY,
-            str(now), "0.5", "10"
+            DECAY_SCORE_LUA, 2, self.ZSET_KEY, self.HASH_KEY, str(now), "0.5", "10"
         )
 
         # First result should be "recent"
@@ -171,19 +171,23 @@ class TestDecayScoring:
         now = time.time()
         same_time = now - 86400  # both 1 day ago
 
-        POPOTO_REDIS_DB.zadd(self.ZSET_KEY, {
-            "high": same_time,
-            "low": same_time,
-        })
-        POPOTO_REDIS_DB.hset(self.HASH_KEY, mapping={
-            "high": "10.0",
-            "low": "1.0",
-        })
+        POPOTO_REDIS_DB.zadd(
+            self.ZSET_KEY,
+            {
+                "high": same_time,
+                "low": same_time,
+            },
+        )
+        POPOTO_REDIS_DB.hset(
+            self.HASH_KEY,
+            mapping={
+                "high": "10.0",
+                "low": "1.0",
+            },
+        )
 
         result = POPOTO_REDIS_DB.eval(
-            DECAY_SCORE_LUA, 2,
-            self.ZSET_KEY, self.HASH_KEY,
-            str(now), "0.5", "10"
+            DECAY_SCORE_LUA, 2, self.ZSET_KEY, self.HASH_KEY, str(now), "0.5", "10"
         )
 
         first = result[0].decode() if isinstance(result[0], bytes) else result[0]
@@ -194,31 +198,41 @@ class TestDecayScoring:
         """Higher decay rate penalizes old items more."""
         now = time.time()
 
-        POPOTO_REDIS_DB.zadd(self.ZSET_KEY, {
-            "recent": now - 3600,        # 1 hour ago
-            "old": now - 86400 * 10,     # 10 days ago
-        })
-        POPOTO_REDIS_DB.hset(self.HASH_KEY, mapping={
-            "recent": "1.0",
-            "old": "5.0",  # old has 5x base score
-        })
+        POPOTO_REDIS_DB.zadd(
+            self.ZSET_KEY,
+            {
+                "recent": now - 3600,  # 1 hour ago
+                "old": now - 86400 * 10,  # 10 days ago
+            },
+        )
+        POPOTO_REDIS_DB.hset(
+            self.HASH_KEY,
+            mapping={
+                "recent": "1.0",
+                "old": "5.0",  # old has 5x base score
+            },
+        )
 
         # With low decay (0.1), old item's high base score can win
         result_low = POPOTO_REDIS_DB.eval(
-            DECAY_SCORE_LUA, 2,
-            self.ZSET_KEY, self.HASH_KEY,
-            str(now), "0.1", "10"
+            DECAY_SCORE_LUA, 2, self.ZSET_KEY, self.HASH_KEY, str(now), "0.1", "10"
         )
 
         # With high decay (1.0), recency dominates
         result_high = POPOTO_REDIS_DB.eval(
-            DECAY_SCORE_LUA, 2,
-            self.ZSET_KEY, self.HASH_KEY,
-            str(now), "1.0", "10"
+            DECAY_SCORE_LUA, 2, self.ZSET_KEY, self.HASH_KEY, str(now), "1.0", "10"
         )
 
-        first_low = result_low[0].decode() if isinstance(result_low[0], bytes) else result_low[0]
-        first_high = result_high[0].decode() if isinstance(result_high[0], bytes) else result_high[0]
+        first_low = (
+            result_low[0].decode()
+            if isinstance(result_low[0], bytes)
+            else result_low[0]
+        )
+        first_high = (
+            result_high[0].decode()
+            if isinstance(result_high[0], bytes)
+            else result_high[0]
+        )
 
         # Low decay: base score matters more -> "old" (5.0 base) wins
         assert first_low == "old"
@@ -240,9 +254,7 @@ class TestDecayScoring:
         POPOTO_REDIS_DB.hset(self.HASH_KEY, mapping=base_scores)
 
         result = POPOTO_REDIS_DB.eval(
-            DECAY_SCORE_LUA, 2,
-            self.ZSET_KEY, self.HASH_KEY,
-            str(now), "0.5", "5"
+            DECAY_SCORE_LUA, 2, self.ZSET_KEY, self.HASH_KEY, str(now), "0.5", "5"
         )
 
         # 5 results * 2 (member + score) = 10 elements
@@ -251,9 +263,13 @@ class TestDecayScoring:
     def test_empty_sorted_set(self):
         """No members returns empty result."""
         result = POPOTO_REDIS_DB.eval(
-            DECAY_SCORE_LUA, 2,
-            self.ZSET_KEY, self.HASH_KEY,
-            str(time.time()), "0.5", "10"
+            DECAY_SCORE_LUA,
+            2,
+            self.ZSET_KEY,
+            self.HASH_KEY,
+            str(time.time()),
+            "0.5",
+            "10",
         )
         assert result is None or result == []
 
@@ -265,9 +281,7 @@ class TestDecayScoring:
         # Don't set any base score in hash
 
         result = POPOTO_REDIS_DB.eval(
-            DECAY_SCORE_LUA, 2,
-            self.ZSET_KEY, self.HASH_KEY,
-            str(now), "0.5", "10"
+            DECAY_SCORE_LUA, 2, self.ZSET_KEY, self.HASH_KEY, str(now), "0.5", "10"
         )
 
         assert len(result) == 2
@@ -294,9 +308,12 @@ class TestDecayScoringFormula:
 
         # Set up items at known elapsed times
         cases = {
-            "1day": (now - 86400 * 1, 1.0),    # 1 day,  expect: 1.0 * 1^-0.5 = 1.0
-            "4day": (now - 86400 * 4, 1.0),     # 4 days, expect: 1.0 * 4^-0.5 = 0.5
-            "100day": (now - 86400 * 100, 1.0),  # 100 days, expect: 1.0 * 100^-0.5 = 0.1
+            "1day": (now - 86400 * 1, 1.0),  # 1 day,  expect: 1.0 * 1^-0.5 = 1.0
+            "4day": (now - 86400 * 4, 1.0),  # 4 days, expect: 1.0 * 4^-0.5 = 0.5
+            "100day": (
+                now - 86400 * 100,
+                1.0,
+            ),  # 100 days, expect: 1.0 * 100^-0.5 = 0.1
         }
 
         members = {}
@@ -309,9 +326,7 @@ class TestDecayScoringFormula:
         POPOTO_REDIS_DB.hset(self.HASH_KEY, mapping=base_scores)
 
         result = POPOTO_REDIS_DB.eval(
-            DECAY_SCORE_LUA, 2,
-            self.ZSET_KEY, self.HASH_KEY,
-            str(now), "0.5", "10"
+            DECAY_SCORE_LUA, 2, self.ZSET_KEY, self.HASH_KEY, str(now), "0.5", "10"
         )
 
         # Parse results into dict
@@ -332,9 +347,7 @@ class TestDecayScoringFormula:
         POPOTO_REDIS_DB.hset(self.HASH_KEY, "scaled", "5.0")
 
         result = POPOTO_REDIS_DB.eval(
-            DECAY_SCORE_LUA, 2,
-            self.ZSET_KEY, self.HASH_KEY,
-            str(now), "0.5", "10"
+            DECAY_SCORE_LUA, 2, self.ZSET_KEY, self.HASH_KEY, str(now), "0.5", "10"
         )
 
         score = float(result[1])
