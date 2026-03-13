@@ -241,7 +241,6 @@ class RestaurantsScreen(Container):
         Uses programmatic name generation (no modal dialog) to keep demo simple
         while still exercising the KeyField rename code path.
         """
-        import random
         from ..seed import restaurant_name
 
         table = self.query_one("#restaurants-table", DataTable)

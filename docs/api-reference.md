@@ -5,7 +5,7 @@ Complete reference for all public classes, methods, and functions in the Popoto 
 ```python
 from popoto import Model, Field, KeyField, AutoKeyField, UniqueKeyField
 from popoto import SortedField, SortedKeyField, GeoField, DatetimeField, Relationship
-from popoto import DecayingSortedField, CyclicDecayField, TemporalPeriod
+from popoto import DecayingSortedField, CyclicDecayField, TemporalPeriod, AccessTrackerMixin
 from popoto import Publisher, Subscriber
 from popoto import ModelException, QueryException, PublisherException, SubscriberException
 ```
@@ -889,6 +889,39 @@ See [CyclicDecayField](features/cyclic-decay-field.md) for usage examples and
 | `cycles` | `list` | `[]` | List of `(period, amplitude, phase)` tuples. Use `TemporalPeriod` constants. |
 | `pressure_rate` | `float` | `0.0` | Rate of urgency buildup per unresolved day. Must be >= 0. |
 | `partition_by` | `str` or `tuple` | `()` | Partition the sorted set by key field values (inherited). |
+
+### AccessTrackerMixin
+
+```python
+from popoto import AccessTrackerMixin
+
+class MyModel(AccessTrackerMixin, Model):
+    _max_access_log = 100  # max confirmed timestamps kept (default)
+    _track_reads = True    # auto-fire on_read from queries (default)
+```
+
+A model mixin that tracks read access patterns with a two-stage pipeline (staged → confirmed).
+See [Agent Memory — AccessTracker](features/agent-memory.md#accesstracker) for full usage guide.
+
+#### AccessTrackerMixin.on\_read(pipeline=None)
+
+Stage a read by appending the current timestamp to the staging list. Called automatically by query hooks.
+
+#### AccessTrackerMixin.confirm\_access(pipeline=None) -> int
+
+Atomically promote all staged timestamps to the confirmed access log via Lua script. Returns the number of staged reads promoted. Raises `TypeError` if the instance has not been saved.
+
+#### AccessTrackerMixin.discard\_staged\_access(pipeline=None)
+
+Clear the staging list without affecting confirmed data.
+
+#### AccessTrackerMixin.access\_count -> int
+
+Total number of confirmed read accesses. Returns `0` if never confirmed.
+
+#### AccessTrackerMixin.last\_accessed -> float | None
+
+Timestamp of the most recent confirmed read. Returns `None` if never confirmed.
 
 ### GeoField
 

@@ -8,7 +8,6 @@ records exist but indexes haven't been updated yet.
 Related: https://github.com/tomcounsell/popoto/issues/147
 """
 
-import asyncio
 
 import pytest
 
