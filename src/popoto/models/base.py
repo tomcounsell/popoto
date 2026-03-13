@@ -1763,6 +1763,65 @@ class Model(metaclass=ModelBase):
 
             return new_val
 
+    def touch(self, field_name, pipeline=None):
+        """Update a DecayingSortedField's timestamp without a full save.
+
+        Refreshes the decay clock by updating the sorted set score to
+        the current timestamp. Does not modify the model hash.
+
+        Args:
+            field_name: Name of a DecayingSortedField on the model.
+            pipeline: Optional Redis pipeline for batched operations.
+
+        Returns:
+            The new timestamp (float), or the pipeline if one was provided.
+
+        Raises:
+            TypeError: If model is unsaved or field is not a DecayingSortedField.
+            AttributeError: If field_name does not exist.
+        """
+        from ..fields.decaying_sorted_field import DecayingSortedField
+
+        if field_name not in self._meta.fields:
+            raise AttributeError(
+                f"'{self.__class__.__name__}' has no field '{field_name}'"
+            )
+
+        field = self._meta.fields[field_name]
+        if not isinstance(field, DecayingSortedField):
+            raise TypeError(
+                f"touch() requires a DecayingSortedField. "
+                f"'{field_name}' is {type(field).__name__}"
+            )
+
+        if not self._db_content and not self._saved_field_values:
+            raise TypeError(
+                "Cannot call touch() on an unsaved model instance. "
+                "Save the model first."
+            )
+
+        import time
+
+        now = time.time()
+        redis_key = self._redis_key or self.db_key.redis_key
+
+        sortedset_db_key = DecayingSortedField.get_partitioned_sortedset_db_key(
+            self, field_name
+        )
+
+        if isinstance(pipeline, redis.client.Pipeline):
+            pipeline.zadd(sortedset_db_key.redis_key, {redis_key: now})
+            setattr(self, field_name, now)
+            if self._saved_field_values is not None:
+                self._saved_field_values[field_name] = now
+            return pipeline
+        else:
+            POPOTO_REDIS_DB.zadd(sortedset_db_key.redis_key, {redis_key: now})
+            setattr(self, field_name, now)
+            if self._saved_field_values is not None:
+                self._saved_field_values[field_name] = now
+            return now
+
     @classmethod
     def get_info(cls) -> dict:
         """Return a dict with the model name, field names, and available query filters.

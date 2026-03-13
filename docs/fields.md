@@ -595,6 +595,57 @@ print(len(early_week))
 # => 2
 ```
 
+## DecayingSortedField
+
+`DecayingSortedField` is a `SortedField` subclass where records lose relevance over time
+following a power-law decay curve. The sorted set score is always a timestamp, and a
+Lua script computes decay-ranked results server-side:
+
+```
+decayed_score = base_score × elapsed_days ^ (-decay_rate)
+```
+
+With the default `decay_rate=0.5`, a record scores 1.0 after 1 day, 0.5 after 4 days,
+and 0.1 after 100 days.
+
+```python
+from popoto import Model, KeyField, Field, FloatField
+from popoto.fields.decaying_sorted_field import DecayingSortedField
+
+class Memory(Model):
+    agent_id = KeyField()
+    content = Field(type=str)
+    importance = FloatField(default=1.0)
+    relevance = DecayingSortedField(base_score_field="importance")
+```
+
+Query for the most relevant recent records with `top_by_decay()`:
+
+```python
+# Top 10 by decayed relevance
+top = Memory.query.filter(agent_id="agent-1").top_by_decay("relevance", n=10)
+
+# Override decay rate for this query (aggressive — only very recent)
+hot = Memory.query.filter(agent_id="agent-1").top_by_decay("relevance", n=5, decay_rate=1.0)
+```
+
+Refresh a record's timestamp without a full save using `touch()`:
+
+```python
+memory = Memory.query.get(agent_id="agent-1", content="deployment procedure")
+memory.touch("relevance")  # Resets the decay clock
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `decay_rate` | `float` | `0.5` | Controls how fast scores drop. Higher = faster decay. Must be > 0. |
+| `base_score_field` | `str` | `None` | Name of a companion field whose value multiplies the decay curve. When `None`, base score is 1.0. |
+| `partition_by` | `str` or `tuple` | `()` | Partition the sorted set by key field values (inherited from `SortedField`). |
+
+All standard `SortedField` range filters (`__gt`, `__gte`, `__lt`, `__lte`, `__between`)
+work against the timestamp score. See [Agent Memory](features/agent-memory.md) for the
+full agent memory primitives overview.
+
 ## partition_by
 
 When you always query a `SortedField` together with a specific `KeyField`, you can
