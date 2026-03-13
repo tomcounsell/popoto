@@ -1560,7 +1560,7 @@ class Model(metaclass=ModelBase):
             if index_hash:
                 pipeline = pipeline.hdel(index_key, index_hash)
 
-        # Clean up AccessTrackerMixin keys if applicable  # 5
+        # Clean up AccessTrackerMixin keys if applicable
         from ..fields.access_tracker import AccessTrackerMixin
 
         if isinstance(self, AccessTrackerMixin):
