@@ -9,17 +9,63 @@
 
 ## Executive Summary
 
-This roadmap adds programmable memory infrastructure to Popoto in 12 incremental steps. Each step ships a testable, independently useful ORM primitive. Combined, they give AI agents the capabilities LLMs lack: temporal awareness, outcome learning, confidence tracking, selective encoding, associative retrieval, and background knowledge extraction.
+This roadmap adds programmable memory infrastructure to Popoto in 12 incremental steps. Each step ships a testable, independently useful ORM primitive. Combined, they give AI agents the capabilities LLMs lack: temporal awareness, cyclical recall, outcome learning, confidence tracking, selective encoding, associative retrieval, proactive surfacing, and background knowledge extraction.
 
-The design draws from neuroscience (Complementary Learning Systems theory, ACT-R cognitive architecture, reinforcement learning) but the naming conventions are rooted in computer science and information systems. We are not simulating a brain — we are building data pipeline primitives that happen to solve the same computational problems brains solve.
+The design draws from neuroscience (Complementary Learning Systems theory, ACT-R cognitive architecture, reinforcement learning, chronobiology) but the naming conventions are rooted in computer science and information systems. We are not simulating a brain — we are building data pipeline primitives that happen to solve the same computational problems brains solve.
+
+### Three Temporal Forces
+
+Every memory in this system is acted on by three simultaneous temporal forces, superimposed at query time:
+
+1. **Decay** — monotonic. Records lose relevance over time following a power-law curve. This is the default behavior: things fade unless refreshed.
+
+2. **Cyclical resonance** — periodic. Some records have natural rhythms — daily, weekly, monthly, quarterly, yearly. A memory about Q1 renewals doesn't just decay; it oscillates, peaking every January-March. Like circadian rhythms and seasonal cycles in biology, these temporal patterns are encoded at the ORM level, not in application logic. Species of cicadas emerge on 7-year or 13-year cycles — that timing is DNA, not learned behavior. Similarly, cyclical relevance is a property of the record itself, computed atomically in the scoring Lua script.
+
+3. **Homeostatic pressure** — monotonic, opposing decay. Unresolved obligations build urgency over time, independent of any cycle. The longer an actionable memory goes unaddressed, the louder it gets — like sleep pressure that accumulates continuously until discharged. Pressure resets to zero when the agent acts on the memory, and auto-discharges when confidence drops (the obligation is no longer believed valid).
+
+The effective score at any moment:
+
+```
+effective_score = base_score × elapsed^(-decay_rate)
+               + Σ(amplitude_i × cos(2π × now / period_i + phase_i))
+               + pressure_rate × days_since_last_resolution
+```
+
+### Push-Based Recall
+
+Traditional retrieval is pull-based: the agent asks "what's relevant?" and gets ranked results. But humans also experience push-based recall — memories that surface unprompted ("it's March, time for renewals"). This system supports both modes:
+
+- **Pull:** Agent queries via `top_by_decay()` or `CompositeScoreQuery` — the system ranks and returns.
+- **Push:** The cyclical and pressure components cause certain records to score highly *without being queried about*. A background observer (or the ContextAssembler at the start of each turn) surfaces records whose effective score exceeds a threshold, independent of the agent's current topic. These are delivered as **proposals** — side-effect-free until the agent responds.
+
+### Observation Protocol
+
+An LLM cannot be expected to manage its own memory mechanics — calling `touch()`, resolving predictions, updating confidence. That's like asking a person to manually regulate their heartbeat. The ORM provides an **observation protocol**: hooks that fire automatically and infer memory outcomes from the agent's downstream behavior.
+
+- A surfaced memory whose content appears in the agent's response → implicit **acted-on** → strengthen
+- A surfaced memory the agent explicitly contradicts → implicit **dismissal** → weaken confidence
+- A surfaced memory the agent ignores → implicit **deferral** → no change, pressure keeps building
+
+The ORM provides the hooks and resolution mechanics. The application layer provides the inference signal (semantic similarity, keyword match, or LLM judgment). Popoto doesn't dictate *how* you detect influence; it dictates *what happens* when you report it.
+
+### Entrainment — Self-Correcting Cycles
+
+Cyclical parameters (amplitude and phase) are hypotheses, not constants. They self-correct through use:
+
+- Memory surfaces on schedule and gets acted on → phase nudges toward actual activation time, amplitude strengthens
+- Memory surfaces and gets dismissed → amplitude weakens; after enough dismissals, the cycle effectively dies
+- Memory gets acted on at an unexpected time → if this recurs, a new cycle is discovered and added with low initial amplitude
+
+This is literal entrainment — the same mechanism by which external cues (light, temperature) synchronize biological clocks. The math is a weighted moving average: `new_phase = (1 - lr) × old_phase + lr × observed_phase`.
 
 **Guiding principles:**
 
 1. **Ship small, test often.** Each step produces a working, independently testable primitive.
-2. **ORM primitives, not application logic.** Popoto provides generic field types, mixins, hooks, and query methods. Domain-specific agent memory models are built *on top of* these by application developers.
+2. **ORM primitives, not application logic.** Popoto provides generic field types, mixins, hooks, and query methods. Domain-specific agent memory models are built *on top of* these by application developers. Temporal cycles are ORM-level infrastructure (like circadian rhythms are biological infrastructure), not application-level scheduling.
 3. **Redis-native everything.** No Celery, no external brokers. Redis Streams, Lua scripts, sorted sets, Bloom filters — all within the Redis process.
 4. **Measurable improvement.** Every step includes a test strategy that demonstrates concrete, quantifiable benefits for agents using the primitive.
 5. **Combinatorial testing.** After each new primitive lands, test its interactions with all previously shipped primitives. By Step 12, we have coverage for every meaningful pair and key multi-component integrations.
+6. **Passive observation over explicit management.** Memory mechanics (strengthening, weakening, cycle adjustment) should be inferred from behavior, not require deliberate calls from the agent or application code.
 
 ---
 
@@ -43,68 +89,211 @@ We use CS/information-systems terminology throughout. The mapping from the resea
 | Emotional valence | **Outcome signal** | Signal processing terminology |
 | Memory trace | **Record** | Database record |
 | Engram | **Entry** | Log entry / cache entry |
+| Circadian rhythm | **Cyclical resonance** | Harmonic oscillator / signal processing |
+| Sleep pressure | **Homeostatic pressure** | Control systems terminology |
+| Zeitgeber (entrainment) | **Phase correction** | Phase-locked loop terminology |
+| Prospective memory | **Proactive surfacing** | Push notification pattern |
+| Unconscious recall | **Observation protocol** | Observer pattern (GoF) |
+| Phase response curve | **Temporal context weight** | Context-dependent scoring |
 
 ---
 
-## Step 1: DecayingSortedField — Time-Weighted Scoring
+## Step 1: DecayingSortedField + CyclicDecayField — Time-Weighted Scoring with Temporal Rhythms
 
-**What it is:** A new field mixin that wraps a Redis sorted set where scores decay over time following a power-law function. This is the foundational primitive — nearly every subsequent step depends on time-weighted scoring.
+**What it is:** Two field types that wrap Redis sorted sets with time-aware scoring. `DecayingSortedField` provides power-law decay — the foundational primitive. `CyclicDecayField` extends it with harmonic cycle components and homeostatic pressure, enabling records that resurface on temporal rhythms and build urgency when unresolved.
 
-**ORM addition:**
+Plain decay is a special case of the full temporal model (all cycle amplitudes zero, pressure rate zero). Both fields share the same query interface; CyclicDecayField adds cycle and pressure parameters.
+
+**ORM additions:**
 
 ```python
 class DecayingSortedField(SortedField):
     """
     Sorted set where scores decay as a power law of time since last update.
-    
+
     Key pattern: $DSF:{ClassName}:{field_name}
     Members scored by: base_score × (elapsed_time)^(-decay_rate)
-    
+
     decay_rate: float = 0.5 (ACT-R default, tunable per field)
-    refresh_on_read: bool = True (reading updates last_accessed, slowing decay)
     """
     decay_rate: float = 0.5
-    refresh_on_read: bool = True
+
+
+class CyclicDecayField(DecayingSortedField):
+    """
+    Decay modulated by cyclical relevance and homeostatic pressure.
+
+    Three forces superimposed at query time:
+      1. Decay:     base_score × elapsed^(-decay_rate)
+      2. Resonance: Σ(amplitude × cos(2π × now / period + phase))
+      3. Pressure:  pressure_rate × days_since_last_resolution
+
+    Cycle data stored per-member in companion hash:
+      $CDF:{ClassName}:{field_name}:cycles → {member: msgpack([period, amp, phase], ...)}
+      $CDF:{ClassName}:{field_name}:pressure → {member: msgpack{rate, last_resolved}}
+
+    Predefined period constants (seconds):
+      DAILY     = 86_400
+      WEEKLY    = 604_800
+      MONTHLY   = 2_592_000
+      QUARTERLY = 7_776_000
+      YEARLY    = 31_536_000
+    """
+    # Default: no cycles, no pressure (behaves like DecayingSortedField)
+    cycles: list = []        # [(period, amplitude, phase), ...]
+    pressure_rate: float = 0.0
 ```
 
-**Lua script:** `decay_scores.lua` — batch-updates scores for all members of a sorted set based on elapsed time. Runs atomically. Registered at connection time.
+**Lua script:** `cyclic_decay_scores.lua` — computes all three temporal components atomically for all members of a sorted set. Falls back to pure decay when cycle/pressure hashes are empty (two `HGET`s returning nil — negligible overhead).
+
+```lua
+-- KEYS[1] = sorted set (member -> last_updated timestamp)
+-- KEYS[2] = base scores hash (member -> base_score)
+-- KEYS[3] = cycles hash (member -> msgpack([[period, amp, phase], ...]))
+-- KEYS[4] = pressure hash (member -> msgpack({rate, last_resolved}))
+-- ARGV[1] = now (seconds), ARGV[2] = decay_rate, ARGV[3] = max_results
+
+for each member:
+    -- Component 1: power-law decay
+    local elapsed_days = max((now - last_updated) / 86400, 0.01)
+    local decay = base_score * pow(elapsed_days, -decay_rate)
+
+    -- Component 2: cyclical resonance (skip if no cycles)
+    local cyclic = 0
+    local cycles_packed = redis.call('HGET', KEYS[3], member)
+    if cycles_packed then
+        local cycles = cmsgpack.unpack(cycles_packed)
+        for _, c in ipairs(cycles) do
+            cyclic = cyclic + c[2] * math.cos(2 * math.pi * now / c[1] + c[3])
+        end
+    end
+
+    -- Component 3: homeostatic pressure (skip if no pressure)
+    local pressure = 0
+    local pressure_packed = redis.call('HGET', KEYS[4], member)
+    if pressure_packed then
+        local p = cmsgpack.unpack(pressure_packed)
+        local days_unresolved = (now - p.last_resolved) / 86400
+        pressure = p.rate * days_unresolved
+    end
+
+    local effective_score = decay + cyclic + pressure
+```
 
 **Test strategy:**
-- Unit: Insert N records with known timestamps, advance clock, verify scores match `score × t^(-0.5)` within tolerance.
-- Property: Records accessed recently always outscore older records with same initial score.
-- Benchmark: Measure Lua script execution time for 1K, 10K, 100K member sorted sets.
+- Unit: Insert N records with known timestamps, advance clock, verify scores match `score × t^(-0.5)` within tolerance (pure decay case).
+- Cyclical: Insert record with yearly cycle (amplitude=5.0, phase pointing at March). Verify score peaks in March, troughs in September. Verify a record with no cycles behaves identically to plain DecayingSortedField.
+- Pressure: Insert actionable record with pressure_rate=0.1. Verify score increases linearly over unresolved days. Verify pressure resets to zero after resolution.
+- Combined: Record with decay + yearly cycle + pressure. Verify the three components superimpose correctly against hand-computed values.
+- Property: Records accessed recently always outscore older records with same initial score and no cycles.
+- Benchmark: Measure Lua script execution time for 1K, 10K, 100K member sorted sets, comparing pure decay vs. full cyclic+pressure computation.
 
-**Measurable agent improvement:** Before DecayingSortedField, agents retrieve memories by insertion order or raw score. After: agents naturally surface recent, frequently-accessed records. Test with a conversational agent handling 100 sessions — measure relevance of top-5 retrieved records (human-rated or LLM-as-judge) with vs. without decay scoring.
+**Measurable agent improvement:** Before: agents retrieve memories by insertion order or raw score. After: agents naturally surface recent records *and* temporally relevant records (Q1 renewals in January, weekly standup notes on Monday). Test with a simulated year of agent interactions — measure whether cyclically relevant records surface at appropriate times without explicit queries.
 
-**Issues:** ~2-3 (field implementation, Lua script, tests + benchmarks)
+**InteractionWeight constants:** Ship alongside as `popoto.fields.constants.InteractionWeight` — two-axis weight system for multi-agent teamwork scenarios. Source axis: `HUMAN=6.0`, `AGENT=1.0`, `SYSTEM=0.2`. Role axis: `EXECUTIVE=44.0`, `MANAGER=16.0`, `PEER=6.0`, `SUBORDINATE=1.0`. Combined via `InteractionWeight.combine(source, role)` (addition). With `decay_rate=0.5`, lifetime ≈ score² days — a human executive directive (50.0) persists ~7 years while an agent subordinate observation (2.0) decays in ~4 days.
+
+**TemporalPeriod constants:** Ship alongside as `popoto.fields.constants.TemporalPeriod`:
+
+```python
+class TemporalPeriod:
+    """Standard cycle periods in seconds for CyclicDecayField."""
+    DAILY     = 86_400
+    WEEKLY    = 604_800
+    MONTHLY   = 2_592_000    # 30 days
+    QUARTERLY = 7_776_000    # 90 days
+    YEARLY    = 31_536_000   # 365 days
+```
+
+**Issues:** ~3-4 (DecayingSortedField base, CyclicDecayField extension, Lua script with all three components, tests + benchmarks)
 
 ---
 
-## Step 2: AccessTracker Mixin — Usage-Aware Records
+## Step 2: ObservationProtocol + AccessTracker — Passive Behavioral Inference
 
-**What it is:** A model mixin that automatically tracks access patterns: timestamps of each read, total access count, and last-accessed time. Maintains a capped list of access timestamps per record for computing spacing-effect-aware priority scores.
+**What it is:** An observation layer that passively tracks how the agent interacts with memories, plus an access tracking mixin that records read patterns. The key design principle: **an LLM cannot manage its own memory mechanics** — calling `touch()`, resolving predictions, updating confidence is like asking a person to regulate their heartbeat. The ORM must observe behavior and infer outcomes automatically.
 
-**ORM addition:**
+The observation protocol defines three hooks that fire at different points in the memory lifecycle. `touch()` is never called automatically — it is an *outcome* of observation, not a side effect of reading.
+
+**ORM additions:**
 
 ```python
+class ObservationProtocol:
+    """
+    Hooks that fire automatically at different lifecycle points.
+    Application layer reports behavioral signals; ORM applies effects.
+
+    Hooks:
+      on_read(instance, pipeline)
+        Fires when query.get()/filter() hydrates an instance.
+        Logs to staging area. Does NOT call touch() or strengthen.
+
+      on_surfaced(instance, reason, pipeline)
+        Fires when proactive system pushes a memory into agent context.
+        Creates a pending proposal. Side-effect-free on the memory itself.
+
+      on_context_used(surfaced_instances, outcome_map, pipeline)
+        Fires when application reports how the agent responded.
+        outcome_map: {instance_pk: "acted"|"dismissed"|"deferred"|"contradicted"}
+        Applies effects based on outcome:
+          acted      → touch(), corroborate confidence, strengthen cycles,
+                       discharge pressure, strengthen co-occurrence links
+          dismissed  → weaken confidence, weaken cycle amplitude
+          deferred   → no effects, pressure keeps building
+          contradicted → contradict confidence, weaken cycles aggressively
+
+    The ORM provides hooks and resolution mechanics.
+    The application layer provides the inference signal:
+      - Did the memory's content appear in the response? (acted)
+      - Did the agent explicitly contradict it? (contradicted)
+      - Was it ignored entirely? (deferred)
+    Popoto doesn't dictate HOW you detect influence; it dictates
+    WHAT HAPPENS when you report it.
+    """
+
+
 class AccessTrackerMixin:
     """
     Tracks read access patterns on any Model.
-    
-    Adds fields: access_count (int), last_accessed (float), 
+
+    Adds fields: access_count (int), last_accessed (float),
                  access_log (capped list of timestamps, max_length=100)
-    
-    Hook: on_read(instance, pipeline) — appends timestamp, increments count
+
+    Hook: on_read(instance, pipeline) — appends to staging log.
+          Actual strengthening only occurs via on_context_used() when
+          the observation protocol confirms the read was meaningful.
+
     Key pattern: $AT:{ClassName}:access_log:{pk} → List (capped at max_length)
+                 $AT:{ClassName}:staged:{pk} → List (uncommitted reads)
     """
     max_access_log: int = 100
 ```
 
-**Synergy test with Step 1:** DecayingSortedField + AccessTracker enables the full priority score computation: `B = ln(Σ t_j^(-d))` where t_j comes from the access log. Test that records with spaced access patterns (3 reads over 3 days) produce higher priority scores than records with massed access (3 reads in 1 minute), given equal total reads and age.
+**Proposal queue for proactive recall:**
 
-**Measurable agent improvement:** Compare agent retrieval quality on a knowledge-base QA task. Baseline: retrieve by recency only. With AccessTracker + DecayingSortedField: retrieve by spacing-effect-aware priority. Measure precision@5 improvement.
+When the cyclical/pressure components of CyclicDecayField cause a record to score above a surfacing threshold, the observation protocol creates a **proposal** — a lightweight pointer to the memory with a pending status:
 
-**Issues:** ~2 (mixin implementation with on_read hook, synergy tests with Step 1)
+```python
+# ORM-level, not application-level
+class RecallProposal:
+    """
+    Internal tracking for proactively surfaced memories.
+
+    Key pattern: $RP:{ClassName}:pending:{agent_partition} → ZSET by surfaced_at
+
+    Statuses: pending → acted | dismissed | deferred | contradicted | expired
+
+    Proposals that expire (not resolved within TTL) are treated as deferred.
+    """
+    ttl: int = 3600  # expire unresolved proposals after 1 hour
+```
+
+**Synergy test with Step 1:** DecayingSortedField + AccessTracker enables the full priority score computation: `B = ln(Σ t_j^(-d))` where t_j comes from the *confirmed* access log (not staged reads). Test that records with spaced access patterns (3 reads over 3 days) produce higher priority scores than records with massed access (3 reads in 1 minute), given equal total reads and age.
+
+**Synergy test with CyclicDecayField:** Proactive surfacing creates proposals; observation protocol resolves them. Test: record with yearly cycle surfaces in March → application reports "acted" → verify touch() was called, cycle amplitude strengthened. Test: same record surfaces → application reports "dismissed" → verify NO touch(), cycle amplitude weakened, pressure unchanged.
+
+**Measurable agent improvement:** Compare agent retrieval quality on a knowledge-base QA task. Baseline: retrieve by recency only (every read strengthens). With observation protocol: only meaningful reads strengthen. Measure: (a) precision@5 improvement from reduced noise in access patterns, (b) stale memories correctly deprioritized after dismissal.
+
+**Issues:** ~3-4 (observation protocol with three hooks, AccessTracker with staged vs. confirmed reads, RecallProposal queue, synergy tests with Step 1)
 
 ---
 
@@ -143,9 +332,11 @@ The scoring function itself is **application layer** — Popoto provides the gat
 
 ---
 
-## Step 4: ConfidenceField — Bayesian Certainty Tracking
+## Step 4: ConfidenceField — Bayesian Certainty Tracking + Entrainment
 
 **What it is:** A field type that maintains a Bayesian confidence score updated atomically via Lua script. Each update provides a binary signal (corroborate/contradict) with a weight. The prior becomes harder to shift as evidence accumulates (precision grows with √n).
+
+ConfidenceField also serves as the **entrainment mechanism** for CyclicDecayField (Step 1). Cyclical parameters (amplitude, phase) are hypotheses about temporal relevance. The observation protocol (Step 2) generates corroborate/contradict signals for these hypotheses, and ConfidenceField applies them. When a cycle's confidence drops below a threshold, the cycle auto-disables — this is how stale recurring memories ("send that client an update") die when the underlying context has changed ("that client contract ended").
 
 **ORM addition:**
 
@@ -153,27 +344,55 @@ The scoring function itself is **application layer** — Popoto provides the gat
 class ConfidenceField(Field):
     """
     Bayesian confidence score with precision-weighted updates.
-    
-    Stored as: {confidence: float, evidence_count: int, 
+
+    Stored as: {confidence: float, evidence_count: int,
                 corroborations: int, contradictions: int}
-    
+
     Update method: instance.confidence_field.update(
         corroborate=True/False, weight=0.8, pipeline=None
     )
-    
+
     Lua script: bayesian_update.lua — atomic read-modify-write
     Key pattern: confidence stored as hash fields on the parent model
     """
     initial_confidence: float = 0.5
 ```
 
+**Entrainment integration with CyclicDecayField:**
+
+When the observation protocol resolves a proactive recall proposal, ConfidenceField updates apply not just to the memory's content confidence but also to its cycle parameters:
+
+```python
+# Entrainment effects (applied automatically by observation protocol)
+#
+# on_context_used(outcome="acted"):
+#   - Content confidence: corroborate
+#   - Cycle phase: nudge toward actual activation time
+#     new_phase = (1 - lr) * old_phase + lr * observed_phase
+#   - Cycle amplitude: strengthen (ZINCRBY +delta)
+#
+# on_context_used(outcome="dismissed"):
+#   - Content confidence: no change (dismissal may be contextual, not factual)
+#   - Cycle amplitude: weaken (ZINCRBY -delta)
+#   - If amplitude drops below threshold → cycle auto-disables
+#
+# on_context_used(outcome="contradicted"):
+#   - Content confidence: contradict
+#   - Cycle amplitude: weaken aggressively
+#   - Homeostatic pressure: discharge (obligation no longer valid)
+```
+
+**Confidence on cycles vs. content:** A memory can have high content confidence ("this client exists") but low cycle confidence ("I should reach out every March" — maybe not anymore). These are tracked separately. Content confidence modulates retrieval weight. Cycle confidence modulates whether the cycle fires at all.
+
 **Synergy tests:**
 - ConfidenceField + DecayingSortedField: Records with low confidence should effectively have lower retrieval priority. Test composite scoring: `priority = decay_score × confidence`.
 - ConfidenceField + WriteFilter: Contradicted records (confidence dropping below a threshold) should be eligible for directed forgetting (score reduction, not deletion).
+- ConfidenceField + CyclicDecayField (entrainment): Record with yearly cycle surfaces and gets dismissed 3 times → verify cycle amplitude decreases. Record surfaces and gets acted on at a slightly different time → verify phase shifts toward actual activation. Record dismissed enough times that amplitude < threshold → verify cycle component returns 0 in subsequent scoring.
+- ConfidenceField + homeostatic pressure: Record's content confidence drops below 0.1 → verify homeostatic pressure auto-discharges (obligation no longer believed valid).
 
-**Measurable agent improvement:** Give an agent a knowledge base with 20% deliberately contradictory records. Without ConfidenceField: agent retrieves contradictory records at equal weight, producing inconsistent answers. With ConfidenceField: agent's consistency score improves as contradicted records lose retrieval weight. Measure answer consistency across 50 queries touching contradicted facts.
+**Measurable agent improvement:** Give an agent a knowledge base with 20% deliberately contradictory records. Without ConfidenceField: agent retrieves contradictory records at equal weight, producing inconsistent answers. With ConfidenceField: agent's consistency score improves as contradicted records lose retrieval weight. Measure answer consistency across 50 queries touching contradicted facts. Additionally: set up 5 recurring memories where the underlying context has changed (stale obligations). Measure how many cycles it takes for the system to auto-disable them via entrainment.
 
-**Issues:** ~2 (field implementation with Lua script, synergy tests with Steps 1-3)
+**Issues:** ~3 (field implementation with Lua script, entrainment integration with CyclicDecayField, synergy tests with Steps 1-3)
 
 ---
 
@@ -345,9 +564,11 @@ Also add `FrequencySketch` wrapping Count-Min Sketch (CMS.INCRBY / CMS.QUERY) fo
 
 ---
 
-## Step 9: PredictionLedger Mixin — Outcome Tracking
+## Step 9: PredictionLedger Mixin — Outcome Tracking + Auto-Resolution
 
 **What it is:** A model mixin for recording prediction→outcome pairs. Before an action, the agent writes a prediction (expected outcome, expected duration, expected quality). After the action, it writes the actual outcome. The mixin automatically computes the delta and stores it as a learning signal.
+
+Critically, the PredictionLedger supports **auto-resolution** — outcomes inferred from downstream behavior via the observation protocol (Step 2), not just explicit `resolve_prediction()` calls. Every proactive recall (Step 1 cyclical/pressure surfacing) is implicitly a prediction: "this memory is relevant right now." The observation protocol's resolution of that proposal feeds directly into the PredictionLedger as a prediction→outcome pair.
 
 **ORM addition:**
 
@@ -355,29 +576,49 @@ Also add `FrequencySketch` wrapping Count-Min Sketch (CMS.INCRBY / CMS.QUERY) fo
 class PredictionLedgerMixin:
     """
     Tracks prediction→outcome pairs with automatic delta computation.
-    
+
     Adds fields: predicted_outcome (JSON), actual_outcome (JSON, nullable),
-                 prediction_error (float, nullable), resolved (bool)
-    
+                 prediction_error (float, nullable), resolved (bool),
+                 resolution_mode (str: "explicit"|"observed"|"expired")
+
     Methods:
       record_prediction(instance, predicted: dict, pipeline=None)
       resolve_prediction(instance, actual: dict, pipeline=None)
         → computes delta, sets prediction_error, sets resolved=True
         → ZADD to prediction_error sorted set index
-    
+
+      auto_resolve(instance, outcome: str, pipeline=None)
+        → called by observation protocol when behavioral inference
+          determines the outcome. Same effects as resolve_prediction()
+          but marks resolution_mode="observed".
+
     Key pattern: $PL:{ClassName}:errors:{partition_key} → ZSET of PKs by |error|
     """
 ```
+
+**Auto-resolution via observation protocol:**
+
+Every proactive surfacing creates an implicit prediction. The observation protocol resolves it:
+
+| Surfacing outcome | Implicit prediction | Prediction error | Effect |
+|---|---|---|---|
+| acted | "This is relevant now" | Low (correct) | Corroborate confidence, strengthen cycle |
+| dismissed | "This is relevant now" | Medium (wrong timing or stale) | Weaken cycle amplitude |
+| contradicted | "This is relevant now" | High (factually wrong) | Contradict confidence, weaken cycle aggressively |
+| expired (no response) | "This is relevant now" | Low-medium (possibly deferred) | No confidence change, pressure builds |
+
+This means the PredictionLedger accumulates calibration data on the memory system's own proactive recall decisions — "how good is this system at predicting what's relevant?" Over time, cycle amplitudes that produce many dismissed surfacings will weaken (entrainment), and the system's precision improves.
 
 **Synergy tests:**
 - PredictionLedger + WriteFilter (Step 3): High prediction errors should produce high filter scores. Test: resolve a prediction with error > 0.7 → verify it gets priority-tagged.
 - PredictionLedger + EventStreamMixin (Step 6): Prediction resolutions should appear in the mutation stream. Test: resolve → verify stream entry with old prediction, actual outcome, and delta.
 - PredictionLedger + ConfidenceField (Step 4): When predictions are consistently wrong, associated knowledge records' confidence should decrease. Test: 5 consecutive high-error predictions linked to Pattern X → verify X's confidence drops.
 - PredictionLedger + DecayingSortedField (Step 1): High-error predictions should decay slower (they're more informative). Test: compare decay rates of high-error vs. low-error predictions.
+- PredictionLedger + CyclicDecayField (Step 1) + ObservationProtocol (Step 2): Full loop — record with yearly cycle surfaces proactively → observation protocol infers "dismissed" → auto_resolve() fires → prediction error recorded → cycle amplitude weakened via entrainment. Test the entire chain end-to-end.
 
-**Measurable agent improvement:** Run an agent through a task suite where it predicts difficulty/approach before each task. Measure calibration: does `mean(predicted_quality)` converge toward `mean(actual_quality)` over 50 tasks? Without PredictionLedger: no convergence (agent has no outcome memory). With: calibration error should decrease by >30% over the task suite.
+**Measurable agent improvement:** Run an agent through a task suite where it predicts difficulty/approach before each task. Measure calibration: does `mean(predicted_quality)` converge toward `mean(actual_quality)` over 50 tasks? Without PredictionLedger: no convergence (agent has no outcome memory). With: calibration error should decrease by >30% over the task suite. Additionally: measure proactive recall precision over time — what percentage of surfaced memories get acted on? This should improve as entrainment adjusts cycle parameters based on PredictionLedger auto-resolution data.
 
-**Issues:** ~3 (mixin with predict/resolve methods, delta computation, synergy tests with all prior steps)
+**Issues:** ~4 (mixin with predict/resolve methods, auto-resolution mode, delta computation, synergy tests with all prior steps including observation protocol loop)
 
 ---
 
@@ -491,19 +732,49 @@ return tostring(td_error)
 
 **The crystallization trigger** is application logic running in the StreamConsumer (Step 10): when the compaction pipeline detects ≥3 event records with the same state fingerprint and action type, and the success rate's Wilson confidence interval lower bound exceeds 0.6, it creates a PolicyEntry.
 
+**Temporal pattern discovery:** The StreamConsumer also performs **temporal clustering** on event timestamps to discover cyclical patterns. When events for a given topic cluster at similar times-of-year, times-of-month, or days-of-week across multiple occurrences, the consumer crystallizes these as cycle parameters on existing memories:
+
+```python
+# Temporal clustering in StreamConsumer handler (application layer,
+# but uses ORM cycle update primitives):
+#
+# 1. Bucket events by time-of-year, time-of-month, day-of-week
+# 2. Detect statistically significant clusters (e.g., chi-squared test
+#    against uniform distribution)
+# 3. If cluster detected with p < 0.05:
+#    - Compute period (YEARLY, MONTHLY, WEEKLY, etc.)
+#    - Compute phase from cluster centroid
+#    - Add cycle to memory with low initial amplitude (0.5)
+#    - Cycle strengthens or weakens via entrainment (Step 4)
+#
+# This is how an agent learns "every March I deal with Q1 renewals"
+# from raw event data — nobody programs it. Like how a person notices
+# "I always feel sluggish in January" after living through a few winters.
+```
+
+The key insight: **explicitly programmed cycles and discovered cycles use the same data structure and the same entrainment mechanism.** A cycle added by the developer and a cycle discovered by the StreamConsumer are both just `(period, amplitude, phase)` tuples in the cycles hash. Both strengthen when acted on, weaken when dismissed, and die when confidence drops. The system doesn't distinguish between innate and learned rhythms — just as biology doesn't distinguish at the cellular level.
+
 **Synergy tests — full integration matrix:**
-- PolicyEntry uses DecayingSortedField (1), AccessTracker (2), WriteFilter (3), ConfidenceField (4), CoOccurrenceField (5), EventStreamMixin (6), CompositeScoreQuery (7), ExistenceFilter (8), PredictionLedger (9), and StreamConsumer (10). This is the integration test for the entire stack.
-- Specific critical path: Event records flow through stream → consumer detects pattern → crystallizes PolicyEntry → PolicyEntry has initial confidence 0.5 → agent queries via CompositeScoreQuery → selects action → observes outcome → updates Q-value and confidence → high prediction error triggers priority re-processing.
+- PolicyEntry uses CyclicDecayField (1), ObservationProtocol + AccessTracker (2), WriteFilter (3), ConfidenceField with entrainment (4), CoOccurrenceField (5), EventStreamMixin (6), CompositeScoreQuery (7), ExistenceFilter (8), PredictionLedger with auto-resolution (9), and StreamConsumer (10). This is the integration test for the entire stack.
+- Specific critical path: Event records flow through stream → consumer detects pattern → crystallizes PolicyEntry → PolicyEntry has initial confidence 0.5 → agent queries via CompositeScoreQuery → selects action → observation protocol infers outcome → updates Q-value and confidence → high prediction error triggers priority re-processing.
+- Temporal discovery path: Events cluster at similar times-of-year → consumer detects yearly pattern → adds cycle to memory → next year, cycle causes proactive surfacing → agent acts on it → entrainment strengthens the cycle → pattern is now durable.
 
-**Measurable agent improvement:** Run an agent through a 200-task benchmark with ~20 recurring task types. Without PolicyCache: agent approaches each task from scratch. With: agent develops cached policies for recurring patterns. Measure: (a) time-to-completion improvement on repeated task types, (b) success rate improvement on the 5th+ encounter vs. 1st encounter, (c) calibration of expected_value vs. actual outcomes.
+**Measurable agent improvement:** Run an agent through a 200-task benchmark with ~20 recurring task types. Without PolicyCache: agent approaches each task from scratch. With: agent develops cached policies for recurring patterns. Measure: (a) time-to-completion improvement on repeated task types, (b) success rate improvement on the 5th+ encounter vs. 1st encounter, (c) calibration of expected_value vs. actual outcomes, (d) temporal pattern discovery accuracy — do the right cycles get discovered from event data?
 
-**Issues:** ~3 (reference implementation, crystallization logic in consumer, full integration test suite)
+**Issues:** ~4 (reference implementation, crystallization logic in consumer, temporal clustering logic, full integration test suite)
 
 ---
 
-## Step 12: ContextAssembler — Retrieval-to-Injection Bridge
+## Step 12: ContextAssembler — Retrieval-to-Injection Bridge + Proactive Surfacing
 
-**What it is:** A query utility that assembles the optimal context payload for injection into an LLM's message array. It orchestrates the full retrieval pipeline: ExistenceFilter pre-check → CompositeScoreQuery ranking → CoOccurrence propagation → budget-constrained selection → formatted output.
+**What it is:** A query utility that assembles the optimal context payload for injection into an LLM's message array. It orchestrates the full retrieval pipeline — both **pull-based** (query-driven) and **push-based** (proactive surfacing from cyclical resonance and homeostatic pressure).
+
+The ContextAssembler runs two parallel retrieval paths and merges the results:
+
+1. **Pull path:** ExistenceFilter pre-check → CompositeScoreQuery ranking → CoOccurrence propagation → candidates from the agent's current query/topic.
+2. **Push path:** Scan CyclicDecayField indexes for records whose cyclical + pressure score exceeds a surfacing threshold, *regardless of the agent's current topic*. These are memories the system believes are temporally relevant right now — the "it's March, time for renewals" memories.
+
+Both paths merge into a single ranked, budget-constrained context payload. Push-path records are annotated as proactive surfacings, creating proposals via the observation protocol (Step 2).
 
 **ORM addition:**
 
@@ -511,16 +782,19 @@ return tostring(td_error)
 class ContextAssembler:
     """
     Assembles retrieved records into an LLM-ready context payload
-    within a token/item budget.
-    
+    within a token/item budget. Supports both pull and push retrieval.
+
     Pipeline:
-      1. ExistenceFilter pre-check (skip if nothing relevant)
-      2. CompositeScoreQuery with configurable weights
-      3. CoOccurrence graph propagation from top results
-      4. Re-rank merged candidates
-      5. Budget-constrained selection (max_items, max_tokens)
-      6. Format output (configurable: JSON, XML, natural language)
-    
+      1. ExistenceFilter pre-check (skip if nothing relevant) [pull]
+      2. CompositeScoreQuery with configurable weights [pull]
+      3. CyclicDecayField temporal scan — records above surfacing
+         threshold from cyclical resonance or homeostatic pressure [push]
+      4. CoOccurrence graph propagation from top results [both]
+      5. Merge and re-rank all candidates
+      6. Budget-constrained selection (max_items, max_tokens)
+      7. Create RecallProposals for push-path records [push]
+      8. Format output (configurable: JSON, XML, natural language)
+
     Usage:
       assembler = ContextAssembler(
           model_class=Episode,
@@ -528,6 +802,7 @@ class ContextAssembler:
           propagation_depth=2,
           max_items=10,
           max_tokens=2000,
+          surfacing_threshold=0.5,  # min score for push-path records
           output_format="structured"
       )
       context = assembler.assemble(
@@ -535,30 +810,34 @@ class ContextAssembler:
           agent_id="agent_1"
       )
       # context.records: List[Model] — ranked, budget-constrained
+      # context.proactive: List[Model] — push-path records (subset of records)
+      # context.proposals: List[RecallProposal] — pending observation
       # context.metadata: retrieval stats, confidence summary, coverage gaps
       # context.formatted: str — ready for injection into messages array
     """
 ```
 
-**Post-retrieval effects** (application layer, but Popoto provides hooks):
+**Post-retrieval effects** (via observation protocol, Step 2):
 - **Competitive suppression:** After retrieval, reduce priority scores of non-selected records that competed on the same cues. This sharpens future retrieval.
-- **Access tracking:** All retrieved records get `on_read` called, updating AccessTracker and strengthening co-occurrence links between co-retrieved records.
+- **Access tracking:** Pull-path records get `on_read()` logged to staging. Push-path records get `on_surfaced()` logged as proposals. Neither triggers strengthening until `on_context_used()` confirms the agent engaged with the memory.
+- **Feedback loop:** After the LLM generates its response, the application layer calls `on_context_used()` with an outcome map. The observation protocol resolves proposals, updates confidence, adjusts cycle parameters via entrainment, and discharges pressure for acted-on items. This closes the loop — the memory system learns from every interaction whether its retrieval decisions (both pull and push) were good.
 
 **Synergy tests — the capstone.** ContextAssembler exercises every prior step:
 
 | Primitive | Role in Assembly Pipeline |
 |---|---|
-| ExistenceFilter (8) | Fast pre-check: abort early if no relevant records |
-| CompositeScoreQuery (7) | Multi-factor ranking of candidates |
-| DecayingSortedField (1) | Time-decay component of composite score |
-| AccessTracker (2) | Usage-frequency component of composite score |
+| CyclicDecayField (1) | Decay + cyclical resonance + pressure scoring [pull + push] |
+| ObservationProtocol (2) | Creates proposals for push-path; resolves all outcomes post-response |
+| AccessTracker (2) | Confirmed-access-frequency component of composite score |
 | WriteFilter (3) | Priority-tagged records get score boost |
-| ConfidenceField (4) | Confidence component of composite score |
+| ConfidenceField (4) | Confidence component of composite score; entrainment on cycles |
 | CoOccurrenceField (5) | Graph propagation expands candidate pool |
-| PredictionLedger (9) | Prediction error history modulates confidence |
 | EventStreamMixin (6) | Retrieval events logged for compaction |
-| StreamConsumer (10) | Background re-ranking from retrieval patterns |
-| PolicyCache (11) | Cached policies surface for matching states |
+| CompositeScoreQuery (7) | Multi-factor ranking of pull-path candidates |
+| ExistenceFilter (8) | Fast pre-check: abort early if no relevant records [pull] |
+| PredictionLedger (9) | Auto-resolution from observation; calibration of surfacing quality |
+| StreamConsumer (10) | Background re-ranking; temporal pattern discovery |
+| PolicyCache (11) | Cached policies surface for matching states; discovered cycles |
 
 **Measurable agent improvement — the definitive benchmark:**
 
@@ -588,9 +867,13 @@ After all 12 steps ship, the test suite must cover pairwise interactions. Here i
 
 | Pair | Test |
 |---|---|
-| 1+2 (Decay+Access) | Spacing effect: spaced reads produce higher scores than massed reads |
+| 1+2 (Cyclic+Observer) | Proactive surfacing creates proposal; observation resolves it; confirmed reads strengthen |
+| 1+2 (Decay+Access) | Spacing effect: spaced *confirmed* reads produce higher scores than massed reads |
+| 1+4 (Cyclic+Confidence) | Entrainment: acted-on cycle strengthens amplitude; dismissed cycle weakens; phase corrects |
 | 1+4 (Decay+Confidence) | Low-confidence records decay faster in effective retrieval weight |
-| 2+5 (Access+CoOccurrence) | Co-accessed records auto-strengthen; verify weight increase |
+| 1 pressure+4 (Pressure+Confidence) | Confidence dropping below threshold auto-discharges homeostatic pressure |
+| 2+5 (Observer+CoOccurrence) | Co-retrieved records that both get "acted" outcome auto-strengthen links |
+| 2+9 (Observer+Prediction) | Proactive surfacing auto-resolves as prediction; calibration data accumulates |
 | 3+6 (Filter+Stream) | Filtered-out records produce no stream entries |
 | 3+8 (Filter+Existence) | Filtered records not in Bloom filter |
 | 4+9 (Confidence+Prediction) | Consistent prediction errors reduce linked record confidence |
@@ -598,10 +881,13 @@ After all 12 steps ship, the test suite must cover pairwise interactions. Here i
 | 6+10 (Stream+Consumer) | End-to-end: write → stream → consume → acknowledge |
 | 7+8 (Composite+Existence) | Pre-filter short-circuits composite query when nothing exists |
 | 9+11 (Prediction+Policy) | High-error predictions trigger policy re-evaluation |
-| 7+12 (Composite+Assembler) | Assembler correctly delegates to composite scorer |
-| 1+2+4+5+7 (five-way) | Full retrieval path: decay + access + confidence + association + composite ranking |
-| 3+6+10+11 (four-way) | Full write-to-learning path: filter → stream → consumer → crystallize policy |
-| ALL (twelve-way) | Capstone: full agent benchmark with all primitives active |
+| 10+11 (Consumer+PolicyCache) | Temporal clustering discovers cycles from event timestamps |
+| 7+12 (Composite+Assembler) | Assembler merges pull-path and push-path candidates correctly |
+| 1+2+4+5+7 (five-way) | Full retrieval path: cyclic decay + observation + confidence + association + composite |
+| 1+2+4+9 (four-way) | Full entrainment loop: cycle surfaces → observation infers outcome → prediction recorded → confidence/phase adjusted |
+| 3+6+10+11 (four-way) | Full write-to-learning path: filter → stream → consumer → crystallize policy + discover cycles |
+| 1+2+9+12 (four-way) | Full push path: cyclic score exceeds threshold → assembler surfaces → observation resolves → prediction logged |
+| ALL (twelve-way) | Capstone: full agent benchmark with all primitives active, both pull and push paths |
 
 ---
 
@@ -609,22 +895,22 @@ After all 12 steps ship, the test suite must cover pairwise interactions. Here i
 
 | Step | Effort | Dependencies | Cumulative Value |
 |---|---|---|---|
-| 1. DecayingSortedField | 1 week | None | Time-aware scoring |
-| 2. AccessTracker | 3 days | Step 1 | Usage-aware retrieval |
+| 1. DecayingSortedField + CyclicDecayField | 1.5 weeks | None | Time-aware + cyclical + pressure scoring |
+| 2. ObservationProtocol + AccessTracker | 1 week | Step 1 | Passive behavioral inference, confirmed reads |
 | 3. WriteFilter | 3 days | None | Storage efficiency |
-| 4. ConfidenceField | 1 week | None | Epistemic humility |
+| 4. ConfidenceField + Entrainment | 1.5 weeks | Steps 1, 2 | Epistemic humility + self-correcting cycles |
 | 5. CoOccurrenceField | 1 week | None | Associative retrieval |
 | 6. EventStreamMixin | 3 days | None | Mutation logging |
 | 7. CompositeScoreQuery | 1 week | Steps 1-5 | **Multi-factor retrieval** |
 | 8. ExistenceFilter | 3 days | None | Fast pre-filtering |
-| 9. PredictionLedger | 1 week | Steps 4, 6 | Outcome learning |
+| 9. PredictionLedger + Auto-Resolution | 1.5 weeks | Steps 2, 4, 6 | Outcome learning + surfacing calibration |
 | 10. StreamConsumer | 1 week | Step 6 | Background processing |
-| 11. PolicyCache | 1-2 weeks | Steps 1-10 | **Learned action selection** |
-| 12. ContextAssembler | 1-2 weeks | Steps 1-11 | **Full retrieval pipeline** |
+| 11. PolicyCache + Temporal Discovery | 1-2 weeks | Steps 1-10 | **Learned action selection + discovered cycles** |
+| 12. ContextAssembler + Proactive Surfacing | 1-2 weeks | Steps 1-11 | **Full pull + push retrieval pipeline** |
 
-Steps 1-6 can partially parallelize (1-2 and 3-6 are independent tracks). Steps 7-12 are sequential.
+Steps 1-2 are tightly coupled (observation protocol needs CyclicDecayField proposals). Steps 3-6 can parallelize with 1-2. Step 4 depends on 1+2 for entrainment integration. Steps 7-12 are sequential.
 
-**Total estimate:** 10-14 weeks for one engineer, shorter with parallelization.
+**Total estimate:** 12-16 weeks for one engineer, shorter with parallelization.
 
 ---
 
@@ -632,18 +918,28 @@ Steps 1-6 can partially parallelize (1-2 and 3-6 are independent tracks). Steps 
 
 When all 12 steps ship, an agent developer using Popoto gets:
 
-1. **Records that know their own relevance** — priority scores that account for recency, access patterns, confidence, and co-occurrence, computed at the ORM level with zero application code.
+1. **Records that know their own relevance** — priority scores that account for recency, cyclical timing, access patterns, confidence, and co-occurrence, computed at the ORM level with zero application code.
 
-2. **Selective memory** — not everything gets stored. Low-value interactions are filtered at write time, keeping the index clean and retrieval fast.
+2. **Memories that resurface on rhythm** — cyclical resonance at daily, weekly, monthly, quarterly, and yearly periods. A memory about Q1 renewals naturally peaks every January-March. Like circadian rhythms in biology, these temporal patterns are encoded at the ORM level, not in application scheduling code.
 
-3. **Self-correcting confidence** — knowledge records that become more or less trusted as evidence accumulates, with contradictions automatically reducing retrieval weight.
+3. **Obligations that nag** — homeostatic pressure builds on unresolved actionable memories, independent of any cycle. Ignored items get louder until acted on, explicitly cancelled, or invalidated by confidence erosion.
 
-4. **Associative recall** — retrieving one record activates related records via co-occurrence weights, surfacing multi-hop knowledge without explicit graph queries.
+4. **Proactive recall** — the system surfaces memories unprompted when cyclical or pressure scores exceed a threshold. The agent doesn't have to ask "what should I remember?" — relevant memories appear in context automatically, like a thought popping into your head.
 
-5. **Outcome learning** — agents can predict outcomes before acting, observe actual results, and feed prediction errors back into the memory system to improve future predictions and confidence.
+5. **Passive observation** — the ORM infers whether surfaced memories were useful from downstream behavior, not from explicit management calls. The agent doesn't manage its own memory mechanics, just as humans don't consciously regulate memory consolidation.
 
-6. **Background knowledge extraction** — a Redis-native pipeline that processes raw event records into durable patterns without blocking the agent's real-time inference path.
+6. **Self-correcting temporal patterns** — entrainment adjusts cycle amplitude and phase based on whether proactive surfacings get acted on or dismissed. Stale obligations auto-disable when confidence drops. The system learns its own timing from experience.
 
-7. **Budget-constrained context assembly** — a single query method that runs the full retrieval pipeline and returns exactly what the LLM needs, within token limits, with confidence annotations.
+7. **Selective memory** — not everything gets stored. Low-value interactions are filtered at write time, keeping the index clean and retrieval fast.
 
-All of this composes from generic ORM primitives. None of it requires the agent developer to understand neuroscience, reinforcement learning, or Bayesian statistics. They just use Popoto fields and query methods, and their agent gets measurably better at its job.
+8. **Self-correcting confidence** — knowledge records that become more or less trusted as evidence accumulates, with contradictions automatically reducing retrieval weight.
+
+9. **Associative recall** — retrieving one record activates related records via co-occurrence weights, surfacing multi-hop knowledge without explicit graph queries.
+
+10. **Outcome learning** — agents can predict outcomes before acting, observe actual results, and feed prediction errors back into the memory system. Proactive surfacings are themselves predictions that accumulate calibration data.
+
+11. **Background knowledge extraction** — a Redis-native pipeline that processes raw event records into durable patterns and discovers temporal cycles from event data, without blocking the agent's real-time inference path.
+
+12. **Budget-constrained context assembly** — a single query method that runs the full pull + push retrieval pipeline and returns exactly what the LLM needs, within token limits, with confidence annotations and proactive surfacing proposals.
+
+All of this composes from generic ORM primitives. None of it requires the agent developer to understand neuroscience, reinforcement learning, Bayesian statistics, or chronobiology. They just use Popoto fields and query methods, and their agent gets measurably better at its job — remembering what matters, forgetting what doesn't, and surfacing the right thing at the right time without being asked.

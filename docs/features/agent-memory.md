@@ -90,6 +90,69 @@ class Memory(Model):
 
 A record with `importance=5.0` stays relevant 25x longer than one with `importance=1.0` (at decay_rate=0.5).
 
+### Source weighting for teamwork
+
+In multi-agent teams with human oversight, human interactions are rare but high-signal. Agent-to-agent interactions are frequent but lower-signal. Use `InteractionWeight` constants to ensure human directives don't get drowned out by agent chatter:
+
+```python
+from popoto.fields.constants import InteractionWeight
+
+class TeamMemory(Model):
+    agent_id = KeyField()
+    source = Field(type=str)
+    role = Field(type=str)
+    importance = Field(type=float, default=InteractionWeight.AGENT)
+    content = Field(type=str)
+    relevance = DecayingSortedField(base_score_field="importance")
+
+# CEO gives a directive — stays relevant for years
+TeamMemory(agent_id="pm-1", source="human", role="executive",
+           importance=InteractionWeight.combine(
+               InteractionWeight.HUMAN, InteractionWeight.EXECUTIVE),
+           content="We're pivoting to enterprise").save()
+
+# Agent colleague logs a finding — moderate lifetime
+TeamMemory(agent_id="pm-1", source="agent", role="peer",
+           importance=InteractionWeight.combine(
+               InteractionWeight.AGENT, InteractionWeight.PEER),
+           content="Found 3 broken API contracts in staging").save()
+```
+
+Weights are split across two axes — **source** (human vs agent) and **role** (authority level) — combined by addition:
+
+```python
+class InteractionWeight:
+    # Source axis — what kind of entity
+    HUMAN = 6.0
+    AGENT = 1.0
+    SYSTEM = 0.2
+
+    # Role axis — authority level
+    EXECUTIVE = 44.0
+    MANAGER = 16.0
+    PEER = 6.0
+    SUBORDINATE = 1.0
+
+    @staticmethod
+    def combine(source, role):
+        return source + role
+```
+
+With `decay_rate=0.5`, lifetime ≈ score² days:
+
+| Combination | Score | Effective lifetime |
+|-------------|-------|--------------------|
+| Human executive | 50.0 | ~7 years |
+| Human manager | 22.0 | ~1.3 years |
+| Human peer | 12.0 | ~5 months |
+| Agent executive | 45.0 | ~5.5 years |
+| Agent manager | 17.0 | ~9 months |
+| Agent peer | 7.0 | ~7 weeks |
+| Agent subordinate | 2.0 | ~4 days |
+| System | 0.2 | ~1 hour |
+
+These are just floats — override them freely for your domain. The values encode two principles: **human interactions are stickier than agent interactions**, and **authority level determines how long directives persist**.
+
 ### Query-time overrides
 
 Both `decay_rate` and `base_score_field` can be overridden per query for different retrieval contexts:
