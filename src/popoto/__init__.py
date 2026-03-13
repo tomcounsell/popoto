@@ -28,6 +28,7 @@ from .fields.decaying_sorted_field import DecayingSortedField
 from .fields.access_tracker import AccessTrackerMixin
 from .fields.cyclic_decay_field import CyclicDecayField
 from .fields.constants import TemporalPeriod
+from .fields.observation import ObservationProtocol, RecallProposal
 from .fields.geo_field import GeoField
 
 try:
@@ -88,6 +89,8 @@ __all__ = [
     "AccessTrackerMixin",
     "CyclicDecayField",
     "TemporalPeriod",
+    "ObservationProtocol",
+    "RecallProposal",
     "GeoField",
     "DataFrameField",
     "Relationship",
