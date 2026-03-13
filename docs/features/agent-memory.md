@@ -25,7 +25,7 @@ The primitives ship incrementally. Each builds on the ones before it.
 | [DecayingSortedField](#decayingsortedfield) | Time-weighted scoring — records lose relevance over time unless refreshed | Shipped ([PR #199](https://github.com/tomcounsell/popoto/pull/199)) |
 | [CyclicDecayField](#cyclicdecayfield) | Temporal rhythms + homeostatic pressure on top of decay | Shipped ([PR #201](https://github.com/tomcounsell/popoto/pull/201)) |
 | [AccessTracker](#accesstracker) | Tracks read patterns — access count, timestamps, spacing effects | Shipped ([PR #203](https://github.com/tomcounsell/popoto/pull/203)) |
-| [ObservationProtocol](#accesstracker) | Outcome-driven memory effects — acted/dismissed/deferred/contradicted | [#198](https://github.com/tomcounsell/popoto/issues/198) |
+| [ObservationProtocol](#observationprotocol) | Outcome-driven memory effects — acted/dismissed/deferred/contradicted | Shipped ([PR #206](https://github.com/tomcounsell/popoto/pull/206)) |
 | [WriteFilter](#writefilter) | Gates persistence — low-value records silently discarded at write time | Planned |
 | [ConfidenceField](#confidencefield) | Bayesian certainty — corroboration strengthens, contradiction weakens | Planned |
 | [CoOccurrenceField](#cooccurrencefield) | Weighted associations — co-accessed records strengthen their link | Planned |
@@ -315,6 +315,110 @@ When a tracked model instance is deleted, all three AccessTracker Redis keys (st
 | `$AT:{ClassName}:staged:{pk}` | List | Pending read timestamps |
 | `$AT:{ClassName}:access_log:{pk}` | List | Confirmed access timestamps (capped) |
 | `$AT:{ClassName}:meta:{pk}` | Hash | `access_count` (int) and `last_accessed` (float) |
+
+## ObservationProtocol
+
+Provides lifecycle hooks for outcome-driven memory effects. The application reports how the agent used retrieved memories (acted, dismissed, deferred, contradicted); the ORM applies effects atomically.
+
+Shipped in [PR #206](https://github.com/tomcounsell/popoto/pull/206).
+
+### Why observation matters
+
+An LLM cannot manage its own memory mechanics. Calling `touch()`, resolving predictions, updating confidence is like asking a person to regulate their heartbeat. The ORM must provide hooks that fire automatically and infer memory outcomes from the agent's downstream behavior.
+
+### Basic usage
+
+```python
+from popoto import (
+    Model, KeyField, Field, AccessTrackerMixin,
+    CyclicDecayField, ObservationProtocol, RecallProposal,
+)
+from popoto.fields.constants import TemporalPeriod
+
+class Memory(AccessTrackerMixin, Model):
+    agent_id = KeyField()
+    content = Field(type=str)
+    relevance = CyclicDecayField(
+        decay_rate=0.5,
+        cycles=[(TemporalPeriod.QUARTERLY, 5.0, 0)],
+        pressure_rate=0.1,
+    )
+
+# 1. Agent retrieves memories (on_read fires automatically via query hooks)
+memories = Memory.query.filter(agent_id="agent-1").top_by_decay("relevance", n=10)
+
+# 2. Optional: mark proactively surfaced memories
+ObservationProtocol.on_surfaced(memories[:3], reason="pressure_threshold")
+
+# 3. Agent processes memories and generates a response...
+
+# 4. Application infers outcomes from agent behavior
+outcome_map = {
+    memories[0].db_key.redis_key: "acted",        # Agent used this
+    memories[1].db_key.redis_key: "dismissed",     # Agent rejected this
+    memories[2].db_key.redis_key: "contradicted",  # Agent contradicted this
+    # memories[3:] not in map → default to "deferred"
+}
+ObservationProtocol.on_context_used(memories, outcome_map)
+```
+
+### Three hooks
+
+| Hook | When it fires | Effect |
+|------|--------------|--------|
+| `on_read(instance)` | Query hydrates an instance | Delegates to AccessTrackerMixin staging |
+| `on_surfaced(instances, reason)` | Proactive system pushes memories into context | Creates RecallProposal entries |
+| `on_context_used(instances, outcome_map)` | Application reports how agent responded | Applies outcome-specific effects |
+
+### Four outcomes
+
+| Outcome | Meaning | Effects |
+|---------|---------|---------|
+| `acted` | Agent used the memory | `touch()`, `confirm_access()`, `strengthen_cycle(1.2)`, `resolve_pressure()` |
+| `dismissed` | Agent explicitly rejected | `discard_staged_access()`, `weaken_cycle(0.8)` |
+| `deferred` | Agent didn't address it | `discard_staged_access()` only — pressure keeps building |
+| `contradicted` | Agent explicitly contradicted | `discard_staged_access()`, `weaken_cycle(0.5)` |
+
+### Graceful degradation
+
+Each effect checks whether the model supports it before applying. A model with `DecayingSortedField` but no `CyclicDecayField` still gets `touch()` on acted — just no cycle/pressure effects. A model without `AccessTrackerMixin` skips staging operations entirely.
+
+### Cycle amplitude adjustment
+
+Two new Model methods for direct cycle control:
+
+```python
+# Strengthen: multiply all cycle amplitudes by 1.5x
+memory.strengthen_cycle("relevance", factor=1.5)
+
+# Weaken: multiply all cycle amplitudes by 0.6x
+memory.weaken_cycle("relevance", factor=0.6)
+```
+
+Amplitudes are clamped to `[0.0, 100.0]`. Values below `0.01` snap to zero (effectively dead cycle).
+
+### RecallProposal
+
+Internal ORM infrastructure for tracking proactively surfaced memories. Not a user-facing Model.
+
+```python
+# Create proposals when surfacing memories
+RecallProposal.create_batch(instances, reason="proactive", partition="agent-1")
+
+# Check pending proposals
+pending = RecallProposal.get_pending(Memory, partition="agent-1")
+
+# Expire stale proposals (older than TTL, default 1 hour)
+expired = RecallProposal.expire_stale(Memory, partition="agent-1", ttl=3600)
+```
+
+Proposals are stored in Redis ZSETs keyed by `$RP:{ClassName}:pending:{partition}`, scored by surfaced_at timestamp. Resolved proposals are removed from the pending set. Expired proposals (past TTL) are treated as deferred.
+
+### Redis key patterns
+
+| Key | Type | Purpose |
+|-----|------|---------|
+| `$RP:{ClassName}:pending:{partition}` | ZSET | Pending recall proposals, scored by surfaced_at |
 
 ## WriteFilter
 

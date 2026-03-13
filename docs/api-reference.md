@@ -6,6 +6,7 @@ Complete reference for all public classes, methods, and functions in the Popoto 
 from popoto import Model, Field, KeyField, AutoKeyField, UniqueKeyField
 from popoto import SortedField, SortedKeyField, GeoField, DatetimeField, Relationship
 from popoto import DecayingSortedField, CyclicDecayField, TemporalPeriod, AccessTrackerMixin
+from popoto import ObservationProtocol, RecallProposal
 from popoto import Publisher, Subscriber
 from popoto import ModelException, QueryException, PublisherException, SubscriberException
 ```
@@ -211,6 +212,58 @@ by updating `last_resolved` to the current time in the pressure companion hash.
 directive = Directive.query.get(agent_id="agent-1")
 directive.resolve_pressure("relevance")
 # Pressure resets — the record's urgency score drops to 0
+```
+
+### Model.strengthen\_cycle()
+
+```python
+Model.strengthen_cycle(field_name: str, factor: float = 1.2, pipeline: redis.client.Pipeline = None)
+```
+
+Multiply all cycle amplitudes of a `CyclicDecayField` by a factor (>1.0 strengthens).
+Amplitudes are clamped to `[0.0, 100.0]`. Values below `0.01` snap to zero.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `field_name` | `str` | | Name of a `CyclicDecayField` on the model. |
+| `factor` | `float` | `1.2` | Multiplier for amplitudes. |
+| `pipeline` | `redis.client.Pipeline` | `None` | Optional pipeline for batching. |
+
+**Returns:** The updated cycles list, or the pipeline if one was provided.
+
+**Raises:**
+
+- `TypeError` if the model has not been saved or the field is not a `CyclicDecayField`.
+- `AttributeError` if `field_name` does not exist on the model.
+
+```python
+memory.strengthen_cycle("relevance", factor=1.5)
+```
+
+### Model.weaken\_cycle()
+
+```python
+Model.weaken_cycle(field_name: str, factor: float = 0.8, pipeline: redis.client.Pipeline = None)
+```
+
+Multiply all cycle amplitudes of a `CyclicDecayField` by a factor (<1.0 weakens).
+Same mechanics as `strengthen_cycle` with a different default factor.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `field_name` | `str` | | Name of a `CyclicDecayField` on the model. |
+| `factor` | `float` | `0.8` | Multiplier for amplitudes. |
+| `pipeline` | `redis.client.Pipeline` | `None` | Optional pipeline for batching. |
+
+**Returns:** The updated cycles list, or the pipeline if one was provided.
+
+**Raises:**
+
+- `TypeError` if the model has not been saved or the field is not a `CyclicDecayField`.
+- `AttributeError` if `field_name` does not exist on the model.
+
+```python
+memory.weaken_cycle("relevance", factor=0.5)
 ```
 
 ### Model.load()
@@ -922,6 +975,60 @@ Total number of confirmed read accesses. Returns `0` if never confirmed.
 #### AccessTrackerMixin.last\_accessed -> float | None
 
 Timestamp of the most recent confirmed read. Returns `None` if never confirmed.
+
+### ObservationProtocol
+
+```python
+from popoto import ObservationProtocol
+```
+
+Stateless coordinator that provides lifecycle hooks for outcome-driven memory effects.
+All methods are static. See [Agent Memory — ObservationProtocol](features/agent-memory.md#observationprotocol)
+for the full usage guide.
+
+#### ObservationProtocol.on\_read(instance, pipeline=None)
+
+Fire when query hydrates an instance. Delegates to `AccessTrackerMixin.on_read()` if available. No-op for models without `AccessTrackerMixin`.
+
+#### ObservationProtocol.on\_surfaced(instances, reason="proactive", partition=None, pipeline=None)
+
+Fire when proactive system pushes memories into agent context. Creates `RecallProposal` entries. Side-effect-free on the memories themselves.
+
+#### ObservationProtocol.on\_context\_used(instances, outcome\_map, pipeline=None)
+
+Fire when application reports how agent responded to surfaced memories. Applies outcome-specific effects atomically.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `instances` | `list` | Model instances that were in the agent's context. |
+| `outcome_map` | `dict` | Maps instance Redis keys to outcomes: `"acted"`, `"dismissed"`, `"deferred"`, `"contradicted"`. Instances not in the map default to `"deferred"`. |
+| `pipeline` | `redis.client.Pipeline` | Optional pipeline for batching. |
+
+**Raises:** `ValueError` if any outcome string is not valid.
+
+### RecallProposal
+
+```python
+from popoto import RecallProposal
+```
+
+Internal ORM infrastructure for tracking proactively surfaced memories. ZSET-backed with TTL-based expiration.
+
+#### RecallProposal.create\_batch(instances, reason="proactive", partition=None, pipeline=None)
+
+Create pending proposals for a batch of instances. Stores in `$RP:{ClassName}:pending:{partition}` ZSET scored by surfaced_at.
+
+#### RecallProposal.resolve(instance, outcome, partition=None, pipeline=None) -> int
+
+Remove a resolved proposal from the pending set. Idempotent — returns 0 if already removed.
+
+#### RecallProposal.expire\_stale(model\_class, partition=None, ttl=None, pipeline=None) -> list
+
+Remove proposals older than TTL (default 3600 seconds). Returns list of expired member key strings.
+
+#### RecallProposal.get\_pending(model\_class, partition=None) -> list
+
+Return all pending proposals as `(member_key, surfaced_at)` tuples.
 
 ### GeoField
 
