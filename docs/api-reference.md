@@ -5,6 +5,7 @@ Complete reference for all public classes, methods, and functions in the Popoto 
 ```python
 from popoto import Model, Field, KeyField, AutoKeyField, UniqueKeyField
 from popoto import SortedField, SortedKeyField, GeoField, DatetimeField, Relationship
+from popoto import DecayingSortedField
 from popoto import Publisher, Subscriber
 from popoto import ModelException, QueryException, PublisherException, SubscriberException
 ```
@@ -157,6 +158,33 @@ new_rating = restaurant.atomic_increment("score", 0.5)
 !!! note
     If the field is a `SortedField`, the sorted set index score is also updated
     atomically via `ZINCRBY`, keeping the index in sync with the field value.
+
+### Model.touch()
+
+```python
+Model.touch(field_name: str, pipeline: redis.client.Pipeline = None)
+```
+
+Update a `DecayingSortedField`'s timestamp without a full save. Refreshes the decay clock
+by setting the sorted set score to the current time.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `field_name` | `str` | Name of a `DecayingSortedField` on the model. |
+| `pipeline` | `redis.client.Pipeline` | Optional pipeline for batching. |
+
+**Returns:** The new timestamp (`float`), or the pipeline if one was provided.
+
+**Raises:**
+
+- `TypeError` if the model has not been saved or the field is not a `DecayingSortedField`.
+- `AttributeError` if `field_name` does not exist on the model.
+
+```python
+memory = Memory.query.get(agent_id="agent-1")
+new_ts = memory.touch("relevance")
+# The decay clock is reset — this memory will rank higher in top_by_decay()
+```
 
 ### Model.load()
 
@@ -630,6 +658,37 @@ Return a list of Redis key bytes for all instances of this model.
 !!! warning
     Both `catchall` and `clean` are intended for debugging only and should not be used in production.
 
+### Query.top_by_decay()
+
+```python
+Query.top_by_decay(field_name: str, n: int = 10, decay_rate: float = None, base_score_field: str = None) -> list
+```
+
+Return top-N instances ranked by time-decayed score. Executes a Lua script server-side
+that computes `base_score * elapsed_days^(-decay_rate)` for each member in the sorted set.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `field_name` | `str` | Name of a `DecayingSortedField` on the model. |
+| `n` | `int` | Maximum number of results. Default `10`. |
+| `decay_rate` | `float` | Override the field's decay_rate for this query. |
+| `base_score_field` | `str` | Override the field's base_score_field for this query. |
+
+**Returns:** `list` of Model instances in decayed-score order.
+
+**Raises:** `QueryException` if the field is not a `DecayingSortedField` or a required `partition_by` filter is missing.
+
+```python
+# Top 10 most relevant memories
+results = Memory.query.filter(agent_id="agent-1").top_by_decay("relevance", n=10)
+
+# Aggressive decay — only very recent records
+hot = Memory.query.filter(agent_id="agent-1").top_by_decay("relevance", n=5, decay_rate=1.0)
+```
+
+Also available directly on `Query`: `Memory.query.top_by_decay("relevance", n=10)`.
+For partitioned fields, use `filter()` first to specify the partition value.
+
 ### Async Query Methods
 
 | Sync | Async |
@@ -762,6 +821,24 @@ SortedKeyField(**kwargs)
 A field that combines `KeyField` and `SortedField` behaviors. It forms part of the Redis key and
 is also indexed in a sorted set for range queries. Supports all lookups from both `KeyField` and
 `SortedField`.
+
+### DecayingSortedField
+
+```python
+from popoto.fields.decaying_sorted_field import DecayingSortedField
+
+DecayingSortedField(decay_rate=0.5, base_score_field=None, partition_by=(), **kwargs)
+```
+
+A `SortedField` subclass that stores timestamps as scores and computes time-decayed rankings
+via a server-side Lua script. See [DecayingSortedField](fields.md#decayingsortedfield) for
+usage examples and [Agent Memory](features/agent-memory.md) for the broader context.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `decay_rate` | `float` | `0.5` | Controls decay speed. Must be > 0. |
+| `base_score_field` | `str` | `None` | Companion field name for base score multiplier. |
+| `partition_by` | `str` or `tuple` | `()` | Partition the sorted set by key field values. |
 
 ### GeoField
 

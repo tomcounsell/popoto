@@ -22,7 +22,7 @@ The primitives ship incrementally. Each builds on the ones before it.
 
 | Primitive | What it does | Status |
 |-----------|-------------|--------|
-| [DecayingSortedField](#decayingsortedfield) | Time-weighted scoring — records lose relevance over time unless refreshed | [#193](https://github.com/tomcounsell/popoto/issues/193) |
+| [DecayingSortedField](#decayingsortedfield) | Time-weighted scoring — records lose relevance over time unless refreshed | Shipped ([PR #199](https://github.com/tomcounsell/popoto/pull/199)) |
 | [CyclicDecayField](#decayingsortedfield) | Temporal rhythms + homeostatic pressure on top of decay | [#196](https://github.com/tomcounsell/popoto/issues/196) |
 | [AccessTracker](#accesstracker) | Tracks read patterns — access count, timestamps, spacing effects | [#197](https://github.com/tomcounsell/popoto/issues/197) |
 | [ObservationProtocol](#accesstracker) | Outcome-driven memory effects — acted/dismissed/deferred/contradicted | [#198](https://github.com/tomcounsell/popoto/issues/198) |
