@@ -1,6 +1,5 @@
 """Tests for DX polish improvements."""
 
-import pytest
 import popoto
 from popoto import Model, KeyField, Field
 from popoto.testing import use_test_db, flush_test_db

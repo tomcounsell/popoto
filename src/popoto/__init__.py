@@ -25,6 +25,7 @@ from .fields.shortcuts import (
     SortedKeyField,
 )
 from .fields.decaying_sorted_field import DecayingSortedField
+from .fields.access_tracker import AccessTrackerMixin
 from .fields.cyclic_decay_field import CyclicDecayField
 from .fields.constants import TemporalPeriod
 from .fields.geo_field import GeoField
@@ -84,6 +85,7 @@ __all__ = [
     "SortedField",
     "SortedKeyField",
     "DecayingSortedField",
+    "AccessTrackerMixin",
     "CyclicDecayField",
     "TemporalPeriod",
     "GeoField",

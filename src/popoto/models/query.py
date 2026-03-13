@@ -76,6 +76,36 @@ class QueryException(Exception):
     pass
 
 
+def _fire_on_read(model_class, instances):
+    """Fire on_read() for AccessTrackerMixin models after hydration.
+
+    Batches all RPUSH commands into a single pipeline for efficiency.
+    Only fires when the model class uses AccessTrackerMixin and
+    _track_reads is True.
+
+    Args:
+        model_class: The Model class being queried
+        instances: List of hydrated model instances
+    """
+    from ..fields.access_tracker import AccessTrackerMixin
+
+    if not issubclass(model_class, AccessTrackerMixin):
+        return
+    if not getattr(model_class, "_track_reads", True):
+        return
+    valid = [
+        inst
+        for inst in instances
+        if hasattr(inst, "_redis_key") or hasattr(inst, "db_key")
+    ]
+    if not valid:
+        return
+    pipe = POPOTO_REDIS_DB.pipeline()
+    for inst in valid:
+        inst.on_read(pipeline=pipe)
+    pipe.execute()
+
+
 class QueryBuilder:
     """Chainable query builder that accumulates query state.
 
@@ -113,6 +143,7 @@ class QueryBuilder:
         self._values_tuple = None
         self._computed_sort_fn = None
         self._computed_sort_reverse = False
+        self._no_track = False
 
     def filter(self, *args, **kwargs) -> "QueryBuilder":
         """Add filter criteria and return a new QueryBuilder.
@@ -153,6 +184,7 @@ class QueryBuilder:
         new_builder._values_tuple = self._values_tuple
         new_builder._computed_sort_fn = self._computed_sort_fn
         new_builder._computed_sort_reverse = self._computed_sort_reverse
+        new_builder._no_track = self._no_track
         return new_builder
 
     def limit(self, n: int) -> "QueryBuilder":
@@ -239,6 +271,21 @@ class QueryBuilder:
             raise TypeError("computed_sort() requires a callable, got None")
         self._computed_sort_fn = fn
         self._computed_sort_reverse = reverse
+        return self
+
+    def no_track(self) -> "QueryBuilder":
+        """Suppress on_read() tracking for this query.
+
+        Use for internal operations (reindex, migration) that shouldn't
+        count as reads for AccessTrackerMixin models.
+
+        Returns:
+            Self for method chaining
+
+        Example:
+            results = Model.query.filter(status="active").no_track().all()
+        """
+        self._no_track = True
         return self
 
     def top_by_decay(self, field_name, n=10, decay_rate=None, base_score_field=None):
@@ -369,6 +416,9 @@ class QueryBuilder:
                 instance = decode_popoto_model_hashmap(model_class, data)
                 instances.append(instance)
 
+        if not self._no_track:
+            _fire_on_read(model_class, instances)
+
         return instances
 
     def all(self) -> list:
@@ -394,7 +444,9 @@ class QueryBuilder:
                 )
             if self._values_tuple is not None:
                 kwargs["values"] = self._values_tuple
-            results = self._query._execute_filter(q_objects=self._q_objects, **kwargs)
+            results = self._query._execute_filter(
+                q_objects=self._q_objects, _no_track=self._no_track, **kwargs
+            )
             # Apply computed sort (O(N log N) on full result set)
             results = sorted(
                 results,
@@ -413,7 +465,9 @@ class QueryBuilder:
             kwargs["order_by"] = self._order_by_value
         if self._values_tuple is not None:
             kwargs["values"] = self._values_tuple
-        return self._query._execute_filter(q_objects=self._q_objects, **kwargs)
+        return self._query._execute_filter(
+            q_objects=self._q_objects, _no_track=self._no_track, **kwargs
+        )
 
     def count(self) -> int:
         """Count matching results without loading objects.
@@ -621,6 +675,7 @@ class Query:
             if not hashmap:
                 return None
             instance = decode_popoto_model_hashmap(self.model_class, hashmap)
+            _fire_on_read(self.model_class, [instance])
 
         else:
             instances = self.filter(**kwargs)
@@ -1097,7 +1152,9 @@ class Query:
             field_name, n=n, decay_rate=decay_rate, base_score_field=base_score_field
         )
 
-    def _execute_filter(self, q_objects: list = None, **kwargs) -> list:
+    def _execute_filter(
+        self, q_objects: list = None, _no_track: bool = False, **kwargs
+    ) -> list:
         """Internal method to execute filter logic and return results.
 
         This is the actual filter execution, called by QueryBuilder.all() and
@@ -1105,6 +1162,7 @@ class Query:
 
         Args:
             q_objects: List of Q objects for complex query expressions
+            _no_track: If True, suppress on_read() for AccessTrackerMixin models
             **kwargs: Filter parameters and result modifiers
 
         Returns:
@@ -1197,7 +1255,15 @@ class Query:
             model_objects.sort(key=lambda o: getattr(o, "_geo_distance", float("inf")))
             objects = model_objects + dict_objects
 
-        return self.prepare_results(objects, **kwargs)
+        results = self.prepare_results(objects, **kwargs)
+
+        # Fire on_read for AccessTrackerMixin models (skip for value projections)
+        if not _no_track and not kwargs.get("values"):
+            model_results = [r for r in results if not isinstance(r, dict)]
+            if model_results:
+                _fire_on_read(self.model_class, model_results)
+
+        return results
 
     def prepare_results(
         self,
@@ -1493,6 +1559,7 @@ class Query:
             if not hashmap:
                 return None
             instance = decode_popoto_model_hashmap(self.model_class, hashmap)
+            await to_thread(_fire_on_read, self.model_class, [instance])
         else:
             instances = await self.async_filter(**kwargs)
             if len(instances) > 1:
@@ -1791,10 +1858,13 @@ class Query:
                 "one or more redis keys points to missing objects. Debug with Model.query.keys(clean=True)"
             )
 
-        return [
+        objects = [
             decode_popoto_model_hashmap(
                 model, redis_hash, fields_only=bool(values), lazy=lazy and not values
             )
             for redis_hash in hashes_list
             if redis_hash
         ]
+        if not values:
+            await to_thread(_fire_on_read, model, objects)
+        return objects

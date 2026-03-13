@@ -195,6 +195,7 @@ The `QueryBuilder` returned by `filter()` supports these chainable methods:
 | `limit(n)` | Set maximum number of results |
 | `values(*fields)` | Return dicts with specified fields instead of model instances |
 | `computed_sort(fn, reverse)` | Sort by a Python key function (applied after fetch, before limit) |
+| `no_track()` | Suppress `on_read()` tracking for `AccessTrackerMixin` models |
 | `all()` | Execute query and return all results as a list |
 | `first()` | Execute query and return first result or None |
 | `count()` | Count matching results without loading objects |
