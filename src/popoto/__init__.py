@@ -25,6 +25,8 @@ from .fields.shortcuts import (
     SortedKeyField,
 )
 from .fields.decaying_sorted_field import DecayingSortedField
+from .fields.cyclic_decay_field import CyclicDecayField
+from .fields.constants import TemporalPeriod
 from .fields.geo_field import GeoField
 
 try:
@@ -82,6 +84,8 @@ __all__ = [
     "SortedField",
     "SortedKeyField",
     "DecayingSortedField",
+    "CyclicDecayField",
+    "TemporalPeriod",
     "GeoField",
     "DataFrameField",
     "Relationship",

@@ -14,6 +14,7 @@ nav:
     - Async Operations: 'async.md'
     - PubSub: 'pubsub.md'
     - Agent Memory: 'features/agent-memory.md'
+    - CyclicDecayField: 'features/cyclic-decay-field.md'
     - API Reference: 'api-reference.md'
     - Contributing:
         - Style Guide: 'style-guide.md'

@@ -23,7 +23,7 @@ The primitives ship incrementally. Each builds on the ones before it.
 | Primitive | What it does | Status |
 |-----------|-------------|--------|
 | [DecayingSortedField](#decayingsortedfield) | Time-weighted scoring — records lose relevance over time unless refreshed | Shipped ([PR #199](https://github.com/tomcounsell/popoto/pull/199)) |
-| [CyclicDecayField](#decayingsortedfield) | Temporal rhythms + homeostatic pressure on top of decay | [#196](https://github.com/tomcounsell/popoto/issues/196) |
+| [CyclicDecayField](#cyclicdecayfield) | Temporal rhythms + homeostatic pressure on top of decay | Shipped ([PR #201](https://github.com/tomcounsell/popoto/pull/201)) |
 | [AccessTracker](#accesstracker) | Tracks read patterns — access count, timestamps, spacing effects | [#197](https://github.com/tomcounsell/popoto/issues/197) |
 | [ObservationProtocol](#accesstracker) | Outcome-driven memory effects — acted/dismissed/deferred/contradicted | [#198](https://github.com/tomcounsell/popoto/issues/198) |
 | [WriteFilter](#writefilter) | Gates persistence — low-value records silently discarded at write time | Planned |
@@ -189,6 +189,67 @@ import time
 one_week_ago = time.time() - 86400 * 7
 recent = Memory.query.filter(agent_id="agent-1", relevance__gte=one_week_ago)
 ```
+
+## CyclicDecayField
+
+A `DecayingSortedField` subclass that adds **cyclical resonance** and **homeostatic pressure** to time-weighted scoring. When cycles and pressure are both zero, behavior is identical to `DecayingSortedField`.
+
+The effective score at query time: `decay + cyclic_resonance + pressure`
+
+- **Cyclical resonance** — periodic boosts following cosine curves. A record about Q1 renewals resurfaces every January.
+- **Homeostatic pressure** — urgency that builds linearly while an item goes unresolved. Discharged by calling `resolve_pressure()`.
+
+### Basic usage
+
+```python
+from popoto import Model, KeyField, Field, CyclicDecayField
+from popoto.fields.constants import TemporalPeriod
+
+class Directive(Model):
+    agent_id = KeyField()
+    content = Field(type=str)
+    relevance = CyclicDecayField(
+        decay_rate=0.5,
+        cycles=[(TemporalPeriod.QUARTERLY, 5.0, 0)],
+        pressure_rate=0.1,
+    )
+```
+
+Query with the same `top_by_decay()` interface:
+
+```python
+top = Directive.query.filter(agent_id="agent-1").top_by_decay("relevance", n=10)
+```
+
+Discharge accumulated urgency when the agent acts on a record:
+
+```python
+directive.resolve_pressure("relevance")
+```
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `decay_rate` | `float` | `0.5` | Power-law decay exponent (inherited). |
+| `base_score_field` | `str` | `None` | Companion field whose value multiplies the decay curve (inherited). |
+| `cycles` | `list` | `[]` | List of `(period, amplitude, phase)` tuples. Use `TemporalPeriod` constants for period values. |
+| `pressure_rate` | `float` | `0.0` | Rate of urgency buildup per unresolved day. |
+| `partition_by` | `str`/`tuple` | `()` | Partition sorted set by key fields (inherited). |
+
+### TemporalPeriod constants
+
+Import from `popoto.fields.constants`:
+
+| Constant | Value (seconds) | Usage |
+|----------|----------------|-------|
+| `TemporalPeriod.DAILY` | 86,400 | Daily check-ins |
+| `TemporalPeriod.WEEKLY` | 604,800 | Weekly reviews |
+| `TemporalPeriod.MONTHLY` | 2,592,000 | Monthly reports |
+| `TemporalPeriod.QUARTERLY` | 7,776,000 | Quarterly planning |
+| `TemporalPeriod.YEARLY` | 31,536,000 | Annual cycles |
+
+See [CyclicDecayField feature docs](cyclic-decay-field.md) for the full reference including the scoring formula, Redis data model, and error handling.
 
 ## AccessTracker
 
@@ -377,7 +438,7 @@ These primitives follow Popoto's existing patterns:
 
 2. **Redis-native everything.** No external brokers or job queues. Lua scripts, sorted sets, streams, Bloom filters — all within the Redis process.
 
-3. **Composable.** Each primitive is independently useful. Use `DecayingSortedField` alone for time-weighted ranking, or combine all twelve for a full cognitive memory system.
+3. **Composable.** Each primitive is independently useful. Use `DecayingSortedField` alone for time-weighted ranking, add `CyclicDecayField` for temporal rhythms and urgency, or combine all twelve for a full cognitive memory system.
 
 4. **Pipeline-safe.** Every operation accepts an optional `pipeline` parameter for atomic execution, consistent with all Popoto field hooks.
 
