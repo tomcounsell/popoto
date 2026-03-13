@@ -1,10 +1,10 @@
 # Agent Memory
 
-Popoto Agent Memory is a set of ORM primitives that give AI agents programmable memory — records that decay over time, strengthen through use, track confidence, form associations, and surface the right context at the right moment.
+Popoto Agent Memory gives you ORM primitives for programmable memory — records that decay over time, strengthen through use, track confidence, form associations, and surface the right context at the right moment.
 
-These primitives are generic Redis-backed field types, mixins, and query methods. They don't encode any specific agent architecture. You compose them into memory models the same way you'd compose `KeyField`, `SortedField`, and `Relationship` into any Popoto model.
+These are generic Redis-backed field types, mixins, and query methods. They don't encode any specific agent architecture. You compose them into memory models the same way you'd compose `KeyField`, `SortedField`, and `Relationship` into any Popoto model.
 
-## Why agents need memory primitives
+## Why your agent needs memory primitives
 
 LLMs reason well over content you put in their context window. What they can't do on their own:
 
@@ -14,7 +14,7 @@ LLMs reason well over content you put in their context window. What they can't d
 - **Retrieve associatively** — surface related records without explicit graph queries
 - **Filter noise** — avoid storing low-value observations in the first place
 
-Popoto Agent Memory adds these capabilities as composable ORM building blocks. Each one is independently useful; together they form a complete agent memory system.
+Popoto Agent Memory gives you these capabilities as composable ORM building blocks. Each one is independently useful; together they form a complete agent memory system.
 
 ## Primitives overview
 
@@ -41,7 +41,7 @@ A `SortedField` subclass where records lose retrieval weight over time following
 
 The sorted set score is always a timestamp. A Lua script computes decay-ranked results at query time:
 
-```
+```text
 decayed_score = base_score × elapsed_days ^ (-decay_rate)
 ```
 
