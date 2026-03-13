@@ -301,8 +301,7 @@ class QueryBuilder:
 
         # Use actual field class for key generation (CyclicDecayField has
         # its own field_class_key prefix, distinct from DecayingSortedField)
-        field_cls = type(field)
-        sortedset_db_key = field_cls.get_sortedset_db_key(
+        sortedset_db_key = field.__class__.get_sortedset_db_key(
             model_class, field_name, *partition_values
         )
 

@@ -1805,7 +1805,7 @@ class Model(metaclass=ModelBase):
         now = time.time()
         redis_key = self._redis_key or self.db_key.redis_key
 
-        sortedset_db_key = DecayingSortedField.get_partitioned_sortedset_db_key(
+        sortedset_db_key = field.__class__.get_partitioned_sortedset_db_key(
             self, field_name
         )
 
