@@ -22,7 +22,6 @@ from src import popoto
 from src.popoto.fields.decaying_sorted_field import DecayingSortedField
 from src.popoto.models.query import QueryException
 
-
 # --- Test Models ---
 
 

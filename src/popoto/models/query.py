@@ -277,7 +277,9 @@ class QueryBuilder:
             )
 
         # Use field defaults unless overridden
-        effective_decay_rate = decay_rate if decay_rate is not None else field.decay_rate
+        effective_decay_rate = (
+            decay_rate if decay_rate is not None else field.decay_rate
+        )
         effective_base_score_field = (
             base_score_field
             if base_score_field is not None
@@ -289,9 +291,7 @@ class QueryBuilder:
 
         # Build the sorted set key respecting partition_by
         try:
-            partition_values = [
-                str(self._filters[pf]) for pf in field.partition_by
-            ]
+            partition_values = [str(self._filters[pf]) for pf in field.partition_by]
         except KeyError:
             missing = [pf for pf in field.partition_by if pf not in self._filters]
             raise QueryException(
