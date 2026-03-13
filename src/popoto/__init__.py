@@ -25,6 +25,7 @@ from .fields.shortcuts import (
     SortedKeyField,
 )
 from .fields.decaying_sorted_field import DecayingSortedField
+from .fields.access_tracker import AccessTrackerMixin
 from .fields.geo_field import GeoField
 
 try:
@@ -82,6 +83,7 @@ __all__ = [
     "SortedField",
     "SortedKeyField",
     "DecayingSortedField",
+    "AccessTrackerMixin",
     "GeoField",
     "DataFrameField",
     "Relationship",

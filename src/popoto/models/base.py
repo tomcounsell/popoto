@@ -323,7 +323,6 @@ class ModelBase(type):
     """
 
     def __new__(cls, name, bases, attrs, **kwargs):
-
         # Initialization is only performed for a Model and its subclasses
         parents = [b for b in bases if isinstance(b, ModelBase)]
         if not parents:
@@ -1561,8 +1560,14 @@ class Model(metaclass=ModelBase):
             if index_hash:
                 pipeline = pipeline.hdel(index_key, index_hash)
 
-        self._db_content = dict()  # 5
-        self._saved_field_values = dict()  # 5
+        # Clean up AccessTrackerMixin keys if applicable  # 5
+        from ..fields.access_tracker import AccessTrackerMixin
+
+        if isinstance(self, AccessTrackerMixin):
+            self._delete_access_tracker_keys(pipeline=pipeline)
+
+        self._db_content = dict()  # 6
+        self._saved_field_values = dict()  # 6
 
         if db_response is not False:
             pipeline.execute()
