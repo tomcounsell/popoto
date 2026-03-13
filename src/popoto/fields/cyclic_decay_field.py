@@ -219,9 +219,7 @@ class CyclicDecayField(DecayingSortedField):
         Pattern: $CyclicDecayF:{Model}:{field}:{partitions}:cycles
         """
         ss_key = self.get_partitioned_sortedset_db_key(model_instance, field_name)
-        # Replace the $SortedF prefix with $CyclicDecayF and append :cycles
-        key_str = ss_key.redis_key.replace("$SortedF:", "$CyclicDecayF:", 1)
-        return key_str + ":cycles"
+        return ss_key.redis_key + ":cycles"
 
     def _get_pressure_hash_key(self, model_instance, field_name):
         """Build the Redis key for the pressure companion hash.
@@ -229,15 +227,13 @@ class CyclicDecayField(DecayingSortedField):
         Pattern: $CyclicDecayF:{Model}:{field}:{partitions}:pressure
         """
         ss_key = self.get_partitioned_sortedset_db_key(model_instance, field_name)
-        key_str = ss_key.redis_key.replace("$SortedF:", "$CyclicDecayF:", 1)
-        return key_str + ":pressure"
+        return ss_key.redis_key + ":pressure"
 
     @classmethod
     def _get_cycles_hash_key_from_parts(cls, model_class, field_name, *partition_values):
         """Build cycles hash key from model class and partition values."""
         ss_key = cls.get_sortedset_db_key(model_class, field_name, *partition_values)
-        key_str = ss_key.redis_key.replace("$SortedF:", "$CyclicDecayF:", 1)
-        return key_str + ":cycles"
+        return ss_key.redis_key + ":cycles"
 
     @classmethod
     def _get_pressure_hash_key_from_parts(
@@ -245,8 +241,7 @@ class CyclicDecayField(DecayingSortedField):
     ):
         """Build pressure hash key from model class and partition values."""
         ss_key = cls.get_sortedset_db_key(model_class, field_name, *partition_values)
-        key_str = ss_key.redis_key.replace("$SortedF:", "$CyclicDecayF:", 1)
-        return key_str + ":pressure"
+        return ss_key.redis_key + ":pressure"
 
     @classmethod
     def on_save(cls, model_instance, field_name, field_value, pipeline=None, **kwargs):
@@ -287,7 +282,8 @@ class CyclicDecayField(DecayingSortedField):
 
         # Store pressure data — preserve existing last_resolved
         if field.pressure_rate > 0:
-            # Check if entry already exists (to preserve last_resolved)
+            # Read directly from Redis (not the pipeline) because we need
+            # the result immediately to decide whether to preserve last_resolved.
             existing_raw = POPOTO_REDIS_DB.hget(pressure_hash_key, member_key)
             if existing_raw:
                 # Only update rate, preserve last_resolved
