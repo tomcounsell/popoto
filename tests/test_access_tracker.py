@@ -60,7 +60,7 @@ def teardown_module():
         model.delete_all()
     # Clean up any leftover access tracker keys
     redis = popoto.get_redis()
-    for key in redis.keys("$AT:*"):
+    for key in redis.scan_iter("$AT:*"):
         redis.delete(key)
 
 
@@ -73,13 +73,13 @@ class TestOnRead:
     def setup_method(self):
         TrackedItem.delete_all()
         redis = popoto.get_redis()
-        for key in redis.keys("$AT:*"):
+        for key in redis.scan_iter("$AT:*"):
             redis.delete(key)
 
     def teardown_method(self):
         TrackedItem.delete_all()
         redis = popoto.get_redis()
-        for key in redis.keys("$AT:*"):
+        for key in redis.scan_iter("$AT:*"):
             redis.delete(key)
 
     def test_on_read_stages_timestamp(self):
@@ -129,13 +129,13 @@ class TestConfirmAccess:
     def setup_method(self):
         TrackedItem.delete_all()
         redis = popoto.get_redis()
-        for key in redis.keys("$AT:*"):
+        for key in redis.scan_iter("$AT:*"):
             redis.delete(key)
 
     def teardown_method(self):
         TrackedItem.delete_all()
         redis = popoto.get_redis()
-        for key in redis.keys("$AT:*"):
+        for key in redis.scan_iter("$AT:*"):
             redis.delete(key)
 
     def test_confirm_promotes_staged(self):
@@ -211,13 +211,13 @@ class TestDiscardStagedAccess:
     def setup_method(self):
         TrackedItem.delete_all()
         redis = popoto.get_redis()
-        for key in redis.keys("$AT:*"):
+        for key in redis.scan_iter("$AT:*"):
             redis.delete(key)
 
     def teardown_method(self):
         TrackedItem.delete_all()
         redis = popoto.get_redis()
-        for key in redis.keys("$AT:*"):
+        for key in redis.scan_iter("$AT:*"):
             redis.delete(key)
 
     def test_discard_clears_staging(self):
@@ -261,13 +261,13 @@ class TestAccessLogCapping:
     def setup_method(self):
         TrackedItemSmallCap.delete_all()
         redis = popoto.get_redis()
-        for key in redis.keys("$AT:*"):
+        for key in redis.scan_iter("$AT:*"):
             redis.delete(key)
 
     def teardown_method(self):
         TrackedItemSmallCap.delete_all()
         redis = popoto.get_redis()
-        for key in redis.keys("$AT:*"):
+        for key in redis.scan_iter("$AT:*"):
             redis.delete(key)
 
     def test_capping_at_max_access_log(self):
@@ -309,13 +309,13 @@ class TestProperties:
     def setup_method(self):
         TrackedItem.delete_all()
         redis = popoto.get_redis()
-        for key in redis.keys("$AT:*"):
+        for key in redis.scan_iter("$AT:*"):
             redis.delete(key)
 
     def teardown_method(self):
         TrackedItem.delete_all()
         redis = popoto.get_redis()
-        for key in redis.keys("$AT:*"):
+        for key in redis.scan_iter("$AT:*"):
             redis.delete(key)
 
     def test_access_count_default_zero(self):
@@ -338,13 +338,13 @@ class TestNoTrack:
     def setup_method(self):
         TrackedItem.delete_all()
         redis = popoto.get_redis()
-        for key in redis.keys("$AT:*"):
+        for key in redis.scan_iter("$AT:*"):
             redis.delete(key)
 
     def teardown_method(self):
         TrackedItem.delete_all()
         redis = popoto.get_redis()
-        for key in redis.keys("$AT:*"):
+        for key in redis.scan_iter("$AT:*"):
             redis.delete(key)
 
     def test_no_track_suppresses_on_read(self):
@@ -375,13 +375,13 @@ class TestDeleteCleanup:
     def setup_method(self):
         TrackedItem.delete_all()
         redis = popoto.get_redis()
-        for key in redis.keys("$AT:*"):
+        for key in redis.scan_iter("$AT:*"):
             redis.delete(key)
 
     def teardown_method(self):
         TrackedItem.delete_all()
         redis = popoto.get_redis()
-        for key in redis.keys("$AT:*"):
+        for key in redis.scan_iter("$AT:*"):
             redis.delete(key)
 
     def test_delete_removes_all_keys(self):
@@ -437,13 +437,13 @@ class TestConcurrentAccess:
     def setup_method(self):
         TrackedItem.delete_all()
         redis = popoto.get_redis()
-        for key in redis.keys("$AT:*"):
+        for key in redis.scan_iter("$AT:*"):
             redis.delete(key)
 
     def teardown_method(self):
         TrackedItem.delete_all()
         redis = popoto.get_redis()
-        for key in redis.keys("$AT:*"):
+        for key in redis.scan_iter("$AT:*"):
             redis.delete(key)
 
     def test_concurrent_on_read(self):
@@ -515,13 +515,13 @@ class TestQueryIntegration:
     def setup_method(self):
         TrackedItem.delete_all()
         redis = popoto.get_redis()
-        for key in redis.keys("$AT:*"):
+        for key in redis.scan_iter("$AT:*"):
             redis.delete(key)
 
     def teardown_method(self):
         TrackedItem.delete_all()
         redis = popoto.get_redis()
-        for key in redis.keys("$AT:*"):
+        for key in redis.scan_iter("$AT:*"):
             redis.delete(key)
 
     def test_get_fires_on_read(self):
@@ -543,6 +543,172 @@ class TestQueryIntegration:
         redis = popoto.get_redis()
         staged_key = f"$AT:TrackedItem:staged:{TrackedItem(name='query_filter').db_key.redis_key}"
         assert redis.llen(staged_key) == 1
+
+
+# --- Export tests ---
+
+
+class TestSpacingEffect:
+    """Test that spaced reads produce different access logs than massed reads."""
+
+    def setup_method(self):
+        TrackedItem.delete_all()
+        redis = popoto.get_redis()
+        for key in redis.scan_iter("$AT:*"):
+            redis.delete(key)
+
+    def teardown_method(self):
+        TrackedItem.delete_all()
+        redis = popoto.get_redis()
+        for key in redis.scan_iter("$AT:*"):
+            redis.delete(key)
+
+    def test_spaced_vs_massed_reads(self):
+        """Spaced reads over 3 days produce different timestamps than massed reads."""
+
+        spaced = TrackedItem.create(name="spaced")
+        massed = TrackedItem.create(name="massed")
+
+        redis = popoto.get_redis()
+
+        # Simulate spaced reads: 3 reads spread across 3 days
+        day_seconds = 86400
+        base_time = time.time() - 3 * day_seconds
+        for day in range(3):
+            ts = str(base_time + day * day_seconds)
+            redis.rpush(spaced._at_key("staged"), ts)
+
+        # Simulate massed reads: 3 reads all at once
+        now = str(time.time())
+        for _ in range(3):
+            redis.rpush(massed._at_key("staged"), now)
+
+        spaced.confirm_access()
+        massed.confirm_access()
+
+        # Both have same access_count
+        assert spaced.access_count == 3
+        assert massed.access_count == 3
+
+        # But their access logs tell different stories
+        spaced_log = redis.lrange(spaced._at_key("access_log"), 0, -1)
+        massed_log = redis.lrange(massed._at_key("access_log"), 0, -1)
+
+        spaced_ts = [float(t) for t in spaced_log]
+        massed_ts = [float(t) for t in massed_log]
+
+        # Spaced reads have significant time spread
+        spaced_spread = max(spaced_ts) - min(spaced_ts)
+        massed_spread = max(massed_ts) - min(massed_ts)
+
+        assert spaced_spread > day_seconds  # spread over days
+        assert massed_spread < 1.0  # all within 1 second
+
+
+# --- Synergy test: priority score from access log ---
+
+
+class TestSynergyWithDecay:
+    """Test that confirmed access log enables priority score computation."""
+
+    def setup_method(self):
+        TrackedItem.delete_all()
+        redis = popoto.get_redis()
+        for key in redis.scan_iter("$AT:*"):
+            redis.delete(key)
+
+    def teardown_method(self):
+        TrackedItem.delete_all()
+        redis = popoto.get_redis()
+        for key in redis.scan_iter("$AT:*"):
+            redis.delete(key)
+
+    def test_priority_score_from_access_log(self):
+        """Confirmed access log timestamps enable B = ln(sum(t_j^(-d))) scoring."""
+        import math
+
+        item = TrackedItem.create(name="synergy")
+        redis = popoto.get_redis()
+
+        # Stage timestamps at known intervals (1, 2, 3 days ago)
+        now = time.time()
+        for days_ago in [1, 2, 3]:
+            ts = str(now - days_ago * 86400)
+            redis.rpush(item._at_key("staged"), ts)
+
+        item.confirm_access()
+
+        # Read back access log and compute spacing-effect priority score
+        log = redis.lrange(item._at_key("access_log"), 0, -1)
+        timestamps = [float(t) for t in log]
+
+        # B = ln(sum(t_j^(-d))) where t_j = elapsed days, d = decay rate
+        d = 0.5
+        score_sum = 0.0
+        for ts_val in timestamps:
+            elapsed_days = max((now - ts_val) / 86400, 0.001)
+            score_sum += elapsed_days ** (-d)
+
+        B = math.log(score_sum)
+        # Score should be computable and finite
+        assert math.isfinite(B)
+        # With 3 recent accesses, score should be positive
+        assert B > 0
+
+
+# --- Partition interaction test ---
+
+
+class TrackedPartitioned(AccessTrackerMixin, popoto.Model):
+    name = popoto.UniqueKeyField()
+    category = popoto.KeyField(null=False)
+    relevance = popoto.DecayingSortedField(partition_by="category")
+
+
+class TestPartitionInteraction:
+    """Test AccessTracker works correctly with partition_by on DecayingSortedField."""
+
+    def setup_method(self):
+        TrackedPartitioned.delete_all()
+        redis = popoto.get_redis()
+        for key in redis.scan_iter("$AT:*"):
+            redis.delete(key)
+
+    def teardown_method(self):
+        TrackedPartitioned.delete_all()
+        redis = popoto.get_redis()
+        for key in redis.scan_iter("$AT:*"):
+            redis.delete(key)
+
+    def test_partition_by_with_access_tracker(self):
+        """AccessTracker keys are per-instance, independent of partition_by."""
+        a1 = TrackedPartitioned.create(name="item_a1", category="A")
+        a2 = TrackedPartitioned.create(name="item_a2", category="A")
+        b1 = TrackedPartitioned.create(name="item_b1", category="B")
+
+        # Query within partition A — should fire on_read for a1, a2 only
+        results = TrackedPartitioned.query.filter(category="A").top_by_decay(
+            "relevance", n=10
+        )
+        assert len(results) == 2
+
+        redis = popoto.get_redis()
+
+        # a1 and a2 should have staged reads
+        assert redis.llen(a1._at_key("staged")) >= 1
+        assert redis.llen(a2._at_key("staged")) >= 1
+        # b1 should have no staged reads (not in partition A query)
+        assert redis.llen(b1._at_key("staged")) == 0
+
+        # Confirm a1 and verify its AT keys don't interfere with partition index
+        a1.confirm_access()
+        assert a1.access_count >= 1
+
+        # Partition query still works correctly after confirm
+        results_after = TrackedPartitioned.query.filter(category="A").top_by_decay(
+            "relevance", n=10
+        )
+        assert len(results_after) == 2
 
 
 # --- Export tests ---
