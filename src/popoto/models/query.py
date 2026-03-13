@@ -307,15 +307,39 @@ class QueryBuilder:
 
         now = time.time()
 
-        result = POPOTO_REDIS_DB.eval(
-            DECAY_SCORE_LUA,
-            1,  # number of KEYS
-            sortedset_db_key.redis_key,
-            str(now),
-            str(effective_decay_rate),
-            str(n),
-            effective_base_score_field,
-        )
+        # Use extended Lua script for CyclicDecayField, plain script otherwise
+        from ..fields.cyclic_decay_field import CyclicDecayField, CYCLIC_DECAY_LUA
+
+        if isinstance(field, CyclicDecayField):
+            # Build companion hash keys from partition values
+            cycles_hash_key = CyclicDecayField._get_cycles_hash_key_from_parts(
+                model_class, field_name, *partition_values
+            )
+            pressure_hash_key = CyclicDecayField._get_pressure_hash_key_from_parts(
+                model_class, field_name, *partition_values
+            )
+
+            result = POPOTO_REDIS_DB.eval(
+                CYCLIC_DECAY_LUA,
+                3,  # number of KEYS
+                sortedset_db_key.redis_key,
+                cycles_hash_key,
+                pressure_hash_key,
+                str(now),
+                str(effective_decay_rate),
+                str(n),
+                effective_base_score_field,
+            )
+        else:
+            result = POPOTO_REDIS_DB.eval(
+                DECAY_SCORE_LUA,
+                1,  # number of KEYS
+                sortedset_db_key.redis_key,
+                str(now),
+                str(effective_decay_rate),
+                str(n),
+                effective_base_score_field,
+            )
 
         if not result:
             return []
