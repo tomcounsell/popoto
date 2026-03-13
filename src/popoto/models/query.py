@@ -241,6 +241,110 @@ class QueryBuilder:
         self._computed_sort_reverse = reverse
         return self
 
+    def top_by_decay(self, field_name, n=10, decay_rate=None, base_score_field=None):
+        """Return top-N instances ranked by time-decayed score.
+
+        Executes a Lua script server-side that computes:
+            decayed_score = base_score * elapsed_days ^ (-decay_rate)
+
+        Args:
+            field_name: Name of a DecayingSortedField on the model.
+            n: Maximum number of results to return. Default 10.
+            decay_rate: Override the field's decay_rate for this query.
+            base_score_field: Override the field's base_score_field for this query.
+
+        Returns:
+            List of model instances in decayed-score order.
+
+        Raises:
+            QueryException: If field is not a DecayingSortedField or
+                required partition_by filter is missing.
+        """
+        from ..fields.decaying_sorted_field import DecayingSortedField, DECAY_SCORE_LUA
+        from .encoding import decode_popoto_model_hashmap
+
+        model_class = self._query.model_class
+        if field_name not in model_class._meta.fields:
+            raise QueryException(
+                f"'{model_class.__name__}' has no field '{field_name}'"
+            )
+
+        field = model_class._meta.fields[field_name]
+        if not isinstance(field, DecayingSortedField):
+            raise QueryException(
+                f"top_by_decay() requires a DecayingSortedField. "
+                f"'{field_name}' is {type(field).__name__}"
+            )
+
+        # Use field defaults unless overridden
+        effective_decay_rate = decay_rate if decay_rate is not None else field.decay_rate
+        effective_base_score_field = (
+            base_score_field
+            if base_score_field is not None
+            else (field.base_score_field or "")
+        )
+
+        if n <= 0:
+            return []
+
+        # Build the sorted set key respecting partition_by
+        try:
+            partition_values = [
+                str(self._filters[pf]) for pf in field.partition_by
+            ]
+        except KeyError:
+            missing = [pf for pf in field.partition_by if pf not in self._filters]
+            raise QueryException(
+                f"top_by_decay() on '{field_name}' requires partition filter(s): "
+                f"{', '.join(missing)}"
+            )
+
+        sortedset_db_key = DecayingSortedField.get_sortedset_db_key(
+            model_class, field_name, *partition_values
+        )
+
+        import time
+
+        now = time.time()
+
+        result = POPOTO_REDIS_DB.eval(
+            DECAY_SCORE_LUA,
+            1,  # number of KEYS
+            sortedset_db_key.redis_key,
+            str(now),
+            str(effective_decay_rate),
+            str(n),
+            effective_base_score_field,
+        )
+
+        if not result:
+            return []
+
+        # Parse result: [key1, score1, key2, score2, ...]
+        redis_keys = []
+        for i in range(0, len(result), 2):
+            key = result[i]
+            if isinstance(key, bytes):
+                key = key.decode()
+            redis_keys.append(key)
+
+        if not redis_keys:
+            return []
+
+        # Fetch model instances via pipeline
+        pipe = POPOTO_REDIS_DB.pipeline()
+        for key in redis_keys:
+            pipe.hgetall(key)
+        raw_results = pipe.execute()
+
+        instances = []
+        for key, data in zip(redis_keys, raw_results):
+            if data:
+                instance = decode_popoto_model_hashmap(model_class, data)
+                instances.append(instance)
+
+        return instances
+
     def all(self) -> list:
         """Execute the query and return all matching results.
 
@@ -946,6 +1050,26 @@ class Query:
             builder._values_tuple = kwargs["values"]
 
         return builder
+
+    def top_by_decay(self, field_name, n=10, decay_rate=None, base_score_field=None):
+        """Return top-N instances ranked by time-decayed score.
+
+        Convenience method that creates a QueryBuilder and delegates.
+        For partitioned fields, use query.filter(partition=value).top_by_decay().
+
+        Args:
+            field_name: Name of a DecayingSortedField on the model.
+            n: Maximum number of results to return. Default 10.
+            decay_rate: Override the field's decay_rate for this query.
+            base_score_field: Override the field's base_score_field for this query.
+
+        Returns:
+            List of model instances in decayed-score order.
+        """
+        builder = QueryBuilder(self)
+        return builder.top_by_decay(
+            field_name, n=n, decay_rate=decay_rate, base_score_field=base_score_field
+        )
 
     def _execute_filter(self, q_objects: list = None, **kwargs) -> list:
         """Internal method to execute filter logic and return results.
