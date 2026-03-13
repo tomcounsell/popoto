@@ -124,4 +124,5 @@ Pipfile
 *.dump
 settings/local.py
 /src/popoto/_archive/
-.claude/
+.claude/hooks/
+.claude/worktrees/

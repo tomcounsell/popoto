@@ -1,6 +1,6 @@
 site_name: Popoto Documentation
 repo_url: https://github.com/tomcounsell/popoto/
-edit_uri: edit/master/docs
+edit_uri: edit/main/docs
 site_author: Tom Counsell
 
 nav:
@@ -13,6 +13,7 @@ nav:
     - Multi-Tenancy: 'multi-tenancy.md'
     - Async Operations: 'async.md'
     - PubSub: 'pubsub.md'
+    - Agent Memory: 'features/agent-memory.md'
     - API Reference: 'api-reference.md'
     - Contributing:
         - Style Guide: 'style-guide.md'
