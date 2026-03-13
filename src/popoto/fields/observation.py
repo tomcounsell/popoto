@@ -37,8 +37,6 @@ Example:
 import logging
 import time
 
-import msgpack
-
 from ..redis_db import POPOTO_REDIS_DB
 
 logger = logging.getLogger("POPOTO.ObservationProtocol")
@@ -378,6 +376,5 @@ class RecallProposal:
         key = cls._pending_key(model_class, partition)
         results = POPOTO_REDIS_DB.zrange(key, 0, -1, withscores=True)
         return [
-            (m.decode() if isinstance(m, bytes) else m, score)
-            for m, score in results
+            (m.decode() if isinstance(m, bytes) else m, score) for m, score in results
         ]
