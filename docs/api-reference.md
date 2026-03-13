@@ -5,7 +5,7 @@ Complete reference for all public classes, methods, and functions in the Popoto 
 ```python
 from popoto import Model, Field, KeyField, AutoKeyField, UniqueKeyField
 from popoto import SortedField, SortedKeyField, GeoField, DatetimeField, Relationship
-from popoto import DecayingSortedField
+from popoto import DecayingSortedField, CyclicDecayField, TemporalPeriod
 from popoto import Publisher, Subscriber
 from popoto import ModelException, QueryException, PublisherException, SubscriberException
 ```
@@ -165,25 +165,52 @@ new_rating = restaurant.atomic_increment("score", 0.5)
 Model.touch(field_name: str, pipeline: redis.client.Pipeline = None)
 ```
 
-Update a `DecayingSortedField`'s timestamp without a full save. Refreshes the decay clock
-by setting the sorted set score to the current time.
+Update a `DecayingSortedField` or `CyclicDecayField` timestamp without a full save. Refreshes
+the decay clock by setting the sorted set score to the current time.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `field_name` | `str` | Name of a `DecayingSortedField` on the model. |
+| `field_name` | `str` | Name of a `DecayingSortedField` or `CyclicDecayField` on the model. |
 | `pipeline` | `redis.client.Pipeline` | Optional pipeline for batching. |
 
 **Returns:** The new timestamp (`float`), or the pipeline if one was provided.
 
 **Raises:**
 
-- `TypeError` if the model has not been saved or the field is not a `DecayingSortedField`.
+- `TypeError` if the model has not been saved or the field is not a `DecayingSortedField` (or subclass).
 - `AttributeError` if `field_name` does not exist on the model.
 
 ```python
 memory = Memory.query.get(agent_id="agent-1")
 new_ts = memory.touch("relevance")
 # The decay clock is reset — this memory will rank higher in top_by_decay()
+```
+
+### Model.resolve\_pressure()
+
+```python
+Model.resolve_pressure(field_name: str, pipeline: redis.client.Pipeline = None)
+```
+
+Reset homeostatic pressure for a `CyclicDecayField` member. Discharges accumulated urgency
+by updating `last_resolved` to the current time in the pressure companion hash.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `field_name` | `str` | Name of a `CyclicDecayField` with `pressure_rate > 0`. |
+| `pipeline` | `redis.client.Pipeline` | Optional pipeline for batching. |
+
+**Returns:** The new `last_resolved` timestamp (`float`), or the pipeline if one was provided.
+
+**Raises:**
+
+- `TypeError` if the model has not been saved, the field is not a `CyclicDecayField`, or `pressure_rate` is 0.
+- `AttributeError` if `field_name` does not exist on the model.
+
+```python
+directive = Directive.query.get(agent_id="agent-1")
+directive.resolve_pressure("relevance")
+# Pressure resets — the record's urgency score drops to 0
 ```
 
 ### Model.load()
@@ -666,17 +693,19 @@ Query.top_by_decay(field_name: str, n: int = 10, decay_rate: float = None, base_
 
 Return top-N instances ranked by time-decayed score. Executes a Lua script server-side
 that computes `base_score * elapsed_days^(-decay_rate)` for each member in the sorted set.
+For `CyclicDecayField`, the Lua script also adds cyclical resonance and homeostatic pressure
+components to the score.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `field_name` | `str` | Name of a `DecayingSortedField` on the model. |
+| `field_name` | `str` | Name of a `DecayingSortedField` or `CyclicDecayField` on the model. |
 | `n` | `int` | Maximum number of results. Default `10`. |
 | `decay_rate` | `float` | Override the field's decay_rate for this query. |
 | `base_score_field` | `str` | Override the field's base_score_field for this query. |
 
 **Returns:** `list` of Model instances in decayed-score order.
 
-**Raises:** `QueryException` if the field is not a `DecayingSortedField` or a required `partition_by` filter is missing.
+**Raises:** `QueryException` if the field is not a `DecayingSortedField` (or subclass) or a required `partition_by` filter is missing.
 
 ```python
 # Top 10 most relevant memories
@@ -839,6 +868,27 @@ usage examples and [Agent Memory](features/agent-memory.md) for the broader cont
 | `decay_rate` | `float` | `0.5` | Controls decay speed. Must be > 0. |
 | `base_score_field` | `str` | `None` | Companion field name for base score multiplier. |
 | `partition_by` | `str` or `tuple` | `()` | Partition the sorted set by key field values. |
+
+### CyclicDecayField
+
+```python
+from popoto.fields.cyclic_decay_field import CyclicDecayField
+
+CyclicDecayField(decay_rate=0.5, base_score_field=None, cycles=[], pressure_rate=0.0, partition_by=(), **kwargs)
+```
+
+A `DecayingSortedField` subclass that adds cyclical resonance and homeostatic pressure
+to time-decayed scoring. All three components are computed atomically in a single Lua script.
+See [CyclicDecayField](features/cyclic-decay-field.md) for usage examples and
+[Agent Memory](features/agent-memory.md) for the broader context.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `decay_rate` | `float` | `0.5` | Controls decay speed (inherited). Must be > 0. |
+| `base_score_field` | `str` | `None` | Companion field name for base score multiplier (inherited). |
+| `cycles` | `list` | `[]` | List of `(period, amplitude, phase)` tuples. Use `TemporalPeriod` constants. |
+| `pressure_rate` | `float` | `0.0` | Rate of urgency buildup per unresolved day. Must be >= 0. |
+| `partition_by` | `str` or `tuple` | `()` | Partition the sorted set by key field values (inherited). |
 
 ### GeoField
 
