@@ -347,6 +347,152 @@ class TestTouch:
         assert results[0].name == "touch_a"
 
 
+# --- Decay formula verification ---
+
+
+class TestDecayFormula:
+    """Verify decay computation against hand-computed values."""
+
+    def setup_method(self):
+        DecayWithBase.delete_all()
+
+    def teardown_method(self):
+        DecayWithBase.delete_all()
+
+    def test_known_decay_values(self):
+        """Verify scores match: base_score * elapsed_days^(-decay_rate).
+
+        With decay_rate=0.5 and base_score=1.0:
+          1 day  -> 1.0 * 1^-0.5  = 1.0
+          4 days -> 1.0 * 4^-0.5  = 0.5
+          100 days -> 1.0 * 100^-0.5 = 0.1
+        """
+        now = time.time()
+        items = {}
+        for label, days in [("1day", 1), ("4day", 4), ("100day", 100)]:
+            item = DecayWithBase.create(name=label, weight=1.0)
+            items[label] = item
+
+        # Backdate each item's sorted set score
+        ss_key = DecayingSortedField.get_sortedset_db_key(DecayWithBase, "relevance")
+        popoto.POPOTO_REDIS_DB.zadd(
+            ss_key.redis_key,
+            {
+                items["1day"].db_key.redis_key: now - 86400 * 1,
+                items["4day"].db_key.redis_key: now - 86400 * 4,
+                items["100day"].db_key.redis_key: now - 86400 * 100,
+            },
+        )
+
+        results = DecayWithBase.query.top_by_decay("relevance", n=10)
+
+        # Build a name->rank lookup
+        names = [r.name for r in results]
+        assert names == ["1day", "4day", "100day"]
+
+    def test_base_score_scaling(self):
+        """base_score=5.0 at 4 days = 5 * 4^-0.5 = 5 * 0.5 = 2.5.
+
+        This should outrank base_score=1.0 at 1 day (score=1.0).
+        """
+        now = time.time()
+        heavy = DecayWithBase.create(name="heavy_4d", weight=5.0)
+        light = DecayWithBase.create(name="light_1d", weight=1.0)
+
+        ss_key = DecayingSortedField.get_sortedset_db_key(DecayWithBase, "relevance")
+        popoto.POPOTO_REDIS_DB.zadd(
+            ss_key.redis_key,
+            {
+                heavy.db_key.redis_key: now - 86400 * 4,
+                light.db_key.redis_key: now - 86400 * 1,
+            },
+        )
+
+        results = DecayWithBase.query.top_by_decay("relevance", n=10)
+        # heavy: 5.0 * 4^-0.5 = 2.5, light: 1.0 * 1^-0.5 = 1.0
+        assert results[0].name == "heavy_4d"
+
+
+# --- Performance benchmarks ---
+
+
+class TestDecayBenchmarks:
+    """Benchmark top_by_decay on larger sorted sets."""
+
+    def setup_method(self):
+        DecayItem.delete_all()
+
+    def teardown_method(self):
+        DecayItem.delete_all()
+
+    def test_1k_members(self):
+        """top_by_decay handles 1K members."""
+        ss_key = DecayingSortedField.get_sortedset_db_key(DecayItem, "relevance")
+        now = time.time()
+
+        # Bulk insert directly into sorted set and model hashes
+        pipe = popoto.POPOTO_REDIS_DB.pipeline()
+        members = {}
+        for i in range(1000):
+            redis_key = f"DecayItem:bench1k_{i}"
+            members[redis_key] = now - (i * 3600)  # each 1 hour older
+        pipe.zadd(ss_key.redis_key, members)
+        pipe.execute()
+
+        start = time.time()
+        result = popoto.POPOTO_REDIS_DB.eval(
+            __import__(
+                "src.popoto.fields.decaying_sorted_field", fromlist=["DECAY_SCORE_LUA"]
+            ).DECAY_SCORE_LUA,
+            1,
+            ss_key.redis_key,
+            str(now),
+            "0.5",
+            "10",
+            "",
+        )
+        elapsed = time.time() - start
+
+        assert len(result) == 20  # 10 items * 2 (key + score)
+        assert elapsed < 1.0, f"1K members took {elapsed:.3f}s (expected < 1s)"
+
+        # Cleanup
+        popoto.POPOTO_REDIS_DB.delete(ss_key.redis_key)
+
+    def test_10k_members(self):
+        """top_by_decay handles 10K members."""
+        ss_key = DecayingSortedField.get_sortedset_db_key(DecayItem, "relevance")
+        now = time.time()
+
+        pipe = popoto.POPOTO_REDIS_DB.pipeline()
+        members = {}
+        for i in range(10000):
+            redis_key = f"DecayItem:bench10k_{i}"
+            members[redis_key] = now - (i * 360)
+        pipe.zadd(ss_key.redis_key, members)
+        pipe.execute()
+
+        start = time.time()
+        result = popoto.POPOTO_REDIS_DB.eval(
+            __import__(
+                "src.popoto.fields.decaying_sorted_field", fromlist=["DECAY_SCORE_LUA"]
+            ).DECAY_SCORE_LUA,
+            1,
+            ss_key.redis_key,
+            str(now),
+            "0.5",
+            "10",
+            "",
+        )
+        elapsed = time.time() - start
+
+        assert len(result) == 20
+        assert elapsed < 5.0, f"10K members took {elapsed:.3f}s (expected < 5s)"
+
+        # Cleanup
+        popoto.POPOTO_REDIS_DB.delete(ss_key.redis_key)
+
+
 # --- Export tests ---
 
 

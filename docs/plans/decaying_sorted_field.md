@@ -1,5 +1,5 @@
 ---
-status: Planning
+status: In Progress
 type: feature
 appetite: Medium
 owner: Solo dev
@@ -343,10 +343,10 @@ No agent integration required — this is a Popoto library primitive. Downstream
 
 ---
 
-## Open Questions
+## Resolved Questions
 
-1. **Base score storage location**: The Lua script in the POC uses a separate hash key for base scores. In the full implementation, the base score lives in the model's own hash (e.g., `importance` field). The Lua script will need to `HGET` the model hash + `cmsgpack.unpack()` to extract the named field's value. This is the approach used by `atomic_increment()`. Is this the preferred approach, or should base scores be duplicated into a separate hash for simpler Lua access?
+1. **Base score storage location**: Read from the model's own hash via `HGET` + `cmsgpack.unpack()`. This follows the `atomic_increment()` pattern (base.py:1665-1691). No separate hash needed — the Lua script reads the model hash key directly and extracts the named field value.
 
-2. **field_class_key naming**: Should the sorted set key prefix be `$DecayingSortedF` (following the FieldBase metaclass pattern where the class name minus "Field" gets the prefix)? This means DecayingSortedField sorted sets will be separate from regular SortedField sorted sets, which is correct behavior but worth confirming.
+2. **field_class_key naming**: Yes, `$DecayingSortedF`. The `FieldBase` metaclass (field.py:124) generates `$DecayingSortedF` automatically. DecayingSortedField sorted sets are intentionally separate from regular `$SortedF` sets because they store timestamps as scores, not field values.
 
-3. **touch() scope**: Should `touch()` be restricted to DecayingSortedField only, or should it also work on any SortedField with `auto_now=True`? The issue specifies DecayingSortedField-only, but a broader `touch()` might be useful.
+3. **touch() scope**: DecayingSortedField-only. Regular SortedField scores represent field values (e.g., price) — updating the score without updating the hash would create inconsistency. DecayingSortedField scores ARE timestamps, so `touch()` is semantically correct only here.
