@@ -29,3 +29,27 @@ class TemporalPeriod:
     MONTHLY = 2_592_000
     QUARTERLY = 7_776_000
     YEARLY = 31_536_000
+
+
+class InteractionWeight:
+    """Weight constants for source/role-based importance scoring.
+
+    Two axes combined by addition:
+    - Source axis: what kind of entity (HUMAN, AGENT, SYSTEM)
+    - Role axis: authority level (EXECUTIVE, MANAGER, PEER, SUBORDINATE)
+
+    With decay_rate=0.5, effective lifetime ~ score^2 days.
+    """
+
+    HUMAN = 6.0
+    AGENT = 1.0
+    SYSTEM = 0.2
+
+    EXECUTIVE = 44.0
+    MANAGER = 16.0
+    PEER = 6.0
+    SUBORDINATE = 1.0
+
+    @staticmethod
+    def combine(source, role):
+        return source + role

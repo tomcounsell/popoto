@@ -288,14 +288,15 @@ class QueryBuilder:
         self._no_track = True
         return self
 
-    def top_by_decay(self, field_name, n=10, decay_rate=None, base_score_field=None):
+    def top_by_decay(self, field_name=None, n=10, decay_rate=None, base_score_field=None):
         """Return top-N instances ranked by time-decayed score.
 
         Executes a Lua script server-side that computes:
             decayed_score = base_score * elapsed_days ^ (-decay_rate)
 
         Args:
-            field_name: Name of a DecayingSortedField on the model.
+            field_name: Name of a DecayingSortedField on the model. Optional
+                when the model has exactly one DecayingSortedField (or subclass).
             n: Maximum number of results to return. Default 10.
             decay_rate: Override the field's decay_rate for this query.
             base_score_field: Override the field's base_score_field for this query.
@@ -311,7 +312,25 @@ class QueryBuilder:
         from .encoding import decode_popoto_model_hashmap
 
         model_class = self._query.model_class
-        if field_name not in model_class._meta.fields:
+
+        if field_name is None:
+            dsf_names = [
+                name
+                for name, f in model_class._meta.fields.items()
+                if isinstance(f, DecayingSortedField)
+            ]
+            if len(dsf_names) == 1:
+                field_name = dsf_names[0]
+            elif len(dsf_names) == 0:
+                raise QueryException(
+                    f"'{model_class.__name__}' has no DecayingSortedField"
+                )
+            else:
+                raise QueryException(
+                    f"Multiple DecayingSortedFields on '{model_class.__name__}': "
+                    f"{dsf_names}. Specify field_name explicitly."
+                )
+        elif field_name not in model_class._meta.fields:
             raise QueryException(
                 f"'{model_class.__name__}' has no field '{field_name}'"
             )
@@ -1132,14 +1151,15 @@ class Query:
 
         return builder
 
-    def top_by_decay(self, field_name, n=10, decay_rate=None, base_score_field=None):
+    def top_by_decay(self, field_name=None, n=10, decay_rate=None, base_score_field=None):
         """Return top-N instances ranked by time-decayed score.
 
         Convenience method that creates a QueryBuilder and delegates.
         For partitioned fields, use query.filter(partition=value).top_by_decay().
 
         Args:
-            field_name: Name of a DecayingSortedField on the model.
+            field_name: Name of a DecayingSortedField on the model. Optional
+                when the model has exactly one DecayingSortedField (or subclass).
             n: Maximum number of results to return. Default 10.
             decay_rate: Override the field's decay_rate for this query.
             base_score_field: Override the field's base_score_field for this query.
