@@ -77,6 +77,26 @@ top = Directive.query.filter(agent_id="agent-1").top_by_decay("relevance", n=10)
 directive.resolve_pressure("relevance")
 ```
 
+### Adjusting Cycle Amplitudes
+
+Use `strengthen_cycle()` and `weaken_cycle()` to dynamically adjust how strongly cycles influence a record's score. Both methods multiply all cycle amplitudes by a factor, with clamping to `[0.0, 100.0]`. Amplitudes below `0.01` snap to zero (effectively killing the cycle).
+
+```python
+# Strengthen: multiply all cycle amplitudes by 1.5x
+directive.strengthen_cycle("relevance", factor=1.5)
+
+# Weaken: multiply all cycle amplitudes by 0.6x
+directive.weaken_cycle("relevance", factor=0.6)
+```
+
+These methods are used internally by [ObservationProtocol](agent-memory.md#observationprotocol) to adjust cycles based on agent behavior outcomes:
+
+- **acted** outcome calls `strengthen_cycle(factor=1.2)` — reinforcing cycles that led to useful memories
+- **dismissed** outcome calls `weaken_cycle(factor=0.8)` — dampening cycles for rejected memories
+- **contradicted** outcome calls `weaken_cycle(factor=0.5)` — aggressively dampening contradicted memories
+
+You can also call them directly for custom cycle management outside the ObservationProtocol.
+
 ### Refreshing the Decay Clock
 
 ```python
@@ -115,3 +135,9 @@ When companion hashes return nil (no cycle/pressure data), the overhead is two n
 - `resolve_pressure()` on unsaved model raises `TypeError`
 - `resolve_pressure()` on non-CyclicDecayField raises `TypeError`
 - `resolve_pressure()` with `pressure_rate=0` raises `TypeError`
+- `strengthen_cycle()` / `weaken_cycle()` on non-CyclicDecayField raises `TypeError`
+- `strengthen_cycle()` / `weaken_cycle()` on unsaved model raises `TypeError`
+
+## Integration with ObservationProtocol
+
+When used with [ObservationProtocol](agent-memory.md#observationprotocol), cycle amplitudes are adjusted automatically based on how the agent responds to surfaced memories. See [Agent Memory — Four outcomes](agent-memory.md#four-outcomes) for the full effects table.
