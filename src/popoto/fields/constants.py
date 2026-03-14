@@ -51,5 +51,11 @@ class InteractionWeight:
     SUBORDINATE = 1.0
 
     @staticmethod
-    def combine(source, role):
+    def combine(source: float, role: float) -> float:
+        """Return the combined weight for a source/role pair.
+
+        The two axes are additive: a HUMAN (6.0) PEER (6.0) interaction
+        yields weight 12.0, while an AGENT (1.0) SUBORDINATE (1.0)
+        interaction yields weight 2.0.
+        """
         return source + role
