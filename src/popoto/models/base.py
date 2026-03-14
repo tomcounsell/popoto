@@ -1959,6 +1959,115 @@ class Model(metaclass=ModelBase):
         """
         return self._adjust_cycle_amplitudes(field_name, factor, pipeline)
 
+    def update_confidence(self, field_name, signal, pipeline=None):
+        """Update Bayesian confidence for a ConfidenceField.
+
+        Applies the Bayesian update formula atomically via Lua script:
+            new = prior + (signal - prior) / sqrt(evidence_count + 1)
+
+        Args:
+            field_name: Name of a ConfidenceField on the model.
+            signal: Float 0-1. >= 0.5 is corroboration, < 0.5 is contradiction.
+            pipeline: Optional Redis pipeline for batched operations.
+
+        Returns:
+            dict: Updated confidence data.
+
+        Raises:
+            AttributeError: If field_name does not exist on the model.
+            TypeError: If field is not a ConfidenceField or model is unsaved.
+        """
+        from ..fields.confidence_field import ConfidenceField
+
+        if field_name not in self._meta.fields:
+            raise AttributeError(
+                f"'{self.__class__.__name__}' has no field '{field_name}'"
+            )
+
+        field = self._meta.fields[field_name]
+        if not isinstance(field, ConfidenceField):
+            raise TypeError(
+                f"update_confidence() requires a ConfidenceField. "
+                f"'{field_name}' is {type(field).__name__}"
+            )
+
+        if not self._db_content and not self._saved_field_values:
+            raise TypeError(
+                "Cannot call update_confidence() on an unsaved model instance."
+            )
+
+        result = ConfidenceField.update(self, field_name, signal, pipeline=pipeline)
+
+        # Auto-discharge: if confidence dropped below 0.1, resolve pressure
+        # on CyclicDecayFields to prevent stale high-pressure items
+        if result.get("confidence", 1.0) < 0.1:
+            from ..fields.cyclic_decay_field import CyclicDecayField
+
+            for fn, f in self._meta.fields.items():
+                if isinstance(f, CyclicDecayField) and f.pressure_rate > 0:
+                    self.resolve_pressure(fn, pipeline=pipeline)
+
+        return result
+
+    def get_confidence(self, field_name):
+        """Get current confidence value for a ConfidenceField.
+
+        Args:
+            field_name: Name of a ConfidenceField on the model.
+
+        Returns:
+            float: Current confidence value.
+
+        Raises:
+            AttributeError: If field_name does not exist.
+            TypeError: If field is not a ConfidenceField.
+        """
+        from ..fields.confidence_field import ConfidenceField
+
+        if field_name not in self._meta.fields:
+            raise AttributeError(
+                f"'{self.__class__.__name__}' has no field '{field_name}'"
+            )
+
+        field = self._meta.fields[field_name]
+        if not isinstance(field, ConfidenceField):
+            raise TypeError(
+                f"get_confidence() requires a ConfidenceField. "
+                f"'{field_name}' is {type(field).__name__}"
+            )
+
+        data = ConfidenceField.get_confidence_data(self, field_name)
+        if data is None:
+            return field.initial_confidence
+        return data.get("confidence", field.initial_confidence)
+
+    def get_confidence_data(self, field_name):
+        """Get full confidence metadata for a ConfidenceField.
+
+        Args:
+            field_name: Name of a ConfidenceField on the model.
+
+        Returns:
+            dict or None: Confidence data with keys: confidence,
+                evidence_count, corroborations, contradictions.
+
+        Raises:
+            AttributeError: If field_name does not exist.
+            TypeError: If field is not a ConfidenceField.
+        """
+        from ..fields.confidence_field import ConfidenceField
+
+        if field_name not in self._meta.fields:
+            raise AttributeError(
+                f"'{self.__class__.__name__}' has no field '{field_name}'"
+            )
+
+        field = self._meta.fields[field_name]
+        if not isinstance(field, ConfidenceField):
+            raise TypeError("get_confidence_data() requires a ConfidenceField.")
+
+        return ConfidenceField.get_confidence_data(self, field_name)
+
     def _adjust_cycle_amplitudes(self, field_name, factor, pipeline=None):
         """Internal: multiply all cycle amplitudes by factor with clamping.
 

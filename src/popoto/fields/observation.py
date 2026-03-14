@@ -189,6 +189,15 @@ def _apply_acted(instance, pipeline):
             if field.pressure_rate > 0:
                 instance.resolve_pressure(field_name, pipeline=pipeline)
 
+    # Update confidence: corroborate (signal=0.9)
+    from .confidence_field import ConfidenceField
+
+    for field_name, field in instance._meta.fields.items():
+        if isinstance(field, ConfidenceField):
+            ConfidenceField.update(instance, field_name, signal=0.9, pipeline=pipeline)
+            # Check for auto-discharge after confidence update
+            _check_auto_discharge(instance, field_name, pipeline=pipeline)
+
 
 def _apply_dismissed(instance, pipeline):
     """Dismissed: discard staged reads, weaken cycles.
@@ -244,6 +253,36 @@ def _apply_contradicted(instance, pipeline):
     for field_name, field in instance._meta.fields.items():
         if isinstance(field, CyclicDecayField):
             instance.weaken_cycle(field_name, factor=0.5, pipeline=pipeline)
+
+    # Update confidence: contradict (signal=0.1)
+    from .confidence_field import ConfidenceField
+
+    for field_name, field in instance._meta.fields.items():
+        if isinstance(field, ConfidenceField):
+            ConfidenceField.update(instance, field_name, signal=0.1, pipeline=pipeline)
+            # Check for auto-discharge after confidence update
+            _check_auto_discharge(instance, field_name, pipeline=pipeline)
+
+
+def _check_auto_discharge(instance, field_name, pipeline=None):
+    """Check if confidence dropped below 0.1 and auto-discharge pressure.
+
+    When confidence drops below the threshold, resolve pressure on all
+    CyclicDecayFields to prevent stale high-pressure items from dominating.
+
+    Args:
+        instance: A Model instance.
+        field_name: Name of the ConfidenceField that was just updated.
+        pipeline: Optional Redis pipeline.
+    """
+    from .confidence_field import ConfidenceField
+    from .cyclic_decay_field import CyclicDecayField
+
+    conf_data = ConfidenceField.get_confidence_data(instance, field_name)
+    if conf_data and conf_data.get("confidence", 1.0) < 0.1:
+        for fn, f in instance._meta.fields.items():
+            if isinstance(f, CyclicDecayField) and f.pressure_rate > 0:
+                instance.resolve_pressure(fn, pipeline=pipeline)
 
 
 class RecallProposal:
