@@ -25,3 +25,15 @@ class SubscriberException(Exception):
     """Raised when a subscriber's message handler fails."""
 
     pass
+
+
+class SkipSaveException(ModelException):
+    """Raised by WriteFilterMixin to silently abort a save operation.
+
+    When a model's compute_filter_score() returns a score below the
+    minimum threshold, this exception is raised during pre_save to
+    short-circuit persistence. The save() method catches it and returns
+    without error.
+    """
+
+    pass

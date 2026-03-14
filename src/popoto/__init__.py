@@ -3,6 +3,7 @@ from .exceptions import (
     QueryException,
     PublisherException,
     SubscriberException,
+    SkipSaveException,
 )
 from .fields.field import Field
 from .fields.shortcuts import (
@@ -26,6 +27,7 @@ from .fields.shortcuts import (
 )
 from .fields.decaying_sorted_field import DecayingSortedField
 from .fields.access_tracker import AccessTrackerMixin
+from .fields.write_filter import WriteFilterMixin
 from .fields.cyclic_decay_field import CyclicDecayField
 from .fields.constants import TemporalPeriod, InteractionWeight
 from .fields.observation import ObservationProtocol, RecallProposal
@@ -87,6 +89,8 @@ __all__ = [
     "SortedKeyField",
     "DecayingSortedField",
     "AccessTrackerMixin",
+    "WriteFilterMixin",
+    "SkipSaveException",
     "CyclicDecayField",
     "TemporalPeriod",
     "InteractionWeight",
