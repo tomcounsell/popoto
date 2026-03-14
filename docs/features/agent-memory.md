@@ -218,7 +218,7 @@ class Directive(Model):
 Query with the same `top_by_decay()` interface:
 
 ```python
-top = Directive.query.filter(agent_id="agent-1").top_by_decay("relevance", n=10)
+top = Directive.query.filter(agent_id="agent-1").top_by_decay(n=10)
 ```
 
 Discharge accumulated urgency when the agent acts on a record:
@@ -268,7 +268,7 @@ class Memory(Model, AccessTrackerMixin):
     relevance = DecayingSortedField()
 
 # Reading triggers on_read() automatically via query hooks
-memories = Memory.query.filter(agent_id="agent-1").top_by_decay("relevance", 5)
+memories = Memory.query.filter(agent_id="agent-1").top_by_decay(5)
 
 # After the agent acts on a memory, confirm the read
 memories[0].confirm_access()       # promotes staged → confirmed
@@ -345,7 +345,7 @@ class Memory(AccessTrackerMixin, Model):
     )
 
 # 1. Agent retrieves memories (on_read fires automatically via query hooks)
-memories = Memory.query.filter(agent_id="agent-1").top_by_decay("relevance", n=10)
+memories = Memory.query.filter(agent_id="agent-1").top_by_decay(n=10)
 
 # 2. Optional: mark proactively surfaced memories
 ObservationProtocol.on_surfaced(memories[:3], reason="pressure_threshold")

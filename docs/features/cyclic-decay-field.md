@@ -67,7 +67,7 @@ class Directive(Model):
 
 ```python
 # Top 10 directives by combined decay + cyclic + pressure score
-top = Directive.query.filter(agent_id="agent-1").top_by_decay("relevance", n=10)
+top = Directive.query.filter(agent_id="agent-1").top_by_decay(n=10)
 ```
 
 ### Resolving Pressure
