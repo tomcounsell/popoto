@@ -1892,6 +1892,116 @@ class Model(metaclass=ModelBase):
             POPOTO_REDIS_DB.hset(pressure_hash_key, member_key, packed)
             return now
 
+    def strengthen_cycle(self, field_name, factor=1.2, pipeline=None):
+        """Multiply cycle amplitudes by factor (>1.0 strengthens).
+
+        Reads current cycles from companion hash, multiplies each amplitude
+        by factor, writes back. Amplitudes are clamped to [0.0, 100.0].
+
+        Args:
+            field_name: Name of a CyclicDecayField on the model.
+            factor: Multiplier for amplitudes. Default 1.2.
+            pipeline: Optional Redis pipeline for batched operations.
+
+        Returns:
+            The updated cycles list, or the pipeline if one was provided.
+
+        Raises:
+            TypeError: If model is unsaved or field is not a CyclicDecayField.
+            AttributeError: If field_name does not exist.
+        """
+        return self._adjust_cycle_amplitudes(field_name, factor, pipeline)
+
+    def weaken_cycle(self, field_name, factor=0.8, pipeline=None):
+        """Multiply cycle amplitudes by factor (<1.0 weakens).
+
+        Reads current cycles from companion hash, multiplies each amplitude
+        by factor, writes back. Amplitudes below 0.01 are treated as zero.
+
+        Args:
+            field_name: Name of a CyclicDecayField on the model.
+            factor: Multiplier for amplitudes. Default 0.8.
+            pipeline: Optional Redis pipeline for batched operations.
+
+        Returns:
+            The updated cycles list, or the pipeline if one was provided.
+
+        Raises:
+            TypeError: If model is unsaved or field is not a CyclicDecayField.
+            AttributeError: If field_name does not exist.
+        """
+        return self._adjust_cycle_amplitudes(field_name, factor, pipeline)
+
+    def _adjust_cycle_amplitudes(self, field_name, factor, pipeline=None):
+        """Internal: multiply all cycle amplitudes by factor with clamping.
+
+        Shared implementation for strengthen_cycle and weaken_cycle.
+        Amplitudes are clamped to [0.0, 100.0]. Values below 0.01
+        are snapped to 0.0.
+
+        Args:
+            field_name: Name of a CyclicDecayField on the model.
+            factor: Multiplier for amplitudes.
+            pipeline: Optional Redis pipeline for batched operations.
+
+        Returns:
+            The updated cycles list, or the pipeline if one was provided.
+        """
+        from ..fields.cyclic_decay_field import CyclicDecayField
+
+        if field_name not in self._meta.fields:
+            raise AttributeError(
+                f"'{self.__class__.__name__}' has no field '{field_name}'"
+            )
+
+        field = self._meta.fields[field_name]
+        if not isinstance(field, CyclicDecayField):
+            raise TypeError(
+                f"strengthen_cycle()/weaken_cycle() requires a CyclicDecayField. "
+                f"'{field_name}' is {type(field).__name__}"
+            )
+
+        if not self._db_content and not self._saved_field_values:
+            raise TypeError(
+                "Cannot adjust cycle amplitudes on an unsaved model instance. "
+                "Save the model first."
+            )
+
+        import msgpack
+
+        member_key = self._redis_key or self.db_key.redis_key
+        cycles_hash_key = field._get_cycles_hash_key(self, field_name)
+
+        # Read current cycles
+        raw = POPOTO_REDIS_DB.hget(cycles_hash_key, member_key)
+        if not raw:
+            # No cycles stored — nothing to adjust
+            if isinstance(pipeline, redis.client.Pipeline):
+                return pipeline
+            return []
+
+        cycles = msgpack.unpackb(raw, raw=False)
+
+        # Multiply each amplitude by factor, clamp to [0.0, 100.0]
+        max_amplitude = 100.0
+        min_threshold = 0.01
+        for cycle in cycles:
+            # cycle = [period, amplitude, phase]
+            new_amp = cycle[1] * factor
+            new_amp = max(0.0, min(new_amp, max_amplitude))
+            if new_amp < min_threshold:
+                new_amp = 0.0
+            cycle[1] = new_amp
+
+        packed = msgpack.packb(cycles)
+
+        if isinstance(pipeline, redis.client.Pipeline):
+            pipeline.hset(cycles_hash_key, member_key, packed)
+            return pipeline
+        else:
+            POPOTO_REDIS_DB.hset(cycles_hash_key, member_key, packed)
+            return cycles
+
     @classmethod
     def get_info(cls) -> dict:
         """Return a dict with the model name, field names, and available query filters.
