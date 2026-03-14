@@ -3,6 +3,7 @@
     ".": {
       "release-type": "python",
       "package-name": "popoto",
+      "include-component-in-tag": false,
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": false,
       "bump-patch-for-minor-pre-major": false,
