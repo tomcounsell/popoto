@@ -196,6 +196,7 @@ The `QueryBuilder` returned by `filter()` supports these chainable methods:
 | `values(*fields)` | Return dicts with specified fields instead of model instances |
 | `computed_sort(fn, reverse)` | Sort by a Python key function (applied after fetch, before limit) |
 | `no_track()` | Suppress `on_read()` tracking for `AccessTrackerMixin` models |
+| `top_by_decay(field_name, n)` | Return top-N by time-decayed score ([API ref](api-reference.md#querytop_by_decay)) |
 | `all()` | Execute query and return all results as a list |
 | `first()` | Execute query and return first result or None |
 | `count()` | Count matching results without loading objects |

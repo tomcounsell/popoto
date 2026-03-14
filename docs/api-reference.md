@@ -5,7 +5,7 @@ Complete reference for all public classes, methods, and functions in the Popoto 
 ```python
 from popoto import Model, Field, KeyField, AutoKeyField, UniqueKeyField
 from popoto import SortedField, SortedKeyField, GeoField, DatetimeField, Relationship
-from popoto import DecayingSortedField, CyclicDecayField, TemporalPeriod, AccessTrackerMixin
+from popoto import DecayingSortedField, CyclicDecayField, TemporalPeriod, InteractionWeight, AccessTrackerMixin
 from popoto import ObservationProtocol, RecallProposal
 from popoto import Publisher, Subscriber
 from popoto import ModelException, QueryException, PublisherException, SubscriberException
@@ -741,7 +741,7 @@ Return a list of Redis key bytes for all instances of this model.
 ### Query.top_by_decay()
 
 ```python
-Query.top_by_decay(field_name: str, n: int = 10, decay_rate: float = None, base_score_field: str = None) -> list
+Query.top_by_decay(field_name: str = None, n: int = 10, decay_rate: float = None, base_score_field: str = None) -> list
 ```
 
 Return top-N instances ranked by time-decayed score. Executes a Lua script server-side
@@ -749,26 +749,32 @@ that computes `base_score * elapsed_days^(-decay_rate)` for each member in the s
 For `CyclicDecayField`, the Lua script also adds cyclical resonance and homeostatic pressure
 components to the score.
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `field_name` | `str` | Name of a `DecayingSortedField` or `CyclicDecayField` on the model. |
-| `n` | `int` | Maximum number of results. Default `10`. |
-| `decay_rate` | `float` | Override the field's decay_rate for this query. |
-| `base_score_field` | `str` | Override the field's base_score_field for this query. |
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `field_name` | `str` | `None` | Name of a `DecayingSortedField` or `CyclicDecayField` on the model. Optional when the model has exactly one `DecayingSortedField` (or subclass). |
+| `n` | `int` | `10` | Maximum number of results. |
+| `decay_rate` | `float` | `None` | Override the field's decay_rate for this query. |
+| `base_score_field` | `str` | `None` | Override the field's base_score_field for this query. |
 
 **Returns:** `list` of Model instances in decayed-score order.
 
-**Raises:** `QueryException` if the field is not a `DecayingSortedField` (or subclass) or a required `partition_by` filter is missing.
+**Raises:**
+
+- `QueryException` if `field_name` is omitted and the model has zero or multiple `DecayingSortedField` fields.
+- `QueryException` if the field is not a `DecayingSortedField` (or subclass) or a required `partition_by` filter is missing.
 
 ```python
-# Top 10 most relevant memories
+# Auto-detect field_name (works when model has exactly one DecayingSortedField)
+results = Memory.query.filter(agent_id="agent-1").top_by_decay(n=10)
+
+# Explicit field_name (required when model has multiple DecayingSortedFields)
 results = Memory.query.filter(agent_id="agent-1").top_by_decay("relevance", n=10)
 
 # Aggressive decay — only very recent records
-hot = Memory.query.filter(agent_id="agent-1").top_by_decay("relevance", n=5, decay_rate=1.0)
+hot = Memory.query.filter(agent_id="agent-1").top_by_decay(n=5, decay_rate=1.0)
 ```
 
-Also available directly on `Query`: `Memory.query.top_by_decay("relevance", n=10)`.
+Also available directly on `Query`: `Memory.query.top_by_decay(n=10)`.
 For partitioned fields, use `filter()` first to specify the partition value.
 
 ### Async Query Methods
@@ -1029,6 +1035,52 @@ Remove proposals older than TTL (default 3600 seconds). Returns list of expired 
 #### RecallProposal.get\_pending(model\_class, partition=None) -> list
 
 Return all pending proposals as `(member_key, surfaced_at)` tuples.
+
+### InteractionWeight
+
+```python
+from popoto import InteractionWeight
+# or: from popoto.fields.constants import InteractionWeight
+```
+
+Weight constants for source/role-based importance scoring, designed for use with `DecayingSortedField`'s `base_score_field` parameter. Two axes combined by addition: source (what kind of entity) and role (authority level).
+
+#### Source axis
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `InteractionWeight.HUMAN` | `6.0` | Human interaction |
+| `InteractionWeight.AGENT` | `1.0` | Agent-to-agent interaction |
+| `InteractionWeight.SYSTEM` | `0.2` | Automated system event |
+
+#### Role axis
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `InteractionWeight.EXECUTIVE` | `44.0` | Executive-level authority |
+| `InteractionWeight.MANAGER` | `16.0` | Manager-level authority |
+| `InteractionWeight.PEER` | `6.0` | Peer-level authority |
+| `InteractionWeight.SUBORDINATE` | `1.0` | Subordinate-level authority |
+
+#### InteractionWeight.combine(source, role)
+
+```python
+InteractionWeight.combine(source: float, role: float) -> float
+```
+
+Add source and role weights together. With `decay_rate=0.5`, effective lifetime is approximately `score**2` days.
+
+```python
+# Human executive directive — stays relevant for ~7 years
+score = InteractionWeight.combine(InteractionWeight.HUMAN, InteractionWeight.EXECUTIVE)
+# => 50.0
+
+# Agent peer observation — ~7 weeks
+score = InteractionWeight.combine(InteractionWeight.AGENT, InteractionWeight.PEER)
+# => 7.0
+```
+
+See [Agent Memory — Source weighting](features/agent-memory.md#source-weighting-for-teamwork) for the full lifetime table and usage patterns.
 
 ### GeoField
 

@@ -619,14 +619,18 @@ class Memory(Model):
     relevance = DecayingSortedField(base_score_field="importance")
 ```
 
-Query for the most relevant recent records with `top_by_decay()`:
+Query for the most relevant recent records with `top_by_decay()`. When a model has
+exactly one `DecayingSortedField`, the field name is auto-detected:
 
 ```python
-# Top 10 by decayed relevance
+# Auto-detect field_name (works because Memory has exactly one DecayingSortedField)
+top = Memory.query.filter(agent_id="agent-1").top_by_decay(n=10)
+
+# Explicit field_name also works
 top = Memory.query.filter(agent_id="agent-1").top_by_decay("relevance", n=10)
 
 # Override decay rate for this query (aggressive — only very recent)
-hot = Memory.query.filter(agent_id="agent-1").top_by_decay("relevance", n=5, decay_rate=1.0)
+hot = Memory.query.filter(agent_id="agent-1").top_by_decay(n=5, decay_rate=1.0)
 ```
 
 Refresh a record's timestamp without a full save using `touch()`:
@@ -641,6 +645,10 @@ memory.touch("relevance")  # Resets the decay clock
 | `decay_rate` | `float` | `0.5` | Controls how fast scores drop. Higher = faster decay. Must be > 0. |
 | `base_score_field` | `str` | `None` | Name of a companion field whose value multiplies the decay curve. When `None`, base score is 1.0. |
 | `partition_by` | `str` or `tuple` | `()` | Partition the sorted set by key field values (inherited from `SortedField`). |
+
+Use `InteractionWeight` constants with `base_score_field` for source/role-based importance
+weighting in multi-agent teams. See [Agent Memory — Source weighting](features/agent-memory.md#source-weighting-for-teamwork)
+for the full pattern.
 
 All standard `SortedField` range filters (`__gt`, `__gte`, `__lt`, `__lte`, `__between`)
 work against the timestamp score. See [Agent Memory](features/agent-memory.md) for the
@@ -674,8 +682,8 @@ class Directive(Model):
 Query with the same `top_by_decay()` interface, and discharge pressure with `resolve_pressure()`:
 
 ```python
-# Top 10 by combined decay + cyclic + pressure score
-top = Directive.query.filter(agent_id="agent-1").top_by_decay("relevance", n=10)
+# Top 10 by combined decay + cyclic + pressure score (field_name auto-detected)
+top = Directive.query.filter(agent_id="agent-1").top_by_decay(n=10)
 
 # Discharge accumulated urgency
 directive.resolve_pressure("relevance")
