@@ -56,7 +56,7 @@ from ..fields.sorted_field_mixin import SortedFieldMixin
 from ..fields.geo_field import GeoField
 from ..fields.relationship import Relationship
 from ..redis_db import POPOTO_REDIS_DB
-from ..exceptions import ModelException
+from ..exceptions import ModelException, SkipSaveException
 
 logger = logging.getLogger("POPOTO.model_base")
 
@@ -1045,6 +1045,15 @@ class Model(metaclass=ModelBase):
         if update_fields is not None and len(update_fields) == 0:
             return pipeline or 0
 
+        # WriteFilterMixin: check write filter before any save work
+        from ..fields.write_filter import WriteFilterMixin
+
+        if isinstance(self, WriteFilterMixin):
+            try:
+                self._check_write_filter()
+            except SkipSaveException:
+                return pipeline if pipeline else False
+
         pipeline_or_success = self.pre_save(
             pipeline=pipeline,
             ignore_errors=ignore_errors,
@@ -1125,6 +1134,9 @@ class Model(metaclass=ModelBase):
                 # Merge into saved_field_values (preserve existing, update listed)
                 for field_name in update_fields:
                     self._saved_field_values[field_name] = getattr(self, field_name)
+                # WriteFilterMixin: tag priority after successful partial save
+                if isinstance(self, WriteFilterMixin):
+                    self._tag_priority(pipeline=pipeline)
                 return pipeline
             else:
                 # Use internal pipeline for atomic execution
@@ -1178,6 +1190,9 @@ class Model(metaclass=ModelBase):
                 # Merge into saved_field_values (preserve existing, update listed)
                 for field_name in update_fields:
                     self._saved_field_values[field_name] = getattr(self, field_name)
+                # WriteFilterMixin: tag priority after successful partial save
+                if isinstance(self, WriteFilterMixin):
+                    self._tag_priority()
                 return db_response
 
         # Full save path (existing behavior, unchanged)
@@ -1264,6 +1279,9 @@ class Model(metaclass=ModelBase):
                 field_name: getattr(self, field_name)
                 for field_name in self._meta.fields.keys()
             }
+            # WriteFilterMixin: tag priority after successful save
+            if isinstance(self, WriteFilterMixin):
+                self._tag_priority(pipeline=pipeline)
             return pipeline
 
         else:
@@ -1341,6 +1359,9 @@ class Model(metaclass=ModelBase):
                 field_name: getattr(self, field_name)
                 for field_name in self._meta.fields.keys()
             }
+            # WriteFilterMixin: tag priority after successful save
+            if isinstance(self, WriteFilterMixin):
+                self._tag_priority()
             return db_response
 
     @classmethod
@@ -1565,6 +1586,12 @@ class Model(metaclass=ModelBase):
 
         if isinstance(self, AccessTrackerMixin):
             self._delete_access_tracker_keys(pipeline=pipeline)
+
+        # Clean up WriteFilterMixin keys if applicable
+        from ..fields.write_filter import WriteFilterMixin
+
+        if isinstance(self, WriteFilterMixin):
+            self._delete_write_filter_keys(pipeline=pipeline)
 
         self._db_content = dict()  # 6
         self._saved_field_values = dict()  # 6

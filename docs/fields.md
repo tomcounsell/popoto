@@ -821,6 +821,75 @@ class Restaurant(Timestampable, Model):
     # created_at and updated_at are included automatically
 ```
 
+## WriteFilterMixin
+
+`WriteFilterMixin` gates `save()` calls based on a scoring function you define. Records
+scoring below a minimum threshold are silently discarded (never persisted). Records
+scoring above a priority threshold are persisted *and* tagged in a Redis sorted set for
+preferential retrieval.
+
+```python
+from popoto import Model, KeyField, Field
+from popoto.fields.write_filter import WriteFilterMixin
+
+class Memory(WriteFilterMixin, Model):
+    agent_id = KeyField()
+    content = Field(type=str)
+    importance = Field(type=float, default=0.5)
+
+    def compute_filter_score(self):
+        return self.importance or 0.0
+```
+
+The mixin adds three behaviors to your model:
+
+1. **Gate on save**: Before persisting, `compute_filter_score()` is called. If the
+   score is below `_wf_min_threshold` (default 0.2), a `SkipSaveException` is raised
+   and caught by `Model.save()`, silently aborting the write.
+
+2. **Priority tagging**: If the score meets or exceeds `_wf_priority_threshold`
+   (default 0.7), the record's Redis key is added to a sorted set at
+   `$WF:{ClassName}:priority` with the score as its rank.
+
+3. **Cleanup on delete**: When `delete()` is called, the record is removed from the
+   priority sorted set automatically.
+
+```python
+# Silently discarded — score 0.1 < min_threshold 0.2
+low = Memory(agent_id="a1", content="noise", importance=0.1)
+low.save()  # No error, but record is NOT in Redis
+
+# Persisted normally — score 0.5 between thresholds
+mid = Memory(agent_id="a1", content="useful", importance=0.5)
+mid.save()  # Stored in Redis
+
+# Persisted AND priority-tagged — score 0.9 >= priority_threshold 0.7
+high = Memory(agent_id="a1", content="critical", importance=0.9)
+high.save()  # Stored in Redis AND added to $WF:Memory:priority
+```
+
+Override the thresholds by setting class attributes:
+
+```python
+class StrictMemory(WriteFilterMixin, Model):
+    _wf_min_threshold = 0.4       # Higher bar to persist
+    _wf_priority_threshold = 0.8  # Higher bar for priority
+    # ...
+```
+
+| Attribute | Default | Description |
+|-----------|---------|-------------|
+| `_wf_min_threshold` | `0.2` | Minimum score to persist |
+| `_wf_priority_threshold` | `0.7` | Minimum score for priority tagging |
+
+!!! tip
+    `WriteFilterMixin` must appear **before** `Model` in the inheritance list so that
+    its `on_save()` hook is called. The scoring function is application logic — Popoto
+    provides the gating mechanism, not the scoring logic.
+
+See [Agent Memory — WriteFilter](features/agent-memory.md#writefilter) for the broader
+agent memory context and how WriteFilter fits with DecayingSortedField and AccessTracker.
+
 ## GeoField
 
 `GeoField` uses Redis geospatial indexes for location-based queries. This is perfect

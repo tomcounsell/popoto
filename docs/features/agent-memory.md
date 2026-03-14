@@ -26,7 +26,7 @@ The primitives ship incrementally. Each builds on the ones before it.
 | [CyclicDecayField](#cyclicdecayfield) | Temporal rhythms + homeostatic pressure on top of decay | Shipped ([PR #201](https://github.com/tomcounsell/popoto/pull/201)) |
 | [AccessTracker](#accesstracker) | Tracks read patterns — access count, timestamps, spacing effects | Shipped ([PR #203](https://github.com/tomcounsell/popoto/pull/203)) |
 | [ObservationProtocol](#observationprotocol) | Outcome-driven memory effects — acted/dismissed/deferred/contradicted | Shipped ([PR #206](https://github.com/tomcounsell/popoto/pull/206)) |
-| [WriteFilter](#writefilter) | Gates persistence — low-value records silently discarded at write time | Planned |
+| [WriteFilter](#writefilter) | Gates persistence — low-value records silently discarded at write time | Shipped ([PR #214](https://github.com/tomcounsell/popoto/pull/214)) |
 | [ConfidenceField](#confidencefield) | Bayesian certainty — corroboration strengthens, contradiction weakens | Planned |
 | [CoOccurrenceField](#cooccurrencefield) | Weighted associations — co-accessed records strengthen their link | Planned |
 | [EventStreamMixin](#eventstreammixin) | Append-only mutation log via Redis Streams | Planned |
@@ -422,20 +422,40 @@ Proposals are stored in Redis ZSETs keyed by `$RP:{ClassName}:pending:{partition
 
 ## WriteFilter
 
-Gates persistence based on a scoring function evaluated at write time. Records below a threshold are silently discarded. Records above a high threshold are tagged for priority processing.
+Gates persistence based on a scoring function evaluated at write time. Records below a threshold are silently discarded. Records above a high threshold are tagged for priority processing in a Redis sorted set.
 
 ```python
-class Memory(Model, WriteFilterMixin):
+from popoto import Model, KeyField, Field
+from popoto.fields.write_filter import WriteFilterMixin
+
+class Memory(WriteFilterMixin, Model):
     agent_id = KeyField()
     content = Field(type=str)
+    importance = Field(type=float, default=0.5)
 
-    @classmethod
-    def compute_filter_score(cls, instance):
-        # Application logic — Popoto provides the gating mechanism
-        return score_between_0_and_1
+    def compute_filter_score(self):
+        return self.importance or 0.0
+
+# Score 0.1 < min_threshold (0.2) — silently discarded
+Memory(agent_id="a1", content="noise", importance=0.1).save()
+
+# Score 0.5 — persisted normally
+Memory(agent_id="a1", content="useful", importance=0.5).save()
+
+# Score 0.9 >= priority_threshold (0.7) — persisted AND added to priority set
+Memory(agent_id="a1", content="critical", importance=0.9).save()
 ```
 
 You provide the scoring logic; Popoto provides the gate. This keeps low-value observations out of the index, reducing noise in retrieval.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `_wf_min_threshold` | `0.2` | Below this score, `save()` silently discards via `SkipSaveException` |
+| `_wf_priority_threshold` | `0.7` | At or above this score, record is added to `$WF:{ClassName}:priority` sorted set |
+
+Priority-tagged records are stored in a Redis sorted set keyed `$WF:{ClassName}:priority`, scored by the filter score. On `delete()`, cleanup removes the record from the priority set automatically.
+
+See [fields.md](../fields.md#writefiltermixin) for the full field reference.
 
 ## ConfidenceField
 
