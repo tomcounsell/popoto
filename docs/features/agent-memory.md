@@ -27,7 +27,7 @@ The primitives ship incrementally. Each builds on the ones before it.
 | [AccessTracker](#accesstracker) | Tracks read patterns — access count, timestamps, spacing effects | Shipped ([PR #203](https://github.com/tomcounsell/popoto/pull/203)) |
 | [ObservationProtocol](#observationprotocol) | Outcome-driven memory effects — acted/dismissed/deferred/contradicted | Shipped ([PR #206](https://github.com/tomcounsell/popoto/pull/206)) |
 | [WriteFilter](#writefilter) | Gates persistence — low-value records silently discarded at write time | Shipped ([PR #214](https://github.com/tomcounsell/popoto/pull/214)) |
-| [ConfidenceField](#confidencefield) | Bayesian certainty — corroboration strengthens, contradiction weakens | Planned |
+| [ConfidenceField](#confidencefield) | Bayesian certainty — corroboration strengthens, contradiction weakens | Shipped ([PR #215](https://github.com/tomcounsell/popoto/pull/215)) |
 | [CoOccurrenceField](#cooccurrencefield) | Weighted associations — co-accessed records strengthen their link | Planned |
 | [EventStreamMixin](#eventstreammixin) | Append-only mutation log via Redis Streams | Planned |
 | [CompositeScoreQuery](#compositescorequery) | Multi-factor retrieval — combine N sorted indexes with weights | Planned |
@@ -374,14 +374,14 @@ ObservationProtocol.on_context_used(memories, outcome_map)
 
 | Outcome | Meaning | Effects |
 |---------|---------|---------|
-| `acted` | Agent used the memory | `touch()`, `confirm_access()`, `strengthen_cycle(1.2)`, `resolve_pressure()` |
+| `acted` | Agent used the memory | `touch()`, `confirm_access()`, `strengthen_cycle(1.2)`, `resolve_pressure()`, corroborate confidence (signal=0.9) |
 | `dismissed` | Agent explicitly rejected | `discard_staged_access()`, `weaken_cycle(0.8)` |
 | `deferred` | Agent didn't address it | `discard_staged_access()` only — pressure keeps building |
-| `contradicted` | Agent explicitly contradicted | `discard_staged_access()`, `weaken_cycle(0.5)` |
+| `contradicted` | Agent explicitly contradicted | `discard_staged_access()`, `weaken_cycle(0.5)`, contradict confidence (signal=0.1), auto-discharge pressure if confidence < 0.1 |
 
 ### Graceful degradation
 
-Each effect checks whether the model supports it before applying. A model with `DecayingSortedField` but no `CyclicDecayField` still gets `touch()` on acted — just no cycle/pressure effects. A model without `AccessTrackerMixin` skips staging operations entirely.
+Each effect checks whether the model supports it before applying. A model with `DecayingSortedField` but no `CyclicDecayField` still gets `touch()` on acted — just no cycle/pressure effects. A model without `AccessTrackerMixin` skips staging operations entirely. A model without `ConfidenceField` skips confidence updates.
 
 ### Cycle amplitude adjustment
 
@@ -459,20 +459,65 @@ See [fields.md](../fields.md#writefiltermixin) for the full field reference.
 
 ## ConfidenceField
 
-A field that maintains a Bayesian confidence score updated atomically via Lua script. Each update provides a signal (corroborate or contradict) with a weight. The score converges as evidence accumulates.
+A `Field` subclass that tracks Bayesian confidence metadata per member, updated atomically via Lua script. Precision grows with `sqrt(n)` — early evidence has outsized effect while established beliefs resist change.
+
+Shipped in [PR #215](https://github.com/tomcounsell/popoto/pull/215).
+
+### Basic usage
 
 ```python
+from popoto import Model, AutoKeyField, Field
+from popoto.fields.confidence_field import ConfidenceField
+
 class Knowledge(Model):
-    topic = KeyField()
+    key = AutoKeyField()
     claim = Field(type=str)
-    confidence = ConfidenceField(default=0.5)
+    certainty = ConfidenceField(initial_confidence=0.5)
 
-# Corroborate
-knowledge.confidence.update(signal=0.9)
+knowledge = Knowledge.create(claim="The sky is blue")
 
-# Contradict
-knowledge.confidence.update(signal=0.1)
+# Corroborate (signal >= 0.5 increases confidence)
+knowledge.update_confidence("certainty", signal=0.9)
+
+# Contradict (signal < 0.5 decreases confidence)
+knowledge.update_confidence("certainty", signal=0.1)
+
+# Read current confidence
+confidence = knowledge.get_confidence("certainty")
+
+# Read all metadata
+data = knowledge.get_confidence_data("certainty")
+# Returns: {confidence: 0.5, evidence_count: 2, corroborations: 1, contradictions: 1}
 ```
+
+### Bayesian update formula
+
+```
+new_confidence = prior + (signal - prior) / sqrt(evidence_count + 1)
+```
+
+Early updates move confidence significantly; later updates have diminishing effect as evidence accumulates. Results are clamped to `[0, 1]`.
+
+### Entrainment with ObservationProtocol
+
+When used with `ObservationProtocol.on_context_used()`, confidence is automatically updated based on how the agent uses retrieved memories:
+
+| Outcome | Effect on Confidence |
+|---------|---------------------|
+| `acted` | Corroborate (signal=0.9) |
+| `dismissed` | No change |
+| `deferred` | No change |
+| `contradicted` | Contradict (signal=0.1); auto-discharge pressure if confidence drops below 0.1 |
+
+When confidence drops below 0.1 due to a `contradicted` outcome, homeostatic pressure on any `CyclicDecayField` is automatically resolved (discharged). This prevents low-confidence memories from building urgency.
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `initial_confidence` | `float` | `0.5` | Starting confidence for new members (0-1). |
+
+See [ConfidenceField feature docs](confidence-field.md) for the full reference including convergence behavior and Redis key patterns. See [API Reference](../api-reference.md#confidencefield) for the complete method signatures.
 
 When combined with `DecayingSortedField` or `CompositeScoreQuery`, confidence acts as a multiplier on retrieval weight — low-confidence records are naturally deprioritized.
 

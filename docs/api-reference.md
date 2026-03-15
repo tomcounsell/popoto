@@ -6,7 +6,7 @@ Complete reference for all public classes, methods, and functions in the Popoto 
 from popoto import Model, Field, KeyField, AutoKeyField, UniqueKeyField
 from popoto import SortedField, SortedKeyField, GeoField, DatetimeField, Relationship
 from popoto import DecayingSortedField, CyclicDecayField, TemporalPeriod, InteractionWeight, AccessTrackerMixin
-from popoto import ObservationProtocol, RecallProposal
+from popoto import ObservationProtocol, RecallProposal, ConfidenceField
 from popoto import Publisher, Subscriber
 from popoto import ModelException, QueryException, PublisherException, SubscriberException
 ```
@@ -1035,6 +1035,65 @@ Remove proposals older than TTL (default 3600 seconds). Returns list of expired 
 #### RecallProposal.get\_pending(model\_class, partition=None) -> list
 
 Return all pending proposals as `(member_key, surfaced_at)` tuples.
+
+### ConfidenceField
+
+```python
+from popoto import ConfidenceField
+# or: from popoto.fields.confidence_field import ConfidenceField
+```
+
+A `Field` subclass that tracks Bayesian confidence metadata per member, updated atomically via Lua script.
+Precision grows with `sqrt(n)` — early evidence has outsized effect while established beliefs resist change.
+
+See [ConfidenceField feature docs](features/confidence-field.md) for the full reference including the
+Bayesian update formula, convergence behavior, and entrainment with ObservationProtocol.
+
+```python
+ConfidenceField(initial_confidence=0.5, **kwargs)
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `initial_confidence` | `float` | `0.5` | Starting confidence for new members (0-1). |
+
+#### Instance methods
+
+##### instance.update\_confidence(field\_name, signal, pipeline=None) -> dict
+
+Atomically update confidence using the Bayesian formula: `new = prior + (signal - prior) / sqrt(evidence_count + 1)`.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `field_name` | `str` | Name of the `ConfidenceField` on the model. |
+| `signal` | `float` | Value 0-1. Values >= 0.5 corroborate, < 0.5 contradict. |
+| `pipeline` | `Pipeline` | Optional Redis pipeline. |
+
+**Returns:** Dict with keys `confidence`, `evidence_count`, `corroborations`, `contradictions`.
+
+**Raises:** `AttributeError` if field does not exist; `TypeError` if field is not a ConfidenceField or instance is unsaved.
+
+##### instance.get\_confidence(field\_name) -> float
+
+Read the current confidence value.
+
+**Returns:** Float confidence value, or `initial_confidence` if no data exists.
+
+##### instance.get\_confidence\_data(field\_name) -> dict | None
+
+Read all confidence metadata.
+
+**Returns:** Dict with keys `confidence`, `evidence_count`, `corroborations`, `contradictions`, or `None` if no data.
+
+#### Class-level methods
+
+##### ConfidenceField.update(instance, field\_name, signal, pipeline=None) -> dict
+
+Atomically update confidence via Lua script. Same formula as instance method.
+
+##### ConfidenceField.get\_confidence\_data(instance, field\_name) -> dict | None
+
+Read confidence metadata from companion hash.
 
 ### InteractionWeight
 
