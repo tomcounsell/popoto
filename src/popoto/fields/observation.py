@@ -189,6 +189,16 @@ def _apply_acted(instance, pipeline):
             if field.pressure_rate > 0:
                 instance.resolve_pressure(field_name, pipeline=pipeline)
 
+    # Corroborate confidence (ConfidenceField)
+    from .confidence_field import ConfidenceField
+
+    for field_name, field in instance._meta.fields.items():
+        if isinstance(field, ConfidenceField):
+            try:
+                ConfidenceField.update_confidence(instance, field_name, signal=0.9)
+            except (TypeError, ValueError):
+                pass  # Graceful degradation for unsaved instances
+
 
 def _apply_dismissed(instance, pipeline):
     """Dismissed: discard staged reads, weaken cycles.
@@ -244,6 +254,31 @@ def _apply_contradicted(instance, pipeline):
     for field_name, field in instance._meta.fields.items():
         if isinstance(field, CyclicDecayField):
             instance.weaken_cycle(field_name, factor=0.5, pipeline=pipeline)
+
+    # Contradict confidence (ConfidenceField)
+    from .confidence_field import ConfidenceField
+
+    for field_name, field in instance._meta.fields.items():
+        if isinstance(field, ConfidenceField):
+            try:
+                ConfidenceField.update_confidence(instance, field_name, signal=0.1)
+            except (TypeError, ValueError):
+                pass  # Graceful degradation for unsaved instances
+
+    # Auto-discharge: when confidence < 0.1, resolve pressure on CyclicDecayFields
+    for field_name, field in instance._meta.fields.items():
+        if isinstance(field, ConfidenceField):
+            try:
+                conf = ConfidenceField.get_confidence(instance, field_name)
+                if conf < 0.1:
+                    for cdf_name, cdf_field in instance._meta.fields.items():
+                        if (
+                            isinstance(cdf_field, CyclicDecayField)
+                            and cdf_field.pressure_rate > 0
+                        ):
+                            instance.resolve_pressure(cdf_name, pipeline=pipeline)
+            except (TypeError, ValueError, AttributeError):
+                pass
 
 
 class RecallProposal:

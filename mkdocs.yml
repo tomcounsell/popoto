@@ -15,6 +15,7 @@ nav:
     - PubSub: 'pubsub.md'
     - Agent Memory: 'features/agent-memory.md'
     - CyclicDecayField: 'features/cyclic-decay-field.md'
+    - ConfidenceField: 'features/confidence-field.md'
     - API Reference: 'api-reference.md'
     - Contributing:
         - Style Guide: 'style-guide.md'
