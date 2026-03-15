@@ -143,20 +143,17 @@ class ConfidenceField(Field):
         member_key = model_instance.db_key.redis_key
         data_hash_key = field._get_data_hash_key(model_instance, field_name)
 
+        # Initialize with HSETNX (atomic set-if-not-exists, no race condition)
+        initial_data = {
+            "confidence": field.initial_confidence,
+            "evidence_count": 0,
+            "corroborations": 0,
+            "contradictions": 0,
+        }
         db = (
             pipeline if isinstance(pipeline, redis.client.Pipeline) else POPOTO_REDIS_DB
         )
-
-        # Only initialize if no existing data (don't overwrite on re-save)
-        existing = POPOTO_REDIS_DB.hget(data_hash_key, member_key)
-        if not existing:
-            initial_data = {
-                "confidence": field.initial_confidence,
-                "evidence_count": 0,
-                "corroborations": 0,
-                "contradictions": 0,
-            }
-            db.hset(data_hash_key, member_key, msgpack.packb(initial_data))
+        db.hsetnx(data_hash_key, member_key, msgpack.packb(initial_data))
 
         return result
 
@@ -188,11 +185,15 @@ class ConfidenceField(Field):
     def update_confidence(cls, model_instance, field_name, signal, pipeline=None):
         """Update confidence for a member using Bayesian formula.
 
+        Note: Always executes immediately via Lua EVAL (not batched into
+        pipeline) because the Lua script needs to read-modify-write atomically.
+        The pipeline parameter is accepted for API consistency but unused.
+
         Args:
             model_instance: The Model instance to update.
             field_name: Name of the ConfidenceField on the model.
             signal: Float 0-1. Values >= 0.5 corroborate, < 0.5 contradict.
-            pipeline: Optional Redis pipeline.
+            pipeline: Optional Redis pipeline (unused — Lua EVAL is atomic).
 
         Returns:
             float: The new confidence value.

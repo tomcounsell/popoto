@@ -266,12 +266,10 @@ def _apply_contradicted(instance, pipeline):
                 pass  # Graceful degradation for unsaved instances
 
     # Auto-discharge: when confidence < 0.1, resolve pressure on CyclicDecayFields
-    from .confidence_field import ConfidenceField as CF
-
     for field_name, field in instance._meta.fields.items():
-        if isinstance(field, CF):
+        if isinstance(field, ConfidenceField):
             try:
-                conf = CF.get_confidence(instance, field_name)
+                conf = ConfidenceField.get_confidence(instance, field_name)
                 if conf < 0.1:
                     for cdf_name, cdf_field in instance._meta.fields.items():
                         if (
