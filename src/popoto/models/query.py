@@ -57,7 +57,8 @@ from typing import TYPE_CHECKING, Optional
 from .db_key import DB_key
 
 if TYPE_CHECKING:
-    from .base import Model
+    from .base import Model, ModelOptions
+
 from ..redis_db import POPOTO_REDIS_DB, get_async_redis_db
 
 logger = logging.getLogger("POPOTO.Query")
@@ -492,14 +493,8 @@ class QueryBuilder:
                 limit=10,
             )
         """
-        import time
         import uuid
 
-        from ..fields.access_tracker import AccessTrackerMixin
-        from ..fields.confidence_field import ConfidenceField
-        from ..fields.decaying_sorted_field import DecayingSortedField, DECAY_SCORE_LUA
-        from ..fields.sorted_field_mixin import SortedFieldMixin
-        from ..fields.write_filter import WriteFilterMixin
         from .encoding import decode_popoto_model_hashmap
 
         model_class = self._query.model_class
@@ -627,11 +622,9 @@ class QueryBuilder:
         Raises:
             QueryException: If field_name is invalid or unsupported.
         """
-        import time
-
         from ..fields.access_tracker import AccessTrackerMixin
         from ..fields.confidence_field import ConfidenceField
-        from ..fields.decaying_sorted_field import DecayingSortedField, DECAY_SCORE_LUA
+        from ..fields.decaying_sorted_field import DecayingSortedField
         from ..fields.sorted_field_mixin import SortedFieldMixin
         from ..fields.write_filter import WriteFilterMixin
 
@@ -826,6 +819,7 @@ class QueryBuilder:
                     data = msgpack.unpackb(raw_value, raw=False)
                     confidence = data.get("confidence", field.initial_confidence)
                 except Exception:
+                    logger.warning("Failed to unpack confidence data for %s", member_key)
                     confidence = field.initial_confidence
                 zadd_mapping[member_key] = float(confidence)
 

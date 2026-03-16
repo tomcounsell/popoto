@@ -175,9 +175,9 @@ class TestCompositeScoreSingleIndex:
 
     def test_single_decay_index(self):
         """Single DecayingSortedField index returns ranked results."""
-        a = SimpleDecayModel.create(name="old")
+        _a = SimpleDecayModel.create(name="old")
         time.sleep(0.05)
-        b = SimpleDecayModel.create(name="new")
+        _b = SimpleDecayModel.create(name="new")
 
         results = SimpleDecayModel.query.composite_score(
             indexes={"score": 1.0}, limit=10
