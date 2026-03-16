@@ -1,5 +1,5 @@
 ---
-status: Ready
+status: Shipped
 type: feature
 appetite: Small
 owner: Valor
@@ -103,7 +103,7 @@ All attributes use underscore prefix to avoid Popoto's ModelBase metaclass treat
 
 **Integration points in base.py:**
 
-1. After successful save (both full and partial paths, 4 locations matching WriteFilterMixin pattern):
+1. After successful save (both full and partial paths, 5 locations — full-save pipeline, full-save internal, partial-save pipeline, partial-save internal, partial-save internal no-pipeline):
    ```python
    from ..fields.event_stream import EventStreamMixin
    if isinstance(self, EventStreamMixin):
@@ -155,13 +155,13 @@ This is a separate method from `_xadd_mutation()` (which is internal to save/del
 ## Failure Path Test Strategy
 
 ### Exception Handling Coverage
-- [ ] XADD failure (e.g., Redis connection error during stream write) must not prevent save() from succeeding — catch and log, do not re-raise
-- [ ] If `_stream_partition_field` references a non-existent field, raise ModelException at class definition time or first save
+- [x] XADD failure (e.g., Redis connection error during stream write) must not prevent save() from succeeding — catch and log, do not re-raise
+- [x] If `_stream_partition_field` references a non-existent field, raise ModelException at class definition time or first save
 
 ### Empty/Invalid Input Handling
-- [ ] Model with no key fields — PK defaults to auto key, stream entry uses that
-- [ ] `_stream_metadata_fields` referencing a None-valued field — include as empty string, don't crash
-- [ ] Empty `_stream_name` — raise ModelException
+- [x] Model with no key fields — PK defaults to auto key, stream entry uses that
+- [x] `_stream_metadata_fields` referencing a None-valued field — include as empty string, don't crash
+- [x] Empty `_stream_name` — raise ModelException
 
 ### Error State Rendering
 - No user-visible output — this is internal ORM infrastructure
@@ -208,30 +208,30 @@ No agent integration required — this is an ORM-level primitive.
 ## Documentation
 
 ### Feature Documentation
-- [ ] Update `docs/features/agent-memory.md` — change EventStreamMixin status to Shipped, add usage section
-- [ ] Add entry to `docs/fields.md` if field reference page exists
+- [x] Update `docs/features/agent-memory.md` — change EventStreamMixin status to Shipped, add usage section
+- [x] Add entry to `docs/fields.md` if field reference page exists
 
 ### Inline Documentation
-- [ ] Docstrings on EventStreamMixin class and all public methods
-- [ ] Module-level docstring explaining Redis Streams key patterns
+- [x] Docstrings on EventStreamMixin class and all public methods
+- [x] Module-level docstring explaining Redis Streams key patterns
 
 ## Success Criteria
 
-- [ ] `EventStreamMixin` class with `_stream_name`, `_stream_partition_field`, `_stream_max_length`, `_stream_metadata_fields`
-- [ ] `save()` produces XADD with op="create" for new instances
-- [ ] `save()` produces XADD with op="update" for existing instances
-- [ ] `save(update_fields=["x"])` produces entry with changed_fields="x"
-- [ ] `delete()` produces XADD with op="delete"
-- [ ] MAXLEN ~ trimming keeps stream bounded
-- [ ] Partitioned streams work (stream key includes partition field value)
-- [ ] Metadata fields included in stream entries
-- [ ] WriteFilter-discarded records produce NO stream entries
-- [ ] Pipeline support (XADD queued on pipeline)
-- [ ] XADD failure does not block save() (non-pipeline path)
-- [ ] Synergy test: EventStreamMixin + ConfidenceField (update_confidence produces stream entry with old/new values)
-- [ ] Synergy test: EventStreamMixin + CoOccurrenceField (strengthen produces stream entry with delta)
-- [ ] Tests pass (`/do-test`)
-- [ ] Documentation updated (`/do-docs`)
+- [x] `EventStreamMixin` class with `_stream_name`, `_stream_partition_field`, `_stream_max_length`, `_stream_metadata_fields`
+- [x] `save()` produces XADD with op="create" for new instances
+- [x] `save()` produces XADD with op="update" for existing instances
+- [x] `save(update_fields=["x"])` produces entry with changed_fields="x"
+- [x] `delete()` produces XADD with op="delete"
+- [x] MAXLEN ~ trimming keeps stream bounded
+- [x] Partitioned streams work (stream key includes partition field value)
+- [x] Metadata fields included in stream entries
+- [x] WriteFilter-discarded records produce NO stream entries
+- [x] Pipeline support (XADD queued on pipeline)
+- [x] XADD failure does not block save() (non-pipeline path)
+- [x] Synergy test: EventStreamMixin + ConfidenceField (update_confidence produces stream entry with old/new values)
+- [x] Synergy test: EventStreamMixin + CoOccurrenceField (strengthen produces stream entry with delta)
+- [x] Tests pass (`/do-test`)
+- [x] Documentation updated (`/do-docs`)
 
 ## Team Orchestration
 
@@ -265,7 +265,7 @@ No agent integration required — this is an ORM-level primitive.
 - **Parallel**: true
 - Create `src/popoto/fields/event_stream.py` with EventStreamMixin class
 - Implement `_get_stream_key()`, `_build_stream_entry()`, `_xadd_mutation()` methods
-- Add isinstance checks in `src/popoto/models/base.py` save() (4 locations: full-save pipeline, full-save internal, partial-save pipeline, partial-save internal) and delete() (1 location)
+- Add isinstance checks in `src/popoto/models/base.py` save() (5 locations) and delete() (1 location)
 - Export from `src/popoto/__init__.py`
 
 ### 2. Implement Tests
@@ -329,6 +329,6 @@ No agent integration required — this is an ORM-level primitive.
 
 1. **Non-pipeline XADD error handling**: Pipeline path: XADD is atomic with save (both succeed or fail). Non-pipeline path: try/except with logging (best-effort). This asymmetry is acceptable — pipeline mode implies the caller wants atomicity; non-pipeline mode is convenience.
 
-2. **CoOccurrenceField / ConfidenceField stream entries**: The roadmap explicitly requires these. Resolved: expose `_xadd_event()` public method on the mixin. Add calls in `ConfidenceField.update_confidence()` and `CoOccurrenceField.strengthen()` — guarded by `isinstance(model_instance, EventStreamMixin)` checks.
+2. **CoOccurrenceField / ConfidenceField stream entries**: The roadmap explicitly requires these. Resolved: expose `_xadd_event()` public method on the mixin. ConfidenceField.update_confidence() uses `isinstance(model_instance, EventStreamMixin)` (instance-level check). CoOccurrenceField.strengthen() uses `issubclass(model_class, EventStreamMixin)` (class-level check, since strengthen() is a classmethod without an instance) and writes XADD directly.
 
 3. **Stream key prefix**: The roadmap uses `stream:{stream_name}:{partition}` — deliberately NOT the `$` prefix convention. Streams are externally consumed (by Step 10 StreamConsumer), so human-readable keys are preferred. Every other primitive uses `$` but streams are the exception.
