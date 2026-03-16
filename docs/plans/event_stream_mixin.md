@@ -1,5 +1,5 @@
 ---
-status: Planning
+status: Ready
 type: feature
 appetite: Small
 owner: Valor
@@ -68,6 +68,7 @@ No prerequisites — Redis Streams are available in Redis 5.0+ and Valkey, which
 - **EventStreamMixin**: Model mixin class with configuration attributes and XADD logic
 - **base.py integration**: isinstance checks after successful save/delete to trigger stream writes
 - **Create vs Update detection**: Use `_db_content` — empty dict means create, non-empty means update
+- **Public `_xadd_event()` method**: Exposed for direct-to-Redis operations (ConfidenceField.update_confidence, CoOccurrenceField.strengthen) that bypass Model.save()
 
 ### Technical Approach
 
@@ -120,6 +121,22 @@ All attributes use underscore prefix to avoid Popoto's ModelBase metaclass treat
 - When no pipeline, execute XADD directly
 - XADD uses `MAXLEN ~ {max_length}` (approximate trimming — Redis may keep slightly more than max)
 
+**Public `_xadd_event()` for non-save operations:**
+
+The roadmap explicitly requires ConfidenceField and CoOccurrenceField mutations to be loggable. These operations (e.g., `ConfidenceField.update_confidence()`, `CoOccurrenceField.strengthen()`) bypass Model.save() and write to Redis directly. The mixin exposes `_xadd_event(op, extra_fields, pipeline)` that these callers can invoke:
+
+```python
+# In ConfidenceField.update_confidence():
+if isinstance(model_instance, EventStreamMixin):
+    model_instance._xadd_event(
+        op="confidence_update",
+        extra_fields={"field": field_name, "old": str(old_conf), "new": str(new_conf)},
+        pipeline=pipeline,
+    )
+```
+
+This is a separate method from `_xadd_mutation()` (which is internal to save/delete). Both ultimately call XADD but `_xadd_event()` accepts arbitrary op strings and extra fields.
+
 **WriteFilter interaction:**
 - No special code needed. When WriteFilterMixin raises SkipSaveException, save() returns early before reaching the EventStreamMixin integration point. The mixin naturally won't fire.
 
@@ -129,6 +146,8 @@ All attributes use underscore prefix to avoid Popoto's ModelBase metaclass treat
 |------|--------|
 | `src/popoto/fields/event_stream.py` | Create — EventStreamMixin class |
 | `src/popoto/models/base.py` | Modify — add isinstance checks in save() and delete() |
+| `src/popoto/fields/confidence_field.py` | Modify — add `_xadd_event()` call in `update_confidence()` |
+| `src/popoto/fields/co_occurrence_field.py` | Modify — add `_xadd_event()` call in `strengthen()` |
 | `src/popoto/__init__.py` | Modify — export EventStreamMixin |
 | `tests/test_event_stream_mixin.py` | Create — full test suite |
 | `docs/features/agent-memory.md` | Modify — update EventStreamMixin status to Shipped |
@@ -176,7 +195,7 @@ No race conditions identified. XADD is atomic and append-only. Redis Streams han
 - Stream entry deserialization utilities
 - Backfilling existing records into the stream
 - Per-field change tracking (diff of old vs new values) — `changed_fields` from `update_fields` is sufficient
-- Confidence/CoOccurrence-specific stream entries (those operations don't go through Model.save())
+- Backpressure or rate limiting on XADD
 
 ## Update System
 
@@ -209,8 +228,8 @@ No agent integration required — this is an ORM-level primitive.
 - [ ] WriteFilter-discarded records produce NO stream entries
 - [ ] Pipeline support (XADD queued on pipeline)
 - [ ] XADD failure does not block save() (non-pipeline path)
-- [ ] Synergy test: EventStreamMixin + ConfidenceField
-- [ ] Synergy test: EventStreamMixin + CoOccurrenceField (strengthen produces no entry — doesn't go through save)
+- [ ] Synergy test: EventStreamMixin + ConfidenceField (update_confidence produces stream entry with old/new values)
+- [ ] Synergy test: EventStreamMixin + CoOccurrenceField (strengthen produces stream entry with delta)
 - [ ] Tests pass (`/do-test`)
 - [ ] Documentation updated (`/do-docs`)
 
@@ -306,10 +325,10 @@ No agent integration required — this is an ORM-level primitive.
 
 ---
 
-## Open Questions
+## Resolved Questions
 
-1. **Non-pipeline XADD error handling**: The plan proposes try/except around XADD in the non-pipeline path (fire-and-forget). In the pipeline path, XADD is part of the atomic transaction — if it fails, the whole save fails. Is this asymmetry acceptable, or should we always use a separate pipeline for XADD to decouple it from the save transaction?
+1. **Non-pipeline XADD error handling**: Pipeline path: XADD is atomic with save (both succeed or fail). Non-pipeline path: try/except with logging (best-effort). This asymmetry is acceptable — pipeline mode implies the caller wants atomicity; non-pipeline mode is convenience.
 
-2. **CoOccurrenceField / ConfidenceField stream entries**: These primitives modify Redis directly (not through Model.save()). The issue mentions "Co-occurrence weight changes should be loggable" — should we add optional XADD calls inside `strengthen()` and `update_confidence()`, or defer that to a future enhancement? The plan currently scopes this out.
+2. **CoOccurrenceField / ConfidenceField stream entries**: The roadmap explicitly requires these. Resolved: expose `_xadd_event()` public method on the mixin. Add calls in `ConfidenceField.update_confidence()` and `CoOccurrenceField.strengthen()` — guarded by `isinstance(model_instance, EventStreamMixin)` checks.
 
-3. **Stream key prefix**: The roadmap uses `stream:{stream_name}:{partition}`. Should we use Popoto's `$` prefix convention instead (e.g., `$ES:{ClassName}:{stream_name}:{partition}`) for consistency with other field key patterns?
+3. **Stream key prefix**: The roadmap uses `stream:{stream_name}:{partition}` — deliberately NOT the `$` prefix convention. Streams are externally consumed (by Step 10 StreamConsumer), so human-readable keys are preferred. Every other primitive uses `$` but streams are the exception.
