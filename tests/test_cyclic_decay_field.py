@@ -398,9 +398,7 @@ class TestTopByDecayPressure:
         new_item = CyclicWithPressure.create(name="new_pressure")
 
         # Set both to same decay timestamp (1 day ago)
-        ss_key = CyclicDecayField.get_sortedset_db_key(
-            CyclicWithPressure, "relevance"
-        )
+        ss_key = CyclicDecayField.get_sortedset_db_key(CyclicWithPressure, "relevance")
         one_day_ago = now - 86400
         popoto.POPOTO_REDIS_DB.zadd(
             ss_key.redis_key,
@@ -687,13 +685,9 @@ class TestNilCompanionHash:
         item = CyclicWithCycles.create(name="has_data")
 
         # Manually add a member to sorted set without companion hashes
-        ss_key = CyclicDecayField.get_sortedset_db_key(
-            CyclicWithCycles, "relevance"
-        )
+        ss_key = CyclicDecayField.get_sortedset_db_key(CyclicWithCycles, "relevance")
         fake_key = "CyclicWithCycles:orphan_member"
-        popoto.POPOTO_REDIS_DB.zadd(
-            ss_key.redis_key, {fake_key: now - 86400}
-        )
+        popoto.POPOTO_REDIS_DB.zadd(ss_key.redis_key, {fake_key: now - 86400})
 
         # Should not crash — orphan member gets pure decay score
         cycles_hash_key = CyclicDecayField._get_cycles_hash_key_from_parts(

@@ -28,6 +28,7 @@ from .fields.shortcuts import (
 from .fields.decaying_sorted_field import DecayingSortedField
 from .fields.access_tracker import AccessTrackerMixin
 from .fields.write_filter import WriteFilterMixin
+from .fields.event_stream import EventStreamMixin
 from .fields.cyclic_decay_field import CyclicDecayField
 from .fields.confidence_field import ConfidenceField
 from .fields.co_occurrence_field import CoOccurrenceField
@@ -92,6 +93,7 @@ __all__ = [
     "DecayingSortedField",
     "AccessTrackerMixin",
     "WriteFilterMixin",
+    "EventStreamMixin",
     "SkipSaveException",
     "CyclicDecayField",
     "ConfidenceField",

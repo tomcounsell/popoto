@@ -256,9 +256,7 @@ class TestActedOutcome:
         pressure_hash_key = field._get_pressure_hash_key(item, "relevance")
         member_key = item.db_key.redis_key
         old_pressure = {"rate": 0.1, "last_resolved": time.time() - 86400}
-        POPOTO_REDIS_DB.hset(
-            pressure_hash_key, member_key, msgpack.packb(old_pressure)
-        )
+        POPOTO_REDIS_DB.hset(pressure_hash_key, member_key, msgpack.packb(old_pressure))
 
         outcome_map = {item.db_key.redis_key: "acted"}
         ObservationProtocol.on_context_used([item], outcome_map)
@@ -437,12 +435,8 @@ class TestContradictedOutcome:
         orig2 = _get_cycles(m2)[0][1]
         assert orig1 == orig2  # Same starting amplitude
 
-        ObservationProtocol.on_context_used(
-            [m1], {m1.db_key.redis_key: "dismissed"}
-        )
-        ObservationProtocol.on_context_used(
-            [m2], {m2.db_key.redis_key: "contradicted"}
-        )
+        ObservationProtocol.on_context_used([m1], {m1.db_key.redis_key: "dismissed"})
+        ObservationProtocol.on_context_used([m2], {m2.db_key.redis_key: "contradicted"})
 
         amp1 = _get_cycles(m1)[0][1]
         amp2 = _get_cycles(m2)[0][1]
@@ -842,9 +836,7 @@ class TestSynergy:
         assert amp_after_dismissed < amp_after_acted  # weakened
 
         # Score should NOT have changed (no touch on dismissed)
-        score_after_dismissed = POPOTO_REDIS_DB.zscore(
-            ss_key, item.db_key.redis_key
-        )
+        score_after_dismissed = POPOTO_REDIS_DB.zscore(ss_key, item.db_key.redis_key)
         assert score_after_dismissed == score_after_acted
 
     def test_proposal_resolved_on_context_used(self):

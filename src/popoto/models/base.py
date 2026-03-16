@@ -1054,6 +1054,12 @@ class Model(metaclass=ModelBase):
             except SkipSaveException:
                 return pipeline if pipeline else False
 
+        # EventStreamMixin: detect create vs update before persistence
+        # _db_content is {} on fresh instances, populated after first save
+        from ..fields.event_stream import EventStreamMixin
+
+        _is_create = isinstance(self, EventStreamMixin) and not self._db_content
+
         pipeline_or_success = self.pre_save(
             pipeline=pipeline,
             ignore_errors=ignore_errors,
@@ -1137,6 +1143,12 @@ class Model(metaclass=ModelBase):
                 # WriteFilterMixin: tag priority after successful partial save
                 if isinstance(self, WriteFilterMixin):
                     self._tag_priority(pipeline=pipeline)
+                # EventStreamMixin: log mutation after successful partial save
+                if isinstance(self, EventStreamMixin):
+                    _op = "create" if _is_create else "update"
+                    self._xadd_mutation(
+                        _op, pipeline=pipeline, update_fields=update_fields
+                    )
                 return pipeline
             else:
                 # Use internal pipeline for atomic execution
@@ -1193,6 +1205,10 @@ class Model(metaclass=ModelBase):
                 # WriteFilterMixin: tag priority after successful partial save
                 if isinstance(self, WriteFilterMixin):
                     self._tag_priority()
+                # EventStreamMixin: log mutation after successful partial save
+                if isinstance(self, EventStreamMixin):
+                    _op = "create" if _is_create else "update"
+                    self._xadd_mutation(_op, update_fields=update_fields)
                 return db_response
 
         # Full save path (existing behavior, unchanged)
@@ -1282,6 +1298,10 @@ class Model(metaclass=ModelBase):
             # WriteFilterMixin: tag priority after successful save
             if isinstance(self, WriteFilterMixin):
                 self._tag_priority(pipeline=pipeline)
+            # EventStreamMixin: log mutation after successful save
+            if isinstance(self, EventStreamMixin):
+                _op = "create" if _is_create else "update"
+                self._xadd_mutation(_op, pipeline=pipeline)
             return pipeline
 
         else:
@@ -1362,6 +1382,10 @@ class Model(metaclass=ModelBase):
             # WriteFilterMixin: tag priority after successful save
             if isinstance(self, WriteFilterMixin):
                 self._tag_priority()
+            # EventStreamMixin: log mutation after successful save
+            if isinstance(self, EventStreamMixin):
+                _op = "create" if _is_create else "update"
+                self._xadd_mutation(_op)
             return db_response
 
     @classmethod
@@ -1592,6 +1616,12 @@ class Model(metaclass=ModelBase):
 
         if isinstance(self, WriteFilterMixin):
             self._delete_write_filter_keys(pipeline=pipeline)
+
+        # EventStreamMixin: log delete mutation
+        from ..fields.event_stream import EventStreamMixin
+
+        if isinstance(self, EventStreamMixin):
+            self._xadd_mutation("delete", pipeline=pipeline)
 
         self._db_content = dict()  # 6
         self._saved_field_values = dict()  # 6

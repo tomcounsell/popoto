@@ -389,9 +389,7 @@ class TestEntrainment:
             "corroborations": 0,
             "contradictions": 20,
         }
-        POPOTO_REDIS_DB.hset(
-            data_hash_key, member_key, msgpack.packb(low_conf_data)
-        )
+        POPOTO_REDIS_DB.hset(data_hash_key, member_key, msgpack.packb(low_conf_data))
 
         # Now trigger contradicted outcome — auto-discharge should fire
         outcome_map = {item.db_key.redis_key: "contradicted"}

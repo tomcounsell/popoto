@@ -288,7 +288,9 @@ class QueryBuilder:
         self._no_track = True
         return self
 
-    def top_by_decay(self, field_name=None, n=10, decay_rate=None, base_score_field=None):
+    def top_by_decay(
+        self, field_name=None, n=10, decay_rate=None, base_score_field=None
+    ):
         """Return top-N instances ranked by time-decayed score.
 
         Executes a Lua script server-side that computes:
@@ -1151,7 +1153,9 @@ class Query:
 
         return builder
 
-    def top_by_decay(self, field_name=None, n=10, decay_rate=None, base_score_field=None):
+    def top_by_decay(
+        self, field_name=None, n=10, decay_rate=None, base_score_field=None
+    ):
         """Return top-N instances ranked by time-decayed score.
 
         Convenience method that creates a QueryBuilder and delegates.

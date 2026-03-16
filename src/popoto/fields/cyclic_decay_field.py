@@ -197,13 +197,9 @@ class CyclicDecayField(DecayingSortedField):
                 )
             period, amplitude = cycle[0], cycle[1]
             if period <= 0:
-                raise ModelException(
-                    f"Cycle period must be > 0 (got {period})"
-                )
+                raise ModelException(f"Cycle period must be > 0 (got {period})")
             if amplitude < 0:
-                raise ModelException(
-                    f"Cycle amplitude must be >= 0 (got {amplitude})"
-                )
+                raise ModelException(f"Cycle amplitude must be >= 0 (got {amplitude})")
 
         # Validate pressure_rate
         if self.pressure_rate < 0:
@@ -230,7 +226,9 @@ class CyclicDecayField(DecayingSortedField):
         return ss_key.redis_key + ":pressure"
 
     @classmethod
-    def _get_cycles_hash_key_from_parts(cls, model_class, field_name, *partition_values):
+    def _get_cycles_hash_key_from_parts(
+        cls, model_class, field_name, *partition_values
+    ):
         """Build cycles hash key from model class and partition values."""
         ss_key = cls.get_sortedset_db_key(model_class, field_name, *partition_values)
         return ss_key.redis_key + ":cycles"
@@ -271,7 +269,9 @@ class CyclicDecayField(DecayingSortedField):
             phase = cycle[2] if len(cycle) > 2 else 0
             normalized_cycles.append([period, amplitude, phase])
 
-        db = pipeline if isinstance(pipeline, redis.client.Pipeline) else POPOTO_REDIS_DB
+        db = (
+            pipeline if isinstance(pipeline, redis.client.Pipeline) else POPOTO_REDIS_DB
+        )
 
         # Store cycles data (always write field-level defaults)
         if normalized_cycles:
@@ -289,18 +289,14 @@ class CyclicDecayField(DecayingSortedField):
                 # Only update rate, preserve last_resolved
                 existing = msgpack.unpackb(existing_raw, raw=False)
                 existing["rate"] = field.pressure_rate
-                db.hset(
-                    pressure_hash_key, member_key, msgpack.packb(existing)
-                )
+                db.hset(pressure_hash_key, member_key, msgpack.packb(existing))
             else:
                 # First save: set last_resolved to now
                 pressure_data = {
                     "rate": field.pressure_rate,
                     "last_resolved": time.time(),
                 }
-                db.hset(
-                    pressure_hash_key, member_key, msgpack.packb(pressure_data)
-                )
+                db.hset(pressure_hash_key, member_key, msgpack.packb(pressure_data))
         else:
             # Remove any stale pressure data
             db.hdel(pressure_hash_key, member_key)
@@ -308,7 +304,9 @@ class CyclicDecayField(DecayingSortedField):
         return result
 
     @classmethod
-    def on_delete(cls, model_instance, field_name, field_value, pipeline=None, **kwargs):
+    def on_delete(
+        cls, model_instance, field_name, field_value, pipeline=None, **kwargs
+    ):
         """Remove companion hash entries then delegate to parent."""
         field = model_instance._meta.fields[field_name]
 
@@ -317,9 +315,7 @@ class CyclicDecayField(DecayingSortedField):
                 kwargs.get("saved_redis_key") or model_instance.db_key.redis_key
             )
             cycles_hash_key = field._get_cycles_hash_key(model_instance, field_name)
-            pressure_hash_key = field._get_pressure_hash_key(
-                model_instance, field_name
-            )
+            pressure_hash_key = field._get_pressure_hash_key(model_instance, field_name)
 
             db = (
                 pipeline

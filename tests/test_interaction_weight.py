@@ -46,19 +46,37 @@ class TestInteractionWeightCombine:
 
     def test_human_peer(self):
         """HUMAN + PEER = 6.0 + 6.0 = 12.0."""
-        assert InteractionWeight.combine(InteractionWeight.HUMAN, InteractionWeight.PEER) == 12.0
+        assert (
+            InteractionWeight.combine(InteractionWeight.HUMAN, InteractionWeight.PEER)
+            == 12.0
+        )
 
     def test_agent_subordinate(self):
         """AGENT + SUBORDINATE = 1.0 + 1.0 = 2.0."""
-        assert InteractionWeight.combine(InteractionWeight.AGENT, InteractionWeight.SUBORDINATE) == 2.0
+        assert (
+            InteractionWeight.combine(
+                InteractionWeight.AGENT, InteractionWeight.SUBORDINATE
+            )
+            == 2.0
+        )
 
     def test_human_executive(self):
         """HUMAN + EXECUTIVE = 6.0 + 44.0 = 50.0."""
-        assert InteractionWeight.combine(InteractionWeight.HUMAN, InteractionWeight.EXECUTIVE) == 50.0
+        assert (
+            InteractionWeight.combine(
+                InteractionWeight.HUMAN, InteractionWeight.EXECUTIVE
+            )
+            == 50.0
+        )
 
     def test_system_manager(self):
         """SYSTEM + MANAGER = 0.2 + 16.0 = 16.2."""
-        assert InteractionWeight.combine(InteractionWeight.SYSTEM, InteractionWeight.MANAGER) == 16.2
+        assert (
+            InteractionWeight.combine(
+                InteractionWeight.SYSTEM, InteractionWeight.MANAGER
+            )
+            == 16.2
+        )
 
     def test_combine_with_raw_floats(self):
         """combine() works with arbitrary float values."""

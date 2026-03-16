@@ -24,18 +24,21 @@ from src.popoto.models.query import QueryException
 
 class SingleDecayModel(popoto.Model):
     """Model with exactly one DecayingSortedField."""
+
     name = popoto.UniqueKeyField()
     relevance = DecayingSortedField()
 
 
 class NoDecayModel(popoto.Model):
     """Model with no DecayingSortedField."""
+
     name = popoto.UniqueKeyField()
     score = popoto.SortedField(type=float, default=0.0)
 
 
 class MultiDecayModel(popoto.Model):
     """Model with two DecayingSortedFields."""
+
     name = popoto.UniqueKeyField()
     relevance = DecayingSortedField()
     freshness = DecayingSortedField()
