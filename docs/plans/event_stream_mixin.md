@@ -5,6 +5,7 @@ appetite: Small
 owner: Valor
 created: 2026-03-16
 tracking: https://github.com/tomcounsell/popoto/issues/211
+pr: https://github.com/tomcounsell/popoto/pull/219
 last_comment_id:
 ---
 
