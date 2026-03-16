@@ -357,6 +357,38 @@ class CoOccurrenceField(Field):
             target_key = self._get_edge_key(model_class, target_pk)
             db.zincrby(target_key, delta, source_pk)
 
+        # EventStreamMixin: log strengthen event
+        from .event_stream import EventStreamMixin
+
+        if not pipeline and issubclass(model_class, EventStreamMixin):
+            try:
+                import time
+
+                stream_name = getattr(
+                    model_class, "_stream_name", EventStreamMixin._stream_name
+                )
+                max_length = getattr(
+                    model_class,
+                    "_stream_max_length",
+                    EventStreamMixin._stream_max_length,
+                )
+                stream_key = f"stream:{stream_name}"
+                entry = {
+                    "model": model_class.__name__,
+                    "pk": str(source_pk),
+                    "op": "strengthen",
+                    "ts": str(time.time()),
+                    "changed_fields": "",
+                    "source_pk": str(source_pk),
+                    "target_pk": str(target_pk),
+                    "delta": str(delta),
+                }
+                POPOTO_REDIS_DB.xadd(
+                    stream_key, entry, maxlen=max_length, approximate=True
+                )
+            except Exception:
+                pass  # Best-effort, don't block strengthen
+
         if pipeline:
             return None  # Pipeline defers execution
         return float(new_weight)

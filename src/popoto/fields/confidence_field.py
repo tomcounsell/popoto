@@ -233,7 +233,22 @@ class ConfidenceField(Field):
             str(field.initial_confidence),
         )
 
-        return float(result[0])
+        new_confidence = float(result[0])
+
+        # EventStreamMixin: log confidence update event
+        from .event_stream import EventStreamMixin
+
+        if isinstance(model_instance, EventStreamMixin):
+            model_instance._xadd_event(
+                op="confidence_update",
+                extra_fields={
+                    "field": field_name,
+                    "signal": str(signal),
+                    "new_confidence": str(new_confidence),
+                },
+            )
+
+        return new_confidence
 
     @classmethod
     def get_confidence(cls, model_instance, field_name):
