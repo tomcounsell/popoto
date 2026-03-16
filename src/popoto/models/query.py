@@ -52,7 +52,7 @@ See Also:
 
 import logging
 from asyncio import to_thread
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
 from .db_key import DB_key
 
@@ -449,7 +449,7 @@ class QueryBuilder:
         limit: int = 10,
         aggregate: str = "SUM",
         min_score: float = None,
-        post_filter: callable = None,
+        post_filter: Optional[Callable[[str, float], bool]] = None,
         co_occurrence_boost: dict = None,
     ) -> list:
         """Return top-K instances ranked by a weighted composite of multiple indexes.
@@ -528,14 +528,13 @@ class QueryBuilder:
         # --- Handle co_occurrence_boost ---
         if co_occurrence_boost:
             co_key = f"$CSQ:{model_name}:co_occurrence:{uid}"
-            if co_occurrence_boost:
-                POPOTO_REDIS_DB.zadd(
-                    co_key,
-                    {str(k): float(v) for k, v in co_occurrence_boost.items()},
-                )
-                POPOTO_REDIS_DB.expire(co_key, 5)
-                temp_keys.append(co_key)
-                resolved_keys[co_key] = 1.0  # weight already in the scores
+            POPOTO_REDIS_DB.zadd(
+                co_key,
+                {str(k): float(v) for k, v in co_occurrence_boost.items()},
+            )
+            POPOTO_REDIS_DB.expire(co_key, 5)
+            temp_keys.append(co_key)
+            resolved_keys[co_key] = 1.0  # weight already in the scores
 
         if not resolved_keys:
             self._cleanup_temp_keys(temp_keys)
@@ -819,7 +818,9 @@ class QueryBuilder:
                     data = msgpack.unpackb(raw_value, raw=False)
                     confidence = data.get("confidence", field.initial_confidence)
                 except Exception:
-                    logger.warning("Failed to unpack confidence data for %s", member_key)
+                    logger.warning(
+                        "Failed to unpack confidence data for %s", member_key
+                    )
                     confidence = field.initial_confidence
                 zadd_mapping[member_key] = float(confidence)
 
@@ -834,6 +835,13 @@ class QueryBuilder:
 
         Iterates over all model instances and reads access_count from each
         instance's meta hash.
+
+        .. note::
+            This method uses ``SMEMBERS`` on the class set to discover all
+            instances.  For models with very large instance counts (100K+),
+            this scan can be expensive.  Consider using ``post_filter`` or
+            partitioned queries to narrow the result set when working at
+            that scale.
 
         Args:
             model_class: The Model class.
@@ -1626,7 +1634,7 @@ class Query:
         limit: int = 10,
         aggregate: str = "SUM",
         min_score: float = None,
-        post_filter: callable = None,
+        post_filter: Optional[Callable[[str, float], bool]] = None,
         co_occurrence_boost: dict = None,
     ) -> list:
         """Return top-K instances ranked by weighted composite score.
