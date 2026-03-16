@@ -536,10 +536,7 @@ class QueryBuilder:
             if co_occurrence_boost:
                 POPOTO_REDIS_DB.zadd(
                     co_key,
-                    {
-                        str(k): float(v)
-                        for k, v in co_occurrence_boost.items()
-                    },
+                    {str(k): float(v) for k, v in co_occurrence_boost.items()},
                 )
                 POPOTO_REDIS_DB.expire(co_key, 5)
                 temp_keys.append(co_key)
@@ -656,9 +653,7 @@ class QueryBuilder:
                     f"'{model_name}' does not use AccessTrackerMixin; "
                     f"cannot resolve '{field_name}' index"
                 )
-            return self._materialize_access_tracker(
-                model_class, uid, temp_keys
-            )
+            return self._materialize_access_tracker(model_class, uid, temp_keys)
 
         # --- Look up the field on the model ---
         if field_name not in model_class._meta.fields:
@@ -684,13 +679,9 @@ class QueryBuilder:
         # --- SortedFieldMixin: use existing sorted set directly ---
         if isinstance(field, SortedFieldMixin):
             try:
-                partition_values = [
-                    str(self._filters[pf]) for pf in field.partition_by
-                ]
+                partition_values = [str(self._filters[pf]) for pf in field.partition_by]
             except KeyError:
-                missing = [
-                    pf for pf in field.partition_by if pf not in self._filters
-                ]
+                missing = [pf for pf in field.partition_by if pf not in self._filters]
                 raise QueryException(
                     f"composite_score() on '{field_name}' requires "
                     f"partition filter(s): {', '.join(missing)}"
@@ -706,9 +697,7 @@ class QueryBuilder:
             f"a sorted set index and cannot be used in composite_score()"
         )
 
-    def _materialize_decay_field(
-        self, model_class, field, field_name, uid, temp_keys
-    ):
+    def _materialize_decay_field(self, model_class, field, field_name, uid, temp_keys):
         """Materialize a DecayingSortedField's decay-computed scores into a temp ZSET.
 
         Uses the existing Lua decay script to compute scores, then writes
@@ -732,13 +721,9 @@ class QueryBuilder:
         model_name = model_class.__name__
 
         try:
-            partition_values = [
-                str(self._filters[pf]) for pf in field.partition_by
-            ]
+            partition_values = [str(self._filters[pf]) for pf in field.partition_by]
         except KeyError:
-            missing = [
-                pf for pf in field.partition_by if pf not in self._filters
-            ]
+            missing = [pf for pf in field.partition_by if pf not in self._filters]
             raise QueryException(
                 f"composite_score() on '{field_name}' requires "
                 f"partition filter(s): {', '.join(missing)}"

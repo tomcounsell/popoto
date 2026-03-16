@@ -34,7 +34,6 @@ from src.popoto.fields.co_occurrence_field import CoOccurrenceField
 from src.popoto.models.query import QueryException
 from src.popoto.redis_db import POPOTO_REDIS_DB
 
-
 # --- Test Models ---
 
 
@@ -121,30 +120,22 @@ class TestCompositeScoreErrors:
     def test_invalid_field_name_raises(self):
         """Field name not on model raises QueryException."""
         with pytest.raises(QueryException, match="has no field"):
-            CompositeMemory.query.composite_score(
-                indexes={"nonexistent_field": 1.0}
-            )
+            CompositeMemory.query.composite_score(indexes={"nonexistent_field": 1.0})
 
     def test_plain_field_raises(self):
         """Field without sorted set index raises QueryException."""
         with pytest.raises(QueryException, match="does not have a sorted set"):
-            CompositeMemory.query.composite_score(
-                indexes={"content": 1.0}
-            )
+            CompositeMemory.query.composite_score(indexes={"content": 1.0})
 
     def test_priority_without_write_filter_raises(self):
         """'priority' on non-WriteFilterMixin model raises QueryException."""
         with pytest.raises(QueryException, match="WriteFilterMixin"):
-            SimpleDecayModel.query.composite_score(
-                indexes={"priority": 1.0}
-            )
+            SimpleDecayModel.query.composite_score(indexes={"priority": 1.0})
 
     def test_access_count_without_tracker_raises(self):
         """'access_count' on non-AccessTrackerMixin model raises QueryException."""
         with pytest.raises(QueryException, match="AccessTrackerMixin"):
-            SimpleDecayModel.query.composite_score(
-                indexes={"access_count": 1.0}
-            )
+            SimpleDecayModel.query.composite_score(indexes={"access_count": 1.0})
 
     def test_invalid_aggregate_raises(self):
         """Invalid aggregate mode raises QueryException."""
@@ -167,16 +158,12 @@ class TestCompositeScoreEmpty:
 
     def test_no_instances_returns_empty(self):
         """Query on model with no instances returns empty list."""
-        result = CompositeMemory.query.composite_score(
-            indexes={"relevance": 1.0}
-        )
+        result = CompositeMemory.query.composite_score(indexes={"relevance": 1.0})
         assert result == []
 
     def test_empty_sorted_sets_returns_empty(self):
         """All indexes empty returns empty list."""
-        result = SimpleDecayModel.query.composite_score(
-            indexes={"score": 1.0}
-        )
+        result = SimpleDecayModel.query.composite_score(indexes={"score": 1.0})
         assert result == []
 
 
@@ -224,14 +211,10 @@ class TestCompositeScoreTwoIndex:
     def test_high_confidence_recent_beats_low_confidence_old(self):
         """High-confidence recent record outranks low-confidence old record."""
         # Create "old" record
-        old = CompositeMemory.create(
-            name="old_fact", content="old", importance=0.8
-        )
+        old = CompositeMemory.create(name="old_fact", content="old", importance=0.8)
         time.sleep(0.05)
         # Create "new" record
-        new = CompositeMemory.create(
-            name="new_fact", content="new", importance=0.8
-        )
+        new = CompositeMemory.create(name="new_fact", content="new", importance=0.8)
 
         # Make old have low confidence, new have high confidence
         ConfidenceField.update_confidence(old, "certainty", signal=0.2)
@@ -257,9 +240,7 @@ class TestCompositeScoreThreeIndex:
     def test_frequently_accessed_gets_boost(self):
         """Frequently accessed records get a boost from access_count."""
         # Create records
-        rarely = CompositeMemory.create(
-            name="rarely_used", content="r", importance=0.8
-        )
+        rarely = CompositeMemory.create(name="rarely_used", content="r", importance=0.8)
         frequently = CompositeMemory.create(
             name="frequently_used", content="f", importance=0.8
         )
@@ -284,9 +265,7 @@ class TestCompositeScoreThreeIndex:
         assert len(results) >= 2
         # The frequently accessed one should rank higher
         result_names = [r.name for r in results]
-        assert result_names.index("frequently_used") < result_names.index(
-            "rarely_used"
-        )
+        assert result_names.index("frequently_used") < result_names.index("rarely_used")
 
 
 # --- Four-index synergy tests ---
@@ -302,9 +281,7 @@ class TestCompositeScoreFourIndex:
             name="high_priority", content="hp", importance=0.9
         )
         # Create a low-priority record (importance=0.5 -> normal save, no priority)
-        low = CompositeMemory.create(
-            name="low_priority", content="lp", importance=0.5
-        )
+        low = CompositeMemory.create(name="low_priority", content="lp", importance=0.5)
 
         # Set similar confidence
         ConfidenceField.update_confidence(high, "certainty", signal=0.7)
@@ -338,12 +315,8 @@ class TestCompositeScoreCoOccurrence:
     def test_co_occurrence_boost_surfaces_mediocre_record(self):
         """Record with mediocre scores but strong association surfaces."""
         # Create records
-        mediocre = CompositeMemory.create(
-            name="mediocre", content="m", importance=0.5
-        )
-        strong = CompositeMemory.create(
-            name="strong", content="s", importance=0.9
-        )
+        mediocre = CompositeMemory.create(name="mediocre", content="m", importance=0.5)
+        strong = CompositeMemory.create(name="strong", content="s", importance=0.9)
 
         # Set similar recency (both just created)
         ConfidenceField.update_confidence(mediocre, "certainty", signal=0.5)
@@ -488,9 +461,7 @@ class TestCompositeScorePartitioned:
         PartitionedComposite.create(name="b", category="cat1")
         PartitionedComposite.create(name="c", category="cat2")
 
-        results = PartitionedComposite.query.filter(
-            category="cat1"
-        ).composite_score(
+        results = PartitionedComposite.query.filter(category="cat1").composite_score(
             indexes={"relevance": 1.0}, limit=10
         )
         assert len(results) == 2
@@ -509,9 +480,7 @@ class TestCompositeScoreLimit:
         for i in range(5):
             SortedOnlyModel.create(name=f"item_{i}", score=float(i * 10))
 
-        results = SortedOnlyModel.query.composite_score(
-            indexes={"score": 1.0}, limit=3
-        )
+        results = SortedOnlyModel.query.composite_score(indexes={"score": 1.0}, limit=3)
         assert len(results) == 3
 
     def test_limit_larger_than_results(self):
@@ -548,9 +517,7 @@ class TestCompositeScoreTempKeys:
 
     def test_temp_keys_cleaned_on_empty_result(self):
         """Temp keys are cleaned even when result is empty."""
-        SimpleDecayModel.query.composite_score(
-            indexes={"score": 1.0}, limit=10
-        )
+        SimpleDecayModel.query.composite_score(indexes={"score": 1.0}, limit=10)
 
         csq_keys = POPOTO_REDIS_DB.keys("$CSQ:*")
         assert len(csq_keys) == 0
