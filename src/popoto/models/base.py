@@ -1146,7 +1146,9 @@ class Model(metaclass=ModelBase):
                 # EventStreamMixin: log mutation after successful partial save
                 if isinstance(self, EventStreamMixin):
                     _op = "create" if _is_create else "update"
-                    self._xadd_mutation(_op, pipeline=pipeline, update_fields=update_fields)
+                    self._xadd_mutation(
+                        _op, pipeline=pipeline, update_fields=update_fields
+                    )
                 return pipeline
             else:
                 # Use internal pipeline for atomic execution

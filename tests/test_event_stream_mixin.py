@@ -30,7 +30,6 @@ from src import popoto  # noqa: E402
 from src.popoto.fields.event_stream import EventStreamMixin  # noqa: E402
 from src.popoto.redis_db import POPOTO_REDIS_DB  # noqa: E402
 
-
 # --- Test Models ---
 
 
@@ -79,9 +78,7 @@ class StreamedItemSmallMax(EventStreamMixin, popoto.Model):
     name = popoto.UniqueKeyField()
 
 
-class StreamedWithWriteFilter(
-    EventStreamMixin, popoto.WriteFilterMixin, popoto.Model
-):
+class StreamedWithWriteFilter(EventStreamMixin, popoto.WriteFilterMixin, popoto.Model):
     """Model combining EventStreamMixin and WriteFilterMixin."""
 
     name = popoto.UniqueKeyField()
@@ -450,17 +447,13 @@ class TestCoOccurrenceFieldSynergy:
         assoc_field.link(
             StreamedWithCoOccurrence, "node_a", "node_b", initial_weight=0.5
         )
-        assoc_field.strengthen(
-            StreamedWithCoOccurrence, "node_a", "node_b", delta=0.1
-        )
+        assoc_field.strengthen(StreamedWithCoOccurrence, "node_a", "node_b", delta=0.1)
 
         entries = _read_stream("stream:mutations")
         assert len(entries) >= 1
         # Find the strengthen entry
         strengthen_entries = [
-            (eid, f)
-            for eid, f in entries
-            if f.get(b"op") == b"strengthen"
+            (eid, f) for eid, f in entries if f.get(b"op") == b"strengthen"
         ]
         assert len(strengthen_entries) == 1
         _, fields = strengthen_entries[0]

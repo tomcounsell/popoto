@@ -91,9 +91,7 @@ class EventStreamMixin:
                 references a non-existent field.
         """
         if not self._stream_name:
-            raise ModelException(
-                f"{type(self).__name__} has empty _stream_name"
-            )
+            raise ModelException(f"{type(self).__name__} has empty _stream_name")
 
         base_key = f"stream:{self._stream_name}"
 
