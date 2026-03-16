@@ -30,7 +30,7 @@ The primitives ship incrementally. Each builds on the ones before it.
 | [ConfidenceField](#confidencefield) | Bayesian certainty — corroboration strengthens, contradiction weakens | Shipped ([PR #215](https://github.com/tomcounsell/popoto/pull/215)) |
 | [CoOccurrenceField](#cooccurrencefield) | Weighted associations — co-accessed records strengthen their link | Shipped ([PR #218](https://github.com/tomcounsell/popoto/pull/218)) |
 | [EventStreamMixin](#eventstreammixin) | Append-only mutation log via Redis Streams | Shipped |
-| [CompositeScoreQuery](#compositescorequery) | Multi-factor retrieval — combine N sorted indexes with weights | Planned |
+| [CompositeScoreQuery](#compositescorequery) | Multi-factor retrieval — combine N sorted indexes with weights | Shipped |
 | [ExistenceFilter](#existencefilter) | Bloom filter for O(1) "do I know anything about X?" checks | Planned |
 | [PredictionLedger](#predictionledger) | Outcome tracking — record predictions, observe results, compute error | Planned |
 | [StreamConsumer](#streamconsumer) | Background processing framework for Redis Streams | Planned |
@@ -653,19 +653,117 @@ When `WriteFilterMixin` discards a record (score below threshold), the `save()` 
 
 ## CompositeScoreQuery
 
-Combines multiple sorted set indexes via `ZUNIONSTORE` with configurable weights, returning top-K results by composite score. This is where all the scoring primitives converge.
+Combines multiple sorted set indexes via `ZUNIONSTORE` with configurable weights, returning top-K results ranked by composite score. This is where all the scoring primitives converge into a single retrieval call.
+
+Without `composite_score()`, retrieving by multiple factors requires application-level code: fetch by decay, fetch confidence data, fetch access counts, compute composite in Python, re-rank. This is slow (multiple round trips), error-prone, and not composable via the query API. `composite_score()` does it all server-side in a single call.
+
+### Basic usage
 
 ```python
-results = Memory.query.composite_score(
+from popoto import Model, KeyField, Field
+from popoto.fields import DecayingSortedField, ConfidenceField
+from popoto.fields.access_tracker import AccessTrackerMixin
+from popoto.fields.write_filter import WriteFilterMixin
+
+class Memory(AccessTrackerMixin, WriteFilterMixin, Model):
+    agent_id = KeyField()
+    content = Field(type=str)
+    importance = Field(type=float, default=1.0)
+    relevance = DecayingSortedField(
+        base_score_field="importance",
+        partition_by="agent_id",
+    )
+    certainty = ConfidenceField(initial_confidence=0.5)
+
+    def compute_filter_score(self):
+        return self.importance or 0.0
+```
+
+Retrieve the top-10 memories ranked by a weighted composite of decay, confidence, access frequency, and write filter priority:
+
+```python
+results = Memory.query.filter(agent_id="agent-1").composite_score(
     indexes={
-        "relevance": 0.4,      # DecayingSortedField
-        "confidence": 0.3,     # ConfidenceField
-        "access_score": 0.2,   # AccessTracker
+        "relevance": 0.4,      # DecayingSortedField (decay-computed scores)
+        "certainty": 0.3,      # ConfidenceField (Bayesian confidence)
+        "access_count": 0.2,   # AccessTracker (read frequency)
         "priority": 0.1,       # WriteFilter priority set
     },
-    limit=10
+    limit=10,
 )
 ```
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `indexes` | `dict[str, float]` | *required* | Mapping of field names to weights. Weights are arbitrary positive floats; relative ratios matter, not absolute values. |
+| `limit` | `int` | `10` | Maximum number of results to return. |
+| `aggregate` | `str` | `"SUM"` | How ZUNIONSTORE combines scores: `"SUM"`, `"MIN"`, or `"MAX"`. |
+| `min_score` | `float` | `None` | Optional minimum composite score. Results below this threshold are excluded. |
+| `post_filter` | `Callable[[str, float], bool]` | `None` | Optional `(redis_key, score) -> bool` callback. Applied after scoring but before hydration. Return `True` to keep. |
+| `co_occurrence_boost` | `dict` | `None` | Optional `{redis_key: weight}` dict from `CoOccurrenceField.propagate()`. Injected as an additional scoring signal. |
+
+### Supported index types
+
+| Index name | Field type | Resolution strategy |
+|------------|-----------|-------------------|
+| Any `DecayingSortedField` | `DecayingSortedField` / `CyclicDecayField` | Materializes decay-computed scores into a temp ZSET via the existing Lua decay script |
+| Any `SortedField` | `SortedFieldMixin` | Uses the existing sorted set directly |
+| Any `ConfidenceField` | `ConfidenceField` | Materializes confidence values from the companion hash into a temp ZSET |
+| `"access_count"` or `"access_score"` | `AccessTrackerMixin` | Materializes `access_count` from meta hashes into a temp ZSET (uses `SMEMBERS` — see scaling note below) |
+| `"priority"` | `WriteFilterMixin` | Uses the `$WF:{Class}:priority` sorted set directly |
+
+> **Scaling note:** The `access_count`/`access_score` index uses `SMEMBERS` to discover all model instances before materializing scores. For models with 100K+ instances, this scan can be expensive. Use `post_filter` or partitioned queries to narrow the result set at that scale.
+
+### CoOccurrence boost
+
+Inject associative retrieval scores from `CoOccurrenceField.propagate()`:
+
+```python
+from popoto.fields.co_occurrence_field import CoOccurrenceField
+
+# Get propagated association scores from a seed memory
+assoc_field = Memory._meta.fields["associations"]
+co_scores = assoc_field.propagate(Memory, seed_pks=["memory_key_1"], depth=2)
+
+# Inject as a boost signal in composite scoring
+results = Memory.query.filter(agent_id="agent-1").composite_score(
+    indexes={"relevance": 0.3, "certainty": 0.3},
+    co_occurrence_boost=co_scores,
+    limit=10,
+)
+```
+
+A record with mediocre decay and confidence scores but a strong co-occurrence association to the seed will surface higher in results.
+
+### Post-filter callback
+
+Use `post_filter` to exclude specific records after scoring but before model hydration:
+
+```python
+# Exclude already-used memories
+used_keys = {"Memory:key1", "Memory:key2"}
+results = Memory.query.filter(agent_id="agent-1").composite_score(
+    indexes={"relevance": 0.5, "certainty": 0.5},
+    post_filter=lambda key, score: key not in used_keys,
+    limit=10,
+)
+```
+
+### Temp key management
+
+All temporary Redis keys use a `$CSQ:` prefix with a UUID suffix and a 5-second `EXPIRE` for cleanup safety. Keys are deleted immediately after the query completes. Even if the process crashes mid-query, keys auto-expire within 5 seconds.
+
+### Error handling
+
+- Empty `indexes` dict raises `QueryException`
+- Invalid field name raises `QueryException` with list of valid fields
+- Field without a sorted set index raises `QueryException`
+- `"priority"` on a non-`WriteFilterMixin` model raises `QueryException`
+- `"access_count"` on a non-`AccessTrackerMixin` model raises `QueryException`
+- Missing partition filters for partitioned fields raises `QueryException`
+- `limit=0` returns an empty list (no error)
 
 ## ExistenceFilter
 
