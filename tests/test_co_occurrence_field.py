@@ -129,9 +129,7 @@ class TestFieldInit:
         assert field.decay_factor == 0.95
 
     def test_custom_params(self):
-        field = CoOccurrenceField(
-            symmetric=False, max_edges=100, decay_factor=0.8
-        )
+        field = CoOccurrenceField(symmetric=False, max_edges=100, decay_factor=0.8)
         assert field.symmetric is False
         assert field.max_edges == 100
         assert field.decay_factor == 0.8
@@ -405,9 +403,9 @@ class TestPropagate:
 
         scores = field.propagate(CoOcItem, ["A"], depth=1, decay_per_hop=0.5)
         assert len(scores) == 3
-        assert abs(scores["B"] - 0.4) < 1e-6   # 1.0 * 0.5 * 0.8
-        assert abs(scores["C"] - 0.3) < 1e-6   # 1.0 * 0.5 * 0.6
-        assert abs(scores["D"] - 0.2) < 1e-6   # 1.0 * 0.5 * 0.4
+        assert abs(scores["B"] - 0.4) < 1e-6  # 1.0 * 0.5 * 0.8
+        assert abs(scores["C"] - 0.3) < 1e-6  # 1.0 * 0.5 * 0.6
+        assert abs(scores["D"] - 0.2) < 1e-6  # 1.0 * 0.5 * 0.4
 
     def test_propagate_multi_path_uses_max(self):
         """A -> B -> D and A -> C -> D: D's weight should be max of both paths."""
@@ -417,9 +415,7 @@ class TestPropagate:
         field.link(CoOcAsymmetric, "B", "D", initial_weight=1.0)
         field.link(CoOcAsymmetric, "C", "D", initial_weight=1.0)
 
-        scores = field.propagate(
-            CoOcAsymmetric, ["A"], depth=2, decay_per_hop=0.5
-        )
+        scores = field.propagate(CoOcAsymmetric, ["A"], depth=2, decay_per_hop=0.5)
         # Path A->B->D: 1.0 * 0.5 * 1.0 * 0.5 * 1.0 = 0.25
         # Path A->C->D: 1.0 * 0.5 * 0.5 * 0.5 * 1.0 = 0.125
         # max(0.25, 0.125) = 0.25
@@ -446,9 +442,7 @@ class TestPropagate:
         assert "B" not in scores
 
     def test_propagate_empty_seeds(self):
-        scores = CoOcItem._meta.fields["associations"].propagate(
-            CoOcItem, [], depth=2
-        )
+        scores = CoOcItem._meta.fields["associations"].propagate(CoOcItem, [], depth=2)
         assert scores == {}
 
     def test_propagate_seed_with_no_edges(self):
@@ -540,9 +534,7 @@ class TestSynergyWithDecayingSortedField:
         field.link(CoOcWithDecay, pk_b, pk_c, initial_weight=0.6)
 
         # Propagate from A should find B and C
-        scores = field.propagate(
-            CoOcWithDecay, [pk_a], depth=2, decay_per_hop=0.5
-        )
+        scores = field.propagate(CoOcWithDecay, [pk_a], depth=2, decay_per_hop=0.5)
         assert pk_b in scores
         assert pk_c in scores
 
