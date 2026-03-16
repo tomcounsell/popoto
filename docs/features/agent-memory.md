@@ -29,7 +29,7 @@ The primitives ship incrementally. Each builds on the ones before it.
 | [WriteFilter](#writefilter) | Gates persistence — low-value records silently discarded at write time | Shipped ([PR #214](https://github.com/tomcounsell/popoto/pull/214)) |
 | [ConfidenceField](#confidencefield) | Bayesian certainty — corroboration strengthens, contradiction weakens | Shipped ([PR #215](https://github.com/tomcounsell/popoto/pull/215)) |
 | [CoOccurrenceField](#cooccurrencefield) | Weighted associations — co-accessed records strengthen their link | Shipped ([PR #218](https://github.com/tomcounsell/popoto/pull/218)) |
-| [EventStreamMixin](#eventstreammixin) | Append-only mutation log via Redis Streams | Planned |
+| [EventStreamMixin](#eventstreammixin) | Append-only mutation log via Redis Streams | Shipped |
 | [CompositeScoreQuery](#compositescorequery) | Multi-factor retrieval — combine N sorted indexes with weights | Planned |
 | [ExistenceFilter](#existencefilter) | Bloom filter for O(1) "do I know anything about X?" checks | Planned |
 | [PredictionLedger](#predictionledger) | Outcome tracking — record predictions, observe results, compute error | Planned |
@@ -560,16 +560,96 @@ See [CoOccurrenceField field docs](../fields/co-occurrence-field.md) for the ful
 
 ## EventStreamMixin
 
-Automatically appends to a Redis Stream on every save, update, or delete. This is infrastructure for background processing — the mixin writes events, your application consumes them.
+Automatically appends to a Redis Stream on every `save()`, `update()`, or `delete()`. This is infrastructure for background processing — the mixin writes events, your application consumes them via Redis Streams' consumer group API.
+
+### Quick Start
 
 ```python
-class Memory(Model, EventStreamMixin):
-    class Meta:
-        stream_name = "memory_mutations"
-        max_stream_length = 10000
+from popoto import Model, EventStreamMixin, UniqueKeyField, StringField
+
+class Memory(EventStreamMixin, Model):
+    _stream_name = "memory_mutations"       # Stream key: stream:memory_mutations
+    _stream_max_length = 10000              # Approximate MAXLEN trimming
+    _stream_metadata_fields = ("source",)   # Extra fields in each entry
+
+    key = UniqueKeyField()
+    content = StringField()
+    source = StringField(default="")
+
+memory = Memory(key="fact1", content="hello", source="user")
+memory.save()    # XADD with op="create"
+memory.content = "updated"
+memory.save()    # XADD with op="update"
+memory.delete()  # XADD with op="delete"
 ```
 
-Every mutation produces a stream entry with model class, primary key, operation type, and metadata. Processing is handled by `StreamConsumer`.
+### Configuration
+
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `_stream_name` | `str` | `"mutations"` | Name for the Redis Stream (key: `stream:{name}`) |
+| `_stream_partition_field` | `str` | `None` | Field name to partition streams by (key becomes `stream:{name}:{value}`) |
+| `_stream_max_length` | `int` | `10000` | Approximate max entries via `MAXLEN ~` trimming |
+| `_stream_metadata_fields` | `tuple` | `()` | Field names whose values are included in stream entries |
+
+### Stream Entry Fields
+
+Every stream entry contains these string fields:
+
+| Field | Description |
+|-------|-------------|
+| `model` | Model class name |
+| `pk` | Redis key of the instance |
+| `op` | Operation: `"create"`, `"update"`, `"delete"`, or custom |
+| `ts` | Unix timestamp |
+| `changed_fields` | Comma-separated list of updated fields (from `update_fields`) |
+
+Plus any fields listed in `_stream_metadata_fields`.
+
+### Partitioned Streams
+
+Route events to different streams based on a field value:
+
+```python
+class TenantMemory(EventStreamMixin, Model):
+    _stream_name = "mutations"
+    _stream_partition_field = "tenant"
+
+    key = UniqueKeyField()
+    tenant = StringField()
+
+# Writes to stream:mutations:acme
+TenantMemory(key="x", tenant="acme").save()
+
+# Writes to stream:mutations:beta
+TenantMemory(key="y", tenant="beta").save()
+```
+
+### Custom Events (Non-Save Operations)
+
+Operations that bypass `Model.save()` (like `ConfidenceField.update_confidence()` and `CoOccurrenceField.strengthen()`) can log events via the public `_xadd_event()` method:
+
+```python
+# Called automatically by ConfidenceField.update_confidence()
+instance._xadd_event(
+    op="confidence_update",
+    extra_fields={"field": "trust", "signal": "0.8"},
+)
+```
+
+### Error Handling
+
+- **Non-pipeline mode**: XADD failures are caught and logged — `save()` always succeeds if the data write succeeded.
+- **Pipeline mode**: XADD is queued atomically with the save. If the pipeline fails, both data and stream entry fail together.
+
+### WriteFilter Interaction
+
+When `WriteFilterMixin` discards a record (score below threshold), the `save()` returns before reaching the EventStreamMixin hook. No stream entry is produced for filtered records.
+
+### Redis Key Patterns
+
+- `stream:{stream_name}` — default stream key
+- `stream:{stream_name}:{partition_value}` — partitioned stream key
 
 ## CompositeScoreQuery
 
