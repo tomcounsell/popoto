@@ -46,7 +46,7 @@ def composite_score(
     limit: int = 10,
     aggregate: str = "SUM",
     min_score: float = None,
-    post_filter: callable = None,
+    post_filter: Optional[Callable[[str, float], bool]] = None,
     co_occurrence_boost: dict = None,
 ) -> list:
 ```
@@ -61,7 +61,7 @@ Also available as `Query.composite_score()` (convenience method that creates a Q
 | `limit` | `int` | `10` | Maximum results to return. |
 | `aggregate` | `str` | `"SUM"` | Score combination mode: `"SUM"`, `"MIN"`, or `"MAX"`. |
 | `min_score` | `float` | `None` | Minimum composite score threshold. |
-| `post_filter` | `callable` | `None` | `(redis_key, score) -> bool` filter applied after scoring. |
+| `post_filter` | `Callable[[str, float], bool]` | `None` | `(redis_key, score) -> bool` filter applied after scoring. |
 | `co_occurrence_boost` | `dict` | `None` | `{redis_key: weight}` from `CoOccurrenceField.propagate()`. |
 
 ### Supported index types
@@ -87,6 +87,8 @@ Also available as `Query.composite_score()` (convenience method that creates a Q
 4. **Post-filter**: Optional callback filters results before hydration.
 
 5. **Cleanup**: All temporary keys deleted immediately. Keys also have a 5-second EXPIRE as a safety net.
+
+> **Scaling note:** The `access_count`/`access_score` index uses `SMEMBERS` to discover all model instances. For models with 100K+ instances, this scan can be expensive. Use `post_filter` or partitioned queries to narrow the result set at that scale.
 
 6. **Hydration**: Redis keys passed to existing Query infrastructure for model instance loading.
 

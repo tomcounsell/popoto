@@ -701,7 +701,7 @@ results = Memory.query.filter(agent_id="agent-1").composite_score(
 | `limit` | `int` | `10` | Maximum number of results to return. |
 | `aggregate` | `str` | `"SUM"` | How ZUNIONSTORE combines scores: `"SUM"`, `"MIN"`, or `"MAX"`. |
 | `min_score` | `float` | `None` | Optional minimum composite score. Results below this threshold are excluded. |
-| `post_filter` | `callable` | `None` | Optional `(redis_key, score) -> bool` callback. Applied after scoring but before hydration. Return `True` to keep. |
+| `post_filter` | `Callable[[str, float], bool]` | `None` | Optional `(redis_key, score) -> bool` callback. Applied after scoring but before hydration. Return `True` to keep. |
 | `co_occurrence_boost` | `dict` | `None` | Optional `{redis_key: weight}` dict from `CoOccurrenceField.propagate()`. Injected as an additional scoring signal. |
 
 ### Supported index types
@@ -711,8 +711,10 @@ results = Memory.query.filter(agent_id="agent-1").composite_score(
 | Any `DecayingSortedField` | `DecayingSortedField` / `CyclicDecayField` | Materializes decay-computed scores into a temp ZSET via the existing Lua decay script |
 | Any `SortedField` | `SortedFieldMixin` | Uses the existing sorted set directly |
 | Any `ConfidenceField` | `ConfidenceField` | Materializes confidence values from the companion hash into a temp ZSET |
-| `"access_count"` or `"access_score"` | `AccessTrackerMixin` | Materializes `access_count` from meta hashes into a temp ZSET |
+| `"access_count"` or `"access_score"` | `AccessTrackerMixin` | Materializes `access_count` from meta hashes into a temp ZSET (uses `SMEMBERS` — see scaling note below) |
 | `"priority"` | `WriteFilterMixin` | Uses the `$WF:{Class}:priority` sorted set directly |
+
+> **Scaling note:** The `access_count`/`access_score` index uses `SMEMBERS` to discover all model instances before materializing scores. For models with 100K+ instances, this scan can be expensive. Use `post_filter` or partitioned queries to narrow the result set at that scale.
 
 ### CoOccurrence boost
 
