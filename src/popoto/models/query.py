@@ -442,6 +442,471 @@ class QueryBuilder:
 
         return instances
 
+    def composite_score(
+        self,
+        indexes: dict,
+        limit: int = 10,
+        aggregate: str = "SUM",
+        min_score: float = None,
+        post_filter: callable = None,
+        co_occurrence_boost: dict = None,
+    ) -> list:
+        """Return top-K instances ranked by a weighted composite of multiple indexes.
+
+        Combines N sorted set indexes with configurable weights via Redis
+        ZUNIONSTORE and returns model instances ranked by composite score.
+
+        Each index name maps to a field on the model. Supported field types:
+            - DecayingSortedField / CyclicDecayField: Materializes decay-computed
+              scores into a temp ZSET via the existing Lua decay script.
+            - SortedFieldMixin fields: Uses the sorted set directly.
+            - WriteFilter priority: Resolves ``$WF:{Class}:priority`` directly.
+            - ConfidenceField: Materializes confidence values from companion hash.
+            - AccessTracker: Materializes access_count from meta hashes.
+
+        Args:
+            indexes: Mapping of field names to weights, e.g.
+                ``{"relevance": 0.4, "confidence": 0.3}``. Weights are arbitrary
+                positive floats; relative ratios matter, not absolute values.
+            limit: Maximum results to return. Default 10.
+            aggregate: Aggregation mode for ZUNIONSTORE: "SUM", "MIN", or "MAX".
+                Default "SUM".
+            min_score: Optional minimum composite score threshold. Results below
+                this score are excluded.
+            post_filter: Optional callable ``(redis_key, score) -> bool``. Applied
+                after ZREVRANGE but before hydration. Return True to keep.
+            co_occurrence_boost: Optional dict ``{redis_key: weight}`` from
+                ``CoOccurrenceField.propagate()``. Injected as an additional
+                index in the composite.
+
+        Returns:
+            List of model instances ranked by composite score (descending).
+
+        Raises:
+            QueryException: If indexes is empty, contains invalid field names,
+                or references fields without sorted set indexes.
+
+        Example:
+            results = Memory.query.filter(agent_id="agent-1").composite_score(
+                indexes={"relevance": 0.4, "confidence": 0.3, "access_score": 0.2},
+                limit=10,
+            )
+        """
+        import time
+        import uuid
+
+        from ..fields.access_tracker import AccessTrackerMixin
+        from ..fields.confidence_field import ConfidenceField
+        from ..fields.decaying_sorted_field import DecayingSortedField, DECAY_SCORE_LUA
+        from ..fields.sorted_field_mixin import SortedFieldMixin
+        from ..fields.write_filter import WriteFilterMixin
+        from .encoding import decode_popoto_model_hashmap
+
+        model_class = self._query.model_class
+
+        # --- Validate inputs ---
+        if not indexes:
+            raise QueryException("composite_score() requires a non-empty indexes dict")
+
+        if limit <= 0:
+            return []
+
+        aggregate = aggregate.upper()
+        if aggregate not in ("SUM", "MIN", "MAX"):
+            raise QueryException(
+                f"aggregate must be 'SUM', 'MIN', or 'MAX' (got '{aggregate}')"
+            )
+
+        # --- Resolve each index to a Redis sorted set key ---
+        resolved_keys = {}  # {redis_zset_key: weight}
+        temp_keys = []  # keys to clean up after
+        uid = uuid.uuid4().hex[:8]
+        model_name = model_class.__name__
+
+        for field_name, weight in indexes.items():
+            resolved_key = self._resolve_index(
+                model_class, field_name, weight, uid, temp_keys
+            )
+            if resolved_key:
+                resolved_keys[resolved_key] = weight
+
+        # --- Handle co_occurrence_boost ---
+        if co_occurrence_boost:
+            co_key = f"$CSQ:{model_name}:co_occurrence:{uid}"
+            if co_occurrence_boost:
+                POPOTO_REDIS_DB.zadd(
+                    co_key,
+                    {
+                        str(k): float(v)
+                        for k, v in co_occurrence_boost.items()
+                    },
+                )
+                POPOTO_REDIS_DB.expire(co_key, 5)
+                temp_keys.append(co_key)
+                resolved_keys[co_key] = 1.0  # weight already in the scores
+
+        if not resolved_keys:
+            self._cleanup_temp_keys(temp_keys)
+            return []
+
+        # --- ZUNIONSTORE ---
+        composite_key = f"$CSQ:{model_name}:{uid}"
+        temp_keys.append(composite_key)
+
+        try:
+            POPOTO_REDIS_DB.zunionstore(
+                composite_key,
+                resolved_keys,
+                aggregate=aggregate,
+            )
+            POPOTO_REDIS_DB.expire(composite_key, 5)
+
+            # --- ZREVRANGE top-K ---
+            if min_score is not None:
+                raw_results = POPOTO_REDIS_DB.zrevrangebyscore(
+                    composite_key,
+                    "+inf",
+                    str(min_score),
+                    start=0,
+                    num=limit,
+                    withscores=True,
+                )
+            else:
+                raw_results = POPOTO_REDIS_DB.zrevrange(
+                    composite_key, 0, limit - 1, withscores=True
+                )
+
+            if not raw_results:
+                return []
+
+            # --- Post-filter ---
+            pks = []
+            for member, score in raw_results:
+                if isinstance(member, bytes):
+                    member = member.decode()
+                if post_filter is not None and not post_filter(member, score):
+                    continue
+                pks.append(member)
+
+            if not pks:
+                return []
+
+            # --- Hydrate models ---
+            pipe = POPOTO_REDIS_DB.pipeline()
+            for key in pks:
+                pipe.hgetall(key)
+            hashes = pipe.execute()
+
+            instances = []
+            for key, data in zip(pks, hashes):
+                if data:
+                    instance = decode_popoto_model_hashmap(model_class, data)
+                    instances.append(instance)
+
+            if not self._no_track:
+                _fire_on_read(model_class, instances)
+
+            return instances
+
+        finally:
+            self._cleanup_temp_keys(temp_keys)
+
+    def _resolve_index(self, model_class, field_name, weight, uid, temp_keys):
+        """Resolve a field name to a Redis sorted set key for composite scoring.
+
+        Handles different field types by either returning existing ZSET keys
+        directly or materializing data into temporary ZSETs.
+
+        Args:
+            model_class: The Model class.
+            field_name: Name of the field or special index.
+            weight: The weight for this index (used for naming temp keys).
+            uid: Unique identifier for temp key namespacing.
+            temp_keys: List to append any created temp keys to.
+
+        Returns:
+            str: Redis key of the sorted set to use, or None if unresolvable.
+
+        Raises:
+            QueryException: If field_name is invalid or unsupported.
+        """
+        import time
+
+        from ..fields.access_tracker import AccessTrackerMixin
+        from ..fields.confidence_field import ConfidenceField
+        from ..fields.decaying_sorted_field import DecayingSortedField, DECAY_SCORE_LUA
+        from ..fields.sorted_field_mixin import SortedFieldMixin
+        from ..fields.write_filter import WriteFilterMixin
+
+        model_name = model_class.__name__
+
+        # --- Special case: "priority" for WriteFilter ---
+        if field_name == "priority":
+            if not issubclass(model_class, WriteFilterMixin):
+                raise QueryException(
+                    f"'{model_name}' does not use WriteFilterMixin; "
+                    f"cannot resolve 'priority' index"
+                )
+            return f"$WF:{model_name}:priority"
+
+        # --- Special case: "access_count" / "access_score" for AccessTracker ---
+        if field_name in ("access_count", "access_score"):
+            if not issubclass(model_class, AccessTrackerMixin):
+                raise QueryException(
+                    f"'{model_name}' does not use AccessTrackerMixin; "
+                    f"cannot resolve '{field_name}' index"
+                )
+            return self._materialize_access_tracker(
+                model_class, uid, temp_keys
+            )
+
+        # --- Look up the field on the model ---
+        if field_name not in model_class._meta.fields:
+            raise QueryException(
+                f"'{model_name}' has no field '{field_name}'. "
+                f"Valid fields: {list(model_class._meta.fields.keys())}"
+            )
+
+        field = model_class._meta.fields[field_name]
+
+        # --- DecayingSortedField: materialize decay scores ---
+        if isinstance(field, DecayingSortedField):
+            return self._materialize_decay_field(
+                model_class, field, field_name, uid, temp_keys
+            )
+
+        # --- ConfidenceField: materialize from companion hash ---
+        if isinstance(field, ConfidenceField):
+            return self._materialize_confidence_field(
+                model_class, field, field_name, uid, temp_keys
+            )
+
+        # --- SortedFieldMixin: use existing sorted set directly ---
+        if isinstance(field, SortedFieldMixin):
+            try:
+                partition_values = [
+                    str(self._filters[pf]) for pf in field.partition_by
+                ]
+            except KeyError:
+                missing = [
+                    pf for pf in field.partition_by if pf not in self._filters
+                ]
+                raise QueryException(
+                    f"composite_score() on '{field_name}' requires "
+                    f"partition filter(s): {', '.join(missing)}"
+                )
+            sortedset_db_key = field.__class__.get_sortedset_db_key(
+                model_class, field_name, *partition_values
+            )
+            return sortedset_db_key.redis_key
+
+        # --- Unsupported field type ---
+        raise QueryException(
+            f"Field '{field_name}' ({type(field).__name__}) does not have "
+            f"a sorted set index and cannot be used in composite_score()"
+        )
+
+    def _materialize_decay_field(
+        self, model_class, field, field_name, uid, temp_keys
+    ):
+        """Materialize a DecayingSortedField's decay-computed scores into a temp ZSET.
+
+        Uses the existing Lua decay script to compute scores, then writes
+        them to a temporary sorted set.
+
+        Args:
+            model_class: The Model class.
+            field: The DecayingSortedField instance.
+            field_name: Name of the field.
+            uid: Unique identifier for temp key.
+            temp_keys: List to append temp key to.
+
+        Returns:
+            str: Redis key of the temp sorted set.
+        """
+        import time
+
+        from ..fields.decaying_sorted_field import DECAY_SCORE_LUA
+        from ..fields.cyclic_decay_field import CyclicDecayField, CYCLIC_DECAY_LUA
+
+        model_name = model_class.__name__
+
+        try:
+            partition_values = [
+                str(self._filters[pf]) for pf in field.partition_by
+            ]
+        except KeyError:
+            missing = [
+                pf for pf in field.partition_by if pf not in self._filters
+            ]
+            raise QueryException(
+                f"composite_score() on '{field_name}' requires "
+                f"partition filter(s): {', '.join(missing)}"
+            )
+
+        sortedset_db_key = field.__class__.get_sortedset_db_key(
+            model_class, field_name, *partition_values
+        )
+
+        now = time.time()
+        base_score_field = field.base_score_field or ""
+
+        # Get all decay scores via Lua
+        if isinstance(field, CyclicDecayField):
+            cycles_hash_key = CyclicDecayField._get_cycles_hash_key_from_parts(
+                model_class, field_name, *partition_values
+            )
+            pressure_hash_key = CyclicDecayField._get_pressure_hash_key_from_parts(
+                model_class, field_name, *partition_values
+            )
+            result = POPOTO_REDIS_DB.eval(
+                CYCLIC_DECAY_LUA,
+                3,
+                sortedset_db_key.redis_key,
+                cycles_hash_key,
+                pressure_hash_key,
+                str(now),
+                str(field.decay_rate),
+                str(999999),  # get all members
+                base_score_field,
+            )
+        else:
+            result = POPOTO_REDIS_DB.eval(
+                DECAY_SCORE_LUA,
+                1,
+                sortedset_db_key.redis_key,
+                str(now),
+                str(field.decay_rate),
+                str(999999),  # get all members
+                base_score_field,
+            )
+
+        temp_key = f"$CSQ:{model_name}:decay:{field_name}:{uid}"
+        temp_keys.append(temp_key)
+
+        if result:
+            # Parse [key1, score1, key2, score2, ...] and write to temp ZSET
+            zadd_mapping = {}
+            for i in range(0, len(result), 2):
+                member = result[i]
+                if isinstance(member, bytes):
+                    member = member.decode()
+                score = float(result[i + 1])
+                zadd_mapping[member] = score
+
+            if zadd_mapping:
+                POPOTO_REDIS_DB.zadd(temp_key, zadd_mapping)
+                POPOTO_REDIS_DB.expire(temp_key, 5)
+
+        return temp_key
+
+    def _materialize_confidence_field(
+        self, model_class, field, field_name, uid, temp_keys
+    ):
+        """Materialize a ConfidenceField's confidence values into a temp ZSET.
+
+        Reads the companion hash and extracts confidence values for each member.
+
+        Args:
+            model_class: The Model class.
+            field: The ConfidenceField instance.
+            field_name: Name of the field.
+            uid: Unique identifier for temp key.
+            temp_keys: List to append temp key to.
+
+        Returns:
+            str: Redis key of the temp sorted set.
+        """
+        import msgpack
+
+        model_name = model_class.__name__
+
+        # Build companion hash key
+        # Pattern: $ConfidencF:{Model}:{field}:data
+        base_key = field.get_special_use_field_db_key(model_class, field_name)
+        data_hash_key = base_key.redis_key + ":data"
+
+        # Read all entries from companion hash
+        all_data = POPOTO_REDIS_DB.hgetall(data_hash_key)
+
+        temp_key = f"$CSQ:{model_name}:confidence:{field_name}:{uid}"
+        temp_keys.append(temp_key)
+
+        if all_data:
+            zadd_mapping = {}
+            for member_key, raw_value in all_data.items():
+                if isinstance(member_key, bytes):
+                    member_key = member_key.decode()
+                try:
+                    data = msgpack.unpackb(raw_value, raw=False)
+                    confidence = data.get("confidence", field.initial_confidence)
+                except Exception:
+                    confidence = field.initial_confidence
+                zadd_mapping[member_key] = float(confidence)
+
+            if zadd_mapping:
+                POPOTO_REDIS_DB.zadd(temp_key, zadd_mapping)
+                POPOTO_REDIS_DB.expire(temp_key, 5)
+
+        return temp_key
+
+    def _materialize_access_tracker(self, model_class, uid, temp_keys):
+        """Materialize AccessTracker access_count values into a temp ZSET.
+
+        Iterates over all model instances and reads access_count from each
+        instance's meta hash.
+
+        Args:
+            model_class: The Model class.
+            uid: Unique identifier for temp key.
+            temp_keys: List to append temp key to.
+
+        Returns:
+            str: Redis key of the temp sorted set.
+        """
+        model_name = model_class.__name__
+        temp_key = f"$CSQ:{model_name}:access:{uid}"
+        temp_keys.append(temp_key)
+
+        # Get all instance keys
+        all_keys = POPOTO_REDIS_DB.smembers(
+            model_class._meta.db_class_set_key.redis_key
+        )
+
+        if all_keys:
+            zadd_mapping = {}
+            pipe = POPOTO_REDIS_DB.pipeline()
+            decoded_keys = []
+            for key in all_keys:
+                if isinstance(key, bytes):
+                    key = key.decode()
+                decoded_keys.append(key)
+                meta_key = f"$AT:{model_name}:meta:{key}"
+                pipe.hget(meta_key, "access_count")
+
+            results = pipe.execute()
+
+            for key, count_raw in zip(decoded_keys, results):
+                count = int(count_raw) if count_raw else 0
+                if count > 0:
+                    zadd_mapping[key] = float(count)
+
+            if zadd_mapping:
+                POPOTO_REDIS_DB.zadd(temp_key, zadd_mapping)
+                POPOTO_REDIS_DB.expire(temp_key, 5)
+
+        return temp_key
+
+    @staticmethod
+    def _cleanup_temp_keys(temp_keys):
+        """Delete temporary Redis keys created during composite scoring.
+
+        Args:
+            temp_keys: List of Redis key strings to delete.
+        """
+        if temp_keys:
+            POPOTO_REDIS_DB.delete(*temp_keys)
+
     def all(self) -> list:
         """Execute the query and return all matching results.
 
@@ -1174,6 +1639,42 @@ class Query:
         builder = QueryBuilder(self)
         return builder.top_by_decay(
             field_name, n=n, decay_rate=decay_rate, base_score_field=base_score_field
+        )
+
+    def composite_score(
+        self,
+        indexes: dict,
+        limit: int = 10,
+        aggregate: str = "SUM",
+        min_score: float = None,
+        post_filter: callable = None,
+        co_occurrence_boost: dict = None,
+    ) -> list:
+        """Return top-K instances ranked by weighted composite score.
+
+        Convenience method that creates a QueryBuilder and delegates.
+        For partitioned fields, use
+        ``query.filter(partition=value).composite_score(...)``.
+
+        Args:
+            indexes: Mapping of field names to weights.
+            limit: Maximum results to return. Default 10.
+            aggregate: Aggregation mode: "SUM", "MIN", or "MAX".
+            min_score: Optional minimum composite score threshold.
+            post_filter: Optional callable (redis_key, score) -> bool.
+            co_occurrence_boost: Optional {redis_key: weight} dict.
+
+        Returns:
+            List of model instances ranked by composite score.
+        """
+        builder = QueryBuilder(self)
+        return builder.composite_score(
+            indexes=indexes,
+            limit=limit,
+            aggregate=aggregate,
+            min_score=min_score,
+            post_filter=post_filter,
+            co_occurrence_boost=co_occurrence_boost,
         )
 
     def _execute_filter(
