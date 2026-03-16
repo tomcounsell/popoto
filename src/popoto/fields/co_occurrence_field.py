@@ -373,6 +373,9 @@ class CoOccurrenceField(Field):
                     EventStreamMixin._stream_max_length,
                 )
                 stream_key = f"stream:{stream_name}"
+                partition_field = getattr(model_class, "_stream_partition_field", None)
+                if partition_field:
+                    stream_key = f"{stream_key}:{source_pk}"
                 entry = {
                     "model": model_class.__name__,
                     "pk": str(source_pk),

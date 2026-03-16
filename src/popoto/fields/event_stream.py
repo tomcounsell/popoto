@@ -50,6 +50,8 @@ Example:
 import logging
 import time
 
+from typing import Optional
+
 from ..exceptions import ModelException
 from ..redis_db import POPOTO_REDIS_DB
 
@@ -76,7 +78,7 @@ class EventStreamMixin:
     """
 
     _stream_name: str = "mutations"
-    _stream_partition_field: str = None
+    _stream_partition_field: Optional[str] = None
     _stream_max_length: int = 10000
     _stream_metadata_fields: tuple = ()
 
