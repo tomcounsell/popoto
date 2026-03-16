@@ -704,6 +704,41 @@ See [CyclicDecayField feature docs](features/cyclic-decay-field.md) for the full
 the scoring formula, Redis data model, `TemporalPeriod` constants, and error handling.
 See [Agent Memory](features/agent-memory.md) for the broader agent memory primitives overview.
 
+## CoOccurrenceField
+
+`CoOccurrenceField` maintains weighted association edges between model instances using
+per-PK Redis sorted sets. Weights strengthen via co-retrieval and decay when not
+reinforced. A server-side Lua BFS script enables multi-hop associative retrieval.
+
+```python
+from popoto import Model, UniqueKeyField, StringField
+from popoto.fields.co_occurrence_field import CoOccurrenceField
+
+class Memory(Model):
+    key = UniqueKeyField()
+    content = StringField()
+    associations = CoOccurrenceField(symmetric=True, max_edges=100)
+
+# Create and link
+mem_a = Memory.create(key="ml", content="Machine learning")
+mem_b = Memory.create(key="nn", content="Neural networks")
+field = Memory._meta.fields["associations"]
+field.link(Memory, mem_a.db_key.redis_key, mem_b.db_key.redis_key)
+
+# Propagate associations
+scores = field.propagate(Memory, [mem_a.db_key.redis_key], depth=2)
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `symmetric` | `bool` | `True` | If True, edges are bidirectional. |
+| `max_edges` | `int` | `500` | Maximum edges per PK; lowest-weight pruned when exceeded. |
+| `decay_factor` | `float` | `0.95` | Default multiplicative decay for `weaken_all()`. |
+
+See [CoOccurrenceField docs](fields/co-occurrence-field.md) for the full reference including
+methods, Redis key patterns, and synergy with other memory fields.
+See [Agent Memory](features/agent-memory.md) for the broader agent memory primitives overview.
+
 ## partition_by
 
 When you always query a `SortedField` together with a specific `KeyField`, you can

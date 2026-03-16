@@ -28,7 +28,7 @@ The primitives ship incrementally. Each builds on the ones before it.
 | [ObservationProtocol](#observationprotocol) | Outcome-driven memory effects — acted/dismissed/deferred/contradicted | Shipped ([PR #206](https://github.com/tomcounsell/popoto/pull/206)) |
 | [WriteFilter](#writefilter) | Gates persistence — low-value records silently discarded at write time | Shipped ([PR #214](https://github.com/tomcounsell/popoto/pull/214)) |
 | [ConfidenceField](#confidencefield) | Bayesian certainty — corroboration strengthens, contradiction weakens | Shipped ([PR #215](https://github.com/tomcounsell/popoto/pull/215)) |
-| [CoOccurrenceField](#cooccurrencefield) | Weighted associations — co-accessed records strengthen their link | Planned |
+| [CoOccurrenceField](#cooccurrencefield) | Weighted associations — co-accessed records strengthen their link | Shipped ([PR #218](https://github.com/tomcounsell/popoto/pull/218)) |
 | [EventStreamMixin](#eventstreammixin) | Append-only mutation log via Redis Streams | Planned |
 | [CompositeScoreQuery](#compositescorequery) | Multi-factor retrieval — combine N sorted indexes with weights | Planned |
 | [ExistenceFilter](#existencefilter) | Bloom filter for O(1) "do I know anything about X?" checks | Planned |
@@ -522,26 +522,41 @@ When combined with `DecayingSortedField` or `CompositeScoreQuery`, confidence ac
 
 ## CoOccurrenceField
 
-Maintains weighted, bidirectional edges between model instances using sorted sets. Weights strengthen when records are accessed together and decay when not reinforced.
+Maintains weighted association edges between model instances using per-PK Redis sorted sets. Weights strengthen via `link()` and `strengthen()`, and decay via `weaken_all()`. Supports symmetric (bidirectional) and asymmetric (unidirectional) modes.
+
+Shipped in [PR #218](https://github.com/tomcounsell/popoto/pull/218).
 
 ```python
+from popoto import Model, UniqueKeyField, StringField
+from popoto.fields.co_occurrence_field import CoOccurrenceField
+
 class Memory(Model):
-    memory_id = AutoKeyField()
-    content = Field(type=str)
-    associations = CoOccurrenceField(symmetric=True, max_edges=500)
+    key = UniqueKeyField()
+    content = StringField()
+    associations = CoOccurrenceField(symmetric=True, max_edges=100)
 
-# Strengthen link between two memories
-Memory.associations.strengthen(memory_a.pk, memory_b.pk, delta=0.05)
+# Create instances and access the field
+mem_a = Memory.create(key="ml", content="Machine learning")
+mem_b = Memory.create(key="nn", content="Neural networks")
+field = Memory._meta.fields["associations"]
 
-# Retrieve associated memories with graph propagation
-related = Memory.associations.propagate(
-    seed_pks=[memory_a.pk],
-    depth=2,
-    decay_per_hop=0.5
-)
+# Link and strengthen
+field.link(Memory, mem_a.db_key.redis_key, mem_b.db_key.redis_key)
+field.strengthen(Memory, mem_a.db_key.redis_key, mem_b.db_key.redis_key, delta=0.05)
+
+# BFS graph propagation — multi-hop associative retrieval
+scores = field.propagate(Memory, [mem_a.db_key.redis_key], depth=2, decay_per_hop=0.5)
 ```
 
-Graph propagation uses BFS with exponential weight decay per hop. Direct neighbors get full weight; two hops away get `weight × 0.25`.
+Graph propagation uses a server-side Lua BFS script with exponential weight decay per hop. When the same PK is reached via multiple paths, `max(weight)` is used. Automatic edge pruning via `max_edges` prevents unbounded memory growth.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `symmetric` | `bool` | `True` | If True, edges are bidirectional |
+| `max_edges` | `int` | `500` | Maximum edges per PK; lowest-weight pruned when exceeded |
+| `decay_factor` | `float` | `0.95` | Default multiplicative decay for `weaken_all()` |
+
+See [CoOccurrenceField field docs](../fields/co-occurrence-field.md) for the full reference including methods, Redis key patterns, and synergy with other memory fields.
 
 ## EventStreamMixin
 

@@ -30,6 +30,7 @@ from .fields.access_tracker import AccessTrackerMixin
 from .fields.write_filter import WriteFilterMixin
 from .fields.cyclic_decay_field import CyclicDecayField
 from .fields.confidence_field import ConfidenceField
+from .fields.co_occurrence_field import CoOccurrenceField
 from .fields.constants import TemporalPeriod, InteractionWeight
 from .fields.observation import ObservationProtocol, RecallProposal
 from .fields.geo_field import GeoField
@@ -94,6 +95,7 @@ __all__ = [
     "SkipSaveException",
     "CyclicDecayField",
     "ConfidenceField",
+    "CoOccurrenceField",
     "TemporalPeriod",
     "InteractionWeight",
     "ObservationProtocol",
