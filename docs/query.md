@@ -197,6 +197,7 @@ The `QueryBuilder` returned by `filter()` supports these chainable methods:
 | `computed_sort(fn, reverse)` | Sort by a Python key function (applied after fetch, before limit) |
 | `no_track()` | Suppress `on_read()` tracking for `AccessTrackerMixin` models |
 | `top_by_decay(field_name, n)` | Return top-N by time-decayed score ([API ref](api-reference.md#querytop_by_decay)) |
+| `composite_score(indexes, limit)` | Return top-K by weighted composite of multiple sorted indexes ([API ref](api-reference.md#querycomposite_score)) |
 | `all()` | Execute query and return all results as a list |
 | `first()` | Execute query and return first result or None |
 | `count()` | Count matching results without loading objects |
@@ -1207,4 +1208,5 @@ for restaurant in Restaurant.query.all():
 | `filter(sorted__gte=...)` | ZRANGEBYSCORE | O(log N + M) |
 | `filter(geo=..., radius=...)` | GEORADIUS | O(N + log M) |
 | `all()` | SMEMBERS + pipeline HGETALL | O(N) |
+| `composite_score(...)` | ZUNIONSTORE + ZREVRANGE + pipeline HGETALL | O(K log K + M) |
 | `values(...)` on KeyFields only | No Redis call | O(1) |

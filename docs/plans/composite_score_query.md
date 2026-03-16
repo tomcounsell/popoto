@@ -4,7 +4,7 @@ type: feature
 appetite: Medium
 owner: Valor
 created: 2026-03-16
-tracking: https://github.com/tomcounsell/popoto/issues/212
+tracking:
 last_comment_id:
 ---
 

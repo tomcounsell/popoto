@@ -777,6 +777,63 @@ hot = Memory.query.filter(agent_id="agent-1").top_by_decay(n=5, decay_rate=1.0)
 Also available directly on `Query`: `Memory.query.top_by_decay(n=10)`.
 For partitioned fields, use `filter()` first to specify the partition value.
 
+### Query.composite\_score()
+
+```python
+Query.composite_score(
+    indexes: dict[str, float],
+    limit: int = 10,
+    aggregate: str = "SUM",
+    min_score: float = None,
+    post_filter: Callable[[str, float], bool] = None,
+    co_occurrence_boost: dict = None,
+) -> list
+```
+
+Return top-K instances ranked by a weighted composite of multiple sorted set indexes via Redis
+`ZUNIONSTORE`. Combines decay, confidence, access frequency, write filter priority, and
+co-occurrence signals into a single retrieval call.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `indexes` | `dict[str, float]` | *required* | Field names mapped to weights. Relative ratios matter, not absolute values. |
+| `limit` | `int` | `10` | Maximum results to return. |
+| `aggregate` | `str` | `"SUM"` | Score combination mode: `"SUM"`, `"MIN"`, or `"MAX"`. |
+| `min_score` | `float` | `None` | Minimum composite score threshold. Results below are excluded. |
+| `post_filter` | `Callable` | `None` | `(redis_key, score) -> bool` filter applied after scoring, before hydration. |
+| `co_occurrence_boost` | `dict` | `None` | `{redis_key: weight}` from `CoOccurrenceField.propagate()`. |
+
+Supported index types: `DecayingSortedField`, `CyclicDecayField`, `SortedField`, `ConfidenceField`,
+`"access_count"` / `"access_score"` (AccessTrackerMixin), and `"priority"` (WriteFilterMixin).
+
+```python
+# Multi-factor retrieval with four scoring signals
+results = Memory.query.filter(agent_id="agent-1").composite_score(
+    indexes={
+        "relevance": 0.4,      # DecayingSortedField
+        "certainty": 0.3,      # ConfidenceField
+        "access_count": 0.2,   # AccessTrackerMixin
+        "priority": 0.1,       # WriteFilterMixin
+    },
+    limit=10,
+)
+
+# With co-occurrence boost from graph propagation
+assoc_field = Memory._meta.fields["associations"]
+co_scores = assoc_field.propagate(Memory, seed_pks=["key1"], depth=2)
+results = Memory.query.filter(agent_id="agent-1").composite_score(
+    indexes={"relevance": 0.3, "certainty": 0.3},
+    co_occurrence_boost=co_scores,
+    limit=10,
+)
+```
+
+Also available directly on `Query`: `Memory.query.composite_score(indexes={...})`.
+For partitioned fields, use `filter()` first to specify the partition value.
+
+See [CompositeScoreQuery feature docs](features/composite-score-query.md) for the full reference
+including index resolution strategies, temp key management, and error handling.
+
 ### Async Query Methods
 
 | Sync | Async |
