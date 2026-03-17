@@ -735,7 +735,7 @@ scores = field.propagate(Memory, [mem_a.db_key.redis_key], depth=2)
 | `max_edges` | `int` | `500` | Maximum edges per PK; lowest-weight pruned when exceeded. |
 | `decay_factor` | `float` | `0.95` | Default multiplicative decay for `weaken_all()`. |
 
-See [CoOccurrenceField docs](fields/co-occurrence-field.md) for the full reference including
+See [CoOccurrenceField docs](features/co-occurrence-field.md) for the full reference including
 methods, Redis key patterns, and synergy with other memory fields.
 See [Agent Memory](features/agent-memory.md) for the broader agent memory primitives overview.
 

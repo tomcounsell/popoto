@@ -557,7 +557,7 @@ Graph propagation uses a server-side Lua BFS script with exponential weight deca
 | `max_edges` | `int` | `500` | Maximum edges per PK; lowest-weight pruned when exceeded |
 | `decay_factor` | `float` | `0.95` | Default multiplicative decay for `weaken_all()` |
 
-See [CoOccurrenceField field docs](../fields/co-occurrence-field.md) for the full reference including methods, Redis key patterns, and synergy with other memory fields.
+See [CoOccurrenceField field docs](co-occurrence-field.md) for the full reference including methods, Redis key patterns, and synergy with other memory fields.
 
 ## EventStreamMixin
 
@@ -976,7 +976,7 @@ These primitives follow Popoto's existing patterns:
 
 ## Further reading
 
-- [Popoto Memory Roadmap](../references/popoto-memory-roadmap.md) — full implementation spec with test strategies and benchmarks
-- [Epistemic Flow in Cognitive Agent Architectures](../references/epistemic-flow-cognitive-agent-architectures.md) — research background
-- [Programmable Memory Systems — Neuroscience Design Spec](../references/programmable-memory-systems-neuroscience-design-spec.md) — neuroscience foundations
+- [Popoto Memory Roadmap](../guides/popoto-memory-roadmap.md) — full implementation spec with test strategies and benchmarks
+- [Epistemic Flow in Cognitive Agent Architectures](../guides/epistemic-flow-cognitive-agent-architectures.md) — research background
+- [Programmable Memory Systems — Neuroscience Design Spec](../guides/programmable-memory-systems-neuroscience-design-spec.md) — neuroscience foundations
 - [Behavioral Episode Memory System](https://github.com/tomcounsell/ai/issues/376) — downstream consumer in the AI project

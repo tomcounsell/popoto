@@ -79,7 +79,7 @@ The Lead Engineer must decide where the injection occurs. We recommend an interc
 
 ##### Popoto Integration Map: Streaming & Graphs
 
-Popoto wraps RedisGraph to manage static social edges. MuninnDB complements this by overlaying  **Hebbian weights**  on those edges; while a social graph might show a "manager" relationship, MuninnDB learns if that relationship is "active" based on co-activation. Furthermore, the ACT-R temporal decay provides the "aging" logic for Popoto’s  **streaming timeseries data** , allowing price feeds or sensor logs to naturally "fade" as they lose cognitive relevance.
+Popoto uses Redis sorted sets and relationships to manage data edges. MuninnDB complements this by overlaying  **Hebbian weights**  on those edges; while a relationship might show a "manager" connection, MuninnDB learns if that relationship is "active" based on co-activation. Furthermore, the ACT-R temporal decay provides the "aging" logic for Popoto’s  **streaming timeseries data** , allowing price feeds or sensor logs to naturally "fade" as they lose cognitive relevance.
 
 ##### Engineering for Scale: ULIDs and the MOL
 
