@@ -70,15 +70,18 @@ local key = KEYS[1]
 local item = ARGV[1]
 local m = tonumber(ARGV[2])
 local k = tonumber(ARGV[3])
+local LARGE_MOD = 4503599627370496  -- 2^52, safe for Lua doubles
 
 -- Double hashing: h1 (DJB2) and h2 (FNV-1 variant)
 local h1 = 5381
 local h2 = 16777619
 for i = 1, #item do
     local c = string.byte(item, i)
-    h1 = ((h1 * 33) + c) % m
-    h2 = ((h2 * 16777619) + c) % m
+    h1 = ((h1 * 33) + c) % LARGE_MOD
+    h2 = ((h2 * 16777619) + c) % LARGE_MOD
 end
+h1 = h1 % m
+h2 = h2 % m
 
 for i = 0, k - 1 do
     local pos = (h1 + i * h2) % m
@@ -92,14 +95,17 @@ local key = KEYS[1]
 local item = ARGV[1]
 local m = tonumber(ARGV[2])
 local k = tonumber(ARGV[3])
+local LARGE_MOD = 4503599627370496  -- 2^52, safe for Lua doubles
 
 local h1 = 5381
 local h2 = 16777619
 for i = 1, #item do
     local c = string.byte(item, i)
-    h1 = ((h1 * 33) + c) % m
-    h2 = ((h2 * 16777619) + c) % m
+    h1 = ((h1 * 33) + c) % LARGE_MOD
+    h2 = ((h2 * 16777619) + c) % LARGE_MOD
 end
+h1 = h1 % m
+h2 = h2 % m
 
 for i = 0, k - 1 do
     local pos = (h1 + i * h2) % m
@@ -119,12 +125,14 @@ local key = KEYS[1]
 local item = ARGV[1]
 local w = tonumber(ARGV[2])
 local d = tonumber(ARGV[3])
+local LARGE_MOD = 4503599627370496  -- 2^52, safe for Lua doubles
 
 for row = 0, d - 1 do
     local h = 5381 + row * 16777619
     for i = 1, #item do
-        h = ((h * 33) + string.byte(item, i)) % w
+        h = ((h * 33) + string.byte(item, i)) % LARGE_MOD
     end
+    h = h % w
     redis.call('HINCRBY', key, row .. ':' .. h, 1)
 end
 return 1
@@ -135,13 +143,15 @@ local key = KEYS[1]
 local item = ARGV[1]
 local w = tonumber(ARGV[2])
 local d = tonumber(ARGV[3])
+local LARGE_MOD = 4503599627370496  -- 2^52, safe for Lua doubles
 
 local min_count = nil
 for row = 0, d - 1 do
     local h = 5381 + row * 16777619
     for i = 1, #item do
-        h = ((h * 33) + string.byte(item, i)) % w
+        h = ((h * 33) + string.byte(item, i)) % LARGE_MOD
     end
+    h = h % w
     local val = tonumber(redis.call('HGET', key, row .. ':' .. h)) or 0
     if min_count == nil or val < min_count then
         min_count = val
@@ -149,6 +159,36 @@ for row = 0, d - 1 do
 end
 return min_count or 0
 """
+
+
+def _compute_fingerprint_impl(field, model_instance):
+    """Compute fingerprint string from a model instance.
+
+    Shared implementation used by both ExistenceFilter and FrequencySketch.
+
+    Uses the configured fingerprint_fn on the field. Falls back to the model's
+    redis_key if no fingerprint_fn is set.
+
+    Args:
+        field: The field instance (ExistenceFilter or FrequencySketch).
+        model_instance: The model instance to fingerprint.
+
+    Returns:
+        str: The fingerprint string.
+
+    Raises:
+        ValueError: If fingerprint_fn returns None.
+    """
+    if field.fingerprint_fn is not None:
+        result = field.fingerprint_fn(model_instance)
+    else:
+        result = model_instance.db_key.redis_key
+    if result is None:
+        raise ValueError(
+            f"fingerprint_fn returned None for {model_instance}. "
+            f"fingerprint_fn must return a string."
+        )
+    return str(result)
 
 
 class ExistenceFilter(Field):
@@ -217,28 +257,9 @@ class ExistenceFilter(Field):
     def _compute_fingerprint(self, model_instance):
         """Compute fingerprint string from a model instance.
 
-        Uses the configured fingerprint_fn. Falls back to the model's
-        redis_key if no fingerprint_fn is set.
-
-        Args:
-            model_instance: The model instance to fingerprint.
-
-        Returns:
-            str: The fingerprint string.
-
-        Raises:
-            ValueError: If fingerprint_fn returns None.
+        Delegates to the module-level _compute_fingerprint_impl helper.
         """
-        if self.fingerprint_fn is not None:
-            result = self.fingerprint_fn(model_instance)
-        else:
-            result = model_instance.db_key.redis_key
-        if result is None:
-            raise ValueError(
-                f"fingerprint_fn returned None for {model_instance}. "
-                f"fingerprint_fn must return a string."
-            )
-        return str(result)
+        return _compute_fingerprint_impl(self, model_instance)
 
     def _bloom_key(self, model_instance):
         """Build the Redis key for this Bloom filter.
@@ -407,28 +428,9 @@ class FrequencySketch(Field):
     def _compute_fingerprint(self, model_instance):
         """Compute fingerprint string from a model instance.
 
-        Uses the configured fingerprint_fn. Falls back to the model's
-        redis_key if no fingerprint_fn is set.
-
-        Args:
-            model_instance: The model instance to fingerprint.
-
-        Returns:
-            str: The fingerprint string.
-
-        Raises:
-            ValueError: If fingerprint_fn returns None.
+        Delegates to the module-level _compute_fingerprint_impl helper.
         """
-        if self.fingerprint_fn is not None:
-            result = self.fingerprint_fn(model_instance)
-        else:
-            result = model_instance.db_key.redis_key
-        if result is None:
-            raise ValueError(
-                f"fingerprint_fn returned None for {model_instance}. "
-                f"fingerprint_fn must return a string."
-            )
-        return str(result)
+        return _compute_fingerprint_impl(self, model_instance)
 
     def _cms_key(self, model_instance):
         """Build the Redis key for this Count-Min Sketch.
