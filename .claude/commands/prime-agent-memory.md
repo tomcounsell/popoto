@@ -2,7 +2,7 @@ Load full context for building Popoto Agent Memory primitives. Run this before p
 
 ## What is Popoto Agent Memory?
 
-A set of 12 ORM primitives that give AI agents programmable memory — records that decay over time, strengthen through use, track confidence, form associations, and surface the right context at the right moment. Each primitive is an independently useful Redis-backed field type, mixin, or query method.
+A set of 14 ORM primitives that give AI agents programmable memory — records that decay over time, strengthen through use, track confidence, form associations, and surface the right context at the right moment. Each primitive is an independently useful Redis-backed field type, mixin, or query method.
 
 ## Step 1: Read the feature doc
 
@@ -10,7 +10,7 @@ Read `docs/features/agent-memory.md` for the full primitives overview, API sketc
 
 ## Step 2: Read the implementation roadmap
 
-Read `docs/references/popoto-memory-roadmap.md` for the 12-step implementation plan with:
+Read `docs/references/popoto-memory-roadmap.md` for the 14-step implementation plan with:
 - Exact data structures and Lua scripts per primitive
 - Synergy tests between primitives (combinatorial test matrix)
 - Measurable agent improvement benchmarks per step
@@ -29,13 +29,21 @@ Read these files to understand how Popoto fields and queries work — every new 
 - `src/popoto/fields/field.py` — base Field class, hook signatures, mixin composition pattern
 - `src/popoto/models/base.py` — Model.save() and Model.delete() call field hooks. Search for `atomic_increment` to see the established Lua scripting pattern.
 - `src/popoto/models/query.py` — QueryBuilder and how `computed_sort()` works (the pattern `top_by_decay()` extends)
+- `src/popoto/fields/existence_filter.py` — ExistenceFilter and FrequencySketch. Example of implementing probabilistic data structures (Bloom filter, Count-Min Sketch) with pure Lua + core Redis commands.
 
-## Step 5: Review completed prerequisites
+## Step 5: Review shipped primitives
 
-These PRs established patterns this work builds on:
-- PR #190: `atomic_increment()` — Lua scripting pattern with `cmsgpack`, pipeline support
-- PR #191: `ListField(max_length=N)` — new field type with separate Redis data structure
-- PR #189: `computed_sort()` — QueryBuilder extension pattern
+10 of 14 primitives have shipped. Key implementation files:
+- `src/popoto/fields/decaying_sorted_field.py` — DecayingSortedField (PR #199)
+- `src/popoto/fields/cyclic_decay_field.py` — CyclicDecayField (PR #201, not yet confirmed)
+- `src/popoto/fields/access_tracker.py` — AccessTrackerMixin (PR #203)
+- `src/popoto/fields/observation_protocol.py` — ObservationProtocol (PR #206, not yet confirmed)
+- `src/popoto/fields/write_filter.py` — WriteFilterMixin (PR #214)
+- `src/popoto/fields/confidence_field.py` — ConfidenceField (PR #215)
+- `src/popoto/fields/co_occurrence_field.py` — CoOccurrenceField (PR #218)
+- `src/popoto/fields/event_stream_mixin.py` — EventStreamMixin (shipped, not yet confirmed)
+- `src/popoto/models/query.py` — CompositeScoreQuery via `composite_score()` (PR #222)
+- `src/popoto/fields/existence_filter.py` — ExistenceFilter + FrequencySketch (PR #225)
 
 Check `tests/test_lua_decay_scoring.py` for the validated Lua decay formula and test patterns.
 
@@ -50,20 +58,28 @@ Review open issues and merged PRs to understand what's already shipped vs. in pr
 ## Key design decisions (already settled)
 
 - **DecayingSortedField** subclasses `SortedFieldMixin` — score is always a timestamp, inherits partition_by
-- **Lua scripts compute decay at query time** (Option C) — store raw data, compute on read. Leave review notes about future background recomputation when a worker exists (Steps 6/10).
+- **Lua scripts compute decay at query time** (Option C) — store raw data, compute on read
 - **`base_score_field`** parameter with default 1.0, overridable at query time via `top_by_decay()`
 - **`decay_rate`** parameter with default 0.5, overridable at query time
 - **`touch()` method** for timestamp refresh without full save
-- **`on_read()` hook** deferred to Step 2 (AccessTracker)
 - **CS terminology throughout** — not neuroscience. See naming conventions table in the roadmap.
+- **No Redis module dependencies** — all features use core Redis commands + Lua scripts for Valkey compatibility. ExistenceFilter uses SETBIT/GETBIT + Lua (not RedisBloom BF.*). FrequencySketch uses HINCRBY/HGET + Lua (not CMS.*).
 
 ## Constraints
 
 - Must not break existing `SortedField` behavior — new subclasses, not modifications
 - Every operation must accept optional `pipeline` parameter for atomic execution
 - Every primitive must be independently testable and useful
-- Redis-native everything — no external brokers, no Celery
+- Redis-native everything — no external brokers, no Celery, no Redis modules
+- **Valkey compatible** — only core Redis commands + Lua scripts. No BF.*, CMS.*, FT.*, JSON.* or any module commands
 - Follow existing Popoto code style: black formatting, 88 char lines
+
+## Remaining work (4 primitives)
+
+- **PredictionLedger** — outcome tracking, prediction-outcome pairs, auto-resolution
+- **StreamConsumer** — background processing framework for Redis Streams consumer groups
+- **PolicyCache** — learned action selection from crystallized state-action-outcome patterns
+- **ContextAssembler** — retrieval-to-injection bridge, assembles LLM-ready context within token budgets
 
 ## Downstream consumer
 

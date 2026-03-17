@@ -739,6 +739,102 @@ See [CoOccurrenceField docs](fields/co-occurrence-field.md) for the full referen
 methods, Redis key patterns, and synergy with other memory fields.
 See [Agent Memory](features/agent-memory.md) for the broader agent memory primitives overview.
 
+## ExistenceFilter
+
+`ExistenceFilter` is a Bloom filter for O(1) probabilistic membership checks. It answers
+"have I ever stored anything about X?" without touching any sorted set or hash. False
+positives are possible; false negatives are impossible.
+
+Implemented entirely with Redis strings (`SETBIT`/`GETBIT`) and Lua scripts. No Redis
+modules required -- works on both Redis and Valkey.
+
+`ExistenceFilter` is a "side-effect field" -- it does not store a value on the model
+instance. It maintains a Bloom filter index via `on_save()` hooks.
+
+```python
+from popoto import Model, KeyField, Field
+from popoto.fields.existence_filter import ExistenceFilter
+
+class Memory(Model):
+    agent_id = KeyField()
+    topic = Field(type=str)
+    bloom = ExistenceFilter(
+        error_rate=0.01,
+        capacity=100_000,
+        fingerprint_fn=lambda inst: inst.topic,
+    )
+```
+
+Check membership before running expensive queries:
+
+```python
+# Fast pre-check before expensive retrieval
+if not Memory.bloom.definitely_missing(Memory, "kubernetes deployments"):
+    results = Memory.query.filter(agent_id="agent-1").top_by_decay(5)
+else:
+    results = []  # skip retrieval entirely
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `error_rate` | `float` | `0.01` | Target false positive rate. Lower = more bits required. |
+| `capacity` | `int` | `100_000` | Expected number of distinct items. Exceeding this degrades the error rate. |
+| `fingerprint_fn` | `Callable` | `None` | Takes a model instance, returns a string fingerprint. Falls back to `redis_key` if not set. |
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `might_exist(model_class, fingerprint)` | `bool` | True if fingerprint is possibly present (may be false positive). |
+| `definitely_missing(model_class, fingerprint)` | `bool` | True if fingerprint is guaranteed absent. |
+| `fill_ratio(model_class)` | `float` | Proportion of set bits (0.0-1.0). Monitor for capacity warnings. |
+
+`on_delete()` is a no-op -- Bloom filters do not support removal. Stale positives are
+harmless for a pre-filter use case.
+
+See [Agent Memory -- ExistenceFilter](features/agent-memory.md#existencefilter) for the
+full agent memory context.
+
+## FrequencySketch
+
+`FrequencySketch` is a Count-Min Sketch for approximate frequency counting. Tracks how
+many times a fingerprint has been saved, with possible overcounting but never undercounting.
+
+Implemented entirely with Redis hashes (`HINCRBY`/`HGET`) and Lua scripts. No Redis
+modules required -- works on both Redis and Valkey.
+
+```python
+from popoto import Model, KeyField, Field
+from popoto.fields.existence_filter import FrequencySketch
+
+class Memory(Model):
+    agent_id = KeyField()
+    topic = Field(type=str)
+    freq = FrequencySketch(
+        fingerprint_fn=lambda inst: inst.topic,
+    )
+```
+
+Query approximate frequency:
+
+```python
+count = Memory.freq.get_frequency(Memory, "kubernetes")
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `width` | `int` | `2000` | Number of counters per row. Higher = less overcounting. |
+| `depth` | `int` | `7` | Number of hash functions (rows). Higher = more accurate. |
+| `fingerprint_fn` | `Callable` | `None` | Takes a model instance, returns a string fingerprint. Falls back to `redis_key` if not set. |
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `get_frequency(model_class, fingerprint)` | `int` | Approximate count. May overcount, never undercounts. |
+
+`on_delete()` is a no-op -- CMS counters are monotonically increasing.
+
+Both `ExistenceFilter` and `FrequencySketch` can be used together on the same model.
+See [Agent Memory -- FrequencySketch](features/agent-memory.md#frequencysketch) for
+the full agent memory context.
+
 ## partition_by
 
 When you always query a `SortedField` together with a specific `KeyField`, you can

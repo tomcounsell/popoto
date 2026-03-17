@@ -528,25 +528,33 @@ Measure precision@5, recall@10, and mean reciprocal rank at each level. The hypo
 
 ---
 
-## Step 8: ExistenceFilter — Fast Pre-Retrieval Check
+## Step 8: ExistenceFilter — Fast Pre-Retrieval Check ✅ Shipped
 
-**What it is:** A field type wrapping Redis Bloom filter (BF.ADD / BF.EXISTS) for O(1) probabilistic membership queries. Answers "have I ever stored a record matching this fingerprint?" without touching any sorted set or hash. False positives possible; false negatives essentially impossible.
+**What it is:** A field type implementing a Bloom filter for O(1) probabilistic membership queries. Answers "have I ever stored a record matching this fingerprint?" without touching any sorted set or hash. False positives possible; false negatives impossible.
+
+**Implementation:** Shipped in [PR #225](https://github.com/tomcounsell/popoto/pull/225).
+
+**Architectural decision — Lua-based, no Redis modules:** The original plan called for RedisBloom module commands (`BF.ADD`, `BF.EXISTS`, `CMS.INCRBY`, `CMS.QUERY`). This was changed to pure Lua scripts using core Redis commands (`SETBIT`/`GETBIT` for Bloom filter, `HINCRBY`/`HGET` for Count-Min Sketch). The reason: RedisBloom is not available on Valkey, and Popoto supports both Redis and Valkey. The Lua implementation uses the Kirschner-Mitzenmacher double hashing optimization (DJB2 + FNV-1) to simulate k independent hash functions with identical theoretical guarantees. Performance difference is negligible for agent memory workloads.
 
 **ORM addition:**
 
 ```python
 class ExistenceFilter(Field):
     """
-    Bloom filter for fast "do I have anything relevant?" checks.
-    
-    Key pattern: $EF:{ClassName}:{field_name} → Redis Bloom filter
-    
-    on_save hook: BF.ADD with configurable fingerprint function
-    
+    Bloom filter for O(1) probabilistic membership checks.
+
+    Implemented with Redis SETBIT/GETBIT and Lua scripts.
+    No Redis modules required -- works on both Redis and Valkey.
+
+    Key pattern: $EF:{ClassName}:{field_name} → Redis string (bit array)
+
+    on_save hook: Lua script sets k bits via SETBIT
+
     Methods:
-      might_exist(fingerprint: str) -> bool  # BF.EXISTS — O(1)
-      definitely_missing(fingerprint: str) -> bool  # !BF.EXISTS
-    
+      might_exist(model_class, fingerprint: str) -> bool   # O(1) via Lua
+      definitely_missing(model_class, fingerprint: str) -> bool  # inverse
+      fill_ratio(model_class) -> float  # diagnostic: proportion of set bits
+
     Config:
       error_rate: float = 0.01  # 1% false positive rate
       capacity: int = 100000    # Expected number of entries
@@ -556,15 +564,13 @@ class ExistenceFilter(Field):
     capacity: int = 100000
 ```
 
-Also add `FrequencySketch` wrapping Count-Min Sketch (CMS.INCRBY / CMS.QUERY) for approximate frequency queries.
+Also shipped: `FrequencySketch` implementing Count-Min Sketch via Lua scripts and Redis hashes (`HINCRBY`/`HGET`). Provides `get_frequency(model_class, fingerprint)` for approximate frequency queries. No Redis modules required.
 
-**Synergy tests:**
-- ExistenceFilter + CompositeScoreQuery (Step 7): Use ExistenceFilter as a pre-filter — skip the full composite query if `definitely_missing()` returns True. Test: measure query latency reduction when 70% of queries hit missing topics.
-- ExistenceFilter + WriteFilter (Step 3): Filtered-out records should NOT be added to the Bloom filter. Test: save below-threshold record → verify `might_exist()` returns False.
+**Synergy tests (verified):**
+- ExistenceFilter + CompositeScoreQuery (Step 7): Use ExistenceFilter as a pre-filter — skip the full composite query if `definitely_missing()` returns True.
+- ExistenceFilter + WriteFilter (Step 3): Filtered-out records are NOT added to the Bloom filter (the existing save flow raises `SkipSaveException` before `on_save()` hooks run).
 
 **Measurable agent improvement:** In a retrieval-augmented agent, measure the percentage of retrieval calls that can be short-circuited by the Bloom filter (expected: 30-60% of queries touch topics with no stored records). Measure end-to-end latency reduction.
-
-**Issues:** ~2 (Bloom filter wrapper, CMS wrapper, pre-filter integration tests)
 
 ---
 
@@ -906,7 +912,7 @@ After all 12 steps ship, the test suite must cover pairwise interactions. Here i
 | 5. CoOccurrenceField | 1 week | None | Associative retrieval |
 | 6. EventStreamMixin | 3 days | None | Mutation logging |
 | 7. CompositeScoreQuery | 1 week | Steps 1-5 | **Multi-factor retrieval** |
-| 8. ExistenceFilter | 3 days | None | Fast pre-filtering |
+| 8. ExistenceFilter | 3 days | None | Fast pre-filtering ✅ |
 | 9. PredictionLedger + Auto-Resolution | 1.5 weeks | Steps 2, 4, 6 | Outcome learning + surfacing calibration |
 | 10. StreamConsumer | 1 week | Step 6 | Background processing |
 | 11. PolicyCache + Temporal Discovery | 1-2 weeks | Steps 1-10 | **Learned action selection + discovered cycles** |
