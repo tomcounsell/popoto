@@ -770,7 +770,9 @@ All temporary Redis keys use a `$CSQ:` prefix with a UUID suffix and a 5-second 
 
 A Bloom filter for O(1) probabilistic membership checks. Answers "have I ever stored anything about X?" without touching any sorted set or hash. False positives are possible; false negatives are impossible.
 
-Implemented entirely with Redis strings (`SETBIT`/`GETBIT`) and Lua scripts. **No Redis modules required** -- works on both Redis and Valkey.
+Shipped in [PR #225](https://github.com/tomcounsell/popoto/pull/225).
+
+Implemented entirely with Redis strings (`SETBIT`/`GETBIT`) and Lua scripts. **No Redis modules required** -- works on both Redis and Valkey. The original roadmap specified RedisBloom module commands (`BF.ADD`/`BF.EXISTS`), but the implementation uses pure Lua with the Kirschner-Mitzenmacher double hashing optimization to maintain Valkey compatibility.
 
 ### Basic usage
 
@@ -833,7 +835,9 @@ Hash functions use the Kirschner-Mitzenmacher double hashing optimization (DJB2 
 
 A Count-Min Sketch for approximate frequency counting. Tracks how many times a fingerprint has been saved, with possible overcounting but never undercounting.
 
-Implemented entirely with Redis hashes (`HINCRBY`/`HGET`) and Lua scripts. **No Redis modules required** -- works on both Redis and Valkey.
+Shipped in [PR #225](https://github.com/tomcounsell/popoto/pull/225).
+
+Implemented entirely with Redis hashes (`HINCRBY`/`HGET`) and Lua scripts. **No Redis modules required** -- works on both Redis and Valkey. Like ExistenceFilter, the original roadmap specified RedisBloom module commands (`CMS.INCRBY`/`CMS.QUERY`), but the implementation uses pure Lua for Valkey compatibility.
 
 ### Basic usage
 
@@ -964,7 +968,7 @@ These primitives follow Popoto's existing patterns:
 
 1. **ORM primitives, not application logic.** Popoto provides fields, mixins, hooks, and query methods. Domain-specific agent memory models are built on top by application developers.
 
-2. **Redis-native everything.** No external brokers or job queues. Lua scripts, sorted sets, streams, Bloom filters — all within the Redis process.
+2. **Redis-native everything.** No external brokers, job queues, or Redis modules. Lua scripts, sorted sets, streams, Bloom filters (via SETBIT/GETBIT) — all within the Redis process. Works identically on Redis and Valkey.
 
 3. **Composable.** Each primitive is independently useful. Use `DecayingSortedField` alone for time-weighted ranking, add `CyclicDecayField` for temporal rhythms and urgency, or combine all twelve for a full cognitive memory system.
 

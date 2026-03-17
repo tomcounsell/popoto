@@ -760,7 +760,7 @@ class Model:
 | **computed_sort()** | ORM | ZUNIONSTORE with weights — generic query capability |
 | **Pipeline parameter threading** | ORM | Transactional consistency — must be in ORM |
 | **Lua script execution helper** | ORM | `Model.execute_lua(script, keys, args)` — generic capability |
-| **Bloom filter field** | ORM | `BloomField` — wraps BF.ADD/BF.EXISTS for FOK |
+| **Bloom filter field** | ORM | `ExistenceFilter` — Lua-based Bloom filter via SETBIT/GETBIT (no Redis modules) |
 | **Episode model** | Application | Domain-specific schema; too specific for ORM |
 | **ProceduralRule model** | Application | Domain-specific; combines multiple ORM primitives |
 | **ForwardModel model** | Application | Domain-specific prediction tracking |
@@ -792,8 +792,8 @@ class Model:
 | Priority replay queue | Sorted Set (score=priority) | `consolidation:priority:{agent_id}` |
 | Procedural actions per state | Sorted Set (score=Q-value) | `procedural:actions:{agent_id}:{state_fp}` |
 | Forward model predictions | Sorted Set (score=pred_error) | `fwd_model:errors:{agent_id}` |
-| Concept familiarity | Bloom Filter | `bf:seen:{agent_id}` |
-| Concept frequency | Count-Min Sketch | `cms:freq:{agent_id}` |
+| Concept familiarity | Bloom Filter (Lua + SETBIT/GETBIT) | `$EF:{ClassName}:{field_name}` |
+| Concept frequency | Count-Min Sketch (Lua + HINCRBY/HGET) | `$FS:{ClassName}:{field_name}` |
 | Most accessed memories | Top-K | `topk:accessed:{agent_id}` |
 | Notifications | Pub/Sub | `memory:events:{agent_id}` |
 | Atomic updates | Lua scripts | Named scripts registered at startup |
@@ -834,6 +834,6 @@ Following the 2025 *Nature Communications* finding that replay is biased by RPE 
 
 ## Conclusion: from neuroscience primitives to implementable infrastructure
 
-This design specification derives seven computational systems from established neuroscience — episodic encoding with pattern separation, CLS-based consolidation, RL-based procedural crystallization, cerebellar forward models, amygdaloid salience gating, somatic marker caching, and metacognitive monitoring — and maps each to Redis-native data structures through Popoto ORM abstractions. The key architectural decisions are: (1) fast episodic writes to Hash + sorted set indexes with salience gating at the ORM layer, (2) background consolidation via Redis Streams consumer groups extracting patterns into a durable semantic tier, (3) activation-dependent power-law decay computed via Lua scripts for the spacing effect, (4) Q-learning over discretized state fingerprints for procedural crystallization, (5) prediction-error-prioritized replay for consolidation scheduling, and (6) Bloom filter/CMS-based metacognition for fast "feeling of knowing" queries.
+This design specification derives seven computational systems from established neuroscience — episodic encoding with pattern separation, CLS-based consolidation, RL-based procedural crystallization, cerebellar forward models, amygdaloid salience gating, somatic marker caching, and metacognitive monitoring — and maps each to Redis-native data structures through Popoto ORM abstractions. The key architectural decisions are: (1) fast episodic writes to Hash + sorted set indexes with salience gating at the ORM layer, (2) background consolidation via Redis Streams consumer groups extracting patterns into a durable semantic tier, (3) activation-dependent power-law decay computed via Lua scripts for the spacing effect, (4) Q-learning over discretized state fingerprints for procedural crystallization, (5) prediction-error-prioritized replay for consolidation scheduling, and (6) Lua-based Bloom filter/CMS metacognition for fast "feeling of knowing" queries (implemented via core Redis commands for Valkey compatibility).
 
-The ORM boundary is drawn clearly: Popoto provides five new mixins (ActivationFieldMixin, SalienceFieldMixin, AssociationFieldMixin, ConsolidationStreamMixin, BloomField), hook extensions (on_access, on_consolidate), composite query methods (computed_sort, activation_query), and Lua script execution helpers. The application layer builds domain-specific models (Episode, ProceduralRule, ForwardModel, ConsolidatedPattern, SalienceTag) and implements the consolidation pipeline, salience computation, Q-value updates, and retrieval assembly logic. Every component is independently testable, every sorted set is inspectable, and every Lua script is atomic. The result is a programmable memory infrastructure that gives AI agents the subcortical capabilities LLMs lack — not by replicating the brain, but by implementing its computational principles in the data structures Redis already provides.
+The ORM boundary is drawn clearly: Popoto provides five new mixins (ActivationFieldMixin, SalienceFieldMixin, AssociationFieldMixin, ConsolidationStreamMixin, ExistenceFilter), hook extensions (on_access, on_consolidate), composite query methods (computed_sort, activation_query), and Lua script execution helpers. The application layer builds domain-specific models (Episode, ProceduralRule, ForwardModel, ConsolidatedPattern, SalienceTag) and implements the consolidation pipeline, salience computation, Q-value updates, and retrieval assembly logic. Every component is independently testable, every sorted set is inspectable, and every Lua script is atomic. The result is a programmable memory infrastructure that gives AI agents the subcortical capabilities LLMs lack — not by replicating the brain, but by implementing its computational principles in the data structures Redis already provides.
