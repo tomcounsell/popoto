@@ -277,7 +277,9 @@ class ExistenceFilter(Field):
         fingerprint = field._compute_fingerprint(model_instance)
         key = field._bloom_key(model_instance)
         m, k = field._compute_params()
-        client = pipeline if isinstance(pipeline, redis.client.Pipeline) else POPOTO_REDIS_DB
+        client = (
+            pipeline if isinstance(pipeline, redis.client.Pipeline) else POPOTO_REDIS_DB
+        )
         client.eval(BLOOM_ADD_LUA, 1, key, fingerprint, m, k)
         return pipeline if pipeline else None
 
@@ -463,7 +465,9 @@ class FrequencySketch(Field):
         field = model_instance._meta.fields[field_name]
         fingerprint = field._compute_fingerprint(model_instance)
         key = field._cms_key(model_instance)
-        client = pipeline if isinstance(pipeline, redis.client.Pipeline) else POPOTO_REDIS_DB
+        client = (
+            pipeline if isinstance(pipeline, redis.client.Pipeline) else POPOTO_REDIS_DB
+        )
         client.eval(CMS_INCR_LUA, 1, key, fingerprint, field.width, field.depth)
         return pipeline if pipeline else None
 

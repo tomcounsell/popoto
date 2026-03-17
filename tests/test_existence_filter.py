@@ -25,10 +25,12 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 import pytest  # noqa: E402
 from src import popoto  # noqa: E402
-from src.popoto.fields.existence_filter import ExistenceFilter, FrequencySketch  # noqa: E402
+from src.popoto.fields.existence_filter import (
+    ExistenceFilter,
+    FrequencySketch,
+)  # noqa: E402
 from src.popoto.fields.write_filter import WriteFilterMixin  # noqa: E402
 from src.popoto.redis_db import POPOTO_REDIS_DB  # noqa: E402
-
 
 # --- Test Models ---
 
@@ -53,6 +55,7 @@ class FreqModel(popoto.Model):
 
 class BloomDefaultFingerprintModel(popoto.Model):
     """Uses default fingerprint (redis_key) when no fingerprint_fn is set."""
+
     name = popoto.UniqueKeyField()
     bloom = ExistenceFilter(
         error_rate=0.01,
@@ -62,6 +65,7 @@ class BloomDefaultFingerprintModel(popoto.Model):
 
 class BloomFreqComboModel(popoto.Model):
     """Model with both ExistenceFilter and FrequencySketch."""
+
     name = popoto.UniqueKeyField()
     topic = popoto.Field(type=str)
     bloom = ExistenceFilter(
@@ -76,6 +80,7 @@ class BloomFreqComboModel(popoto.Model):
 
 class FilteredBloomModel(WriteFilterMixin, popoto.Model):
     """Model with WriteFilterMixin + ExistenceFilter for synergy test."""
+
     name = popoto.UniqueKeyField()
     topic = popoto.Field(type=str)
     importance = popoto.FloatField(default=0.0)
@@ -91,6 +96,7 @@ class FilteredBloomModel(WriteFilterMixin, popoto.Model):
 
 class StatisticalBloomModel(popoto.Model):
     """Model for statistical false positive rate testing."""
+
     name = popoto.UniqueKeyField()
     topic = popoto.Field(type=str)
     bloom = ExistenceFilter(
@@ -127,8 +133,12 @@ def cleanup_redis():
             POPOTO_REDIS_DB.delete(key)
     # Also clean class set keys
     for cls_name in [
-        "BloomModel", "FreqModel", "BloomDefaultFingerprintModel",
-        "BloomFreqComboModel", "FilteredBloomModel", "StatisticalBloomModel",
+        "BloomModel",
+        "FreqModel",
+        "BloomDefaultFingerprintModel",
+        "BloomFreqComboModel",
+        "FilteredBloomModel",
+        "StatisticalBloomModel",
     ]:
         POPOTO_REDIS_DB.delete(f"{cls_name}:all")
     yield
@@ -136,8 +146,12 @@ def cleanup_redis():
         for key in POPOTO_REDIS_DB.scan_iter(match=pattern):
             POPOTO_REDIS_DB.delete(key)
     for cls_name in [
-        "BloomModel", "FreqModel", "BloomDefaultFingerprintModel",
-        "BloomFreqComboModel", "FilteredBloomModel", "StatisticalBloomModel",
+        "BloomModel",
+        "FreqModel",
+        "BloomDefaultFingerprintModel",
+        "BloomFreqComboModel",
+        "FilteredBloomModel",
+        "StatisticalBloomModel",
     ]:
         POPOTO_REDIS_DB.delete(f"{cls_name}:all")
 
@@ -157,7 +171,9 @@ class TestExistenceFilterBasic:
 
     def test_definitely_missing_for_unseen(self):
         """For an item never saved, definitely_missing() returns True."""
-        assert BloomModel.bloom.definitely_missing(BloomModel, "never-seen-topic") is True
+        assert (
+            BloomModel.bloom.definitely_missing(BloomModel, "never-seen-topic") is True
+        )
 
     def test_might_exist_returns_false_for_unseen(self):
         """For an item never saved, might_exist() returns False."""
@@ -204,14 +220,20 @@ class TestExistenceFilterDefaultFingerprint:
 
         # The fingerprint is the redis_key of the saved instance
         redis_key = item.db_key.redis_key
-        assert BloomDefaultFingerprintModel.bloom.might_exist(
-            BloomDefaultFingerprintModel, redis_key
-        ) is True
+        assert (
+            BloomDefaultFingerprintModel.bloom.might_exist(
+                BloomDefaultFingerprintModel, redis_key
+            )
+            is True
+        )
 
         # A different key should not be found
-        assert BloomDefaultFingerprintModel.bloom.definitely_missing(
-            BloomDefaultFingerprintModel, "nonexistent-key"
-        ) is True
+        assert (
+            BloomDefaultFingerprintModel.bloom.definitely_missing(
+                BloomDefaultFingerprintModel, "nonexistent-key"
+            )
+            is True
+        )
 
 
 class TestExistenceFilterOnDelete:
@@ -367,8 +389,14 @@ class TestBloomFreqCombo:
         item = BloomFreqComboModel(name="combo1", topic="dual-test")
         item.save()
 
-        assert BloomFreqComboModel.bloom.might_exist(BloomFreqComboModel, "dual-test") is True
-        assert BloomFreqComboModel.freq.get_frequency(BloomFreqComboModel, "dual-test") == 1
+        assert (
+            BloomFreqComboModel.bloom.might_exist(BloomFreqComboModel, "dual-test")
+            is True
+        )
+        assert (
+            BloomFreqComboModel.freq.get_frequency(BloomFreqComboModel, "dual-test")
+            == 1
+        )
 
 
 # --- Synergy Tests ---
@@ -393,9 +421,12 @@ class TestWriteFilterSynergy:
         item.save()  # silently discarded
 
         # Bloom filter should NOT contain this fingerprint
-        assert FilteredBloomModel.bloom.definitely_missing(
-            FilteredBloomModel, "low-importance"
-        ) is True
+        assert (
+            FilteredBloomModel.bloom.definitely_missing(
+                FilteredBloomModel, "low-importance"
+            )
+            is True
+        )
 
     def test_accepted_record_in_bloom(self):
         """Record above WriteFilter threshold IS in Bloom filter."""
@@ -407,9 +438,10 @@ class TestWriteFilterSynergy:
         )
         item.save()
 
-        assert FilteredBloomModel.bloom.might_exist(
-            FilteredBloomModel, "high-importance"
-        ) is True
+        assert (
+            FilteredBloomModel.bloom.might_exist(FilteredBloomModel, "high-importance")
+            is True
+        )
 
 
 class TestPreFilterPattern:
