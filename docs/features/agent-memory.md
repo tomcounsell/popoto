@@ -31,7 +31,8 @@ The primitives ship incrementally. Each builds on the ones before it.
 | [CoOccurrenceField](#cooccurrencefield) | Weighted associations — co-accessed records strengthen their link | Shipped ([PR #218](https://github.com/tomcounsell/popoto/pull/218)) |
 | [EventStreamMixin](#eventstreammixin) | Append-only mutation log via Redis Streams | Shipped |
 | [CompositeScoreQuery](#compositescorequery) | Multi-factor retrieval — combine N sorted indexes with weights | Shipped |
-| [ExistenceFilter](#existencefilter) | Bloom filter for O(1) "do I know anything about X?" checks | Planned |
+| [ExistenceFilter](#existencefilter) | Bloom filter for O(1) "do I know anything about X?" checks | Shipped |
+| [FrequencySketch](#frequencysketch) | Count-Min Sketch for approximate frequency counting | Shipped |
 | [PredictionLedger](#predictionledger) | Outcome tracking — record predictions, observe results, compute error | Planned |
 | [StreamConsumer](#streamconsumer) | Background processing framework for Redis Streams | Planned |
 | [PolicyCache](#policycache) | Learned action selection — crystallized state-action-outcome patterns | Planned |
@@ -767,19 +768,134 @@ All temporary Redis keys use a `$CSQ:` prefix with a UUID suffix and a 5-second 
 
 ## ExistenceFilter
 
-Wraps a Redis Bloom filter for O(1) probabilistic membership checks. Answers "have I ever stored anything about X?" without touching any sorted set or hash. False positives possible; false negatives essentially impossible.
+A Bloom filter for O(1) probabilistic membership checks. Answers "have I ever stored anything about X?" without touching any sorted set or hash. False positives are possible; false negatives are impossible.
+
+Implemented entirely with Redis strings (`SETBIT`/`GETBIT`) and Lua scripts. **No Redis modules required** -- works on both Redis and Valkey.
+
+### Basic usage
+
+```python
+from popoto import Model, KeyField, Field
+from popoto.fields.existence_filter import ExistenceFilter
+
+class Memory(Model):
+    agent_id = KeyField()
+    topic = Field(type=str)
+    bloom = ExistenceFilter(
+        error_rate=0.01,
+        capacity=100_000,
+        fingerprint_fn=lambda inst: inst.topic,
+    )
+```
+
+The `bloom` field automatically adds fingerprints to the Bloom filter on save. Check membership before running expensive queries:
+
+```python
+# Fast pre-check before expensive retrieval
+if not Memory.bloom.definitely_missing(Memory, "kubernetes deployments"):
+    results = Memory.query.filter(agent_id="agent-1").top_by_decay(5)
+else:
+    results = []  # skip retrieval entirely
+```
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `error_rate` | `float` | `0.01` | Target false positive rate. Lower = more bits required. |
+| `capacity` | `int` | `100_000` | Expected number of distinct items. Exceeding this degrades the error rate. |
+| `fingerprint_fn` | `Callable` | `None` | Takes a model instance, returns a string fingerprint. Falls back to `redis_key` if not set. |
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `might_exist(model_class, fingerprint)` | `bool` | True if fingerprint is possibly present (may be false positive). |
+| `definitely_missing(model_class, fingerprint)` | `bool` | True if fingerprint is guaranteed absent. Use this for pre-filtering. |
+| `fill_ratio(model_class)` | `float` | Proportion of set bits (0.0-1.0). Monitor for capacity warnings. |
+
+### How it works
+
+A Bloom filter is a bit array of size `m` with `k` hash functions. Parameters are derived automatically from `error_rate` and `capacity`:
+
+- `m = -capacity * ln(error_rate) / (ln(2)^2)` -- total bits
+- `k = (m / capacity) * ln(2)` -- optimal number of hash functions
+
+Hash functions use the Kirschner-Mitzenmacher double hashing optimization (DJB2 + FNV-1), computed in Lua for atomic operations.
+
+### Design decisions
+
+- **on_delete() is a no-op**: Bloom filters do not support removal. Stale positives are harmless for a pre-filter use case.
+- **WriteFilter integration**: Records rejected by `WriteFilterMixin` are never added to the Bloom filter (the existing save flow raises `SkipSaveException` before `on_save()` hooks run).
+- **Pipeline support**: `on_save()` accepts an optional Redis pipeline for atomic batch saves.
+
+## FrequencySketch
+
+A Count-Min Sketch for approximate frequency counting. Tracks how many times a fingerprint has been saved, with possible overcounting but never undercounting.
+
+Implemented entirely with Redis hashes (`HINCRBY`/`HGET`) and Lua scripts. **No Redis modules required** -- works on both Redis and Valkey.
+
+### Basic usage
+
+```python
+from popoto import Model, KeyField, Field
+from popoto.fields.existence_filter import FrequencySketch
+
+class Memory(Model):
+    agent_id = KeyField()
+    topic = Field(type=str)
+    freq = FrequencySketch(
+        fingerprint_fn=lambda inst: inst.topic,
+    )
+```
+
+Query approximate frequency:
+
+```python
+count = Memory.freq.get_frequency(Memory, "kubernetes")
+```
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `width` | `int` | `2000` | Number of counters per row. Higher = less overcounting. |
+| `depth` | `int` | `7` | Number of hash functions (rows). Higher = more accurate. |
+| `fingerprint_fn` | `Callable` | `None` | Takes a model instance, returns a string fingerprint. Falls back to `redis_key` if not set. |
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `get_frequency(model_class, fingerprint)` | `int` | Approximate count. May overcount, never undercounts. Returns 0 for unseen fingerprints. |
+
+### Design decisions
+
+- **on_delete() is a no-op**: CMS counters are monotonically increasing. Decrementing would violate the "never undercount" guarantee.
+- **Pipeline support**: `on_save()` accepts an optional Redis pipeline for atomic batch saves.
+
+### Combining ExistenceFilter and FrequencySketch
+
+Both fields can be used together on the same model for fast existence checks and frequency tracking:
 
 ```python
 class Memory(Model):
-    topic_fingerprint = ExistenceFilter(error_rate=0.01, capacity=100000)
+    agent_id = KeyField()
+    topic = Field(type=str)
+    bloom = ExistenceFilter(
+        error_rate=0.01,
+        capacity=100_000,
+        fingerprint_fn=lambda inst: inst.topic,
+    )
+    freq = FrequencySketch(
+        fingerprint_fn=lambda inst: inst.topic,
+    )
 
-# Fast pre-check before expensive retrieval
-if not Memory.topic_fingerprint.definitely_missing("kubernetes deployments"):
-    results = Memory.query.filter(...).top_by_decay(5)
+# Pre-filter + frequency-weighted retrieval
+if not Memory.bloom.definitely_missing(Memory, "kubernetes"):
+    frequency = Memory.freq.get_frequency(Memory, "kubernetes")
+    results = Memory.query.filter(agent_id="agent-1").top_by_decay(10)
 ```
-
-!!! note
-    Requires the [RedisBloom](https://redis.io/docs/latest/develop/data-types/probabilistic/bloom-filter/) module.
 
 ## PredictionLedger
 
