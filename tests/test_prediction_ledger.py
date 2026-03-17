@@ -22,15 +22,14 @@ import time
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
 
-import msgpack
-import pytest
-from src import popoto
-from src.popoto.fields.confidence_field import ConfidenceField
-from src.popoto.fields.event_stream import EventStreamMixin
-from src.popoto.fields.observation import ObservationProtocol
-from src.popoto.fields.prediction_ledger import PredictionLedgerMixin
-from src.popoto.redis_db import POPOTO_REDIS_DB
+import pytest  # noqa: E402
 
+from src import popoto  # noqa: E402
+from src.popoto.fields.confidence_field import ConfidenceField  # noqa: E402
+from src.popoto.fields.event_stream import EventStreamMixin  # noqa: E402
+from src.popoto.fields.observation import ObservationProtocol  # noqa: E402
+from src.popoto.fields.prediction_ledger import PredictionLedgerMixin  # noqa: E402
+from src.popoto.redis_db import POPOTO_REDIS_DB  # noqa: E402
 
 # --- Test Models ---
 
@@ -125,9 +124,7 @@ class TestBasicPredictResolve:
         item = PredictionItem(name="basic-1", content="test")
         item.save()
 
-        PredictionLedgerMixin.record_prediction(
-            item, predicted={"relevance": 0.9}
-        )
+        PredictionLedgerMixin.record_prediction(item, predicted={"relevance": 0.9})
         error = PredictionLedgerMixin.resolve_prediction(
             item, actual={"relevance": 0.3}
         )
@@ -141,12 +138,8 @@ class TestBasicPredictResolve:
         item = PredictionItem(name="basic-2", content="test")
         item.save()
 
-        PredictionLedgerMixin.record_prediction(
-            item, predicted={"score": 0.5}
-        )
-        PredictionLedgerMixin.resolve_prediction(
-            item, actual={"score": 0.5}
-        )
+        PredictionLedgerMixin.record_prediction(item, predicted={"score": 0.5})
+        PredictionLedgerMixin.resolve_prediction(item, actual={"score": 0.5})
 
         data = PredictionLedgerMixin.get_prediction_data(item)
         assert data is not None
@@ -159,13 +152,9 @@ class TestBasicPredictResolve:
         item = PredictionItem(name="basic-ts", content="test")
         item.save()
 
-        PredictionLedgerMixin.record_prediction(
-            item, predicted={"x": 1.0}
-        )
+        PredictionLedgerMixin.record_prediction(item, predicted={"x": 1.0})
         before = time.time()
-        PredictionLedgerMixin.resolve_prediction(
-            item, actual={"x": 0.5}
-        )
+        PredictionLedgerMixin.resolve_prediction(item, actual={"x": 0.5})
 
         data = PredictionLedgerMixin.get_prediction_data(item)
         assert data is not None
@@ -177,9 +166,7 @@ class TestBasicPredictResolve:
         item = PredictionItem(name="basic-unresolved", content="test")
         item.save()
 
-        PredictionLedgerMixin.record_prediction(
-            item, predicted={"val": 42}
-        )
+        PredictionLedgerMixin.record_prediction(item, predicted={"val": 42})
 
         data = PredictionLedgerMixin.get_prediction_data(item)
         assert data is not None
@@ -207,16 +194,10 @@ class TestIdempotentResolution:
         item = PredictionItem(name="idempotent-1", content="test")
         item.save()
 
-        PredictionLedgerMixin.record_prediction(
-            item, predicted={"x": 1.0}
-        )
+        PredictionLedgerMixin.record_prediction(item, predicted={"x": 1.0})
 
-        error1 = PredictionLedgerMixin.resolve_prediction(
-            item, actual={"x": 0.5}
-        )
-        error2 = PredictionLedgerMixin.resolve_prediction(
-            item, actual={"x": 0.0}
-        )
+        error1 = PredictionLedgerMixin.resolve_prediction(item, actual={"x": 0.5})
+        error2 = PredictionLedgerMixin.resolve_prediction(item, actual={"x": 0.0})
 
         assert error1 is not None
         assert error2 is None
@@ -226,12 +207,8 @@ class TestIdempotentResolution:
         item = PredictionItem(name="idempotent-2", content="test")
         item.save()
 
-        PredictionLedgerMixin.record_prediction(
-            item, predicted={"x": 1.0}
-        )
-        PredictionLedgerMixin.resolve_prediction(
-            item, actual={"x": 0.5}
-        )
+        PredictionLedgerMixin.record_prediction(item, predicted={"x": 1.0})
+        PredictionLedgerMixin.resolve_prediction(item, actual={"x": 0.5})
 
         error = PredictionLedgerMixin.auto_resolve(item, "acted")
         assert error is None
@@ -245,24 +222,18 @@ class TestIdempotentResolution:
 class TestErrorComputation:
     def test_numeric_error(self):
         """Numeric values use normalized absolute error."""
-        error = PredictionLedgerMixin.compute_prediction_error(
-            {"x": 0.9}, {"x": 0.3}
-        )
+        error = PredictionLedgerMixin.compute_prediction_error({"x": 0.9}, {"x": 0.3})
         # |0.9 - 0.3| / max(0.9, 0.3, 1) = 0.6
         assert abs(error - 0.6) < 0.001
 
     def test_numeric_zero_values(self):
         """Zero predicted and actual gives zero error."""
-        error = PredictionLedgerMixin.compute_prediction_error(
-            {"x": 0.0}, {"x": 0.0}
-        )
+        error = PredictionLedgerMixin.compute_prediction_error({"x": 0.0}, {"x": 0.0})
         assert error == 0.0
 
     def test_numeric_large_values(self):
         """Large values: denominator is max of abs values."""
-        error = PredictionLedgerMixin.compute_prediction_error(
-            {"x": 100}, {"x": 50}
-        )
+        error = PredictionLedgerMixin.compute_prediction_error({"x": 100}, {"x": 50})
         # |100 - 50| / max(100, 50, 1) = 50/100 = 0.5
         assert abs(error - 0.5) < 0.001
 
@@ -328,9 +299,7 @@ class TestAutoResolve:
         item = PredictionItem(name="auto-acted", content="test")
         item.save()
 
-        PredictionLedgerMixin.record_prediction(
-            item, predicted={"x": 1.0}
-        )
+        PredictionLedgerMixin.record_prediction(item, predicted={"x": 1.0})
         error = PredictionLedgerMixin.auto_resolve(item, "acted")
 
         assert error == 0.1
@@ -344,9 +313,7 @@ class TestAutoResolve:
         item = PredictionItem(name="auto-dismissed", content="test")
         item.save()
 
-        PredictionLedgerMixin.record_prediction(
-            item, predicted={"x": 1.0}
-        )
+        PredictionLedgerMixin.record_prediction(item, predicted={"x": 1.0})
         error = PredictionLedgerMixin.auto_resolve(item, "dismissed")
 
         assert error == 0.5
@@ -356,21 +323,19 @@ class TestAutoResolve:
         item = PredictionItem(name="auto-contradicted", content="test")
         item.save()
 
-        PredictionLedgerMixin.record_prediction(
-            item, predicted={"x": 1.0}
-        )
+        PredictionLedgerMixin.record_prediction(item, predicted={"x": 1.0})
         error = PredictionLedgerMixin.auto_resolve(item, "contradicted")
 
         assert error == 0.9
 
     def test_auto_resolve_custom_errors(self):
         """Custom _pl_auto_resolve_errors are used."""
-        item = PredictionCustomErrors(name="auto-custom", )
+        item = PredictionCustomErrors(
+            name="auto-custom",
+        )
         item.save()
 
-        PredictionLedgerMixin.record_prediction(
-            item, predicted={"x": 1.0}
-        )
+        PredictionLedgerMixin.record_prediction(item, predicted={"x": 1.0})
         error = PredictionLedgerMixin.auto_resolve(item, "acted")
 
         assert error == 0.0
@@ -380,9 +345,7 @@ class TestAutoResolve:
         item = PredictionItem(name="auto-invalid", content="test")
         item.save()
 
-        PredictionLedgerMixin.record_prediction(
-            item, predicted={"x": 1.0}
-        )
+        PredictionLedgerMixin.record_prediction(item, predicted={"x": 1.0})
 
         with pytest.raises(ValueError, match="Invalid outcome"):
             PredictionLedgerMixin.auto_resolve(item, "unknown")
@@ -404,57 +367,41 @@ class TestAutoResolve:
 class TestConfidenceSynergy:
     def test_high_error_reduces_confidence(self):
         """Error above threshold triggers confidence reduction."""
-        item = PredictionWithConfidence(
-            name="conf-high-err", content="test"
-        )
+        item = PredictionWithConfidence(name="conf-high-err", content="test")
         item.save()
 
         # Read initial confidence
         initial = ConfidenceField.get_confidence(item, "certainty")
 
-        PredictionLedgerMixin.record_prediction(
-            item, predicted={"x": 1.0}
-        )
+        PredictionLedgerMixin.record_prediction(item, predicted={"x": 1.0})
         # Resolve with high error (threshold default is 0.7)
-        PredictionLedgerMixin.resolve_prediction(
-            item, actual={"x": 0.0}
-        )
+        PredictionLedgerMixin.resolve_prediction(item, actual={"x": 0.0})
 
         updated = ConfidenceField.get_confidence(item, "certainty")
         assert updated < initial
 
     def test_low_error_no_confidence_change(self):
         """Error below threshold does not reduce confidence."""
-        item = PredictionWithConfidence(
-            name="conf-low-err", content="test"
-        )
+        item = PredictionWithConfidence(name="conf-low-err", content="test")
         item.save()
 
         initial = ConfidenceField.get_confidence(item, "certainty")
 
-        PredictionLedgerMixin.record_prediction(
-            item, predicted={"x": 0.5}
-        )
+        PredictionLedgerMixin.record_prediction(item, predicted={"x": 0.5})
         # Resolve with low error (0.1 < threshold of 0.7)
-        PredictionLedgerMixin.resolve_prediction(
-            item, actual={"x": 0.4}
-        )
+        PredictionLedgerMixin.resolve_prediction(item, actual={"x": 0.4})
 
         updated = ConfidenceField.get_confidence(item, "certainty")
         assert updated == initial
 
     def test_auto_resolve_contradicted_reduces_confidence(self):
         """Auto-resolve 'contradicted' (0.9 error) reduces confidence."""
-        item = PredictionWithConfidence(
-            name="conf-contradicted", content="test"
-        )
+        item = PredictionWithConfidence(name="conf-contradicted", content="test")
         item.save()
 
         initial = ConfidenceField.get_confidence(item, "certainty")
 
-        PredictionLedgerMixin.record_prediction(
-            item, predicted={"x": 1.0}
-        )
+        PredictionLedgerMixin.record_prediction(item, predicted={"x": 1.0})
         PredictionLedgerMixin.auto_resolve(item, "contradicted")
 
         updated = ConfidenceField.get_confidence(item, "certainty")
@@ -465,13 +412,9 @@ class TestConfidenceSynergy:
         item = PredictionItem(name="conf-none", content="test")
         item.save()
 
-        PredictionLedgerMixin.record_prediction(
-            item, predicted={"x": 1.0}
-        )
+        PredictionLedgerMixin.record_prediction(item, predicted={"x": 1.0})
         # Should not raise even with high error
-        error = PredictionLedgerMixin.resolve_prediction(
-            item, actual={"x": 0.0}
-        )
+        error = PredictionLedgerMixin.resolve_prediction(item, actual={"x": 0.0})
         assert error is not None
 
 
@@ -486,12 +429,8 @@ class TestEventStreamSynergy:
         item = PredictionWithStream(name="stream-1", content="test")
         item.save()
 
-        PredictionLedgerMixin.record_prediction(
-            item, predicted={"x": 0.9}
-        )
-        PredictionLedgerMixin.resolve_prediction(
-            item, actual={"x": 0.3}
-        )
+        PredictionLedgerMixin.record_prediction(item, predicted={"x": 0.9})
+        PredictionLedgerMixin.resolve_prediction(item, actual={"x": 0.3})
 
         # Read stream entries
         stream_key = item._get_stream_key()
@@ -499,7 +438,8 @@ class TestEventStreamSynergy:
 
         # Find prediction_resolved entry (skip create entry from save)
         resolved_entries = [
-            e for e in entries
+            e
+            for e in entries
             if e[1].get(b"op") == b"prediction_resolved"
             or e[1].get("op") == "prediction_resolved"
         ]
@@ -510,16 +450,15 @@ class TestEventStreamSynergy:
         item = PredictionWithStream(name="stream-2", content="test")
         item.save()
 
-        PredictionLedgerMixin.record_prediction(
-            item, predicted={"x": 0.5}
-        )
+        PredictionLedgerMixin.record_prediction(item, predicted={"x": 0.5})
         PredictionLedgerMixin.auto_resolve(item, "dismissed")
 
         stream_key = item._get_stream_key()
         entries = POPOTO_REDIS_DB.xrange(stream_key)
 
         resolved_entries = [
-            e for e in entries
+            e
+            for e in entries
             if e[1].get(b"op") == b"prediction_resolved"
             or e[1].get("op") == "prediction_resolved"
         ]
@@ -530,13 +469,9 @@ class TestEventStreamSynergy:
         item = PredictionItem(name="stream-none", content="test")
         item.save()
 
-        PredictionLedgerMixin.record_prediction(
-            item, predicted={"x": 1.0}
-        )
+        PredictionLedgerMixin.record_prediction(item, predicted={"x": 1.0})
         # Should not raise
-        error = PredictionLedgerMixin.resolve_prediction(
-            item, actual={"x": 0.0}
-        )
+        error = PredictionLedgerMixin.resolve_prediction(item, actual={"x": 0.0})
         assert error is not None
 
 
@@ -551,9 +486,7 @@ class TestObservationProtocolSynergy:
         item = PredictionItem(name="obs-acted", content="test")
         item.save()
 
-        PredictionLedgerMixin.record_prediction(
-            item, predicted={"x": 1.0}
-        )
+        PredictionLedgerMixin.record_prediction(item, predicted={"x": 1.0})
 
         outcome_map = {item.db_key.redis_key: "acted"}
         ObservationProtocol.on_context_used([item], outcome_map)
@@ -568,9 +501,7 @@ class TestObservationProtocolSynergy:
         item = PredictionItem(name="obs-dismissed", content="test")
         item.save()
 
-        PredictionLedgerMixin.record_prediction(
-            item, predicted={"x": 1.0}
-        )
+        PredictionLedgerMixin.record_prediction(item, predicted={"x": 1.0})
 
         outcome_map = {item.db_key.redis_key: "dismissed"}
         ObservationProtocol.on_context_used([item], outcome_map)
@@ -584,9 +515,7 @@ class TestObservationProtocolSynergy:
         item = PredictionItem(name="obs-contradicted", content="test")
         item.save()
 
-        PredictionLedgerMixin.record_prediction(
-            item, predicted={"x": 1.0}
-        )
+        PredictionLedgerMixin.record_prediction(item, predicted={"x": 1.0})
 
         outcome_map = {item.db_key.redis_key: "contradicted"}
         ObservationProtocol.on_context_used([item], outcome_map)
@@ -600,9 +529,7 @@ class TestObservationProtocolSynergy:
         item = PredictionItem(name="obs-deferred", content="test")
         item.save()
 
-        PredictionLedgerMixin.record_prediction(
-            item, predicted={"x": 1.0}
-        )
+        PredictionLedgerMixin.record_prediction(item, predicted={"x": 1.0})
 
         outcome_map = {item.db_key.redis_key: "deferred"}
         ObservationProtocol.on_context_used([item], outcome_map)
@@ -645,9 +572,7 @@ class TestGetHighestErrors:
             item.save()
             items.append(item)
 
-            PredictionLedgerMixin.record_prediction(
-                item, predicted={"x": 1.0}
-            )
+            PredictionLedgerMixin.record_prediction(item, predicted={"x": 1.0})
 
         # Resolve with different actual values to get different errors
         PredictionLedgerMixin.resolve_prediction(
@@ -672,16 +597,10 @@ class TestGetHighestErrors:
         for i in range(5):
             item = PredictionItem(name=f"limit-{i}", content="test")
             item.save()
-            PredictionLedgerMixin.record_prediction(
-                item, predicted={"x": 1.0}
-            )
-            PredictionLedgerMixin.resolve_prediction(
-                item, actual={"x": float(i) / 5}
-            )
+            PredictionLedgerMixin.record_prediction(item, predicted={"x": 1.0})
+            PredictionLedgerMixin.resolve_prediction(item, actual={"x": float(i) / 5})
 
-        results = PredictionLedgerMixin.get_highest_errors(
-            PredictionItem, limit=3
-        )
+        results = PredictionLedgerMixin.get_highest_errors(PredictionItem, limit=3)
         assert len(results) == 3
 
     def test_empty_error_set(self):
@@ -694,12 +613,8 @@ class TestGetHighestErrors:
         item = PredictionFull(name="part-1", content="test")
         item.save()
 
-        PredictionLedgerMixin.record_prediction(
-            item, predicted={"x": 1.0}
-        )
-        PredictionLedgerMixin.resolve_prediction(
-            item, actual={"x": 0.0}
-        )
+        PredictionLedgerMixin.record_prediction(item, predicted={"x": 1.0})
+        PredictionLedgerMixin.resolve_prediction(item, actual={"x": 0.0})
 
         # Query the custom partition
         results = PredictionLedgerMixin.get_highest_errors(
@@ -747,18 +662,14 @@ class TestErrorCases:
         item = PredictionItem(name="unsaved-record")
 
         with pytest.raises(TypeError, match="saved model instance"):
-            PredictionLedgerMixin.record_prediction(
-                item, predicted={"x": 1.0}
-            )
+            PredictionLedgerMixin.record_prediction(item, predicted={"x": 1.0})
 
     def test_resolve_unsaved_instance_raises(self):
         """resolve_prediction on unsaved instance raises TypeError."""
         item = PredictionItem(name="unsaved-resolve")
 
         with pytest.raises(TypeError, match="saved model instance"):
-            PredictionLedgerMixin.resolve_prediction(
-                item, actual={"x": 1.0}
-            )
+            PredictionLedgerMixin.resolve_prediction(item, actual={"x": 1.0})
 
     def test_record_none_predicted_raises(self):
         """record_prediction with None predicted raises ValueError."""
@@ -773,9 +684,7 @@ class TestErrorCases:
         item = PredictionItem(name="none-actual", content="test")
         item.save()
 
-        PredictionLedgerMixin.record_prediction(
-            item, predicted={"x": 1.0}
-        )
+        PredictionLedgerMixin.record_prediction(item, predicted={"x": 1.0})
 
         with pytest.raises(ValueError, match="actual must not be None"):
             PredictionLedgerMixin.resolve_prediction(item, actual=None)
@@ -785,9 +694,7 @@ class TestErrorCases:
         item = PredictionItem(name="no-pred-resolve", content="test")
         item.save()
 
-        error = PredictionLedgerMixin.resolve_prediction(
-            item, actual={"x": 1.0}
-        )
+        error = PredictionLedgerMixin.resolve_prediction(item, actual={"x": 1.0})
         assert error is None
 
     def test_record_empty_predicted_allowed(self):
@@ -825,9 +732,7 @@ class TestRedisKeyPatterns:
 
     def test_error_key_format(self):
         """Error key follows $PL:{ClassName}:errors:{partition} pattern."""
-        error_key = PredictionLedgerMixin._error_key(
-            PredictionItem, "default"
-        )
+        error_key = PredictionLedgerMixin._error_key(PredictionItem, "default")
         assert error_key == "$PL:PredictionItem:errors:default"
 
     def test_error_key_from_instance(self):
@@ -873,7 +778,8 @@ class TestFullIntegration:
         stream_key = item._get_stream_key()
         entries = POPOTO_REDIS_DB.xrange(stream_key)
         resolved_entries = [
-            e for e in entries
+            e
+            for e in entries
             if e[1].get(b"op") == b"prediction_resolved"
             or e[1].get("op") == "prediction_resolved"
         ]
@@ -892,9 +798,7 @@ class TestFullIntegration:
 
         initial_conf = ConfidenceField.get_confidence(item, "certainty")
 
-        PredictionLedgerMixin.record_prediction(
-            item, predicted={"x": 1.0}
-        )
+        PredictionLedgerMixin.record_prediction(item, predicted={"x": 1.0})
 
         # Contradicted via ObservationProtocol triggers auto-resolve
         outcome_map = {item.db_key.redis_key: "contradicted"}

@@ -214,14 +214,10 @@ class PredictionLedgerMixin:
         try:
             member_key = instance.db_key.redis_key
         except Exception:
-            raise TypeError(
-                "record_prediction() requires a saved model instance"
-            )
+            raise TypeError("record_prediction() requires a saved model instance")
 
         if not POPOTO_REDIS_DB.exists(member_key):
-            raise TypeError(
-                "record_prediction() requires a saved model instance"
-            )
+            raise TypeError("record_prediction() requires a saved model instance")
 
         meta_key = cls._meta_key(instance)
         data = {
@@ -262,14 +258,10 @@ class PredictionLedgerMixin:
         try:
             member_key = instance.db_key.redis_key
         except Exception:
-            raise TypeError(
-                "resolve_prediction() requires a saved model instance"
-            )
+            raise TypeError("resolve_prediction() requires a saved model instance")
 
         if not POPOTO_REDIS_DB.exists(member_key):
-            raise TypeError(
-                "resolve_prediction() requires a saved model instance"
-            )
+            raise TypeError("resolve_prediction() requires a saved model instance")
 
         # Read current prediction to compute error
         meta_key = cls._meta_key(instance)
@@ -308,9 +300,7 @@ class PredictionLedgerMixin:
         cls._apply_confidence_feedback(instance, prediction_error)
 
         # EventStream logging
-        cls._log_resolution_event(
-            instance, prediction_error, "explicit", pipeline
-        )
+        cls._log_resolution_event(instance, prediction_error, "explicit", pipeline)
 
         return prediction_error
 
@@ -334,7 +324,8 @@ class PredictionLedgerMixin:
             ValueError: If outcome is not a valid auto-resolve outcome.
         """
         error_map = getattr(
-            instance, "_pl_auto_resolve_errors",
+            instance,
+            "_pl_auto_resolve_errors",
             {"acted": 0.1, "dismissed": 0.5, "contradicted": 0.9},
         )
         if outcome not in error_map:
@@ -385,9 +376,7 @@ class PredictionLedgerMixin:
         cls._apply_confidence_feedback(instance, prediction_error)
 
         # EventStream logging
-        cls._log_resolution_event(
-            instance, prediction_error, "observed", pipeline
-        )
+        cls._log_resolution_event(instance, prediction_error, "observed", pipeline)
 
         return prediction_error
 
@@ -427,12 +416,9 @@ class PredictionLedgerMixin:
                 descending error.
         """
         error_key = cls._error_key(model_class, partition)
-        results = POPOTO_REDIS_DB.zrevrange(
-            error_key, 0, limit - 1, withscores=True
-        )
+        results = POPOTO_REDIS_DB.zrevrange(error_key, 0, limit - 1, withscores=True)
         return [
-            (m.decode() if isinstance(m, bytes) else m, score)
-            for m, score in results
+            (m.decode() if isinstance(m, bytes) else m, score) for m, score in results
         ]
 
     @classmethod
@@ -443,9 +429,7 @@ class PredictionLedgerMixin:
             instance: A Model instance.
             prediction_error: The computed prediction error.
         """
-        threshold = getattr(
-            instance, "_pl_confidence_error_threshold", 0.7
-        )
+        threshold = getattr(instance, "_pl_confidence_error_threshold", 0.7)
         low_signal = getattr(instance, "_pl_confidence_low_signal", 0.2)
 
         if prediction_error <= threshold:
