@@ -348,24 +348,17 @@ async def find_nearest_driver(order):
 
 ## Implementation Details
 
-### Thread Pool Execution
+### Native Async with redis.asyncio
 
-All async methods use `asyncio.to_thread()` internally to run the synchronous Redis
-operations in a thread pool. This approach provides three key properties:
+All async methods use `redis.asyncio` for true non-blocking I/O. This approach
+provides three key properties:
 
-- **No event loop blocking** -- Redis calls execute in a worker thread so your event
+- **No event loop blocking** -- Redis calls use native async I/O so your event
   loop stays free to handle other coroutines.
-- **Automatic thread management** -- Python's default thread pool executor handles
-  scheduling. You do not need to create or manage threads yourself.
+- **No thread pool overhead** -- Operations run directly on the event loop without
+  spawning worker threads.
 - **Identical behavior** -- Validation, serialization, error handling, and Redis
   commands work exactly the same as the synchronous path.
-
-### Python 3.8+ Compatibility
-
-`asyncio.to_thread()` was introduced in Python 3.9. For Python 3.8, Popoto includes
-a compatibility shim that replicates the same behavior using
-`loop.run_in_executor()`. No code changes are needed on your end -- the correct
-implementation is selected automatically.
 
 ## Performance Considerations
 

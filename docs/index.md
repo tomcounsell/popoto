@@ -169,6 +169,6 @@ See [Async Operations](async.md) for complete async API documentation and exampl
 ![](/static/popoto.png)
 
 Popoto gets its name from the [Maui dolphin](https://en.wikipedia.org/wiki/M%C4%81ui_dolphin) subspecies - the world's smallest dolphin subspecies.
-Because dolphins are fast moving, agile, and work together in social groups. In the same way, Popoto wraps Redis and RedisGraph to make it easy to manage streaming timeseries data on a social graph.
+Because dolphins are fast moving, agile, and work together in social groups. In the same way, Popoto wraps Redis and Valkey to make it easy to manage streaming timeseries data.
 
 For help building applications with Python/Redis, contact [Tom Counsell](https://tomcounsell.com) on [LinkedIn.com/in/tomcounsell](https://linkedin.com/in/tomcounsell)

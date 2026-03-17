@@ -109,5 +109,6 @@ Uses `REDIS_URL` environment variable or defaults to `localhost:6379`. Connectio
 
 ## Git Workflow
 
-- Never push directly to main - always create a feature branch and open a PR
+- Never push code changes directly to main - always create a feature branch and open a PR
+- Documentation-only changes (docs/, CLAUDE.md, .claude/commands/) may be pushed directly to main
 - Use descriptive branch names like `feature/query-performance` or `fix/scan-keys`
