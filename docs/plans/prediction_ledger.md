@@ -33,7 +33,7 @@ No prior attempts at PredictionLedger exist — this is greenfield.
 1. **Record prediction**: Agent calls `record_prediction(instance, predicted={...})` before acting. Stores prediction metadata in Redis hash `$PL:{ClassName}:meta:{pk}` with `resolved=false`.
 2. **Resolve prediction (explicit)**: Agent calls `resolve_prediction(instance, actual={...})` after acting. Lua script atomically reads prediction, computes error delta, sets `resolved=true`, `resolution_mode="explicit"`, and ZADDs error to `$PL:{ClassName}:errors:{partition}`.
 3. **Resolve prediction (auto)**: When `ObservationProtocol.on_context_used()` fires with an `acted`/`dismissed`/`contradicted` outcome, it calls `auto_resolve(instance, outcome)` which maps the outcome to a prediction error and resolves the same way, with `resolution_mode="observed"`.
-4. **Confidence feedback**: If the model has a `ConfidenceField`, high prediction errors (> threshold) trigger `ConfidenceField.update_confidence(signal=low)` to reduce confidence in the knowledge that informed the prediction.
+4. **Confidence feedback**: If the model has a `ConfidenceField`, prediction errors trigger a graduated confidence response — higher errors produce stronger downward signals via `ConfidenceField.update_confidence()`. No hard threshold; the signal strength scales with error magnitude.
 5. **EventStreamMixin**: Resolution events are logged via `_xadd_event(op="prediction_resolved", ...)` for downstream processing.
 
 ## Architectural Impact
@@ -81,7 +81,7 @@ No prerequisites — uses only core Redis commands and existing Popoto infrastru
 ### Technical Approach
 
 - **Redis hash for prediction metadata**: `$PL:{ClassName}:meta:{pk}` stores `{predicted, resolved, resolution_mode, prediction_error, resolved_at}` as msgpack-encoded values. One hash per model class, keyed by instance PK.
-- **Redis sorted set for error index**: `$PL:{ClassName}:errors:{partition}` stores PKs scored by `|prediction_error|`. Enables querying "which predictions had the highest error?" for learning.
+- **Redis sorted set for error index**: `$PL:{ClassName}:errors:{partition}` stores PKs scored by `|prediction_error|`. The `partition` parameter is a caller-defined string (e.g., a date like `"2026-03"` or a category like `"timing"`) that segments the error index for scoped queries. Defaults to `"default"` when not specified. Enables querying "which predictions had the highest error?" for learning.
 - **Lua script for atomic resolution**: Single EVAL that reads hash, computes error, updates hash, ZADDs to error set. Prevents race conditions between concurrent resolve calls.
 - **Prediction error computation**: For dict predictions, use a simple key-by-key comparison. Numeric values use `|predicted - actual| / max(|predicted|, |actual|, 1)` (normalized absolute error). String values use exact match (0.0 or 1.0). Missing keys count as 1.0 error. Overall error is the mean across all keys.
 - **Auto-resolution outcome mapping**: `acted` → error 0.1 (low — prediction was correct), `dismissed` → error 0.5 (medium — wrong timing/relevance), `contradicted` → error 0.9 (high — factually wrong). These are configurable class attributes.
@@ -92,7 +92,7 @@ No prerequisites — uses only core Redis commands and existing Popoto infrastru
 ### Exception Handling Coverage
 - [ ] `resolve_prediction()` on unsaved instance raises `TypeError` (consistent with ConfidenceField pattern)
 - [ ] `resolve_prediction()` on already-resolved prediction is a no-op (returns None, no exception)
-- [ ] `record_prediction()` with empty/None predicted raises `ValueError`
+- [ ] `record_prediction()` with `None` predicted raises `ValueError`
 - [ ] Lua script failure during resolution: non-pipeline mode logs warning and returns None (does not crash save)
 
 ### Empty/Invalid Input Handling
@@ -232,7 +232,7 @@ No agent integration required — this is a Popoto ORM primitive. Agent applicat
   - `get_highest_errors(model_class, partition, limit)` — query error sorted set
   - `compute_prediction_error(predicted, actual)` — overridable error computation method
   - Lua script for atomic resolution (read hash → compute error → update hash → ZADD error)
-  - ConfidenceField feedback: on resolution, if error > `_pl_confidence_error_threshold` (default 0.7), call `update_confidence(signal=0.2)`
+  - ConfidenceField feedback: on resolution, graduated response — `update_confidence(signal=max(0.1, 1.0 - error))`. Higher prediction errors produce lower signal values (stronger downward pressure on confidence). No hard threshold.
   - EventStreamMixin: on resolution, call `_xadd_event(op="prediction_resolved", ...)`
   - Redis keys: `$PL:{ClassName}:meta:{pk}` (hash), `$PL:{ClassName}:errors:{partition}` (sorted set)
 - Register in `src/popoto/fields/__init__.py` and `src/popoto/__init__.py`
@@ -318,4 +318,4 @@ No agent integration required — this is a Popoto ORM primitive. Agent applicat
 
 2. **Auto-resolution error values**: Proposed mapping is `acted=0.1, dismissed=0.5, contradicted=0.9`. Are these values reasonable, or should they be more/less extreme?
 
-3. **Confidence feedback threshold**: When should prediction error trigger a confidence reduction? Proposed: error > 0.7 triggers `update_confidence(signal=0.2)`. Should there be a graduated response (e.g., error 0.5-0.7 → signal 0.4, error > 0.7 → signal 0.2)?
+3. **~~Confidence feedback threshold~~**: Resolved — using graduated response: `update_confidence(signal=max(0.1, 1.0 - error))`. No hard threshold; signal strength scales continuously with error magnitude.
