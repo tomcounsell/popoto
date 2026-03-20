@@ -29,8 +29,6 @@ nav:
         - Memory Systems Research: 'guides/research-prompt-memory-systems.md'
         - Launch Announcements: 'guides/launch-announcements.md'
     - API Reference: 'api-reference.md'
-    - Guides:
-        - PolicyCache Recipe: 'guides/policy-cache-recipe.md'
     - Contributing:
         - Style Guide: 'style-guide.md'
 
