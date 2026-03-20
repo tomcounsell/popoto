@@ -1,369 +1,195 @@
 ---
-status: Draft
+status: Complete
 type: feature
-appetite: Large
+appetite: Medium
 owner: Valor
 created: 2026-03-20
 tracking: https://github.com/tomcounsell/popoto/issues/232
-last_comment_id:
+last_comment_id: 4095890327
+pr: https://github.com/tomcounsell/popoto/pull/239
 ---
 
 # PolicyCache — Learned Action Selection from Crystallized Patterns
 
 ## Problem
 
-AI agents approach recurring tasks from scratch every time. An agent that has successfully completed "deploy to staging" 10 times still treats the 11th encounter as novel — there is no mechanism to crystallize repeated successful patterns into reusable policies.
+AI agents repeatedly encounter similar situations but approach each from scratch — there's no mechanism to crystallize successful state→action→outcome patterns into reusable cached policies. An agent that has successfully handled "customer asks for refund" 10 times still treats the 11th encounter as novel.
 
 **Current behavior:**
-The Popoto memory stack can track observations, confidence, predictions, and co-occurrences, but these remain individual record-level signals. There is no model pattern that composes them into state-action-outcome triples for reinforcement-learning-style action selection.
+All 10 shipped memory primitives plus PredictionLedger and StreamConsumer exist, but there's no reference implementation showing how to compose them into a reinforcement-learning-style action selection cache. Developers wanting to build learned action selection must figure out the composition themselves.
 
 **Desired outcome:**
-A `PolicyEntry` reference model pattern (not core ORM) that stores `state -> action -> expected_value` triples, built entirely from shipped Popoto primitives. When a StreamConsumer's compaction pipeline detects repeated successful patterns in the event stream, it crystallizes them into reusable PolicyEntry records that agents can query for action selection. A temporal pattern discovery handler detects cyclical patterns in event timestamps and adds discovered cycles to existing memories.
+A `PolicyEntry` reference model (shipped as example/recipe in `examples/`) and supporting logic that demonstrates:
+1. State→action→expected_value triples built from Popoto primitives
+2. Q-value temporal difference updates via Lua script
+3. Crystallization trigger logic in a StreamConsumer handler (detects ≥3 repeated successes)
+4. Temporal pattern discovery via timestamp clustering
+
+This is Step 11 of the [Popoto Memory Roadmap](../guides/popoto-memory-roadmap.md).
 
 ## Prior Art
 
-- **PR #238** (StreamConsumer): Background processing framework. PolicyCache's crystallization and temporal discovery handlers run inside StreamConsumer.
-- **PR #231** (PredictionLedgerMixin): Outcome tracking with auto-resolution. PolicyEntry uses predictions to track whether selected actions succeeded.
-- **PR #222** (CompositeScoreQuery): Multi-factor retrieval. Agents query PolicyEntry via `composite_score()` for action selection.
-- **PR #215** (ConfidenceField): Bayesian certainty. PolicyEntry confidence grows with successful outcomes.
-- **PR #218** (CoOccurrenceField): Weighted associations. Related policies link together.
-- **PR #199** (DecayingSortedField): Time-weighted scoring. PolicyEntry's expected_value decays without use.
-- **PR #225** (ExistenceFilter): Bloom filter pre-check before expensive policy queries.
-- All other shipped primitives (CyclicDecayField, AccessTrackerMixin, ObservationProtocol, WriteFilterMixin, EventStreamMixin).
+No prior issues or PRs found related to PolicyCache or action selection caching. This is greenfield work.
 
-No prior attempts at PolicyCache exist — this is greenfield.
+Relevant shipped prerequisites:
+- **PR #238**: StreamConsumer (Step 10) — background processing framework. PolicyCache's crystallization handler runs inside a StreamConsumer.
+- **PR #237**: PredictionLedger (Step 9) — outcome tracking. Prediction errors feed into policy confidence.
+- **PR #220**: EventStreamMixin (Step 6) — mutation logging. Events flow to streams that the consumer reads.
+- **PRs #206, #215, #216, etc.**: All 10 memory primitives are shipped and available.
 
 ## Data Flow
 
-1. **Event production**: Application models with `EventStreamMixin` produce mutation events to Redis Streams on every save/delete
-2. **Stream consumption**: A `StreamConsumer` reads events from the stream in batches
-3. **Pattern detection (crystallization handler)**: The handler groups events by `(state_fingerprint, action_type)`, counts successes/failures, computes Wilson CI lower bound. When min_events threshold is met and Wilson CI lower bound > 0.6, creates a PolicyEntry
-4. **Temporal pattern detection**: A separate handler buckets event timestamps by time-of-year/month/week, performs chi-squared test against uniform distribution. Significant clusters (p < 0.05) are added as `(period, amplitude, phase)` cycles to existing memories
-5. **Policy query**: Agent retrieves top policies for current state via `CompositeScoreQuery` with decay, confidence, and co-occurrence weights
-6. **Action execution**: Agent selects and executes an action based on policy
-7. **Outcome observation**: `ObservationProtocol.on_context_used()` fires, updating Q-value, confidence, and prediction error
-8. **Q-value update**: Temporal difference update via Lua script adjusts expected_value based on reward signal
+1. **Entry point**: Agent acts on a memory — `ObservationProtocol.on_context_used()` fires, `EventStreamMixin` writes a mutation entry to a Redis Stream
+2. **StreamConsumer handler**: Reads batches of stream entries, groups by `(state_fingerprint, action_type)`, counts successes
+3. **Crystallization check**: When same state+action has ≥3 successful outcomes and Wilson CI lower bound > 0.6, creates a `PolicyEntry`
+4. **Temporal clustering**: Handler also clusters event timestamps using chi-squared test against uniform distribution (p < 0.05), discovers cyclical patterns
+5. **Policy query**: Agent queries `PolicyEntry.query.filter(agent_id=..., state_fingerprint=...).top_by_decay()` to find cached policies for current state
+6. **Q-value update**: After action outcome is known, Lua script atomically applies TD update: `Q += α(reward + γ·max_future_Q - Q)`
+7. **Confidence feedback**: High prediction error from PredictionLedger weakens policy confidence via ConfidenceField
 
 ## Architectural Impact
 
-- **New files**: `src/popoto/recipes/__init__.py`, `src/popoto/recipes/policy_cache.py` — self-contained recipe module
-- **No modified files**: This is a reference pattern that composes existing primitives. No changes to core ORM code.
-- **No new dependencies**: Uses only existing Popoto primitives and core Redis commands + Lua scripts
-- **Interface changes**: New recipe module importable from `popoto.recipes.policy_cache`. No changes to existing interfaces.
-- **Coupling**: Loose — PolicyCache imports from existing Popoto fields/mixins. No reverse dependency.
-- **Reversibility**: Fully reversible — remove the `recipes/` subpackage. No impact on existing functionality.
-- **Deferred decision**: Final packaging (recipes subpackage vs examples dir vs docs-only) to be evaluated via follow-up issue after e2e testing reveals how real-life implementations and human teams actually use this pattern.
+- **New dependencies**: None — composes existing Popoto primitives only
+- **Interface changes**: No changes to core ORM. New files in `examples/` and a recipe guide in `docs/`
+- **Coupling**: Zero coupling to core ORM — PolicyEntry is a standard `popoto.Model` subclass using public APIs
+- **Data ownership**: PolicyEntry owns its own Redis keys. StreamConsumer handler is application code
+- **Reversibility**: Trivial — remove example files and guide. No core code changes to revert
 
 ## Appetite
 
-**Size:** Large
+**Size:** Medium
 
 **Team:** Solo dev, PM
 
 **Interactions:**
-- PM check-ins: 2 (scope confirmation on crystallization logic, temporal discovery review)
-- Review rounds: 1-2 (code review, integration test review)
+- PM check-ins: 1 (scope confirmation on crystallization thresholds)
+- Review rounds: 1 (code review)
 
-This is the largest primitive — it composes all 11 prior shipped primitives and includes application-layer logic (crystallization handler, temporal discovery, Q-value updates). The reference pattern nature means less ORM rigor required, but the integration test matrix is substantial.
+The Lua script for TD updates, crystallization logic, and temporal clustering add enough complexity for Medium, but scope is well-defined by the roadmap spec.
 
 ## Prerequisites
 
-All 12 shipped primitives (Steps 1-10 of the roadmap) are prerequisites. All are shipped and merged.
+All 10 primitives + PredictionLedger + StreamConsumer must be shipped (verified: all closed).
 
 | Requirement | Check Command | Purpose |
 |-------------|---------------|---------|
-| All primitives importable | `python -c "from popoto.fields import DecayingSortedField, CyclicDecayField, ConfidenceField, CoOccurrenceField; from popoto.fields.access_tracker import AccessTrackerMixin; from popoto.fields.observation_protocol import ObservationProtocol; from popoto.fields.write_filter import WriteFilterMixin; from popoto.fields.event_stream_mixin import EventStreamMixin; from popoto.fields.existence_filter import ExistenceFilter, FrequencySketch; from popoto.fields.prediction_ledger import PredictionLedgerMixin; from popoto.streams import StreamConsumer; print('OK')"` | All primitives available |
-| Redis 5.0+ | `python -c "from popoto.redis_db import POPOTO_REDIS_DB; info = POPOTO_REDIS_DB.info('server'); print(info['redis_version'])"` | Redis Streams support |
+| Redis 5.0+ | `python -c "from src.popoto.redis_db import POPOTO_REDIS_DB; info = POPOTO_REDIS_DB.info('server'); v = info['redis_version']; assert tuple(int(x) for x in v.split('.')[:2]) >= (5, 0)"` | Redis Streams support |
+| Popoto primitives | `python -c "import popoto; assert all(hasattr(popoto, x) for x in ['DecayingSortedField', 'ConfidenceField', 'CoOccurrenceField', 'ExistenceFilter', 'StreamConsumer', 'PredictionLedgerMixin', 'ObservationProtocol'])"` | All dependencies available |
 
 ## Solution
 
 ### Key Elements
 
-- **PolicyEntry model**: Reference model composing DecayingSortedField, ConfidenceField, CoOccurrenceField, ExistenceFilter, and EventStreamMixin
-- **Q-value TD update Lua script**: Atomic temporal difference update of expected_value
-- **Crystallization handler**: StreamConsumer handler that detects repeated successful patterns and creates PolicyEntry records
-- **Temporal pattern discovery handler**: StreamConsumer handler that clusters event timestamps and discovers cyclical patterns
-- **State fingerprint utility**: Configurable fingerprint generation from state features
-- **Pure-Python chi-squared approximation**: No scipy dependency for temporal discovery
+- **PolicyEntry model**: Reference model composing AutoKeyField, KeyField, Field, DecayingSortedField, ConfidenceField, CoOccurrenceField — demonstrates how all primitives work together
+- **Q-value Lua script**: Atomic temporal difference update — `reward + gamma * max_future_q - current_q` applied to the DecayingSortedField score
+- **Crystallization handler**: StreamConsumer handler function that detects repeated successful patterns and creates PolicyEntry records
+- **Temporal pattern discovery**: Timestamp clustering using chi-squared test, adds discovered `(period, amplitude, phase)` cycles to CyclicDecayField
 
 ### Flow
 
-**Events accumulate in stream** -> **StreamConsumer reads batch** -> **Crystallization handler groups by (state, action)** -> **Wilson CI check** -> **PolicyEntry created** -> **Agent queries via CompositeScoreQuery** -> **Selects action** -> **Outcome observed** -> **Q-value updated** -> **Confidence adjusted**
-
-**Parallel flow:** **Events accumulate** -> **Temporal discovery handler buckets timestamps** -> **Chi-squared test** -> **Significant cluster found** -> **Cycle added to existing memory** -> **Entrainment strengthens/weakens over time**
+**Event occurs** → EventStreamMixin writes to stream → **StreamConsumer reads batch** → handler groups by state+action → **≥3 successes with Wilson CI > 0.6** → crystallize PolicyEntry → **Agent encounters similar state** → query PolicyEntry by state_fingerprint → **Select action** → execute → **Observe outcome** → TD update Q-value + update confidence
 
 ### Technical Approach
 
-#### PolicyEntry Model
-
-```python
-class PolicyEntry(EventStreamMixin, AccessTrackerMixin, PredictionLedgerMixin, Model):
-    entry_id = AutoKeyField()
-    agent_id = KeyField()
-    state_fingerprint = KeyField()
-    state_features = Field()                     # JSON dict
-    action_type = KeyField()
-    action_spec = Field()                        # JSON dict
-    expected_value = DecayingSortedField(
-        partition_by="agent_id",
-    )
-    confidence = ConfidenceField(initial_confidence=0.5)
-    related_policies = CoOccurrenceField(symmetric=True, max_edges=100)
-    bloom = ExistenceFilter(
-        error_rate=0.01,
-        capacity=100_000,
-        fingerprint_fn=lambda inst: inst.state_fingerprint,
-    )
-
-    _stream_name = "policy_mutations"
-    _stream_partition_field = "agent_id"
-    _pl_partition = "default"
-```
-
-Note: WriteFilterMixin is intentionally excluded — the crystallization handler IS the write gate (Wilson CI > 0.6 threshold). Having gating logic in two places makes debugging harder.
-
-#### Q-value TD Update Lua Script
-
-```lua
--- td_update.lua: Temporal difference Q-value update
--- KEYS[1] = PolicyEntry instance hash key
--- KEYS[2] = DecayingSortedField sorted set key
--- ARGV[1] = reward (float)
--- ARGV[2] = alpha (learning rate, default 0.1)
--- ARGV[3] = gamma (discount factor, default 0.95)
--- ARGV[4] = max_future_q (float)
--- ARGV[5] = member key for sorted set
---
--- Returns: td_error as string
-
-local current_q = tonumber(redis.call('ZSCORE', KEYS[2], ARGV[5]) or '0')
-local reward = tonumber(ARGV[1])
-local alpha = tonumber(ARGV[2])
-local gamma = tonumber(ARGV[3])
-local max_future_q = tonumber(ARGV[4])
-
-local td_error = reward + gamma * max_future_q - current_q
-local new_q = current_q + alpha * td_error
-
-redis.call('ZADD', KEYS[2], new_q, ARGV[5])
-return tostring(td_error)
-```
-
-Stored as a string constant in the recipe module (`TD_UPDATE_LUA`), called via `POPOTO_REDIS_DB.eval()`. Same pattern as `RESOLVE_PREDICTION_LUA` in prediction_ledger.py.
-
-#### State Fingerprint
-
-```python
-def compute_fingerprint(features: dict, include_fields: list = None,
-                        include_timestamp: bool = False) -> str:
-    """Generate a stable fingerprint from state features.
-
-    Args:
-        features: Dict of state features to fingerprint.
-        include_fields: Optional list of field names to include.
-            If None, all fields are included.
-        include_timestamp: If True, includes current hour-bucket
-            timestamp for time-unique fingerprints.
-
-    Returns:
-        str: SHA-256 truncated to 16 hex chars.
-    """
-```
-
-Design notes:
-- Usually all KeyFields are included in the fingerprint
-- Timestamp fields are included when the fingerprint needs to be unique by time (e.g., "deploy to staging at 2pm" vs "deploy to staging at 3pm")
-- `include_fields` allows per-model customization of which features matter
-- Multiple fingerprints per object are supported by creating multiple PolicyEntry records with different `state_fingerprint` values derived from different `include_fields` configurations
-- Applications can subclass or replace `compute_fingerprint` entirely for domain-specific hashing
-
-#### Crystallization Handler
-
-```python
-async def crystallization_handler(entries):
-    """StreamConsumer handler that detects repeated patterns and crystallizes PolicyEntry records.
-
-    Groups events by (state_fingerprint, action_type), counts successes/failures,
-    and creates PolicyEntry when evidence threshold is met.
-
-    Magic numbers:
-        MIN_EVENTS_FOR_CRYSTALLIZATION (default 3): Minimum events with same
-            state+action before considering crystallization. Can be set as low
-            as 1 for eager crystallization in high-confidence environments.
-        WILSON_CI_THRESHOLD (default 0.6): Wilson confidence interval lower
-            bound that must be exceeded for crystallization.
-    """
-```
-
-Pattern counting state is derived from reading stream entries — groups events by `(state_fingerprint, action_type)`, counts how many had successful outcomes. Wilson CI lower bound is computed in Python (simple formula, no Lua needed for this):
-
-```python
-def wilson_ci_lower(successes, total, z=1.96):
-    """Wilson score confidence interval lower bound.
-
-    Args:
-        successes: Number of successful outcomes.
-        total: Total number of outcomes.
-        z: Z-score for confidence level (1.96 = 95%).
-
-    Returns:
-        float: Lower bound of Wilson CI.
-    """
-    if total == 0:
-        return 0.0
-    p_hat = successes / total
-    denominator = 1 + z**2 / total
-    center = p_hat + z**2 / (2 * total)
-    spread = z * (p_hat * (1 - p_hat) / total + z**2 / (4 * total**2)) ** 0.5
-    return (center - spread) / denominator
-```
-
-#### Temporal Pattern Discovery Handler
-
-```python
-async def temporal_discovery_handler(entries):
-    """StreamConsumer handler that discovers cyclical patterns from event timestamps.
-
-    Buckets event timestamps by time-of-year, time-of-month, and day-of-week.
-    Performs chi-squared test against uniform distribution. Significant clusters
-    (p < 0.05) are added as (period, amplitude, phase) cycles to existing memories.
-    """
-```
-
-Pure-Python chi-squared approximation (no scipy):
-
-```python
-def chi_squared_uniform(observed: list, expected_per_bucket: float) -> float:
-    """Chi-squared statistic against uniform distribution.
-
-    Returns the test statistic. Compare against critical values:
-    df=6 (days): 12.59, df=11 (months): 19.68, df=3 (quarters): 7.81
-    """
-    return sum((o - expected_per_bucket)**2 / expected_per_bucket
-               for o in observed if expected_per_bucket > 0)
-```
-
-Critical values for common degrees of freedom are stored as a lookup dict (hardcoded, not a dependency).
-
-#### Magic Numbers
-
-All magic numbers in this recipe are documented as experimental tuning constants:
-
-| Constant | Default | Description | Category |
-|----------|---------|-------------|----------|
-| `MIN_EVENTS_FOR_CRYSTALLIZATION` | `3` | Min events with same state+action before crystallization. Can be 1 for eager mode. | Behavioral |
-| `WILSON_CI_THRESHOLD` | `0.6` | Wilson CI lower bound for crystallization trigger | Behavioral |
-| `TD_ALPHA` | `0.1` | Q-value learning rate | Behavioral |
-| `TD_GAMMA` | `0.95` | Q-value discount factor | Behavioral |
-| `CHI_SQUARED_P_THRESHOLD` | `0.05` | p-value threshold for temporal discovery | Behavioral |
-| `INITIAL_CYCLE_AMPLITUDE` | `0.5` | Initial amplitude for discovered cycles | Behavioral |
-
-These should be added to issue #234 (experimental tuning) for post-ship tuning.
+- PolicyEntry lives in `examples/policy_cache/` as a self-contained reference implementation
+- Q-value update is a Lua script registered with `POPOTO_REDIS_DB.register_script()` for atomicity
+- Crystallization runs as an `async def handler(entries)` passed to `StreamConsumer`
+- Wilson confidence interval uses the formula: `(p + z²/2n - z√(p(1-p)/n + z²/4n²)) / (1 + z²/n)` where z=1.96 for 95% CI
+- Temporal clustering: bucket timestamps into candidate periods, chi-squared test against uniform, p < 0.05 → add cycle
+- Learning rate α=0.1 and discount factor γ=0.95 are magic numbers (documented, tunable via class attributes)
+- Discovered cycles use same `(period, amplitude, phase)` format as programmed CyclicDecayField cycles
 
 ## Failure Path Test Strategy
 
 ### Exception Handling Coverage
-- [ ] `compute_fingerprint()` with empty dict returns a valid fingerprint (not an error)
-- [ ] `compute_fingerprint()` with `include_fields` referencing missing keys raises `KeyError`
-- [ ] Crystallization handler with fewer than `MIN_EVENTS_FOR_CRYSTALLIZATION` events — no PolicyEntry created (silent)
-- [ ] TD update Lua script on non-existent key — creates entry with `current_q=0`
-- [ ] Wilson CI with zero total events returns 0.0 (no division by zero)
-- [ ] Chi-squared with all-zero buckets returns 0.0
+- [ ] Crystallization handler catches exceptions per-batch — failed crystallizations don't crash the consumer loop
+- [ ] Q-value Lua script handles missing keys gracefully (returns 0 for non-existent policies)
+- [ ] Temporal clustering handles too few data points (< 3 timestamps) without error
 
 ### Empty/Invalid Input Handling
-- [ ] Empty entries batch to crystallization handler — no-op
-- [ ] Events without state_fingerprint field — skipped with warning
-- [ ] Events without action_type field — skipped with warning
-- [ ] Temporal discovery with < 3 events per bucket — insufficient data, skip
+- [ ] Empty stream batch — handler returns immediately, no PolicyEntry created
+- [ ] State fingerprint is None or empty — skip crystallization for that group
+- [ ] Zero reward signal — Q-value update still runs (Q approaches 0 via TD)
+- [ ] Single timestamp — temporal clustering skips (needs ≥3 for chi-squared)
 
 ### Error State Rendering
-- Not applicable — handlers are background processing. Errors logged via `POPOTO.PolicyCache` logger.
+- [ ] No user-visible output — this is backend infrastructure. Errors logged via `logging.getLogger("POPOTO.PolicyCache")`
 
 ## Test Impact
 
-No existing tests affected — this is a greenfield recipe module. New test file:
-- `tests/test_policy_cache.py` — recipe functionality and full integration matrix
+No existing tests affected — this is a greenfield feature adding new example files. No existing models, fields, or query methods are modified.
+
+The new test file `tests/test_policy_cache.py` will exercise all primitives in integration but does not modify any existing test.
 
 ## Rabbit Holes
 
-- **Building a full RL framework** — PolicyCache is a recipe/reference pattern, not a general-purpose RL library. Ship the simplest useful version that demonstrates primitive composition.
-- **Sophisticated temporal clustering** (DBSCAN, spectral clustering) — The pure-Python chi-squared against uniform distribution is sufficient for detecting obvious cyclical patterns. More sophisticated clustering is application-layer work.
-- **Real-time crystallization** — The crystallization handler processes batches from the stream. It does not need to be real-time. Latency between pattern emergence and PolicyEntry creation is acceptable.
-- **Packaging decisions** — Where does the recipe live long-term (recipes subpackage, examples dir, docs-only)? Defer to follow-up issue after e2e testing reveals real-world usage patterns. Ship in `src/popoto/recipes/` for now.
-- **Multi-agent policy sharing** — Policies are per-agent (`agent_id` is a KeyField). Cross-agent policy transfer is a follow-up concern.
+- **Optimizing learning rate/discount factor**: α=0.1 and γ=0.95 are good-enough defaults. Hyperparameter tuning is a separate research project, not part of this implementation.
+- **Multi-agent policy sharing**: Policies are per-agent via `agent_id` KeyField. Cross-agent policy transfer is Step 12+ territory.
+- **Sophisticated state embedding**: State fingerprint is a simple hash. Neural state embeddings or similarity-based matching is out of scope.
+- **Online A/B testing of policies**: Exploration vs exploitation strategies (epsilon-greedy, UCB) are application-layer decisions, not part of the reference implementation.
 
 ## Risks
 
-### Risk 1: Stream entry format assumptions
-**Impact:** Crystallization handler assumes specific field names in stream entries (state_fingerprint, action_type, outcome). If EventStreamMixin entry format changes, handler breaks.
-**Mitigation:** Document the expected entry format. Handler validates required fields per entry and skips malformed entries with a warning.
+### Risk 1: Crystallization threshold too aggressive or too conservative
+**Impact:** Too low threshold creates noisy policies from coincidences; too high misses real patterns
+**Mitigation:** Wilson CI lower bound > 0.6 with ≥3 observations is conservative. Threshold is a class attribute, easily tuned per deployment.
 
-### Risk 2: Integration test complexity
-**Impact:** Full integration test exercising all 11 primitives is the most complex test in the Popoto test suite. Flaky failures from timing-dependent operations (decay, XCLAIM) could make CI unreliable.
-**Mitigation:** Use deterministic timestamps where possible. Set generous timeouts. Isolate Redis keys per test with unique prefixes.
-
-### Risk 3: Chi-squared approximation accuracy
-**Impact:** Pure-Python chi-squared without proper p-value computation (no scipy) may produce false positives/negatives for borderline cases.
-**Mitigation:** Use conservative critical values. The approximation is sufficient for obvious patterns (which is the use case). Edge cases are acceptable — the cycle will weaken via entrainment if it's wrong.
+### Risk 2: Temporal clustering false positives
+**Impact:** Discovers spurious cycles from random timestamp clusters
+**Mitigation:** Chi-squared test at p < 0.05 is standard. Discovered cycles start with low amplitude and must be reinforced through entrainment to gain strength.
 
 ## Race Conditions
 
-### Race 1: Concurrent crystallization of same pattern
-**Location:** Crystallization handler creating PolicyEntry
-**Trigger:** Two StreamConsumer workers process overlapping event batches with the same (state_fingerprint, action_type) pattern
-**Data prerequisite:** Both workers see enough events to exceed MIN_EVENTS_FOR_CRYSTALLIZATION
-**State prerequisite:** No existing PolicyEntry for this (state_fingerprint, action_type)
-**Mitigation:** Duplicate PolicyEntry records are tolerable — CoOccurrenceField will link them, and the lower-confidence one will decay away naturally. For correctness, use ExistenceFilter pre-check before creating: `if not PolicyEntry.bloom.definitely_missing(PolicyEntry, fingerprint)` — won't prevent all duplicates (Bloom filter false positives) but catches most.
-
-### Race 2: TD update during concurrent policy queries
-**Location:** TD update Lua script modifying sorted set score
-**Trigger:** One process updates Q-value while another reads via CompositeScoreQuery
-**Data prerequisite:** PolicyEntry exists in sorted set
-**State prerequisite:** Lua script is atomic but ZUNIONSTORE in CompositeScoreQuery reads a snapshot
-**Mitigation:** Acceptable — CompositeScoreQuery reads a consistent snapshot at query time. The next query picks up the updated score.
+### Race 1: Concurrent crystallization of same state+action
+**Location:** Crystallization handler
+**Trigger:** Two consumer instances process overlapping batches containing the same state+action pattern
+**Data prerequisite:** Stream entries with matching state_fingerprint + action_type
+**State prerequisite:** No existing PolicyEntry for this state+action pair
+**Mitigation:** Use `get_or_create()` for PolicyEntry — if already exists, update Q-value instead of creating duplicate. AutoKeyField composite key on (agent_id, state_fingerprint, action_type) ensures uniqueness.
 
 ## No-Gos (Out of Scope)
 
-- **New field types or mixins** — PolicyCache composes existing primitives only
-- **Changes to core ORM code** — no modifications to existing fields, models, or queries
-- **Multi-agent policy transfer** — policies are per-agent; sharing is a follow-up
-- **Packaging/distribution decisions** — deferred to follow-up issue after e2e testing
-- **Sophisticated clustering algorithms** — chi-squared against uniform is sufficient
-- **Real-time crystallization** — batch processing via StreamConsumer is sufficient
+- No new ORM field types or mixins — this composes existing primitives only
+- No changes to StreamConsumer, PredictionLedger, or any core module
+- No exploration/exploitation strategy (epsilon-greedy, UCB, Thompson sampling)
+- No cross-agent policy sharing or federation
+- No neural/embedding-based state similarity
+- No persistent storage of raw event windows (crystallize and discard)
 
 ## Update System
 
-No update system changes — Popoto is a library. Users import from `popoto.recipes.policy_cache`.
+No update system changes required — this is a library feature (example/recipe) with no deployment infrastructure.
 
 ## Agent Integration
 
-No direct agent integration — this is a Popoto ORM recipe. Agent applications compose PolicyEntry into their memory systems.
+No agent integration required — Popoto is a library consumed by applications. There is no bridge, MCP server, or Telegram integration for this project.
 
 ## Documentation
 
 ### Feature Documentation
-- [ ] Update `docs/features/agent-memory.md` PolicyCache section with full recipe reference
-- [ ] Create `docs/guides/policy-cache-recipe.md` with step-by-step usage guide
+- [ ] Create `docs/plans/policy_cache.md` (this document)
+- [ ] Create recipe guide at `docs/guides/policy-cache-recipe.md` covering usage, tuning, and composition patterns
+
+### External Documentation Site
+- [ ] Add PolicyCache recipe to `mkdocs.yml` navigation
+- [ ] Verify `mkdocs serve` builds cleanly
 
 ### Inline Documentation
-- [ ] Module docstring with overview, dependencies, and usage example
-- [ ] Docstrings on all public functions and the PolicyEntry model
-- [ ] Extensive documentation on fingerprint configuration (when to include timestamps, how to use multiple fingerprints, custom fingerprint functions)
-- [ ] Document all magic numbers with rationale and tuning guidance
+- [ ] Comprehensive docstrings on PolicyEntry model and all methods
+- [ ] Inline comments on Lua script explaining TD update math
+- [ ] Inline comments on chi-squared temporal clustering logic
 
 ## Success Criteria
 
-- [ ] `PolicyEntry` reference model composing all shipped primitives
-- [ ] Q-value TD update Lua script (atomic, tested)
-- [ ] Crystallization handler with configurable `MIN_EVENTS_FOR_CRYSTALLIZATION` (default 3, minimum 1) and Wilson CI threshold
-- [ ] Temporal pattern discovery handler with pure-Python chi-squared test
-- [ ] `compute_fingerprint()` utility with `include_fields` and `include_timestamp` support
-- [ ] Full integration test exercising all 11 shipped primitives (test class with 5+ methods)
-- [ ] Valkey compatible (no Redis modules)
-- [ ] All magic numbers documented and added to issue #234
+- [ ] `PolicyEntry` reference model in `examples/policy_cache/models.py` with all primitive compositions
+- [ ] Q-value TD update Lua script (atomic, Valkey compatible)
+- [ ] Crystallization handler function for StreamConsumer
+- [ ] Temporal pattern discovery (timestamp clustering + cycle creation)
+- [ ] Full integration test in `tests/test_policy_cache.py` exercising all 11+ primitives
+- [ ] Valkey compatible (no Redis modules — verified by running against standard Redis)
+- [ ] Recipe guide in `docs/guides/policy-cache-recipe.md`
 - [ ] Tests pass (`/do-test`)
 - [ ] Documentation updated (`/do-docs`)
-- [ ] Follow-up issue created for packaging decision after e2e testing
 
 ## Team Orchestration
 
@@ -371,158 +197,109 @@ No direct agent integration — this is a Popoto ORM recipe. Agent applications 
 
 - **Builder (policy-cache)**
   - Name: policy-builder
-  - Role: Implement PolicyEntry model, Lua script, fingerprint utility, and handler functions
+  - Role: Implement PolicyEntry model, Lua script, crystallization handler, temporal clustering
   - Agent Type: builder
   - Resume: true
 
 - **Builder (tests)**
   - Name: test-builder
-  - Role: Write comprehensive integration tests covering all primitive compositions
-  - Agent Type: test-writer
+  - Role: Write integration tests exercising all primitives through PolicyCache
+  - Agent Type: test-engineer
   - Resume: true
 
 - **Validator (policy-cache)**
   - Name: policy-validator
-  - Role: Verify recipe implementation, integration tests, and Valkey compatibility
+  - Role: Verify implementation correctness, Valkey compatibility, all primitives composed
   - Agent Type: validator
   - Resume: true
 
 - **Documentarian**
   - Name: docs-writer
-  - Role: Update agent-memory.md, create recipe guide, document fingerprint configuration
+  - Role: Create recipe guide and update mkdocs navigation
   - Agent Type: documentarian
   - Resume: true
 
 ## Step by Step Tasks
 
-### 1. Create recipes subpackage and PolicyEntry model
-- **Task ID**: build-policy-entry
+### 1. Implement PolicyEntry Model and Lua Script
+- **Task ID**: build-policy-model
 - **Depends On**: none
 - **Validates**: tests/test_policy_cache.py (create)
 - **Assigned To**: policy-builder
 - **Agent Type**: builder
 - **Parallel**: true
-- Create `src/popoto/recipes/__init__.py` with PolicyEntry export
-- Create `src/popoto/recipes/policy_cache.py` with:
-  - `PolicyEntry` model composing all shipped primitives
-  - `TD_UPDATE_LUA` string constant for Q-value update
-  - `update_q_value(instance, reward, max_future_q, alpha=0.1, gamma=0.95)` function wrapping the Lua script
-  - `compute_fingerprint(features, include_fields=None, include_timestamp=False)` utility
-  - All magic numbers as module-level constants with docstrings
-  - `wilson_ci_lower(successes, total, z=1.96)` utility function
-  - `chi_squared_uniform(observed, expected_per_bucket)` utility function
-  - CHI_SQUARED_CRITICAL_VALUES lookup dict
+- Create `examples/policy_cache/__init__.py` and `examples/policy_cache/models.py`
+- Define `PolicyEntry` model with: `entry_id` (AutoKeyField), `agent_id` (KeyField), `state_fingerprint` (KeyField), `state_features` (Field), `action_type` (KeyField), `action_spec` (Field), `expected_value` (DecayingSortedField), `confidence` (ConfidenceField), `related_policies` (CoOccurrenceField)
+- Implement Q-value TD update Lua script: `KEYS[1]` = sorted set key, `ARGV[1]` = member, `ARGV[2]` = reward, `ARGV[3]` = max_future_q, `ARGV[4]` = learning_rate (0.1), `ARGV[5]` = discount_factor (0.95)
+- Implement `update_q_value(policy, reward, max_future_q)` method
+- Implement crystallization handler: `async def crystallize_handler(entries)` that groups by state+action, counts successes, checks Wilson CI, creates PolicyEntry via `get_or_create()`
+- Implement temporal pattern discovery: `discover_temporal_patterns(timestamps, min_observations=3, p_threshold=0.05)` using chi-squared test
+- Add `crystallize_handler` as a ready-to-use StreamConsumer handler
 
-### 2. Implement crystallization handler
-- **Task ID**: build-crystallization
-- **Depends On**: build-policy-entry
-- **Validates**: tests/test_policy_cache.py
-- **Assigned To**: policy-builder
-- **Agent Type**: builder
-- **Parallel**: false
-- Implement `crystallization_handler(entries)` as async StreamConsumer handler
-- Group events by (state_fingerprint, action_type)
-- Count successes/failures per group
-- Compute Wilson CI lower bound
-- Create PolicyEntry when MIN_EVENTS_FOR_CRYSTALLIZATION met and Wilson CI > WILSON_CI_THRESHOLD
-- ExistenceFilter pre-check to reduce duplicate crystallization
-- Log crystallization events via logger
-
-### 3. Implement temporal discovery handler
-- **Task ID**: build-temporal-discovery
-- **Depends On**: build-policy-entry
-- **Validates**: tests/test_policy_cache.py
-- **Assigned To**: policy-builder
-- **Agent Type**: builder
-- **Parallel**: true (parallel with step 2)
-- Implement `temporal_discovery_handler(entries)` as async StreamConsumer handler
-- Bucket timestamps by time-of-year, time-of-month, day-of-week
-- Compute chi-squared statistic against uniform distribution
-- Compare against critical values for appropriate df
-- When significant cluster found (p < 0.05):
-  - Compute period from TemporalPeriod constants
-  - Compute phase from cluster centroid
-  - Add cycle with INITIAL_CYCLE_AMPLITUDE to existing memory's CyclicDecayField
-
-### 4. Write integration tests
+### 2. Write Integration Tests
 - **Task ID**: build-tests
-- **Depends On**: build-crystallization, build-temporal-discovery
-- **Validates**: pytest tests/test_policy_cache.py -v
+- **Depends On**: build-policy-model
 - **Assigned To**: test-builder
-- **Agent Type**: test-writer
+- **Agent Type**: test-engineer
 - **Parallel**: false
-- Create `tests/test_policy_cache.py` test class with:
-  - `test_policy_entry_creation` — create PolicyEntry with all field types, verify save/load
-  - `test_q_value_update` — TD update Lua script, verify score changes correctly
-  - `test_crystallization_from_events` — events -> stream -> handler -> PolicyEntry created
-  - `test_crystallization_threshold` — verify MIN_EVENTS gating (test with 1, 2, 3 events)
-  - `test_composite_score_query` — query PolicyEntry via composite_score with decay + confidence
-  - `test_observation_updates_q_value` — act on policy -> observation -> Q-value updated
-  - `test_prediction_error_feedback` — high prediction error reduces confidence
-  - `test_temporal_discovery` — events cluster at similar times -> cycle discovered
-  - `test_co_occurrence_linking` — related policies strengthen their association
-  - `test_existence_filter_precheck` — bloom filter catches known fingerprints
-  - `test_fingerprint_generation` — compute_fingerprint with various configurations
-  - `test_fingerprint_with_timestamp` — time-bucketed fingerprints
-  - `test_end_to_end` — full path: event -> crystallize -> query -> observe -> update -> re-query
+- Create `tests/test_policy_cache.py`
+- Test PolicyEntry CRUD (create, read, update, delete)
+- Test Q-value TD update: verify score changes atomically
+- Test crystallization: feed ≥3 matching events → verify PolicyEntry created
+- Test crystallization threshold: feed 2 events → verify no PolicyEntry
+- Test temporal clustering: feed clustered timestamps → verify cycle discovered
+- Test full integration: event → stream → consumer → crystallize → query → TD update → confidence update
+- Test concurrent crystallization: verify get_or_create prevents duplicates
+- Test edge cases: empty batch, single timestamp, zero reward
 
-### 5. Validate implementation
-- **Task ID**: validate-policy-cache
+### 3. Validate Implementation
+- **Task ID**: validate-policy
 - **Depends On**: build-tests
 - **Assigned To**: policy-validator
 - **Agent Type**: validator
 - **Parallel**: false
-- Run `pytest tests/test_policy_cache.py -v`
-- Verify all success criteria met
-- Verify no Redis module commands (Valkey compatible)
-- Verify all magic numbers documented with constants
-- Verify fingerprint configuration is well-documented
+- Verify all primitives are composed (DecayingSortedField, ConfidenceField, CoOccurrenceField, KeyField, AutoKeyField, Field)
+- Verify Lua script uses no Redis module commands
+- Verify crystallization handler follows StreamConsumer handler protocol
+- Verify tests pass
+- Run `python -m ruff check .` and `python -m ruff format --check .`
 
-### 6. Documentation
+### 4. Documentation
 - **Task ID**: document-feature
-- **Depends On**: validate-policy-cache
+- **Depends On**: validate-policy
 - **Assigned To**: docs-writer
 - **Agent Type**: documentarian
 - **Parallel**: false
-- Update `docs/features/agent-memory.md` PolicyCache section with full recipe reference
-- Create recipe guide with step-by-step usage
-- Document fingerprint strategies extensively (when to include timestamps, multiple fingerprints, custom functions)
-- Document all magic numbers with rationale
+- Create `docs/guides/policy-cache-recipe.md` with usage examples, tuning guide, and composition patterns
+- Add entry to `mkdocs.yml` navigation under guides
+- Verify `mkdocs serve` builds
 
-### 7. Final Validation
+### 5. Final Validation
 - **Task ID**: validate-all
 - **Depends On**: document-feature
 - **Assigned To**: policy-validator
 - **Agent Type**: validator
 - **Parallel**: false
 - Run full test suite: `pytest tests/ -x -q`
-- Verify lint: `python -m ruff check .`
-- Verify format: `python -m ruff format --check .`
 - Verify all success criteria met
+- Verify documentation exists and builds
+- Generate final report
 
 ## Verification
 
 | Check | Command | Expected |
 |-------|---------|----------|
-| Tests pass | `pytest tests/test_policy_cache.py -v` | exit code 0 |
-| Full suite passes | `pytest tests/ -x -q` | exit code 0 |
+| Tests pass | `pytest tests/test_policy_cache.py -x -q` | exit code 0 |
+| All tests pass | `pytest tests/ -x -q` | exit code 0 |
 | Lint clean | `python -m ruff check .` | exit code 0 |
 | Format clean | `python -m ruff format --check .` | exit code 0 |
-| Recipe importable | `python -c "from popoto.recipes.policy_cache import PolicyEntry; print('OK')"` | output contains OK |
-| No Redis modules | `grep -rn 'BF\.\|CF\.\|CMS\.\|TDIGEST\.\|TS\.' src/popoto/recipes/` | exit code 1 |
+| Model exists | `python -c "from popoto.recipes.policy_cache import PolicyEntry; print('OK')"` | output contains OK |
+| Guide exists | `test -f docs/guides/policy-cache-recipe.md` | exit code 0 |
 
-## Open Questions (Resolved)
+## Open Questions
 
-1. **Code location**: Ship in `src/popoto/recipes/policy_cache.py` for now (importable, testable). Raise a follow-up issue after e2e testing to evaluate final packaging for real-life implementations and human teamwork scenarios. The right answer depends on how teams actually use this pattern.
+1. Should PolicyEntry live in `examples/policy_cache/` (as the issue suggests — "application-layer pattern, shipped as example/recipe") or should it be promoted to `src/popoto/` as a first-class module? The roadmap says "reference implementation" which suggests examples.
 
-2. **Q-value update mechanism**: String constant Lua script in the recipe module, called via `POPOTO_REDIS_DB.eval()`. Same pattern as `RESOLVE_PREDICTION_LUA` in prediction_ledger.py. No new core ORM helpers needed.
+2. The issue mentions `related_policies = CoOccurrenceField()` — should co-occurrence track which policies are frequently selected together (useful for multi-step plans), or is this optional decoration that can be deferred?
 
-3. **Crystallization event counting**: `MIN_EVENTS_FOR_CRYSTALLIZATION` defaults to 3, documented as a magic number. Code explicitly supports being set to 1 for eager crystallization. Added to issue #234 magic numbers catalog.
-
-4. **Chi-squared dependency**: Pure-Python approximation with hardcoded critical value lookup table. No scipy dependency.
-
-5. **State fingerprint**: `compute_fingerprint()` utility with `include_fields` for field selection and `include_timestamp` for time-unique fingerprints. Multiple fingerprints per object supported by creating multiple PolicyEntry records. Extensively documented.
-
-6. **WriteFilterMixin**: Excluded from PolicyEntry. Crystallization handler IS the write gate — decision lives in one place for clear debugging.
-
-7. **Integration test scope**: Test class with 13 focused methods covering each primitive composition and the end-to-end critical path.
+3. Should the temporal pattern discovery be a standalone utility function (reusable beyond PolicyCache) or tightly coupled to the crystallization handler?
