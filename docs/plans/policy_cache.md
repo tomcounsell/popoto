@@ -6,6 +6,7 @@ owner: Valor
 created: 2026-03-20
 tracking: https://github.com/tomcounsell/popoto/issues/232
 last_comment_id: 4095890327
+pr: https://github.com/tomcounsell/popoto/pull/239
 ---
 
 # PolicyCache — Learned Action Selection from Crystallized Patterns
