@@ -46,28 +46,32 @@ from src.popoto.redis_db import POPOTO_REDIS_DB  # noqa: E402
 
 
 def _clean_keys(pattern="*PolicyEntry*"):
-    """Remove all Redis keys matching pattern."""
+    """Remove all Redis keys matching pattern.
+
+    WARNING: Uses KEYS command which is O(N) — test-only, never copy to
+    production code. Use SCAN for production key iteration.
+    """
     keys = POPOTO_REDIS_DB.keys(pattern)
     if keys:
         POPOTO_REDIS_DB.delete(*keys)
 
 
 def _clean_streams(pattern="stream:policy*"):
-    """Remove stream keys."""
+    """Remove stream keys (test-only, uses KEYS)."""
     keys = POPOTO_REDIS_DB.keys(pattern)
     if keys:
         POPOTO_REDIS_DB.delete(*keys)
 
 
 def _clean_bloom(pattern="$EF:PolicyEntry*"):
-    """Remove bloom filter keys."""
+    """Remove bloom filter keys (test-only, uses KEYS)."""
     keys = POPOTO_REDIS_DB.keys(pattern)
     if keys:
         POPOTO_REDIS_DB.delete(*keys)
 
 
 def _clean_all():
-    """Clean all PolicyEntry-related keys."""
+    """Clean all PolicyEntry-related keys (test-only, uses KEYS)."""
     for pattern in [
         "*PolicyEntry*",
         "stream:policy*",

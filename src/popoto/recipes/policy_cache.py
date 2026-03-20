@@ -100,6 +100,11 @@ or weaken over time via CyclicDecayField entrainment."""
 
 # Critical values for chi-squared test at p=0.05 for common degrees of freedom.
 # df = number_of_buckets - 1
+# NOTE: This table only covers df values used by the built-in bucket configs
+# (day_of_week=7, week_of_month=4, month_of_year=12) plus two common extras
+# (quarters=3, hours=24). If you add custom bucket configs with different
+# bucket counts, extend this table with the appropriate critical value.
+# Unlisted df values are silently skipped by temporal_discovery_handler.
 CHI_SQUARED_CRITICAL_VALUES = {
     2: 5.991,  # 3 buckets (quarters)
     3: 7.815,  # 4 buckets (weeks-in-month)
@@ -376,7 +381,13 @@ def _get_redis_key(instance) -> str:
 
 
 def _get_sortedset_key(instance) -> str:
-    """Get the sorted set key for the expected_value field."""
+    """Get the sorted set key for the expected_value field.
+
+    Note: Accesses ``instance._meta.fields`` which is a Popoto internal.
+    If the ``_meta`` structure changes in a future Popoto release, this
+    will need updating. The test_q_value_update test validates the key
+    format implicitly.
+    """
     field = instance._meta.fields["expected_value"]
     return field.__class__.get_partitioned_sortedset_db_key(
         instance, "expected_value"
@@ -448,7 +459,11 @@ async def crystallization_handler(entries):
         if ci_lower <= WILSON_CI_THRESHOLD:
             continue
 
-        # Pre-check via ExistenceFilter to reduce duplicate crystallization
+        # Pre-check via ExistenceFilter to reduce duplicate crystallization.
+        # Note: Bloom filters have a false positive rate (~1% at configured
+        # error_rate=0.01), so ~1% of legitimate crystallizations may be
+        # silently skipped. Acceptable for a reference recipe — applications
+        # requiring zero missed crystallizations should add a secondary check.
         if not PolicyEntry.bloom.definitely_missing(PolicyEntry, fp):
             logger.debug(
                 "Bloom filter says fingerprint %s may exist, skipping crystallization",
