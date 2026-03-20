@@ -6,7 +6,7 @@ Complete reference for all public classes, methods, and functions in the Popoto 
 from popoto import Model, Field, KeyField, AutoKeyField, UniqueKeyField
 from popoto import SortedField, SortedKeyField, GeoField, DatetimeField, Relationship
 from popoto import DecayingSortedField, CyclicDecayField, TemporalPeriod, InteractionWeight, AccessTrackerMixin
-from popoto import ObservationProtocol, RecallProposal, ConfidenceField
+from popoto import ObservationProtocol, RecallProposal, ConfidenceField, PredictionLedgerMixin
 from popoto import Publisher, Subscriber
 from popoto import ModelException, QueryException, PublisherException, SubscriberException
 ```
@@ -1149,6 +1149,104 @@ When used with `ObservationProtocol.on_context_used()`, confidence is automatica
 | `acted` | Corroborate (signal=0.9) |
 | `contradicted` | Contradict (signal=0.1); auto-discharge pressure if confidence drops below 0.1 |
 | `dismissed` / `deferred` | No change |
+
+### PredictionLedgerMixin
+
+```python
+from popoto import PredictionLedgerMixin
+# or: from popoto.fields.prediction_ledger import PredictionLedgerMixin
+```
+
+A model mixin that adds prediction recording, resolution, and error tracking. Records
+prediction-outcome pairs and computes prediction error. High errors feed back into
+`ConfidenceField` to reduce confidence. Auto-resolution via `ObservationProtocol` handles
+outcomes inferred from behavior.
+
+See [Agent Memory -- PredictionLedger](features/agent-memory.md#predictionledger) for
+the full usage guide and [Fields -- PredictionLedgerMixin](fields.md#predictionledgermixin) for setup examples.
+
+```python
+class MyModel(PredictionLedgerMixin, Model):
+    _pl_partition = "default"                  # partition for error sorted set
+    _pl_confidence_error_threshold = 0.7       # error above which confidence is reduced
+    _pl_confidence_low_signal = 0.2            # signal sent to ConfidenceField
+    _pl_auto_resolve_errors = {                # outcome-to-error mapping
+        "acted": 0.1, "dismissed": 0.5, "contradicted": 0.9,
+    }
+```
+
+#### PredictionLedgerMixin.record\_prediction(instance, predicted, pipeline=None)
+
+Store a prediction for a saved model instance. The prediction can later be resolved with
+`resolve_prediction()` or `auto_resolve()`.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `instance` | `Model` | A saved model instance. |
+| `predicted` | `dict` | Dict of predicted values. Must not be `None`. |
+| `pipeline` | `redis.client.Pipeline` | Optional pipeline for batching. |
+
+**Raises:** `TypeError` if instance is unsaved; `ValueError` if `predicted` is `None`.
+
+#### PredictionLedgerMixin.resolve\_prediction(instance, actual, pipeline=None)
+
+Resolve a prediction with actual outcome values. Atomically reads the prediction, computes
+error, marks resolved, and ZADDs error to the error sorted set via Lua script.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `instance` | `Model` | A saved model instance with a recorded prediction. |
+| `actual` | `dict` | Dict of actual values. Must not be `None`. |
+| `pipeline` | `redis.client.Pipeline` | Optional pipeline for batching. |
+
+**Returns:** `float` prediction error, or `None` if no prediction exists or already resolved.
+
+**Raises:** `TypeError` if instance is unsaved; `ValueError` if `actual` is `None`.
+
+#### PredictionLedgerMixin.auto\_resolve(instance, outcome, pipeline=None)
+
+Auto-resolve a prediction based on an ObservationProtocol outcome. Maps the outcome string
+to a prediction error value using the `_pl_auto_resolve_errors` class attribute.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `instance` | `Model` | A saved model instance with a recorded prediction. |
+| `outcome` | `str` | One of `"acted"`, `"dismissed"`, `"contradicted"`. |
+| `pipeline` | `redis.client.Pipeline` | Optional pipeline for batching. |
+
+**Returns:** `float` prediction error, or `None` if no prediction exists or already resolved.
+
+**Raises:** `ValueError` if outcome is not valid.
+
+#### PredictionLedgerMixin.get\_prediction\_data(instance)
+
+Read current prediction metadata for an instance.
+
+**Returns:** Dict with keys `predicted`, `resolved`, `resolution_mode`, `prediction_error`, `resolved_at`, `recorded_at`, or `None` if no prediction exists.
+
+#### PredictionLedgerMixin.get\_highest\_errors(model\_class, partition="default", limit=10)
+
+Query instances with the highest prediction errors from the error sorted set.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `model_class` | `type` | | The Model class to query. |
+| `partition` | `str` | `"default"` | Partition key. |
+| `limit` | `int` | `10` | Maximum results. |
+
+**Returns:** List of `(member_key_str, error_float)` tuples, ordered by descending error.
+
+#### PredictionLedgerMixin.compute\_prediction\_error(predicted, actual)
+
+Compute prediction error between predicted and actual dicts. Overridable on subclasses
+for custom error metrics.
+
+- Numeric values: `|predicted - actual| / max(|predicted|, |actual|, 1)`
+- String values: `0.0` if equal, `1.0` if different
+- Missing keys: `1.0` error per missing key
+- Overall: mean across all keys
+
+**Returns:** Float in `[0, 1]`.
 
 ### InteractionWeight
 

@@ -33,7 +33,7 @@ The primitives ship incrementally. Each builds on the ones before it.
 | [CompositeScoreQuery](#compositescorequery) | Multi-factor retrieval — combine N sorted indexes with weights | Shipped |
 | [ExistenceFilter](#existencefilter) | Bloom filter for O(1) "do I know anything about X?" checks | Shipped |
 | [FrequencySketch](#frequencysketch) | Count-Min Sketch for approximate frequency counting | Shipped |
-| [PredictionLedger](#predictionledger) | Outcome tracking — record predictions, observe results, compute error | Planned |
+| [PredictionLedger](#predictionledger) | Outcome tracking — record predictions, observe results, compute error | Shipped |
 | [StreamConsumer](#streamconsumer) | Background processing framework for Redis Streams | Planned |
 | [PolicyCache](#policycache) | Learned action selection — crystallized state-action-outcome patterns | Planned |
 | [ContextAssembler](#contextassembler) | Retrieval-to-injection bridge — assemble LLM-ready context within token budgets | Planned |
@@ -903,17 +903,86 @@ if not Memory.bloom.definitely_missing(Memory, "kubernetes"):
 
 ## PredictionLedger
 
-Records prediction-outcome pairs. Before an action, the agent writes what it expects. After, it writes what happened. The mixin computes the delta and stores it as a learning signal.
+Records prediction-outcome pairs. Before an action, the agent writes what it expects. After, it writes what happened. The mixin computes the delta and stores it as a learning signal. High prediction errors feed back into `ConfidenceField` to reduce trust in the knowledge that informed the bad prediction. Auto-resolution via `ObservationProtocol` handles the common case where outcomes are inferred from behavior rather than explicitly reported.
+
+### Setup
+
+Add `PredictionLedgerMixin` as a base class alongside `Model`:
 
 ```python
-class TaskAttempt(Model, PredictionLedgerMixin):
-    task_id = AutoKeyField()
-    agent_id = KeyField()
-    predicted_outcome = Field(type=dict)
-    actual_outcome = Field(type=dict, null=True)
+from popoto import Model, UniqueKeyField, StringField
+from popoto.fields.prediction_ledger import PredictionLedgerMixin
+from popoto.fields.confidence_field import ConfidenceField
+
+class Memory(PredictionLedgerMixin, Model):
+    key = UniqueKeyField()
+    content = StringField()
+    certainty = ConfidenceField()
+
+    _pl_partition = "default"
 ```
 
-High prediction errors feed back into `ConfidenceField` to reduce trust in the knowledge that informed the bad prediction.
+### Recording and resolving predictions
+
+```python
+# Agent records what it expects before acting
+memory = Memory.create(key="fact1", content="sky is blue")
+PredictionLedgerMixin.record_prediction(memory, predicted={"relevance": 0.9})
+
+# After acting, resolve with actual outcome
+error = PredictionLedgerMixin.resolve_prediction(memory, actual={"relevance": 0.3})
+# error ≈ 0.6  (normalized absolute error)
+```
+
+### Auto-resolution via ObservationProtocol
+
+When `ObservationProtocol.on_context_used()` fires with an `acted`, `dismissed`, or `contradicted` outcome, it automatically calls `auto_resolve()` on instances that use `PredictionLedgerMixin`:
+
+| Outcome | Default Error | Interpretation |
+|---------|--------------|----------------|
+| `acted` | 0.1 | Prediction was roughly correct |
+| `dismissed` | 0.5 | Wrong timing or relevance |
+| `contradicted` | 0.9 | Factually wrong |
+
+These values are configurable via the `_pl_auto_resolve_errors` class attribute.
+
+### ConfidenceField feedback
+
+When prediction error exceeds `_pl_confidence_error_threshold` (default 0.7), `PredictionLedgerMixin` automatically calls `ConfidenceField.update_confidence(signal=0.2)` to reduce trust in the knowledge that informed the prediction.
+
+### Querying prediction errors
+
+```python
+# Find instances with highest prediction errors
+worst = PredictionLedgerMixin.get_highest_errors(Memory, partition="default", limit=10)
+# Returns: [(redis_key, error_score), ...]
+
+# Read prediction data for a specific instance
+data = PredictionLedgerMixin.get_prediction_data(memory)
+# Returns: {"predicted": {...}, "resolved": True, "prediction_error": 0.6, ...}
+```
+
+### Class attributes
+
+| Attribute | Default | Description |
+|-----------|---------|-------------|
+| `_pl_partition` | `"default"` | Partition key for the error sorted set |
+| `_pl_confidence_error_threshold` | `0.7` | Error above which confidence is reduced |
+| `_pl_confidence_low_signal` | `0.2` | Signal value sent to ConfidenceField |
+| `_pl_auto_resolve_errors` | `{"acted": 0.1, "dismissed": 0.5, "contradicted": 0.9}` | Outcome-to-error mapping |
+
+### Redis key patterns
+
+- `$PL:{ClassName}:meta:{pk}` -- hash storing prediction metadata (msgpack-encoded)
+- `$PL:{ClassName}:errors:{partition}` -- sorted set of instance keys scored by |error|
+
+### Key properties
+
+- **Idempotent resolution**: Resolving an already-resolved prediction is a no-op (returns `None`)
+- **Atomic**: Resolution uses a Lua script for atomic read-compute-write-ZADD
+- **Graceful degradation**: Works without ConfidenceField or EventStreamMixin (features are additive)
+- **Valkey compatible**: Uses only HSET, HGET, ZADD, EVAL -- no Redis modules
+- **Pipeline support**: All operations accept an optional `pipeline` parameter
 
 ## StreamConsumer
 

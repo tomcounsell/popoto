@@ -835,6 +835,56 @@ Both `ExistenceFilter` and `FrequencySketch` can be used together on the same mo
 See [Agent Memory -- FrequencySketch](features/agent-memory.md#frequencysketch) for
 the full agent memory context.
 
+## PredictionLedgerMixin
+
+`PredictionLedgerMixin` adds prediction recording, resolution, and error tracking to any
+Popoto model. Agents record predictions before acting, then resolve them against actual
+outcomes. The mixin computes prediction error and feeds it back into `ConfidenceField`
+when error is high.
+
+```python
+from popoto import Model, UniqueKeyField, StringField
+from popoto.fields.prediction_ledger import PredictionLedgerMixin
+from popoto.fields.confidence_field import ConfidenceField
+
+class Memory(PredictionLedgerMixin, Model):
+    key = UniqueKeyField()
+    content = StringField()
+    certainty = ConfidenceField()
+
+    _pl_partition = "default"
+```
+
+Record a prediction and resolve it:
+
+```python
+memory = Memory.create(key="fact1", content="sky is blue")
+PredictionLedgerMixin.record_prediction(memory, predicted={"relevance": 0.9})
+error = PredictionLedgerMixin.resolve_prediction(memory, actual={"relevance": 0.3})
+# error ≈ 0.6
+```
+
+Auto-resolution from `ObservationProtocol` outcomes (`acted`, `dismissed`, `contradicted`)
+is handled automatically when the model uses both mixins. Resolution is idempotent --
+resolving an already-resolved prediction is a no-op.
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `record_prediction(instance, predicted, pipeline=None)` | `None` | Store a prediction for a saved instance |
+| `resolve_prediction(instance, actual, pipeline=None)` | `float` or `None` | Resolve with actual values, returns error |
+| `auto_resolve(instance, outcome, pipeline=None)` | `float` or `None` | Resolve using outcome-to-error mapping |
+| `get_prediction_data(instance)` | `dict` or `None` | Read current prediction metadata |
+| `get_highest_errors(model_class, partition, limit)` | `list` | Query instances with highest errors |
+| `compute_prediction_error(predicted, actual)` | `float` | Overridable error computation |
+
+Redis keys: `$PL:{ClassName}:meta:{pk}` (hash), `$PL:{ClassName}:errors:{partition}` (sorted set).
+
+Implemented entirely with Redis hashes, sorted sets, and Lua scripts. No Redis modules
+required -- works on both Redis and Valkey.
+
+See [Agent Memory -- PredictionLedger](features/agent-memory.md#predictionledger) for
+the full agent memory context.
+
 ## partition_by
 
 When you always query a `SortedField` together with a specific `KeyField`, you can

@@ -199,6 +199,15 @@ def _apply_acted(instance, pipeline):
             except (TypeError, ValueError):
                 pass  # Graceful degradation for unsaved instances
 
+    # Auto-resolve predictions (PredictionLedgerMixin)
+    from .prediction_ledger import PredictionLedgerMixin
+
+    if isinstance(instance, PredictionLedgerMixin):
+        try:
+            PredictionLedgerMixin.auto_resolve(instance, "acted", pipeline=pipeline)
+        except (TypeError, ValueError):
+            pass  # Graceful degradation
+
 
 def _apply_dismissed(instance, pipeline):
     """Dismissed: discard staged reads, weaken cycles.
@@ -219,6 +228,17 @@ def _apply_dismissed(instance, pipeline):
     for field_name, field in instance._meta.fields.items():
         if isinstance(field, CyclicDecayField):
             instance.weaken_cycle(field_name, factor=0.8, pipeline=pipeline)
+
+    # Auto-resolve predictions (PredictionLedgerMixin)
+    from .prediction_ledger import PredictionLedgerMixin
+
+    if isinstance(instance, PredictionLedgerMixin):
+        try:
+            PredictionLedgerMixin.auto_resolve(
+                instance, "dismissed", pipeline=pipeline
+            )
+        except (TypeError, ValueError):
+            pass  # Graceful degradation
 
 
 def _apply_deferred(instance, pipeline):
@@ -264,6 +284,17 @@ def _apply_contradicted(instance, pipeline):
                 ConfidenceField.update_confidence(instance, field_name, signal=0.1)
             except (TypeError, ValueError):
                 pass  # Graceful degradation for unsaved instances
+
+    # Auto-resolve predictions (PredictionLedgerMixin)
+    from .prediction_ledger import PredictionLedgerMixin
+
+    if isinstance(instance, PredictionLedgerMixin):
+        try:
+            PredictionLedgerMixin.auto_resolve(
+                instance, "contradicted", pipeline=pipeline
+            )
+        except (TypeError, ValueError):
+            pass  # Graceful degradation
 
     # Auto-discharge: when confidence < 0.1, resolve pressure on CyclicDecayFields
     for field_name, field in instance._meta.fields.items():

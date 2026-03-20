@@ -35,6 +35,7 @@ from .fields.co_occurrence_field import CoOccurrenceField
 from .fields.existence_filter import ExistenceFilter, FrequencySketch
 from .fields.constants import TemporalPeriod, InteractionWeight
 from .fields.observation import ObservationProtocol, RecallProposal
+from .fields.prediction_ledger import PredictionLedgerMixin
 from .fields.geo_field import GeoField
 
 try:
@@ -105,6 +106,7 @@ __all__ = [
     "InteractionWeight",
     "ObservationProtocol",
     "RecallProposal",
+    "PredictionLedgerMixin",
     "GeoField",
     "DataFrameField",
     "Relationship",
