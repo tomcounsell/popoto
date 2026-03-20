@@ -36,7 +36,7 @@ The primitives ship incrementally. Each builds on the ones before it.
 | [PredictionLedger](#predictionledger) | Outcome tracking — record predictions, observe results, compute error | Shipped |
 | [StreamConsumer](#streamconsumer) | Background processing framework for Redis Streams | Shipped ([PR #238](https://github.com/tomcounsell/popoto/pull/238)) |
 | [PolicyCache](#policycache) | Learned action selection — crystallized state-action-outcome patterns | Shipped ([PR #239](https://github.com/tomcounsell/popoto/pull/239)) |
-| [ContextAssembler](#contextassembler) | Retrieval-to-injection bridge — assemble LLM-ready context within token budgets | Planned |
+| [ContextAssembler](#contextassembler) | Retrieval-to-injection bridge — assemble LLM-ready context within token budgets | Shipped |
 
 ## DecayingSortedField
 
@@ -1176,19 +1176,212 @@ WriteFilterMixin is intentionally excluded — the crystallization handler IS th
 
 ## ContextAssembler
 
-A query utility that orchestrates the full retrieval pipeline and assembles budget-constrained context payloads for LLM injection.
+A capstone recipe that orchestrates all shipped Popoto memory primitives into a single `assemble()` call. It combines query-driven retrieval (pull path) with proactive surfacing (push path), applies token budgets, and formats output for LLM context injection.
+
+This is Step 12 of the [Popoto Memory Roadmap](../guides/popoto-memory-roadmap.md).
+
+### Pipeline
+
+```
+Application
+    │
+    ▼
+assemble(query_cues, agent_id)
+    │
+    ├─── Pull Path (query-driven) ──────────────────────────┐
+    │    1. ExistenceFilter pre-check                       │
+    │       └─ Skip retrieval if all cues definitely_missing│
+    │    2. CompositeScoreQuery                             │
+    │       └─ Multi-factor ranked retrieval via ZUNIONSTORE│
+    │    3. CoOccurrence propagation                        │
+    │       └─ BFS expansion to discover associated records │
+    │                                                       │
+    ├─── Push Path (proactive surfacing) ───────────────────┤
+    │    1. CyclicDecayField scan via top_by_decay()        │
+    │    2. Filter by surfacing_threshold                   │
+    │                                                       │
+    ├─── Merge + Re-rank ──────────────────────────────────-┤
+    │    1. Deduplicate by redis_key                        │
+    │    2. Apply max_items cap                             │
+    │    3. Apply max_tokens budget (if set)                │
+    │                                                       │
+    ├─── Post-retrieval Effects ────────────────────────────┤
+    │    1. on_read() for pull-path records                 │
+    │    2. on_surfaced() for push-path (creates Recalls)   │
+    │    3. Competitive suppression of non-selected pulls   │
+    │                                                       │
+    └─── Format ────────────────────────────────────────────┘
+         structured (JSON) | xml | natural
+         │
+         ▼
+    AssemblyResult
+```
+
+### Synergy Table
+
+| Primitive | Role in ContextAssembler |
+|-----------|--------------------------|
+| DecayingSortedField | Score index for CompositeScoreQuery |
+| CyclicDecayField | Push-path proactive surfacing |
+| ConfidenceField | Score index + competitive suppression |
+| CoOccurrenceField | Pull-path candidate expansion via BFS |
+| ExistenceFilter | Pull-path pre-check (skip if absent) |
+| AccessTrackerMixin | on_read post-effect tracking |
+| ObservationProtocol | on_read / on_surfaced dispatch |
+| RecallProposal | Created for push-path records |
+| WriteFilterMixin | Priority score in composite |
+| EventStreamMixin | Mutation logging (via model save) |
+| PredictionLedgerMixin | Outcome tracking (via model save) |
+| CompositeScoreQuery | Multi-factor ranked retrieval |
+
+### API Reference
+
+#### `ContextAssembler.__init__()`
+
+```python
+from popoto.recipes.context_assembler import ContextAssembler
+
+assembler = ContextAssembler(
+    model_class,              # Popoto Model class to query
+    score_weights,            # Dict mapping field names to weights for CompositeScoreQuery
+    max_items=10,             # Maximum records to return
+    max_tokens=None,          # Optional soft token budget
+    surfacing_threshold=0.5,  # Minimum score for push-path records
+    propagation_depth=2,      # BFS depth for CoOccurrence propagation
+    output_format="structured",  # "structured" (JSON), "xml", or "natural"
+    token_counter=None,       # Optional callable(record) -> int; default: len(str(r)) // 4
+)
+```
+
+The assembler auto-detects which fields are present on `model_class` and adapts the pipeline accordingly. Models without `ExistenceFilter` skip the pre-check; models without `CoOccurrenceField` skip propagation; models without `CyclicDecayField` skip the push path entirely.
+
+#### `ContextAssembler.assemble()`
+
+```python
+result = assembler.assemble(
+    query_cues=None,          # Dict of query cues (e.g., {"topic": "deploy"})
+    agent_id=None,            # Agent ID for partition filtering
+    partition_filters=None,   # Dict of partition key-value pairs
+)
+```
+
+Returns an `AssemblyResult`. If `query_cues` is `None`, the pull path is skipped and only push-path (proactive) results are returned.
+
+#### `AssemblyResult`
+
+```python
+@dataclass
+class AssemblyResult:
+    records: list       # All selected instances (pull + push, deduplicated)
+    proactive: list     # Push-path subset of records
+    formatted: str      # LLM-ready formatted string
+    metadata: dict      # Scores, token counts, timing info
+```
+
+The `metadata` dict contains:
+
+| Key | Description |
+|-----|-------------|
+| `pull_count` | Number of pull-path records in final selection |
+| `push_count` | Number of push-path records in final selection |
+| `token_count` | Estimated total tokens across selected records |
+| `timing_ms` | Wall-clock time for the full pipeline |
+| `total_candidates` | Total candidates before budget selection |
+
+### Usage Examples
+
+#### Pull-only assembly (query-driven retrieval)
+
+```python
+from popoto.recipes.context_assembler import ContextAssembler
+
+assembler = ContextAssembler(
+    model_class=Memory,
+    score_weights={"relevance": 0.6, "confidence": 0.3},
+    max_items=10,
+    max_tokens=4000,
+)
+
+result = assembler.assemble(
+    query_cues={"topic": "deployment"},
+    agent_id="agent-1",
+)
+print(result.formatted)       # JSON array of records
+print(result.metadata)        # {"pull_count": 5, "push_count": 0, ...}
+```
+
+#### Push-only assembly (proactive surfacing)
 
 ```python
 assembler = ContextAssembler(
     model_class=Memory,
-    score_weights={"relevance": 0.4, "confidence": 0.3, "access": 0.3},
-    max_items=10,
-    max_tokens=2000
+    score_weights={"relevance": 1.0},
+    surfacing_threshold=0.3,
 )
-context = assembler.assemble(query_cues={"topic": "deployment"}, agent_id="agent-1")
+
+# No query_cues: only push-path runs
+result = assembler.assemble(agent_id="agent-1")
+for record in result.proactive:
+    print(f"Proactively surfaced: {record.content}")
 ```
 
-The pipeline: ExistenceFilter pre-check, CompositeScoreQuery ranking, CoOccurrence propagation, budget-constrained selection, formatted output.
+#### Combined pull + push assembly
+
+```python
+assembler = ContextAssembler(
+    model_class=Memory,
+    score_weights={"relevance": 0.5, "urgency": 0.3, "confidence": 0.2},
+    max_items=15,
+    max_tokens=8000,
+    surfacing_threshold=0.4,
+    output_format="xml",
+)
+
+result = assembler.assemble(
+    query_cues={"topic": "incident response"},
+    agent_id="agent-1",
+)
+# result.records contains both pull and push results, deduplicated
+# result.proactive is the push-path subset
+# result.formatted is XML-formatted for LLM injection
+```
+
+#### Custom token counter
+
+```python
+import tiktoken
+
+enc = tiktoken.encoding_for_model("gpt-4")
+
+assembler = ContextAssembler(
+    model_class=Memory,
+    score_weights={"relevance": 1.0},
+    max_tokens=4000,
+    token_counter=lambda record: len(enc.encode(str(record))),
+)
+```
+
+### Tuning Constants
+
+| Constant | Default | Description |
+|----------|---------|-------------|
+| `COMPETITIVE_SUPPRESSION_SIGNAL` | `0.3` | Signal strength for competitive suppression of non-selected pull candidates. Values < 0.5 act as contradiction signals via `ConfidenceField.update_confidence()`. |
+| `DEFAULT_SURFACING_THRESHOLD` | `0.5` | Minimum score for push-path records to be surfaced. |
+| `DEFAULT_MAX_ITEMS` | `10` | Default maximum number of records returned. |
+| `DEFAULT_PROPAGATION_DEPTH` | `2` | Default BFS depth for CoOccurrence propagation. |
+
+### Graceful Degradation
+
+ContextAssembler adapts to whatever fields are present on the model class:
+
+| Missing Field | Behavior |
+|---------------|----------|
+| ExistenceFilter | Pre-check skipped; proceeds directly to CompositeScoreQuery |
+| CoOccurrenceField | Propagation skipped; uses CompositeScoreQuery results directly |
+| CyclicDecayField | Push path skipped entirely; returns pull-path results only |
+| ConfidenceField | Competitive suppression skipped for non-selected candidates |
+
+This means `ContextAssembler` works with minimal models (just a `DecayingSortedField`) all the way up to full-featured models with all 12 primitives.
 
 ## Design principles
 
