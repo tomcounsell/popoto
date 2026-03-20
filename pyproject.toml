@@ -20,7 +20,7 @@ classifiers = [
 keywords = ["redis", "ORM", "database"]
 requires-python = ">=3.9"
 dependencies = [
-    "redis>=4.3.4",
+    "redis>=4.4.4",
     "msgpack>=1.0.4",
 ]
 
@@ -36,7 +36,7 @@ dev = [
     "pytest>=7.1.2",
     "pytest-asyncio>=0.21.0",
     "mypy>=0.971",
-    "black>=22.6.0",
+    "black>=26.3.1",
     "ruff>=0.1.0",
 ]
 
@@ -59,7 +59,7 @@ authors = ["Tom Counsell"]
 
 [tool.poetry.dependencies]
 python = "^3.9"
-redis = "^4.3.4"
+redis = "^4.4.4"
 pandas = "^1.4.3"
 numpy = "^1.23.1"
 msgpack = "^1.0.4"
@@ -68,7 +68,7 @@ msgpack-numpy = "^0.4.8"
 [tool.poetry.dev-dependencies]
 pytest = "^7.1.2"
 mypy = "^0.971"
-black = "^22.6.0"
+black = "^26.3.1"
 pip-tools = "^6.8.0"
 
 [tool.isort]

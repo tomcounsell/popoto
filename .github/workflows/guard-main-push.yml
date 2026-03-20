@@ -1,0 +1,34 @@
+name: Guard direct pushes to main
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  check-docs-only:
+    # Skip for repository admins (owner) — only guard bypass users
+    if: github.actor == 'valorengels'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check that only docs files were changed
+        run: |
+          # Get files changed in this push
+          changed=$(git diff --name-only HEAD~1 HEAD)
+          echo "Changed files:"
+          echo "$changed"
+
+          # Check each file is in an allowed path
+          non_docs=$(echo "$changed" | grep -vE '^(docs/|CLAUDE\.md|\.claude/commands/)' || true)
+
+          if [ -n "$non_docs" ]; then
+            echo "::error::Direct pushes to main by @${{ github.actor }} are limited to docs/, CLAUDE.md, and .claude/commands/"
+            echo "::error::These files are not allowed:"
+            echo "$non_docs"
+            exit 1
+          fi
+
+          echo "All changes are docs-only. Allowed."
