@@ -17,6 +17,8 @@ nav:
     - CyclicDecayField: 'features/cyclic-decay-field.md'
     - ConfidenceField: 'features/confidence-field.md'
     - API Reference: 'api-reference.md'
+    - Guides:
+        - PolicyCache Recipe: 'guides/policy-cache-recipe.md'
     - Contributing:
         - Style Guide: 'style-guide.md'
 

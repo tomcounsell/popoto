@@ -52,6 +52,7 @@ Popoto provides a fast, familiar interface for working with Redis and Valkey.
  - compatible with Pandas, Xarray for N-dimensional matrix search
  - [PubSub](pubsub.md) for message queues, streaming data processing
  - [Agent Memory](features/agent-memory.md) — programmable memory primitives for AI agents (decay, confidence, associations)
+ - [PolicyCache Recipe](guides/policy-cache-recipe.md) — reference recipe composing all memory primitives into an RL-style action selection cache
 
 **Popoto** is ideal for streaming data. The pub/sub module allows you to trigger state updates in real time.
 Currently being used in production for:

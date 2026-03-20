@@ -21,6 +21,10 @@ Dependencies:
     All 12 shipped Popoto primitives (Steps 1-10 of the memory roadmap).
     No external dependencies beyond Popoto itself.
 
+See Also:
+    docs/guides/policy-cache-recipe.md — full guide with architecture,
+    tuning constants, and design decisions.
+
 Example:
     from popoto.recipes.policy_cache import (
         PolicyEntry, compute_fingerprint, update_q_value,
