@@ -35,7 +35,7 @@ The primitives ship incrementally. Each builds on the ones before it.
 | [FrequencySketch](#frequencysketch) | Count-Min Sketch for approximate frequency counting | Shipped |
 | [PredictionLedger](#predictionledger) | Outcome tracking — record predictions, observe results, compute error | Shipped |
 | [StreamConsumer](#streamconsumer) | Background processing framework for Redis Streams | Shipped ([PR #238](https://github.com/tomcounsell/popoto/pull/238)) |
-| [PolicyCache](#policycache) | Learned action selection — crystallized state-action-outcome patterns | Planned |
+| [PolicyCache](#policycache) | Learned action selection — crystallized state-action-outcome patterns | Shipped ([PR #239](https://github.com/tomcounsell/popoto/pull/239)) |
 | [ContextAssembler](#contextassembler) | Retrieval-to-injection bridge — assemble LLM-ready context within token budgets | Planned |
 
 ## DecayingSortedField
@@ -1087,18 +1087,90 @@ This is generic infrastructure — the processing logic is application code. One
 
 ## PolicyCache
 
-A reference pattern (not core ORM) showing how to compose all primitives into a reinforcement-learning-style action selection cache. When the compaction pipeline detects repeated successful patterns, it crystallizes them into reusable policies.
+A reference recipe (not core ORM) composing all shipped primitives into a reinforcement-learning-style action selection cache. When a StreamConsumer detects repeated successful patterns, it crystallizes them into reusable `PolicyEntry` records. Agents query policies by state fingerprint and select actions based on Q-value, confidence, and co-occurrence.
+
+Shipped in [PR #239](https://github.com/tomcounsell/popoto/pull/239).
+
+### Basic usage
 
 ```python
-class PolicyEntry(Model):
+from popoto.recipes.policy_cache import (
+    PolicyEntry, compute_fingerprint, update_q_value,
+    initialize_q_value, crystallization_handler,
+)
+
+# Create a policy directly
+fp = compute_fingerprint({"task": "deploy", "env": "staging"})
+policy = PolicyEntry(
+    agent_id="agent-1",
+    state_fingerprint=fp,
+    state_features={"task": "deploy", "env": "staging"},
+    action_type="run_playbook",
+    action_spec={"playbook": "deploy.yml"},
+)
+policy.save()
+
+# Initialize and update Q-value via temporal difference learning
+initialize_q_value(policy, initial_q=0.0)
+td_error = update_q_value(policy, reward=1.0)
+
+# Or let crystallization detect patterns automatically
+from popoto.streams import StreamConsumer
+
+consumer = StreamConsumer(
+    stream_key="stream:policy_mutations",
+    group_name="crystallizer",
+    consumer_name="worker-1",
+    handler=crystallization_handler,
+)
+```
+
+### PolicyEntry model
+
+```python
+class PolicyEntry(EventStreamMixin, AccessTrackerMixin, PredictionLedgerMixin, Model):
     entry_id = AutoKeyField()
     agent_id = KeyField()
     state_fingerprint = KeyField()
-    action_spec = Field(type=dict)
-    expected_value = DecayingSortedField()
-    confidence = ConfidenceField()
-    related_policies = CoOccurrenceField()
+    state_features = Field()                      # JSON dict
+    action_type = KeyField()
+    action_spec = Field()                         # JSON dict
+    expected_value = DecayingSortedField(
+        partition_by="agent_id",
+    )
+    confidence = ConfidenceField(initial_confidence=0.5)
+    related_policies = CoOccurrenceField(symmetric=True, max_edges=100)
+    bloom = ExistenceFilter(
+        error_rate=0.01,
+        capacity=100_000,
+        fingerprint_fn=lambda inst: inst.state_fingerprint,
+    )
 ```
+
+WriteFilterMixin is intentionally excluded — the crystallization handler IS the write gate (Wilson CI > 0.6 threshold).
+
+### Key functions
+
+| Function | Description |
+|----------|-------------|
+| `compute_fingerprint(features, include_fields=None, include_timestamp=False)` | SHA-256 hash (16 hex chars) of state features |
+| `update_q_value(instance, reward, max_future_q=0.0, alpha=0.1, gamma=0.95)` | Atomic TD(0) Q-value update via Lua script |
+| `initialize_q_value(instance, initial_q=0.0)` | Set initial Q-value (overrides timestamp from save) |
+| `wilson_ci_lower(successes, total, z=1.96)` | Wilson score confidence interval lower bound |
+| `chi_squared_uniform(observed, expected_per_bucket)` | Chi-squared test against uniform distribution |
+| `crystallization_handler(entries)` | StreamConsumer handler for pattern detection |
+| `temporal_discovery_handler(entries)` | StreamConsumer handler for cycle discovery |
+
+### Tuning constants
+
+| Constant | Default | Description |
+|----------|---------|-------------|
+| `MIN_EVENTS_FOR_CRYSTALLIZATION` | `3` | Min events before crystallization |
+| `WILSON_CI_THRESHOLD` | `0.6` | Wilson CI lower bound threshold |
+| `TD_ALPHA` | `0.1` | Q-value learning rate |
+| `TD_GAMMA` | `0.95` | Q-value discount factor |
+| `CHI_SQUARED_P_THRESHOLD` | `0.05` | p-value threshold for temporal discovery |
+| `INITIAL_CYCLE_AMPLITUDE` | `0.5` | Initial amplitude for discovered cycles |
 
 ## ContextAssembler
 
