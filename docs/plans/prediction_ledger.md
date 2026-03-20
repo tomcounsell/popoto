@@ -33,7 +33,7 @@ No prior attempts at PredictionLedger exist — this is greenfield.
 1. **Record prediction**: Agent calls `record_prediction(instance, predicted={...})` before acting. Stores prediction metadata in Redis hash `$PL:{ClassName}:meta:{pk}` with `resolved=false`.
 2. **Resolve prediction (explicit)**: Agent calls `resolve_prediction(instance, actual={...})` after acting. Lua script atomically reads prediction, computes error delta, sets `resolved=true`, `resolution_mode="explicit"`, and ZADDs error to `$PL:{ClassName}:errors:{partition}`.
 3. **Resolve prediction (auto)**: When `ObservationProtocol.on_context_used()` fires with an `acted`/`dismissed`/`contradicted` outcome, it calls `auto_resolve(instance, outcome)` which maps the outcome to a prediction error and resolves the same way, with `resolution_mode="observed"`.
-4. **Confidence feedback**: If the model has a `ConfidenceField`, prediction errors feed back via graduated response: `update_confidence(signal=1.0 - prediction_error)`. High error → low signal → confidence drops. Low error → high signal → confidence rises.
+4. **Confidence feedback**: If the model has a `ConfidenceField` and prediction error exceeds `_pl_confidence_error_threshold` (default 0.7), calls `update_confidence(signal=_pl_confidence_low_signal)` (default 0.2) to reduce trust. Below the threshold, no confidence change.
 5. **EventStreamMixin**: Resolution events are logged via `_xadd_event(op="prediction_resolved", ...)` for downstream processing.
 
 ## Architectural Impact
@@ -232,7 +232,7 @@ No agent integration required — this is a Popoto ORM primitive. Agent applicat
   - `get_highest_errors(model_class, partition, limit)` — query error sorted set
   - `compute_prediction_error(predicted, actual)` — overridable error computation method
   - Lua script for atomic resolution (read hash → compute error → update hash → ZADD error)
-  - ConfidenceField feedback: on resolution, call `update_confidence(signal=1.0 - prediction_error)` — graduated response, no threshold. High error → low signal → confidence drops. Low error → high signal → confidence rises.
+  - ConfidenceField feedback: on resolution, if error > `_pl_confidence_error_threshold` (0.7), call `update_confidence(signal=_pl_confidence_low_signal)` (0.2) to reduce confidence. Below threshold, no change.
   - EventStreamMixin: on resolution, call `_xadd_event(op="prediction_resolved", ...)`
   - Redis keys: `$PL:{ClassName}:meta:{pk}` (hash), `$PL:{ClassName}:errors:{partition}` (sorted set)
 - Register in `src/popoto/fields/__init__.py` and `src/popoto/__init__.py`
@@ -318,4 +318,4 @@ No agent integration required — this is a Popoto ORM primitive. Agent applicat
 
 2. **Auto-resolution error values**: Use best-guess defaults (`acted=0.1, dismissed=0.5, contradicted=0.9`) as class attributes. These are magic numbers that will be tuned via experiments — not intended for dev/user configuration.
 
-3. **Confidence feedback**: Use graduated response — map prediction error directly to confidence signal: `signal = 1.0 - prediction_error`. This avoids an arbitrary threshold and lets the Bayesian update formula handle the rest. Magic number (the mapping itself) will be validated through experimental runs.
+3. **Confidence feedback**: As implemented — threshold-based: if `prediction_error > _pl_confidence_error_threshold` (0.7), send `signal=_pl_confidence_low_signal` (0.2) to ConfidenceField. Below threshold, no change. Both values are class attributes that can be tuned experimentally.

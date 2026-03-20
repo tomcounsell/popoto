@@ -952,9 +952,11 @@ These constants directly affect how the memory system scores, strengthens, weake
 | `initial_weight` | `0.1` | CoOccurrenceField `link()` | Starting weight for newly created association edges. |
 | `delta` (strengthen) | `0.05` | CoOccurrenceField `strengthen()` | How much each co-access strengthens an association. |
 | `decay_per_hop` | `0.5` | CoOccurrenceField `propagate()` | Weight multiplier per hop in BFS graph propagation. |
-| PredictionLedger: acted error | `0.1` | PredictionLedgerMixin (planned) | Prediction error assigned when observation outcome is "acted". |
-| PredictionLedger: dismissed error | `0.5` | PredictionLedgerMixin (planned) | Prediction error assigned when observation outcome is "dismissed". |
-| PredictionLedger: contradicted error | `0.9` | PredictionLedgerMixin (planned) | Prediction error assigned when observation outcome is "contradicted". |
+| PredictionLedger: acted error | `0.1` | PredictionLedgerMixin `_pl_auto_resolve_errors` | Prediction error assigned when observation outcome is "acted". |
+| PredictionLedger: dismissed error | `0.5` | PredictionLedgerMixin `_pl_auto_resolve_errors` | Prediction error assigned when observation outcome is "dismissed". |
+| PredictionLedger: contradicted error | `0.9` | PredictionLedgerMixin `_pl_auto_resolve_errors` | Prediction error assigned when observation outcome is "contradicted". |
+| PredictionLedger: confidence error threshold | `0.7` | PredictionLedgerMixin `_pl_confidence_error_threshold` | Error above which confidence is reduced via ConfidenceField. |
+| PredictionLedger: confidence low signal | `0.2` | PredictionLedgerMixin `_pl_confidence_low_signal` | Signal value sent to ConfidenceField when error exceeds threshold. |
 
 **Experiment approach:** These are the knobs that most affect how quickly the system learns, forgets, and self-corrects. Vary each independently while holding others fixed, measuring retrieval relevance and calibration error across a standardized task suite. Look for cliff effects (small changes in threshold produce large performance swings) and plateaus (ranges where the value doesn't matter much).
 
