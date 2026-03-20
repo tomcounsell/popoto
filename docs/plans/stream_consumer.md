@@ -1,5 +1,5 @@
 ---
-status: Planning
+status: Complete
 type: feature
 appetite: Medium
 owner: Valor
@@ -297,10 +297,10 @@ See plan template for full list.
 
 ---
 
-## Open Questions
+## Open Questions (Resolved)
 
-1. **Async Redis client**: Should StreamConsumer create its own `redis.asyncio.Redis` connection, or should Popoto add an async connection alongside the existing sync `POPOTO_REDIS_DB`? The EventStreamMixin uses the sync client — StreamConsumer could do the same for consistency, with async as a future enhancement.
+1. **Async Redis client**: Use existing `get_async_redis_db()` from `redis_db.py` for the async path. Use `POPOTO_REDIS_DB` for sync wrappers. No new connection management needed.
 
-2. **Claim timeout default**: The roadmap mentions `block_ms=5000` for XREADGROUP. What's a reasonable default for XCLAIM idle timeout? Proposing 300,000ms (5 minutes) — long enough to not steal entries from slow-but-alive consumers, short enough to recover from crashes promptly.
+2. **Claim timeout default**: **180,000ms (3 minutes)**. Safe for most handler durations, recovers faster than the originally proposed 5 minutes.
 
-3. **Should `process_batch()` return processed entry count or the entries themselves?** The issue's API sketch shows it returning `processed` (count). Returning the entries would be more useful for testing but less clean for production use. Proposing: return count for `process_batch()`, with entries available via handler callback.
+3. **`process_batch()` return value**: Return **count** (int). Tests capture entries through the handler callback pattern.
