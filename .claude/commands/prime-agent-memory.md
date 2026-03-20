@@ -33,17 +33,19 @@ Read these files to understand how Popoto fields and queries work — every new 
 
 ## Step 5: Review shipped primitives
 
-10 of 14 primitives have shipped. Key implementation files:
+12 of 14 primitives have shipped. Key implementation files:
 - `src/popoto/fields/decaying_sorted_field.py` — DecayingSortedField (PR #199)
-- `src/popoto/fields/cyclic_decay_field.py` — CyclicDecayField (PR #201, not yet confirmed)
+- `src/popoto/fields/cyclic_decay_field.py` — CyclicDecayField (PR #201)
 - `src/popoto/fields/access_tracker.py` — AccessTrackerMixin (PR #203)
-- `src/popoto/fields/observation_protocol.py` — ObservationProtocol (PR #206, not yet confirmed)
+- `src/popoto/fields/observation_protocol.py` — ObservationProtocol (PR #206)
 - `src/popoto/fields/write_filter.py` — WriteFilterMixin (PR #214)
 - `src/popoto/fields/confidence_field.py` — ConfidenceField (PR #215)
 - `src/popoto/fields/co_occurrence_field.py` — CoOccurrenceField (PR #218)
-- `src/popoto/fields/event_stream_mixin.py` — EventStreamMixin (shipped, not yet confirmed)
+- `src/popoto/fields/event_stream_mixin.py` — EventStreamMixin (shipped)
 - `src/popoto/models/query.py` — CompositeScoreQuery via `composite_score()` (PR #222)
 - `src/popoto/fields/existence_filter.py` — ExistenceFilter + FrequencySketch (PR #225)
+- `src/popoto/fields/prediction_ledger.py` — PredictionLedgerMixin (PR #231)
+- `src/popoto/streams/consumer.py` — StreamConsumer (PR #238)
 
 Check `tests/test_lua_decay_scoring.py` for the validated Lua decay formula and test patterns.
 
@@ -74,10 +76,8 @@ Review open issues and merged PRs to understand what's already shipped vs. in pr
 - **Valkey compatible** — only core Redis commands + Lua scripts. No BF.*, CMS.*, FT.*, JSON.* or any module commands
 - Follow existing Popoto code style: black formatting, 88 char lines
 
-## Remaining work (4 primitives)
+## Remaining work (2 primitives)
 
-- **PredictionLedger** — outcome tracking, prediction-outcome pairs, auto-resolution
-- **StreamConsumer** — background processing framework for Redis Streams consumer groups
 - **PolicyCache** — learned action selection from crystallized state-action-outcome patterns
 - **ContextAssembler** — retrieval-to-injection bridge, assembles LLM-ready context within token budgets
 
