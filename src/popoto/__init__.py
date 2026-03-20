@@ -49,6 +49,7 @@ from .models.q import Q
 from .models.expressions import Expression, CombinedExpression
 from .pubsub.publisher import Publisher
 from .pubsub.subscriber import Subscriber
+from .recipes.context_assembler import AssemblyResult, ContextAssembler
 from .streams import StreamConsumer
 from .redis_db import POPOTO_REDIS_DB, get_async_redis_db
 
@@ -125,4 +126,6 @@ __all__ = [
     "get_redis",
     "StreamConsumer",
     "get_async_redis_db",
+    "ContextAssembler",
+    "AssemblyResult",
 ]
