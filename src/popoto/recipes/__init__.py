@@ -5,6 +5,13 @@ field types, mixins, and utilities into application-level patterns. They
 are importable and usable, but designed primarily as reference implementations.
 """
 
+from .context_assembler import AssemblyResult, ContextAssembler
 from .policy_cache import PolicyEntry, compute_fingerprint, update_q_value
 
-__all__ = ["PolicyEntry", "compute_fingerprint", "update_q_value"]
+__all__ = [
+    "AssemblyResult",
+    "ContextAssembler",
+    "PolicyEntry",
+    "compute_fingerprint",
+    "update_q_value",
+]
