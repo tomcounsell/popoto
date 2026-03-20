@@ -1,10 +1,10 @@
 ---
-status: Planning
+status: Shipped
 type: feature
 appetite: Medium
 owner: Valor
 created: 2026-03-17
-tracking:
+tracking: https://github.com/tomcounsell/popoto/issues/228
 last_comment_id:
 ---
 
@@ -33,7 +33,7 @@ No prior attempts at PredictionLedger exist — this is greenfield.
 1. **Record prediction**: Agent calls `record_prediction(instance, predicted={...})` before acting. Stores prediction metadata in Redis hash `$PL:{ClassName}:meta:{pk}` with `resolved=false`.
 2. **Resolve prediction (explicit)**: Agent calls `resolve_prediction(instance, actual={...})` after acting. Lua script atomically reads prediction, computes error delta, sets `resolved=true`, `resolution_mode="explicit"`, and ZADDs error to `$PL:{ClassName}:errors:{partition}`.
 3. **Resolve prediction (auto)**: When `ObservationProtocol.on_context_used()` fires with an `acted`/`dismissed`/`contradicted` outcome, it calls `auto_resolve(instance, outcome)` which maps the outcome to a prediction error and resolves the same way, with `resolution_mode="observed"`.
-4. **Confidence feedback**: If the model has a `ConfidenceField`, prediction errors trigger a graduated confidence response — higher errors produce stronger downward signals via `ConfidenceField.update_confidence()`. No hard threshold; the signal strength scales with error magnitude.
+4. **Confidence feedback**: If the model has a `ConfidenceField`, prediction errors feed back via graduated response: `update_confidence(signal=1.0 - prediction_error)`. High error → low signal → confidence drops. Low error → high signal → confidence rises.
 5. **EventStreamMixin**: Resolution events are logged via `_xadd_event(op="prediction_resolved", ...)` for downstream processing.
 
 ## Architectural Impact
@@ -81,10 +81,10 @@ No prerequisites — uses only core Redis commands and existing Popoto infrastru
 ### Technical Approach
 
 - **Redis hash for prediction metadata**: `$PL:{ClassName}:meta:{pk}` stores `{predicted, resolved, resolution_mode, prediction_error, resolved_at}` as msgpack-encoded values. One hash per model class, keyed by instance PK.
-- **Redis sorted set for error index**: `$PL:{ClassName}:errors:{partition}` stores PKs scored by `|prediction_error|`. The `partition` parameter is a caller-defined string (e.g., a date like `"2026-03"` or a category like `"timing"`) that segments the error index for scoped queries. Defaults to `"default"` when not specified. Enables querying "which predictions had the highest error?" for learning.
+- **Redis sorted set for error index**: `$PL:{ClassName}:errors:{partition}` stores PKs scored by `|prediction_error|`. Partition is the model class name by default (single partition); subclasses can override to partition by time window, category, or other domain-specific grouping. Enables querying "which predictions had the highest error?" for learning.
 - **Lua script for atomic resolution**: Single EVAL that reads hash, computes error, updates hash, ZADDs to error set. Prevents race conditions between concurrent resolve calls.
 - **Prediction error computation**: For dict predictions, use a simple key-by-key comparison. Numeric values use `|predicted - actual| / max(|predicted|, |actual|, 1)` (normalized absolute error). String values use exact match (0.0 or 1.0). Missing keys count as 1.0 error. Overall error is the mean across all keys.
-- **Auto-resolution outcome mapping**: `acted` → error 0.1 (low — prediction was correct), `dismissed` → error 0.5 (medium — wrong timing/relevance), `contradicted` → error 0.9 (high — factually wrong). These are configurable class attributes.
+- **Auto-resolution outcome mapping**: `acted` → error 0.1, `dismissed` → error 0.5, `contradicted` → error 0.9. Stored as class attributes (`_pl_error_acted`, `_pl_error_dismissed`, `_pl_error_contradicted`). These are magic numbers — best-guess defaults to be tuned via experiments, not intended for dev/user configuration.
 - **Idempotent resolution**: Resolving an already-resolved prediction is a no-op (Lua script checks `resolved` flag first).
 
 ## Failure Path Test Strategy
@@ -123,7 +123,7 @@ No existing tests affected — this is a greenfield mixin. New test files will b
 
 ### Risk 2: Auto-resolution produces false learning signals
 **Impact:** An `acted` outcome doesn't always mean the prediction was correct — the agent may have acted despite the prediction being wrong
-**Mitigation:** Use conservative error values (0.1 for acted, not 0.0). Make auto-resolution error values configurable class attributes so applications can tune them.
+**Mitigation:** Use conservative error values (0.1 for acted, not 0.0). All magic numbers are class attributes that will be tuned via experimental runs rather than manual configuration.
 
 ## Race Conditions
 
@@ -232,7 +232,7 @@ No agent integration required — this is a Popoto ORM primitive. Agent applicat
   - `get_highest_errors(model_class, partition, limit)` — query error sorted set
   - `compute_prediction_error(predicted, actual)` — overridable error computation method
   - Lua script for atomic resolution (read hash → compute error → update hash → ZADD error)
-  - ConfidenceField feedback: on resolution, graduated response — `update_confidence(signal=max(0.1, 1.0 - error))`. Higher prediction errors produce lower signal values (stronger downward pressure on confidence). No hard threshold.
+  - ConfidenceField feedback: on resolution, call `update_confidence(signal=1.0 - prediction_error)` — graduated response, no threshold. High error → low signal → confidence drops. Low error → high signal → confidence rises.
   - EventStreamMixin: on resolution, call `_xadd_event(op="prediction_resolved", ...)`
   - Redis keys: `$PL:{ClassName}:meta:{pk}` (hash), `$PL:{ClassName}:errors:{partition}` (sorted set)
 - Register in `src/popoto/fields/__init__.py` and `src/popoto/__init__.py`
@@ -312,10 +312,10 @@ No agent integration required — this is a Popoto ORM primitive. Agent applicat
 | No Redis modules | `grep -r 'BF\.\|CMS\.\|FT\.\|JSON\.' src/popoto/fields/prediction_ledger.py` | exit code 1 |
 | Mixin importable | `python -c "from popoto.fields.prediction_ledger import PredictionLedgerMixin"` | exit code 0 |
 
-## Open Questions
+## Resolved Questions
 
-1. **Error computation granularity**: The plan proposes top-level key comparison for dict predictions. Should we support nested dict comparison (recursive flattening), or is top-level sufficient for v1?
+1. **Error computation granularity**: Top-level key comparison for v1. Nested dicts are out of scope.
 
-2. **Auto-resolution error values**: Proposed mapping is `acted=0.1, dismissed=0.5, contradicted=0.9`. Are these values reasonable, or should they be more/less extreme?
+2. **Auto-resolution error values**: Use best-guess defaults (`acted=0.1, dismissed=0.5, contradicted=0.9`) as class attributes. These are magic numbers that will be tuned via experiments — not intended for dev/user configuration.
 
-3. **~~Confidence feedback threshold~~**: Resolved — using graduated response: `update_confidence(signal=max(0.1, 1.0 - error))`. No hard threshold; signal strength scales continuously with error magnitude.
+3. **Confidence feedback**: Use graduated response — map prediction error directly to confidence signal: `signal = 1.0 - prediction_error`. This avoids an arbitrary threshold and lets the Bayesian update formula handle the rest. Magic number (the mapping itself) will be validated through experimental runs.

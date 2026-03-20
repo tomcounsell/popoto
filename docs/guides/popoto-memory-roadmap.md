@@ -924,6 +924,110 @@ Steps 1-2 are tightly coupled (observation protocol needs CyclicDecayField propo
 
 ---
 
+## Magic Numbers — Experimental Tuning Required
+
+The primitives accumulate a substantial collection of numeric constants — default thresholds, signal strengths, weighting factors, and structural parameters. Most of these are best-guess values that need their sweet spots found through experimental runs. Very few will be configured by developers or end users.
+
+This section catalogs every tunable constant across the stack, grouped by sensitivity category. A future experiment plan should systematically vary these parameters and measure the impact on agent benchmark performance (retrieval relevance, calibration error, recall precision).
+
+### Category 1: Behavioral Sensitivity — High Impact on Agent Performance
+
+These constants directly affect how the memory system scores, strengthens, weakens, and filters records. Small changes produce measurable differences in retrieval quality and learning speed. These are the highest-priority targets for experimental tuning.
+
+| Constant | Default | Location | What It Controls |
+|----------|---------|----------|-----------------|
+| `decay_rate` | `0.5` | DecayingSortedField | How fast records lose relevance. Higher = faster forgetting. With default, score halves at 4 days. |
+| `pressure_rate` | `0.0` | CyclicDecayField | How fast urgency builds on unresolved items. Zero = disabled. |
+| Acted → confidence signal | `0.9` | ObservationProtocol `_apply_acted` | How strongly an "acted" outcome corroborates confidence. |
+| Contradicted → confidence signal | `0.1` | ObservationProtocol `_apply_contradicted` | How strongly a "contradicted" outcome penalizes confidence. |
+| Acted → cycle strengthen factor | `1.2` | ObservationProtocol `_apply_acted` | How much "acted" strengthens cycle amplitudes (20% boost). |
+| Dismissed → cycle weaken factor | `0.8` | ObservationProtocol `_apply_dismissed` | How much "dismissed" weakens cycle amplitudes (20% reduction). |
+| Contradicted → cycle weaken factor | `0.5` | ObservationProtocol `_apply_contradicted` | How aggressively "contradicted" weakens cycles (50% reduction). |
+| Auto-discharge confidence threshold | `0.1` | ObservationProtocol `_apply_contradicted` | Below this confidence, pressure auto-resolves (memory stops nagging). |
+| `_wf_min_threshold` | `0.2` | WriteFilterMixin | Below this score, records are silently discarded on save. |
+| `_wf_priority_threshold` | `0.7` | WriteFilterMixin | At or above this score, records get priority-tagged. |
+| `initial_confidence` | `0.5` | ConfidenceField | Starting confidence for new records. Affects how many observations are needed to reach certainty. |
+| Corroboration/contradiction boundary | `0.5` | ConfidenceField Lua script | Signal >= 0.5 counts as corroboration, < 0.5 as contradiction. |
+| `decay_factor` | `0.95` | CoOccurrenceField | Multiplicative decay for `weaken_all()` — how fast associations fade. |
+| `initial_weight` | `0.1` | CoOccurrenceField `link()` | Starting weight for newly created association edges. |
+| `delta` (strengthen) | `0.05` | CoOccurrenceField `strengthen()` | How much each co-access strengthens an association. |
+| `decay_per_hop` | `0.5` | CoOccurrenceField `propagate()` | Weight multiplier per hop in BFS graph propagation. |
+| PredictionLedger: acted error | `0.1` | PredictionLedgerMixin (planned) | Prediction error assigned when observation outcome is "acted". |
+| PredictionLedger: dismissed error | `0.5` | PredictionLedgerMixin (planned) | Prediction error assigned when observation outcome is "dismissed". |
+| PredictionLedger: contradicted error | `0.9` | PredictionLedgerMixin (planned) | Prediction error assigned when observation outcome is "contradicted". |
+
+**Experiment approach:** These are the knobs that most affect how quickly the system learns, forgets, and self-corrects. Vary each independently while holding others fixed, measuring retrieval relevance and calibration error across a standardized task suite. Look for cliff effects (small changes in threshold produce large performance swings) and plateaus (ranges where the value doesn't matter much).
+
+### Category 2: Structural Capacity — Application-Dependent
+
+These constants control data structure sizing and capacity limits. Correct values depend on the application's scale (number of records, access frequency, association density). They affect memory usage and query performance more than learning quality.
+
+| Constant | Default | Location | What It Controls |
+|----------|---------|----------|-----------------|
+| `_max_access_log` | `100` | AccessTrackerMixin | Max confirmed access timestamps kept per instance. |
+| `max_edges` | `500` | CoOccurrenceField | Max association edges per PK before pruning lowest-weight. |
+| `_stream_max_length` | `10000` | EventStreamMixin | Approximate max entries per Redis Stream (MAXLEN ~). |
+| `error_rate` | `0.01` | ExistenceFilter (Bloom) | Target false positive rate. Lower = more bits. |
+| `capacity` | `100_000` | ExistenceFilter (Bloom) | Expected distinct items. Exceeding degrades error rate. |
+| `width` | `2000` | FrequencySketch (CMS) | Counters per row. Higher = less overcounting. |
+| `depth` | `7` | FrequencySketch (CMS) | Number of hash functions. Higher = more accurate. |
+| `limit` (get_linked) | `20` | CoOccurrenceField | Max results from get_linked query. |
+| `depth` (propagate) | `2` | CoOccurrenceField | BFS traversal depth for graph propagation. |
+| `RecallProposal.DEFAULT_TTL` | `3600` | RecallProposal | Seconds before unresolved proposals expire (treated as deferred). |
+
+**Experiment approach:** These are less about tuning and more about sizing. Profile memory usage and query latency at different scales (1K, 10K, 100K, 1M records). Identify where defaults become bottlenecks. For Bloom/CMS parameters, verify false positive rates match theoretical predictions under realistic workloads.
+
+### Category 3: Edge Pruning — Cleanup Thresholds
+
+These constants control when low-value data is pruned. They prevent unbounded growth but their exact values rarely matter — they just need to be "small enough" to catch dead weight without discarding useful data.
+
+| Constant | Default | Location | What It Controls |
+|----------|---------|----------|-----------------|
+| `weaken_all` prune threshold | `0.001` | CoOccurrenceField | Edges below this weight are deleted after global decay. |
+| `min_weight` (get_linked) | `0.01` | CoOccurrenceField | Minimum weight to include in get_linked results. |
+| `threshold` (propagate) | `0.01` | CoOccurrenceField | Minimum propagated weight to include in BFS results. |
+| Elapsed days min clamp | `0.01` | DecayingSortedField Lua | Prevents division by zero in decay formula. |
+
+**Experiment approach:** Low priority. Verify they don't accidentally prune useful data under sustained usage. Spot-check with long-running integration tests.
+
+### Category 4: Domain Constants — Fixed by Design
+
+These are not tunable — they encode domain definitions (time periods, weight ratios) or algorithm constants (hash seeds). They change only if the domain model changes.
+
+| Constant | Default | Location | What It Controls |
+|----------|---------|----------|-----------------|
+| `TemporalPeriod.DAILY` | `86_400` | constants.py | 24 hours in seconds |
+| `TemporalPeriod.WEEKLY` | `604_800` | constants.py | 7 days in seconds |
+| `TemporalPeriod.MONTHLY` | `2_592_000` | constants.py | 30 days in seconds |
+| `TemporalPeriod.QUARTERLY` | `7_776_000` | constants.py | 90 days in seconds |
+| `TemporalPeriod.YEARLY` | `31_536_000` | constants.py | 365 days in seconds |
+| `InteractionWeight.HUMAN` | `6.0` | constants.py | Human source weight (vs agent/system) |
+| `InteractionWeight.AGENT` | `1.0` | constants.py | Agent source weight |
+| `InteractionWeight.SYSTEM` | `0.2` | constants.py | System source weight |
+| `InteractionWeight.EXECUTIVE` | `44.0` | constants.py | Executive role weight |
+| `InteractionWeight.MANAGER` | `16.0` | constants.py | Manager role weight |
+| `InteractionWeight.PEER` | `6.0` | constants.py | Peer role weight |
+| `InteractionWeight.SUBORDINATE` | `1.0` | constants.py | Subordinate role weight |
+| Bloom/CMS hash seeds | various | ExistenceFilter/FrequencySketch Lua | DJB2 (5381), FNV-1 (16777619), 2^52 modulus |
+
+**Experiment approach:** InteractionWeight ratios are candidates for tuning in multi-agent deployments, but require multi-agent benchmarks. TemporalPeriod and hash constants are fixed.
+
+### Experiment Planning Notes
+
+When designing the tuning experiments:
+
+1. **Start with Category 1.** These have the highest impact-to-effort ratio. The observation protocol signals (0.9/0.1/1.2/0.8/0.5) and write filter thresholds (0.2/0.7) are the most consequential.
+
+2. **Use the progressive benchmark table** (from Step 12) as the evaluation framework. Each experiment varies one constant while running the full benchmark, measuring marginal impact on retrieval relevance and calibration error.
+
+3. **Look for interaction effects.** Some constants interact: `decay_rate` × `initial_confidence` determines how quickly a new record establishes itself. `_wf_min_threshold` × `initial_weight` determines whether newly linked associations survive the write filter. Test these pairs together.
+
+4. **Record baselines.** Before any tuning, establish baseline metrics with all defaults. Every experiment result should be reported as delta from baseline.
+
+5. **Avoid overfitting to a single benchmark.** Run experiments across at least 3 different task types (factual recall, multi-step reasoning, temporal scheduling) to find values that generalize.
+
+---
+
 ## What This Gives Agent Developers
 
 When all 12 steps ship, an agent developer using Popoto gets:
