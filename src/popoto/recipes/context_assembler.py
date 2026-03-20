@@ -432,36 +432,36 @@ class ContextAssembler:
         return candidates, all_candidates
 
     def _push_path(self, filters):
-        """Execute push-path retrieval via CyclicDecayField."""
+        """Execute push-path retrieval via CyclicDecayField.
+
+        Uses composite_score with min_score for threshold filtering instead
+        of top_by_decay, since composite_score supports server-side score
+        thresholds via ZREVRANGEBYSCORE.
+        """
         try:
             query = self.model_class.query
             if filters:
                 query = query.filter(**filters)
 
-            results = query.top_by_decay(
-                field_name=self._cyclic_decay_field_name,
-                n=self.max_items,
+            # Build weights using only the CyclicDecayField for push-path scoring
+            push_weights = {self._cyclic_decay_field_name: 1.0}
+
+            results = query.composite_score(
+                indexes=push_weights,
+                limit=self.max_items,
+                min_score=(
+                    self.surfacing_threshold
+                    if self.surfacing_threshold > 0
+                    else None
+                ),
             )
         except Exception as e:
-            logger.warning("Push path top_by_decay failed: %s", e)
+            logger.warning("Push path failed: %s", e)
             return []
 
         if not results:
             logger.debug("Push path: 0 records above surfacing threshold")
-            return results
 
-        # Filter by surfacing threshold
-        # For CyclicDecayField, we accept all results from top_by_decay
-        # as the Lua script already computes decay+cyclic+pressure scores.
-        # The threshold filtering is approximate since we don't have the
-        # computed scores in Python. If threshold is 0, accept all.
-        if self.surfacing_threshold <= 0:
-            return results
-
-        # Since top_by_decay returns instances ranked by score but doesn't
-        # expose the score directly, we return all results and rely on the
-        # Lua script's internal scoring. For stricter filtering, callers
-        # should use a higher surfacing_threshold or lower max_items.
         return results
 
     def _post_effects(
