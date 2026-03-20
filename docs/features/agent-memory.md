@@ -1089,6 +1089,8 @@ This is generic infrastructure — the processing logic is application code. One
 
 A reference recipe (not core ORM) composing all shipped primitives into a reinforcement-learning-style action selection cache. When a StreamConsumer detects repeated successful patterns, it crystallizes them into reusable `PolicyEntry` records. Agents query policies by state fingerprint and select actions based on Q-value, confidence, and co-occurrence.
 
+For the full guide with architecture diagrams, tuning advice, and design rationale, see [PolicyCache Recipe](../guides/policy-cache-recipe.md).
+
 Shipped in [PR #239](https://github.com/tomcounsell/popoto/pull/239).
 
 ### Basic usage
