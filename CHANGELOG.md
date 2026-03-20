@@ -5,6 +5,16 @@ All notable changes to Popoto will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2](https://github.com/tomcounsell/popoto/compare/v1.0.1...v1.0.2) (2026-03-20)
+
+
+### Documentation
+
+* AccessTrackerMixin — update agent-memory, api-reference, query docs ([5bc29e5](https://github.com/tomcounsell/popoto/commit/5bc29e5d27b1b6f9af7152791422ff6a6215f13b))
+* add composite_score() to query and API reference ([#223](https://github.com/tomcounsell/popoto/issues/223)) ([53b6318](https://github.com/tomcounsell/popoto/commit/53b63185456b4084a8b9e649eb9c3ed2fbd57974))
+* audit cleanup + allow docs pushes to main ([#227](https://github.com/tomcounsell/popoto/issues/227)) ([0ef0baf](https://github.com/tomcounsell/popoto/commit/0ef0baf1fa8289c7c82399c189c267093d8137c1))
+* cascade updates for PredictionLedgerMixin (PR [#231](https://github.com/tomcounsell/popoto/issues/231)) ([#237](https://github.com/tomcounsell/popoto/issues/237)) ([a65255a](https://github.com/tomcounsell/popoto/commit/a65255a79ee4387e9af1831b0e8385033d57155a))
+
 ## [1.0.1](https://github.com/tomcounsell/popoto/compare/popoto-v1.0.0...popoto-v1.0.1) (2026-03-12)
 
 
