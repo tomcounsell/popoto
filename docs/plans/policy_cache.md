@@ -293,7 +293,7 @@ No agent integration required — Popoto is a library consumed by applications. 
 | All tests pass | `pytest tests/ -x -q` | exit code 0 |
 | Lint clean | `python -m ruff check .` | exit code 0 |
 | Format clean | `python -m ruff format --check .` | exit code 0 |
-| Model exists | `python -c "from examples.policy_cache.models import PolicyEntry; print('OK')"` | output contains OK |
+| Model exists | `python -c "from popoto.recipes.policy_cache import PolicyEntry; print('OK')"` | output contains OK |
 | Guide exists | `test -f docs/guides/policy-cache-recipe.md` | exit code 0 |
 
 ## Open Questions

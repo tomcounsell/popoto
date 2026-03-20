@@ -500,7 +500,7 @@ async def crystallization_handler(entries):
         # Initialize Q-value (overrides timestamp set by DecayingSortedField)
         try:
             initialize_q_value(policy, initial_q=ci_lower)
-        except (ValueError, Exception) as e:
+        except Exception as e:
             logger.warning("Failed to set initial Q-value for %s: %s", fp, e)
 
         logger.info(
