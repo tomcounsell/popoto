@@ -664,9 +664,11 @@ class TestTemperatureParameter:
                 indexes={"score": 1.0}, limit=10, temperature=temp
             )
             names = [r.name for r in results]
-            assert names == ["top", "mid", "low"], (
-                f"Ordering broken at temperature={temp}: {names}"
-            )
+            assert names == [
+                "top",
+                "mid",
+                "low",
+            ], f"Ordering broken at temperature={temp}: {names}"
 
     def test_very_small_temperature_no_overflow(self):
         """Very small temperature (0.001) does not cause overflow."""
@@ -705,3 +707,32 @@ class TestTemperatureParameter:
         # This uses Query.composite_score which delegates to QueryBuilder
         with pytest.raises(QueryException, match="temperature must be > 0"):
             SortedOnlyModel.query.composite_score(indexes={"score": 1.0}, temperature=0)
+
+    def test_min_score_filters_before_temperature_scaling(self):
+        """min_score applies to raw composite scores, post_filter sees scaled scores.
+
+        Given raw scores 100 and 50, min_score=60 should exclude 50 (raw),
+        then temperature=0.5 should scale the surviving 100 → 200.
+        """
+        SortedOnlyModel.create(name="high", score=100.0)
+        SortedOnlyModel.create(name="low", score=50.0)
+
+        post_scores = []
+
+        def capture(member, score):
+            post_scores.append(score)
+            return True
+
+        results = SortedOnlyModel.query.composite_score(
+            indexes={"score": 1.0},
+            min_score=60.0,
+            temperature=0.5,
+            post_filter=capture,
+        )
+
+        # min_score=60 excludes "low" (raw score 50) before temperature
+        assert len(results) == 1
+        assert results[0].name == "high"
+        # post_filter sees temperature-scaled score: 100 / 0.5 = 200
+        assert len(post_scores) == 1
+        assert abs(post_scores[0] - 200.0) < 0.01

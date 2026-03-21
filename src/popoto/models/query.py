@@ -474,7 +474,9 @@ class QueryBuilder:
             aggregate: Aggregation mode for ZUNIONSTORE: "SUM", "MIN", or "MAX".
                 Default "SUM".
             min_score: Optional minimum composite score threshold. Results below
-                this score are excluded.
+                this score are excluded. Note: ``min_score`` is applied to raw
+                composite scores **before** temperature scaling, while
+                ``post_filter`` receives temperature-scaled scores.
             post_filter: Optional callable ``(redis_key, score) -> bool``. Applied
                 after ZREVRANGE but before hydration. Return True to keep.
             co_occurrence_boost: Optional dict ``{redis_key: weight}`` from
