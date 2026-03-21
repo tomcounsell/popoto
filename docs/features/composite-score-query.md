@@ -48,6 +48,7 @@ def composite_score(
     min_score: float = None,
     post_filter: Optional[Callable[[str, float], bool]] = None,
     co_occurrence_boost: dict = None,
+    temperature: float = 1.0,
 ) -> list:
 ```
 
@@ -63,6 +64,7 @@ Also available as `Query.composite_score()` (convenience method that creates a Q
 | `min_score` | `float` | `None` | Minimum composite score threshold. |
 | `post_filter` | `Callable[[str, float], bool]` | `None` | `(redis_key, score) -> bool` filter applied after scoring. |
 | `co_occurrence_boost` | `dict` | `None` | `{redis_key: weight}` from `CoOccurrenceField.propagate()`. |
+| `temperature` | `float` | `1.0` | Score scaling factor. Divides each composite score by this value. Low values (0.02-0.1) sharpen discrimination; high values (2.0+) flatten scores. Must be > 0. |
 
 ### Supported index types
 
@@ -84,13 +86,15 @@ Also available as `Query.composite_score()` (convenience method that creates a Q
 
 3. **ZREVRANGE**: Top-K members extracted from the composite sorted set. If `min_score` is set, uses `ZREVRANGEBYSCORE` instead.
 
-4. **Post-filter**: Optional callback filters results before hydration.
+4. **Temperature scaling**: Each score is divided by the `temperature` value. When `temperature=1.0` (default), scores are unchanged. Lower temperatures amplify score differences; higher temperatures compress them.
 
-5. **Cleanup**: All temporary keys deleted immediately. Keys also have a 5-second EXPIRE as a safety net.
+5. **Post-filter**: Optional callback filters results before hydration.
+
+6. **Cleanup**: All temporary keys deleted immediately. Keys also have a 5-second EXPIRE as a safety net.
 
 > **Scaling note:** The `access_count`/`access_score` index uses `SMEMBERS` to discover all model instances. For models with 100K+ instances, this scan can be expensive. Use `post_filter` or partitioned queries to narrow the result set at that scale.
 
-6. **Hydration**: Redis keys passed to existing Query infrastructure for model instance loading.
+7. **Hydration**: Redis keys passed to existing Query infrastructure for model instance loading.
 
 ## CoOccurrence boost
 
@@ -109,6 +113,34 @@ results = Memory.query.filter(agent_id="agent-1").composite_score(
 )
 ```
 
+## Temperature scaling
+
+The `temperature` parameter controls score discrimination after composite scoring:
+
+```python
+# Sharp retrieval -- top result dominates (scores amplified 10x)
+results = Memory.query.composite_score(
+    indexes={"relevance": 0.4, "certainty": 0.3},
+    temperature=0.1,
+    limit=5,
+)
+
+# Default -- unchanged behavior (score / 1.0 = score)
+results = Memory.query.composite_score(
+    indexes={"relevance": 0.4, "certainty": 0.3},
+    limit=5,
+)
+
+# Exploratory -- diverse spread (scores compressed 3x)
+results = Memory.query.composite_score(
+    indexes={"relevance": 0.4, "certainty": 0.3},
+    temperature=3.0,
+    limit=5,
+)
+```
+
+Since dividing all scores by a positive constant preserves ordering, temperature affects score *values* but not ranking. This is useful for downstream consumers (e.g., probability-based selection or adaptive thresholding).
+
 ## Error handling
 
 | Condition | Behavior |
@@ -119,6 +151,7 @@ results = Memory.query.filter(agent_id="agent-1").composite_score(
 | `"priority"` without `WriteFilterMixin` | `QueryException` |
 | `"access_count"` without `AccessTrackerMixin` | `QueryException` |
 | Missing partition filter | `QueryException` |
+| `temperature <= 0` | `QueryException` |
 | `limit=0` | Returns `[]` |
 | No matching records | Returns `[]` |
 
