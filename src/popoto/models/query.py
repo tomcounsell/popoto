@@ -519,9 +519,7 @@ class QueryBuilder:
             )
 
         if temperature <= 0:
-            raise QueryException(
-                f"temperature must be > 0 (got {temperature})"
-            )
+            raise QueryException(f"temperature must be > 0 (got {temperature})")
 
         # --- Resolve each index to a Redis sorted set key ---
         resolved_keys = {}  # {redis_zset_key: weight}

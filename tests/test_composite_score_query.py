@@ -704,6 +704,4 @@ class TestTemperatureParameter:
 
         # This uses Query.composite_score which delegates to QueryBuilder
         with pytest.raises(QueryException, match="temperature must be > 0"):
-            SortedOnlyModel.query.composite_score(
-                indexes={"score": 1.0}, temperature=0
-            )
+            SortedOnlyModel.query.composite_score(indexes={"score": 1.0}, temperature=0)
