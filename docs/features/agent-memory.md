@@ -704,6 +704,7 @@ results = Memory.query.filter(agent_id="agent-1").composite_score(
 | `min_score` | `float` | `None` | Optional minimum composite score. Results below this threshold are excluded. |
 | `post_filter` | `Callable[[str, float], bool]` | `None` | Optional `(redis_key, score) -> bool` callback. Applied after scoring but before hydration. Return `True` to keep. |
 | `co_occurrence_boost` | `dict` | `None` | Optional `{redis_key: weight}` dict from `CoOccurrenceField.propagate()`. Injected as an additional scoring signal. |
+| `temperature` | `float` | `1.0` | Scales composite scores by dividing each by this value. Low values (0.02-0.1) sharpen discrimination; high values (2.0+) flatten scores. Must be > 0. `min_score` filters on raw scores before temperature scaling; `post_filter` receives scaled scores. |
 
 ### Supported index types
 

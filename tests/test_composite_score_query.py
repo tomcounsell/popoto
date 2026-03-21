@@ -539,3 +539,200 @@ class TestQueryConvenienceMethod:
         )
         assert len(results) == 1
         assert results[0].name == "item"
+
+
+# --- Temperature parameter tests ---
+
+
+class TestTemperatureParameter:
+    """Test temperature parameter on composite_score()."""
+
+    def test_temperature_zero_raises(self):
+        """temperature=0 raises QueryException (division by zero)."""
+        with pytest.raises(QueryException, match="temperature must be > 0"):
+            CompositeMemory.query.composite_score(
+                indexes={"relevance": 1.0}, temperature=0
+            )
+
+    def test_temperature_negative_raises(self):
+        """temperature=-1 raises QueryException (negative temperature meaningless)."""
+        with pytest.raises(QueryException, match="temperature must be > 0"):
+            CompositeMemory.query.composite_score(
+                indexes={"relevance": 1.0}, temperature=-1
+            )
+
+    def test_default_temperature_preserves_behavior(self):
+        """temperature=1.0 (default) produces identical results to no temperature argument."""
+        SortedOnlyModel.create(name="a", score=100.0)
+        SortedOnlyModel.create(name="b", score=50.0)
+
+        results_default = SortedOnlyModel.query.composite_score(
+            indexes={"score": 1.0}, limit=10
+        )
+        results_explicit = SortedOnlyModel.query.composite_score(
+            indexes={"score": 1.0}, limit=10, temperature=1.0
+        )
+
+        assert len(results_default) == len(results_explicit)
+        assert [r.name for r in results_default] == [r.name for r in results_explicit]
+
+    def test_low_temperature_scales_scores_up(self):
+        """temperature=0.1 produces scores 10x larger than temperature=1.0.
+
+        We verify this by using post_filter to capture the scores at each temperature.
+        """
+        SortedOnlyModel.create(name="a", score=100.0)
+        SortedOnlyModel.create(name="b", score=50.0)
+
+        scores_t1 = []
+
+        def capture_scores_t1(member, score):
+            scores_t1.append(score)
+            return True
+
+        SortedOnlyModel.query.composite_score(
+            indexes={"score": 1.0},
+            limit=10,
+            temperature=1.0,
+            post_filter=capture_scores_t1,
+        )
+
+        scores_low = []
+
+        def capture_scores_low(member, score):
+            scores_low.append(score)
+            return True
+
+        SortedOnlyModel.query.composite_score(
+            indexes={"score": 1.0},
+            limit=10,
+            temperature=0.1,
+            post_filter=capture_scores_low,
+        )
+
+        assert len(scores_t1) == 2
+        assert len(scores_low) == 2
+        # Low temperature scores should be 10x the default scores
+        for s_low, s_default in zip(scores_low, scores_t1):
+            assert abs(s_low - s_default * 10) < 0.01
+
+    def test_high_temperature_scales_scores_down(self):
+        """temperature=10.0 produces scores 10x smaller than temperature=1.0."""
+        SortedOnlyModel.create(name="a", score=100.0)
+        SortedOnlyModel.create(name="b", score=50.0)
+
+        scores_t1 = []
+
+        def capture_scores_t1(member, score):
+            scores_t1.append(score)
+            return True
+
+        SortedOnlyModel.query.composite_score(
+            indexes={"score": 1.0},
+            limit=10,
+            temperature=1.0,
+            post_filter=capture_scores_t1,
+        )
+
+        scores_high = []
+
+        def capture_scores_high(member, score):
+            scores_high.append(score)
+            return True
+
+        SortedOnlyModel.query.composite_score(
+            indexes={"score": 1.0},
+            limit=10,
+            temperature=10.0,
+            post_filter=capture_scores_high,
+        )
+
+        assert len(scores_t1) == 2
+        assert len(scores_high) == 2
+        # High temperature scores should be 1/10th of default scores
+        for s_high, s_default in zip(scores_high, scores_t1):
+            assert abs(s_high - s_default / 10) < 0.01
+
+    def test_ordering_preserved_regardless_of_temperature(self):
+        """Result ordering is preserved regardless of temperature value."""
+        SortedOnlyModel.create(name="top", score=100.0)
+        SortedOnlyModel.create(name="mid", score=50.0)
+        SortedOnlyModel.create(name="low", score=10.0)
+
+        for temp in [0.01, 0.1, 1.0, 5.0, 100.0]:
+            results = SortedOnlyModel.query.composite_score(
+                indexes={"score": 1.0}, limit=10, temperature=temp
+            )
+            names = [r.name for r in results]
+            assert names == [
+                "top",
+                "mid",
+                "low",
+            ], f"Ordering broken at temperature={temp}: {names}"
+
+    def test_very_small_temperature_no_overflow(self):
+        """Very small temperature (0.001) does not cause overflow."""
+        SortedOnlyModel.create(name="a", score=100.0)
+
+        results = SortedOnlyModel.query.composite_score(
+            indexes={"score": 1.0}, limit=10, temperature=0.001
+        )
+        assert len(results) == 1
+
+    def test_very_large_temperature_no_precision_loss(self):
+        """Very large temperature (1000.0) does not lose precision below float epsilon."""
+        SortedOnlyModel.create(name="a", score=100.0)
+
+        scores_captured = []
+
+        def capture(member, score):
+            scores_captured.append(score)
+            return True
+
+        SortedOnlyModel.query.composite_score(
+            indexes={"score": 1.0},
+            limit=10,
+            temperature=1000.0,
+            post_filter=capture,
+        )
+
+        assert len(scores_captured) == 1
+        # 100.0 / 1000.0 = 0.1, should be representable
+        assert abs(scores_captured[0] - 0.1) < 0.001
+
+    def test_temperature_via_query_convenience_method(self):
+        """Temperature parameter works through the Query convenience method."""
+        SortedOnlyModel.create(name="a", score=100.0)
+
+        # This uses Query.composite_score which delegates to QueryBuilder
+        with pytest.raises(QueryException, match="temperature must be > 0"):
+            SortedOnlyModel.query.composite_score(indexes={"score": 1.0}, temperature=0)
+
+    def test_min_score_filters_before_temperature_scaling(self):
+        """min_score applies to raw composite scores, post_filter sees scaled scores.
+
+        Given raw scores 100 and 50, min_score=60 should exclude 50 (raw),
+        then temperature=0.5 should scale the surviving 100 → 200.
+        """
+        SortedOnlyModel.create(name="high", score=100.0)
+        SortedOnlyModel.create(name="low", score=50.0)
+
+        post_scores = []
+
+        def capture(member, score):
+            post_scores.append(score)
+            return True
+
+        results = SortedOnlyModel.query.composite_score(
+            indexes={"score": 1.0},
+            min_score=60.0,
+            temperature=0.5,
+            post_filter=capture,
+        )
+
+        # min_score=60 excludes "low" (raw score 50) before temperature
+        assert len(results) == 1
+        assert results[0].name == "high"
+        # post_filter sees temperature-scaled score: 100 / 0.5 = 200
+        assert len(post_scores) == 1
+        assert abs(post_scores[0] - 200.0) < 0.01

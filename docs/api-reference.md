@@ -787,6 +787,7 @@ Query.composite_score(
     min_score: float = None,
     post_filter: Callable[[str, float], bool] = None,
     co_occurrence_boost: dict = None,
+    temperature: float = 1.0,
 ) -> list
 ```
 
@@ -802,6 +803,7 @@ co-occurrence signals into a single retrieval call.
 | `min_score` | `float` | `None` | Minimum composite score threshold. Results below are excluded. |
 | `post_filter` | `Callable` | `None` | `(redis_key, score) -> bool` filter applied after scoring, before hydration. |
 | `co_occurrence_boost` | `dict` | `None` | `{redis_key: weight}` from `CoOccurrenceField.propagate()`. |
+| `temperature` | `float` | `1.0` | Score scaling factor. Divides each score by this value. Low values (0.02-0.1) sharpen; high values (2.0+) flatten. Must be > 0. |
 
 Supported index types: `DecayingSortedField`, `CyclicDecayField`, `SortedField`, `ConfidenceField`,
 `"access_count"` / `"access_score"` (AccessTrackerMixin), and `"priority"` (WriteFilterMixin).
