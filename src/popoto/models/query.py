@@ -451,6 +451,7 @@ class QueryBuilder:
         min_score: float = None,
         post_filter: Optional[Callable[[str, float], bool]] = None,
         co_occurrence_boost: dict = None,
+        temperature: float = 1.0,
     ) -> list:
         """Return top-K instances ranked by a weighted composite of multiple indexes.
 
@@ -479,18 +480,23 @@ class QueryBuilder:
             co_occurrence_boost: Optional dict ``{redis_key: weight}`` from
                 ``CoOccurrenceField.propagate()``. Injected as an additional
                 index in the composite.
+            temperature: Scales composite scores by dividing each score by this
+                value. Low temperature (0.02-0.1) sharpens discrimination so top
+                scores dominate. Default 1.0 preserves current behavior. High
+                temperature (2.0+) flattens scores toward uniform. Must be > 0.
 
         Returns:
             List of model instances ranked by composite score (descending).
 
         Raises:
             QueryException: If indexes is empty, contains invalid field names,
-                or references fields without sorted set indexes.
+                references fields without sorted set indexes, or temperature <= 0.
 
         Example:
             results = Memory.query.filter(agent_id="agent-1").composite_score(
                 indexes={"relevance": 0.4, "confidence": 0.3, "access_score": 0.2},
                 limit=10,
+                temperature=0.1,  # sharp retrieval -- top result dominates
             )
         """
         import uuid
@@ -510,6 +516,11 @@ class QueryBuilder:
         if aggregate not in ("SUM", "MIN", "MAX"):
             raise QueryException(
                 f"aggregate must be 'SUM', 'MIN', or 'MAX' (got '{aggregate}')"
+            )
+
+        if temperature <= 0:
+            raise QueryException(
+                f"temperature must be > 0 (got {temperature})"
             )
 
         # --- Resolve each index to a Redis sorted set key ---
@@ -569,6 +580,12 @@ class QueryBuilder:
 
             if not raw_results:
                 return []
+
+            # --- Temperature scaling ---
+            if temperature != 1.0:
+                raw_results = [
+                    (member, score / temperature) for member, score in raw_results
+                ]
 
             # --- Post-filter ---
             pks = []
@@ -1636,6 +1653,7 @@ class Query:
         min_score: float = None,
         post_filter: Optional[Callable[[str, float], bool]] = None,
         co_occurrence_boost: dict = None,
+        temperature: float = 1.0,
     ) -> list:
         """Return top-K instances ranked by weighted composite score.
 
@@ -1650,6 +1668,8 @@ class Query:
             min_score: Optional minimum composite score threshold.
             post_filter: Optional callable (redis_key, score) -> bool.
             co_occurrence_boost: Optional {redis_key: weight} dict.
+            temperature: Score scaling factor. Default 1.0 (no scaling).
+                Must be > 0.
 
         Returns:
             List of model instances ranked by composite score.
@@ -1662,6 +1682,7 @@ class Query:
             min_score=min_score,
             post_filter=post_filter,
             co_occurrence_boost=co_occurrence_boost,
+            temperature=temperature,
         )
 
     def _execute_filter(
