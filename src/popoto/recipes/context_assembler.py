@@ -87,17 +87,19 @@ def _get_key(instance) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Tuning Constants
+# Tuning Constants — validated via parameter sweep (issue #234)
 # ---------------------------------------------------------------------------
 
 COMPETITIVE_SUPPRESSION_SIGNAL = 0.3
 """Signal strength for competitive suppression of non-selected pull-path
 candidates. Applied via ConfidenceField.update_confidence(). Values < 0.5
-act as contradiction signals, mildly reducing future ranking."""
+act as contradiction signals, mildly reducing future ranking.
+Optimal range: [0.1, 0.7]. Insensitive to retrieval quality."""
 
 DEFAULT_SURFACING_THRESHOLD = 0.5
 """Minimum score for push-path records to be surfaced. Records from
-CyclicDecayField scan below this threshold are filtered out."""
+CyclicDecayField scan below this threshold are filtered out.
+Optimal range: [0.1, 0.9]. Insensitive to retrieval quality."""
 
 DEFAULT_MAX_ITEMS = 10
 """Default maximum number of records returned by assemble()."""
@@ -450,9 +452,7 @@ class ContextAssembler:
                 indexes=push_weights,
                 limit=self.max_items,
                 min_score=(
-                    self.surfacing_threshold
-                    if self.surfacing_threshold > 0
-                    else None
+                    self.surfacing_threshold if self.surfacing_threshold > 0 else None
                 ),
             )
         except Exception as e:
