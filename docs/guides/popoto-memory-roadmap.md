@@ -1081,3 +1081,9 @@ When all 12 steps ship, an agent developer using Popoto gets:
 12. **Budget-constrained context assembly** — a single query method that runs the full pull + push retrieval pipeline and returns exactly what the LLM needs, within token limits, with confidence annotations and proactive surfacing proposals.
 
 All of this composes from generic ORM primitives. None of it requires the agent developer to understand neuroscience, reinforcement learning, Bayesian statistics, or chronobiology. They just use Popoto fields and query methods, and their agent gets measurably better at its job — remembering what matters, forgetting what doesn't, and surfacing the right thing at the right time without being asked.
+
+---
+
+## Roadmap Complete
+
+All 12 steps and 14 primitives are shipped. Tuning constants have been centralized in `popoto.fields.constants.Defaults` for experimental sweep readiness. Standalone feature documentation is available for each complex primitive under `docs/features/`. The experimental tuning benchmark harness (`tests/benchmarks/`) is ready for bivariate parameter sweeps against the centralized `Defaults` registry.
