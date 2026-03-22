@@ -95,7 +95,7 @@ Q(s,a) <- Q(s,a) + alpha * [reward + gamma * max_Q(s',a') - Q(s,a)]
 
 ## Tuning Constants
 
-All numeric constants are experimental tuning parameters:
+All numeric constants have been validated via parameter sweep ([tuning guide](tuning-magic-numbers.md)):
 
 | Constant | Default | Purpose |
 |----------|---------|---------|

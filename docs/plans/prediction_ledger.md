@@ -123,7 +123,7 @@ No existing tests affected — this is a greenfield mixin. New test files will b
 
 ### Risk 2: Auto-resolution produces false learning signals
 **Impact:** An `acted` outcome doesn't always mean the prediction was correct — the agent may have acted despite the prediction being wrong
-**Mitigation:** Use conservative error values (0.1 for acted, not 0.0). All magic numbers are class attributes that will be tuned via experimental runs rather than manual configuration.
+**Mitigation:** Use conservative error values (0.1 for acted, not 0.0). All magic numbers are class attributes, validated via parameter sweep (see [tuning guide](../../docs/guides/tuning-magic-numbers.md)).
 
 ## Race Conditions
 
@@ -316,6 +316,6 @@ No agent integration required — this is a Popoto ORM primitive. Agent applicat
 
 1. **Error computation granularity**: Top-level key comparison for v1. Nested dicts are out of scope.
 
-2. **Auto-resolution error values**: Use best-guess defaults (`acted=0.1, dismissed=0.5, contradicted=0.9`) as class attributes. These are magic numbers that will be tuned via experiments — not intended for dev/user configuration.
+2. **Auto-resolution error values**: Use defaults (`acted=0.1, dismissed=0.5, contradicted=0.9`) as class attributes. Validated via parameter sweep — all within safe operating ranges (see [tuning guide](../../docs/guides/tuning-magic-numbers.md)).
 
-3. **Confidence feedback**: As implemented — threshold-based: if `prediction_error > _pl_confidence_error_threshold` (0.7), send `signal=_pl_confidence_low_signal` (0.2) to ConfidenceField. Below threshold, no change. Both values are class attributes that can be tuned experimentally.
+3. **Confidence feedback**: As implemented — threshold-based: if `prediction_error > _pl_confidence_error_threshold` (0.7), send `signal=_pl_confidence_low_signal` (0.2) to ConfidenceField. Below threshold, no change. Both values validated via parameter sweep.
