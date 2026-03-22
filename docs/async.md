@@ -394,8 +394,8 @@ Async methods raise the same exceptions as their synchronous equivalents. Wrap c
 standard `try`/`except` blocks.
 
 ```python
-from popoto.models.base import ModelException
-from popoto.models.query import QueryException
+from popoto.exceptions import ModelException
+from popoto.exceptions import QueryException
 
 async def safe_order_create(customer_username, restaurant_name, total):
     try:

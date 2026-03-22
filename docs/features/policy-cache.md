@@ -37,7 +37,7 @@ Automatic pattern detection via StreamConsumer:
 
 ```python
 from popoto.recipes.policy_cache import crystallization_handler
-from popoto.pubsub.stream_consumer import StreamConsumer
+from popoto.streams.consumer import StreamConsumer
 
 consumer = StreamConsumer(
     stream_key="stream:policy_mutations",
