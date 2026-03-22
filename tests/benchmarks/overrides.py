@@ -2,16 +2,24 @@
 
 Provides a context manager that applies overrides using the appropriate
 injection pattern for each constant category, and restores originals on exit.
+
+Dual-patch strategy: overrides are applied to both the centralized
+``Defaults`` class and the module-level aliases that functions read at
+runtime. This ensures overrides take effect regardless of whether code
+reads ``Defaults.X`` or the bare module-level name.
 """
 
 import contextlib
 from typing import Any, Dict, Generator
 
+from src.popoto.fields.constants import Defaults
+
 import src.popoto.fields.observation as observation_mod
 import src.popoto.recipes.policy_cache as policy_cache_mod
 import src.popoto.recipes.context_assembler as context_assembler_mod
 
-# Registry mapping constant names to (module, attribute_name) for module-level constants
+# Registry mapping constant names to (module, attribute_name) for module-level constants.
+# Each entry also has a corresponding attribute on the Defaults class.
 MODULE_CONSTANTS = {
     # ObservationProtocol (observation.py)
     "ACTED_CONFIDENCE_SIGNAL": (observation_mod, "ACTED_CONFIDENCE_SIGNAL"),
@@ -101,26 +109,45 @@ def is_degenerate(name: str, value: float) -> bool:
 def apply_overrides(overrides: Dict[str, Any]) -> Generator[None, None, None]:
     """Context manager to apply constant overrides and restore on exit.
 
-    Handles three injection patterns:
-    - Module-level constants: setattr on the module
-    - Field constructor kwargs: stored in overrides dict for scenario to use
-    - Class attributes: stored in overrides dict for scenario to use
+    Dual-patch strategy:
+    - Module-level constants: setattr on the module AND on Defaults
+    - Field constructor kwargs / class attributes: stored in overrides
+      dict for the scenario to use
+
+    Patching both Defaults and the module alias ensures overrides work
+    regardless of whether code reads ``Defaults.X`` (e.g. new field
+    instances created mid-test) or the bare module-level name (e.g.
+    existing functions that read ``ACTED_CONFIDENCE_SIGNAL`` directly).
 
     Args:
         overrides: Mapping of constant name to override value.
 
     Yields:
-        None. Module-level constants are patched for the duration.
+        None. Constants are patched for the duration.
     """
-    originals = {}
+    originals_module = {}
+    originals_defaults = {}
 
     try:
         for name, value in overrides.items():
             if name in MODULE_CONSTANTS:
+                # Patch module-level alias
                 mod, attr = MODULE_CONSTANTS[name]
-                originals[(mod, attr)] = getattr(mod, attr)
+                originals_module[(mod, attr)] = getattr(mod, attr)
                 setattr(mod, attr, value)
+
+                # Patch Defaults class (same attr name)
+                if hasattr(Defaults, name):
+                    originals_defaults[name] = getattr(Defaults, name)
+                    setattr(Defaults, name, value)
+            elif hasattr(Defaults, name.upper()):
+                # Handle constants that only exist on Defaults (not in MODULE_CONSTANTS)
+                defaults_attr = name.upper()
+                originals_defaults[defaults_attr] = getattr(Defaults, defaults_attr)
+                setattr(Defaults, defaults_attr, value)
         yield
     finally:
-        for (mod, attr), original in originals.items():
+        for (mod, attr), original in originals_module.items():
             setattr(mod, attr, original)
+        for attr, original in originals_defaults.items():
+            setattr(Defaults, attr, original)
