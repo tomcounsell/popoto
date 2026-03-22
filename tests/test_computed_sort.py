@@ -131,9 +131,11 @@ results = (
     .all()
 )
 priorities = [r.priority for r in results]
-assert priorities == [4, 3, 1], (
-    f"Expected [4, 3, 1] (computed_sort wins over order_by), got {priorities}"
-)
+assert priorities == [
+    4,
+    3,
+    1,
+], f"Expected [4, 3, 1] (computed_sort wins over order_by), got {priorities}"
 
 print("  PASSED")
 
@@ -201,9 +203,9 @@ results = (
     .all()
 )
 scores = [activation_score(r) for r in results]
-assert scores == sorted(scores, reverse=True), (
-    f"Expected descending scores, got {scores}"
-)
+assert scores == sorted(
+    scores, reverse=True
+), f"Expected descending scores, got {scores}"
 
 print("  PASSED")
 

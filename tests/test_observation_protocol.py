@@ -34,7 +34,6 @@ from src.popoto.fields.observation import ObservationProtocol, RecallProposal
 from src.popoto.fields.constants import TemporalPeriod
 from src.popoto.redis_db import POPOTO_REDIS_DB
 
-
 # --- Test Models ---
 
 

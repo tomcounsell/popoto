@@ -26,7 +26,6 @@ import pytest  # noqa: E402
 from src import popoto  # noqa: E402
 from src.popoto.fields.write_filter import WriteFilterMixin  # noqa: E402
 
-
 # --- Test Models ---
 
 

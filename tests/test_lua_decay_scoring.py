@@ -16,7 +16,6 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 from src.popoto.redis_db import POPOTO_REDIS_DB
 
-
 # Lua script: compute decayed scores for all members of a sorted set.
 # The sorted set stores members with their last_updated timestamp as score.
 # Base scores are stored in a separate hash.

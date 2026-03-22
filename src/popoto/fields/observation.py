@@ -43,6 +43,40 @@ logger = logging.getLogger("POPOTO.ObservationProtocol")
 
 VALID_OUTCOMES = {"acted", "dismissed", "deferred", "contradicted"}
 
+# ---------------------------------------------------------------------------
+# Tuning Constants — validated via parameter sweep (issue #234)
+# ---------------------------------------------------------------------------
+
+ACTED_CONFIDENCE_SIGNAL = 0.9
+"""Confidence signal sent to ConfidenceField on 'acted' outcome.
+Higher values corroborate the memory more strongly.
+Optimal range: [0.5, 1.0]. Insensitive within this range (nDCG stable)."""
+
+CONTRADICTED_CONFIDENCE_SIGNAL = 0.1
+"""Confidence signal sent to ConfidenceField on 'contradicted' outcome.
+Lower values contradict the memory more aggressively.
+Optimal range: [0.05, 0.3]. Insensitive within this range (nDCG stable)."""
+
+ACTED_CYCLE_STRENGTHEN_FACTOR = 1.2
+"""CyclicDecayField amplification factor on 'acted' outcome.
+CLIFF EFFECT: values < 1.0 cause a 23% nDCG drop in temporal scheduling.
+Must be >= 1.0. Optimal range: [1.0, 2.0]. Default 1.2 is safe."""
+
+DISMISSED_CYCLE_WEAKEN_FACTOR = 0.8
+"""CyclicDecayField damping factor on 'dismissed' outcome.
+Values < 1.0 weaken the cycle amplitude.
+Optimal range: [0.3, 1.0]. Insensitive within this range."""
+
+CONTRADICTED_CYCLE_WEAKEN_FACTOR = 0.5
+"""CyclicDecayField aggressive damping factor on 'contradicted' outcome.
+Values < 1.0 weaken the cycle amplitude; lower = more aggressive.
+Optimal range: [0.3, 0.8]. Insensitive within this range."""
+
+AUTO_DISCHARGE_CONFIDENCE_THRESHOLD = 0.1
+"""Below this confidence level, pressure is auto-resolved on contradicted
+outcome. Very low confidence records should not continue building pressure.
+Optimal range: [0.05, 0.3]. Insensitive within this range."""
+
 
 class ObservationProtocol:
     """Lifecycle hooks for passive behavioral inference on memory models.
@@ -185,7 +219,9 @@ def _apply_acted(instance, pipeline):
     # Strengthen cycles and resolve pressure (CyclicDecayField)
     for field_name, field in instance._meta.fields.items():
         if isinstance(field, CyclicDecayField):
-            instance.strengthen_cycle(field_name, factor=1.2, pipeline=pipeline)
+            instance.strengthen_cycle(
+                field_name, factor=ACTED_CYCLE_STRENGTHEN_FACTOR, pipeline=pipeline
+            )
             if field.pressure_rate > 0:
                 instance.resolve_pressure(field_name, pipeline=pipeline)
 
@@ -195,7 +231,9 @@ def _apply_acted(instance, pipeline):
     for field_name, field in instance._meta.fields.items():
         if isinstance(field, ConfidenceField):
             try:
-                ConfidenceField.update_confidence(instance, field_name, signal=0.9)
+                ConfidenceField.update_confidence(
+                    instance, field_name, signal=ACTED_CONFIDENCE_SIGNAL
+                )
             except (TypeError, ValueError):
                 pass  # Graceful degradation for unsaved instances
 
@@ -227,16 +265,16 @@ def _apply_dismissed(instance, pipeline):
     # Weaken cycles
     for field_name, field in instance._meta.fields.items():
         if isinstance(field, CyclicDecayField):
-            instance.weaken_cycle(field_name, factor=0.8, pipeline=pipeline)
+            instance.weaken_cycle(
+                field_name, factor=DISMISSED_CYCLE_WEAKEN_FACTOR, pipeline=pipeline
+            )
 
     # Auto-resolve predictions (PredictionLedgerMixin)
     from .prediction_ledger import PredictionLedgerMixin
 
     if isinstance(instance, PredictionLedgerMixin):
         try:
-            PredictionLedgerMixin.auto_resolve(
-                instance, "dismissed", pipeline=pipeline
-            )
+            PredictionLedgerMixin.auto_resolve(instance, "dismissed", pipeline=pipeline)
         except (TypeError, ValueError):
             pass  # Graceful degradation
 
@@ -273,7 +311,9 @@ def _apply_contradicted(instance, pipeline):
     # Aggressively weaken cycles (factor=0.5 vs 0.8 for dismissed)
     for field_name, field in instance._meta.fields.items():
         if isinstance(field, CyclicDecayField):
-            instance.weaken_cycle(field_name, factor=0.5, pipeline=pipeline)
+            instance.weaken_cycle(
+                field_name, factor=CONTRADICTED_CYCLE_WEAKEN_FACTOR, pipeline=pipeline
+            )
 
     # Contradict confidence (ConfidenceField)
     from .confidence_field import ConfidenceField
@@ -281,7 +321,9 @@ def _apply_contradicted(instance, pipeline):
     for field_name, field in instance._meta.fields.items():
         if isinstance(field, ConfidenceField):
             try:
-                ConfidenceField.update_confidence(instance, field_name, signal=0.1)
+                ConfidenceField.update_confidence(
+                    instance, field_name, signal=CONTRADICTED_CONFIDENCE_SIGNAL
+                )
             except (TypeError, ValueError):
                 pass  # Graceful degradation for unsaved instances
 
@@ -301,7 +343,7 @@ def _apply_contradicted(instance, pipeline):
         if isinstance(field, ConfidenceField):
             try:
                 conf = ConfidenceField.get_confidence(instance, field_name)
-                if conf < 0.1:
+                if conf < AUTO_DISCHARGE_CONFIDENCE_THRESHOLD:
                     for cdf_name, cdf_field in instance._meta.fields.items():
                         if (
                             isinstance(cdf_field, CyclicDecayField)

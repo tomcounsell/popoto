@@ -42,7 +42,6 @@ from src.popoto.fields.access_tracker import AccessTrackerMixin
 from src.popoto.fields.confidence_field import ConfidenceField
 from src.popoto.redis_db import POPOTO_REDIS_DB
 
-
 # --- Test Models ---
 
 

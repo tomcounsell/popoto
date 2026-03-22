@@ -3,7 +3,7 @@
 **For:** Tom Counsell, Lead Engineer — Popoto ORM
 **From:** Valor, AI Engineering — Yudame
 **Date:** March 2026
-**Status:** Implementation Spec — Ready for Issue Creation
+**Status:** Complete — All 12 steps shipped
 
 ---
 
@@ -98,11 +98,13 @@ We use CS/information-systems terminology throughout. The mapping from the resea
 
 ---
 
-## Step 1: DecayingSortedField + CyclicDecayField — Time-Weighted Scoring with Temporal Rhythms
+## Step 1: DecayingSortedField + CyclicDecayField — Time-Weighted Scoring with Temporal Rhythms ✅ Shipped
 
 **What it is:** Two field types that wrap Redis sorted sets with time-aware scoring. `DecayingSortedField` provides power-law decay — the foundational primitive. `CyclicDecayField` extends it with harmonic cycle components and homeostatic pressure, enabling records that resurface on temporal rhythms and build urgency when unresolved.
 
 Plain decay is a special case of the full temporal model (all cycle amplitudes zero, pressure rate zero). Both fields share the same query interface; CyclicDecayField adds cycle and pressure parameters.
+
+**Implementation:** Shipped in [PR #199](https://github.com/tomcounsell/popoto/pull/199) (DecayingSortedField), [PR #201](https://github.com/tomcounsell/popoto/pull/201) (CyclicDecayField), and [PR #207](https://github.com/tomcounsell/popoto/pull/207) (InteractionWeight constants).
 
 **ORM additions:**
 
@@ -210,11 +212,13 @@ class TemporalPeriod:
 
 ---
 
-## Step 2: ObservationProtocol + AccessTracker — Passive Behavioral Inference
+## Step 2: ObservationProtocol + AccessTracker — Passive Behavioral Inference ✅ Shipped
 
 **What it is:** An observation layer that passively tracks how the agent interacts with memories, plus an access tracking mixin that records read patterns. The key design principle: **an LLM cannot manage its own memory mechanics** — calling `touch()`, resolving predictions, updating confidence is like asking a person to regulate their heartbeat. The ORM must observe behavior and infer outcomes automatically.
 
 The observation protocol defines three hooks that fire at different points in the memory lifecycle. `touch()` is never called automatically — it is an *outcome* of observation, not a side effect of reading.
+
+**Implementation:** Shipped in [PR #206](https://github.com/tomcounsell/popoto/pull/206) (ObservationProtocol + RecallProposal) and [PR #203](https://github.com/tomcounsell/popoto/pull/203) (AccessTrackerMixin).
 
 **ORM additions:**
 
@@ -301,9 +305,11 @@ class RecallProposal:
 
 ---
 
-## Step 3: WriteFilter Mixin — Selective Encoding
+## Step 3: WriteFilter Mixin — Selective Encoding ✅ Shipped
 
 **What it is:** A model mixin that gates record persistence based on a configurable scoring function evaluated in the `on_save()` hook. Records below a threshold are silently discarded (raise `SkipSaveException`). Records above a high threshold are tagged for priority processing.
+
+**Implementation:** Shipped in [PR #214](https://github.com/tomcounsell/popoto/pull/214).
 
 **ORM addition:**
 
@@ -336,11 +342,13 @@ The scoring function itself is **application layer** — Popoto provides the gat
 
 ---
 
-## Step 4: ConfidenceField — Bayesian Certainty Tracking + Entrainment
+## Step 4: ConfidenceField — Bayesian Certainty Tracking + Entrainment ✅ Shipped
 
 **What it is:** A field type that maintains a Bayesian confidence score updated atomically via Lua script. Each update provides a binary signal (corroborate/contradict) with a weight. The prior becomes harder to shift as evidence accumulates (precision grows with √n).
 
 ConfidenceField also serves as the **entrainment mechanism** for CyclicDecayField (Step 1). Cyclical parameters (amplitude, phase) are hypotheses about temporal relevance. The observation protocol (Step 2) generates corroborate/contradict signals for these hypotheses, and ConfidenceField applies them. When a cycle's confidence drops below a threshold, the cycle auto-disables — this is how stale recurring memories ("send that client an update") die when the underlying context has changed ("that client contract ended").
+
+**Implementation:** Shipped in [PR #215](https://github.com/tomcounsell/popoto/pull/215).
 
 **ORM addition:**
 
@@ -400,9 +408,11 @@ When the observation protocol resolves a proactive recall proposal, ConfidenceFi
 
 ---
 
-## Step 5: CoOccurrenceField — Weighted Association Edges
+## Step 5: CoOccurrenceField — Weighted Association Edges ✅ Shipped
 
 **What it is:** A field mixin that maintains weighted, bidirectional edges between model instances using sorted sets. Weights strengthen when records are accessed together (co-retrieval) and decay when not reinforced — the "co-accessed items strengthen their link" principle.
+
+**Implementation:** Shipped in [PR #218](https://github.com/tomcounsell/popoto/pull/218).
 
 **ORM addition:**
 
@@ -439,9 +449,11 @@ class CoOccurrenceField:
 
 ---
 
-## Step 6: EventStreamMixin — Append-Only Mutation Log
+## Step 6: EventStreamMixin — Append-Only Mutation Log ✅ Shipped
 
 **What it is:** A model mixin that automatically XADDs to a Redis Stream on every save, update, or delete. This is the foundation for the compaction pipeline (Step 10) — every mutation is captured as a stream entry with model class, PK, operation type, and key metadata fields.
+
+**Implementation:** Shipped in [PR #220](https://github.com/tomcounsell/popoto/pull/220).
 
 **ORM addition:**
 
@@ -479,9 +491,11 @@ The mixin doesn't process the stream — it only writes. Processing is applicati
 
 ---
 
-## Step 7: CompositeScoreQuery — Multi-Factor Retrieval
+## Step 7: CompositeScoreQuery — Multi-Factor Retrieval ✅ Shipped
 
 **What it is:** A query method that combines multiple sorted set indexes with configurable weights using ZUNIONSTORE, then returns top-K results by composite score. This is the retrieval engine — the single most important query primitive for agent memory.
+
+**Implementation:** Shipped in [PR #222](https://github.com/tomcounsell/popoto/pull/222).
 
 **ORM addition:**
 
@@ -574,9 +588,11 @@ Also shipped: `FrequencySketch` implementing Count-Min Sketch via Lua scripts an
 
 ---
 
-## Step 9: PredictionLedger Mixin — Outcome Tracking + Auto-Resolution
+## Step 9: PredictionLedger Mixin — Outcome Tracking + Auto-Resolution ✅ Shipped
 
 **What it is:** A model mixin for recording prediction→outcome pairs. Before an action, the agent writes a prediction (expected outcome, expected duration, expected quality). After the action, it writes the actual outcome. The mixin automatically computes the delta and stores it as a learning signal.
+
+**Implementation:** Shipped in [PR #231](https://github.com/tomcounsell/popoto/pull/231).
 
 Critically, the PredictionLedger supports **auto-resolution** — outcomes inferred from downstream behavior via the observation protocol (Step 2), not just explicit `resolve_prediction()` calls. Every proactive recall (Step 1 cyclical/pressure surfacing) is implicitly a prediction: "this memory is relevant right now." The observation protocol's resolution of that proposal feeds directly into the PredictionLedger as a prediction→outcome pair.
 
@@ -632,9 +648,11 @@ This means the PredictionLedger accumulates calibration data on the memory syste
 
 ---
 
-## Step 10: StreamConsumer — Background Compaction Pipeline
+## Step 10: StreamConsumer — Background Compaction Pipeline ✅ Shipped
 
 **What it is:** A consumer group framework for processing EventStream entries in batches. This is the background pipeline that transforms raw event records into durable, generalized knowledge. Popoto provides the consumer framework; the application layer provides the compaction logic.
+
+**Implementation:** Shipped in [PR #238](https://github.com/tomcounsell/popoto/pull/238).
 
 **ORM addition:**
 
@@ -680,9 +698,11 @@ This is a **generic Redis Streams consumer** — the compaction/pattern-extracti
 
 ---
 
-## Step 11: PolicyCache Model Pattern — Learned Action Selection
+## Step 11: PolicyCache Model Pattern — Learned Action Selection ✅ Shipped
 
 **What it is:** A reference implementation (shipped as an example/recipe, not core ORM) showing how to compose Popoto primitives into a reinforcement-learning-based action selection cache. This is the "state→action→outcome" store that crystallizes from repeated successful patterns.
+
+**Implementation:** Shipped in [PR #239](https://github.com/tomcounsell/popoto/pull/239).
 
 **Application layer pattern (not ORM):**
 
@@ -775,9 +795,11 @@ The key insight: **explicitly programmed cycles and discovered cycles use the sa
 
 ---
 
-## Step 12: ContextAssembler — Retrieval-to-Injection Bridge + Proactive Surfacing
+## Step 12: ContextAssembler — Retrieval-to-Injection Bridge + Proactive Surfacing ✅ Shipped
 
 **What it is:** A query utility that assembles the optimal context payload for injection into an LLM's message array. It orchestrates the full retrieval pipeline — both **pull-based** (query-driven) and **push-based** (proactive surfacing from cyclical resonance and homeostatic pressure).
+
+**Implementation:** Shipped in [PR #245](https://github.com/tomcounsell/popoto/pull/245).
 
 The ContextAssembler runs two parallel retrieval paths and merges the results:
 
@@ -905,18 +927,18 @@ After all 12 steps ship, the test suite must cover pairwise interactions. Here i
 
 | Step | Effort | Dependencies | Cumulative Value |
 |---|---|---|---|
-| 1. DecayingSortedField + CyclicDecayField | 1.5 weeks | None | Time-aware + cyclical + pressure scoring |
-| 2. ObservationProtocol + AccessTracker | 1 week | Step 1 | Passive behavioral inference, confirmed reads |
-| 3. WriteFilter | 3 days | None | Storage efficiency |
-| 4. ConfidenceField + Entrainment | 1.5 weeks | Steps 1, 2 | Epistemic humility + self-correcting cycles |
-| 5. CoOccurrenceField | 1 week | None | Associative retrieval |
-| 6. EventStreamMixin | 3 days | None | Mutation logging |
-| 7. CompositeScoreQuery | 1 week | Steps 1-5 | **Multi-factor retrieval** |
+| 1. DecayingSortedField + CyclicDecayField | 1.5 weeks | None | Time-aware + cyclical + pressure scoring ✅ |
+| 2. ObservationProtocol + AccessTracker | 1 week | Step 1 | Passive behavioral inference, confirmed reads ✅ |
+| 3. WriteFilter | 3 days | None | Storage efficiency ✅ |
+| 4. ConfidenceField + Entrainment | 1.5 weeks | Steps 1, 2 | Epistemic humility + self-correcting cycles ✅ |
+| 5. CoOccurrenceField | 1 week | None | Associative retrieval ✅ |
+| 6. EventStreamMixin | 3 days | None | Mutation logging ✅ |
+| 7. CompositeScoreQuery | 1 week | Steps 1-5 | **Multi-factor retrieval** ✅ |
 | 8. ExistenceFilter | 3 days | None | Fast pre-filtering ✅ |
-| 9. PredictionLedger + Auto-Resolution | 1.5 weeks | Steps 2, 4, 6 | Outcome learning + surfacing calibration |
-| 10. StreamConsumer | 1 week | Step 6 | Background processing |
-| 11. PolicyCache + Temporal Discovery | 1-2 weeks | Steps 1-10 | **Learned action selection + discovered cycles** |
-| 12. ContextAssembler + Proactive Surfacing | 1-2 weeks | Steps 1-11 | **Full pull + push retrieval pipeline** |
+| 9. PredictionLedger + Auto-Resolution | 1.5 weeks | Steps 2, 4, 6 | Outcome learning + surfacing calibration ✅ |
+| 10. StreamConsumer | 1 week | Step 6 | Background processing ✅ |
+| 11. PolicyCache + Temporal Discovery | 1-2 weeks | Steps 1-10 | **Learned action selection + discovered cycles** ✅ |
+| 12. ContextAssembler + Proactive Surfacing | 1-2 weeks | Steps 1-11 | **Full pull + push retrieval pipeline** ✅ |
 
 Steps 1-2 are tightly coupled (observation protocol needs CyclicDecayField proposals). Steps 3-6 can parallelize with 1-2. Step 4 depends on 1+2 for entrainment integration. Steps 7-12 are sequential.
 
@@ -924,11 +946,11 @@ Steps 1-2 are tightly coupled (observation protocol needs CyclicDecayField propo
 
 ---
 
-## Magic Numbers — Experimental Tuning Required
+## Magic Numbers — Experimentally Validated
 
-The primitives accumulate a substantial collection of numeric constants — default thresholds, signal strengths, weighting factors, and structural parameters. Most of these are best-guess values that need their sweet spots found through experimental runs. Very few will be configured by developers or end users.
+> **Status: COMPLETE.** All Category 1 constants have been swept across three benchmark scenarios (factual recall, multi-step reasoning, temporal scheduling). See [Tuning Magic Numbers Guide](tuning-magic-numbers.md) for the full results. Key finding: all defaults are within their safe operating ranges. Only `ACTED_CYCLE_STRENGTHEN_FACTOR` has a cliff effect (must be >= 1.0; default 1.2 is safe).
 
-This section catalogs every tunable constant across the stack, grouped by sensitivity category. A future experiment plan should systematically vary these parameters and measure the impact on agent benchmark performance (retrieval relevance, calibration error, recall precision).
+The primitives accumulate a substantial collection of numeric constants — default thresholds, signal strengths, weighting factors, and structural parameters. These have been validated through systematic parameter sweeps measuring retrieval quality (precision@k, nDCG) and calibration error.
 
 ### Category 1: Behavioral Sensitivity — High Impact on Agent Performance
 

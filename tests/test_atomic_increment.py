@@ -204,9 +204,9 @@ def test_concurrent_increments_no_lost_updates():
 
     reloaded = Counter.query.get(name="concurrent_test")
     expected = num_threads * increments_per_thread
-    assert reloaded.count == expected, (
-        f"Expected {expected}, got {reloaded.count}. Lost updates detected."
-    )
+    assert (
+        reloaded.count == expected
+    ), f"Expected {expected}, got {reloaded.count}. Lost updates detected."
     c.delete()
 
 

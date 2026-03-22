@@ -74,25 +74,29 @@ from ..redis_db import POPOTO_REDIS_DB
 logger = logging.getLogger("POPOTO.PolicyCache")
 
 # ---------------------------------------------------------------------------
-# Tuning Constants (experimental — see issue #234 for post-ship tuning)
+# Tuning Constants — validated via parameter sweep (issue #234)
 # ---------------------------------------------------------------------------
 
 MIN_EVENTS_FOR_CRYSTALLIZATION = 3
 """Minimum events with same (state_fingerprint, action_type) before
 considering crystallization. Can be set as low as 1 for eager mode
-in high-confidence environments."""
+in high-confidence environments.
+Optimal range: [1, 10]. Insensitive to retrieval quality in this range."""
 
 WILSON_CI_THRESHOLD = 0.6
 """Wilson confidence interval lower bound that must be exceeded for
-crystallization to trigger. Higher values require stronger evidence."""
+crystallization to trigger. Higher values require stronger evidence.
+Optimal range: [0.3, 0.8]. Insensitive within this range."""
 
 TD_ALPHA = 0.1
 """Q-value learning rate for temporal difference updates. Controls how
-much new reward information overrides the existing Q-value estimate."""
+much new reward information overrides the existing Q-value estimate.
+Optimal range: [0.01, 0.5]. Insensitive to retrieval quality."""
 
 TD_GAMMA = 0.95
 """Q-value discount factor for temporal difference updates. Controls
-the importance of future expected rewards relative to immediate reward."""
+the importance of future expected rewards relative to immediate reward.
+Optimal range: [0.8, 0.99). Insensitive to retrieval quality."""
 
 CHI_SQUARED_P_THRESHOLD = 0.05
 """p-value threshold for temporal pattern discovery. Clusters must

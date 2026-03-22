@@ -26,7 +26,6 @@ from src.popoto.streams.consumer import StreamConsumer  # noqa: E402
 from src.popoto.fields.event_stream import EventStreamMixin  # noqa: E402
 from src.popoto.redis_db import POPOTO_REDIS_DB  # noqa: E402
 
-
 # --- Test Models ---
 
 
