@@ -1,5 +1,5 @@
 ---
-status: Shipped
+status: Archived
 type: feature
 appetite: Small
 owner: Valor
@@ -7,6 +7,8 @@ created: 2026-03-16
 tracking: https://github.com/tomcounsell/popoto/issues/211
 last_comment_id:
 ---
+
+> **Archived** -- This plan has shipped. See [features/agent-memory.md#eventstreammixin](../features/agent-memory.md#eventstreammixin) for the current documentation.
 
 # EventStreamMixin — Append-Only Mutation Log via Redis Streams
 

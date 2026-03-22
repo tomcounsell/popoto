@@ -1,16 +1,81 @@
-"""Temporal constants for CyclicDecayField cycle definitions.
+"""Constants for Popoto agent-memory primitives.
 
-Provides named constants for standard cycle periods in seconds,
-used as the ``period`` parameter in CyclicDecayField cycle tuples.
+Provides:
+- ``Defaults``: Central registry of tunable behavioral constants (Category 1).
+  Override any constant before model definition or at runtime.
+- ``TemporalPeriod``: Named constants for standard cycle periods in seconds.
+- ``InteractionWeight``: Weight constants for source/role-based importance scoring.
 
 Example:
-    from popoto.fields.constants import TemporalPeriod
+    from popoto.fields.constants import Defaults, TemporalPeriod
+
+    # Override a default before creating models
+    Defaults.DECAY_RATE = 0.3
 
     relevance = CyclicDecayField(
         decay_rate=0.5,
         cycles=[(TemporalPeriod.QUARTERLY, 5.0, 0)],
     )
 """
+
+
+class Defaults:
+    """Central registry of tunable behavioral constants (Category 1).
+
+    Override any constant before model definition or at runtime::
+
+        from popoto.fields.constants import Defaults
+        Defaults.DECAY_RATE = 0.3
+
+    Constants are grouped by the primitive that owns them. Primitives
+    read from ``Defaults`` at import time (module-level aliases) or at
+    runtime (field kwargs / method params with ``None`` sentinel).
+
+    Explicit kwargs always win: ``DecayingSortedField(decay_rate=0.7)``
+    ignores ``Defaults.DECAY_RATE``.
+    """
+
+    # -- DecayingSortedField --------------------------------------------------
+    DECAY_RATE = 0.5
+
+    # -- ConfidenceField ------------------------------------------------------
+    INITIAL_CONFIDENCE = 0.5
+
+    # -- ObservationProtocol (fields/observation.py) --------------------------
+    ACTED_CONFIDENCE_SIGNAL = 0.9
+    CONTRADICTED_CONFIDENCE_SIGNAL = 0.1
+    ACTED_CYCLE_STRENGTHEN_FACTOR = 1.2
+    DISMISSED_CYCLE_WEAKEN_FACTOR = 0.8
+    CONTRADICTED_CYCLE_WEAKEN_FACTOR = 0.5
+    AUTO_DISCHARGE_CONFIDENCE_THRESHOLD = 0.1
+
+    # -- WriteFilterMixin (fields/write_filter.py) ----------------------------
+    WF_MIN_THRESHOLD = 0.2
+    WF_PRIORITY_THRESHOLD = 0.7
+
+    # -- CoOccurrenceField (fields/co_occurrence_field.py) --------------------
+    CO_OCCURRENCE_DECAY_FACTOR = 0.95
+    CO_OCCURRENCE_INITIAL_WEIGHT = 0.1
+    CO_OCCURRENCE_DECAY_PER_HOP = 0.5
+
+    # -- PredictionLedgerMixin (fields/prediction_ledger.py) ------------------
+    PL_CONFIDENCE_ERROR_THRESHOLD = 0.7
+    PL_CONFIDENCE_LOW_SIGNAL = 0.2
+    PL_AUTO_RESOLVE_ACTED = 0.1
+    PL_AUTO_RESOLVE_DISMISSED = 0.5
+    PL_AUTO_RESOLVE_CONTRADICTED = 0.9
+
+    # -- PolicyCache (recipes/policy_cache.py) --------------------------------
+    MIN_EVENTS_FOR_CRYSTALLIZATION = 3
+    WILSON_CI_THRESHOLD = 0.6
+    TD_ALPHA = 0.1
+    TD_GAMMA = 0.95
+    CHI_SQUARED_P_THRESHOLD = 0.05
+    INITIAL_CYCLE_AMPLITUDE = 0.5
+
+    # -- ContextAssembler (recipes/context_assembler.py) ----------------------
+    COMPETITIVE_SUPPRESSION_SIGNAL = 0.3
+    DEFAULT_SURFACING_THRESHOLD = 0.5
 
 
 class TemporalPeriod:

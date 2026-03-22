@@ -14,11 +14,18 @@ nav:
     - Async Operations: 'async.md'
     - PubSub: 'pubsub.md'
     - Features:
-        - Agent Memory: 'features/agent-memory.md'
-        - CyclicDecayField: 'features/cyclic-decay-field.md'
-        - ConfidenceField: 'features/confidence-field.md'
-        - CoOccurrenceField: 'features/co-occurrence-field.md'
-        - Composite Score Query: 'features/composite-score-query.md'
+        - Agent Memory:
+            - Overview: 'features/agent-memory.md'
+            - DecayingSortedField: 'features/decaying-sorted-field.md'
+            - CyclicDecayField: 'features/cyclic-decay-field.md'
+            - ConfidenceField: 'features/confidence-field.md'
+            - CoOccurrenceField: 'features/co-occurrence-field.md'
+            - ExistenceFilter: 'features/existence-filter.md'
+            - ObservationProtocol: 'features/observation-protocol.md'
+            - PredictionLedger: 'features/prediction-ledger.md'
+            - Composite Score Query: 'features/composite-score-query.md'
+            - PolicyCache: 'features/policy-cache.md'
+            - ContextAssembler: 'features/context-assembler.md'
         - Meta Class Implementation: 'features/meta-class-implementation.md'
         - Kitchen Edge Case Demo: 'features/kitchen-edge-case-demo.md'
     - Guides:

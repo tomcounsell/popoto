@@ -1,5 +1,5 @@
 ---
-status: Shipped
+status: Archived
 type: feature
 appetite: Medium
 owner: Solo dev
@@ -7,6 +7,8 @@ created: 2026-03-13
 tracking: https://github.com/tomcounsell/popoto/issues/193
 last_comment_id: 4053387057
 ---
+
+> **Archived** -- This plan has shipped. See [features/decaying-sorted-field.md](../features/decaying-sorted-field.md) for the current documentation.
 
 # DecayingSortedField — Time-Weighted Scoring via Lua
 

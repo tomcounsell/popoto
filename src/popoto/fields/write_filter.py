@@ -36,6 +36,7 @@ import logging
 
 from ..exceptions import SkipSaveException
 from ..redis_db import POPOTO_REDIS_DB
+from .constants import Defaults
 
 logger = logging.getLogger("POPOTO.WriteFilter")
 
@@ -56,8 +57,8 @@ class WriteFilterMixin:
     Popoto's ModelBase metaclass, which requires public attributes to be Fields.
     """
 
-    _wf_min_threshold = 0.2
-    _wf_priority_threshold = 0.7
+    _wf_min_threshold = Defaults.WF_MIN_THRESHOLD
+    _wf_priority_threshold = Defaults.WF_PRIORITY_THRESHOLD
 
     def compute_filter_score(self):
         """Compute the write filter score for this instance.

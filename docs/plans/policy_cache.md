@@ -1,5 +1,5 @@
 ---
-status: Shipped
+status: Archived
 type: feature
 appetite: Medium
 owner: Valor
@@ -8,6 +8,8 @@ tracking: https://github.com/tomcounsell/popoto/issues/232
 last_comment_id: 4095890327
 pr: https://github.com/tomcounsell/popoto/pull/239
 ---
+
+> **Archived** -- This plan has shipped. See [features/policy-cache.md](../features/policy-cache.md) for the current documentation.
 
 # PolicyCache — Learned Action Selection from Crystallized Patterns
 

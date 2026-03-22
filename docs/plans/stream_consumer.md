@@ -1,5 +1,5 @@
 ---
-status: Shipped
+status: Archived
 type: feature
 appetite: Medium
 owner: Valor
@@ -7,6 +7,8 @@ created: 2026-03-19
 tracking: https://github.com/tomcounsell/popoto/issues/229
 last_comment_id:
 ---
+
+> **Archived** -- This plan has shipped. See [features/agent-memory.md#streamconsumer](../features/agent-memory.md#streamconsumer) for the current documentation.
 
 # StreamConsumer — Background Processing Framework for Redis Streams
 

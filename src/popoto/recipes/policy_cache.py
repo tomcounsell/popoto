@@ -61,7 +61,7 @@ import time
 from ..fields.access_tracker import AccessTrackerMixin
 from ..fields.co_occurrence_field import CoOccurrenceField
 from ..fields.confidence_field import ConfidenceField
-from ..fields.constants import TemporalPeriod
+from ..fields.constants import Defaults, TemporalPeriod
 from ..fields.decaying_sorted_field import DecayingSortedField
 from ..fields.event_stream import EventStreamMixin
 from ..fields.existence_filter import ExistenceFilter
@@ -77,32 +77,32 @@ logger = logging.getLogger("POPOTO.PolicyCache")
 # Tuning Constants — validated via parameter sweep (issue #234)
 # ---------------------------------------------------------------------------
 
-MIN_EVENTS_FOR_CRYSTALLIZATION = 3
+MIN_EVENTS_FOR_CRYSTALLIZATION = Defaults.MIN_EVENTS_FOR_CRYSTALLIZATION
 """Minimum events with same (state_fingerprint, action_type) before
 considering crystallization. Can be set as low as 1 for eager mode
 in high-confidence environments.
 Optimal range: [1, 10]. Insensitive to retrieval quality in this range."""
 
-WILSON_CI_THRESHOLD = 0.6
+WILSON_CI_THRESHOLD = Defaults.WILSON_CI_THRESHOLD
 """Wilson confidence interval lower bound that must be exceeded for
 crystallization to trigger. Higher values require stronger evidence.
 Optimal range: [0.3, 0.8]. Insensitive within this range."""
 
-TD_ALPHA = 0.1
+TD_ALPHA = Defaults.TD_ALPHA
 """Q-value learning rate for temporal difference updates. Controls how
 much new reward information overrides the existing Q-value estimate.
 Optimal range: [0.01, 0.5]. Insensitive to retrieval quality."""
 
-TD_GAMMA = 0.95
+TD_GAMMA = Defaults.TD_GAMMA
 """Q-value discount factor for temporal difference updates. Controls
 the importance of future expected rewards relative to immediate reward.
 Optimal range: [0.8, 0.99). Insensitive to retrieval quality."""
 
-CHI_SQUARED_P_THRESHOLD = 0.05
+CHI_SQUARED_P_THRESHOLD = Defaults.CHI_SQUARED_P_THRESHOLD
 """p-value threshold for temporal pattern discovery. Clusters must
 exceed this significance level to be recorded as cyclical patterns."""
 
-INITIAL_CYCLE_AMPLITUDE = 0.5
+INITIAL_CYCLE_AMPLITUDE = Defaults.INITIAL_CYCLE_AMPLITUDE
 """Initial amplitude for discovered temporal cycles. Cycles strengthen
 or weaken over time via CyclicDecayField entrainment."""
 

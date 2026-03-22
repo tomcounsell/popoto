@@ -34,9 +34,12 @@ import json
 import logging
 
 from ..redis_db import POPOTO_REDIS_DB
+from .constants import Defaults
 from .field import Field
 
 logger = logging.getLogger("POPOTO.CoOccurrenceField")
+
+_UNSET = object()  # Sentinel for method params where None has meaning
 
 # Lua script: atomic link with pruning.
 # ZADD + ZCARD + conditional ZREMRANGEBYRANK in one atomic operation.
@@ -215,7 +218,12 @@ class CoOccurrenceField(Field):
     def __init__(self, **kwargs):
         self.symmetric = kwargs.pop("symmetric", True)
         self.max_edges = kwargs.pop("max_edges", 500)
-        self.decay_factor = kwargs.pop("decay_factor", 0.95)
+        decay_factor = kwargs.pop("decay_factor", None)
+        self.decay_factor = (
+            decay_factor
+            if decay_factor is not None
+            else Defaults.CO_OCCURRENCE_DECAY_FACTOR
+        )
 
         if self.max_edges < 1:
             from ..exceptions import ModelException
@@ -268,7 +276,7 @@ class CoOccurrenceField(Field):
         model_class,
         source_pk,
         target_pk,
-        initial_weight=0.1,
+        initial_weight=_UNSET,
         pipeline=None,
     ):
         """Create a weighted edge between two PKs.
@@ -280,7 +288,8 @@ class CoOccurrenceField(Field):
             model_class: The Model class.
             source_pk: Source primary key string.
             target_pk: Target primary key string.
-            initial_weight: Weight for the new edge. Default 0.1.
+            initial_weight: Weight for the new edge. Default from
+                ``Defaults.CO_OCCURRENCE_INITIAL_WEIGHT``.
             pipeline: Optional Redis pipeline (unused for Lua eval).
 
         Returns:
@@ -289,6 +298,8 @@ class CoOccurrenceField(Field):
         Raises:
             ValueError: If source_pk == target_pk (no self-loops).
         """
+        if initial_weight is _UNSET:
+            initial_weight = Defaults.CO_OCCURRENCE_INITIAL_WEIGHT
         source_pk = str(source_pk)
         target_pk = str(target_pk)
 
@@ -502,7 +513,7 @@ class CoOccurrenceField(Field):
         model_class,
         seed_pks,
         depth=2,
-        decay_per_hop=0.5,
+        decay_per_hop=_UNSET,
         threshold=0.01,
     ):
         """BFS graph propagation with exponential weight decay per hop.
@@ -515,13 +526,16 @@ class CoOccurrenceField(Field):
             model_class: The Model class.
             seed_pks: List of starting primary keys.
             depth: Maximum BFS depth. Default 2. depth=0 returns seeds only.
-            decay_per_hop: Weight multiplier per hop. Default 0.5.
+            decay_per_hop: Weight multiplier per hop. Default from
+                ``Defaults.CO_OCCURRENCE_DECAY_PER_HOP``.
             threshold: Minimum propagated weight to continue. Default 0.01.
 
         Returns:
             dict[str, float]: Mapping of discovered PKs to their propagated
                 weights. Seeds are not included in results (except for depth=0).
         """
+        if decay_per_hop is _UNSET:
+            decay_per_hop = Defaults.CO_OCCURRENCE_DECAY_PER_HOP
         if not seed_pks:
             return {}
 

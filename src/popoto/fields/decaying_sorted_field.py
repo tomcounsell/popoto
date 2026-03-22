@@ -33,6 +33,7 @@ Example:
 import logging
 
 from ..exceptions import ModelException
+from .constants import Defaults
 from .field import Field
 from .sorted_field_mixin import SortedFieldMixin
 
@@ -120,7 +121,8 @@ class DecayingSortedField(SortedFieldMixin, Field):
     """
 
     def __init__(self, **kwargs):
-        self.decay_rate = kwargs.pop("decay_rate", 0.5)
+        decay_rate = kwargs.pop("decay_rate", None)
+        self.decay_rate = decay_rate if decay_rate is not None else Defaults.DECAY_RATE
         self.base_score_field = kwargs.pop("base_score_field", None)
 
         if self.decay_rate <= 0:

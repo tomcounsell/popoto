@@ -33,7 +33,7 @@ from .fields.cyclic_decay_field import CyclicDecayField
 from .fields.confidence_field import ConfidenceField
 from .fields.co_occurrence_field import CoOccurrenceField
 from .fields.existence_filter import ExistenceFilter, FrequencySketch
-from .fields.constants import TemporalPeriod, InteractionWeight
+from .fields.constants import TemporalPeriod, InteractionWeight, Defaults
 from .fields.observation import ObservationProtocol, RecallProposal
 from .fields.prediction_ledger import PredictionLedgerMixin
 from .fields.geo_field import GeoField
@@ -106,6 +106,7 @@ __all__ = [
     "FrequencySketch",
     "TemporalPeriod",
     "InteractionWeight",
+    "Defaults",
     "ObservationProtocol",
     "RecallProposal",
     "PredictionLedgerMixin",

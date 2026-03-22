@@ -1,5 +1,5 @@
 ---
-status: Shipped
+status: Archived
 type: feature
 appetite: Medium
 owner: Valor
@@ -7,6 +7,8 @@ created: 2026-03-20
 tracking: https://github.com/tomcounsell/popoto/issues/233
 last_comment_id: 4097083382
 ---
+
+> **Archived** -- This plan has shipped. See [features/context-assembler.md](../features/context-assembler.md) for the current documentation.
 
 # ContextAssembler — Retrieval-to-Injection Bridge with Token Budgets
 

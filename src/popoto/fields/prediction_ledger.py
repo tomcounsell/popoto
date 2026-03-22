@@ -32,6 +32,7 @@ import time
 import msgpack
 
 from ..redis_db import POPOTO_REDIS_DB
+from .constants import Defaults
 
 logger = logging.getLogger("POPOTO.PredictionLedger")
 
@@ -106,12 +107,12 @@ class PredictionLedgerMixin:
     """
 
     _pl_partition: str = "default"
-    _pl_confidence_error_threshold: float = 0.7
-    _pl_confidence_low_signal: float = 0.2
+    _pl_confidence_error_threshold: float = Defaults.PL_CONFIDENCE_ERROR_THRESHOLD
+    _pl_confidence_low_signal: float = Defaults.PL_CONFIDENCE_LOW_SIGNAL
     _pl_auto_resolve_errors: dict = {
-        "acted": 0.1,
-        "dismissed": 0.5,
-        "contradicted": 0.9,
+        "acted": Defaults.PL_AUTO_RESOLVE_ACTED,
+        "dismissed": Defaults.PL_AUTO_RESOLVE_DISMISSED,
+        "contradicted": Defaults.PL_AUTO_RESOLVE_CONTRADICTED,
     }
 
     @staticmethod

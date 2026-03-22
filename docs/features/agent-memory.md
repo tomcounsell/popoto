@@ -1396,6 +1396,20 @@ These primitives follow Popoto's existing patterns:
 
 4. **Pipeline-safe.** Every operation accepts an optional `pipeline` parameter for atomic execution, consistent with all Popoto field hooks.
 
+5. **Centralized tuning.** All ~24 behavioral constants are consolidated in `Defaults`, importable from the package root. Override globally or per-field — explicit kwargs always win.
+
+```python
+from popoto import Defaults
+
+# Global override — all DecayingSortedFields default to 0.7
+Defaults.DECAY_RATE = 0.7
+
+# Per-field override still wins
+relevance = DecayingSortedField(decay_rate=0.3)  # uses 0.3, not 0.7
+```
+
+See [Defaults API reference](../api-reference.md#defaults) and [Tuning Magic Numbers](../guides/tuning-magic-numbers.md) for the full constant table and benchmark-validated guidance.
+
 ## Further reading
 
 - [Popoto Memory Roadmap](../guides/popoto-memory-roadmap.md) — full implementation spec with test strategies and benchmarks
