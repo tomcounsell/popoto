@@ -22,18 +22,13 @@ class TestDefaultsSync:
 
     @pytest.mark.parametrize(
         "name,mod_attr",
-        [
-            (name, (mod, attr))
-            for name, (mod, attr) in MODULE_CONSTANTS.items()
-        ],
+        [(name, (mod, attr)) for name, (mod, attr) in MODULE_CONSTANTS.items()],
         ids=list(MODULE_CONSTANTS.keys()),
     )
     def test_module_alias_matches_defaults(self, name, mod_attr):
         mod, attr = mod_attr
         module_value = getattr(mod, attr)
-        assert hasattr(Defaults, name), (
-            f"Defaults class is missing attribute '{name}'"
-        )
+        assert hasattr(Defaults, name), f"Defaults class is missing attribute '{name}'"
         defaults_value = getattr(Defaults, name)
         assert module_value == defaults_value, (
             f"Drift detected: {mod.__name__}.{attr} = {module_value} "
