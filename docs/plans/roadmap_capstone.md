@@ -1,5 +1,5 @@
 ---
-status: Planning
+status: Ready
 type: chore
 appetite: Medium
 owner: Solo dev
@@ -145,18 +145,20 @@ class Defaults:
 
 **Backward compatibility:** Explicit kwargs still override `Defaults`. Setting `Defaults.DECAY_RATE = 0.3` only affects instances that don't pass an explicit `decay_rate=` kwarg.
 
-**Feature doc strategy:** Rather than creating 10 near-duplicate standalone docs, create standalone docs only for primitives with sufficient complexity to warrant a separate page. The comprehensive `agent-memory.md` already covers all primitives thoroughly. Candidates for standalone docs:
+**Feature doc strategy:** Create standalone feature docs for all 14 primitives. 4 already exist (CyclicDecayField, ConfidenceField, CoOccurrenceField, CompositeScoreQuery). Create 10 new ones:
 
-- DecayingSortedField (foundational primitive, complex Lua scoring)
-- AccessTrackerMixin (staging/confirmation pattern is novel)
-- ObservationProtocol (multi-outcome effects matrix)
-- WriteFilterMixin (gate pattern with priority set)
-- ExistenceFilter + FrequencySketch (probabilistic data structures)
-- PredictionLedgerMixin (prediction-outcome lifecycle)
-- StreamConsumer (consumer group framework)
-- PolicyCache (already has `guides/policy-cache-recipe.md`)
-- ContextAssembler (pipeline architecture)
-- EventStreamMixin (simplest — may not need standalone)
+1. DecayingSortedField (foundational primitive, complex Lua scoring)
+2. AccessTrackerMixin (staging/confirmation pattern)
+3. ObservationProtocol (multi-outcome effects matrix)
+4. WriteFilterMixin (gate pattern with priority set)
+5. EventStreamMixin (stream append-on-save)
+6. ExistenceFilter + FrequencySketch (probabilistic data structures)
+7. PredictionLedgerMixin (prediction-outcome lifecycle)
+8. StreamConsumer (consumer group framework)
+9. PolicyCache (already has `guides/policy-cache-recipe.md`)
+10. ContextAssembler (pipeline architecture)
+
+After feature docs are created, refactor any unique content from plan docs into feature docs and delete all 13 shipped agent-memory plan docs.
 
 ## Failure Path Test Strategy
 
@@ -233,7 +235,8 @@ No agent integration required — Popoto is a library consumed by other projects
 
 - [ ] All Category 1 constants importable from `popoto.fields.constants.Defaults`
 - [ ] Each primitive reads its defaults from `Defaults` (backward-compatible with explicit kwargs)
-- [ ] Feature docs exist for all primitives that warrant standalone pages in `docs/features/`
+- [ ] Standalone feature docs exist for all 14 primitives in `docs/features/`
+- [ ] All 13 shipped agent-memory plan docs deleted from `docs/plans/`
 - [ ] New feature docs added to `mkdocs.yml` nav
 - [ ] Roadmap doc marked complete with all steps showing shipped status
 - [ ] Benchmark harness (`tests/benchmarks/overrides.py`) updated to use centralized `Defaults`
@@ -300,21 +303,33 @@ No agent integration required — Popoto is a library consumed by other projects
 - Update `apply_overrides()` context manager
 - Update harness tests
 
-### 3. Create standalone feature docs
+### 3. Create standalone feature docs for all 14 primitives
 - **Task ID**: build-docs
 - **Depends On**: none
 - **Validates**: `mkdocs build` (no errors)
 - **Assigned To**: docs-builder
 - **Agent Type**: documentarian
 - **Parallel**: true (parallel with build-defaults)
-- Create standalone feature docs for primitives lacking them (extract from agent-memory.md and plan docs, focusing on user-facing API reference)
-- Add new feature doc entries to `mkdocs.yml` nav
+- Create standalone feature docs for all 10 primitives lacking them: DecayingSortedField, AccessTrackerMixin, ObservationProtocol, WriteFilterMixin, EventStreamMixin, ExistenceFilter + FrequencySketch, PredictionLedgerMixin, StreamConsumer, PolicyCache, ContextAssembler
+- Extract user-facing content from plan docs and `agent-memory.md` into each standalone doc
+- Add all new feature doc entries to `mkdocs.yml` nav
 - Update `agent-memory.md` status table — all 14 primitives Shipped
 - Update roadmap doc — ensure all steps marked Shipped, add completion note
 
-### 4. Final Validation
+### 4. Delete shipped plan docs
+- **Task ID**: cleanup-plans
+- **Depends On**: build-docs
+- **Validates**: no dangling references to deleted plan docs
+- **Assigned To**: docs-builder
+- **Agent Type**: documentarian
+- **Parallel**: false
+- Refactor any unique implementation context from plan docs into corresponding feature docs
+- Delete all 13 shipped agent-memory plan docs from `docs/plans/` (decaying_sorted_field, cyclic_decay_field, access_tracker_mixin, write_filter_mixin, confidence_field, co_occurrence_field, event_stream_mixin, composite_score_query, existence_filter, prediction_ledger, stream_consumer, policy_cache, context_assembler)
+- Verify no other docs or code reference the deleted plan files
+
+### 5. Final Validation
 - **Task ID**: validate-all
-- **Depends On**: build-defaults, build-harness, build-docs
+- **Depends On**: build-defaults, build-harness, build-docs, cleanup-plans
 - **Assigned To**: capstone-validator
 - **Agent Type**: validator
 - **Parallel**: false
@@ -336,10 +351,10 @@ No agent integration required — Popoto is a library consumed by other projects
 
 ---
 
-## Open Questions
+## Resolved Questions
 
-1. **Feature doc scope**: The issue says create feature docs for all 14 primitives. However, `agent-memory.md` already covers all 14 with substantial API reference and examples. Should we create 10 standalone feature docs (one per missing primitive), or is the comprehensive guide sufficient for simpler primitives like EventStreamMixin? Recommendation: create standalone docs only for complex primitives (DecayingSortedField, AccessTracker, ObservationProtocol, WriteFilter, ExistenceFilter, PredictionLedger, StreamConsumer, PolicyCache, ContextAssembler) and skip EventStreamMixin since it's straightforward.
+1. **Feature doc scope**: Create standalone feature docs for all 14 primitives, including simple ones like EventStreamMixin.
 
-2. **Defaults naming convention**: The issue uses `Defaults.DECAY_RATE` but some constants like `_wf_min_threshold` use underscore-prefixed names as class attributes. Should `Defaults` use `WF_MIN_THRESHOLD` (no underscore, consistent with other constants) or preserve the `_wf_` prefix for discoverability? Recommendation: drop the underscore prefix in `Defaults` (use `WF_MIN_THRESHOLD`) since `Defaults` is a public API.
+2. **Defaults naming convention**: Drop leading underscore. Use `ALL_CAPS_SNAKE_CASE` for global-like constants (which all Category 1 constants are). Example: `WF_MIN_THRESHOLD` not `_wf_min_threshold`.
 
-3. **Plan doc archival**: Should shipped plan docs be deleted, moved to an `archive/` directory, or left in place with a note pointing to the feature doc? Recommendation: leave in place with updated frontmatter pointing to the feature doc — they serve as historical implementation records.
+3. **Plan doc lifecycle**: Refactor any unique implementation context from plan docs into feature docs, then delete the plan docs entirely. Use `/do-docs` and `/do-docs-audit` patterns for the migration.
