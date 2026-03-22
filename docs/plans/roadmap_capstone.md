@@ -22,7 +22,7 @@ All 14 agent-memory primitives are shipped and constants have been validated via
 
 **Desired outcome:**
 - All tuning constants importable from `popoto.fields.constants.Defaults` with backward-compatible fallback
-- Feature docs for all 14 primitives in `docs/features/`
+- Feature docs for 10 primitives in `docs/features/` (4 existing + 6 new for complex primitives)
 - Roadmap clearly marked complete
 - Benchmark harness updated for centralized `Defaults`
 
@@ -36,7 +36,7 @@ All 14 agent-memory primitives are shipped and constants have been validated via
 ### spike-1: Current constants audit
 - **Assumption**: "Issue #251 lists all Category 1 constants accurately"
 - **Method**: code-read
-- **Finding**: Issue is mostly accurate. Full inventory: 14 module-level constants (6 in observation.py, 6 in policy_cache.py, 2 in context_assembler.py), 5 field kwargs (decay_rate, initial_confidence, decay_factor, initial_weight, decay_per_hop), 5 class attributes (_wf_min_threshold, _wf_priority_threshold, _pl_confidence_error_threshold, _pl_confidence_low_signal, _pl_auto_resolve_errors). Issue missed 2 policy_cache.py constants already in the harness (CHI_SQUARED_P_THRESHOLD, INITIAL_CYCLE_AMPLITUDE) and all method parameter defaults (initial_weight, decay_per_hop).
+- **Finding**: Issue is mostly accurate. Full inventory: 14 module-level constants (6 in `fields/observation.py`, 6 in `recipes/policy_cache.py`, 2 in `recipes/context_assembler.py`), 5 field kwargs (decay_rate, initial_confidence, decay_factor, initial_weight, decay_per_hop), 5 class attributes (_wf_min_threshold, _wf_priority_threshold, _pl_confidence_error_threshold, _pl_confidence_low_signal, _pl_auto_resolve_errors). Issue missed 2 `recipes/policy_cache.py` constants already in the harness (CHI_SQUARED_P_THRESHOLD, INITIAL_CYCLE_AMPLITUDE) and all method parameter defaults (initial_weight, decay_per_hop).
 - **Confidence**: high
 - **Impact on plan**: Defaults class needs ~24 constants, not ~19. Method param defaults (initial_weight, decay_per_hop) need a different injection pattern.
 
@@ -121,7 +121,7 @@ class Defaults:
     PL_AUTO_RESOLVE_DISMISSED = 0.5
     PL_AUTO_RESOLVE_CONTRADICTED = 0.9
 
-    # PolicyCache
+    # PolicyCache (recipes/policy_cache.py)
     MIN_EVENTS_FOR_CRYSTALLIZATION = 3
     WILSON_CI_THRESHOLD = 0.6
     TD_ALPHA = 0.1
@@ -129,7 +129,7 @@ class Defaults:
     CHI_SQUARED_P_THRESHOLD = 0.05
     INITIAL_CYCLE_AMPLITUDE = 0.5
 
-    # ContextAssembler
+    # ContextAssembler (recipes/context_assembler.py)
     COMPETITIVE_SUPPRESSION_SIGNAL = 0.3
     DEFAULT_SURFACING_THRESHOLD = 0.5
 ```
@@ -138,31 +138,31 @@ class Defaults:
 
 | Category | Current | After |
 |----------|---------|-------|
-| Module-level constants (observation.py, policy_cache.py, context_assembler.py) | `ACTED_CONFIDENCE_SIGNAL = 0.9` | `ACTED_CONFIDENCE_SIGNAL = Defaults.ACTED_CONFIDENCE_SIGNAL` (assigned at import time; functions continue to read bare module-level name) |
+| Module-level constants (`fields/observation.py`, `recipes/policy_cache.py`, `recipes/context_assembler.py`) | `ACTED_CONFIDENCE_SIGNAL = 0.9` | `ACTED_CONFIDENCE_SIGNAL = Defaults.ACTED_CONFIDENCE_SIGNAL` (assigned at import time; functions continue to read bare module-level name) |
 | Field kwargs (decay_rate, initial_confidence, etc.) | `def __init__(self, decay_rate=0.5)` | `def __init__(self, decay_rate=None)` then `self.decay_rate = decay_rate if decay_rate is not None else Defaults.DECAY_RATE` |
 | Class attributes (_wf_min_threshold, etc.) | `_wf_min_threshold = 0.2` | `_wf_min_threshold = Defaults.WF_MIN_THRESHOLD` (assigned at import time) |
 | Method params (initial_weight, decay_per_hop) | `def link(..., initial_weight=0.1)` | `def link(..., initial_weight=None)` then use `Defaults.CO_OCCURRENCE_INITIAL_WEIGHT` as fallback |
 
-**Critical: module-level override semantics.** Module-level constants (observation.py, policy_cache.py, context_assembler.py) are initialized from `Defaults` at import time, but functions continue to reference them by bare name (e.g., `signal=ACTED_CONFIDENCE_SIGNAL`). This means the benchmark harness must patch **both** `Defaults.X` and the module-level alias (`setattr(observation_mod, 'ACTED_CONFIDENCE_SIGNAL', value)`) to take effect at runtime. The harness `apply_overrides()` already patches module-level names; it must additionally patch `Defaults` so that any code constructing new fields mid-test picks up the override. This dual-patch is the simplest approach that preserves backward compatibility without changing function internals.
+**Critical: module-level override semantics.** Module-level constants (`fields/observation.py`, `recipes/policy_cache.py`, `recipes/context_assembler.py`) are initialized from `Defaults` at import time, but functions continue to reference them by bare name (e.g., `signal=ACTED_CONFIDENCE_SIGNAL`). This means the benchmark harness must patch **both** `Defaults.X` and the module-level alias (`setattr(observation_mod, 'ACTED_CONFIDENCE_SIGNAL', value)`) to take effect at runtime. The harness `apply_overrides()` already patches module-level names; it must additionally patch `Defaults` so that any code constructing new fields mid-test picks up the override. This dual-patch is the simplest approach that preserves backward compatibility without changing function internals.
 
 **`None` sentinel safety:** For field kwargs (`decay_rate`, `initial_confidence`), `None` is never a valid field value, so the `None` sentinel is safe. For method params where `None` could mean "no value" (e.g., `initial_weight` in `link()`), use a private sentinel: `_UNSET = object()` as the default, with `if initial_weight is _UNSET: initial_weight = Defaults.CO_OCCURRENCE_INITIAL_WEIGHT`.
 
 **Backward compatibility:** Explicit kwargs still override `Defaults`. Setting `Defaults.DECAY_RATE = 0.3` only affects instances that don't pass an explicit `decay_rate=` kwarg. Existing `from popoto.fields.observation import ACTED_CONFIDENCE_SIGNAL` imports continue to work (module-level names remain).
 
-**Feature doc strategy:** Create standalone feature docs for all 14 primitives. 4 already exist (CyclicDecayField, ConfidenceField, CoOccurrenceField, CompositeScoreQuery). Create 10 new ones:
+**Feature doc strategy:** Per spike-2, creating 10 standalone docs is excessive — most primitives have thorough coverage in `agent-memory.md`. Create standalone feature docs only for the 6 primitives complex enough to warrant their own page. 4 already exist (CyclicDecayField, ConfidenceField, CoOccurrenceField, CompositeScoreQuery). Create 6 new ones:
 
 1. DecayingSortedField (foundational primitive, complex Lua scoring)
-2. AccessTrackerMixin (staging/confirmation pattern)
-3. ObservationProtocol (multi-outcome effects matrix)
-4. WriteFilterMixin (gate pattern with priority set)
-5. EventStreamMixin (stream append-on-save)
-6. ExistenceFilter + FrequencySketch (probabilistic data structures)
-7. PredictionLedgerMixin (prediction-outcome lifecycle)
-8. StreamConsumer (consumer group framework)
-9. PolicyCache (already has `guides/policy-cache-recipe.md`)
-10. ContextAssembler (pipeline architecture)
+2. ObservationProtocol (multi-outcome effects matrix, tight coupling with multiple primitives)
+3. ExistenceFilter + FrequencySketch (probabilistic data structures, Lua-heavy)
+4. PredictionLedgerMixin (prediction-outcome lifecycle, multi-state machine)
+5. PolicyCache (capstone recipe composing all primitives, already has `guides/policy-cache-recipe.md`)
+6. ContextAssembler (capstone recipe, pipeline architecture)
 
-After feature docs are created, refactor any unique content from plan docs into feature docs and delete all 13 shipped agent-memory plan docs.
+The remaining 4 simpler primitives (AccessTrackerMixin, WriteFilterMixin, EventStreamMixin, StreamConsumer) are adequately documented in `agent-memory.md` and don't warrant standalone pages.
+
+**Filename convention:** Use kebab-case, matching existing feature docs (e.g., `co-occurrence-field.md`, `confidence-field.md`). New files: `decaying-sorted-field.md`, `observation-protocol.md`, `existence-filter.md`, `prediction-ledger.md`, `policy-cache.md`, `context-assembler.md`.
+
+After feature docs are created, refactor any unique content from plan docs into feature docs. For plan docs whose primitive has no standalone feature doc, refactor unique content into `agent-memory.md` instead. Then archive all 13 shipped agent-memory plan docs (see task 4 for approach).
 
 ## Failure Path Test Strategy
 
@@ -182,6 +182,8 @@ After feature docs are created, refactor any unique content from plan docs into 
 - `tests/benchmarks/test_sweep.py` — UPDATE: May need adjustments if override mechanism changes
 
 No existing functional tests affected — constant values remain identical, only the source location changes. All field behavior tests continue to pass because `Defaults` values match current hardcoded values exactly.
+
+- **NEW test**: `tests/benchmarks/test_defaults_sync.py` — Drift detection test that verifies every module-level constant alias matches its corresponding `Defaults` attribute. Iterates over `MODULE_CONSTANTS` registry and asserts `getattr(mod, attr) == getattr(Defaults, attr)` for each. This catches cases where a module constant is updated but `Defaults` is not (or vice versa).
 
 ## Rabbit Holes
 
@@ -223,7 +225,7 @@ No agent integration required — Popoto is a library consumed by other projects
 ## Documentation
 
 ### Feature Documentation
-- [ ] Create standalone feature docs for primitives that lack them (up to 10 docs)
+- [ ] Create standalone feature docs for 6 complex primitives (DecayingSortedField, ObservationProtocol, ExistenceFilter+FrequencySketch, PredictionLedgerMixin, PolicyCache, ContextAssembler)
 - [ ] Add new feature doc entries to `mkdocs.yml` nav
 - [ ] Update `docs/features/agent-memory.md` status table to show all 14 as Shipped
 
@@ -239,8 +241,8 @@ No agent integration required — Popoto is a library consumed by other projects
 
 - [ ] All Category 1 constants importable from `popoto.fields.constants.Defaults`
 - [ ] Each primitive reads its defaults from `Defaults` (backward-compatible with explicit kwargs)
-- [ ] Standalone feature docs exist for all 14 primitives in `docs/features/`
-- [ ] All 13 shipped agent-memory plan docs deleted from `docs/plans/`
+- [ ] Standalone feature docs exist for 10 primitives in `docs/features/` (4 existing + 6 new)
+- [ ] All 13 shipped agent-memory plan docs archived (status: Archived, redirect to feature doc or `agent-memory.md`)
 - [ ] New feature docs added to `mkdocs.yml` nav
 - [ ] Roadmap doc marked complete with all steps showing shipped status
 - [ ] Benchmark harness (`tests/benchmarks/overrides.py`) updated to use centralized `Defaults`
@@ -285,9 +287,9 @@ No agent integration required — Popoto is a library consumed by other projects
 - **Agent Type**: builder
 - **Parallel**: true
 - Add `Defaults` class to `src/popoto/fields/constants.py` with all ~24 Category 1 constants
-- Wire `observation.py` module-level constants to read from `Defaults`
-- Wire `policy_cache.py` module-level constants to read from `Defaults`
-- Wire `context_assembler.py` module-level constants to read from `Defaults`
+- Wire `fields/observation.py` module-level constants to read from `Defaults`
+- Wire `recipes/policy_cache.py` module-level constants to read from `Defaults`
+- Wire `recipes/context_assembler.py` module-level constants to read from `Defaults`
 - Wire `decaying_sorted_field.py` field kwargs to fall back to `Defaults`
 - Wire `confidence_field.py` field kwargs to fall back to `Defaults`
 - Wire `co_occurrence_field.py` field kwargs and method params to fall back to `Defaults`
@@ -304,34 +306,36 @@ No agent integration required — Popoto is a library consumed by other projects
 - **Parallel**: false
 - Update `tests/benchmarks/overrides.py` to patch `Defaults` attributes instead of per-module `setattr`
 - Simplify `MODULE_CONSTANTS` registry to use `Defaults` as single source
-- Update `apply_overrides()` context manager
+- Update `apply_overrides()` context manager to dual-patch both `Defaults` and module aliases
+- Add drift detection test (`tests/benchmarks/test_defaults_sync.py`) — verifies every module-level alias matches its `Defaults` counterpart
 - Update harness tests
 
-### 3. Create standalone feature docs for all 14 primitives
+### 3. Create standalone feature docs for complex primitives
 - **Task ID**: build-docs
 - **Depends On**: none
 - **Validates**: `mkdocs build` (no errors)
 - **Assigned To**: docs-builder
 - **Agent Type**: documentarian
 - **Parallel**: true (parallel with build-defaults)
-- Create standalone feature docs for all 10 primitives lacking them: DecayingSortedField, AccessTrackerMixin, ObservationProtocol, WriteFilterMixin, EventStreamMixin, ExistenceFilter + FrequencySketch, PredictionLedgerMixin, StreamConsumer, PolicyCache, ContextAssembler
+- Create 6 standalone feature docs (kebab-case filenames): `decaying-sorted-field.md`, `observation-protocol.md`, `existence-filter.md`, `prediction-ledger.md`, `policy-cache.md`, `context-assembler.md`
 - Extract user-facing content from plan docs and `agent-memory.md` into each standalone doc
 - Add all new feature doc entries to `mkdocs.yml` nav under an "Agent Memory" subsection within Features
 - Update `agent-memory.md` status table — all 14 primitives Shipped
 - Update roadmap doc — ensure all steps marked Shipped, add completion note
 
-### 4. Delete shipped plan docs
+### 4. Archive shipped plan docs
 - **Task ID**: cleanup-plans
 - **Depends On**: build-docs
-- **Validates**: no dangling references to deleted plan docs
+- **Validates**: no dangling references; archived plans have redirect headers
 - **Assigned To**: docs-builder
 - **Agent Type**: documentarian
 - **Parallel**: false
 - Run `grep -rn 'plans/' docs/ --include='*.md' | grep -v 'docs/plans/'` to find all cross-references to plan docs from other docs
-- Fix any cross-references to point to new feature docs instead
-- Refactor any unique implementation context from plan docs into corresponding feature docs
-- Delete all 13 shipped agent-memory plan docs from `docs/plans/` (decaying_sorted_field, cyclic_decay_field, access_tracker_mixin, write_filter_mixin, confidence_field, co_occurrence_field, event_stream_mixin, composite_score_query, existence_filter, prediction_ledger, stream_consumer, policy_cache, context_assembler)
-- Verify no other docs or code reference the deleted plan files
+- Search GitHub issues/PRs for links to plan docs: `gh search issues "docs/plans/decaying_sorted_field" --repo tomcounsell/popoto` (repeat for each plan)
+- Fix cross-references in docs to point to new feature docs instead
+- Refactor any unique implementation context from plan docs into corresponding feature docs (or `agent-memory.md` for primitives without standalone docs)
+- Add a redirect header to each of the 13 shipped agent-memory plan docs: update frontmatter to `status: Archived` and prepend a note pointing to the corresponding feature doc or `agent-memory.md` section. Do NOT delete — external GitHub issue/PR links must remain valid
+- Exclude archived plans from `mkdocs.yml` nav (they remain in the repo but not in the docs site)
 
 ### 5. Final Validation
 - **Task ID**: validate-all
@@ -357,23 +361,30 @@ No agent integration required — Popoto is a library consumed by other projects
 
 ## RFC Feedback
 
-Three specialist critics reviewed the plan. BLOCKERs were addressed inline. Remaining CONCERNs:
+Three specialist critics reviewed the plan. A subsequent plan critique identified additional issues. BLOCKERs were addressed inline. Remaining CONCERNs:
 
 | Severity | Critic | Feedback | Plan Response |
 |----------|--------|----------|---------------|
 | BLOCKER (resolved) | code-reviewer, data-architect | Module-level constant patching has a static-copy problem — if functions read `Defaults.X` at call time, old `setattr(module, name)` patching stops working | Resolved: functions continue reading bare module-level names; harness patches both `Defaults` and module aliases. Documented in "Critical: module-level override semantics" section. |
 | BLOCKER (resolved) | code-reviewer | `None` sentinel for method params could conflict where `None` has meaning | Resolved: use `_UNSET = object()` sentinel for method params; `None` is safe for field kwargs. Documented in "`None` sentinel safety" section. |
+| BLOCKER (resolved) | plan-critique | `policy_cache.py` and `context_assembler.py` referenced under `fields/` but live under `recipes/` | Resolved: all references now use explicit paths (`recipes/policy_cache.py`, `recipes/context_assembler.py`) in injection table, Defaults class comments, spike findings, and task 1 subtasks. |
 | CONCERN | data-architect | Mixing structural constants (`KEY_SEPARATOR`) and behavioral constants (`DECAY_RATE`) in one file | Accepted: `Defaults` is a clearly named class, not a dump of all constants. Structural constants remain as bare module-level names in `constants.py`. The two concerns are visually and semantically separated. |
 | CONCERN | code-reviewer | No production-time override mechanism beyond class attribute mutation | Accepted: `Defaults` is intended for test-time tuning and application startup configuration. Thread-safe runtime mutation is out of scope — the experiments phase will evaluate whether that's needed. |
-| CONCERN | docs-specialist | mkdocs.yml nav placement for 10 new docs not specified | Resolved: added "Agent Memory" subsection under Features in task 3. |
-| CONCERN | docs-specialist | Cross-references from other docs to plan files being deleted | Resolved: added grep step to task 4 before deletion. |
+| CONCERN (resolved) | plan-critique | Plan contradicts spike-2 finding by committing to 10 new feature docs after spike said "excessive" | Resolved: reduced to 6 standalone docs for complex primitives only. Simpler primitives (AccessTrackerMixin, WriteFilterMixin, EventStreamMixin, StreamConsumer) are adequately covered in `agent-memory.md`. |
+| CONCERN (resolved) | plan-critique | Deleting 13 plan docs will break external links in GitHub issues/PRs | Resolved: plan docs are now archived (status: Archived + redirect header) instead of deleted. External links remain valid. |
+| CONCERN (resolved) | plan-critique | Dual-patch pattern (Defaults + module alias) is fragile with no drift detection | Resolved: added drift detection test (`test_defaults_sync.py`) to task 2 that verifies module aliases match `Defaults` values. |
+| CONCERN (resolved) | plan-critique | No filename convention specified for new feature docs | Resolved: kebab-case, matching existing docs (e.g., `decaying-sorted-field.md`). Documented in "Feature doc strategy" section. |
+| CONCERN | docs-specialist | mkdocs.yml nav placement for new docs not specified | Resolved: added "Agent Memory" subsection under Features in task 3. |
+| CONCERN | docs-specialist | Cross-references from other docs to plan files being deleted | Resolved: added grep step + GH search to task 4 before archival. |
 
 ---
 
 ## Resolved Questions
 
-1. **Feature doc scope**: Create standalone feature docs for all 14 primitives, including simple ones like EventStreamMixin.
+1. **Feature doc scope**: Create standalone feature docs for 6 complex primitives (DecayingSortedField, ObservationProtocol, ExistenceFilter+FrequencySketch, PredictionLedgerMixin, PolicyCache, ContextAssembler). Simpler primitives are covered in `agent-memory.md`.
 
 2. **Defaults naming convention**: Drop leading underscore. Use `ALL_CAPS_SNAKE_CASE` for global-like constants (which all Category 1 constants are). Example: `WF_MIN_THRESHOLD` not `_wf_min_threshold`.
 
-3. **Plan doc lifecycle**: Refactor any unique implementation context from plan docs into feature docs, then delete the plan docs entirely. Use `/do-docs` and `/do-docs-audit` patterns for the migration.
+3. **Plan doc lifecycle**: Refactor unique content from plan docs into feature docs or `agent-memory.md`, then archive plan docs (status: Archived + redirect). Do NOT delete — external GitHub links must remain valid.
+
+4. **Feature doc filenames**: Kebab-case, matching existing convention (e.g., `decaying-sorted-field.md`).
