@@ -1,5 +1,5 @@
 ---
-status: Shipped
+status: Archived
 type: feature
 appetite: Medium
 owner: Valor
@@ -7,6 +7,8 @@ created: 2026-03-14
 tracking: https://github.com/tomcounsell/popoto/issues/209
 last_comment_id:
 ---
+
+> **Archived** -- This plan has shipped. See [features/confidence-field.md](../features/confidence-field.md) for the current documentation.
 
 # ConfidenceField — Bayesian Certainty Tracking with Entrainment
 

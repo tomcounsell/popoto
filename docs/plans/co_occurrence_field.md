@@ -1,5 +1,5 @@
 ---
-status: Shipped
+status: Archived
 type: feature
 appetite: Large
 owner: Solo dev
@@ -7,6 +7,8 @@ created: 2026-03-15
 tracking: https://github.com/tomcounsell/popoto/issues/210
 last_comment_id:
 ---
+
+> **Archived** -- This plan has shipped. See [features/co-occurrence-field.md](../features/co-occurrence-field.md) for the current documentation.
 
 # CoOccurrenceField — Weighted Association Edges with Graph Propagation
 

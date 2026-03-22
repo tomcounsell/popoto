@@ -1,5 +1,5 @@
 ---
-status: Shipped
+status: Archived
 type: feature
 appetite: Medium
 owner: Valor
@@ -7,6 +7,8 @@ created: 2026-03-16
 tracking:
 last_comment_id:
 ---
+
+> **Archived** -- This plan has shipped. See [features/composite-score-query.md](../features/composite-score-query.md) for the current documentation.
 
 # CompositeScoreQuery — Multi-Factor Retrieval
 

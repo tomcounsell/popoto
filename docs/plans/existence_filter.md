@@ -1,5 +1,5 @@
 ---
-status: Shipped
+status: Archived
 type: feature
 appetite: Medium
 owner: Valor
@@ -7,6 +7,8 @@ created: 2026-03-17
 tracking: https://github.com/tomcounsell/popoto/issues/213
 last_comment_id:
 ---
+
+> **Archived** -- This plan has shipped. See [features/existence-filter.md](../features/existence-filter.md) for the current documentation.
 
 # ExistenceFilter — Fast Pre-Retrieval Check via Lua-Based Bloom Filter
 

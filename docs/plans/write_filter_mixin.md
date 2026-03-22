@@ -1,5 +1,5 @@
 ---
-status: Shipped
+status: Archived
 type: feature
 appetite: Medium
 owner: Valor
@@ -7,6 +7,8 @@ created: 2026-03-14
 tracking: https://github.com/tomcounsell/popoto/issues/208
 last_comment_id:
 ---
+
+> **Archived** -- This plan has shipped. See [features/agent-memory.md#writefilter](../features/agent-memory.md#writefilter) for the current documentation.
 
 # WriteFilterMixin — Selective Encoding Gate for Persistence
 

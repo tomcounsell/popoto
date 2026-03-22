@@ -1,5 +1,5 @@
 ---
-status: Shipped
+status: Archived
 type: feature
 appetite: Medium
 owner: Solo dev
@@ -7,6 +7,8 @@ created: 2026-03-13
 tracking: https://github.com/tomcounsell/popoto/issues/197
 last_comment_id:
 ---
+
+> **Archived** -- This plan has shipped. See [features/agent-memory.md#accesstracker](../features/agent-memory.md#accesstracker) for the current documentation.
 
 # AccessTrackerMixin — Read Pattern Tracking with Staged vs Confirmed Reads
 

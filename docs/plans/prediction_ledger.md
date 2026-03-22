@@ -1,5 +1,5 @@
 ---
-status: Shipped
+status: Archived
 type: feature
 appetite: Medium
 owner: Valor
@@ -7,6 +7,8 @@ created: 2026-03-17
 tracking: https://github.com/tomcounsell/popoto/issues/228
 last_comment_id:
 ---
+
+> **Archived** -- This plan has shipped. See [features/prediction-ledger.md](../features/prediction-ledger.md) for the current documentation.
 
 # PredictionLedger — Outcome Tracking with Auto-Resolution
 
