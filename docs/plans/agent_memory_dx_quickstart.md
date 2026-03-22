@@ -1,5 +1,5 @@
 ---
-status: Planning
+status: Ready
 type: chore
 appetite: Medium
 owner: Tom
@@ -87,7 +87,7 @@ No prerequisites — this work has no external dependencies. Requires Redis on l
 
 ### Flow
 
-**Developer discovers Popoto** → Reads quickstart guide → Defines Level 0 model (DecayingSortedField) → Gets working time-weighted retrieval → Adds Level 1 (AccessTracker + WriteFilter) → Adds Level 2 (Confidence + Observation) → Adds Level 3 (CompositeScore + CoOccurrence) → Adds Level 4 (ContextAssembler) → Full cognitive memory system
+**Developer discovers Popoto** → Reads quickstart guide → **Recall** (DecayingSortedField) → time-weighted retrieval works → **Attention** (AccessTracker + WriteFilter) → noise filtered, reads tracked → **Learning** (Confidence + Observation) → outcomes strengthen/weaken beliefs → **Association** (CompositeScore + CoOccurrence) → multi-factor + graph retrieval → **Cognition** (ContextAssembler) → full LLM-ready context assembly
 
 ### Technical Approach
 
@@ -118,7 +118,7 @@ No existing tests affected — this is purely additive. New test file `tests/tes
 - **Framework-specific integration examples (PydanticAI, Claude SDK)**: The old plan had these. Don't reproduce them in the quickstart — Popoto is framework-agnostic. Framework examples belong in a separate guide later, if ever.
 - **Async API variants**: The issue explicitly lists this as a non-goal. Don't add async examples.
 - **Rewriting the feature overview**: `docs/features/agent-memory.md` is comprehensive and correct. Don't touch it — the quickstart links to it for depth.
-- **Fixing the old DX plan**: Don't update `docs/plans/dx-best-practices.md`. It's a historical artifact. The quickstart supersedes it.
+- **Fixing the old DX plan**: Delete `docs/plans/dx-best-practices.md` — it's outdated and misleading. The quickstart supersedes it.
 
 ## Risks
 
@@ -140,7 +140,6 @@ No race conditions identified — all operations are synchronous, single-threade
 - No framework adapters or middleware
 - No async API additions
 - No changes to `docs/features/agent-memory.md` (it's correct as-is)
-- No changes to the old DX plan file (it's a historical artifact)
 
 ## Update System
 
@@ -155,7 +154,9 @@ No agent integration required — this is an ORM library, not an agent system.
 ### Feature Documentation
 - [ ] Create `docs/guides/agent-memory-quickstart.md` — the primary deliverable
 - [ ] Link quickstart from `docs/features/agent-memory.md` (add "Getting Started" link at top)
-- [ ] Link quickstart from repo README if agent-memory is mentioned there
+- [ ] Link quickstart from repo README
+- [ ] Cross-reference quickstart ↔ tuning guide, policy cache recipe, feature overview
+- [ ] Delete outdated `docs/plans/dx-best-practices.md`
 
 ### Inline Documentation
 - [ ] Update `.claude/commands/prime-agent-memory.md` to reflect all 14 shipped primitives
@@ -207,11 +208,11 @@ No agent integration required — this is an ORM library, not an agent system.
 - **Agent Type**: builder
 - **Parallel**: false
 - Create `tests/test_adoption_ladder.py` with 5 model definitions (one per adoption level)
-- Level 0: `DecayingSortedField` only — test `top_by_decay()` ordering
-- Level 1: + `AccessTrackerMixin` + `WriteFilterMixin` — test tracking, noise filtering
-- Level 2: + `ConfidenceField` + `ObservationProtocol` — test outcome effects
-- Level 3: + `CompositeScoreQuery` + `CoOccurrenceField` — test multi-factor ranking
-- Level 4: + `ContextAssembler` — test assembled output
+- **Recall**: `DecayingSortedField` only — test `top_by_decay()` ordering
+- **Attention**: + `AccessTrackerMixin` + `WriteFilterMixin` — test tracking, noise filtering
+- **Learning**: + `ConfidenceField` + `ObservationProtocol` — test outcome effects
+- **Association**: + `CompositeScoreQuery` + `CoOccurrenceField` — test multi-factor ranking
+- **Cognition**: + `ContextAssembler` — test assembled output
 - Each level's model must be backward-compatible (adding fields doesn't break existing queries)
 
 ### 3. Validate tests pass
@@ -251,14 +252,17 @@ No agent integration required — this is an ORM library, not an agent system.
   - Add quickstart guide to Step 1 or as new Step 0
   - Update "Downstream consumer" section if needed
 
-### 6. Add quickstart link to feature doc
+### 6. Cross-reference and cleanup
 - **Task ID**: build-links
 - **Depends On**: build-guide
 - **Assigned To**: dx-builder
 - **Agent Type**: builder
 - **Parallel**: false
 - Add "Getting Started" link at top of `docs/features/agent-memory.md` pointing to quickstart
-- Check README for agent-memory mentions; add quickstart link if present
+- Add quickstart link to repo README
+- Cross-reference quickstart from `docs/guides/tuning-magic-numbers.md` and `docs/guides/policy-cache-recipe.md`
+- Cross-reference from quickstart back to feature docs, tuning guide, and policy cache recipe
+- Delete `docs/plans/dx-best-practices.md` (superseded, outdated, misleading)
 
 ### 7. Final Validation
 - **Task ID**: validate-all
@@ -283,10 +287,8 @@ No agent integration required — this is an ORM library, not an agent system.
 | Priming command updated | `grep -c "Remaining work" .claude/commands/prime-agent-memory.md` | output contains 0 |
 | Format clean | `black --check src/ tests/` | exit code 0 |
 
-## Open Questions
+## Resolved Questions
 
-1. **Adoption ladder naming**: Should the levels be numbered (Level 0-4) or named (Basic, Tracked, Adaptive, Multi-factor, Assembled)? Numbers are clearer for progressive adoption; names are more descriptive.
-
-2. **Where to link the quickstart**: Should the quickstart be linked from the repo README's main feature list, or only from the agent-memory feature doc? Adding it to README increases discoverability but the README may already be dense.
-
-3. **Old DX plan disposition**: Should `docs/plans/dx-best-practices.md` be archived/deleted since it's superseded, or left as historical context? The plan says "no-go" on modifying it, but it could mislead future contributors.
+1. **Adoption ladder naming**: Named levels loosely mapping to cognitive science — **Recall → Attention → Learning → Association → Cognition**
+2. **Where to link the quickstart**: Yes — README, feature docs, and cross-references throughout all guides
+3. **Old DX plan disposition**: Delete `docs/plans/dx-best-practices.md` — it's outdated and misleading
