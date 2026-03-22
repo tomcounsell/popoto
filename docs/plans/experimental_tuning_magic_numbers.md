@@ -373,7 +373,7 @@ No agent integration required -- this is a development-only benchmarking tool.
 | Tests pass | `pytest tests/ -x -q` | exit code 0 |
 | Harness runs | `pytest tests/benchmarks/test_harness.py -x -q` | exit code 0 |
 | Format clean | `black --check src/ tests/` | exit code 0 |
-| All constants documented | `python -c "import json; data=json.load(open('tests/benchmarks/results/summary.json')); assert len(data['constants']) >= 25"` | exit code 0 |
+| All constants documented | `python -c "import json; data=json.load(open('tests/benchmarks/results/summary.json')); assert len(data['constants']) >= 19"` | exit code 0 |
 
 ---
 

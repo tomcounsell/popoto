@@ -39,7 +39,6 @@ from src.popoto.recipes.policy_cache import (  # noqa: E402
 )
 from src.popoto.redis_db import POPOTO_REDIS_DB  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

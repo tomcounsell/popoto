@@ -99,33 +99,33 @@ INTERACTION_PAIRS = [
 
 def run_tier(tier_sweeps, tier_name, runner, aggregator):
     """Run all sweeps for a tier."""
-    logger.info(f"Starting {tier_name} sweeps ({len(tier_sweeps)} constants)...")
+    logger.info("Starting %s sweeps (%d constants)...", tier_name, len(tier_sweeps))
     tier_start = time.monotonic()
 
     for constant_name, values in tier_sweeps.items():
-        logger.info(f"  Sweeping {constant_name} over {values}")
+        logger.info("  Sweeping %s over %s", constant_name, values)
         results = runner.run_single_sweep(constant_name, values)
         aggregator.add_sweep(constant_name, results)
 
         ok_count = sum(1 for r in results if r.status == "ok")
-        logger.info(f"    {ok_count}/{len(results)} points OK")
+        logger.info("    %d/%d points OK", ok_count, len(results))
 
     elapsed = time.monotonic() - tier_start
-    logger.info(f"{tier_name} complete in {elapsed:.1f}s")
+    logger.info("%s complete in %.1fs", tier_name, elapsed)
 
 
 def run_interactions(runner, aggregator):
     """Run pairwise interaction sweeps."""
-    logger.info(f"Starting interaction sweeps ({len(INTERACTION_PAIRS)} pairs)...")
+    logger.info("Starting interaction sweeps (%d pairs)...", len(INTERACTION_PAIRS))
 
     for const_a, vals_a, const_b, vals_b in INTERACTION_PAIRS:
         pair_name = f"{const_a}_x_{const_b}"
-        logger.info(f"  Pairwise: {const_a} x {const_b}")
+        logger.info("  Pairwise: %s x %s", const_a, const_b)
         results = runner.run_pairwise_sweep(const_a, vals_a, const_b, vals_b)
         aggregator.add_pairwise(pair_name, results)
 
         ok_count = sum(1 for r in results if r.status == "ok")
-        logger.info(f"    {ok_count}/{len(results)} points OK")
+        logger.info("    %d/%d points OK", ok_count, len(results))
 
 
 def main():
@@ -171,8 +171,8 @@ def main():
     # Print summary
     summary = aggregator.to_summary_dict()
     n_constants = len(summary["constants"])
-    logger.info(f"\nSweep complete: {n_constants} constants in {total_elapsed:.1f}s")
-    logger.info(f"Results saved to: {filepath}")
+    logger.info("\nSweep complete: %d constants in %.1fs", n_constants, total_elapsed)
+    logger.info("Results saved to: %s", filepath)
 
     # Print optimal values
     print("\n" + "=" * 70)

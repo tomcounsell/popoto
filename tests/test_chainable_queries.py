@@ -131,9 +131,9 @@ items_from_iteration = []
 for item in query:
     items_from_iteration.append(item)
 
-assert len(items_from_iteration) == 3, (
-    f"Expected 3 items, got {len(items_from_iteration)}"
-)
+assert (
+    len(items_from_iteration) == 3
+), f"Expected 3 items, got {len(items_from_iteration)}"
 
 print("  PASSED: QueryBuilder iteration works")
 
@@ -213,9 +213,9 @@ query1 = ChainTestModel.query.filter(status="active")
 query2 = query1.filter(name="alpha")
 
 # query1 should not be affected by query2's additional filter
-assert len(query1.all()) == 3, (
-    f"Expected 3 results from query1, got {len(query1.all())}"
-)
+assert (
+    len(query1.all()) == 3
+), f"Expected 3 results from query1, got {len(query1.all())}"
 assert len(query2.all()) == 1, f"Expected 1 result from query2, got {len(query2.all())}"
 
 print("  PASSED: filter() returns new QueryBuilder (immutable)")
@@ -229,9 +229,9 @@ print("Test 14: QueryBuilder __repr__")
 query = ChainTestModel.query.filter(status="active")
 repr_str = repr(query)
 assert "QueryBuilder" in repr_str, f"Expected 'QueryBuilder' in repr, got {repr_str}"
-assert "ChainTestModel" in repr_str, (
-    f"Expected 'ChainTestModel' in repr, got {repr_str}"
-)
+assert (
+    "ChainTestModel" in repr_str
+), f"Expected 'ChainTestModel' in repr, got {repr_str}"
 
 print("  PASSED: QueryBuilder __repr__ works")
 

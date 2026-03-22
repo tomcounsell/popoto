@@ -133,9 +133,9 @@ def performance_timer():
             self.elapsed = time.time() - self.start_time
 
         def assert_under(self, seconds, message=""):
-            assert self.elapsed < seconds, (
-                f"{message} took {self.elapsed:.2f}s (threshold: {seconds}s)"
-            )
+            assert (
+                self.elapsed < seconds
+            ), f"{message} took {self.elapsed:.2f}s (threshold: {seconds}s)"
 
     return Timer
 
@@ -204,9 +204,9 @@ def test_bulk_sorted_field_range_queries(performance_timer):
         results = list(
             SortedIntModel.query.filter(sorted_value__gte=500, sorted_value__lte=600)
         )
-    assert len(results) == 101, (
-        f"Expected 101 items between 500-600, got {len(results)}"
-    )
+    assert (
+        len(results) == 101
+    ), f"Expected 101 items between 500-600, got {len(results)}"
     timer.assert_under(0.1, "Query __gte=500, __lte=600")
 
     # Verify result values are in range
@@ -245,9 +245,9 @@ def test_bulk_geo_radius_search(performance_timer):
     timer.assert_under(0.2, "Geo radius search (10km)")
 
     # Should find center + nearby points (expect 5-25 within 10km)
-    assert 5 <= len(results) <= 30, (
-        f"Expected 5-30 results in 10km radius, got {len(results)}"
-    )
+    assert (
+        5 <= len(results) <= 30
+    ), f"Expected 5-30 results in 10km radius, got {len(results)}"
 
 
 @pytest.mark.slow

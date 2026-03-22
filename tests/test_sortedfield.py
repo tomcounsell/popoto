@@ -340,9 +340,9 @@ with warnings.catch_warnings(record=True) as w:
         value = popoto.SortedField(type=float, sort_by="key")
 
     deprecation_warnings = [x for x in w if issubclass(x.category, DeprecationWarning)]
-    assert len(deprecation_warnings) > 0, (
-        f"Expected DeprecationWarning for sort_by, got {w}"
-    )
+    assert (
+        len(deprecation_warnings) > 0
+    ), f"Expected DeprecationWarning for sort_by, got {w}"
     assert "partition_by" in str(deprecation_warnings[0].message)
 
 print("PASS")
@@ -357,9 +357,9 @@ with warnings.catch_warnings(record=True) as w:
         value = popoto.SortedField(type=float, partition_by="key")
 
     deprecation_warnings = [x for x in w if issubclass(x.category, DeprecationWarning)]
-    assert len(deprecation_warnings) == 0, (
-        f"Unexpected DeprecationWarning for partition_by: {deprecation_warnings}"
-    )
+    assert (
+        len(deprecation_warnings) == 0
+    ), f"Unexpected DeprecationWarning for partition_by: {deprecation_warnings}"
 
 print("PASS")
 

@@ -186,9 +186,9 @@ Order.query.filter(status="delivered").all()
 query_logger.setLevel(original_level)
 query_logger.removeHandler(handler)
 
-assert any("Client-side filter" in msg and "status" in msg for msg in log_messages), (
-    f"Expected debug log about client-side filter, got: {log_messages}"
-)
+assert any(
+    "Client-side filter" in msg and "status" in msg for msg in log_messages
+), f"Expected debug log about client-side filter, got: {log_messages}"
 
 print("  PASSED")
 

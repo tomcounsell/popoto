@@ -165,12 +165,12 @@ job1.status = "running"
 job1.save()
 
 # After mutation: job1 should be in "running" only, not in "pending"
-assert len(MutableKeyModel.query.filter(status="pending")) == 1, (
-    "Ghost entry: job1 still appears in pending index after status change"
-)
-assert len(MutableKeyModel.query.filter(status="running")) == 1, (
-    "job1 should appear in running index after status change"
-)
+assert (
+    len(MutableKeyModel.query.filter(status="pending")) == 1
+), "Ghost entry: job1 still appears in pending index after status change"
+assert (
+    len(MutableKeyModel.query.filter(status="running")) == 1
+), "job1 should appear in running index after status change"
 assert len(POPOTO_REDIS_DB.smembers(pending_key)) == 1
 assert len(POPOTO_REDIS_DB.smembers(running_key)) == 1
 

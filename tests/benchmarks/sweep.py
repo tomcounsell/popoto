@@ -161,7 +161,7 @@ class SweepRunner:
                             error_message=f"{constant_name}={value} is degenerate",
                         )
                     )
-                logger.warning(f"Skipping degenerate value: {constant_name}={value}")
+                logger.warning("Skipping degenerate value: %s=%s", constant_name, value)
                 continue
 
             for sc_class in self.scenario_classes:

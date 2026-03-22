@@ -164,9 +164,9 @@ def test_order_preserved_with_key_field_intersection(create_ordered_data):
     results = OrderTestModel.query.filter(score__gte=20.0, category="A")
 
     scores = [r.score for r in results]
-    assert scores == sorted(scores), (
-        f"Expected ascending order by score after intersection, got {scores}"
-    )
+    assert scores == sorted(
+        scores
+    ), f"Expected ascending order by score after intersection, got {scores}"
     assert scores == [30.0, 50.0]
     names = [r.name for r in results]
     assert names == ["charlie", "eve"]
@@ -200,9 +200,9 @@ def test_explicit_order_by_descending_sorted_field(create_ordered_data):
     results = OrderTestModel.query.filter(score__gte=15.0, order_by="-score")
 
     scores = [r.score for r in results]
-    assert scores == sorted(scores, reverse=True), (
-        f"Expected descending order by score, got {scores}"
-    )
+    assert scores == sorted(
+        scores, reverse=True
+    ), f"Expected descending order by score, got {scores}"
     assert scores == [50.0, 40.0, 30.0, 20.0]
 
 
@@ -234,9 +234,9 @@ async def test_async_filter_preserves_ordering(create_ordered_data):
     results = await OrderTestModel.query.async_filter(score__gte=15.0)
 
     scores = [r.score for r in results]
-    assert scores == sorted(scores), (
-        f"Expected ascending order by score (async), got {scores}"
-    )
+    assert scores == sorted(
+        scores
+    ), f"Expected ascending order by score (async), got {scores}"
     assert scores == [20.0, 30.0, 40.0, 50.0]
 
 
@@ -251,9 +251,9 @@ async def test_async_filter_with_explicit_order_by(create_ordered_data):
     results = await OrderTestModel.query.async_filter(score__gte=15.0, order_by="name")
 
     names = [r.name for r in results]
-    assert names == sorted(names), (
-        f"Expected alphabetical order by name (async), got {names}"
-    )
+    assert names == sorted(
+        names
+    ), f"Expected alphabetical order by name (async), got {names}"
     assert names == ["bob", "charlie", "dave", "eve"]
 
 
@@ -272,9 +272,9 @@ def test_sorted_field_order_overrides_meta_order_by(create_meta_ordered_data):
     results = OrderTestModelWithMeta.query.filter(score__gte=15.0)
 
     scores = [r.score for r in results]
-    assert scores == sorted(scores), (
-        f"Expected ascending score order (overriding Meta.order_by), got {scores}"
-    )
+    assert scores == sorted(
+        scores
+    ), f"Expected ascending score order (overriding Meta.order_by), got {scores}"
     assert scores == [20.0, 30.0, 40.0, 50.0]
 
 
@@ -288,9 +288,9 @@ def test_chainable_filter_preserves_ordering(create_ordered_data):
     results = OrderTestModel.query.filter(score__gte=15.0).all()
 
     scores = [r.score for r in results]
-    assert scores == sorted(scores), (
-        f"Expected ascending order via chainable API, got {scores}"
-    )
+    assert scores == sorted(
+        scores
+    ), f"Expected ascending order via chainable API, got {scores}"
     assert scores == [20.0, 30.0, 40.0, 50.0]
 
 
@@ -304,9 +304,9 @@ def test_chainable_order_by_overrides_implicit(create_ordered_data):
     results = OrderTestModel.query.filter(score__gte=15.0).order_by("name").all()
 
     names = [r.name for r in results]
-    assert names == sorted(names), (
-        f"Expected alphabetical order via chainable order_by, got {names}"
-    )
+    assert names == sorted(
+        names
+    ), f"Expected alphabetical order via chainable order_by, got {names}"
     assert names == ["bob", "charlie", "dave", "eve"]
 
 
@@ -320,9 +320,9 @@ def test_filter_lt_returns_ascending_order(create_ordered_data):
     results = OrderTestModel.query.filter(score__lt=40.0)
 
     scores = [r.score for r in results]
-    assert scores == sorted(scores), (
-        f"Expected ascending order by score with __lt, got {scores}"
-    )
+    assert scores == sorted(
+        scores
+    ), f"Expected ascending order by score with __lt, got {scores}"
     # score=10, 20, 30 are all < 40
     assert scores == [10.0, 20.0, 30.0]
 
@@ -337,9 +337,9 @@ def test_filter_gt_returns_ascending_order(create_ordered_data):
     results = OrderTestModel.query.filter(score__gt=20.0)
 
     scores = [r.score for r in results]
-    assert scores == sorted(scores), (
-        f"Expected ascending order by score with __gt, got {scores}"
-    )
+    assert scores == sorted(
+        scores
+    ), f"Expected ascending order by score with __gt, got {scores}"
     # score=30, 40, 50 are all > 20
     assert scores == [30.0, 40.0, 50.0]
 
@@ -355,9 +355,9 @@ async def test_async_filter_lte_preserves_ordering(create_ordered_data):
     results = await OrderTestModel.query.async_filter(score__lte=40.0)
 
     scores = [r.score for r in results]
-    assert scores == sorted(scores), (
-        f"Expected ascending order by score (async __lte), got {scores}"
-    )
+    assert scores == sorted(
+        scores
+    ), f"Expected ascending order by score (async __lte), got {scores}"
     assert scores == [10.0, 20.0, 30.0, 40.0]
 
 
@@ -372,9 +372,9 @@ async def test_async_filter_between_preserves_ordering(create_ordered_data):
     results = await OrderTestModel.query.async_filter(score__between=(15.0, 45.0))
 
     scores = [r.score for r in results]
-    assert scores == sorted(scores), (
-        f"Expected ascending order by score (async __between), got {scores}"
-    )
+    assert scores == sorted(
+        scores
+    ), f"Expected ascending order by score (async __between), got {scores}"
     assert scores == [20.0, 30.0, 40.0]
 
 
@@ -391,9 +391,9 @@ async def test_async_explicit_order_by_descending(create_ordered_data):
     )
 
     scores = [r.score for r in results]
-    assert scores == sorted(scores, reverse=True), (
-        f"Expected descending order by score (async), got {scores}"
-    )
+    assert scores == sorted(
+        scores, reverse=True
+    ), f"Expected descending order by score (async), got {scores}"
     assert scores == [50.0, 40.0, 30.0, 20.0]
 
 

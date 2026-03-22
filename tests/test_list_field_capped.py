@@ -62,9 +62,11 @@ def test_capped_list_push():
     # Reload from Redis to verify
     loaded = CappedListModel.query.get(name="test_push")
     # LPUSH prepends, so newest first
-    assert loaded.events == ["c", "b", "a"], (
-        f"Expected ['c', 'b', 'a'], got {loaded.events}"
-    )
+    assert loaded.events == [
+        "c",
+        "b",
+        "a",
+    ], f"Expected ['c', 'b', 'a'], got {loaded.events}"
 
 
 def test_capped_list_push_caps_at_max_length():
@@ -78,9 +80,13 @@ def test_capped_list_push_caps_at_max_length():
     loaded = CappedListModel.query.get(name="test_cap")
     assert len(loaded.events) == 5, f"Expected 5 items, got {len(loaded.events)}"
     # Newest first (LPUSH), so items 9, 8, 7, 6, 5
-    assert loaded.events == [9, 8, 7, 6, 5], (
-        f"Expected [9, 8, 7, 6, 5], got {loaded.events}"
-    )
+    assert loaded.events == [
+        9,
+        8,
+        7,
+        6,
+        5,
+    ], f"Expected [9, 8, 7, 6, 5], got {loaded.events}"
 
 
 def test_capped_list_delete_cleans_redis_key():
@@ -95,9 +101,9 @@ def test_capped_list_delete_cleans_redis_key():
     m.delete()
 
     # Verify the Redis list key is gone
-    assert not POPOTO_REDIS_DB.exists(list_key), (
-        f"Expected list key {list_key} to be deleted"
-    )
+    assert not POPOTO_REDIS_DB.exists(
+        list_key
+    ), f"Expected list key {list_key} to be deleted"
 
 
 def test_capped_list_empty_returns_empty_list():
@@ -185,6 +191,6 @@ def test_capped_list_not_in_hash():
 
     # Check that the 'events' field is NOT in the hash
     hash_data = POPOTO_REDIS_DB.hgetall(m._redis_key)
-    assert b"events" not in hash_data, (
-        "Capped list data should not be in the model hash"
-    )
+    assert (
+        b"events" not in hash_data
+    ), "Capped list data should not be in the model hash"

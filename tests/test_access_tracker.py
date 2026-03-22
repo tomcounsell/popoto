@@ -26,7 +26,6 @@ import pytest
 from src import popoto
 from src.popoto.fields.access_tracker import AccessTrackerMixin
 
-
 # --- Test Models ---
 
 
