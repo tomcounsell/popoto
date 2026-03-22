@@ -1,5 +1,5 @@
 ---
-status: Implemented
+status: Shipped
 type: feature
 appetite: Medium
 owner: Solo dev

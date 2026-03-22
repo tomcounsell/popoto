@@ -1,5 +1,5 @@
 ---
-status: In Progress
+status: Shipped
 type: feature
 appetite: Medium
 owner: Solo dev

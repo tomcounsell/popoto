@@ -1,5 +1,5 @@
 ---
-status: Complete
+status: Shipped
 type: chore
 appetite: Large
 owner: Tom Counsell

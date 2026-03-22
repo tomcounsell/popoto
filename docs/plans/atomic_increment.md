@@ -1,5 +1,5 @@
 ---
-status: Planning
+status: Shipped
 type: feature
 appetite: Small
 owner: Solo dev
