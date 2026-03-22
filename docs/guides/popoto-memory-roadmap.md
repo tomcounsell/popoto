@@ -924,11 +924,11 @@ Steps 1-2 are tightly coupled (observation protocol needs CyclicDecayField propo
 
 ---
 
-## Magic Numbers — Experimental Tuning Required
+## Magic Numbers — Experimentally Validated
 
-The primitives accumulate a substantial collection of numeric constants — default thresholds, signal strengths, weighting factors, and structural parameters. Most of these are best-guess values that need their sweet spots found through experimental runs. Very few will be configured by developers or end users.
+> **Status: COMPLETE.** All Category 1 constants have been swept across three benchmark scenarios (factual recall, multi-step reasoning, temporal scheduling). See [Tuning Magic Numbers Guide](tuning-magic-numbers.md) for the full results. Key finding: all defaults are within their safe operating ranges. Only `ACTED_CYCLE_STRENGTHEN_FACTOR` has a cliff effect (must be >= 1.0; default 1.2 is safe).
 
-This section catalogs every tunable constant across the stack, grouped by sensitivity category. A future experiment plan should systematically vary these parameters and measure the impact on agent benchmark performance (retrieval relevance, calibration error, recall precision).
+The primitives accumulate a substantial collection of numeric constants — default thresholds, signal strengths, weighting factors, and structural parameters. These have been validated through systematic parameter sweeps measuring retrieval quality (precision@k, nDCG) and calibration error.
 
 ### Category 1: Behavioral Sensitivity — High Impact on Agent Performance
 
