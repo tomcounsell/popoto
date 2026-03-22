@@ -5,8 +5,8 @@ Complete reference for all public classes, methods, and functions in the Popoto 
 ```python
 from popoto import Model, Field, KeyField, AutoKeyField, UniqueKeyField
 from popoto import SortedField, SortedKeyField, GeoField, DatetimeField, Relationship
-from popoto import DecayingSortedField, CyclicDecayField, TemporalPeriod, InteractionWeight, AccessTrackerMixin
-from popoto import ObservationProtocol, RecallProposal, ConfidenceField, PredictionLedgerMixin
+from popoto import DecayingSortedField, CyclicDecayField, TemporalPeriod, InteractionWeight, Defaults
+from popoto import AccessTrackerMixin, ObservationProtocol, RecallProposal, ConfidenceField, PredictionLedgerMixin
 from popoto import Publisher, Subscriber
 from popoto import ModelException, QueryException, PublisherException, SubscriberException
 ```
@@ -1295,6 +1295,57 @@ score = InteractionWeight.combine(InteractionWeight.AGENT, InteractionWeight.PEE
 ```
 
 See [Agent Memory — Source weighting](features/agent-memory.md#source-weighting-for-teamwork) for the full lifetime table and usage patterns.
+
+### Defaults
+
+```python
+from popoto import Defaults
+# or: from popoto.fields.constants import Defaults
+```
+
+Centralized registry of all tuning constants across the 14 agent-memory primitives. Override globally by setting class attributes, or per-field via explicit kwargs (explicit kwargs always win).
+
+#### Constants by primitive
+
+| Constant | Default | Owner |
+|----------|---------|-------|
+| `Defaults.DECAY_RATE` | `0.5` | DecayingSortedField |
+| `Defaults.INITIAL_CONFIDENCE` | `0.5` | ConfidenceField |
+| `Defaults.ACTED_CONFIDENCE_SIGNAL` | `0.9` | ObservationProtocol |
+| `Defaults.CONTRADICTED_CONFIDENCE_SIGNAL` | `0.1` | ObservationProtocol |
+| `Defaults.ACTED_CYCLE_STRENGTHEN_FACTOR` | `1.2` | ObservationProtocol |
+| `Defaults.DISMISSED_CYCLE_WEAKEN_FACTOR` | `0.8` | ObservationProtocol |
+| `Defaults.CONTRADICTED_CYCLE_WEAKEN_FACTOR` | `0.5` | ObservationProtocol |
+| `Defaults.AUTO_DISCHARGE_CONFIDENCE_THRESHOLD` | `0.1` | ObservationProtocol |
+| `Defaults.WF_MIN_THRESHOLD` | `0.2` | WriteFilterMixin |
+| `Defaults.WF_PRIORITY_THRESHOLD` | `0.7` | WriteFilterMixin |
+| `Defaults.CO_OCCURRENCE_DECAY_FACTOR` | `0.95` | CoOccurrenceField |
+| `Defaults.CO_OCCURRENCE_INITIAL_WEIGHT` | `1.0` | CoOccurrenceField |
+| `Defaults.CO_OCCURRENCE_DECAY_PER_HOP` | `0.5` | CoOccurrenceField |
+| `Defaults.PL_CONFIDENCE_ERROR_THRESHOLD` | `0.7` | PredictionLedgerMixin |
+| `Defaults.PL_CONFIDENCE_LOW_SIGNAL` | `0.2` | PredictionLedgerMixin |
+| `Defaults.PL_AUTO_RESOLVE_ACTED` | `0.1` | PredictionLedgerMixin |
+| `Defaults.PL_AUTO_RESOLVE_DISMISSED` | `0.5` | PredictionLedgerMixin |
+| `Defaults.PL_AUTO_RESOLVE_CONTRADICTED` | `0.9` | PredictionLedgerMixin |
+| `Defaults.MIN_EVENTS_FOR_CRYSTALLIZATION` | `3` | PolicyCache |
+| `Defaults.WILSON_CI_THRESHOLD` | `0.6` | PolicyCache |
+| `Defaults.TD_ALPHA` | `0.1` | PolicyCache |
+| `Defaults.TD_GAMMA` | `0.95` | PolicyCache |
+| `Defaults.CHI_SQUARED_P_THRESHOLD` | `0.05` | PolicyCache |
+| `Defaults.INITIAL_CYCLE_AMPLITUDE` | `0.5` | PolicyCache |
+| `Defaults.COMPETITIVE_SUPPRESSION_SIGNAL` | `0.3` | ContextAssembler |
+| `Defaults.DEFAULT_SURFACING_THRESHOLD` | `0.5` | ContextAssembler |
+
+#### Global override example
+
+```python
+from popoto import Defaults
+
+# All DecayingSortedFields will use 0.7 unless they pass decay_rate= explicitly
+Defaults.DECAY_RATE = 0.7
+```
+
+See [Tuning Magic Numbers](guides/tuning-magic-numbers.md) for benchmark-validated override guidance.
 
 ### GeoField
 
