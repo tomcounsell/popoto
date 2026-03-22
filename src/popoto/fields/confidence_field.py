@@ -26,6 +26,7 @@ import redis
 
 from ..exceptions import ModelException
 from ..redis_db import POPOTO_REDIS_DB
+from .constants import Defaults
 from .field import Field
 
 logger = logging.getLogger("POPOTO.ConfidenceField")
@@ -107,7 +108,12 @@ class ConfidenceField(Field):
     """
 
     def __init__(self, **kwargs):
-        self.initial_confidence = kwargs.pop("initial_confidence", 0.5)
+        initial_confidence = kwargs.pop("initial_confidence", None)
+        self.initial_confidence = (
+            initial_confidence
+            if initial_confidence is not None
+            else Defaults.INITIAL_CONFIDENCE
+        )
 
         if not 0 <= self.initial_confidence <= 1:
             raise ModelException(

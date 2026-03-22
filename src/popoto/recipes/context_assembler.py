@@ -58,6 +58,7 @@ from dataclasses import dataclass, field
 
 from ..fields.co_occurrence_field import CoOccurrenceField
 from ..fields.confidence_field import ConfidenceField
+from ..fields.constants import Defaults
 from ..fields.cyclic_decay_field import CyclicDecayField
 from ..fields.existence_filter import ExistenceFilter
 from ..fields.observation import ObservationProtocol
@@ -90,13 +91,13 @@ def _get_key(instance) -> str:
 # Tuning Constants — validated via parameter sweep (issue #234)
 # ---------------------------------------------------------------------------
 
-COMPETITIVE_SUPPRESSION_SIGNAL = 0.3
+COMPETITIVE_SUPPRESSION_SIGNAL = Defaults.COMPETITIVE_SUPPRESSION_SIGNAL
 """Signal strength for competitive suppression of non-selected pull-path
 candidates. Applied via ConfidenceField.update_confidence(). Values < 0.5
 act as contradiction signals, mildly reducing future ranking.
 Optimal range: [0.1, 0.7]. Insensitive to retrieval quality."""
 
-DEFAULT_SURFACING_THRESHOLD = 0.5
+DEFAULT_SURFACING_THRESHOLD = Defaults.DEFAULT_SURFACING_THRESHOLD
 """Minimum score for push-path records to be surfaced. Records from
 CyclicDecayField scan below this threshold are filtered out.
 Optimal range: [0.1, 0.9]. Insensitive to retrieval quality."""
