@@ -5,7 +5,7 @@ All functions are pure — no Redis or model dependencies.
 """
 
 import math
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 
 def precision_at_k(retrieved: List[str], relevant: set, k: int) -> float:

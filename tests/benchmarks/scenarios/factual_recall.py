@@ -8,8 +8,6 @@ Ground truth: facts with importance >= 0.7 are "relevant".
 Query: composite_score with decay + confidence weights.
 """
 
-import time
-
 from src import popoto
 from src.popoto.fields.confidence_field import ConfidenceField
 from src.popoto.fields.decaying_sorted_field import DecayingSortedField

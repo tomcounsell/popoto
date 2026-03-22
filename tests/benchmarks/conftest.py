@@ -1,16 +1,14 @@
 """Benchmark test configuration.
 
 Provides fixtures for Redis isolation and constant override injection.
-All benchmarks use Redis DB 15 or a unique key prefix to prevent
-interference with concurrent tests or development data.
+All benchmarks use unique key prefixes to prevent interference with
+concurrent tests or development data.
 """
 
 import time
 import uuid
 
 import pytest
-
-BENCHMARK_DB = 15
 
 
 @pytest.fixture
