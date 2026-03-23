@@ -27,8 +27,8 @@ class TestEnableWithoutSentrySdk:
         result = enable_error_reporting()
         assert result is None
 
-    def test_do_enable_raises_without_dsn(self):
-        """_do_enable raises ValueError when no real DSN is provided."""
+    def test_do_enable_silent_noop_without_dsn(self):
+        """_do_enable silently returns when no DSN is available."""
         pytest.importorskip("sentry_sdk")
 
         import popoto._error_reporting as mod
@@ -36,8 +36,11 @@ class TestEnableWithoutSentrySdk:
         mod._enabled = False
         mod._scope = None
 
-        with pytest.raises(ValueError, match="requires a valid Sentry DSN"):
-            mod._do_enable(dsn=None)
+        # Should silently return (no ValueError, no enabling)
+        mod._do_enable(dsn=None)
+
+        assert mod._enabled is False
+        assert mod._scope is None
 
         # cleanup
         mod._enabled = False
@@ -201,6 +204,67 @@ class TestExceptionAutoCapture:
             pass
 
         # The patched __init__ should have called capture_exception
+        assert mock_scope.capture_exception.called
+
+    def teardown_method(self):
+        import popoto._error_reporting as mod
+
+        for cls, orig in mod._original_inits.items():
+            cls.__init__ = orig
+        mod._original_inits.clear()
+        mod._enabled = False
+        mod._scope = None
+
+
+class TestSkipSaveExceptionExcluded:
+    """Verify that SkipSaveException does NOT trigger error reporting."""
+
+    def setup_method(self):
+        import popoto._error_reporting as mod
+
+        mod._enabled = False
+        mod._scope = None
+        mod._original_inits.clear()
+
+    def test_skip_save_exception_not_reported(self):
+        """SkipSaveException is control-flow and must not be captured."""
+        pytest.importorskip("sentry_sdk")
+
+        import popoto._error_reporting as mod
+
+        mod.enable_error_reporting(dsn="https://key@sentry.test/1")
+
+        mock_scope = mock.MagicMock()
+        mod._scope = mock_scope
+
+        from popoto.exceptions import SkipSaveException
+
+        try:
+            raise SkipSaveException("below threshold")
+        except SkipSaveException:
+            pass
+
+        # SkipSaveException should NOT have triggered capture_exception
+        mock_scope.capture_exception.assert_not_called()
+
+    def test_model_exception_still_reported(self):
+        """Regular ModelException is still captured after SkipSave exclusion."""
+        pytest.importorskip("sentry_sdk")
+
+        import popoto._error_reporting as mod
+
+        mod.enable_error_reporting(dsn="https://key@sentry.test/1")
+
+        mock_scope = mock.MagicMock()
+        mod._scope = mock_scope
+
+        from popoto.exceptions import ModelException
+
+        try:
+            raise ModelException("real error")
+        except ModelException:
+            pass
+
         assert mock_scope.capture_exception.called
 
     def teardown_method(self):

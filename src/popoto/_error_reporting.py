@@ -24,10 +24,8 @@ _enabled: bool = False
 _scope: Optional[object] = None  # sentry_sdk.Scope when active
 _original_inits: dict = {}  # class -> original __init__
 
-# Placeholder DSN -- must be replaced with the real yudame/popoto Sentry DSN
-# or overridden via POPOTO_SENTRY_DSN env var or dsn= argument.
-_DEFAULT_DSN = "https://examplePublicKey@o0.ingest.sentry.io/0"
-_PLACEHOLDER_DSN = _DEFAULT_DSN  # Used to detect unconfigured state
+# TODO: hardcode the yudame/popoto Sentry DSN here once available
+_DEFAULT_DSN: Optional[str] = None
 
 
 def _get_popoto_version() -> str:
@@ -75,8 +73,8 @@ def enable_error_reporting(dsn: Optional[str] = None) -> None:
 
     Args:
         dsn: Sentry DSN for error reporting. If not provided, the
-            ``POPOTO_SENTRY_DSN`` environment variable is checked. A
-            ``ValueError`` is raised if neither is set.
+            ``POPOTO_SENTRY_DSN`` environment variable is checked. If
+            neither is set, this function silently does nothing.
 
     Example::
 
@@ -104,12 +102,8 @@ def _do_enable(dsn: Optional[str]) -> None:
 
     resolved_dsn = dsn or os.environ.get("POPOTO_SENTRY_DSN") or _DEFAULT_DSN
 
-    if resolved_dsn == _PLACEHOLDER_DSN:
-        raise ValueError(
-            "Popoto error reporting requires a valid Sentry DSN. "
-            "Provide one via the dsn= argument to enable_error_reporting() "
-            "or set the POPOTO_SENTRY_DSN environment variable."
-        )
+    if not resolved_dsn:
+        return  # No DSN available — silently skip error reporting
 
     client = Client(
         dsn=resolved_dsn,
@@ -148,6 +142,7 @@ def _patch_exceptions() -> None:
     """Monkey-patch Popoto exception ``__init__`` methods to auto-report."""
     try:
         from . import exceptions as _exc
+        from .exceptions import SkipSaveException
 
         exception_classes = [
             _exc.ModelException,
@@ -165,7 +160,9 @@ def _patch_exceptions() -> None:
                 def patched_init(self, *args, **kwargs):
                     orig(self, *args, **kwargs)
                     try:
-                        capture_exception(self)
+                        # SkipSaveException is control-flow, not a real error
+                        if not isinstance(self, SkipSaveException):
+                            capture_exception(self)
                     except Exception:
                         pass
 
