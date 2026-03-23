@@ -124,6 +124,64 @@ MONITOR
 
 See the [CLAUDE.md](https://github.com/tomcounsell/popoto) debugging section for more Redis CLI patterns.
 
+## Error Reporting (Opt-In)
+
+Popoto includes optional, opt-in error reporting that sends library-specific
+exceptions to the Popoto maintainers via [Sentry](https://sentry.io). This
+helps the maintainers discover and fix bugs that users encounter in the wild.
+
+**Error reporting is disabled by default.** Nothing is sent unless you
+explicitly enable it.
+
+### Installation
+
+Install Popoto with the `monitoring` extra to include `sentry-sdk`:
+
+```bash
+pip install popoto[monitoring]
+```
+
+### Enabling
+
+Call `enable_error_reporting()` once at application startup:
+
+```python
+import popoto
+
+popoto.enable_error_reporting()
+```
+
+When enabled, Popoto-specific exceptions (such as `ModelException` and
+`QueryException`) are automatically reported in the background. The reporter:
+
+- Uses an **isolated Sentry client** that does not interfere with your
+  application's own `sentry_sdk.init()` or global Sentry configuration
+- Sends events **asynchronously** via a background thread -- no added latency
+- **Silently degrades** if `sentry-sdk` is not installed, the network is
+  unavailable, or any internal error occurs
+- Never re-raises, never logs, never delays your application
+
+### Custom DSN
+
+To send reports to your own Sentry project instead of the Popoto maintainers,
+set the `POPOTO_SENTRY_DSN` environment variable:
+
+```bash
+export POPOTO_SENTRY_DSN="https://your-key@your-org.ingest.sentry.io/your-project"
+```
+
+Or pass the DSN directly:
+
+```python
+popoto.enable_error_reporting(dsn="https://your-key@your-org.ingest.sentry.io/your-project")
+```
+
+### What Gets Sent
+
+- Exception type, message, and traceback
+- Popoto version and Python version
+- No personally identifiable information beyond Sentry's default PII scrubbing
+
 ## Environment Variables
 
 | Variable | Default | Description |
@@ -131,6 +189,7 @@ See the [CLAUDE.md](https://github.com/tomcounsell/popoto) debugging section for
 | `REDIS_URL` | *(empty)* | Redis connection URL. Falls back to localhost:6379. |
 | `BEGINNING_OF_TIME` | `0` | Unix timestamp used as the minimum time boundary for time-based queries. |
 | `POPOTO_LOG_LEVEL` | `WARNING` | Log level for POPOTO-REDIS_DB logger (DEBUG, INFO, WARNING, ERROR, CRITICAL) |
+| `POPOTO_SENTRY_DSN` | *(built-in)* | Override the Sentry DSN used by `enable_error_reporting()`. |
 
 ## Thread Safety
 

@@ -81,6 +81,18 @@ REDIS_URL = "redis://HOST[:PORT]/DATABASE[?password=PASSWORD]"
 
 See [Configuration](configuration.md) for full connection options.
 
+### Enable Error Reporting (Optional)
+
+Help improve Popoto by opting in to anonymous error reporting. When enabled, library-specific exceptions are sent to the Popoto maintainers via Sentry. This uses an isolated client that never interferes with your own Sentry setup.
+
+```python
+import popoto
+
+popoto.enable_error_reporting()
+```
+
+Install with `pip install popoto[monitoring]` to include the `sentry-sdk` dependency, or skip this step entirely — Popoto works the same either way.
+
 ### Define a Model
 
 Start by defining a model class. Models inherit from `popoto.Model` and define fields for the data you want to store.
