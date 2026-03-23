@@ -1,16 +1,22 @@
-Load full context for building Popoto Agent Memory primitives. Run this before planning or building any agent-memory labeled issue.
+Load full context for working with Popoto Agent Memory primitives. Run this before planning or building any agent-memory labeled issue.
 
 ## What is Popoto Agent Memory?
 
 A set of 14 ORM primitives that give AI agents programmable memory — records that decay over time, strengthen through use, track confidence, form associations, and surface the right context at the right moment. Each primitive is an independently useful Redis-backed field type, mixin, or query method.
 
+All 14 primitives have shipped as of v1.0.3.
+
+## Step 0: Read the quickstart guide
+
+Start with `docs/guides/agent-memory-quickstart.md` for a progressive adoption path — from basic time-weighted retrieval to full LLM-ready context assembly in 5 levels.
+
 ## Step 1: Read the feature doc
 
-Read `docs/features/agent-memory.md` for the full primitives overview, API sketches, and design principles.
+Read `docs/features/agent-memory.md` for the full primitives overview, API details, and design principles.
 
 ## Step 2: Read the implementation roadmap
 
-Read `docs/references/popoto-memory-roadmap.md` for the 14-step implementation plan with:
+Read `docs/guides/popoto-memory-roadmap.md` for the 14-step implementation plan with:
 - Exact data structures and Lua scripts per primitive
 - Synergy tests between primitives (combinatorial test matrix)
 - Measurable agent improvement benchmarks per step
@@ -19,8 +25,8 @@ Read `docs/references/popoto-memory-roadmap.md` for the 14-step implementation p
 ## Step 3: Read the research foundations
 
 Skim these for design rationale — don't memorize, but understand the "why" behind each primitive:
-- `docs/references/epistemic-flow-cognitive-agent-architectures.md` — how cognitive primitives compose into agent architectures
-- `docs/references/programmable-memory-systems-neuroscience-design-spec.md` — neuroscience grounding for decay, confidence, and association algorithms
+- `docs/guides/epistemic-flow-cognitive-agent-architectures.md` — how cognitive primitives compose into agent architectures
+- `docs/guides/programmable-memory-systems-neuroscience-design-spec.md` — neuroscience grounding for decay, confidence, and association algorithms
 
 ## Step 4: Understand the extension points
 
@@ -33,19 +39,21 @@ Read these files to understand how Popoto fields and queries work — every new 
 
 ## Step 5: Review shipped primitives
 
-12 of 14 primitives have shipped. Key implementation files:
+All 14 primitives have shipped. Key implementation files:
 - `src/popoto/fields/decaying_sorted_field.py` — DecayingSortedField (PR #199)
 - `src/popoto/fields/cyclic_decay_field.py` — CyclicDecayField (PR #201)
 - `src/popoto/fields/access_tracker.py` — AccessTrackerMixin (PR #203)
-- `src/popoto/fields/observation_protocol.py` — ObservationProtocol (PR #206)
+- `src/popoto/fields/observation.py` — ObservationProtocol (PR #206)
 - `src/popoto/fields/write_filter.py` — WriteFilterMixin (PR #214)
 - `src/popoto/fields/confidence_field.py` — ConfidenceField (PR #215)
 - `src/popoto/fields/co_occurrence_field.py` — CoOccurrenceField (PR #218)
-- `src/popoto/fields/event_stream_mixin.py` — EventStreamMixin (shipped)
+- `src/popoto/fields/event_stream.py` — EventStreamMixin (shipped)
 - `src/popoto/models/query.py` — CompositeScoreQuery via `composite_score()` (PR #222)
 - `src/popoto/fields/existence_filter.py` — ExistenceFilter + FrequencySketch (PR #225)
 - `src/popoto/fields/prediction_ledger.py` — PredictionLedgerMixin (PR #231)
 - `src/popoto/streams/consumer.py` — StreamConsumer (PR #238)
+- `src/popoto/recipes/policy_cache.py` — PolicyCache (PR #239)
+- `src/popoto/recipes/context_assembler.py` — ContextAssembler (shipped)
 
 Check `tests/test_lua_decay_scoring.py` for the validated Lua decay formula and test patterns.
 
@@ -75,11 +83,6 @@ Review open issues and merged PRs to understand what's already shipped vs. in pr
 - Redis-native everything — no external brokers, no Celery, no Redis modules
 - **Valkey compatible** — only core Redis commands + Lua scripts. No BF.*, CMS.*, FT.*, JSON.* or any module commands
 - Follow existing Popoto code style: black formatting, 88 char lines
-
-## Remaining work (2 primitives)
-
-- **PolicyCache** — learned action selection from crystallized state-action-outcome patterns
-- **ContextAssembler** — retrieval-to-injection bridge, assembles LLM-ready context within token budgets
 
 ## Downstream consumer
 
