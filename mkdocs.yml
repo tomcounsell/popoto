@@ -29,6 +29,8 @@ nav:
         - Meta Class Implementation: 'features/meta-class-implementation.md'
         - Kitchen Edge Case Demo: 'features/kitchen-edge-case-demo.md'
     - Guides:
+        - Agent Memory Quickstart: 'guides/agent-memory-quickstart.md'
+        - Tuning Magic Numbers: 'guides/tuning-magic-numbers.md'
         - Policy Cache Recipe: 'guides/policy-cache-recipe.md'
         - Memory Roadmap: 'guides/popoto-memory-roadmap.md'
         - Neuroscience Design Spec: 'guides/programmable-memory-systems-neuroscience-design-spec.md'

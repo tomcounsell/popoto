@@ -1,5 +1,7 @@
 # Tuning Magic Numbers: Agent-Memory Constants
 
+> **New to Agent Memory?** Start with the [Quickstart Guide](agent-memory-quickstart.md) for a progressive adoption path.
+
 This guide documents the ~25 behavioral constants that control Popoto's agent-memory primitives. Each constant has been validated through systematic parameter sweeps across three benchmark scenarios.
 
 ## Overview
