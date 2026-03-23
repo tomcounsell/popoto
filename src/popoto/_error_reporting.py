@@ -24,11 +24,10 @@ _enabled: bool = False
 _scope: Optional[object] = None  # sentry_sdk.Scope when active
 _original_inits: dict = {}  # class -> original __init__
 
-# Default DSN for the yudame/popoto Sentry project.
-# This is a *public/client-side* key -- safe to embed in source code.
-_DEFAULT_DSN = (
-    "https://examplePublicKey@o0.ingest.sentry.io/0"
-)
+# Placeholder DSN -- must be replaced with the real yudame/popoto Sentry DSN
+# or overridden via POPOTO_SENTRY_DSN env var or dsn= argument.
+_DEFAULT_DSN = "https://examplePublicKey@o0.ingest.sentry.io/0"
+_PLACEHOLDER_DSN = _DEFAULT_DSN  # Used to detect unconfigured state
 
 
 def _get_popoto_version() -> str:
@@ -75,9 +74,9 @@ def enable_error_reporting(dsn: Optional[str] = None) -> None:
     global Sentry configuration.
 
     Args:
-        dsn: Optional override for the Sentry DSN. If not provided, the
-            ``POPOTO_SENTRY_DSN`` environment variable is checked, then
-            the built-in default DSN is used.
+        dsn: Sentry DSN for error reporting. If not provided, the
+            ``POPOTO_SENTRY_DSN`` environment variable is checked. A
+            ``ValueError`` is raised if neither is set.
 
     Example::
 
@@ -104,6 +103,13 @@ def _do_enable(dsn: Optional[str]) -> None:
         return
 
     resolved_dsn = dsn or os.environ.get("POPOTO_SENTRY_DSN") or _DEFAULT_DSN
+
+    if resolved_dsn == _PLACEHOLDER_DSN:
+        raise ValueError(
+            "Popoto error reporting requires a valid Sentry DSN. "
+            "Provide one via the dsn= argument to enable_error_reporting() "
+            "or set the POPOTO_SENTRY_DSN environment variable."
+        )
 
     client = Client(
         dsn=resolved_dsn,
@@ -155,7 +161,7 @@ def _patch_exceptions() -> None:
                 continue  # already patched
             original_init = cls.__init__
 
-            def _make_patched(orig, klass):
+            def _make_patched(orig):
                 def patched_init(self, *args, **kwargs):
                     orig(self, *args, **kwargs)
                     try:
@@ -166,6 +172,6 @@ def _patch_exceptions() -> None:
                 return patched_init
 
             _original_inits[cls] = original_init
-            cls.__init__ = _make_patched(original_init, cls)
+            cls.__init__ = _make_patched(original_init)
     except Exception:
         pass

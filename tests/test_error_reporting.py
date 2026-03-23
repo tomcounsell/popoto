@@ -17,15 +17,31 @@ class TestEnableWithoutSentrySdk:
         with mock.patch.dict(sys.modules, {"sentry_sdk": None}):
             from popoto._error_reporting import _do_enable
 
-            # Should silently return without error
+            # Should silently return without error (ImportError before DSN check)
             _do_enable(dsn=None)
 
     def test_enable_returns_none(self):
-        """The public function always returns None."""
+        """The public function always returns None (swallows ValueError)."""
         from popoto._error_reporting import enable_error_reporting
 
         result = enable_error_reporting()
         assert result is None
+
+    def test_do_enable_raises_without_dsn(self):
+        """_do_enable raises ValueError when no real DSN is provided."""
+        pytest.importorskip("sentry_sdk")
+
+        import popoto._error_reporting as mod
+
+        mod._enabled = False
+        mod._scope = None
+
+        with pytest.raises(ValueError, match="requires a valid Sentry DSN"):
+            mod._do_enable(dsn=None)
+
+        # cleanup
+        mod._enabled = False
+        mod._scope = None
 
 
 class TestEnableWithMockSentry:
