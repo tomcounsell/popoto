@@ -451,6 +451,7 @@ class QueryBuilder:
         min_score: float = None,
         post_filter: Optional[Callable[[str, float], bool]] = None,
         co_occurrence_boost: dict = None,
+        similarity_boost: dict = None,
         temperature: float = 1.0,
     ) -> list:
         """Return top-K instances ranked by a weighted composite of multiple indexes.
@@ -482,6 +483,9 @@ class QueryBuilder:
             co_occurrence_boost: Optional dict ``{redis_key: weight}`` from
                 ``CoOccurrenceField.propagate()``. Injected as an additional
                 index in the composite.
+            similarity_boost: Optional dict ``{redis_key: score}`` from
+                ``semantic_search()``. Injected as an additional index
+                in the composite, identical mechanism to co_occurrence_boost.
             temperature: Scales composite scores by dividing each score by this
                 value. Low temperature (0.02-0.1) sharpens discrimination so top
                 scores dominate. Default 1.0 preserves current behavior. High
@@ -546,6 +550,17 @@ class QueryBuilder:
             POPOTO_REDIS_DB.expire(co_key, 5)
             temp_keys.append(co_key)
             resolved_keys[co_key] = 1.0  # weight already in the scores
+
+        # --- Handle similarity_boost ---
+        if similarity_boost:
+            sim_key = f"$CSQ:{model_name}:similarity:{uid}"
+            POPOTO_REDIS_DB.zadd(
+                sim_key,
+                {str(k): float(v) for k, v in similarity_boost.items()},
+            )
+            POPOTO_REDIS_DB.expire(sim_key, 5)
+            temp_keys.append(sim_key)
+            resolved_keys[sim_key] = 1.0  # weight already in the scores
 
         if not resolved_keys:
             self._cleanup_temp_keys(temp_keys)
@@ -618,6 +633,192 @@ class QueryBuilder:
 
         finally:
             self._cleanup_temp_keys(temp_keys)
+
+    def semantic_search(
+        self,
+        query_text: str,
+        indexes: dict = None,
+        limit: int = 10,
+        aggregate: str = "SUM",
+        min_score: float = None,
+        post_filter: Optional[Callable[[str, float], bool]] = None,
+        co_occurrence_boost: dict = None,
+        temperature: float = 1.0,
+    ) -> list:
+        """Return top-K instances ranked by semantic similarity combined with memory signals.
+
+        Embeds the query text via the configured provider, computes cosine
+        similarity against all stored embeddings, and injects similarity
+        scores into composite_score() via the similarity_boost parameter.
+
+        Args:
+            query_text: The text to search for semantically.
+            indexes: Optional mapping of field names to weights for
+                composite scoring alongside similarity. If None, returns
+                results ranked by similarity alone.
+            limit: Maximum results to return. Default 10.
+            aggregate: Aggregation mode for ZUNIONSTORE. Default "SUM".
+            min_score: Optional minimum composite score threshold.
+            post_filter: Optional callable (redis_key, score) -> bool.
+            co_occurrence_boost: Optional {redis_key: weight} dict.
+            temperature: Score scaling factor. Default 1.0.
+
+        Returns:
+            List of model instances ranked by combined score (descending).
+            Returns empty list if query_text is empty, no provider is
+            configured, or no embeddings exist.
+
+        Example:
+            results = Memory.query.semantic_search(
+                "revenue trends",
+                indexes={"relevance": 0.4, "confidence": 0.3},
+                limit=10,
+            )
+        """
+        if not query_text or not query_text.strip():
+            return []
+
+        model_class = self._query.model_class
+
+        # Find the EmbeddingField on the model
+        from ..fields.embedding_field import EmbeddingField
+
+        embedding_field = None
+        for fname, field in model_class._meta.fields.items():
+            if isinstance(field, EmbeddingField):
+                embedding_field = field
+                break
+
+        if embedding_field is None:
+            raise QueryException(
+                f"{model_class.__name__} has no EmbeddingField for semantic_search()"
+            )
+
+        provider = embedding_field.provider
+        if provider is None:
+            return []
+
+        # Embed the query text
+        try:
+            query_vectors = provider.embed([query_text], input_type="query")
+            if not query_vectors or not query_vectors[0]:
+                return []
+        except Exception as e:
+            logger.error(f"semantic_search embedding failed: {e}")
+            return []
+
+        # Load cached embeddings for this model class
+        try:
+            import numpy as np
+        except ImportError:
+            raise QueryException(
+                "numpy is required for semantic_search(). "
+                "Install with: pip install popoto[embeddings]"
+            )
+
+        matrix, keys = EmbeddingField.load_embeddings(model_class)
+        if matrix is None or len(keys) == 0:
+            return []
+
+        # Compute cosine similarity (matrix is pre-normalized)
+        query_vec = np.array(query_vectors[0], dtype=np.float32)
+        query_norm = np.linalg.norm(query_vec)
+        if query_norm == 0:
+            return []
+        query_vec = query_vec / query_norm
+
+        similarities = matrix @ query_vec  # dot product on unit vectors
+
+        # Build similarity_boost dict: {redis_key: similarity_score}
+        similarity_boost = {}
+        for i, score in enumerate(similarities):
+            if score > 0:  # Only include positive similarities
+                similarity_boost[keys[i]] = float(score)
+
+        if not similarity_boost:
+            return []
+
+        # If no additional indexes provided, use similarity-only mode
+        if not indexes:
+            # Direct similarity ranking without composite_score overhead
+            return self._similarity_only_search(
+                model_class, similarity_boost, limit, temperature, post_filter
+            )
+
+        # Delegate to composite_score with similarity_boost
+        return self.composite_score(
+            indexes=indexes,
+            limit=limit,
+            aggregate=aggregate,
+            min_score=min_score,
+            post_filter=post_filter,
+            co_occurrence_boost=co_occurrence_boost,
+            similarity_boost=similarity_boost,
+            temperature=temperature,
+        )
+
+    def _similarity_only_search(
+        self, model_class, similarity_boost, limit, temperature, post_filter
+    ):
+        """Rank and return instances using only similarity scores.
+
+        Used when semantic_search() is called without additional indexes.
+        Creates a temp ZSET from similarity scores and hydrates top-K.
+        """
+        import uuid
+        from .encoding import decode_popoto_model_hashmap
+
+        uid = uuid.uuid4().hex[:8]
+        model_name = model_class.__name__
+        sim_key = f"$CSQ:{model_name}:sim_only:{uid}"
+
+        try:
+            POPOTO_REDIS_DB.zadd(
+                sim_key,
+                {str(k): float(v) for k, v in similarity_boost.items()},
+            )
+            POPOTO_REDIS_DB.expire(sim_key, 5)
+
+            raw_results = POPOTO_REDIS_DB.zrevrange(
+                sim_key, 0, limit - 1, withscores=True
+            )
+
+            if not raw_results:
+                return []
+
+            # Temperature scaling
+            if temperature != 1.0:
+                raw_results = [
+                    (member, score / temperature) for member, score in raw_results
+                ]
+
+            # Post-filter
+            pks = []
+            for member, score in raw_results:
+                if isinstance(member, bytes):
+                    member = member.decode()
+                if post_filter is not None and not post_filter(member, score):
+                    continue
+                pks.append(member)
+
+            if not pks:
+                return []
+
+            # Hydrate
+            pipe = POPOTO_REDIS_DB.pipeline()
+            for key in pks:
+                pipe.hgetall(key)
+            hashes = pipe.execute()
+
+            instances = []
+            for key, data in zip(pks, hashes):
+                if data:
+                    instance = decode_popoto_model_hashmap(model_class, data)
+                    instances.append(instance)
+
+            return instances
+        finally:
+            POPOTO_REDIS_DB.delete(sim_key)
 
     def _resolve_index(self, model_class, field_name, weight, uid, temp_keys):
         """Resolve a field name to a Redis sorted set key for composite scoring.
@@ -1653,6 +1854,7 @@ class Query:
         min_score: float = None,
         post_filter: Optional[Callable[[str, float], bool]] = None,
         co_occurrence_boost: dict = None,
+        similarity_boost: dict = None,
         temperature: float = 1.0,
     ) -> list:
         """Return top-K instances ranked by weighted composite score.
@@ -1668,6 +1870,8 @@ class Query:
             min_score: Optional minimum composite score threshold.
             post_filter: Optional callable (redis_key, score) -> bool.
             co_occurrence_boost: Optional {redis_key: weight} dict.
+            similarity_boost: Optional {redis_key: score} dict from
+                semantic_search().
             temperature: Score scaling factor. Default 1.0 (no scaling).
                 Must be > 0.
 
@@ -1676,6 +1880,47 @@ class Query:
         """
         builder = QueryBuilder(self)
         return builder.composite_score(
+            indexes=indexes,
+            limit=limit,
+            aggregate=aggregate,
+            min_score=min_score,
+            post_filter=post_filter,
+            co_occurrence_boost=co_occurrence_boost,
+            similarity_boost=similarity_boost,
+            temperature=temperature,
+        )
+
+    def semantic_search(
+        self,
+        query_text: str,
+        indexes: dict = None,
+        limit: int = 10,
+        aggregate: str = "SUM",
+        min_score: float = None,
+        post_filter: Optional[Callable[[str, float], bool]] = None,
+        co_occurrence_boost: dict = None,
+        temperature: float = 1.0,
+    ) -> list:
+        """Return top-K instances ranked by semantic similarity.
+
+        Convenience method that creates a QueryBuilder and delegates.
+
+        Args:
+            query_text: The text to search for semantically.
+            indexes: Optional field-weight mapping for composite scoring.
+            limit: Maximum results to return. Default 10.
+            aggregate: Aggregation mode. Default "SUM".
+            min_score: Optional minimum score threshold.
+            post_filter: Optional callable (redis_key, score) -> bool.
+            co_occurrence_boost: Optional {redis_key: weight} dict.
+            temperature: Score scaling factor. Default 1.0.
+
+        Returns:
+            List of model instances ranked by semantic similarity.
+        """
+        builder = QueryBuilder(self)
+        return builder.semantic_search(
+            query_text=query_text,
             indexes=indexes,
             limit=limit,
             aggregate=aggregate,
