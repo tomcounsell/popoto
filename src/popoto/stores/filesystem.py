@@ -75,12 +75,18 @@ class FilesystemStore(AbstractContentStore):
         directory = os.path.dirname(path)
         os.makedirs(directory, exist_ok=True)
         fd, tmp_path = tempfile.mkstemp(dir=directory)
+        fd_closed = False
         try:
             os.write(fd, content)
             os.close(fd)
+            fd_closed = True
             os.rename(tmp_path, path)
         except Exception:
-            os.close(fd) if not os.fstat(fd) else None
+            if not fd_closed:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)
             raise

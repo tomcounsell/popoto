@@ -133,7 +133,7 @@ class EmbeddingField(Field):
     def _embedding_path(cls, model_class_name: str, redis_key: str) -> str:
         """Return the .npy file path for a model instance's embedding."""
         base = _get_embeddings_dir()
-        safe_key = redis_key.replace(":", "_").replace("/", "_")
+        safe_key = redis_key.replace("/", "_").replace(":", "__")
         return os.path.join(base, model_class_name, f"{safe_key}.npy")
 
     @classmethod
@@ -319,10 +319,8 @@ class EmbeddingField(Field):
             try:
                 vec = np.load(filepath)
                 # Reconstruct Redis key from filename
-                redis_key = filename[:-4].replace("_", ":", 1)
-                # Handle model names with underscores by finding the class name prefix
-                # Filename format: ModelName_key1_key2.npy -> ModelName:key1:key2
-                # But we already know the model name, so strip it
+                # Encoding: colons -> "__", slashes -> "_"
+                redis_key = filename[:-4].replace("__", ":")
                 vectors.append(vec.astype(np.float32))
                 keys.append(redis_key)
             except Exception as e:

@@ -16,6 +16,9 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 import pytest
+
+pytest.importorskip("numpy")
+
 from src import popoto
 from src.popoto.fields.content_field import ContentField, set_default_store
 from src.popoto.fields.embedding_field import (
