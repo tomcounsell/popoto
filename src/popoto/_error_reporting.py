@@ -99,7 +99,6 @@ def _do_enable(dsn: Optional[str]) -> None:
         return
 
     try:
-        import sentry_sdk  # noqa: F811
         from sentry_sdk import Client, Scope
     except ImportError:
         return

@@ -96,7 +96,6 @@ class TestEnableWithMockSentry:
     def teardown_method(self):
         """Restore exception classes after patching."""
         import popoto._error_reporting as mod
-        from popoto import exceptions as exc
 
         for cls, orig in mod._original_inits.items():
             cls.__init__ = orig
@@ -301,7 +300,7 @@ class TestDsnResolution:
 
     def test_env_var_overrides_default(self):
         """POPOTO_SENTRY_DSN env var takes precedence over the default."""
-        sentry_sdk = pytest.importorskip("sentry_sdk")
+        pytest.importorskip("sentry_sdk")
 
         env_dsn = "https://envkey@sentry.test/99"
 
@@ -320,7 +319,7 @@ class TestDsnResolution:
 
     def test_explicit_dsn_overrides_env(self):
         """Explicit dsn argument takes precedence over env var."""
-        sentry_sdk = pytest.importorskip("sentry_sdk")
+        pytest.importorskip("sentry_sdk")
 
         explicit_dsn = "https://explicit@sentry.test/42"
 
