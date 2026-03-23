@@ -1,5 +1,7 @@
 # Agent Memory
 
+> **Getting Started?** See the [Agent Memory Quickstart](../guides/agent-memory-quickstart.md) for a progressive 5-level adoption guide.
+
 Popoto Agent Memory gives you ORM primitives for programmable memory — records that decay over time, strengthen through use, track confidence, form associations, and surface the right context at the right moment.
 
 These are generic Redis-backed field types, mixins, and query methods. They don't encode any specific agent architecture. You compose them into memory models the same way you'd compose `KeyField`, `SortedField`, and `Relationship` into any Popoto model.

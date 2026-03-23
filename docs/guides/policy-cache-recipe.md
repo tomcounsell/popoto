@@ -1,5 +1,7 @@
 # PolicyCache Recipe
 
+> **New to Agent Memory?** Start with the [Quickstart Guide](agent-memory-quickstart.md) for a progressive adoption path.
+
 A reference recipe composing all shipped Popoto memory primitives into an RL-style action selection cache. Agents accumulate state-action-outcome events; a crystallization handler detects repeated successful patterns and creates PolicyEntry records. Agents query policies for action selection, and outcomes update Q-values via temporal difference learning.
 
 ## Quick Start
