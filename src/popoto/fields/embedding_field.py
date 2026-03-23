@@ -23,7 +23,6 @@ Example:
     m.save()  # embedding generated automatically via provider
 """
 
-import hashlib
 import logging
 import os
 import tempfile

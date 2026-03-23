@@ -25,7 +25,6 @@ from src.popoto.fields.embedding_field import (
     EmbeddingField,
     set_default_provider,
     invalidate_cache,
-    _get_embeddings_dir,
 )
 from src.popoto.stores.filesystem import FilesystemStore
 from src.popoto.embeddings import AbstractEmbeddingProvider
