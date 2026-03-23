@@ -13,15 +13,13 @@ class TestEnableWithoutSentrySdk:
 
     def test_enable_no_sentry_sdk(self):
         """enable_error_reporting() must not raise when sentry-sdk is missing."""
-        # Temporarily hide sentry_sdk from the import system
         with mock.patch.dict(sys.modules, {"sentry_sdk": None}):
             from popoto._error_reporting import _do_enable
 
-            # Should silently return without error (ImportError before DSN check)
             _do_enable(dsn=None)
 
     def test_enable_returns_none(self):
-        """The public function always returns None (swallows ValueError)."""
+        """The public function always returns None."""
         from popoto._error_reporting import enable_error_reporting
 
         result = enable_error_reporting()
@@ -35,34 +33,32 @@ class TestEnableWithoutSentrySdk:
 
         old_default = mod._DEFAULT_DSN
         mod._enabled = False
-        mod._scope = None
+        mod._client = None
         mod._DEFAULT_DSN = None
 
         try:
-            # Should silently return (no ValueError, no enabling)
             mod._do_enable(dsn=None)
 
             assert mod._enabled is False
-            assert mod._scope is None
+            assert mod._client is None
         finally:
             mod._DEFAULT_DSN = old_default
             mod._enabled = False
-            mod._scope = None
+            mod._client = None
 
 
 class TestEnableWithMockSentry:
     """Verify enable_error_reporting sets up the isolated client correctly."""
 
     def setup_method(self):
-        """Reset module state before each test."""
         import popoto._error_reporting as mod
 
         mod._enabled = False
-        mod._scope = None
+        mod._client = None
         mod._original_inits.clear()
 
     def test_enable_creates_isolated_client(self):
-        """Enabling creates a Client + Scope without calling sentry_sdk.init."""
+        """Enabling creates a Client without calling sentry_sdk.init."""
         sentry_sdk = pytest.importorskip("sentry_sdk")
 
         from popoto._error_reporting import enable_error_reporting
@@ -75,7 +71,7 @@ class TestEnableWithMockSentry:
         import popoto._error_reporting as mod
 
         assert mod._enabled is True
-        assert mod._scope is not None
+        assert mod._client is not None
 
     def test_enable_is_idempotent(self):
         """Calling enable_error_reporting() twice does not create a second client."""
@@ -86,10 +82,10 @@ class TestEnableWithMockSentry:
         enable_error_reporting(dsn="https://key@sentry.test/1")
         import popoto._error_reporting as mod
 
-        scope1 = mod._scope
+        client1 = mod._client
 
         enable_error_reporting(dsn="https://key@sentry.test/1")
-        assert mod._scope is scope1  # same object
+        assert mod._client is client1
 
     def test_patches_exception_classes(self):
         """After enabling, Popoto exception __init__ methods are patched."""
@@ -116,14 +112,13 @@ class TestEnableWithMockSentry:
             assert cls in mod._original_inits
 
     def teardown_method(self):
-        """Restore exception classes after patching."""
         import popoto._error_reporting as mod
 
         for cls, orig in mod._original_inits.items():
             cls.__init__ = orig
         mod._original_inits.clear()
         mod._enabled = False
-        mod._scope = None
+        mod._client = None
 
 
 class TestCaptureException:
@@ -133,14 +128,13 @@ class TestCaptureException:
         import popoto._error_reporting as mod
 
         mod._enabled = False
-        mod._scope = None
+        mod._client = None
         mod._original_inits.clear()
 
     def test_capture_noop_when_disabled(self):
         """capture_exception does nothing when reporting is not enabled."""
         from popoto._error_reporting import capture_exception
 
-        # Should not raise
         capture_exception(RuntimeError("test"))
 
     def test_capture_none_does_not_raise(self):
@@ -149,24 +143,33 @@ class TestCaptureException:
 
         capture_exception(None)
 
-    def test_capture_sends_to_scope(self):
-        """When enabled, capture_exception forwards to the isolated scope."""
-        pytest.importorskip("sentry_sdk")
+    def test_capture_sends_to_client(self):
+        """When enabled, capture_exception forwards to the isolated client."""
+        sentry_sdk = pytest.importorskip("sentry_sdk")
 
         import popoto._error_reporting as mod
 
-        mock_scope = mock.MagicMock()
+        # Use a real Client so event_from_exception has valid options,
+        # but mock capture_event to verify it's called.
+        real_client = sentry_sdk.Client(
+            dsn="https://key@sentry.test/1",
+            default_integrations=False,
+            auto_enabling_integrations=False,
+        )
         mod._enabled = True
-        mod._scope = mock_scope
+        mod._client = real_client
 
-        exc = RuntimeError("test error")
-        mod.capture_exception(exc)
+        with mock.patch.object(real_client, "capture_event") as mock_capture:
+            exc = RuntimeError("test error")
+            try:
+                raise exc
+            except RuntimeError:
+                mod.capture_exception(exc)
 
-        mock_scope.capture_exception.assert_called_once_with(exc)
+            mock_capture.assert_called_once()
 
-        # cleanup
         mod._enabled = False
-        mod._scope = None
+        mod._client = None
 
     def teardown_method(self):
         import popoto._error_reporting as mod
@@ -175,7 +178,7 @@ class TestCaptureException:
             cls.__init__ = orig
         mod._original_inits.clear()
         mod._enabled = False
-        mod._scope = None
+        mod._client = None
 
 
 class TestExceptionAutoCapture:
@@ -185,7 +188,7 @@ class TestExceptionAutoCapture:
         import popoto._error_reporting as mod
 
         mod._enabled = False
-        mod._scope = None
+        mod._client = None
         mod._original_inits.clear()
 
     def test_raising_model_exception_triggers_capture(self):
@@ -196,8 +199,9 @@ class TestExceptionAutoCapture:
 
         mod.enable_error_reporting(dsn="https://key@sentry.test/1")
 
-        mock_scope = mock.MagicMock()
-        mod._scope = mock_scope
+        mock_client = mock.MagicMock()
+        mock_client.options = mod._client.options if mod._client else {}
+        mod._client = mock_client
 
         from popoto.exceptions import ModelException
 
@@ -206,8 +210,7 @@ class TestExceptionAutoCapture:
         except ModelException:
             pass
 
-        # The patched __init__ should have called capture_exception
-        assert mock_scope.capture_exception.called
+        assert mock_client.capture_event.called
 
     def teardown_method(self):
         import popoto._error_reporting as mod
@@ -216,7 +219,7 @@ class TestExceptionAutoCapture:
             cls.__init__ = orig
         mod._original_inits.clear()
         mod._enabled = False
-        mod._scope = None
+        mod._client = None
 
 
 class TestSkipSaveExceptionExcluded:
@@ -226,7 +229,7 @@ class TestSkipSaveExceptionExcluded:
         import popoto._error_reporting as mod
 
         mod._enabled = False
-        mod._scope = None
+        mod._client = None
         mod._original_inits.clear()
 
     def test_skip_save_exception_not_reported(self):
@@ -237,8 +240,9 @@ class TestSkipSaveExceptionExcluded:
 
         mod.enable_error_reporting(dsn="https://key@sentry.test/1")
 
-        mock_scope = mock.MagicMock()
-        mod._scope = mock_scope
+        mock_client = mock.MagicMock()
+        mock_client.options = mod._client.options if mod._client else {}
+        mod._client = mock_client
 
         from popoto.exceptions import SkipSaveException
 
@@ -247,8 +251,7 @@ class TestSkipSaveExceptionExcluded:
         except SkipSaveException:
             pass
 
-        # SkipSaveException should NOT have triggered capture_exception
-        mock_scope.capture_exception.assert_not_called()
+        mock_client.capture_event.assert_not_called()
 
     def test_model_exception_still_reported(self):
         """Regular ModelException is still captured after SkipSave exclusion."""
@@ -258,8 +261,9 @@ class TestSkipSaveExceptionExcluded:
 
         mod.enable_error_reporting(dsn="https://key@sentry.test/1")
 
-        mock_scope = mock.MagicMock()
-        mod._scope = mock_scope
+        mock_client = mock.MagicMock()
+        mock_client.options = mod._client.options if mod._client else {}
+        mod._client = mock_client
 
         from popoto.exceptions import ModelException
 
@@ -268,7 +272,7 @@ class TestSkipSaveExceptionExcluded:
         except ModelException:
             pass
 
-        assert mock_scope.capture_exception.called
+        assert mock_client.capture_event.called
 
     def teardown_method(self):
         import popoto._error_reporting as mod
@@ -277,7 +281,7 @@ class TestSkipSaveExceptionExcluded:
             cls.__init__ = orig
         mod._original_inits.clear()
         mod._enabled = False
-        mod._scope = None
+        mod._client = None
 
 
 class TestInternalFailureIsolation:
@@ -291,23 +295,23 @@ class TestInternalFailureIsolation:
             "popoto._error_reporting._do_enable",
             side_effect=RuntimeError("boom"),
         ):
-            # Must not raise
             enable_error_reporting()
 
-    def test_capture_survives_scope_error(self):
-        """If scope.capture_exception raises, capture_exception swallows it."""
+    def test_capture_survives_client_error(self):
+        """If client.capture_event raises, capture_exception swallows it."""
         import popoto._error_reporting as mod
 
-        broken_scope = mock.MagicMock()
-        broken_scope.capture_exception.side_effect = RuntimeError("broken")
+        broken_client = mock.MagicMock()
+        broken_client.options = {"max_value_length": 1024}
+        broken_client.capture_event.side_effect = RuntimeError("broken")
         mod._enabled = True
-        mod._scope = broken_scope
+        mod._client = broken_client
 
         # Must not raise
         mod.capture_exception(RuntimeError("test"))
 
         mod._enabled = False
-        mod._scope = None
+        mod._client = None
 
 
 class TestAppSentryUnaffected:
@@ -320,21 +324,18 @@ class TestAppSentryUnaffected:
         import popoto._error_reporting as mod
 
         mod._enabled = False
-        mod._scope = None
+        mod._client = None
         mod._original_inits.clear()
 
-        # Simulate app's own sentry_sdk.init
-        # We just verify enable_error_reporting doesn't call sentry_sdk.init
         with mock.patch.object(sentry_sdk, "init") as mock_init:
             mod.enable_error_reporting(dsn="https://key@sentry.test/1")
             mock_init.assert_not_called()
 
-        # cleanup
         for cls, orig in mod._original_inits.items():
             cls.__init__ = orig
         mod._original_inits.clear()
         mod._enabled = False
-        mod._scope = None
+        mod._client = None
 
 
 class TestBeforeSend:
@@ -378,7 +379,7 @@ class TestDsnResolution:
         import popoto._error_reporting as mod
 
         mod._enabled = False
-        mod._scope = None
+        mod._client = None
         mod._original_inits.clear()
 
     def test_env_var_overrides_default(self):
@@ -390,15 +391,13 @@ class TestDsnResolution:
         with mock.patch.dict("os.environ", {"POPOTO_SENTRY_DSN": env_dsn}):
             with mock.patch("sentry_sdk.Client") as mock_client:
                 mock_client.return_value = mock.MagicMock()
-                with mock.patch("sentry_sdk.Scope") as mock_scope_cls:
-                    mock_scope_cls.return_value = mock.MagicMock()
-                    from popoto._error_reporting import _do_enable
+                from popoto._error_reporting import _do_enable
 
-                    _do_enable(dsn=None)
+                _do_enable(dsn=None)
 
-                    mock_client.assert_called_once()
-                    call_kwargs = mock_client.call_args
-                    assert call_kwargs[1]["dsn"] == env_dsn
+                mock_client.assert_called_once()
+                call_kwargs = mock_client.call_args
+                assert call_kwargs[1]["dsn"] == env_dsn
 
     def test_explicit_dsn_overrides_env(self):
         """Explicit dsn argument takes precedence over env var."""
@@ -411,14 +410,12 @@ class TestDsnResolution:
         ):
             with mock.patch("sentry_sdk.Client") as mock_client:
                 mock_client.return_value = mock.MagicMock()
-                with mock.patch("sentry_sdk.Scope") as mock_scope_cls:
-                    mock_scope_cls.return_value = mock.MagicMock()
-                    from popoto._error_reporting import _do_enable
+                from popoto._error_reporting import _do_enable
 
-                    _do_enable(dsn=explicit_dsn)
+                _do_enable(dsn=explicit_dsn)
 
-                    call_kwargs = mock_client.call_args
-                    assert call_kwargs[1]["dsn"] == explicit_dsn
+                call_kwargs = mock_client.call_args
+                assert call_kwargs[1]["dsn"] == explicit_dsn
 
     def teardown_method(self):
         import popoto._error_reporting as mod
@@ -427,4 +424,4 @@ class TestDsnResolution:
             cls.__init__ = orig
         mod._original_inits.clear()
         mod._enabled = False
-        mod._scope = None
+        mod._client = None

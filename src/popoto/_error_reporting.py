@@ -21,7 +21,7 @@ from typing import Optional
 # Module-level state (no sentry imports at module level)
 # ---------------------------------------------------------------------------
 _enabled: bool = False
-_scope: Optional[object] = None  # sentry_sdk.Scope when active
+_client: Optional[object] = None  # sentry_sdk.Client when active
 _original_inits: dict = {}  # class -> original __init__
 
 _DEFAULT_DSN: Optional[str] = (
@@ -93,13 +93,13 @@ def enable_error_reporting(dsn: Optional[str] = None) -> None:
 
 
 def _do_enable(dsn: Optional[str]) -> None:
-    global _enabled, _scope
+    global _enabled, _client
 
     if _enabled:
         return
 
     try:
-        from sentry_sdk import Client, Scope
+        from sentry_sdk import Client
     except ImportError:
         return
 
@@ -108,20 +108,16 @@ def _do_enable(dsn: Optional[str]) -> None:
     if not resolved_dsn:
         return  # No DSN available — silently skip error reporting
 
-    client = Client(
+    _client = Client(
         dsn=resolved_dsn,
         default_integrations=False,
         auto_enabling_integrations=False,
         traces_sample_rate=0,
         before_send=_before_send,
         release=f"popoto@{_get_popoto_version()}",
+        send_default_pii=True,
     )
 
-    scope = Scope()
-    scope.set_client(client)
-    scope.set_tag("popoto.version", _get_popoto_version())
-
-    _scope = scope
     _enabled = True
 
     _patch_exceptions()
@@ -134,9 +130,21 @@ def capture_exception(exc: Optional[BaseException] = None) -> None:
     internal error occurs.
     """
     try:
-        if not _enabled or _scope is None:
+        if not _enabled or _client is None:
             return
-        _scope.capture_exception(exc)
+        from sentry_sdk.utils import event_from_exception
+
+        if exc is not None:
+            exc_info = (type(exc), exc, exc.__traceback__)
+        else:
+            import sys
+
+            exc_info = sys.exc_info()
+
+        event, hint = event_from_exception(
+            exc_info, client_options=_client.options
+        )
+        _client.capture_event(event, hint=hint)
     except Exception:
         pass
 
