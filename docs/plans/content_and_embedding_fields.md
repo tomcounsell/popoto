@@ -85,8 +85,8 @@ Key foundational PRs this builds on:
 
 ### Content access path (lazy-load)
 1. **Entry point**: `instance.content` attribute access on a queried model
-2. **Descriptor intercept**: ContentField descriptor detects the stored value is a `$CF:{hash}` reference
-3. **Filesystem read**: Loads content from `{base_path}/{ClassName}/{hash[:2]}/{hash}.bin`
+2. **Descriptor intercept**: ContentField descriptor detects the stored value is a `$CF:{hash}:{relative_path}` reference string
+3. **Filesystem read**: Loads content from `{base_path}/{relative_path}` (the human-readable live file, e.g., `~/vault/AgentMemory/revenue.md`)
 4. **Cache on instance**: Stores loaded content on the instance dict so subsequent accesses don't re-read
 
 ## Architectural Impact
@@ -359,6 +359,7 @@ No agent integration required — this is a popoto library feature. Downstream c
 - **Parallel**: false
 - Create `src/popoto/fields/embedding_field.py` with `EmbeddingField(Field)`: `source` parameter pointing to content field; `on_save()` calls provider, saves `.npy` file to filesystem; `on_delete()` removes embedding file; optional numpy import following DataFrameField pattern
 - Implement embedding cache: class-level dict mapping `{ClassName}` to pre-normalized numpy matrix + redis_key index; invalidated on save/delete
+- Implement `EmbeddingField.garbage_collect(ModelClass)` classmethod mirroring ContentField's — removes orphaned `.npy` files not referenced by any live model
 - Create `tests/test_embedding_field.py` with mock provider, save/delete/cache tests
 
 ### 5. semantic_search() query method
@@ -370,7 +371,7 @@ No agent integration required — this is a popoto library feature. Downstream c
 - **Agent Type**: builder
 - **Parallel**: false
 - Add `semantic_search(query_text, indexes=None, limit=10, ...)` to `QueryBuilder` class
-- Add `similarity_boost` parameter to `composite_score()` (identical to `co_occurrence_boost` pattern)
+- Add `similarity_boost` parameter to `composite_score()` method signature (new parameter, identical injection mechanism to `co_occurrence_boost` at query.py:539-548 — temp ZADD + weight 1.0)
 - `semantic_search` embeds query text → loads cached embeddings → computes cosine similarity → injects as `similarity_boost` dict → delegates to `composite_score()`
 - Create `tests/test_semantic_search.py` with end-to-end tests using mock provider
 
