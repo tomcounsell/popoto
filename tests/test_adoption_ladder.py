@@ -32,7 +32,6 @@ from popoto import (
 )
 from popoto.redis_db import POPOTO_REDIS_DB
 
-
 # ---------------------------------------------------------------------------
 # Level 1: Recall — DecayingSortedField only
 # ---------------------------------------------------------------------------
@@ -202,13 +201,9 @@ class TestLevel1Recall:
 
     def test_importance_affects_ranking(self):
         """Higher importance boosts a memory's decayed score."""
-        RecallMemory(
-            agent_id="agent-1", content="routine", importance=1.0
-        ).save()
+        RecallMemory(agent_id="agent-1", content="routine", importance=1.0).save()
         time.sleep(0.05)
-        RecallMemory(
-            agent_id="agent-1", content="critical", importance=10.0
-        ).save()
+        RecallMemory(agent_id="agent-1", content="critical", importance=10.0).save()
 
         results = RecallMemory.query.filter(agent_id="agent-1").top_by_decay(n=2)
         assert results[0].content == "critical"
@@ -361,11 +356,9 @@ class TestLevel4Association:
         m2.save()
 
         # Composite query weighting relevance
-        results = (
-            AssociationMemory.query.filter(agent_id="agent-1").composite_score(
-                indexes={"relevance": 1.0},
-                limit=10,
-            )
+        results = AssociationMemory.query.filter(agent_id="agent-1").composite_score(
+            indexes={"relevance": 1.0},
+            limit=10,
         )
         assert len(results) >= 1
 
