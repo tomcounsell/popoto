@@ -153,6 +153,118 @@ global configuration.
 See [ContentField](fields.md#contentfield) and [EmbeddingField](fields.md#embeddingfield)
 for field-level configuration.
 
+### Embedding Providers
+
+Popoto ships with two built-in embedding providers. Both implement the
+`AbstractEmbeddingProvider` interface from `popoto.embeddings`.
+
+#### Voyage AI
+
+Install the optional dependency and configure:
+
+```bash
+pip install popoto[voyage]
+```
+
+```python
+from popoto.embeddings.voyage import VoyageProvider
+
+provider = VoyageProvider(
+    api_key="your-voyage-key",  # or set VOYAGE_API_KEY env var
+    model="voyage-3",           # default model, 1024 dimensions
+)
+popoto.configure(embedding_provider=provider)
+```
+
+Voyage AI supports `input_type` hints (`"document"` for indexing, `"query"` for
+search) to optimize embeddings for retrieval. Popoto passes these automatically
+when saving vs searching. Batch size limit is 128 texts per API call.
+
+#### OpenAI
+
+Install the optional dependency and configure:
+
+```bash
+pip install popoto[openai]
+```
+
+```python
+from popoto.embeddings.openai import OpenAIProvider
+
+provider = OpenAIProvider(
+    api_key="your-openai-key",       # or set OPENAI_API_KEY env var
+    model="text-embedding-3-small",  # default model
+    dim=1536,                        # default dimensions
+)
+popoto.configure(embedding_provider=provider)
+```
+
+OpenAI embeddings ignore the `input_type` parameter. Batch size limit is 2048
+texts per API call.
+
+#### Custom Providers
+
+Implement `AbstractEmbeddingProvider` to use any embedding service:
+
+```python
+from popoto.embeddings import AbstractEmbeddingProvider
+
+class MyProvider(AbstractEmbeddingProvider):
+    def embed(self, texts, input_type=None):
+        # Call your embedding API here
+        return [vector_for(t) for t in texts]
+
+    @property
+    def dimensions(self):
+        return 768  # your vector size
+
+    @property
+    def max_batch_size(self):
+        return 100
+```
+
+### Content Storage Path
+
+ContentField stores large values on the filesystem instead of in Redis.
+The storage location is resolved in this order:
+
+1. `content_path` argument to `popoto.configure()`
+2. `POPOTO_CONTENT_PATH` environment variable
+3. Default: `~/.popoto/content`
+
+```bash
+# Set via environment variable
+export POPOTO_CONTENT_PATH="/data/popoto-content"
+```
+
+```python
+# Or set via configure()
+popoto.configure(content_path="/data/popoto-content")
+```
+
+Files are organized by model class name under the base path, using
+content-addressable storage (SHA-256) for versioning. You can also supply a
+custom `AbstractContentStore` implementation (e.g., for S3 or GCS) via the
+`content_store` parameter:
+
+```python
+from popoto.stores import AbstractContentStore
+
+class S3Store(AbstractContentStore):
+    def save(self, content, key, model_class_name):
+        # upload to S3, return reference string
+        ...
+    def load(self, reference):
+        # download from S3
+        ...
+    def delete(self, reference):
+        ...
+    def exists(self, reference):
+        ...
+
+popoto.configure(content_store=S3Store())
+```
+
 ## Error Reporting (Opt-In)
 
 Popoto includes optional, opt-in error reporting that sends library-specific
