@@ -34,7 +34,7 @@ class ContentDoc(popoto.Model):
 
 class ContentMdDoc(popoto.Model):
     name = popoto.UniqueKeyField()
-    body = ContentField(extension=".md")
+    body = ContentField()
 
 
 # --- Fixtures ---

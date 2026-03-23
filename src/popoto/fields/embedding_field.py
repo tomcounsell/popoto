@@ -131,10 +131,14 @@ class EmbeddingField(Field):
 
     @classmethod
     def _embedding_path(cls, model_class_name: str, redis_key: str) -> str:
-        """Return the .npy file path for a model instance's embedding."""
+        """Return the .npy file path for a model instance's embedding.
+
+        Uses hex encoding of the Redis key to ensure lossless round-trip:
+        any bytes in the key are preserved exactly when decoded back.
+        """
         base = _get_embeddings_dir()
-        safe_key = redis_key.replace("/", "_").replace(":", "__")
-        return os.path.join(base, model_class_name, f"{safe_key}.npy")
+        hex_key = redis_key.encode("utf-8").hex()
+        return os.path.join(base, model_class_name, f"{hex_key}.npy")
 
     @classmethod
     def on_save(
@@ -318,9 +322,9 @@ class EmbeddingField(Field):
             filepath = os.path.join(emb_dir, filename)
             try:
                 vec = np.load(filepath)
-                # Reconstruct Redis key from filename
-                # Encoding: colons -> "__", slashes -> "_"
-                redis_key = filename[:-4].replace("__", ":")
+                # Reconstruct Redis key from hex-encoded filename
+                hex_key = filename[:-4]  # strip .npy
+                redis_key = bytes.fromhex(hex_key).decode("utf-8")
                 vectors.append(vec.astype(np.float32))
                 keys.append(redis_key)
             except Exception as e:

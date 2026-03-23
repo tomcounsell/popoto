@@ -115,7 +115,8 @@ class FilesystemStore(AbstractContentStore):
 
         # Archive existing live file if it differs
         if os.path.exists(live):
-            existing_content = open(live, "rb").read()
+            with open(live, "rb") as f:
+                existing_content = f.read()
             existing_hash = self._compute_hash(existing_content)
             if existing_hash != content_hash:
                 version_path = self._version_path(existing_hash)
@@ -150,14 +151,16 @@ class FilesystemStore(AbstractContentStore):
 
         # Try live path first
         if os.path.exists(live_path):
-            content = open(live_path, "rb").read()
+            with open(live_path, "rb") as f:
+                content = f.read()
             if self._compute_hash(content) == content_hash:
                 return content
 
         # Fall back to version archive
         version_path = self._version_path(content_hash)
         if os.path.exists(version_path):
-            return open(version_path, "rb").read()
+            with open(version_path, "rb") as f:
+                return f.read()
 
         raise FileNotFoundError(
             f"Content not found for reference {reference}. "
@@ -186,7 +189,9 @@ class FilesystemStore(AbstractContentStore):
     def exists(self, reference: str) -> bool:
         """Check if content exists for the given reference.
 
-        Checks both the live path and version archive.
+        Mirrors load() logic: checks the live path hash first, then falls
+        back to the version archive. This ensures exists() returning True
+        guarantees that load() will succeed.
 
         Args:
             reference: Reference string in $CF:{hash}:{relative_path} format.
@@ -201,7 +206,10 @@ class FilesystemStore(AbstractContentStore):
 
         live_path = os.path.join(self.base_path, relative_path)
         if os.path.exists(live_path):
-            return True
+            with open(live_path, "rb") as f:
+                live_hash = self._compute_hash(f.read())
+            if live_hash == content_hash:
+                return True
 
         version_path = self._version_path(content_hash)
         return os.path.exists(version_path)

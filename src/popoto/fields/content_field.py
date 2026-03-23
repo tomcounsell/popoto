@@ -20,7 +20,7 @@ Design:
 Example:
     class Document(popoto.Model):
         name = popoto.KeyField()
-        body = ContentField(extension=".md")
+        body = ContentField()
 
     doc = Document(name="readme", body="# Hello World")
     doc.save()  # body written to filesystem, $CF reference in Redis
@@ -62,25 +62,23 @@ class ContentField(Field):
 
     Args:
         store: A ContentStore instance or "filesystem" (default).
-        extension: File extension for stored content. Default ".txt".
         **kwargs: Standard Field keyword arguments.
 
     Example:
         class Memory(popoto.Model):
             topic = popoto.KeyField()
-            content = ContentField(store="filesystem", extension=".md")
+            content = ContentField(store="filesystem")
 
         m = Memory(topic="revenue", content="# Revenue Analysis\\n...")
         m.save()
     """
 
-    def __init__(self, store="filesystem", extension=".txt", **kwargs):
+    def __init__(self, store="filesystem", **kwargs):
         kwargs.setdefault("type", str)
         kwargs.setdefault("null", True)
         kwargs.setdefault("default", None)
         super().__init__(**kwargs)
         self.type = str
-        self.extension = extension
 
         if store == "filesystem" or store is None:
             self._store = None  # will use default
