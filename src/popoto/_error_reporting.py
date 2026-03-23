@@ -42,15 +42,17 @@ def _get_popoto_version() -> str:
 
 
 def _before_send(event, hint):
-    """Only send events whose traceback includes popoto frames."""
+    """Only send events that are Popoto exception types.
+
+    Checks whether the exception class is defined in the ``popoto``
+    package, ensuring we only report Popoto-specific errors.
+    """
     try:
         if "exc_info" in hint:
-            import traceback as _tb
-
-            _, _, tb = hint["exc_info"]
-            frames = _tb.extract_tb(tb)
-            for frame in frames:
-                if "popoto" in (frame.filename or ""):
+            exc_type = hint["exc_info"][0]
+            if exc_type is not None:
+                module = getattr(exc_type, "__module__", "") or ""
+                if module.startswith("popoto"):
                     return event
         return None
     except Exception:
