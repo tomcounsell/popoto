@@ -7,6 +7,7 @@ from popoto import Model, Field, KeyField, AutoKeyField, UniqueKeyField
 from popoto import SortedField, SortedKeyField, GeoField, DatetimeField, Relationship
 from popoto import DecayingSortedField, CyclicDecayField, TemporalPeriod, InteractionWeight, Defaults
 from popoto import AccessTrackerMixin, ObservationProtocol, RecallProposal, ConfidenceField, PredictionLedgerMixin
+from popoto import ContentField, EmbeddingField
 from popoto import Publisher, Subscriber
 from popoto import ModelException, QueryException, PublisherException, SubscriberException
 ```
@@ -836,6 +837,54 @@ For partitioned fields, use `filter()` first to specify the partition value.
 See [CompositeScoreQuery feature docs](features/composite-score-query.md) for the full reference
 including index resolution strategies, temp key management, and error handling.
 
+### Query.semantic\_search()
+
+```python
+QueryBuilder.semantic_search(
+    query_text: str,
+    indexes: dict = None,
+    limit: int = 10,
+    aggregate: str = "SUM",
+    min_score: float = None,
+    post_filter: Callable = None,
+    co_occurrence_boost: dict = None,
+    temperature: float = 1.0,
+) -> list
+```
+
+Return top-K instances ranked by semantic similarity to `query_text`. Requires the model to have
+an `EmbeddingField` and a configured embedding provider (via `popoto.configure()` or per-field).
+
+When `indexes` is None, results are ranked by cosine similarity alone. When `indexes` is provided,
+similarity scores are injected into `composite_score()` as an additional weighted signal.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `query_text` | `str` | *(required)* | Text to embed and search for. |
+| `indexes` | `dict` | `None` | Sorted field names to weights for composite scoring. |
+| `limit` | `int` | `10` | Maximum results. |
+| `aggregate` | `str` | `"SUM"` | Aggregation mode for ZUNIONSTORE. |
+| `min_score` | `float` | `None` | Minimum composite score threshold. |
+| `post_filter` | `Callable` | `None` | `(redis_key, score) -> bool` filter function. |
+| `co_occurrence_boost` | `dict` | `None` | `{redis_key: weight}` association boost dict. |
+| `temperature` | `float` | `1.0` | Score scaling factor. |
+
+```python
+results = Memory.query.semantic_search("revenue trends", limit=5)
+
+# Combined with sorted indexes
+results = Memory.query.semantic_search(
+    "revenue trends",
+    indexes={"relevance": 0.4, "confidence": 0.3},
+    limit=10,
+)
+```
+
+Also available directly on `Query`: `Memory.query.semantic_search(...)`.
+
+See [Semantic Search](query.md#semantic-search) for conceptual overview and
+[Content and Embedding Fields](features/content-and-embedding-fields.md) for the full feature reference.
+
 ### Async Query Methods
 
 | Sync | Async |
@@ -1347,6 +1396,58 @@ Defaults.DECAY_RATE = 0.7
 
 See [Tuning Magic Numbers](guides/tuning-magic-numbers.md) for benchmark-validated override guidance.
 
+### ContentField
+
+```python
+from popoto.fields.content_field import ContentField
+
+ContentField(store="filesystem", **kwargs)
+```
+
+Routes large content values to filesystem storage. Redis stores only a compact
+`$CF:{hash}:{path}` reference string. Content is lazy-loaded on attribute access.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `store` | `AbstractContentStore` or `"filesystem"` | `"filesystem"` | Content store backend. |
+
+| Class Method | Returns | Description |
+|-------------|---------|-------------|
+| `on_save(instance, field_name, value, pipeline)` | pipeline | Write content to filesystem, store reference in Redis. |
+| `on_delete(instance, field_name, value, pipeline)` | pipeline | No-op (append-only storage). |
+| `garbage_collect(model_class)` | `int` | Remove orphaned content files. |
+
+See [Fields > ContentField](fields.md#contentfield) for detailed usage.
+
+### EmbeddingField
+
+```python
+from popoto.fields.embedding_field import EmbeddingField
+
+EmbeddingField(source=None, provider=None, auto_embed=True, cache=True, **kwargs)
+```
+
+Generates vector embeddings from a source field on save. Stores embeddings as `.npy` files
+and maintains an in-memory cache for fast cosine similarity computation.
+
+Requires numpy: `pip install popoto[embeddings]`
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `source` | `str` | `None` | Field name to read content from for embedding. |
+| `provider` | `AbstractEmbeddingProvider` | `None` | Provider instance, or None for global default. |
+| `auto_embed` | `bool` | `True` | Generate embeddings automatically on save. |
+| `cache` | `bool` | `True` | Cache embeddings in memory for fast similarity. |
+
+| Class Method | Returns | Description |
+|-------------|---------|-------------|
+| `on_save(instance, field_name, value, pipeline)` | pipeline | Generate embedding and store as `.npy`. |
+| `on_delete(instance, field_name, value, pipeline)` | pipeline | Remove `.npy` file. |
+| `load_embeddings(model_class)` | `(matrix, keys)` | Load all embeddings into a pre-normalized numpy matrix. |
+| `garbage_collect(model_class)` | `int` | Remove orphaned `.npy` files. |
+
+See [Fields > EmbeddingField](fields.md#embeddingfield) for detailed usage.
+
 ### GeoField
 
 ```python
@@ -1560,8 +1661,36 @@ Class attribute listing the channel names to subscribe to.
 
 ## Utility Functions
 
-These functions manage the global Redis connection. See [Configuration](configuration.md) for setup
-guidance.
+These functions manage the global Redis connection and global configuration. See
+[Configuration](configuration.md) for setup guidance.
+
+### popoto.configure()
+
+```python
+popoto.configure(
+    embedding_provider=None,
+    content_store=None,
+    content_path: str = None,
+) -> None
+```
+
+Set global defaults for `ContentField` and `EmbeddingField`. Call once at application startup.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `embedding_provider` | `AbstractEmbeddingProvider` | `None` | Default provider for EmbeddingField and `semantic_search()`. |
+| `content_store` | `AbstractContentStore` | `None` | Default content store for ContentField. |
+| `content_path` | `str` | `None` | Base directory for filesystem storage. Overrides `POPOTO_CONTENT_PATH`. |
+
+```python
+import popoto
+from popoto.embeddings.voyage import VoyageProvider
+
+popoto.configure(
+    embedding_provider=VoyageProvider(api_key="your-key"),
+    content_path="/data/popoto-content",
+)
+```
 
 ### set_REDIS_DB_settings()
 

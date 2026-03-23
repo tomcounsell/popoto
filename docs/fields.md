@@ -1071,6 +1071,162 @@ class StrictMemory(WriteFilterMixin, Model):
 See [Agent Memory — WriteFilter](features/agent-memory.md#writefilter) for the broader
 agent memory context and how WriteFilter fits with DecayingSortedField and AccessTracker.
 
+## ContentField
+
+`ContentField` routes large content values (documents, text, binary data) to filesystem
+storage, keeping Redis memory usage minimal. Redis stores only a compact reference string
+(`$CF:{hash}:{path}`), and the content is lazy-loaded from the filesystem when the
+attribute is accessed.
+
+This is ideal for storing long-form text, HTML, markdown, or any content too large to
+keep in Redis comfortably.
+
+```bash
+pip install popoto
+```
+
+No additional dependencies are needed -- ContentField uses the filesystem by default.
+
+```python
+import popoto
+from popoto.fields.content_field import ContentField
+
+class Document(popoto.Model):
+    name = popoto.KeyField()
+    body = ContentField()
+
+doc = Document.create(name="readme", body="# Hello World\n\nThis is a large document...")
+```
+
+On save, the content is written to the filesystem first, then a reference string is stored
+in Redis. On attribute access, the reference is detected and the content is transparently
+loaded from the filesystem:
+
+```python
+loaded = Document.query.get(name="readme")
+print(loaded.body)
+# => "# Hello World\n\nThis is a large document..."
+```
+
+### Content-Addressable Storage
+
+ContentField uses SHA-256 hashing for content-addressable storage. Identical content
+produces the same hash and file path, so duplicate writes are deduplicated automatically.
+Writes are atomic (temp file + rename) to prevent partial reads.
+
+### Custom Content Store
+
+By default, ContentField uses `FilesystemStore` which writes to `~/.popoto/content/`
+(or the path set via `POPOTO_CONTENT_PATH`). You can pass a custom store per-field
+or set a global default via `popoto.configure()`:
+
+```python
+from popoto.stores.filesystem import FilesystemStore
+
+class Document(popoto.Model):
+    name = popoto.KeyField()
+    body = ContentField(store=FilesystemStore(base_path="/data/documents"))
+```
+
+Or configure globally:
+
+```python
+popoto.configure(content_path="/data/popoto-content")
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `store` | `AbstractContentStore` or `"filesystem"` | `"filesystem"` | The content store backend. |
+
+ContentField deletion is a no-op -- content files are append-only. Use
+`ContentField.garbage_collect(ModelClass)` to remove orphaned files not referenced
+by any live model instance.
+
+## EmbeddingField
+
+`EmbeddingField` generates vector embeddings from a source field on save, stores them
+as `.npy` files on the filesystem, and maintains an in-memory cache of pre-normalized
+numpy matrices for fast cosine similarity computation at query time.
+
+```bash
+pip install popoto[embeddings]          # numpy
+pip install popoto[voyage]              # numpy + voyageai
+pip install popoto[openai]              # numpy + openai
+```
+
+```python
+import popoto
+from popoto.fields.content_field import ContentField
+from popoto.fields.embedding_field import EmbeddingField
+from popoto.embeddings.voyage import VoyageProvider
+
+popoto.configure(
+    embedding_provider=VoyageProvider(api_key="your-key"),
+)
+
+class Memory(popoto.Model):
+    topic = popoto.KeyField()
+    content = ContentField()
+    embedding = EmbeddingField(source="content")
+
+m = Memory.create(topic="revenue", content="Q4 revenue exceeded projections...")
+# Embedding is generated automatically on save
+```
+
+Redis stores only the embedding dimension count (an integer). The actual vector
+is stored as a `.npy` file under `~/.popoto/content/.embeddings/`. On save,
+EmbeddingField reads the source field value, calls the configured provider to
+generate an embedding, and writes the vector atomically to disk.
+
+### Embedding Providers
+
+Popoto ships with two built-in providers. You can also implement your own by
+subclassing `AbstractEmbeddingProvider`.
+
+**VoyageProvider** (recommended for retrieval):
+
+```python
+from popoto.embeddings.voyage import VoyageProvider
+
+provider = VoyageProvider(
+    api_key="your-voyage-api-key",
+    model="voyage-3-lite",           # default
+    dimensions=512,                   # default
+)
+```
+
+**OpenAIProvider**:
+
+```python
+from popoto.embeddings.openai import OpenAIProvider
+
+provider = OpenAIProvider(
+    api_key="your-openai-api-key",
+    model="text-embedding-3-small",  # default
+    dimensions=1536,                  # default
+)
+```
+
+### Querying with semantic_search()
+
+Once models have embeddings, use `semantic_search()` to find semantically similar
+instances. See [Making Queries -- semantic_search()](query.md#semantic-search) for the
+full query interface.
+
+```python
+results = Memory.query.semantic_search("revenue trends", limit=5)
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `source` | `str` | `None` | Name of the field to read content from for embedding generation. |
+| `provider` | `AbstractEmbeddingProvider` | `None` | Provider instance, or None to use the global default set via `popoto.configure()`. |
+| `auto_embed` | `bool` | `True` | Generate embeddings automatically on save. |
+| `cache` | `bool` | `True` | Cache embeddings in memory for fast similarity search. |
+
+See [Content and Embedding Fields](features/content-and-embedding-fields.md) for the
+full feature reference including storage layout, cache management, and provider API.
+
 ## GeoField
 
 `GeoField` uses Redis geospatial indexes for location-based queries. This is perfect
