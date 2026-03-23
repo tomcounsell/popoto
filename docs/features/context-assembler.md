@@ -147,3 +147,4 @@ ObservationProtocol.on_context_used(result.records, outcome_map)
 - [CompositeScoreQuery](composite-score-query.md) — multi-factor retrieval
 - [CoOccurrenceField](co-occurrence-field.md) — associative expansion
 - [Agent Memory overview](agent-memory.md) — full primitives reference
+- [Subconscious Memory Recipe](../guides/subconscious-memory-recipe.md) — automatic memory injection and extraction around LLM turns
