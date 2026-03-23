@@ -1,5 +1,5 @@
 ---
-status: Planning
+status: Ready
 type: feature
 appetite: Large
 owner: Valor
@@ -71,8 +71,8 @@ Key foundational PRs this builds on:
 
 ### Save path
 1. **Entry point**: `model.save()` calls field hooks in order
-2. **ContentField.on_save()**: Validates field value is content (not already a reference) → computes SHA-256 hash of raw content bytes → writes content to `{base_path}/{ClassName}/{hash[:2]}/{hash}.bin` (atomic: write to temp file + `os.rename()`) → replaces field value with `$CF:{hash}` reference string on the model instance (this string gets msgpack-serialized into Redis by the normal save pipeline)
-3. **EmbeddingField.on_save()**: Reads content from model instance via `source` field name → calls `provider.embed([content], input_type="document")` → stores embedding as numpy `.npy` file at `{base_path}/{ClassName}/{hash[:2]}/{hash}.emb.npy` → writes embedding dimension count to Redis field (for validation)
+2. **ContentField.on_save()**: Validates field value is content (not already a reference) → computes SHA-256 hash of raw content bytes → if live file exists, archives current to `.versions/{old_hash}.ext` → writes new content to `{base_path}/{ClassName}/{key_value}.ext` (atomic: temp file + `os.rename()`) → replaces field value with `$CF:{hash}:{relative_path}` reference string on the model instance (msgpack-serialized into Redis)
+3. **EmbeddingField.on_save()**: Reads content from model instance via `source` field name (supports both ContentField values and file paths via `source_type="file"`) → calls `provider.embed([content], input_type="document")` → stores embedding as numpy `.npy` file at `~/.popoto/content/.embeddings/{ClassName}/{hash}.npy` → writes embedding dimension count to Redis field (for validation)
 4. **Other fields**: `ConfidenceField`, `DecayingSortedField` etc. proceed as normal
 
 ### Query path (semantic_search)
@@ -123,7 +123,7 @@ Note: numpy and provider SDKs are optional extras. Unit tests will mock the prov
 ### Key Elements
 
 - **ContentField**: Routes large values to filesystem via content-addressable storage. Redis stores only a `$CF:{sha256}` reference. Lazy-loads on attribute access.
-- **EmbeddingField**: Declarative embedding lifecycle. Generates embeddings on save via a pluggable provider, stores as `.npy` files alongside content.
+- **EmbeddingField**: Declarative embedding lifecycle. Generates embeddings on save via a pluggable provider, stores as `.npy` files. Supports two source modes: `source_type="field"` (default, reads from a ContentField or StringField) and `source_type="file"` (reads content from a file path stored in the source field — for indexing existing documents like an Obsidian vault).
 - **AbstractContentStore / AbstractEmbeddingProvider**: Pluggable interfaces for extensibility. Ship with `FilesystemStore`, `VoyageProvider`, and `OpenAIProvider`.
 - **`semantic_search()` query method**: Embeds query text, computes numpy cosine similarity against all stored embeddings, injects scores into `composite_score()` via the existing boost dict pattern.
 - **`popoto.configure()`**: Global configuration for default provider and store.
@@ -137,9 +137,13 @@ Note: numpy and provider SDKs are optional extras. Unit tests will mock the prov
 ### Technical Approach
 
 - **Query-time similarity, not save-time precomputation.** Similarity is computed fresh at query time via numpy (~6ms for 100K vectors). This avoids O(n) API calls per save and prevents stale scores. The `co_occurrence_boost` injection pattern on `composite_score()` already supports this — similarity scores are injected as a temp ZADD, same as CoOccurrenceField propagation.
-- **Content-addressable storage (CAS).** SHA-256 hash of raw content bytes determines the filename. Two-level directory sharding (`{hash[:2]}/{hash}`) prevents filesystem bottlenecks. Files are immutable — same hash always means same content.
-- **Write ordering: filesystem first, then Redis.** ContentField.on_save() writes content to filesystem before the Redis pipeline executes. If filesystem write fails, on_save() raises and the entire model save aborts (no partial state). If Redis write fails after filesystem write, the orphaned file is harmless (content-addressable, immutable, can be garbage-collected later). This ordering ensures Redis never references a file that doesn't exist.
-- **No deduplication-aware deletion.** ContentField.on_delete() does NOT delete filesystem files. Multiple model instances may reference the same content hash, and reference counting adds complexity without clear value at agent memory scale. Instead, provide a `ContentField.garbage_collect(ModelClass)` classmethod that scans Redis for all live references and removes orphaned files. This is safe to run periodically. Document that filesystem storage is append-only by default.
+- **Two-path filesystem storage.** ContentField uses two directories:
+  - **Live path** (configurable): human-readable files named from key field values. Browseable in tools like Obsidian. Default `~/.popoto/content/`. Override via `popoto.configure(content_path="...")` or `POPOTO_CONTENT_PATH` env var.
+  - **Archive path** (internal): `~/.popoto/content/.versions/` stores previous versions by content hash. Invisible to the developer — versioning is automatic and internal.
+  - On save: if file already exists at the live path, its current content is moved to `.versions/{sha256_hash}.ext`. New content is written to the live path. Redis stores the live path and current content hash.
+  - File naming: `{base_path}/{ClassName}/{key_value}.ext` (e.g., `~/vault/AgentMemory/revenue.md`). Extension configurable via `ContentField(extension=".md")`, default `.txt`.
+- **Write ordering: filesystem first, then Redis.** ContentField.on_save() writes content to filesystem before the Redis pipeline executes. If filesystem write fails, on_save() raises and the entire model save aborts (no partial state). If Redis write fails after filesystem write, the orphaned file is harmless and can be garbage-collected later. This ordering ensures Redis never references a file that doesn't exist.
+- **No deduplication-aware deletion.** ContentField.on_delete() removes the live file but leaves archived versions. Provide a `ContentField.garbage_collect(ModelClass)` classmethod that removes orphaned archive files. Document that `.versions/` is append-only by default.
 - **Embedding cache with bounds.** On first `semantic_search()`, all embeddings for the model class are loaded into a pre-normalized numpy matrix and cached in a class-level dict. Cache is invalidated on save/delete within the same process. Cache has a configurable `max_cache_size` (default 100K vectors) and optional TTL (`cache_ttl` in seconds, default None = no expiry). When cache exceeds max size, oldest entries are evicted. When cache is disabled (`EmbeddingField(cache=False)`), embeddings are loaded from disk per query. Multi-process cache staleness is accepted as a known limitation — document that `semantic_search()` results may lag saves from other processes.
 - **`semantic_search()` not `.search()`.** Avoids collision with potential future RediSearch/FT.SEARCH integration. More precise naming.
 - **Optional numpy dependency.** Follow the DataFrameField pattern: module-level `try/except ImportError`, raise at field instantiation with helpful install message (`pip install popoto[embeddings]`).
@@ -446,14 +450,14 @@ Reviewed by: code-reviewer, data-architect. BLOCKERs from data-architect were in
 
 ---
 
-## Open Questions
+## Resolved Questions
 
-1. **Content store base path**: Where should FilesystemStore write files by default? Options: (a) `~/.popoto/content/` (user home), (b) `./popoto_content/` (CWD-relative), (c) require explicit configuration (no default). Recommendation: `~/.popoto/content/` with override via `popoto.configure(content_path="...")` or `POPOTO_CONTENT_PATH` env var.
+1. **Content store base path**: Default `~/.popoto/content/`, configurable via `popoto.configure(content_path="...")` or `POPOTO_CONTENT_PATH` env var. Live files use human-readable names (key-derived), archived versions use content hashes in `.versions/`.
 
-2. **Method name**: The plan uses `semantic_search()` to avoid collision with potential RediSearch. Is this the right name, or would you prefer something else? (`similarity_search()`, `vector_search()`, `search()`)
+2. **Method name**: `semantic_search()` — precise, avoids collision with potential RediSearch.
 
-3. **Should ContentField have a size threshold?** The issue says ">1KB" goes to filesystem. The plan currently routes ALL ContentField values to filesystem for simplicity. Should we add a `min_size` parameter (e.g., `ContentField(min_size=1024)`) where values below the threshold stay in Redis?
+3. **ContentField scope**: ContentField is for files — user-uploaded docs, agent-generated docs, PDFs, images, JSON, etc. The distinction is whether a file (`.md`, `.pdf`, `.png`, `.json`, etc.) is involved. Short structured data (scores, timestamps, short strings) stays in Redis via normal fields. ContentField always writes to filesystem.
 
-4. **EmbeddingField auto_embed default**: Should embedding generation be automatic on every save (True) or opt-in (False)? Auto-embed is convenient but costs an API call per save. Recommendation: True by default (matches the "declarative lifecycle" design), with `auto_embed=False` for bulk import scenarios.
+4. **EmbeddingField auto_embed**: On by default (`auto_embed=True`), configurable to False for bulk import. Developer provides an API key and selects a provider during setup. Local LLM embeddings are a future feature (out of scope for v1).
 
-5. **Embedding cache invalidation across processes**: The plan accepts eventual consistency for multi-process (cache refreshes on next query after TTL). Is this acceptable, or do we need Redis pub/sub invalidation?
+5. **Multi-process cache**: Eventual consistency is acceptable. No pub/sub invalidation needed.
