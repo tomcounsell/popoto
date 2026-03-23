@@ -43,6 +43,7 @@ print(f"{restaurant.name} serves {restaurant.cuisine} food.")
  - PubSub for message queues, streaming data processing
  - **Full Redis and Valkey support** - works with both out of the box
  - **[Agent Memory](docs/guides/agent-memory-quickstart.md)** - programmable memory primitives for AI agents (decay, confidence, associations, context assembly)
+ - **[Content & Embeddings](docs/features/content-and-embedding-fields.md)** - large content storage, vector embeddings, and semantic search
 
 **Popoto** is ideal for streaming data. The pub/sub module allows you to trigger state updates in real time.
 Currently being used in production for:

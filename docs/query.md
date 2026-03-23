@@ -198,6 +198,7 @@ The `QueryBuilder` returned by `filter()` supports these chainable methods:
 | `no_track()` | Suppress `on_read()` tracking for `AccessTrackerMixin` models |
 | `top_by_decay(field_name, n)` | Return top-N by time-decayed score ([API ref](api-reference.md#querytop_by_decay)) |
 | `composite_score(indexes, limit, temperature)` | Return top-K by weighted composite of multiple sorted indexes ([API ref](api-reference.md#querycomposite_score)) |
+| `semantic_search(query_text, indexes, limit)` | Return top-K by semantic similarity, optionally combined with sorted indexes ([API ref](api-reference.md#querysemantic_search)) |
 | `all()` | Execute query and return all results as a list |
 | `first()` | Execute query and return first result or None |
 | `count()` | Count matching results without loading objects |
@@ -1108,6 +1109,66 @@ if nearby_drivers:
 
 See [Models and Fields](fields.md#geofield) for more on defining GeoFields, and
 [Relationship Field](relationship.md) for linking drivers to orders.
+
+## Semantic Search
+
+`semantic_search()` finds instances by meaning rather than exact field values. It embeds the
+query text via the configured provider, computes cosine similarity against all stored embeddings,
+and returns the top-K most similar instances.
+
+This requires a model with an `EmbeddingField` and a configured embedding provider (via
+`popoto.configure()` or per-field). See [EmbeddingField](fields.md#embeddingfield) for setup.
+
+### Basic Similarity Search
+
+```python
+from popoto.fields.content_field import ContentField
+from popoto.fields.embedding_field import EmbeddingField
+
+class Memory(Model):
+    topic = KeyField()
+    content = ContentField()
+    relevance = SortedField(type=float)
+    embedding = EmbeddingField(source="content")
+
+# Find memories semantically similar to a query
+results = Memory.query.semantic_search("revenue trends", limit=5)
+```
+
+When called without `indexes`, results are ranked purely by cosine similarity.
+
+### Combined with Sorted Indexes
+
+Pass `indexes` to blend semantic similarity with other sorted field scores using
+`composite_score()` under the hood:
+
+```python
+results = Memory.query.semantic_search(
+    "revenue trends",
+    indexes={"relevance": 0.4},
+    limit=10,
+    temperature=1.0,
+)
+```
+
+The similarity scores are injected as an additional weighted signal alongside the
+sorted field indexes, producing a unified ranking.
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `query_text` | `str` | *(required)* | The text to search for semantically. |
+| `indexes` | `dict` | `None` | Mapping of sorted field names to weights for composite scoring. If None, ranks by similarity alone. |
+| `limit` | `int` | `10` | Maximum results to return. |
+| `aggregate` | `str` | `"SUM"` | Aggregation mode for ZUNIONSTORE when using indexes. |
+| `min_score` | `float` | `None` | Optional minimum composite score threshold. |
+| `post_filter` | `Callable` | `None` | Optional `(redis_key, score) -> bool` filter. |
+| `co_occurrence_boost` | `dict` | `None` | Optional `{redis_key: weight}` dict for association boosting. |
+| `temperature` | `float` | `1.0` | Score scaling factor. |
+
+Returns an empty list if the query text is empty, no provider is configured, or no
+embeddings exist for the model.
 
 ## Performance Best Practices
 

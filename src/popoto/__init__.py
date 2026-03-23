@@ -38,10 +38,18 @@ from .fields.observation import ObservationProtocol, RecallProposal
 from .fields.prediction_ledger import PredictionLedgerMixin
 from .fields.geo_field import GeoField
 
+from .fields.content_field import ContentField
+
 try:
     from .fields.dataframe_field import DataFrameField
 except ImportError:
     pass
+
+try:
+    from .fields.embedding_field import EmbeddingField
+except ImportError:
+    pass
+
 from .fields.datetime_field import DatetimeField
 from .fields.relationship import Relationship
 from .models.base import Model, ModelBase
@@ -73,6 +81,52 @@ def get_redis():
         redis.rpush("my_queue", "item")
     """
     return POPOTO_REDIS_DB
+
+
+def configure(
+    embedding_provider=None,
+    content_store=None,
+    content_path: str = None,
+):
+    """Configure global defaults for ContentField and EmbeddingField.
+
+    Call this once at application startup to set the default embedding
+    provider and content store used by all fields that don't specify
+    their own.
+
+    Args:
+        embedding_provider: An AbstractEmbeddingProvider instance for
+            generating embeddings. Required for EmbeddingField and
+            semantic_search() to work.
+        content_store: An AbstractContentStore instance for content
+            storage. Defaults to FilesystemStore if not specified.
+        content_path: Base directory for filesystem content storage.
+            Overrides POPOTO_CONTENT_PATH env var. Only applies when
+            using the default FilesystemStore.
+
+    Example:
+        import popoto
+        from popoto.embeddings.voyage import VoyageProvider
+
+        popoto.configure(
+            embedding_provider=VoyageProvider(api_key="your-key"),
+            content_path="/data/popoto-content",
+        )
+    """
+    if embedding_provider is not None:
+        from .fields.embedding_field import set_default_provider
+
+        set_default_provider(embedding_provider)
+
+    if content_store is not None:
+        from .fields.content_field import set_default_store
+
+        set_default_store(content_store)
+    elif content_path is not None:
+        from .stores.filesystem import FilesystemStore
+        from .fields.content_field import set_default_store
+
+        set_default_store(FilesystemStore(base_path=content_path))
 
 
 __all__ = [
@@ -130,5 +184,8 @@ __all__ = [
     "get_async_redis_db",
     "ContextAssembler",
     "AssemblyResult",
+    "ContentField",
+    "EmbeddingField",
+    "configure",
     "enable_error_reporting",
 ]

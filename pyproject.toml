@@ -32,6 +32,17 @@ dataframe = [
 ]
 ulid = ["ulid-py>=1.1.0"]
 ksuid = ["cyksuid>=1.0.0"]
+embeddings = [
+    "numpy>=1.23.1",
+]
+voyage = [
+    "voyageai>=0.3.0",
+    "numpy>=1.23.1",
+]
+openai = [
+    "openai>=1.0.0",
+    "numpy>=1.23.1",
+]
 monitoring = [
     "sentry-sdk>=2.0.0",
 ]

@@ -124,6 +124,35 @@ MONITOR
 
 See the [CLAUDE.md](https://github.com/tomcounsell/popoto) debugging section for more Redis CLI patterns.
 
+## Content and Embedding Configuration
+
+Use `popoto.configure()` to set global defaults for `ContentField` and `EmbeddingField`.
+Call this once at application startup, before creating or querying any models that use
+these field types.
+
+```python
+import popoto
+from popoto.embeddings.voyage import VoyageProvider
+
+popoto.configure(
+    embedding_provider=VoyageProvider(api_key="your-key"),
+    content_path="/data/popoto-content",
+)
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `embedding_provider` | `AbstractEmbeddingProvider` | `None` | Default embedding provider for all EmbeddingFields and `semantic_search()`. |
+| `content_store` | `AbstractContentStore` | `None` | Default content store for all ContentFields. Defaults to `FilesystemStore`. |
+| `content_path` | `str` | `None` | Base directory for filesystem content storage. Overrides `POPOTO_CONTENT_PATH`. Only applies with the default `FilesystemStore`. |
+
+You can also set per-field overrides by passing `store=` to `ContentField` or
+`provider=` to `EmbeddingField`. Per-field settings take precedence over the
+global configuration.
+
+See [ContentField](fields.md#contentfield) and [EmbeddingField](fields.md#embeddingfield)
+for field-level configuration.
+
 ## Error Reporting (Opt-In)
 
 Popoto includes optional, opt-in error reporting that sends library-specific
@@ -188,6 +217,7 @@ popoto.enable_error_reporting(dsn="https://your-key@your-org.ingest.sentry.io/yo
 |----------|---------|-------------|
 | `REDIS_URL` | *(empty)* | Redis connection URL. Falls back to localhost:6379. |
 | `BEGINNING_OF_TIME` | `0` | Unix timestamp used as the minimum time boundary for time-based queries. |
+| `POPOTO_CONTENT_PATH` | `~/.popoto/content` | Base directory for ContentField filesystem storage and EmbeddingField `.npy` files. |
 | `POPOTO_LOG_LEVEL` | `WARNING` | Log level for POPOTO-REDIS_DB logger (DEBUG, INFO, WARNING, ERROR, CRITICAL) |
 | `POPOTO_SENTRY_DSN` | *(built-in)* | Override the Sentry DSN used by `enable_error_reporting()`. |
 
@@ -304,6 +334,8 @@ logging.getLogger("POPOTO.Query").setLevel(logging.DEBUG)
 | `POPOTO.SortedFieldMixin` | Sorted set index operations |
 | `POPOTO.GeoField` | Geographic queries and indexing |
 | `POPOTO.Relationship` | Relationship loading and saving |
+| `POPOTO.ContentField` | Content storage and lazy-loading operations |
+| `POPOTO.EmbeddingField` | Embedding generation, caching, and storage |
 | `POPOTO-publisher` | PubSub publishing events |
 | `POPOTO-subscriber` | PubSub subscription events |
 
