@@ -1654,6 +1654,32 @@ print_redis_info() -> None
 Log Redis server info and memory usage to the `POPOTO-REDIS_DB` logger. Useful for debugging
 connection issues or monitoring memory consumption.
 
+### enable_error_reporting()
+
+```python
+enable_error_reporting(dsn: Optional[str] = None) -> None
+```
+
+Enable opt-in error reporting for Popoto-specific exceptions. When enabled, exceptions such as
+`ModelException` and `QueryException` are automatically reported to the Popoto maintainers via
+an isolated Sentry client. Requires the `monitoring` extra (`pip install popoto[monitoring]`).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `dsn` | `str` | Optional Sentry DSN. Falls back to the `POPOTO_SENTRY_DSN` environment variable. |
+
+The reporter uses an isolated `sentry_sdk.Client` and `Scope` — it never calls `sentry_sdk.init()`
+and never interferes with the application's own Sentry configuration. If `sentry-sdk` is not
+installed or no DSN is available, this function silently does nothing.
+
+```python
+import popoto
+
+popoto.enable_error_reporting()
+```
+
+See [Configuration — Error Reporting](configuration.md#error-reporting-opt-in) for full details.
+
 ---
 
 ## Exceptions
@@ -1666,6 +1692,7 @@ class ModelException(Exception)
 
 Raised when a model operation fails: validation errors, save failures, unique constraint violations,
 delete or load errors. Defined in `popoto.exceptions` and importable from the main namespace.
+Automatically reported when [error reporting](configuration.md#error-reporting-opt-in) is enabled.
 
 ```python
 from popoto import ModelException
@@ -1679,6 +1706,7 @@ class QueryException(Exception)
 
 Raised when a query is malformed or produces an unexpected result (e.g., invalid filter parameters,
 `get()` returning multiple results). Defined in `popoto.models.query`.
+Automatically reported when [error reporting](configuration.md#error-reporting-opt-in) is enabled.
 
 ### PublisherException
 
@@ -1688,6 +1716,7 @@ class PublisherException(Exception)
 
 Raised when a publish operation fails (e.g., missing channel name). Defined in
 `popoto.pubsub.publisher`.
+Automatically reported when [error reporting](configuration.md#error-reporting-opt-in) is enabled.
 
 ### SubscriberException
 
@@ -1696,6 +1725,7 @@ class SubscriberException(Exception)
 ```
 
 Raised when a subscriber's message handler fails. Defined in `popoto.pubsub.subscriber`.
+Automatically reported when [error reporting](configuration.md#error-reporting-opt-in) is enabled.
 
 ### PopotoException
 
