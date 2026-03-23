@@ -33,18 +33,21 @@ class TestEnableWithoutSentrySdk:
 
         import popoto._error_reporting as mod
 
+        old_default = mod._DEFAULT_DSN
         mod._enabled = False
         mod._scope = None
+        mod._DEFAULT_DSN = None
 
-        # Should silently return (no ValueError, no enabling)
-        mod._do_enable(dsn=None)
+        try:
+            # Should silently return (no ValueError, no enabling)
+            mod._do_enable(dsn=None)
 
-        assert mod._enabled is False
-        assert mod._scope is None
-
-        # cleanup
-        mod._enabled = False
-        mod._scope = None
+            assert mod._enabled is False
+            assert mod._scope is None
+        finally:
+            mod._DEFAULT_DSN = old_default
+            mod._enabled = False
+            mod._scope = None
 
 
 class TestEnableWithMockSentry:

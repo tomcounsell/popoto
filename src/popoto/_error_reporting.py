@@ -24,8 +24,10 @@ _enabled: bool = False
 _scope: Optional[object] = None  # sentry_sdk.Scope when active
 _original_inits: dict = {}  # class -> original __init__
 
-# TODO: hardcode the yudame/popoto Sentry DSN here once available
-_DEFAULT_DSN: Optional[str] = None
+_DEFAULT_DSN: Optional[str] = (
+    "https://d5b829d05d3693b45c9fe55f82d230c9"
+    "@o4508986235682816.ingest.us.sentry.io/4511091961495552"
+)
 
 
 def _get_popoto_version() -> str:
@@ -72,9 +74,10 @@ def enable_error_reporting(dsn: Optional[str] = None) -> None:
     global Sentry configuration.
 
     Args:
-        dsn: Sentry DSN for error reporting. If not provided, the
-            ``POPOTO_SENTRY_DSN`` environment variable is checked. If
-            neither is set, this function silently does nothing.
+        dsn: Optional Sentry DSN override. By default, errors are
+            reported to the Popoto maintainers' Sentry project. Set
+            ``POPOTO_SENTRY_DSN`` env var or pass a DSN here to
+            redirect reports to your own project instead.
 
     Example::
 
