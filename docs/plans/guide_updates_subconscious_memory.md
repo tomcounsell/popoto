@@ -1,5 +1,5 @@
 ---
-status: In Progress
+status: Complete
 type: feature
 appetite: Medium
 owner: Valor
@@ -243,15 +243,15 @@ class SubconsciousMemory:
 ## Failure Path Test Strategy
 
 ### Exception Handling Coverage
-- [ ] inject_context with no existing memories returns original messages unchanged
-- [ ] extract_memories with empty response text is a no-op
-- [ ] report_outcomes with empty assembly result is a no-op
-- [ ] Mocked OpenAI client failures do not crash the memory layer
+- [x]inject_context with no existing memories returns original messages unchanged
+- [x]extract_memories with empty response text is a no-op
+- [x]report_outcomes with empty assembly result is a no-op
+- [x]Mocked OpenAI client failures do not crash the memory layer
 
 ### Empty/Invalid Input Handling
-- [ ] Empty messages list passed to inject_context
-- [ ] Response text with no extractable facts
-- [ ] Assembly result with zero records
+- [x]Empty messages list passed to inject_context
+- [x]Response text with no extractable facts
+- [x]Assembly result with zero records
 
 ## Test Impact
 
@@ -279,26 +279,26 @@ No existing tests are modified. Three new test scenarios:
 ## Documentation
 
 ### Guide Updates
-- [ ] `docs/guides/agent-memory-quickstart.md` -- Level 5 LLM call example
-- [ ] `docs/features/context-assembler.md` -- LLM integration section
+- [x]`docs/guides/agent-memory-quickstart.md` -- Level 5 LLM call example
+- [x]`docs/features/context-assembler.md` -- LLM integration section
 
 ### New Guide
-- [ ] `docs/guides/subconscious-memory-recipe.md` -- complete recipe walkthrough
+- [x]`docs/guides/subconscious-memory-recipe.md` -- complete recipe walkthrough
 
 ### Inline Documentation
-- [ ] Comprehensive docstrings on SubconsciousMemory class and methods
-- [ ] Comments explaining the injection/extraction pipeline
+- [x]Comprehensive docstrings on SubconsciousMemory class and methods
+- [x]Comments explaining the injection/extraction pipeline
 
 ## Success Criteria
 
-- [ ] Level 5 of quickstart guide includes a complete OpenAI SDK v1+ LLM call example
-- [ ] `docs/features/context-assembler.md` includes an end-to-end LLM integration snippet
-- [ ] `tests/test_guide_examples.py` mirrors every code snippet from quickstart and recipe guides verbatim
-- [ ] All guide example tests pass in CI
-- [ ] New `docs/guides/subconscious-memory-recipe.md` -- complete subconscious memory recipe
-- [ ] New `src/popoto/recipes/subconscious_memory.py` -- orchestration layer implementation
-- [ ] New `tests/test_subconscious_memory.py` -- recipe tests
-- [ ] Recipe demonstrates: auto-inject context before LLM turn, auto-extract memories after LLM turn, outcome reporting
+- [x]Level 5 of quickstart guide includes a complete OpenAI SDK v1+ LLM call example
+- [x]`docs/features/context-assembler.md` includes an end-to-end LLM integration snippet
+- [x]`tests/test_guide_examples.py` mirrors every code snippet from quickstart and recipe guides verbatim
+- [x]All guide example tests pass in CI
+- [x]New `docs/guides/subconscious-memory-recipe.md` -- complete subconscious memory recipe
+- [x]New `src/popoto/recipes/subconscious_memory.py` -- orchestration layer implementation
+- [x]New `tests/test_subconscious_memory.py` -- recipe tests
+- [x]Recipe demonstrates: auto-inject context before LLM turn, auto-extract memories after LLM turn, outcome reporting
 
 ## Step by Step Tasks
 
