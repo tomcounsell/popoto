@@ -100,9 +100,51 @@ Additional non-tunable defaults:
 4. **Post-effects**: Fire `ObservationProtocol.on_read()` for selected records.
 5. **Competitive suppression**: Non-selected pull-path candidates receive a mild contradiction signal via ConfidenceField.
 
+## LLM Integration
+
+Wire assembled context into an LLM call using the OpenAI SDK v1+:
+
+```python
+from openai import OpenAI
+from popoto import ContextAssembler, ObservationProtocol
+
+client = OpenAI()  # uses OPENAI_API_KEY env var
+
+assembler = ContextAssembler(
+    model_class=Memory,
+    score_weights={"relevance": 0.6, "confidence": 0.3},
+    max_items=10,
+    max_tokens=4000,
+)
+
+result = assembler.assemble(
+    query_cues={"topic": "deployment"},
+    agent_id="agent-1",
+)
+
+# Build messages with injected memory context
+messages = [
+    {"role": "system", "content": f"You are a helpful assistant.\n\nRelevant context:\n{result.formatted}"},
+    {"role": "user", "content": "What's our deployment strategy?"},
+]
+
+# Call the LLM
+response = client.chat.completions.create(
+    model="gpt-4.1-nano",
+    messages=messages,
+)
+
+answer = response.choices[0].message.content
+
+# Report outcomes — which memories did the agent actually use?
+outcome_map = {r.db_key.redis_key: "acted" for r in result.records}
+ObservationProtocol.on_context_used(result.records, outcome_map)
+```
+
 ## See Also
 
 - [PolicyCache](policy-cache.md) — learned action selection (uses ContextAssembler for retrieval)
 - [CompositeScoreQuery](composite-score-query.md) — multi-factor retrieval
 - [CoOccurrenceField](co-occurrence-field.md) — associative expansion
 - [Agent Memory overview](agent-memory.md) — full primitives reference
+- [Subconscious Memory Recipe](../guides/subconscious-memory-recipe.md) — automatic memory injection and extraction around LLM turns

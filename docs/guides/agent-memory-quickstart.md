@@ -184,6 +184,38 @@ result = assembler.assemble(
 system_prompt = f"You are a helpful assistant.\n\nRelevant context:\n{result.formatted}"
 ```
 
+### Complete LLM Integration Example
+
+Wire assembled context into an OpenAI SDK v1+ call and report outcomes:
+
+```python
+from openai import OpenAI
+from popoto import ContextAssembler, ObservationProtocol
+
+client = OpenAI()  # uses OPENAI_API_KEY env var
+
+# Assemble memory context
+result = assembler.assemble(query_cues={"topic": "deployment"}, agent_id="agent-1")
+
+# Build messages with injected memory
+messages = [
+    {"role": "system", "content": f"You are a helpful assistant.\n\nRelevant context:\n{result.formatted}"},
+    {"role": "user", "content": "What's our deployment strategy?"},
+]
+
+# Call the LLM
+response = client.chat.completions.create(
+    model="gpt-4.1-nano",
+    messages=messages,
+)
+
+answer = response.choices[0].message.content
+
+# Report outcomes — which memories did the agent actually use?
+outcome_map = {r.db_key.redis_key: "acted" for r in result.records}
+ObservationProtocol.on_context_used(result.records, outcome_map)
+```
+
 **What you get:** One call assembles the right memories, respects token budgets, and formats output for your LLM. Pull-path (query-driven) and push-path (proactive surfacing) retrieval in a single pipeline.
 
 ## Level 6: Semantic Search — Find Memories by Meaning
@@ -280,3 +312,4 @@ from popoto import InteractionWeight, TemporalPeriod, Defaults
 - **[RAG Chatbot Recipe](rag-chatbot-recipe.md)** — build a retrieval-augmented chatbot with Popoto
 - **[Tuning Magic Numbers](tuning-magic-numbers.md)** — adjust decay rates, confidence signals, and thresholds
 - **[PolicyCache Recipe](policy-cache-recipe.md)** — RL-style learned action selection built on these primitives
+- **[Subconscious Memory Recipe](subconscious-memory-recipe.md)** — automatic memory injection and extraction around LLM turns

@@ -1417,4 +1417,5 @@ See [Defaults API reference](../api-reference.md#defaults) and [Tuning Magic Num
 - [Popoto Memory Roadmap](../guides/popoto-memory-roadmap.md) — full implementation spec with test strategies and benchmarks
 - [Epistemic Flow in Cognitive Agent Architectures](../guides/epistemic-flow-cognitive-agent-architectures.md) — research background
 - [Programmable Memory Systems — Neuroscience Design Spec](../guides/programmable-memory-systems-neuroscience-design-spec.md) — neuroscience foundations
+- [Subconscious Memory Recipe](../guides/subconscious-memory-recipe.md) — automatic memory injection and extraction around LLM turns
 - [Behavioral Episode Memory System](https://github.com/tomcounsell/ai/issues/376) — downstream consumer in the AI project

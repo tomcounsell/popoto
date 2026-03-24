@@ -7,11 +7,13 @@ are importable and usable, but designed primarily as reference implementations.
 
 from .context_assembler import AssemblyResult, ContextAssembler
 from .policy_cache import PolicyEntry, compute_fingerprint, update_q_value
+from .subconscious_memory import SubconsciousMemory
 
 __all__ = [
     "AssemblyResult",
     "ContextAssembler",
     "PolicyEntry",
+    "SubconsciousMemory",
     "compute_fingerprint",
     "update_q_value",
 ]

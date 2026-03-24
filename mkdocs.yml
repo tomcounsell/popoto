@@ -32,6 +32,7 @@ nav:
         - Agent Memory Quickstart: 'guides/agent-memory-quickstart.md'
         - Tuning Magic Numbers: 'guides/tuning-magic-numbers.md'
         - Policy Cache Recipe: 'guides/policy-cache-recipe.md'
+        - Subconscious Memory Recipe: 'guides/subconscious-memory-recipe.md'
         - Memory Roadmap: 'guides/popoto-memory-roadmap.md'
         - Neuroscience Design Spec: 'guides/programmable-memory-systems-neuroscience-design-spec.md'
         - Epistemic Flow: 'guides/epistemic-flow-cognitive-agent-architectures.md'
