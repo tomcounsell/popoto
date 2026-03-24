@@ -344,7 +344,7 @@ class TestQuickstartLevel5:
             ]
 
             response = client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-4.1-nano",
                 messages=messages,
             )
 
@@ -491,7 +491,7 @@ class TestContextAssemblerGuide:
             ]
 
             response = client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-4.1-nano",
                 messages=messages,
             )
 

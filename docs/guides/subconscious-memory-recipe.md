@@ -82,7 +82,7 @@ messages, assembly_result = sm.inject_context(messages)
 
 # Call the LLM (messages now include memory context in the system message)
 response = client.chat.completions.create(
-    model="gpt-4o-mini",
+    model="gpt-4.1-nano",
     messages=messages,
 )
 answer = response.choices[0].message.content

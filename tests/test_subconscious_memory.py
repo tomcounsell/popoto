@@ -280,7 +280,7 @@ class TestFullRoundTrip:
             client.chat.completions.create.return_value = mock_response
 
             response = client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-4.1-nano",
                 messages=messages,
             )
             answer = response.choices[0].message.content
