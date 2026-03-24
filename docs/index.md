@@ -54,6 +54,7 @@ Popoto provides a fast, familiar interface for working with Redis and Valkey.
  - [Agent Memory](features/agent-memory.md) — programmable memory primitives for AI agents (decay, confidence, associations)
  - [Content and Embedding Fields](features/content-and-embedding-fields.md) — large content storage, vector embeddings, and semantic search
  - [PolicyCache Recipe](guides/policy-cache-recipe.md) — reference recipe composing all memory primitives into an RL-style action selection cache
+ - [SubconsciousMemory Recipe](guides/subconscious-memory-recipe.md) — automatic memory injection and extraction around LLM turns
 
 **Popoto** is ideal for streaming data. The pub/sub module allows you to trigger state updates in real time.
 Currently being used in production for:
