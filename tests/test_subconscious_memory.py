@@ -249,6 +249,7 @@ class TestReportOutcomes:
 class TestFullRoundTrip:
     def test_inject_call_extract_report(self, sm):
         """Full cycle: inject -> mock LLM -> extract -> report."""
+        pytest.importorskip("openai")
         # Seed a memory
         SCMemory(
             agent_id="agent-1",

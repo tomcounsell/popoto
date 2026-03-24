@@ -307,6 +307,7 @@ class TestQuickstartLevel5:
 
     def test_llm_integration(self):
         """Tests the LLM call example with mocked OpenAI client."""
+        pytest.importorskip("openai")
         Memory = GuideL5Memory
 
         Memory(
@@ -455,6 +456,7 @@ class TestContextAssemblerGuide:
 
     def test_llm_integration(self):
         """Tests the LLM integration snippet from context-assembler.md."""
+        pytest.importorskip("openai")
         Memory = GuideCAMemory
 
         Memory(agent_id="agent-1", content="deployment strategy", importance=0.9).save()
