@@ -34,7 +34,6 @@ from popoto.recipes.context_assembler import AssemblyResult
 from popoto.recipes.subconscious_memory import SubconsciousMemory
 from popoto.redis_db import POPOTO_REDIS_DB
 
-
 # ---------------------------------------------------------------------------
 # Test Model
 # ---------------------------------------------------------------------------
