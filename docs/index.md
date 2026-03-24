@@ -55,6 +55,7 @@ Popoto provides a fast, familiar interface for working with Redis and Valkey.
  - [Content and Embedding Fields](features/content-and-embedding-fields.md) — large content storage, vector embeddings, and semantic search
  - [PolicyCache Recipe](guides/policy-cache-recipe.md) — reference recipe composing all memory primitives into an RL-style action selection cache
  - [SubconsciousMemory Recipe](guides/subconscious-memory-recipe.md) — automatic memory injection and extraction around LLM turns
+ - [RAG Chatbot Recipe](guides/rag-chatbot-recipe.md) — build a retrieval-augmented chatbot using ContentField, EmbeddingField, and semantic_search
 
 **Popoto** is ideal for streaming data. The pub/sub module allows you to trigger state updates in real time.
 Currently being used in production for:
@@ -108,7 +109,9 @@ class Restaurant(Model):
     rating = SortedField(type=float)
 ```
 
-See [Models and Fields](fields.md) for all Model and Field options.
+See [Models and Fields](fields.md) for all Model and Field options, including
+[ContentField](fields.md#contentfield) for large content storage and
+[EmbeddingField](fields.md#embeddingfield) for vector embeddings and semantic search.
 
 See [Model Meta Options](meta.md) for configuration like default ordering and TTL.
 
@@ -180,6 +183,37 @@ asyncio.run(main())
 ```
 
 See [Async Operations](async.md) for complete async API documentation and examples.
+
+### Semantic Search
+
+Popoto supports vector embeddings and semantic search for AI-powered retrieval.
+Store large content on the filesystem with `ContentField`, generate embeddings
+automatically with `EmbeddingField`, and search by meaning with `semantic_search()`.
+
+```python
+import popoto
+from popoto import Model, KeyField, ContentField, EmbeddingField
+from popoto.embeddings.voyage import VoyageProvider
+
+# Configure once at startup
+popoto.configure(
+    embedding_provider=VoyageProvider(api_key="your-key"),
+)
+
+class Document(Model):
+    title = KeyField()
+    body = ContentField()
+    embedding = EmbeddingField(source="body")
+
+Document.create(title="Q4 Report", body="Revenue exceeded projections by 12%...")
+
+# Search by meaning — returns documents ranked by cosine similarity
+results = Document.query.semantic_search("financial performance", limit=5)
+```
+
+Install an embedding provider extra: `pip install popoto[voyage]` or `pip install popoto[openai]`.
+
+See [Content and Embedding Fields](features/content-and-embedding-fields.md) for the full guide, and [Configuration](configuration.md#content-and-embedding-configuration) for setup options.
 
 ![](/static/popoto.png)
 

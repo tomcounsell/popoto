@@ -218,6 +218,71 @@ ObservationProtocol.on_context_used(result.records, outcome_map)
 
 **What you get:** One call assembles the right memories, respects token budgets, and formats output for your LLM. Pull-path (query-driven) and push-path (proactive surfacing) retrieval in a single pipeline.
 
+## Level 6: Semantic Search — Find Memories by Meaning
+
+Add `ContentField` and `EmbeddingField` to store large content on the filesystem and search it by semantic similarity. Redis stays lean (only references and dimension counts), while content and vectors live on disk.
+
+```python
+import popoto
+from popoto import (
+    Model, AutoKeyField, KeyField, FloatField,
+    ContentField, EmbeddingField, DecayingSortedField, ConfidenceField,
+)
+from popoto.embeddings.voyage import VoyageProvider
+
+# Configure once at startup — sets the default embedding provider
+# and content storage path for all fields
+popoto.configure(
+    embedding_provider=VoyageProvider(api_key="your-key"),
+    content_path="/data/agent-memory",
+)
+
+class Memory(Model):
+    memory_id = AutoKeyField()
+    agent_id = KeyField()
+    content = ContentField()                    # large text stored on filesystem
+    importance = FloatField(default=1.0)
+    relevance = DecayingSortedField(
+        base_score_field="importance",
+        partition_by="agent_id",
+    )
+    confidence = ConfidenceField(initial_confidence=0.5)
+    embedding = EmbeddingField(source="content")  # auto-generates vector on save
+
+# Save memories — embeddings are generated automatically
+Memory.create(
+    agent_id="agent-1",
+    content="Q4 revenue exceeded projections by 12%, driven by enterprise deals.",
+    importance=0.9,
+)
+Memory.create(
+    agent_id="agent-1",
+    content="Engineering headcount target is 50 by end of year.",
+    importance=0.7,
+)
+Memory.create(
+    agent_id="agent-1",
+    content="The deploy pipeline uses blue-green strategy with automatic rollback.",
+    importance=0.8,
+)
+
+# Similarity-only search — ranked by cosine similarity to the query
+results = Memory.query.semantic_search("revenue performance", limit=5)
+for m in results:
+    print(m.content[:80])
+
+# Combined search — blends similarity with decay and confidence signals
+results = Memory.query.semantic_search(
+    "revenue performance",
+    indexes={"relevance": 0.4, "confidence": 0.3},
+    limit=5,
+)
+```
+
+**What you get:** Memories are searchable by meaning, not just keywords. Combined with decay and confidence, the most relevant, recent, and trusted memories surface first.
+
+> **Install extras:** `pip install popoto[voyage]` for Voyage AI embeddings, or `pip install popoto[openai]` for OpenAI. See [Content and Embedding Fields](../features/content-and-embedding-fields.md) for all provider options.
+
 ## Import Cheat Sheet
 
 All imports come from the top-level `popoto` package:
@@ -226,6 +291,7 @@ All imports come from the top-level `popoto` package:
 # Models and fields
 from popoto import Model, AutoKeyField, KeyField, StringField, FloatField
 from popoto import DecayingSortedField, ConfidenceField, CoOccurrenceField
+from popoto import ContentField, EmbeddingField
 
 # Mixins (listed before Model in class definition)
 from popoto import WriteFilterMixin, AccessTrackerMixin
@@ -242,6 +308,8 @@ from popoto import InteractionWeight, TemporalPeriod, Defaults
 ## What's Next
 
 - **[Agent Memory Feature Overview](../features/agent-memory.md)** — all 14 primitives with full API documentation
+- **[Content and Embedding Fields](../features/content-and-embedding-fields.md)** — deep dive into ContentField, EmbeddingField, and semantic_search
+- **[RAG Chatbot Recipe](rag-chatbot-recipe.md)** — build a retrieval-augmented chatbot with Popoto
 - **[Tuning Magic Numbers](tuning-magic-numbers.md)** — adjust decay rates, confidence signals, and thresholds
 - **[PolicyCache Recipe](policy-cache-recipe.md)** — RL-style learned action selection built on these primitives
 - **[Subconscious Memory Recipe](subconscious-memory-recipe.md)** — automatic memory injection and extraction around LLM turns
