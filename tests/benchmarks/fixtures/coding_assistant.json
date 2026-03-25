@@ -1,0 +1,88 @@
+{
+  "scenario": "coding_assistant",
+  "description": "Development assistant tracking project architecture decisions over 10 turns",
+  "turns": [
+    {
+      "role": "user",
+      "content": "We need to decide on the database for our new microservice. The options are PostgreSQL, MongoDB, or DynamoDB."
+    },
+    {
+      "role": "assistant",
+      "content": "For a microservice with structured data and complex queries, PostgreSQL is the strongest choice. It offers ACID compliance, mature tooling, and excellent JSON support via JSONB columns. MongoDB would work for document-heavy workloads but adds operational complexity."
+    },
+    {
+      "role": "user",
+      "content": "Actually, our data is mostly event streams. We need to handle 50,000 events per second with time-range queries."
+    },
+    {
+      "role": "assistant",
+      "content": "Given the event stream requirement of 50,000 events per second, I would revise my earlier PostgreSQL recommendation. TimescaleDB extension on PostgreSQL handles time-series at scale. Alternatively, ClickHouse is purpose-built for this with columnar storage and sub-second aggregation queries."
+    },
+    {
+      "role": "user",
+      "content": "The team has more experience with the PostgreSQL ecosystem. Let's go with TimescaleDB. What about the API framework?"
+    },
+    {
+      "role": "assistant",
+      "content": "Decision confirmed: TimescaleDB on PostgreSQL for the event store. For the API framework, FastAPI with Python is recommended given the team's Python expertise. It provides async support, automatic OpenAPI documentation, and handles high concurrency well with uvicorn. The alternative would be Go with Gin, which has better raw throughput but longer development cycles."
+    },
+    {
+      "role": "user",
+      "content": "We need the API to handle at least 5,000 concurrent connections. Will FastAPI manage that?"
+    },
+    {
+      "role": "assistant",
+      "content": "FastAPI with uvicorn workers can handle 5,000 concurrent connections. Deploy with 4 uvicorn workers behind nginx. The bottleneck will be database connections, not the framework. Use a connection pool of 100 connections with pgbouncer for TimescaleDB. If load testing reveals issues, horizontal scaling with Kubernetes is straightforward."
+    },
+    {
+      "role": "user",
+      "content": "One more thing - we need authentication. JWT or session-based?"
+    },
+    {
+      "role": "assistant",
+      "content": "For a microservice API, JWT is the standard choice. Use short-lived access tokens with 15-minute expiry and refresh tokens stored server-side. This avoids session state in the API layer. Use RS256 signing for token verification across services. The rejected alternative of session-based auth would require shared session storage between service instances."
+    }
+  ],
+  "ground_truth": {
+    "sentences": [
+      {"text": "For a microservice with structured data and complex queries, PostgreSQL is the strongest choice.", "label": "meaningful", "category": "superseded"},
+      {"text": "It offers ACID compliance, mature tooling, and excellent JSON support via JSONB columns.", "label": "meaningful", "category": "contextual"},
+      {"text": "MongoDB would work for document-heavy workloads but adds operational complexity.", "label": "meaningful", "category": "contextual"},
+      {"text": "Given the event stream requirement of 50,000 events per second, I would revise my earlier PostgreSQL recommendation.", "label": "meaningful", "category": "essential"},
+      {"text": "TimescaleDB extension on PostgreSQL handles time-series at scale.", "label": "meaningful", "category": "essential"},
+      {"text": "Alternatively, ClickHouse is purpose-built for this with columnar storage and sub-second aggregation queries.", "label": "meaningful", "category": "contextual"},
+      {"text": "Decision confirmed: TimescaleDB on PostgreSQL for the event store.", "label": "meaningful", "category": "essential"},
+      {"text": "For the API framework, FastAPI with Python is recommended given the team's Python expertise.", "label": "meaningful", "category": "essential"},
+      {"text": "It provides async support, automatic OpenAPI documentation, and handles high concurrency well with uvicorn.", "label": "meaningful", "category": "essential"},
+      {"text": "The alternative would be Go with Gin, which has better raw throughput but longer development cycles.", "label": "meaningful", "category": "contextual"},
+      {"text": "FastAPI with uvicorn workers can handle 5,000 concurrent connections.", "label": "meaningful", "category": "essential"},
+      {"text": "Deploy with 4 uvicorn workers behind nginx.", "label": "meaningful", "category": "essential"},
+      {"text": "The bottleneck will be database connections, not the framework.", "label": "meaningful", "category": "essential"},
+      {"text": "Use a connection pool of 100 connections with pgbouncer for TimescaleDB.", "label": "meaningful", "category": "essential"},
+      {"text": "If load testing reveals issues, horizontal scaling with Kubernetes is straightforward.", "label": "meaningful", "category": "nice_to_have"},
+      {"text": "For a microservice API, JWT is the standard choice.", "label": "meaningful", "category": "essential"},
+      {"text": "Use short-lived access tokens with 15-minute expiry and refresh tokens stored server-side.", "label": "meaningful", "category": "essential"},
+      {"text": "This avoids session state in the API layer.", "label": "meaningful", "category": "essential"},
+      {"text": "Use RS256 signing for token verification across services.", "label": "meaningful", "category": "essential"},
+      {"text": "The rejected alternative of session-based auth would require shared session storage between service instances.", "label": "meaningful", "category": "contextual"}
+    ],
+    "queries": {
+      "database_decision": {
+        "text": "What database was chosen and why?",
+        "relevant_sentences": [3, 4, 6]
+      },
+      "api_framework": {
+        "text": "What API framework should we use?",
+        "relevant_sentences": [7, 8, 10, 11]
+      },
+      "authentication": {
+        "text": "How should authentication work?",
+        "relevant_sentences": [15, 16, 17, 18]
+      },
+      "scaling": {
+        "text": "How do we handle scaling?",
+        "relevant_sentences": [10, 11, 12, 13, 14]
+      }
+    }
+  }
+}

@@ -1,7 +1,7 @@
 """Run all parameter sweeps and save results.
 
 Usage:
-    python -m tests.benchmarks.run_sweeps [--tier 1|2|3|all] [--interactions]
+    python -m tests.benchmarks.run_sweeps [--tier 1|2|3|4|all] [--interactions]
 
 Results are saved to tests/benchmarks/results/summary.json
 """
@@ -23,6 +23,9 @@ from tests.benchmarks.scenarios.multi_step_reasoning import (
 from tests.benchmarks.scenarios.temporal_scheduling import (
     TemporalSchedulingScenario,
 )
+from tests.benchmarks.scenarios.support_agent import SupportAgentScenario
+from tests.benchmarks.scenarios.coding_assistant import CodingAssistantScenario
+from tests.benchmarks.scenarios.research_agent import ResearchAgentScenario
 from tests.benchmarks.sweep import ResultsAggregator, SweepRunner
 
 logging.basicConfig(level=logging.INFO, format="%(name)s: %(message)s")
@@ -32,6 +35,12 @@ ALL_SCENARIOS = [
     FactualRecallScenario,
     MultiStepReasoningScenario,
     TemporalSchedulingScenario,
+]
+
+TIER4_SCENARIOS = [
+    SupportAgentScenario,
+    CodingAssistantScenario,
+    ResearchAgentScenario,
 ]
 
 # ---------------------------------------------------------------------------
@@ -96,6 +105,45 @@ INTERACTION_PAIRS = [
     ),
 ]
 
+# ---------------------------------------------------------------------------
+# Tier 4: SubconsciousMemory recipe-layer constants
+# ---------------------------------------------------------------------------
+
+# Experiment 1: Extraction min length sweep
+# Experiment 2: Max items sweep
+# Experiment 3: Max tokens sweep
+# Experiment 4: Default importance sweep
+# Experiment 5: Score weights grid (dict-valued)
+# Experiment 6: Write filter thresholds at recipe layer
+# Experiment 7: Initial confidence at recipe layer
+
+TIER4_SWEEPS = {
+    "extraction_min_length": [5, 8, 10, 15, 20, 30, 50, 80],
+    "max_items": [3, 5, 7, 10, 15, 20, 30],
+    "max_tokens": [500, 1000, 2000, 4000, 6000, 8000, 12000],
+    "default_importance": [0.1, 0.3, 0.5, 0.7, 0.9],
+    "_wf_min_threshold": [0.05, 0.1, 0.2, 0.3, 0.5],
+    "initial_confidence": [0.1, 0.3, 0.5, 0.7, 0.9],
+}
+
+# Score weights are dict-valued and handled separately
+TIER4_SCORE_WEIGHTS = [
+    {"relevance": 1.0},
+    {"certainty": 1.0},
+    {"relevance": 0.6, "certainty": 0.4},
+    {"relevance": 0.5, "certainty": 0.5},
+    {"relevance": 0.7, "certainty": 0.3},
+    {"relevance": 0.4, "certainty": 0.6},
+]
+
+# Experiment 8: Interaction effects at recipe layer
+TIER4_INTERACTION_PAIRS = [
+    ("max_items", [5, 10, 20], "max_tokens", [1000, 4000, 12000]),
+    ("extraction_min_length", [5, 10, 30], "default_importance", [0.3, 0.5, 0.7]),
+    ("_wf_min_threshold", [0.1, 0.2, 0.3], "initial_confidence", [0.3, 0.5, 0.7]),
+    ("max_items", [5, 10, 20], "default_importance", [0.3, 0.5, 0.7]),
+]
+
 
 def run_tier(tier_sweeps, tier_name, runner, aggregator):
     """Run all sweeps for a tier."""
@@ -128,11 +176,60 @@ def run_interactions(runner, aggregator):
         logger.info("    %d/%d points OK", ok_count, len(results))
 
 
+def run_tier4(runner, aggregator):
+    """Run Tier 4 recipe-layer sweeps.
+
+    Handles both standard single-constant sweeps and the special
+    dict-valued score_weights sweep.
+    """
+    logger.info(
+        "Starting Tier 4 sweeps (%d constants + score_weights)...",
+        len(TIER4_SWEEPS),
+    )
+    tier_start = time.monotonic()
+
+    # Standard single-constant sweeps
+    for constant_name, values in TIER4_SWEEPS.items():
+        logger.info("  Sweeping %s over %s", constant_name, values)
+        results = runner.run_single_sweep(constant_name, values)
+        aggregator.add_sweep(constant_name, results)
+
+        ok_count = sum(1 for r in results if r.status == "ok")
+        logger.info("    %d/%d points OK", ok_count, len(results))
+
+    # Score weights sweep (dict-valued)
+    logger.info("  Sweeping score_weights over %d configurations", len(TIER4_SCORE_WEIGHTS))
+    results = runner.run_single_sweep("score_weights", TIER4_SCORE_WEIGHTS)
+    aggregator.add_sweep("score_weights", results)
+    ok_count = sum(1 for r in results if r.status == "ok")
+    logger.info("    %d/%d points OK", ok_count, len(results))
+
+    elapsed = time.monotonic() - tier_start
+    logger.info("Tier 4 complete in %.1fs", elapsed)
+
+
+def run_tier4_interactions(runner, aggregator):
+    """Run Tier 4 pairwise interaction sweeps."""
+    logger.info(
+        "Starting Tier 4 interaction sweeps (%d pairs)...",
+        len(TIER4_INTERACTION_PAIRS),
+    )
+
+    for const_a, vals_a, const_b, vals_b in TIER4_INTERACTION_PAIRS:
+        pair_name = f"{const_a}_x_{const_b}"
+        logger.info("  Pairwise: %s x %s", const_a, const_b)
+        results = runner.run_pairwise_sweep(const_a, vals_a, const_b, vals_b)
+        aggregator.add_pairwise(pair_name, results)
+
+        ok_count = sum(1 for r in results if r.status == "ok")
+        logger.info("    %d/%d points OK", ok_count, len(results))
+
+
 def main():
     parser = argparse.ArgumentParser(description="Run parameter sweeps")
     parser.add_argument(
         "--tier",
-        choices=["1", "2", "3", "all"],
+        choices=["1", "2", "3", "4", "all"],
         default="all",
         help="Which tier to run",
     )
@@ -148,7 +245,12 @@ def main():
     )
     args = parser.parse_args()
 
-    runner = SweepRunner(ALL_SCENARIOS)
+    # Select scenarios based on tier
+    if args.tier == "4":
+        runner = SweepRunner(TIER4_SCENARIOS)
+    else:
+        runner = SweepRunner(ALL_SCENARIOS)
+
     aggregator = ResultsAggregator()
 
     total_start = time.monotonic()
@@ -162,8 +264,16 @@ def main():
     if args.tier in ("3", "all"):
         run_tier(TIER3_SWEEPS, "Tier 3", runner, aggregator)
 
+    if args.tier in ("4", "all"):
+        # Tier 4 uses recipe-layer scenarios
+        tier4_runner = SweepRunner(TIER4_SCENARIOS)
+        run_tier4(tier4_runner, aggregator)
+
     if args.interactions:
         run_interactions(runner, aggregator)
+        if args.tier in ("4", "all"):
+            tier4_runner = SweepRunner(TIER4_SCENARIOS)
+            run_tier4_interactions(tier4_runner, aggregator)
 
     filepath = aggregator.save_results(args.output)
     total_elapsed = time.monotonic() - total_start
