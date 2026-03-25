@@ -1,0 +1,80 @@
+{
+  "scenario": "support_agent",
+  "description": "Customer support agent handling a billing issue over 10 turns",
+  "turns": [
+    {
+      "role": "user",
+      "content": "Hi, I need help with my account. My account number is AC-29481 and I'm on the Premium plan. I was charged $149 instead of the usual $99."
+    },
+    {
+      "role": "assistant",
+      "content": "I can see your account AC-29481 on the Premium plan. The extra charge of $50 appears to be from an overage fee for exceeding the 500GB storage limit. You currently have 623GB stored."
+    },
+    {
+      "role": "user",
+      "content": "I was never notified about any storage limit. When did this start?"
+    },
+    {
+      "role": "assistant",
+      "content": "The 500GB storage limit has been part of the Premium plan since January 2026. A notification email was sent on February 15th when you crossed the threshold. The overage rate is $0.10 per GB over the limit."
+    },
+    {
+      "role": "user",
+      "content": "I definitely did not receive that email. This is frustrating. Can you reverse the charge?"
+    },
+    {
+      "role": "assistant",
+      "content": "I understand your frustration. I can offer a one-time courtesy credit of $50 for this billing cycle. Going forward, you have two options: upgrade to the Enterprise plan at $149 which includes 1TB storage, or reduce your storage below 500GB."
+    },
+    {
+      "role": "user",
+      "content": "The Enterprise plan sounds reasonable. What other features does it include compared to Premium?"
+    },
+    {
+      "role": "assistant",
+      "content": "Enterprise includes 1TB storage, priority support with 2-hour response time, advanced analytics dashboard, and API rate limits of 10,000 requests per minute versus 1,000 on Premium. The upgrade takes effect immediately with prorated billing."
+    },
+    {
+      "role": "user",
+      "content": "Let's go with the Enterprise upgrade. And please apply that courtesy credit."
+    },
+    {
+      "role": "assistant",
+      "content": "Done. Your account AC-29481 has been upgraded to Enterprise. The $50 courtesy credit has been applied to your current invoice. Your next billing date is April 1st at $149 per month. Is there anything else I can help with?"
+    }
+  ],
+  "ground_truth": {
+    "sentences": [
+      {"text": "I can see your account AC-29481 on the Premium plan.", "label": "meaningful", "category": "essential"},
+      {"text": "The extra charge of $50 appears to be from an overage fee for exceeding the 500GB storage limit.", "label": "meaningful", "category": "essential"},
+      {"text": "You currently have 623GB stored.", "label": "meaningful", "category": "essential"},
+      {"text": "The 500GB storage limit has been part of the Premium plan since January 2026.", "label": "meaningful", "category": "essential"},
+      {"text": "A notification email was sent on February 15th when you crossed the threshold.", "label": "meaningful", "category": "essential"},
+      {"text": "The overage rate is $0.10 per GB over the limit.", "label": "meaningful", "category": "essential"},
+      {"text": "I understand your frustration.", "label": "noise", "category": "filler"},
+      {"text": "I can offer a one-time courtesy credit of $50 for this billing cycle.", "label": "meaningful", "category": "essential"},
+      {"text": "Going forward, you have two options: upgrade to the Enterprise plan at $149 which includes 1TB storage, or reduce your storage below 500GB.", "label": "meaningful", "category": "essential"},
+      {"text": "Enterprise includes 1TB storage, priority support with 2-hour response time, advanced analytics dashboard, and API rate limits of 10,000 requests per minute versus 1,000 on Premium.", "label": "meaningful", "category": "essential"},
+      {"text": "The upgrade takes effect immediately with prorated billing.", "label": "meaningful", "category": "nice_to_have"},
+      {"text": "Done.", "label": "noise", "category": "filler"},
+      {"text": "Your account AC-29481 has been upgraded to Enterprise.", "label": "meaningful", "category": "essential"},
+      {"text": "The $50 courtesy credit has been applied to your current invoice.", "label": "meaningful", "category": "essential"},
+      {"text": "Your next billing date is April 1st at $149 per month.", "label": "meaningful", "category": "essential"},
+      {"text": "Is there anything else I can help with?", "label": "noise", "category": "filler"}
+    ],
+    "queries": {
+      "billing_issue": {
+        "text": "What was the billing problem?",
+        "relevant_sentences": [1, 2, 5, 7]
+      },
+      "account_details": {
+        "text": "What are the account details?",
+        "relevant_sentences": [0, 2, 12, 14]
+      },
+      "resolution": {
+        "text": "How was the issue resolved?",
+        "relevant_sentences": [7, 8, 12, 13, 14]
+      }
+    }
+  }
+}

@@ -91,6 +91,22 @@ Source: `src/popoto/recipes/context_assembler.py`
 | `COMPETITIVE_SUPPRESSION_SIGNAL` | 0.3 | [0.1, 0.7] | Low |
 | `DEFAULT_SURFACING_THRESHOLD` | 0.5 | [0.1, 0.9] | Low |
 
+### SubconsciousMemory (Tier 4)
+
+Source: `src/popoto/recipes/subconscious_memory.py`
+
+These recipe-layer constants control the SubconsciousMemory pipeline (extraction, injection, scoring). They are evaluated through Tier 4 experiments that run multi-turn simulations across three agent scenarios (support agent, coding assistant, research agent).
+
+| Constant | Default | Location | Role |
+|----------|---------|----------|------|
+| `DEFAULT_EXTRACTION_MIN_LENGTH` | 10 | `subconscious_memory.py` | Minimum character length for a sentence to be saved as a memory |
+| `max_items` | 10 | Constructor arg | Maximum memory records injected per turn |
+| `max_tokens` | 4000 | Constructor arg | Soft token budget for injected context |
+| `default importance` | 0.5 | `extract_memories()` arg | Importance score assigned to newly extracted memories |
+| `score_weights` | (user-provided) | Constructor arg | Weight dict for ContextAssembler composite scoring |
+
+Tier 4 also re-evaluates `_wf_min_threshold`, `_wf_priority_threshold`, and `initial_confidence` at the recipe layer to detect emergent interaction effects that field-level sweeps (Tiers 1-3) cannot observe.
+
 ## Cliff Effects
 
 Only one constant showed a cliff effect in the sweep:
@@ -119,35 +135,66 @@ Five pairwise interactions were tested:
 
 The benchmark harness (`tests/benchmarks/`) includes:
 
+**Tiers 1-3 (Field-Level Scenarios):**
+
 - **Factual Recall**: 13 facts with varying importance, queried via `composite_score`. Measures whether high-importance facts rank first.
 - **Multi-Step Reasoning**: 4-item reasoning chain + 5 distractors, linked via `CoOccurrenceField`. Measures whether chain items are retrieved together.
 - **Temporal Scheduling**: 8 recurring tasks with `CyclicDecayField`, some recently acted on. Measures whether un-acted tasks surface above recently-acted ones.
 
+**Tier 4 (Recipe-Layer Scenarios):**
+
+- **Support Agent**: 25-turn customer support conversation with high redundancy and temporal importance gradient. Tests extraction noise filtering and importance ranking.
+- **Coding Assistant**: 30-turn design discussion with contradictions and cross-references. Tests whether observation feedback correctly demotes superseded decisions.
+- **Research Agent**: 5 source documents with corroborated and contradicted facts. Stress-tests extraction and write filter behavior across varied source quality.
+
+Tier 4 scenarios use fixture data (JSON files in `tests/benchmarks/fixtures/`) with pre-labeled sentences to provide deterministic, reproducible benchmarks without LLM calls.
+
 ### Metrics
+
+**Retrieval metrics (Tiers 1-4):**
 
 - **Precision@k**: Fraction of top-k results that are relevant
 - **nDCG@k**: Normalized discounted cumulative gain (rank-sensitive)
 - **Calibration Error**: ECE between predicted confidence and actual outcomes
 - **MRR**: Mean reciprocal rank of first relevant result
 
+**Recipe-layer metrics (Tier 4 only):**
+
+- **Extraction F1**: Precision and recall of extracted sentences against ground-truth labels (meaningful vs noise)
+- **Token Utilization Ratio**: Fraction of token budget spent on above-median relevance memories
+- **Importance Distribution Health**: Standard deviation and distinct rank count of importance scores after multi-turn simulation
+
 ### Sweep Design
 
 Each constant was swept independently while holding others at defaults. Grid sizes ranged from 4 to 7 values per constant. All three scenarios were evaluated per grid point. Total: 19 constants swept, 5 pairwise interactions, ~390 scenario evaluations.
 
+Tier 4 adds 8 experiments covering SubconsciousMemory-layer constants across 3 recipe-layer scenarios, plus pairwise interaction sweeps for 4 constant pairs.
+
 ## Running the Benchmarks
 
 ```bash
-# Run all sweeps
+# Run all sweeps (Tiers 1-4)
 python -m tests.benchmarks.run_sweeps --tier all --interactions
 
-# Run a specific tier
+# Run field-level sweeps only (Tiers 1-3)
 python -m tests.benchmarks.run_sweeps --tier 1
+python -m tests.benchmarks.run_sweeps --tier 2
+python -m tests.benchmarks.run_sweeps --tier 3
+
+# Run recipe-layer sweeps (Tier 4 -- SubconsciousMemory experiments)
+python -m tests.benchmarks.run_sweeps --tier 4
+
+# Run Tier 4 with interaction effect analysis
+python -m tests.benchmarks.run_sweeps --tier 4 --interactions
 
 # Run just the harness tests
 pytest tests/benchmarks/test_harness.py -x -q
 
 # Run sweep engine tests
 pytest tests/benchmarks/test_sweep.py -x -q
+
+# Run Tier 4 scenario and metrics tests
+pytest tests/benchmarks/test_tier4.py -x -q
 ```
 
 Results are saved to `tests/benchmarks/results/summary.json`.

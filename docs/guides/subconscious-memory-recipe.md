@@ -129,9 +129,12 @@ Reports how the agent used the injected memories via `ObservationProtocol.on_con
 | `max_items` | 10 | Maximum memories injected per turn |
 | `max_tokens` | 4000 | Soft token budget for injected context |
 | `extraction_min_length` | 10 | Minimum chars for a sentence to become a memory |
+| `score_weights` | (required) | Weight dict for composite scoring (e.g. `{"relevance": 0.6, "confidence": 0.3}`) |
 | `system_preamble` | "You are a helpful assistant." | Prefix for auto-created system messages |
 | `content_field` | "content" | Name of the text content field on your model |
 | `importance_field` | "importance" | Name of the importance score field |
+
+These constants can be tuned experimentally using the Tier 4 benchmark harness. See the [Tuning Magic Numbers](tuning-magic-numbers.md) guide for the full constant catalog, optimal ranges, and how to run parameter sweeps.
 
 ## Extensibility
 

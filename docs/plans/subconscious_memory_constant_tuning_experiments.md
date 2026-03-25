@@ -1,5 +1,5 @@
 ---
-status: Approved
+status: Complete
 type: chore
 appetite: Medium
 owner: Valor Engels

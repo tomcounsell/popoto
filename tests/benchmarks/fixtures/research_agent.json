@@ -1,0 +1,86 @@
+{
+  "scenario": "research_agent",
+  "description": "Research agent collecting facts from 5 source documents about renewable energy",
+  "turns": [
+    {
+      "role": "user",
+      "content": "Please analyze this source about solar energy: Solar panel efficiency has reached 26% for commercial panels in 2026. Installation costs have dropped to $2.50 per watt. Solar farms now provide 15% of US electricity generation."
+    },
+    {
+      "role": "assistant",
+      "content": "From source 1, I extracted three key facts. Commercial solar panel efficiency is at 26% as of 2026. Installation costs are $2.50 per watt. Solar farms contribute 15% of US electricity generation."
+    },
+    {
+      "role": "user",
+      "content": "Here is source 2: Wind energy capacity in the US reached 180GW in 2025. Offshore wind costs have dropped to $50 per MWh. Solar panel efficiency has reached 24% for commercial use, making it competitive with fossil fuels."
+    },
+    {
+      "role": "assistant",
+      "content": "Source 2 provides wind energy data and a conflicting solar figure. US wind capacity is 180GW as of 2025. Offshore wind costs are $50 per MWh. Note: source 2 claims solar efficiency is 24%, contradicting source 1 which states 26%. The discrepancy may be due to different measurement standards."
+    },
+    {
+      "role": "user",
+      "content": "Source 3: Battery storage costs fell below $100 per kWh in 2025. Lithium-ion remains dominant but sodium-ion batteries are gaining market share. Grid-scale storage capacity doubled year-over-year. Solar installation costs are approximately $2.50 per watt."
+    },
+    {
+      "role": "assistant",
+      "content": "Source 3 covers energy storage developments. Battery storage costs are below $100 per kWh. Lithium-ion is the dominant technology but sodium-ion is an emerging competitor. Grid-scale storage capacity doubled in 2025. This source corroborates source 1 on solar installation costs at $2.50 per watt."
+    },
+    {
+      "role": "user",
+      "content": "Source 4: The renewable energy sector employed 13 million people globally in 2025. Government subsidies for solar exceeded $20 billion worldwide. The biggest challenge remains grid integration for intermittent sources."
+    },
+    {
+      "role": "assistant",
+      "content": "Source 4 addresses the policy and employment landscape. The renewable energy sector employs 13 million people globally. Government solar subsidies exceed $20 billion worldwide. Grid integration of intermittent sources remains the primary technical challenge."
+    },
+    {
+      "role": "user",
+      "content": "Final source 5: Solar panel efficiency improvements have plateaued around 26% for silicon-based cells. Next-generation perovskite cells promise 30% efficiency by 2028. Wind energy is projected to reach 25% of US electricity by 2030."
+    },
+    {
+      "role": "assistant",
+      "content": "Source 5 provides forward-looking data. Solar efficiency has plateaued at 26% for silicon cells, corroborating source 1. Perovskite cells may reach 30% efficiency by 2028. Wind energy is projected to supply 25% of US electricity by 2030. This is a notable growth target given the current 180GW capacity from source 2."
+    }
+  ],
+  "ground_truth": {
+    "sentences": [
+      {"text": "Commercial solar panel efficiency is at 26% as of 2026.", "label": "meaningful", "category": "corroborated"},
+      {"text": "Installation costs are $2.50 per watt.", "label": "meaningful", "category": "corroborated"},
+      {"text": "Solar farms contribute 15% of US electricity generation.", "label": "meaningful", "category": "unique_valid"},
+      {"text": "US wind capacity is 180GW as of 2025.", "label": "meaningful", "category": "unique_valid"},
+      {"text": "Offshore wind costs are $50 per MWh.", "label": "meaningful", "category": "unique_valid"},
+      {"text": "Note: source 2 claims solar efficiency is 24%, contradicting source 1 which states 26%.", "label": "meaningful", "category": "contradicted"},
+      {"text": "The discrepancy may be due to different measurement standards.", "label": "noise", "category": "filler"},
+      {"text": "Battery storage costs are below $100 per kWh.", "label": "meaningful", "category": "unique_valid"},
+      {"text": "Lithium-ion is the dominant technology but sodium-ion is an emerging competitor.", "label": "meaningful", "category": "unique_valid"},
+      {"text": "Grid-scale storage capacity doubled in 2025.", "label": "meaningful", "category": "unique_valid"},
+      {"text": "This source corroborates source 1 on solar installation costs at $2.50 per watt.", "label": "noise", "category": "filler"},
+      {"text": "The renewable energy sector employs 13 million people globally.", "label": "meaningful", "category": "unique_valid"},
+      {"text": "Government solar subsidies exceed $20 billion worldwide.", "label": "meaningful", "category": "unique_valid"},
+      {"text": "Grid integration of intermittent sources remains the primary technical challenge.", "label": "meaningful", "category": "unique_valid"},
+      {"text": "Solar efficiency has plateaued at 26% for silicon cells, corroborating source 1.", "label": "meaningful", "category": "corroborated"},
+      {"text": "Perovskite cells may reach 30% efficiency by 2028.", "label": "meaningful", "category": "unique_valid"},
+      {"text": "Wind energy is projected to supply 25% of US electricity by 2030.", "label": "meaningful", "category": "unique_valid"},
+      {"text": "This is a notable growth target given the current 180GW capacity from source 2.", "label": "noise", "category": "filler"}
+    ],
+    "queries": {
+      "solar_efficiency": {
+        "text": "What is the current solar panel efficiency?",
+        "relevant_sentences": [0, 5, 14]
+      },
+      "costs": {
+        "text": "What are the costs of renewable energy?",
+        "relevant_sentences": [1, 4, 7]
+      },
+      "storage": {
+        "text": "What is the state of energy storage?",
+        "relevant_sentences": [7, 8, 9]
+      },
+      "projections": {
+        "text": "What are the future projections?",
+        "relevant_sentences": [15, 16]
+      }
+    }
+  }
+}
