@@ -494,8 +494,8 @@ class TestObservationFeedback:
         _, assembly = sm.inject_context(messages)
 
         # Apply acted to good, contradicted to bad
-        if assembly.records:
-            for record in assembly.records:
+        assert assembly.records, "inject_context should return at least one memory record"
+        for record in assembly.records:
                 content = getattr(record, "content", "")
                 if "Verified correct" in content:
                     ConfidenceField.update_confidence(record, "confidence", signal=0.9)
@@ -507,19 +507,22 @@ class TestObservationFeedback:
             [{"role": "user", "content": "Tell me about deployment steps."}]
         )
 
-        if len(assembly2.records) >= 2:
-            contents = [getattr(r, "content", "") for r in assembly2.records]
-            good_idx = next(
-                (i for i, c in enumerate(contents) if "Verified correct" in c), None
-            )
-            bad_idx = next(
-                (i for i, c in enumerate(contents) if "Possibly wrong" in c), None
-            )
-            if good_idx is not None and bad_idx is not None:
-                assert good_idx < bad_idx, (
-                    f"High-confidence memory (idx {good_idx}) should rank before "
-                    f"low-confidence (idx {bad_idx})"
-                )
+        assert len(assembly2.records) >= 2, (
+            f"Expected at least 2 records for ranking comparison, got {len(assembly2.records)}"
+        )
+        contents = [getattr(r, "content", "") for r in assembly2.records]
+        good_idx = next(
+            (i for i, c in enumerate(contents) if "Verified correct" in c), None
+        )
+        bad_idx = next(
+            (i for i, c in enumerate(contents) if "Possibly wrong" in c), None
+        )
+        assert good_idx is not None, "Good memory ('Verified correct') not found in results"
+        assert bad_idx is not None, "Bad memory ('Possibly wrong') not found in results"
+        assert good_idx < bad_idx, (
+            f"High-confidence memory (idx {good_idx}) should rank before "
+            f"low-confidence (idx {bad_idx})"
+        )
 
 
 # ===========================================================================

@@ -8,6 +8,10 @@ Tests cover:
 - report_outcomes dispatching
 - report_outcomes with empty assembly result
 - Full round-trip with mocked LLM
+
+See also: tests/test_subconscious_memory_integration.py for live-Redis
+integration tests covering multi-memory ranking, token budgets, TTL expiry,
+concurrent agent isolation, and feedback-driven confidence changes.
 """
 
 import os
