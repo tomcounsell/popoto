@@ -7,9 +7,11 @@ ResultsAggregator for collecting and summarizing results.
 
 import json
 import logging
-import os
+import platform
+import statistics
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from itertools import product
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Type
@@ -20,8 +22,8 @@ from .metrics.retrieval import (
     ndcg_at_k,
     precision_at_k,
 )
-from .overrides import apply_overrides, is_degenerate
-from .scenarios.base import Scenario, ScenarioResult
+from .overrides import is_degenerate
+from .scenarios.base import Scenario
 
 logger = logging.getLogger("POPOTO.Benchmark.Sweep")
 
@@ -385,14 +387,44 @@ class ResultsAggregator:
                 cliffs.append((v1, v2, drop))
         return cliffs
 
+    @staticmethod
+    def _compute_duration_stats(durations_ms: List[float]) -> dict:
+        """Compute duration statistics from a list of millisecond timings.
+
+        Args:
+            durations_ms: List of duration values in milliseconds.
+
+        Returns:
+            Dict with p50, p95, p99, mean, min, max, and total_ms.
+        """
+        if not durations_ms:
+            return {}
+        sorted_d = sorted(durations_ms)
+        n = len(sorted_d)
+        return {
+            "p50_ms": sorted_d[int(n * 0.50)],
+            "p95_ms": sorted_d[int(n * 0.95)] if n >= 2 else sorted_d[-1],
+            "p99_ms": sorted_d[int(n * 0.99)] if n >= 2 else sorted_d[-1],
+            "mean_ms": round(statistics.mean(sorted_d), 2),
+            "min_ms": sorted_d[0],
+            "max_ms": sorted_d[-1],
+            "total_ms": round(sum(sorted_d), 2),
+            "count": n,
+        }
+
     def to_summary_dict(self) -> dict:
         """Export results as a summary dictionary for JSON serialization."""
+        all_durations: List[float] = []
+
         constants = {}
         for name, points in self.sweep_results.items():
             ok_points = [p for p in points if p.status == "ok"]
             best_val, best_score = self.get_optimal_value(name)
             curve = self.get_sensitivity_curve(name)
             cliffs = self.detect_cliff_effects(name)
+
+            durations = [p.duration_ms for p in ok_points if p.duration_ms > 0]
+            all_durations.extend(durations)
 
             constants[name] = {
                 "best_value": best_val,
@@ -401,37 +433,107 @@ class ResultsAggregator:
                 "cliff_effects": cliffs,
                 "n_points_ok": len(ok_points),
                 "n_points_total": len(points),
+                "n_errors": sum(1 for p in points if p.status == "error"),
+                "n_degenerate": sum(
+                    1 for p in points if p.status == "skipped-degenerate"
+                ),
                 "scenarios": list(set(p.scenario_name for p in ok_points)),
+                "query_duration": self._compute_duration_stats(durations),
             }
 
         pairwise = {}
         for pair_name, points in self.pairwise_results.items():
             ok_points = [p for p in points if p.status == "ok"]
+            durations = [p.duration_ms for p in ok_points if p.duration_ms > 0]
+            all_durations.extend(durations)
+
             pairwise[pair_name] = {
                 "n_points_ok": len(ok_points),
                 "n_points_total": len(points),
+                "query_duration": self._compute_duration_stats(durations),
                 "points": [
                     {
                         "value_a": p.value_a,
                         "value_b": p.value_b,
                         "ndcg_at_5": p.ndcg_at_5,
                         "precision_at_5": p.precision_at_5,
+                        "duration_ms": p.duration_ms,
                     }
                     for p in ok_points
                 ],
             }
 
+        now = datetime.now(timezone.utc)
+
         return {
+            "run_id": now.strftime("%Y%m%d_%H%M%S"),
+            "timestamp": time.time(),
+            "timestamp_iso": now.isoformat(),
+            "metadata": {
+                "python_version": platform.python_version(),
+                "platform": platform.platform(),
+                "total_evaluations": sum(
+                    len(pts) for pts in self.sweep_results.values()
+                )
+                + sum(len(pts) for pts in self.pairwise_results.values()),
+                "total_ok": sum(
+                    sum(1 for p in pts if p.status == "ok")
+                    for pts in self.sweep_results.values()
+                )
+                + sum(
+                    sum(1 for p in pts if p.status == "ok")
+                    for pts in self.pairwise_results.values()
+                ),
+                "overall_query_duration": self._compute_duration_stats(
+                    all_durations
+                ),
+            },
             "constants": constants,
             "pairwise": pairwise,
-            "timestamp": time.time(),
         }
 
-    def save_results(self, filename: str = "summary.json"):
-        """Save summary results to JSON file in results directory."""
+    def save_results(
+        self,
+        filename: str = "summary.json",
+        extra_metadata: Optional[Dict[str, Any]] = None,
+    ):
+        """Save summary results to a timestamped JSON file in results directory.
+
+        Each run creates a new file with a timestamp suffix, preserving all
+        previous results. A ``latest.json`` symlink always points to the
+        most recent run.
+
+        Args:
+            filename: Base filename (ignored for timestamped naming, kept
+                for backward compatibility).
+            extra_metadata: Additional key-value pairs merged into the
+                ``metadata`` section (e.g. wall_clock_seconds, tiers_run).
+
+        Returns:
+            Path to the saved results file.
+        """
         RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-        filepath = RESULTS_DIR / filename
         summary = self.to_summary_dict()
+        if extra_metadata:
+            summary["metadata"].update(extra_metadata)
+
+        # Build timestamped filename
+        run_id = summary.get("run_id", datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S"))
+        timestamped_name = f"sweep_{run_id}.json"
+        filepath = RESULTS_DIR / timestamped_name
+
         with open(filepath, "w") as f:
             json.dump(summary, f, indent=2, default=str)
+
+        # Update latest.json symlink
+        latest = RESULTS_DIR / "latest.json"
+        try:
+            if latest.is_symlink() or latest.exists():
+                latest.unlink()
+            latest.symlink_to(timestamped_name)
+        except OSError:
+            # Fallback: write a copy if symlinks aren't supported
+            with open(latest, "w") as f:
+                json.dump(summary, f, indent=2, default=str)
+
         return filepath

@@ -3,11 +3,12 @@
 Usage:
     python -m tests.benchmarks.run_sweeps [--tier 1|2|3|4|all] [--interactions]
 
-Results are saved to tests/benchmarks/results/summary.json
+Results are saved to tests/benchmarks/results/sweep_YYYYMMDD_HHMMSS.json
+with a latest.json symlink pointing to the most recent run.
+Previous results are never overwritten.
 """
 
 import argparse
-import json
 import logging
 import sys
 import time
@@ -275,8 +276,16 @@ def main():
             tier4_runner = SweepRunner(TIER4_SCENARIOS)
             run_tier4_interactions(tier4_runner, aggregator)
 
-    filepath = aggregator.save_results(args.output)
     total_elapsed = time.monotonic() - total_start
+
+    filepath = aggregator.save_results(
+        args.output,
+        extra_metadata={
+            "wall_clock_seconds": round(total_elapsed, 2),
+            "tiers_run": args.tier,
+            "interactions_run": args.interactions,
+        },
+    )
 
     # Print summary
     summary = aggregator.to_summary_dict()

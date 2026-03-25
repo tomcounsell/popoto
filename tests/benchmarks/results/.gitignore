@@ -1,2 +1,4 @@
-*.json
-!summary.json
+# Ignore the symlink (it's a local convenience pointer)
+latest.json
+# Keep all sweep result files (sweep_YYYYMMDD_HHMMSS.json)
+# Legacy summary.json kept for backward compatibility
