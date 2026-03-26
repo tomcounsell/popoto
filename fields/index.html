@@ -54,6 +54,8 @@
         <ul>
     <li class="toctree-l3"><a class="reference internal" href="..#install">Install</a>
     </li>
+    <li class="toctree-l3"><a class="reference internal" href="..#enable-error-reporting-optional">Enable Error Reporting (Optional)</a>
+    </li>
     <li class="toctree-l3"><a class="reference internal" href="..#define-a-model">Define a Model</a>
     </li>
     <li class="toctree-l3"><a class="reference internal" href="..#create-instances">Create Instances</a>
@@ -63,6 +65,8 @@
     <li class="toctree-l3"><a class="reference internal" href="..#delete-instances">Delete Instances</a>
     </li>
     <li class="toctree-l3"><a class="reference internal" href="..#async-operations">Async Operations</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="..#semantic-search">Semantic Search</a>
     </li>
         </ul>
     </li>
@@ -89,6 +93,34 @@
     <li class="toctree-l3"><a class="reference internal" href="../configuration/#print-redis-info">Print Redis Info</a>
     </li>
     <li class="toctree-l3"><a class="reference internal" href="../configuration/#redisvalkey-cli">Redis/Valkey CLI</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#content-and-embedding-configuration">Content and Embedding Configuration</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#embedding-providers">Embedding Providers</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../configuration/#voyage-ai">Voyage AI</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../configuration/#openai">OpenAI</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../configuration/#custom-providers">Custom Providers</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#content-storage-path">Content Storage Path</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../configuration/#error-reporting-opt-in">Error Reporting (Opt-In)</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#installation">Installation</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#enabling">Enabling</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#custom-dsn">Custom DSN</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../configuration/#what-gets-sent">What Gets Sent</a>
     </li>
         </ul>
     </li>
@@ -152,6 +184,8 @@
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#named-field-shortcuts">Named Field Shortcuts</a>
     </li>
+    <li class="toctree-l2"><a class="reference internal" href="#capped-listfield-max_length">Capped ListField (max_length)</a>
+    </li>
     <li class="toctree-l2"><a class="reference internal" href="#null-values">Null Values</a>
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#default-values">Default Values</a>
@@ -162,11 +196,41 @@
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#sortedkeyfield">SortedKeyField</a>
     </li>
+    <li class="toctree-l2"><a class="reference internal" href="#decayingsortedfield">DecayingSortedField</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#cyclicdecayfield">CyclicDecayField</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#cooccurrencefield">CoOccurrenceField</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#existencefilter">ExistenceFilter</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#frequencysketch">FrequencySketch</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#predictionledgermixin">PredictionLedgerMixin</a>
+    </li>
     <li class="toctree-l2"><a class="reference internal" href="#partition_by">partition_by</a>
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#datetimefield">DatetimeField</a>
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#timestampable-mixin">Timestampable Mixin</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#writefiltermixin">WriteFilterMixin</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#contentfield">ContentField</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#content-addressable-storage">Content-Addressable Storage</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#custom-content-store">Custom Content Store</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#embeddingfield">EmbeddingField</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#embedding-providers">Embedding Providers</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#querying-with-semantic_search">Querying with semantic_search()</a>
+    </li>
+        </ul>
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#geofield">GeoField</a>
     </li>
@@ -254,6 +318,8 @@
     </li>
     <li class="toctree-l3"><a class="reference internal" href="../query/#using-values-with-chainable-api">Using Values with Chainable API</a>
     </li>
+    <li class="toctree-l3"><a class="reference internal" href="../query/#sorting-by-computed-values">Sorting by Computed Values</a>
+    </li>
     <li class="toctree-l3"><a class="reference internal" href="../query/#backward-compatibility">Backward Compatibility</a>
     </li>
         </ul>
@@ -285,6 +351,26 @@
     <li class="toctree-l2"><a class="reference internal" href="../relationship/#nested-field-access">Nested Field Access</a>
     </li>
     <li class="toctree-l2"><a class="reference internal" href="../relationship/#traversing-relationships">Traversing Relationships</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../multi-tenancy/">Multi-Tenancy</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../multi-tenancy/#the-pattern-use-a-keyfield">The Pattern: Use a KeyField</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../multi-tenancy/#what-gets-isolated">What gets isolated</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../multi-tenancy/#combine-with-partition_by-for-sorted-queries">Combine with partition_by for sorted queries</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../multi-tenancy/#passing-the-namespace-through-your-application">Passing the namespace through your application</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../multi-tenancy/#when-to-use-separate-redis-databases-instead">When to use separate Redis databases instead</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../multi-tenancy/#summary">Summary</a>
     </li>
     </ul>
                 </li>
@@ -326,9 +412,7 @@
     </li>
     <li class="toctree-l2"><a class="reference internal" href="../async/#implementation-details">Implementation Details</a>
         <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../async/#thread-pool-execution">Thread Pool Execution</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../async/#python-38-compatibility">Python 3.8+ Compatibility</a>
+    <li class="toctree-l3"><a class="reference internal" href="../async/#native-async-with-redisasyncio">Native Async with redis.asyncio</a>
     </li>
         </ul>
     </li>
@@ -369,6 +453,1056 @@
     </ul>
                 </li>
               </ul>
+              <p class="caption"><span class="caption-text">Features</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" >Agent Memory</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../features/agent-memory/">Overview</a>
+    <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../features/agent-memory/#why-your-agent-needs-memory-primitives">Why your agent needs memory primitives</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/agent-memory/#primitives-overview">Primitives overview</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/agent-memory/#decayingsortedfield">DecayingSortedField</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#basic-usage">Basic usage</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#parameters">Parameters</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#base-score-weighting">Base score weighting</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#source-weighting-for-teamwork">Source weighting for teamwork</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#query-time-overrides">Query-time overrides</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#refreshing-timestamps">Refreshing timestamps</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#existing-sortedfield-queries">Existing SortedField queries</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/agent-memory/#cyclicdecayfield">CyclicDecayField</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#basic-usage_1">Basic usage</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#parameters_1">Parameters</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#temporalperiod-constants">TemporalPeriod constants</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/agent-memory/#accesstracker">AccessTracker</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#basic-usage_2">Basic usage</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#how-staging-works">How staging works</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#configuration">Configuration</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#suppressing-tracking-for-bulk-operations">Suppressing tracking for bulk operations</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#delete-cleanup">Delete cleanup</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#redis-key-patterns">Redis key patterns</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/agent-memory/#observationprotocol">ObservationProtocol</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#why-observation-matters">Why observation matters</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#basic-usage_3">Basic usage</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#three-hooks">Three hooks</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#four-outcomes">Four outcomes</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#graceful-degradation">Graceful degradation</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#cycle-amplitude-adjustment">Cycle amplitude adjustment</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#recallproposal">RecallProposal</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#redis-key-patterns_1">Redis key patterns</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/agent-memory/#writefilter">WriteFilter</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/agent-memory/#confidencefield">ConfidenceField</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#basic-usage_4">Basic usage</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#bayesian-update-formula">Bayesian update formula</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#entrainment-with-observationprotocol">Entrainment with ObservationProtocol</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#parameters_2">Parameters</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/agent-memory/#cooccurrencefield">CoOccurrenceField</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/agent-memory/#eventstreammixin">EventStreamMixin</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#quick-start">Quick Start</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#configuration_1">Configuration</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#stream-entry-fields">Stream Entry Fields</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#partitioned-streams">Partitioned Streams</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#custom-events-non-save-operations">Custom Events (Non-Save Operations)</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#error-handling">Error Handling</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#writefilter-interaction">WriteFilter Interaction</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#redis-key-patterns_2">Redis Key Patterns</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/agent-memory/#compositescorequery">CompositeScoreQuery</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#basic-usage_5">Basic usage</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#parameters_3">Parameters</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#supported-index-types">Supported index types</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#cooccurrence-boost">CoOccurrence boost</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#post-filter-callback">Post-filter callback</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#temp-key-management">Temp key management</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#error-handling_1">Error handling</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/agent-memory/#existencefilter">ExistenceFilter</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#basic-usage_6">Basic usage</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#parameters_4">Parameters</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#methods">Methods</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#how-it-works">How it works</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#design-decisions">Design decisions</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/agent-memory/#frequencysketch">FrequencySketch</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#basic-usage_7">Basic usage</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#parameters_5">Parameters</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#methods_1">Methods</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#design-decisions_1">Design decisions</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#combining-existencefilter-and-frequencysketch">Combining ExistenceFilter and FrequencySketch</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/agent-memory/#predictionledger">PredictionLedger</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#setup">Setup</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#recording-and-resolving-predictions">Recording and resolving predictions</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#auto-resolution-via-observationprotocol">Auto-resolution via ObservationProtocol</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#confidencefield-feedback">ConfidenceField feedback</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#querying-prediction-errors">Querying prediction errors</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#class-attributes">Class attributes</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#redis-key-patterns_3">Redis key patterns</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#key-properties">Key properties</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/agent-memory/#streamconsumer">StreamConsumer</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#basic-usage_8">Basic usage</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#parameters_6">Parameters</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#dead-letter-handling">Dead-letter handling</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#xclaim-recovery">XCLAIM recovery</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#graceful-shutdown">Graceful shutdown</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#eventstreammixin-synergy">EventStreamMixin synergy</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/agent-memory/#policycache">PolicyCache</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#basic-usage_9">Basic usage</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#policyentry-model">PolicyEntry model</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#key-functions">Key functions</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#tuning-constants">Tuning constants</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/agent-memory/#contextassembler">ContextAssembler</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#pipeline">Pipeline</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#synergy-table">Synergy Table</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#api-reference">API Reference</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#usage-examples">Usage Examples</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#tuning-constants_1">Tuning Constants</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/agent-memory/#graceful-degradation_1">Graceful Degradation</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/agent-memory/#design-principles">Design principles</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/agent-memory/#further-reading">Further reading</a>
+    </li>
+    </ul>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../features/decaying-sorted-field/">DecayingSortedField</a>
+    <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../features/decaying-sorted-field/#overview">Overview</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/decaying-sorted-field/#parameters">Parameters</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/decaying-sorted-field/#usage">Usage</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../features/decaying-sorted-field/#basic-model-definition">Basic Model Definition</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/decaying-sorted-field/#base-score-weighting">Base Score Weighting</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/decaying-sorted-field/#source-weighting-with-interactionweight">Source Weighting with InteractionWeight</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/decaying-sorted-field/#refreshing-timestamps">Refreshing Timestamps</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/decaying-sorted-field/#query-time-overrides">Query-Time Overrides</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/decaying-sorted-field/#tuning">Tuning</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/decaying-sorted-field/#architecture">Architecture</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/decaying-sorted-field/#see-also">See Also</a>
+    </li>
+    </ul>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../features/cyclic-decay-field/">CyclicDecayField</a>
+    <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../features/cyclic-decay-field/#overview">Overview</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/cyclic-decay-field/#parameters">Parameters</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../features/cyclic-decay-field/#cycle-tuples">Cycle Tuples</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/cyclic-decay-field/#temporalperiod-constants">TemporalPeriod Constants</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/cyclic-decay-field/#usage">Usage</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../features/cyclic-decay-field/#basic-model-definition">Basic Model Definition</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/cyclic-decay-field/#querying-top-results">Querying Top Results</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/cyclic-decay-field/#resolving-pressure">Resolving Pressure</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/cyclic-decay-field/#adjusting-cycle-amplitudes">Adjusting Cycle Amplitudes</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/cyclic-decay-field/#refreshing-the-decay-clock">Refreshing the Decay Clock</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/cyclic-decay-field/#redis-data-model">Redis Data Model</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/cyclic-decay-field/#scoring-formula">Scoring Formula</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/cyclic-decay-field/#error-handling">Error Handling</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/cyclic-decay-field/#integration-with-observationprotocol">Integration with ObservationProtocol</a>
+    </li>
+    </ul>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../features/confidence-field/">ConfidenceField</a>
+    <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../features/confidence-field/#overview">Overview</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/confidence-field/#parameters">Parameters</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/confidence-field/#usage">Usage</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/confidence-field/#bayesian-update-formula">Bayesian Update Formula</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../features/confidence-field/#convergence-behavior">Convergence Behavior</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/confidence-field/#entrainment-with-observationprotocol">Entrainment with ObservationProtocol</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../features/confidence-field/#auto-discharge">Auto-discharge</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/confidence-field/#api-reference">API Reference</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../features/confidence-field/#confidencefieldupdate_confidenceinstance-field_name-signal">ConfidenceField.update_confidence(instance, field_name, signal)</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/confidence-field/#confidencefieldget_confidenceinstance-field_name">ConfidenceField.get_confidence(instance, field_name)</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/confidence-field/#confidencefieldget_confidence_datainstance-field_name">ConfidenceField.get_confidence_data(instance, field_name)</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/confidence-field/#redis-key-patterns">Redis Key Patterns</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/confidence-field/#companion-fields">Companion Fields</a>
+    </li>
+    </ul>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../features/co-occurrence-field/">CoOccurrenceField</a>
+    <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../features/co-occurrence-field/#overview">Overview</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/co-occurrence-field/#parameters">Parameters</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/co-occurrence-field/#redis-key-pattern">Redis Key Pattern</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/co-occurrence-field/#usage">Usage</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/co-occurrence-field/#methods">Methods</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../features/co-occurrence-field/#linkmodel_class-source_pk-target_pk-initial_weight01-pipelinenone">link(model_class, source_pk, target_pk, initial_weight=0.1, pipeline=None)</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/co-occurrence-field/#strengthenmodel_class-source_pk-target_pk-delta005-pipelinenone">strengthen(model_class, source_pk, target_pk, delta=0.05, pipeline=None)</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/co-occurrence-field/#unlinkmodel_class-source_pk-target_pk-pipelinenone">unlink(model_class, source_pk, target_pk, pipeline=None)</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/co-occurrence-field/#weaken_allmodel_class-pk-factornone-pipelinenone">weaken_all(model_class, pk, factor=None, pipeline=None)</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/co-occurrence-field/#get_linkedmodel_class-pk-min_weight001-limit20">get_linked(model_class, pk, min_weight=0.01, limit=20)</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/co-occurrence-field/#propagatemodel_class-seed_pks-depth2-decay_per_hop05-threshold001">propagate(model_class, seed_pks, depth=2, decay_per_hop=0.5, threshold=0.01)</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/co-occurrence-field/#edge-pruning">Edge Pruning</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/co-occurrence-field/#cleanup-on-delete">Cleanup on Delete</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/co-occurrence-field/#synergy-with-other-fields">Synergy with Other Fields</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../features/co-occurrence-field/#with-decayingsortedfield">With DecayingSortedField</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/co-occurrence-field/#with-accesstrackermixin">With AccessTrackerMixin</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/co-occurrence-field/#with-confidencefield">With ConfidenceField</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../features/existence-filter/">ExistenceFilter</a>
+    <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../features/existence-filter/#overview">Overview</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/existence-filter/#existencefilter">ExistenceFilter</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../features/existence-filter/#parameters">Parameters</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/existence-filter/#usage">Usage</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/existence-filter/#tokenization">Tokenization</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/existence-filter/#architecture">Architecture</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/existence-filter/#frequencysketch">FrequencySketch</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../features/existence-filter/#parameters_1">Parameters</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/existence-filter/#usage_1">Usage</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/existence-filter/#architecture_1">Architecture</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/existence-filter/#when-to-use-which">When to Use Which</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/existence-filter/#see-also">See Also</a>
+    </li>
+    </ul>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../features/observation-protocol/">ObservationProtocol</a>
+    <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../features/observation-protocol/#overview">Overview</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/observation-protocol/#outcomes">Outcomes</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/observation-protocol/#usage">Usage</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../features/observation-protocol/#proactive-surfacing">Proactive Surfacing</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/observation-protocol/#tuning-constants">Tuning Constants</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/observation-protocol/#effects-matrix">Effects Matrix</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/observation-protocol/#recallproposal">RecallProposal</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/observation-protocol/#see-also">See Also</a>
+    </li>
+    </ul>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../features/prediction-ledger/">PredictionLedger</a>
+    <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../features/prediction-ledger/#overview">Overview</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/prediction-ledger/#parameters-class-attributes">Parameters (Class Attributes)</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/prediction-ledger/#usage">Usage</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../features/prediction-ledger/#model-definition">Model Definition</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/prediction-ledger/#recording-and-resolving-predictions">Recording and Resolving Predictions</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/prediction-ledger/#auto-resolution-via-observationprotocol">Auto-Resolution via ObservationProtocol</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/prediction-ledger/#querying-prediction-errors">Querying Prediction Errors</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/prediction-ledger/#prediction-error-computation">Prediction Error Computation</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/prediction-ledger/#architecture">Architecture</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/prediction-ledger/#see-also">See Also</a>
+    </li>
+    </ul>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../features/composite-score-query/">Composite Score Query</a>
+    <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../features/composite-score-query/#quick-start">Quick start</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/composite-score-query/#api-reference">API reference</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../features/composite-score-query/#querybuildercomposite_score">QueryBuilder.composite_score()</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/composite-score-query/#parameters">Parameters</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/composite-score-query/#supported-index-types">Supported index types</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/composite-score-query/#how-it-works">How it works</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/composite-score-query/#cooccurrence-boost">CoOccurrence boost</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/composite-score-query/#temperature-scaling">Temperature scaling</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/composite-score-query/#error-handling">Error handling</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/composite-score-query/#temp-key-conventions">Temp key conventions</a>
+    </li>
+    </ul>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../features/policy-cache/">PolicyCache</a>
+    <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../features/policy-cache/#overview">Overview</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/policy-cache/#components">Components</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../features/policy-cache/#policyentry-model">PolicyEntry Model</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/policy-cache/#crystallization-handler">Crystallization Handler</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/policy-cache/#q-value-updates">Q-Value Updates</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/policy-cache/#temporal-discovery">Temporal Discovery</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/policy-cache/#tuning-constants">Tuning Constants</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/policy-cache/#utility-functions">Utility Functions</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/policy-cache/#see-also">See Also</a>
+    </li>
+    </ul>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../features/context-assembler/">ContextAssembler</a>
+    <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../features/context-assembler/#overview">Overview</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/context-assembler/#primitive-synergy">Primitive Synergy</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/context-assembler/#usage">Usage</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../features/context-assembler/#assemblyresult">AssemblyResult</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/context-assembler/#tuning-constants">Tuning Constants</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/context-assembler/#pipeline-details">Pipeline Details</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../features/context-assembler/#pull-path">Pull Path</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/context-assembler/#push-path">Push Path</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../features/context-assembler/#merge-and-budget">Merge and Budget</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/context-assembler/#llm-integration">LLM Integration</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/context-assembler/#see-also">See Also</a>
+    </li>
+    </ul>
+                </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../features/meta-class-implementation/">Meta Class Implementation</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../features/meta-class-implementation/#overview">Overview</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../features/meta-class-implementation/#completed-features">Completed Features</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../features/meta-class-implementation/#1-metaorder_by-pr-50">1. Meta.order_by (PR #50)</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/meta-class-implementation/#2-metattl-pr-51">2. Meta.ttl (PR #51)</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/meta-class-implementation/#3-metaindexes-pr-52">3. Meta.indexes (PR #52)</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../features/meta-class-implementation/#documentation">Documentation</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../features/meta-class-implementation/#key-design-decisions">Key Design Decisions</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../features/meta-class-implementation/#1-index-storage-redis-hash">1. Index Storage: Redis HASH</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/meta-class-implementation/#2-update-semantics-_saved_field_values">2. Update Semantics: _saved_field_values</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/meta-class-implementation/#3-null-handling-sql-standard">3. NULL Handling: SQL Standard</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/meta-class-implementation/#4-lifecycle-direct-in-model-methods">4. Lifecycle: Direct in Model methods</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../features/meta-class-implementation/#testing">Testing</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../features/meta-class-implementation/#future-considerations">Future Considerations</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../features/meta-class-implementation/#lessons-from-peewee-research">Lessons from Peewee Research</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../features/meta-class-implementation/#files-modified">Files Modified</a>
+    </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../features/kitchen-edge-case-demo/">Kitchen Edge Case Demo</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../features/kitchen-edge-case-demo/#background">Background</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../features/kitchen-edge-case-demo/#model-changes">Model Changes</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../features/kitchen-edge-case-demo/#menuitem-category-promoted-to-keyfield">MenuItem — category promoted to KeyField</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/kitchen-edge-case-demo/#orderadvance_status-partial-save">Order.advance_status() — partial save</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../features/kitchen-edge-case-demo/#new-interactive-flows">New Interactive Flows</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../features/kitchen-edge-case-demo/#menu-screen-move-category-pr-159">Menu Screen — "Move Category" (PR #159)</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/kitchen-edge-case-demo/#orders-screen-advance-status-pr-162">Orders Screen — "→ Advance Status" (PR #162)</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/kitchen-edge-case-demo/#orders-screen-assign-driver-pr-163">Orders Screen — "Assign Driver" (PR #163)</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../features/kitchen-edge-case-demo/#restaurants-screen-rename-pr-161">Restaurants Screen — "Rename" (PR #161)</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../features/kitchen-edge-case-demo/#running-the-demo">Running the Demo</a>
+    </li>
+    </ul>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Guides</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../guides/agent-memory-quickstart/">Agent Memory Quickstart</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/agent-memory-quickstart/#level-1-recall-time-weighted-retrieval">Level 1: Recall — Time-Weighted Retrieval</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/agent-memory-quickstart/#level-2-attention-filter-noise-track-reads">Level 2: Attention — Filter Noise, Track Reads</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/agent-memory-quickstart/#level-3-learning-outcomes-strengthen-or-weaken-beliefs">Level 3: Learning — Outcomes Strengthen or Weaken Beliefs</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/agent-memory-quickstart/#level-4-association-multi-factor-ranking">Level 4: Association — Multi-Factor Ranking</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/agent-memory-quickstart/#level-5-cognition-llm-ready-context-assembly">Level 5: Cognition — LLM-Ready Context Assembly</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/agent-memory-quickstart/#complete-llm-integration-example">Complete LLM Integration Example</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/agent-memory-quickstart/#level-6-semantic-search-find-memories-by-meaning">Level 6: Semantic Search — Find Memories by Meaning</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/agent-memory-quickstart/#import-cheat-sheet">Import Cheat Sheet</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/agent-memory-quickstart/#whats-next">What's Next</a>
+    </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../guides/tuning-magic-numbers/">Tuning Magic Numbers</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/tuning-magic-numbers/#overview">Overview</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/tuning-magic-numbers/#constant-catalog">Constant Catalog</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/tuning-magic-numbers/#observationprotocol-constants">ObservationProtocol Constants</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/tuning-magic-numbers/#confidencefield">ConfidenceField</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/tuning-magic-numbers/#writefiltermixin">WriteFilterMixin</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/tuning-magic-numbers/#decayingsortedfield-cyclicdecayfield">DecayingSortedField / CyclicDecayField</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/tuning-magic-numbers/#cooccurrencefield">CoOccurrenceField</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/tuning-magic-numbers/#predictionledgermixin">PredictionLedgerMixin</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/tuning-magic-numbers/#policycache">PolicyCache</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/tuning-magic-numbers/#contextassembler">ContextAssembler</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/tuning-magic-numbers/#subconsciousmemory-tier-4">SubconsciousMemory (Tier 4)</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/tuning-magic-numbers/#cliff-effects">Cliff Effects</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/tuning-magic-numbers/#interaction-effects">Interaction Effects</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/tuning-magic-numbers/#methodology">Methodology</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/tuning-magic-numbers/#benchmark-harness">Benchmark Harness</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/tuning-magic-numbers/#metrics">Metrics</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/tuning-magic-numbers/#sweep-design">Sweep Design</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/tuning-magic-numbers/#running-the-benchmarks">Running the Benchmarks</a>
+    </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../guides/policy-cache-recipe/">Policy Cache Recipe</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/policy-cache-recipe/#quick-start">Quick Start</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/policy-cache-recipe/#architecture">Architecture</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/policy-cache-recipe/#crystallization">Crystallization</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/policy-cache-recipe/#temporal-discovery">Temporal Discovery</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/policy-cache-recipe/#q-value-updates">Q-Value Updates</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/policy-cache-recipe/#tuning-constants">Tuning Constants</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/policy-cache-recipe/#design-decisions">Design Decisions</a>
+    </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../guides/subconscious-memory-recipe/">Subconscious Memory Recipe</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/subconscious-memory-recipe/#architecture">Architecture</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/subconscious-memory-recipe/#quick-start">Quick Start</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/subconscious-memory-recipe/#openai-sdk-integration">OpenAI SDK Integration</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/subconscious-memory-recipe/#how-it-works">How It Works</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/subconscious-memory-recipe/#pre-turn-inject_contextmessages">Pre-turn: inject_context(messages)</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/subconscious-memory-recipe/#post-turn-extract_memoriesresponse_text-importance">Post-turn: extract_memories(response_text, importance)</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/subconscious-memory-recipe/#outcome-report_outcomesassembly_result-outcome">Outcome: report_outcomes(assembly_result, outcome)</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/subconscious-memory-recipe/#tuning">Tuning</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/subconscious-memory-recipe/#extensibility">Extensibility</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/subconscious-memory-recipe/#custom-fact-extraction">Custom Fact Extraction</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/subconscious-memory-recipe/#custom-query-cues">Custom Query Cues</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/subconscious-memory-recipe/#see-also">See Also</a>
+    </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../guides/popoto-memory-roadmap/">Memory Roadmap</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/popoto-memory-roadmap/#executive-summary">Executive Summary</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/popoto-memory-roadmap/#three-temporal-forces">Three Temporal Forces</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/popoto-memory-roadmap/#push-based-recall">Push-Based Recall</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/popoto-memory-roadmap/#observation-protocol">Observation Protocol</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/popoto-memory-roadmap/#entrainment-self-correcting-cycles">Entrainment — Self-Correcting Cycles</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/popoto-memory-roadmap/#naming-conventions">Naming Conventions</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/popoto-memory-roadmap/#step-1-decayingsortedfield-cyclicdecayfield-time-weighted-scoring-with-temporal-rhythms-shipped">Step 1: DecayingSortedField + CyclicDecayField — Time-Weighted Scoring with Temporal Rhythms ✅ Shipped</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/popoto-memory-roadmap/#step-2-observationprotocol-accesstracker-passive-behavioral-inference-shipped">Step 2: ObservationProtocol + AccessTracker — Passive Behavioral Inference ✅ Shipped</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/popoto-memory-roadmap/#step-3-writefilter-mixin-selective-encoding-shipped">Step 3: WriteFilter Mixin — Selective Encoding ✅ Shipped</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/popoto-memory-roadmap/#step-4-confidencefield-bayesian-certainty-tracking-entrainment-shipped">Step 4: ConfidenceField — Bayesian Certainty Tracking + Entrainment ✅ Shipped</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/popoto-memory-roadmap/#step-5-cooccurrencefield-weighted-association-edges-shipped">Step 5: CoOccurrenceField — Weighted Association Edges ✅ Shipped</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/popoto-memory-roadmap/#step-6-eventstreammixin-append-only-mutation-log-shipped">Step 6: EventStreamMixin — Append-Only Mutation Log ✅ Shipped</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/popoto-memory-roadmap/#step-7-compositescorequery-multi-factor-retrieval-shipped">Step 7: CompositeScoreQuery — Multi-Factor Retrieval ✅ Shipped</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/popoto-memory-roadmap/#step-8-existencefilter-fast-pre-retrieval-check-shipped">Step 8: ExistenceFilter — Fast Pre-Retrieval Check ✅ Shipped</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/popoto-memory-roadmap/#step-9-predictionledger-mixin-outcome-tracking-auto-resolution-shipped">Step 9: PredictionLedger Mixin — Outcome Tracking + Auto-Resolution ✅ Shipped</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/popoto-memory-roadmap/#step-10-streamconsumer-background-compaction-pipeline-shipped">Step 10: StreamConsumer — Background Compaction Pipeline ✅ Shipped</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/popoto-memory-roadmap/#step-11-policycache-model-pattern-learned-action-selection-shipped">Step 11: PolicyCache Model Pattern — Learned Action Selection ✅ Shipped</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/popoto-memory-roadmap/#step-12-contextassembler-retrieval-to-injection-bridge-proactive-surfacing-shipped">Step 12: ContextAssembler — Retrieval-to-Injection Bridge + Proactive Surfacing ✅ Shipped</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/popoto-memory-roadmap/#combinatorial-test-matrix">Combinatorial Test Matrix</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/popoto-memory-roadmap/#implementation-timeline-estimate">Implementation Timeline Estimate</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/popoto-memory-roadmap/#magic-numbers-experimentally-validated">Magic Numbers — Experimentally Validated</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/popoto-memory-roadmap/#category-1-behavioral-sensitivity-high-impact-on-agent-performance">Category 1: Behavioral Sensitivity — High Impact on Agent Performance</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/popoto-memory-roadmap/#category-2-structural-capacity-application-dependent">Category 2: Structural Capacity — Application-Dependent</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/popoto-memory-roadmap/#category-3-edge-pruning-cleanup-thresholds">Category 3: Edge Pruning — Cleanup Thresholds</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/popoto-memory-roadmap/#category-4-domain-constants-fixed-by-design">Category 4: Domain Constants — Fixed by Design</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/popoto-memory-roadmap/#experiment-planning-notes">Experiment Planning Notes</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/popoto-memory-roadmap/#what-this-gives-agent-developers">What This Gives Agent Developers</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/popoto-memory-roadmap/#roadmap-complete">Roadmap Complete</a>
+    </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/">Neuroscience Design Spec</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#part-1-the-brains-memory-systems-what-each-actually-computes">PART 1: The brain's memory systems — what each actually computes</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#11-episodic-memory-fast-writing-into-sparse-non-interfering-traces">1.1 Episodic memory: fast writing into sparse, non-interfering traces</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#12-procedural-memory-the-brains-learned-policy-engine">1.2 Procedural memory: the brain's learned policy engine</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#13-semantic-memory-where-llms-already-excel-with-one-gap">1.3 Semantic memory: where LLMs already excel, with one gap</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#14-salience-and-emotional-tagging-what-gets-remembered">1.4 Salience and emotional tagging: what gets remembered</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#15-working-memory-the-context-window-that-must-be-actively-managed">1.5 Working memory: the context window that must be actively managed</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#part-2-computational-primitives-the-operations-a-memory-system-needs">PART 2: Computational primitives — the operations a memory system needs</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#21-encoding-binding-whatwherewhenwhohow-it-felt-into-sparse-traces">2.1 Encoding: binding what/where/when/who/how-it-felt into sparse traces</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#22-consolidation-replay-that-extracts-patterns-and-prevents-interference">2.2 Consolidation: replay that extracts patterns and prevents interference</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#23-retrieval-cue-dependent-recall-with-spreading-activation">2.3 Retrieval: cue-dependent recall with spreading activation</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#24-forgetting-an-active-essential-process">2.4 Forgetting: an active, essential process</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#25-metacognition-knowing-what-you-know">2.5 Metacognition: knowing what you know</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#part-3-design-principles-for-complementing-llms">PART 3: Design principles for complementing LLMs</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#the-division-of-labor">The division of labor</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#what-not-to-build">What NOT to build</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#what-to-build">What TO build</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#part-4-research-directions-and-their-computational-implications">PART 4: Research directions and their computational implications</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#41-numenta-reference-frames-structured-knowledge-beyond-flat-vectors">4.1 Numenta reference frames: structured knowledge beyond flat vectors</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#42-cls-dual-learning-rates-the-fastslow-architecture">4.2 CLS dual learning rates: the fast/slow architecture</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#43-basal-ganglia-reinforcement-based-action-selection-over-problem-fingerprints">4.3 Basal ganglia: reinforcement-based action selection over problem fingerprints</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#44-sleep-research-prioritized-replay-via-redis-streams">4.4 Sleep research: prioritized replay via Redis Streams</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#45-amygdala-research-the-salience-function">4.5 Amygdala research: the salience function</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#46-cerebellum-research-forward-models-for-outcome-prediction">4.6 Cerebellum research: forward models for outcome prediction</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#part-5-implementation-architecture-redis-structures-popoto-models-and-the-orm-boundary">PART 5: Implementation architecture — Redis structures, Popoto models, and the ORM boundary</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#51-memory-type-taxonomy-and-data-models">5.1 Memory type taxonomy and data models</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#episodic-memory">Episodic Memory</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#procedural-memory">Procedural Memory</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#forward-model-cerebellar">Forward Model (Cerebellar)</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#salience-tag">Salience Tag</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#consolidated-pattern-semanticextracted-knowledge">Consolidated Pattern (Semantic/Extracted Knowledge)</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#52-the-interaction-model-how-memory-types-feed-each-other">5.2 The interaction model: how memory types feed each other</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#53-orm-abstractions-what-popoto-should-provide">5.3 ORM abstractions: what Popoto should provide</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#new-field-mixins">New field mixins</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#new-query-methods">New query methods</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#new-hook-signatures">New hook signatures</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#54-the-orm-vs-application-layer-boundary">5.4 The ORM vs. application layer boundary</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#55-key-redis-patterns-summary">5.5 Key Redis patterns summary</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#whats-novel-in-this-design">What's novel in this design</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#1-activation-dependent-decay-rates-not-just-recency-frequency">1. Activation-dependent decay rates — not just recency × frequency</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#2-salience-gated-encoding-that-operates-below-the-llm">2. Salience-gated encoding that operates below the LLM</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#3-retrieval-induced-forgetting-as-a-memory-sharpening-mechanism">3. Retrieval-induced forgetting as a memory sharpening mechanism</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#4-true-episodic-semantic-consolidation-via-redis-streams">4. True episodic → semantic consolidation via Redis Streams</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#5-forward-models-for-outcome-prediction-before-acting">5. Forward models for outcome prediction before acting</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#6-metacognition-via-probabilistic-data-structures">6. Metacognition via probabilistic data structures</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#7-prediction-error-as-the-universal-consolidation-currency">7. Prediction error as the universal consolidation currency</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/programmable-memory-systems-neuroscience-design-spec/#conclusion-from-neuroscience-primitives-to-implementable-infrastructure">Conclusion: from neuroscience primitives to implementable infrastructure</a>
+    </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../guides/epistemic-flow-cognitive-agent-architectures/">Epistemic Flow</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/epistemic-flow-cognitive-agent-architectures/#1-the-problem-with-react-style-retrieval">1. THE PROBLEM WITH REACT-STYLE RETRIEVAL</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/epistemic-flow-cognitive-agent-architectures/#the-cognitive-friction-of-react">The Cognitive Friction of ReAct</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/epistemic-flow-cognitive-agent-architectures/#impact-assessment-on-resource-efficiency">Impact Assessment on Resource Efficiency</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/epistemic-flow-cognitive-agent-architectures/#contrastive-analysis-retrieval-paradigms">Contrastive Analysis: Retrieval Paradigms</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/epistemic-flow-cognitive-agent-architectures/#2-the-four-mechanisms-of-silent-injection">2. THE FOUR MECHANISMS OF SILENT INJECTION</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/epistemic-flow-cognitive-agent-architectures/#ambient-token-monitoring">Ambient Token Monitoring</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/epistemic-flow-cognitive-agent-architectures/#push-based-semantic-triggers">Push-Based Semantic Triggers</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/epistemic-flow-cognitive-agent-architectures/#predictive-activation-pas-candidate-expansion">Predictive Activation (PAS): Candidate Expansion</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/epistemic-flow-cognitive-agent-architectures/#silent-context-injection-the-intercept">Silent Context Injection: The Intercept</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/epistemic-flow-cognitive-agent-architectures/#3-the-thalamic-gate-architectural-biomimicry">3. THE THALAMIC GATE: ARCHITECTURAL BIOMIMICRY</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/epistemic-flow-cognitive-agent-architectures/#the-biological-model-vs-muninndb">The Biological Model vs. MuninnDB</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/epistemic-flow-cognitive-agent-architectures/#the-6-phase-activate-pipeline">The 6-Phase ACTIVATE Pipeline</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/epistemic-flow-cognitive-agent-architectures/#differentiator-hebbian-associations-bayesian-smoothing">Differentiator: Hebbian Associations &amp; Bayesian Smoothing</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/epistemic-flow-cognitive-agent-architectures/#4-implementation-decisions-for-popoto">4. IMPLEMENTATION DECISIONS FOR POPOTO</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/epistemic-flow-cognitive-agent-architectures/#injection-point-latency-management">Injection Point &amp; Latency Management</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/epistemic-flow-cognitive-agent-architectures/#popoto-integration-map-streaming-graphs">Popoto Integration Map: Streaming &amp; Graphs</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/epistemic-flow-cognitive-agent-architectures/#engineering-for-scale-ulids-and-the-mol">Engineering for Scale: ULIDs and the MOL</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/epistemic-flow-cognitive-agent-architectures/#5-epistemic-flow-in-practice-the-account-manager-scenario">5. EPISTEMIC FLOW IN PRACTICE: THE ACCOUNT MANAGER SCENARIO</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/epistemic-flow-cognitive-agent-architectures/#the-narrative-sequence">The Narrative Sequence</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/epistemic-flow-cognitive-agent-architectures/#trace-comparison">Trace Comparison</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/epistemic-flow-cognitive-agent-architectures/#strategic-outcome">Strategic Outcome</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../guides/research-prompt-memory-systems/">Memory Systems Research</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/research-prompt-memory-systems/#context">Context</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/research-prompt-memory-systems/#part-1-the-brains-memory-systems-what-does-each-actually-compute">Part 1: The Brain's Memory Systems — What Does Each Actually Compute?</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/research-prompt-memory-systems/#11-episodic-memory-hippocampus-neocortex">1.1 Episodic Memory (Hippocampus → Neocortex)</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/research-prompt-memory-systems/#12-procedural-memory-basal-ganglia-cerebellum">1.2 Procedural Memory (Basal Ganglia + Cerebellum)</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/research-prompt-memory-systems/#13-semantic-memory-neocortex-distributed">1.3 Semantic Memory (Neocortex — Distributed)</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/research-prompt-memory-systems/#14-salience-and-emotional-tagging-amygdala-insula">1.4 Salience and Emotional Tagging (Amygdala + Insula)</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/research-prompt-memory-systems/#15-working-memory-prefrontal-cortex-thalamic-gating">1.5 Working Memory (Prefrontal Cortex + Thalamic Gating)</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/research-prompt-memory-systems/#part-2-computational-primitives-what-operations-does-a-memory-system-need">Part 2: Computational Primitives — What Operations Does a Memory System Need?</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/research-prompt-memory-systems/#21-encoding">2.1 Encoding</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/research-prompt-memory-systems/#22-consolidation">2.2 Consolidation</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/research-prompt-memory-systems/#23-retrieval">2.3 Retrieval</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/research-prompt-memory-systems/#24-forgetting-active-process">2.4 Forgetting (Active Process)</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/research-prompt-memory-systems/#25-metacognition-knowing-what-you-know">2.5 Metacognition (Knowing What You Know)</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/research-prompt-memory-systems/#part-3-design-principles-for-complementing-llms">Part 3: Design Principles for Complementing LLMs</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/research-prompt-memory-systems/#31-division-of-labor">3.1 Division of Labor</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/research-prompt-memory-systems/#32-what-not-to-build">3.2 What NOT to Build</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/research-prompt-memory-systems/#33-what-to-build">3.3 What TO Build</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/research-prompt-memory-systems/#part-4-research-directions-to-explore">Part 4: Research Directions to Explore</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/research-prompt-memory-systems/#41-from-numenta-reference-frames-for-knowledge">4.1 From Numenta: Reference Frames for Knowledge</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/research-prompt-memory-systems/#42-from-cls-theory-dual-learning-rates">4.2 From CLS Theory: Dual Learning Rates</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/research-prompt-memory-systems/#43-from-basal-ganglia-reinforcement-based-action-selection">4.3 From Basal Ganglia: Reinforcement-Based Action Selection</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/research-prompt-memory-systems/#44-from-sleep-research-prioritized-replay">4.4 From Sleep Research: Prioritized Replay</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/research-prompt-memory-systems/#45-from-amygdala-research-salience-computation">4.5 From Amygdala Research: Salience Computation</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/research-prompt-memory-systems/#46-from-cerebellum-research-forward-models">4.6 From Cerebellum Research: Forward Models</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/research-prompt-memory-systems/#part-5-constraints-and-design-considerations">Part 5: Constraints and Design Considerations</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/research-prompt-memory-systems/#51-redis-as-storage-engine">5.1 Redis as Storage Engine</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/research-prompt-memory-systems/#52-popoto-as-orm-layer">5.2 Popoto as ORM Layer</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/research-prompt-memory-systems/#53-independence-from-patented-approaches">5.3 Independence from Patented Approaches</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/research-prompt-memory-systems/#deliverable">Deliverable</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/research-prompt-memory-systems/#key-references-for-research">Key References for Research</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/research-prompt-memory-systems/#cognitive-science-neuroscience">Cognitive Science &amp; Neuroscience</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/research-prompt-memory-systems/#numenta-thousand-brains">Numenta / Thousand Brains</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/research-prompt-memory-systems/#recent-ai-memory-research">Recent AI Memory Research</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/research-prompt-memory-systems/#cognitive-architectures">Cognitive Architectures</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../guides/launch-announcements/">Launch Announcements</a>
+    <ul>
+    <li class="toctree-l2"><a class="reference internal" href="../guides/launch-announcements/#hacker-news-show-hn">Hacker News — Show HN</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/launch-announcements/#how-to-post">How to post</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/launch-announcements/#title">Title</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/launch-announcements/#url">URL</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../guides/launch-announcements/#your-first-comment-post-immediately-after-submitting">Your first comment (post immediately after submitting)</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                  </li>
+              </ul>
               <ul>
                 <li class="toctree-l1"><a class="reference internal" href="../api-reference/">API Reference</a>
     <ul>
@@ -381,6 +1515,16 @@
     <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelsave">Model.save()</a>
     </li>
     <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modeldelete">Model.delete()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelatomic_increment">Model.atomic_increment()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modeltouch">Model.touch()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelresolve_pressure">Model.resolve_pressure()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelstrengthen_cycle">Model.strengthen_cycle()</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelweaken_cycle">Model.weaken_cycle()</a>
     </li>
     <li class="toctree-l3"><a class="reference internal" href="../api-reference/#modelload">Model.load()</a>
     </li>
@@ -462,7 +1606,7 @@
     <li><a href=".." class="icon icon-home" aria-label="Docs"></a></li>
       <li class="breadcrumb-item active">Models and Fields</li>
     <li class="wy-breadcrumbs-aside">
-          <a href="https://github.com/tomcounsell/popoto/edit/master/docs/fields.md" class="icon icon-github"> Edit on GitHub</a>
+          <a href="https://github.com/tomcounsell/popoto/edit/main/docs/fields.md" class="icon icon-github"> Edit on GitHub</a>
     </li>
   </ul>
   <hr/>
@@ -913,6 +2057,37 @@ class Restaurant(Model):
     active = BooleanField()
 </code></pre>
 <p>Use whichever style you prefer -- the behavior is identical.</p>
+<h2 id="capped-listfield-max_length">Capped ListField (max_length)</h2>
+<p>When you pass <code>max_length=N</code> to a <code>ListField</code>, the list is stored in a separate Redis
+list key instead of the model hash. This enables efficient <code>push()</code> operations using
+Redis <code>LPUSH</code> + <code>LTRIM</code> without reading the full list.</p>
+<pre><code class="language-python">from popoto import Model, KeyField, ListField
+
+class EventLog(Model):
+    session_id = KeyField()
+    events = ListField(max_length=100)  # Capped at 100 items
+
+# Save the model first
+log = EventLog(session_id=&quot;abc&quot;, events=[])
+log.save()
+
+# Push items directly to Redis (newest first)
+log.events.push({&quot;action&quot;: &quot;click&quot;, &quot;target&quot;: &quot;button&quot;})
+log.events.push({&quot;action&quot;: &quot;scroll&quot;, &quot;offset&quot;: 500})
+
+# Reload to see the data
+loaded = EventLog.query.get(session_id=&quot;abc&quot;)
+print(loaded.events)  # [{&quot;action&quot;: &quot;scroll&quot;, ...}, {&quot;action&quot;: &quot;click&quot;, ...}]
+</code></pre>
+<p>Key behaviors:</p>
+<ul>
+<li><strong>push()</strong> prepends items (newest first) and automatically trims to <code>max_length</code></li>
+<li><strong>save()</strong> replaces the entire Redis list with the current field value</li>
+<li><strong>delete()</strong> cleans up the separate Redis list key</li>
+<li><strong>Complex types</strong> (tuples, dicts, Decimals) round-trip correctly through push/read</li>
+<li><strong>Without max_length</strong>, ListField works exactly as before (stored in model hash)</li>
+<li>The model must be saved before calling <code>push()</code> (needs a Redis key)</li>
+</ul>
 <h2 id="null-values">Null Values</h2>
 <p><code>KeyField</code> and <code>SortedField</code> are required (<code>null=False</code>) by default. All other fields
 are optional (<code>null=True</code>) by default. You can override this with the <code>null</code> keyword.</p>
@@ -1030,6 +2205,436 @@ early_week = DailySpecial.query.filter(day_number__lte=2)
 print(len(early_week))
 # =&gt; 2
 </code></pre>
+<h2 id="decayingsortedfield">DecayingSortedField</h2>
+<p><code>DecayingSortedField</code> is a <code>SortedField</code> subclass where records lose relevance over time
+following a power-law decay curve. The sorted set score is always a timestamp, and a
+Lua script computes decay-ranked results server-side:</p>
+<pre><code>decayed_score = base_score × elapsed_days ^ (-decay_rate)
+</code></pre>
+<p>With the default <code>decay_rate=0.5</code>, a record scores 1.0 after 1 day, 0.5 after 4 days,
+and 0.1 after 100 days.</p>
+<pre><code class="language-python">from popoto import Model, KeyField, Field, FloatField
+from popoto.fields.decaying_sorted_field import DecayingSortedField
+
+class Memory(Model):
+    agent_id = KeyField()
+    content = Field(type=str)
+    importance = FloatField(default=1.0)
+    relevance = DecayingSortedField(base_score_field=&quot;importance&quot;)
+</code></pre>
+<p>Query for the most relevant recent records with <code>top_by_decay()</code>. When a model has
+exactly one <code>DecayingSortedField</code>, the field name is auto-detected:</p>
+<pre><code class="language-python"># Auto-detect field_name (works because Memory has exactly one DecayingSortedField)
+top = Memory.query.filter(agent_id=&quot;agent-1&quot;).top_by_decay(n=10)
+
+# Explicit field_name also works
+top = Memory.query.filter(agent_id=&quot;agent-1&quot;).top_by_decay(&quot;relevance&quot;, n=10)
+
+# Override decay rate for this query (aggressive — only very recent)
+hot = Memory.query.filter(agent_id=&quot;agent-1&quot;).top_by_decay(n=5, decay_rate=1.0)
+</code></pre>
+<p>Refresh a record's timestamp without a full save using <code>touch()</code>:</p>
+<pre><code class="language-python">memory = Memory.query.get(agent_id=&quot;agent-1&quot;, content=&quot;deployment procedure&quot;)
+memory.touch(&quot;relevance&quot;)  # Resets the decay clock
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>decay_rate</code></td>
+<td><code>float</code></td>
+<td><code>0.5</code></td>
+<td>Controls how fast scores drop. Higher = faster decay. Must be &gt; 0.</td>
+</tr>
+<tr>
+<td><code>base_score_field</code></td>
+<td><code>str</code></td>
+<td><code>None</code></td>
+<td>Name of a companion field whose value multiplies the decay curve. When <code>None</code>, base score is 1.0.</td>
+</tr>
+<tr>
+<td><code>partition_by</code></td>
+<td><code>str</code> or <code>tuple</code></td>
+<td><code>()</code></td>
+<td>Partition the sorted set by key field values (inherited from <code>SortedField</code>).</td>
+</tr>
+</tbody>
+</table>
+<p>Use <code>InteractionWeight</code> constants with <code>base_score_field</code> for source/role-based importance
+weighting in multi-agent teams. See <a href="../features/agent-memory/#source-weighting-for-teamwork">Agent Memory — Source weighting</a>
+for the full pattern.</p>
+<p>All standard <code>SortedField</code> range filters (<code>__gt</code>, <code>__gte</code>, <code>__lt</code>, <code>__lte</code>, <code>__between</code>)
+work against the timestamp score. See <a href="../features/agent-memory/">Agent Memory</a> for the
+full agent memory primitives overview.</p>
+<h2 id="cyclicdecayfield">CyclicDecayField</h2>
+<p><code>CyclicDecayField</code> extends <code>DecayingSortedField</code> with two additional temporal forces computed
+atomically in a single Lua script:</p>
+<ol>
+<li><strong>Cyclical resonance</strong>: Periodic boosts following cosine curves.</li>
+<li><strong>Homeostatic pressure</strong>: Urgency that builds linearly while an item goes unresolved.</li>
+</ol>
+<p>The effective score is: <code>decay + cyclic_resonance + pressure</code>. When <code>cycles=[]</code> and
+<code>pressure_rate=0.0</code>, behavior is identical to <code>DecayingSortedField</code>.</p>
+<pre><code class="language-python">from popoto import Model, KeyField, Field, CyclicDecayField
+from popoto.fields.constants import TemporalPeriod
+
+class Directive(Model):
+    agent_id = KeyField()
+    content = Field(type=str)
+    relevance = CyclicDecayField(
+        decay_rate=0.5,
+        cycles=[(TemporalPeriod.QUARTERLY, 5.0, 0)],
+        pressure_rate=0.1,
+    )
+</code></pre>
+<p>Query with the same <code>top_by_decay()</code> interface, and discharge pressure with <code>resolve_pressure()</code>:</p>
+<pre><code class="language-python"># Top 10 by combined decay + cyclic + pressure score (field_name auto-detected)
+top = Directive.query.filter(agent_id=&quot;agent-1&quot;).top_by_decay(n=10)
+
+# Discharge accumulated urgency
+directive.resolve_pressure(&quot;relevance&quot;)
+
+# Refresh the decay clock (same as DecayingSortedField)
+directive.touch(&quot;relevance&quot;)
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>decay_rate</code></td>
+<td><code>float</code></td>
+<td><code>0.5</code></td>
+<td>Power-law decay exponent (inherited).</td>
+</tr>
+<tr>
+<td><code>base_score_field</code></td>
+<td><code>str</code></td>
+<td><code>None</code></td>
+<td>Companion field whose value multiplies the decay curve (inherited).</td>
+</tr>
+<tr>
+<td><code>cycles</code></td>
+<td><code>list</code></td>
+<td><code>[]</code></td>
+<td>List of <code>(period, amplitude, phase)</code> tuples. Use <code>TemporalPeriod</code> constants for period.</td>
+</tr>
+<tr>
+<td><code>pressure_rate</code></td>
+<td><code>float</code></td>
+<td><code>0.0</code></td>
+<td>Rate of urgency buildup per unresolved day.</td>
+</tr>
+<tr>
+<td><code>partition_by</code></td>
+<td><code>str</code> or <code>tuple</code></td>
+<td><code>()</code></td>
+<td>Partition the sorted set by key field values (inherited).</td>
+</tr>
+</tbody>
+</table>
+<p>See <a href="../features/cyclic-decay-field/">CyclicDecayField feature docs</a> for the full reference including
+the scoring formula, Redis data model, <code>TemporalPeriod</code> constants, and error handling.
+See <a href="../features/agent-memory/">Agent Memory</a> for the broader agent memory primitives overview.</p>
+<h2 id="cooccurrencefield">CoOccurrenceField</h2>
+<p><code>CoOccurrenceField</code> maintains weighted association edges between model instances using
+per-PK Redis sorted sets. Weights strengthen via co-retrieval and decay when not
+reinforced. A server-side Lua BFS script enables multi-hop associative retrieval.</p>
+<pre><code class="language-python">from popoto import Model, UniqueKeyField, StringField
+from popoto.fields.co_occurrence_field import CoOccurrenceField
+
+class Memory(Model):
+    key = UniqueKeyField()
+    content = StringField()
+    associations = CoOccurrenceField(symmetric=True, max_edges=100)
+
+# Create and link
+mem_a = Memory.create(key=&quot;ml&quot;, content=&quot;Machine learning&quot;)
+mem_b = Memory.create(key=&quot;nn&quot;, content=&quot;Neural networks&quot;)
+field = Memory._meta.fields[&quot;associations&quot;]
+field.link(Memory, mem_a.db_key.redis_key, mem_b.db_key.redis_key)
+
+# Propagate associations
+scores = field.propagate(Memory, [mem_a.db_key.redis_key], depth=2)
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>symmetric</code></td>
+<td><code>bool</code></td>
+<td><code>True</code></td>
+<td>If True, edges are bidirectional.</td>
+</tr>
+<tr>
+<td><code>max_edges</code></td>
+<td><code>int</code></td>
+<td><code>500</code></td>
+<td>Maximum edges per PK; lowest-weight pruned when exceeded.</td>
+</tr>
+<tr>
+<td><code>decay_factor</code></td>
+<td><code>float</code></td>
+<td><code>0.95</code></td>
+<td>Default multiplicative decay for <code>weaken_all()</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>See <a href="../features/co-occurrence-field/">CoOccurrenceField docs</a> for the full reference including
+methods, Redis key patterns, and synergy with other memory fields.
+See <a href="../features/agent-memory/">Agent Memory</a> for the broader agent memory primitives overview.</p>
+<h2 id="existencefilter">ExistenceFilter</h2>
+<p><code>ExistenceFilter</code> is a Bloom filter for O(1) probabilistic membership checks. It answers
+"have I ever stored anything about X?" without touching any sorted set or hash. False
+positives are possible; false negatives are impossible.</p>
+<p>Implemented entirely with Redis strings (<code>SETBIT</code>/<code>GETBIT</code>) and Lua scripts. No Redis
+modules required -- works on both Redis and Valkey.</p>
+<p><code>ExistenceFilter</code> is a "side-effect field" -- it does not store a value on the model
+instance. It maintains a Bloom filter index via <code>on_save()</code> hooks.</p>
+<pre><code class="language-python">from popoto import Model, KeyField, Field
+from popoto.fields.existence_filter import ExistenceFilter
+
+class Memory(Model):
+    agent_id = KeyField()
+    topic = Field(type=str)
+    bloom = ExistenceFilter(
+        error_rate=0.01,
+        capacity=100_000,
+        fingerprint_fn=lambda inst: inst.topic,
+    )
+</code></pre>
+<p>Check membership before running expensive queries:</p>
+<pre><code class="language-python"># Fast pre-check before expensive retrieval
+if not Memory.bloom.definitely_missing(Memory, &quot;kubernetes deployments&quot;):
+    results = Memory.query.filter(agent_id=&quot;agent-1&quot;).top_by_decay(5)
+else:
+    results = []  # skip retrieval entirely
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>error_rate</code></td>
+<td><code>float</code></td>
+<td><code>0.01</code></td>
+<td>Target false positive rate. Lower = more bits required.</td>
+</tr>
+<tr>
+<td><code>capacity</code></td>
+<td><code>int</code></td>
+<td><code>100_000</code></td>
+<td>Expected number of distinct items. Exceeding this degrades the error rate.</td>
+</tr>
+<tr>
+<td><code>fingerprint_fn</code></td>
+<td><code>Callable</code></td>
+<td><code>None</code></td>
+<td>Takes a model instance, returns a string fingerprint. Falls back to <code>redis_key</code> if not set.</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>might_exist(model_class, fingerprint)</code></td>
+<td><code>bool</code></td>
+<td>True if fingerprint is possibly present (may be false positive).</td>
+</tr>
+<tr>
+<td><code>definitely_missing(model_class, fingerprint)</code></td>
+<td><code>bool</code></td>
+<td>True if fingerprint is guaranteed absent.</td>
+</tr>
+<tr>
+<td><code>fill_ratio(model_class)</code></td>
+<td><code>float</code></td>
+<td>Proportion of set bits (0.0-1.0). Monitor for capacity warnings.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Tokenization:</strong> Fingerprints are automatically tokenized on save. A fingerprint like
+<code>"kubernetes deployment guide"</code> is split into individual tokens (<code>"kubernetes"</code>,
+<code>"deployment"</code>, <code>"guide"</code>), each added to the bloom filter separately. This enables
+word-level queries: <code>might_exist("kubernetes")</code> returns True after saving that fingerprint.
+Queries are normalized with the same rules (lowercase, stop word removal, min-length 3).
+See <a href="../features/existence-filter/#tokenization">ExistenceFilter feature docs</a> for details.</p>
+<p><code>on_delete()</code> is a no-op -- Bloom filters do not support removal. Stale positives are
+harmless for a pre-filter use case.</p>
+<p>See <a href="../features/agent-memory/#existencefilter">Agent Memory -- ExistenceFilter</a> for the
+full agent memory context.</p>
+<h2 id="frequencysketch">FrequencySketch</h2>
+<p><code>FrequencySketch</code> is a Count-Min Sketch for approximate frequency counting. Tracks how
+many times a fingerprint has been saved, with possible overcounting but never undercounting.</p>
+<p>Implemented entirely with Redis hashes (<code>HINCRBY</code>/<code>HGET</code>) and Lua scripts. No Redis
+modules required -- works on both Redis and Valkey.</p>
+<pre><code class="language-python">from popoto import Model, KeyField, Field
+from popoto.fields.existence_filter import FrequencySketch
+
+class Memory(Model):
+    agent_id = KeyField()
+    topic = Field(type=str)
+    freq = FrequencySketch(
+        fingerprint_fn=lambda inst: inst.topic,
+    )
+</code></pre>
+<p>Query approximate frequency:</p>
+<pre><code class="language-python">count = Memory.freq.get_frequency(Memory, &quot;kubernetes&quot;)
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>width</code></td>
+<td><code>int</code></td>
+<td><code>2000</code></td>
+<td>Number of counters per row. Higher = less overcounting.</td>
+</tr>
+<tr>
+<td><code>depth</code></td>
+<td><code>int</code></td>
+<td><code>7</code></td>
+<td>Number of hash functions (rows). Higher = more accurate.</td>
+</tr>
+<tr>
+<td><code>fingerprint_fn</code></td>
+<td><code>Callable</code></td>
+<td><code>None</code></td>
+<td>Takes a model instance, returns a string fingerprint. Falls back to <code>redis_key</code> if not set.</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>get_frequency(model_class, fingerprint)</code></td>
+<td><code>int</code></td>
+<td>Approximate count. May overcount, never undercounts.</td>
+</tr>
+</tbody>
+</table>
+<p><code>on_delete()</code> is a no-op -- CMS counters are monotonically increasing.</p>
+<p>Both <code>ExistenceFilter</code> and <code>FrequencySketch</code> can be used together on the same model.
+See <a href="../features/agent-memory/#frequencysketch">Agent Memory -- FrequencySketch</a> for
+the full agent memory context.</p>
+<h2 id="predictionledgermixin">PredictionLedgerMixin</h2>
+<p><code>PredictionLedgerMixin</code> adds prediction recording, resolution, and error tracking to any
+Popoto model. Agents record predictions before acting, then resolve them against actual
+outcomes. The mixin computes prediction error and feeds it back into <code>ConfidenceField</code>
+when error is high.</p>
+<pre><code class="language-python">from popoto import Model, UniqueKeyField, StringField
+from popoto.fields.prediction_ledger import PredictionLedgerMixin
+from popoto.fields.confidence_field import ConfidenceField
+
+class Memory(PredictionLedgerMixin, Model):
+    key = UniqueKeyField()
+    content = StringField()
+    certainty = ConfidenceField()
+
+    _pl_partition = &quot;default&quot;
+</code></pre>
+<p>Record a prediction and resolve it:</p>
+<pre><code class="language-python">memory = Memory.create(key=&quot;fact1&quot;, content=&quot;sky is blue&quot;)
+PredictionLedgerMixin.record_prediction(memory, predicted={&quot;relevance&quot;: 0.9})
+error = PredictionLedgerMixin.resolve_prediction(memory, actual={&quot;relevance&quot;: 0.3})
+# error ≈ 0.6
+</code></pre>
+<p>Auto-resolution from <code>ObservationProtocol</code> outcomes (<code>acted</code>, <code>dismissed</code>, <code>contradicted</code>)
+is handled automatically when the model uses both mixins. Resolution is idempotent --
+resolving an already-resolved prediction is a no-op.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>record_prediction(instance, predicted, pipeline=None)</code></td>
+<td><code>None</code></td>
+<td>Store a prediction for a saved instance</td>
+</tr>
+<tr>
+<td><code>resolve_prediction(instance, actual, pipeline=None)</code></td>
+<td><code>float</code> or <code>None</code></td>
+<td>Resolve with actual values, returns error</td>
+</tr>
+<tr>
+<td><code>auto_resolve(instance, outcome, pipeline=None)</code></td>
+<td><code>float</code> or <code>None</code></td>
+<td>Resolve using outcome-to-error mapping</td>
+</tr>
+<tr>
+<td><code>get_prediction_data(instance)</code></td>
+<td><code>dict</code> or <code>None</code></td>
+<td>Read current prediction metadata</td>
+</tr>
+<tr>
+<td><code>get_highest_errors(model_class, partition, limit)</code></td>
+<td><code>list</code></td>
+<td>Query instances with highest errors</td>
+</tr>
+<tr>
+<td><code>compute_prediction_error(predicted, actual)</code></td>
+<td><code>float</code></td>
+<td>Overridable error computation</td>
+</tr>
+</tbody>
+</table>
+<p>Redis keys: <code>$PL:{ClassName}:meta:{pk}</code> (hash), <code>$PL:{ClassName}:errors:{partition}</code> (sorted set).</p>
+<p>Implemented entirely with Redis hashes, sorted sets, and Lua scripts. No Redis modules
+required -- works on both Redis and Valkey.</p>
+<p>See <a href="../features/agent-memory/#predictionledger">Agent Memory -- PredictionLedger</a> for
+the full agent memory context.</p>
 <h2 id="partition_by">partition_by</h2>
 <p>When you always query a <code>SortedField</code> together with a specific <code>KeyField</code>, you can
 dramatically improve performance by defining <code>partition_by</code>. This creates a composite index
@@ -1061,7 +2666,9 @@ except Exception as e:
 <p class="admonition-title">Tip</p>
 <p>Use <code>partition_by</code> when you have a natural parent-child relationship. Menu items
 always belong to a restaurant, so scoping the price index to the restaurant
-reduces the sorted set size and speeds up range queries.</p>
+reduces the sorted set size and speeds up range queries. See
+<a href="../multi-tenancy/">Multi-Tenancy</a> for using <code>partition_by</code> with a KeyField
+to isolate data by tenant or project.</p>
 </div>
 <div class="admonition note">
 <p class="admonition-title">Partition key changes are handled automatically</p>
@@ -1128,6 +2735,244 @@ class Restaurant(Timestampable, Model):
     cuisine = Field(type=str)
     # created_at and updated_at are included automatically
 </code></pre>
+<h2 id="writefiltermixin">WriteFilterMixin</h2>
+<p><code>WriteFilterMixin</code> gates <code>save()</code> calls based on a scoring function you define. Records
+scoring below a minimum threshold are silently discarded (never persisted). Records
+scoring above a priority threshold are persisted <em>and</em> tagged in a Redis sorted set for
+preferential retrieval.</p>
+<pre><code class="language-python">from popoto import Model, KeyField, Field
+from popoto.fields.write_filter import WriteFilterMixin
+
+class Memory(WriteFilterMixin, Model):
+    agent_id = KeyField()
+    content = Field(type=str)
+    importance = Field(type=float, default=0.5)
+
+    def compute_filter_score(self):
+        return self.importance or 0.0
+</code></pre>
+<p>The mixin adds three behaviors to your model:</p>
+<ol>
+<li>
+<p><strong>Gate on save</strong>: Before persisting, <code>compute_filter_score()</code> is called. If the
+   score is below <code>_wf_min_threshold</code> (default 0.2), a <code>SkipSaveException</code> is raised
+   and caught by <code>Model.save()</code>, silently aborting the write.</p>
+</li>
+<li>
+<p><strong>Priority tagging</strong>: If the score meets or exceeds <code>_wf_priority_threshold</code>
+   (default 0.7), the record's Redis key is added to a sorted set at
+   <code>$WF:{ClassName}:priority</code> with the score as its rank.</p>
+</li>
+<li>
+<p><strong>Cleanup on delete</strong>: When <code>delete()</code> is called, the record is removed from the
+   priority sorted set automatically.</p>
+</li>
+</ol>
+<pre><code class="language-python"># Silently discarded — score 0.1 &lt; min_threshold 0.2
+low = Memory(agent_id=&quot;a1&quot;, content=&quot;noise&quot;, importance=0.1)
+low.save()  # No error, but record is NOT in Redis
+
+# Persisted normally — score 0.5 between thresholds
+mid = Memory(agent_id=&quot;a1&quot;, content=&quot;useful&quot;, importance=0.5)
+mid.save()  # Stored in Redis
+
+# Persisted AND priority-tagged — score 0.9 &gt;= priority_threshold 0.7
+high = Memory(agent_id=&quot;a1&quot;, content=&quot;critical&quot;, importance=0.9)
+high.save()  # Stored in Redis AND added to $WF:Memory:priority
+</code></pre>
+<p>Override the thresholds by setting class attributes:</p>
+<pre><code class="language-python">class StrictMemory(WriteFilterMixin, Model):
+    _wf_min_threshold = 0.4       # Higher bar to persist
+    _wf_priority_threshold = 0.8  # Higher bar for priority
+    # ...
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>_wf_min_threshold</code></td>
+<td><code>0.2</code></td>
+<td>Minimum score to persist</td>
+</tr>
+<tr>
+<td><code>_wf_priority_threshold</code></td>
+<td><code>0.7</code></td>
+<td>Minimum score for priority tagging</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p><code>WriteFilterMixin</code> must appear <strong>before</strong> <code>Model</code> in the inheritance list so that
+its <code>on_save()</code> hook is called. The scoring function is application logic — Popoto
+provides the gating mechanism, not the scoring logic.</p>
+</div>
+<p>See <a href="../features/agent-memory/#writefilter">Agent Memory — WriteFilter</a> for the broader
+agent memory context and how WriteFilter fits with DecayingSortedField and AccessTracker.</p>
+<h2 id="contentfield">ContentField</h2>
+<p><code>ContentField</code> routes large content values (documents, text, binary data) to filesystem
+storage, keeping Redis memory usage minimal. Redis stores only a compact reference string
+(<code>$CF:{hash}:{path}</code>), and the content is lazy-loaded from the filesystem when the
+attribute is accessed.</p>
+<p>This is ideal for storing long-form text, HTML, markdown, or any content too large to
+keep in Redis comfortably.</p>
+<pre><code class="language-bash">pip install popoto
+</code></pre>
+<p>No additional dependencies are needed -- ContentField uses the filesystem by default.</p>
+<pre><code class="language-python">import popoto
+from popoto.fields.content_field import ContentField
+
+class Document(popoto.Model):
+    name = popoto.KeyField()
+    body = ContentField()
+
+doc = Document.create(name=&quot;readme&quot;, body=&quot;# Hello World\n\nThis is a large document...&quot;)
+</code></pre>
+<p>On save, the content is written to the filesystem first, then a reference string is stored
+in Redis. On attribute access, the reference is detected and the content is transparently
+loaded from the filesystem:</p>
+<pre><code class="language-python">loaded = Document.query.get(name=&quot;readme&quot;)
+print(loaded.body)
+# =&gt; &quot;# Hello World\n\nThis is a large document...&quot;
+</code></pre>
+<h3 id="content-addressable-storage">Content-Addressable Storage</h3>
+<p>ContentField uses SHA-256 hashing for content-addressable storage. Identical content
+produces the same hash and file path, so duplicate writes are deduplicated automatically.
+Writes are atomic (temp file + rename) to prevent partial reads.</p>
+<h3 id="custom-content-store">Custom Content Store</h3>
+<p>By default, ContentField uses <code>FilesystemStore</code> which writes to <code>~/.popoto/content/</code>
+(or the path set via <code>POPOTO_CONTENT_PATH</code>). You can pass a custom store per-field
+or set a global default via <code>popoto.configure()</code>:</p>
+<pre><code class="language-python">from popoto.stores.filesystem import FilesystemStore
+
+class Document(popoto.Model):
+    name = popoto.KeyField()
+    body = ContentField(store=FilesystemStore(base_path=&quot;/data/documents&quot;))
+</code></pre>
+<p>Or configure globally:</p>
+<pre><code class="language-python">popoto.configure(content_path=&quot;/data/popoto-content&quot;)
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>store</code></td>
+<td><code>AbstractContentStore</code> or <code>"filesystem"</code></td>
+<td><code>"filesystem"</code></td>
+<td>The content store backend.</td>
+</tr>
+</tbody>
+</table>
+<p>ContentField deletion is a no-op -- content files are append-only. Use
+<code>ContentField.garbage_collect(ModelClass)</code> to remove orphaned files not referenced
+by any live model instance.</p>
+<h2 id="embeddingfield">EmbeddingField</h2>
+<p><code>EmbeddingField</code> generates vector embeddings from a source field on save, stores them
+as <code>.npy</code> files on the filesystem, and maintains an in-memory cache of pre-normalized
+numpy matrices for fast cosine similarity computation at query time.</p>
+<pre><code class="language-bash">pip install popoto[embeddings]          # numpy
+pip install popoto[voyage]              # numpy + voyageai
+pip install popoto[openai]              # numpy + openai
+</code></pre>
+<pre><code class="language-python">import popoto
+from popoto.fields.content_field import ContentField
+from popoto.fields.embedding_field import EmbeddingField
+from popoto.embeddings.voyage import VoyageProvider
+
+popoto.configure(
+    embedding_provider=VoyageProvider(api_key=&quot;your-key&quot;),
+)
+
+class Memory(popoto.Model):
+    topic = popoto.KeyField()
+    content = ContentField()
+    embedding = EmbeddingField(source=&quot;content&quot;)
+
+m = Memory.create(topic=&quot;revenue&quot;, content=&quot;Q4 revenue exceeded projections...&quot;)
+# Embedding is generated automatically on save
+</code></pre>
+<p>Redis stores only the embedding dimension count (an integer). The actual vector
+is stored as a <code>.npy</code> file under <code>~/.popoto/content/.embeddings/</code>. On save,
+EmbeddingField reads the source field value, calls the configured provider to
+generate an embedding, and writes the vector atomically to disk.</p>
+<h3 id="embedding-providers">Embedding Providers</h3>
+<p>Popoto ships with two built-in providers. You can also implement your own by
+subclassing <code>AbstractEmbeddingProvider</code>.</p>
+<p><strong>VoyageProvider</strong> (recommended for retrieval):</p>
+<pre><code class="language-python">from popoto.embeddings.voyage import VoyageProvider
+
+provider = VoyageProvider(
+    api_key=&quot;your-voyage-api-key&quot;,
+    model=&quot;voyage-3-lite&quot;,           # default
+    dimensions=512,                   # default
+)
+</code></pre>
+<p><strong>OpenAIProvider</strong>:</p>
+<pre><code class="language-python">from popoto.embeddings.openai import OpenAIProvider
+
+provider = OpenAIProvider(
+    api_key=&quot;your-openai-api-key&quot;,
+    model=&quot;text-embedding-3-small&quot;,  # default
+    dimensions=1536,                  # default
+)
+</code></pre>
+<h3 id="querying-with-semantic_search">Querying with semantic_search()</h3>
+<p>Once models have embeddings, use <code>semantic_search()</code> to find semantically similar
+instances. See <a href="../query/#semantic-search">Making Queries -- semantic_search()</a> for the
+full query interface.</p>
+<pre><code class="language-python">results = Memory.query.semantic_search(&quot;revenue trends&quot;, limit=5)
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>source</code></td>
+<td><code>str</code></td>
+<td><code>None</code></td>
+<td>Name of the field to read content from for embedding generation.</td>
+</tr>
+<tr>
+<td><code>provider</code></td>
+<td><code>AbstractEmbeddingProvider</code></td>
+<td><code>None</code></td>
+<td>Provider instance, or None to use the global default set via <code>popoto.configure()</code>.</td>
+</tr>
+<tr>
+<td><code>auto_embed</code></td>
+<td><code>bool</code></td>
+<td><code>True</code></td>
+<td>Generate embeddings automatically on save.</td>
+</tr>
+<tr>
+<td><code>cache</code></td>
+<td><code>bool</code></td>
+<td><code>True</code></td>
+<td>Cache embeddings in memory for fast similarity search.</td>
+</tr>
+</tbody>
+</table>
+<p>See <a href="../features/content-and-embedding-fields/">Content and Embedding Fields</a> for the
+full feature reference including storage layout, cache management, and provider API.</p>
 <h2 id="geofield">GeoField</h2>
 <p><code>GeoField</code> uses Redis geospatial indexes for location-based queries. This is perfect
 for finding nearby restaurants, tracking driver positions, or searching by delivery
