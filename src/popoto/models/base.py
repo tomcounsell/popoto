@@ -613,6 +613,7 @@ class Model(metaclass=ModelBase):
         self._saved_field_values = (
             dict()
         )  # stores field values at last save for proper on_delete cleanup
+        self._is_persisted = False  # True after pipeline.execute() confirms write
 
         # todo: create set of possible custom field keys
 
@@ -1026,15 +1027,22 @@ class Model(metaclass=ModelBase):
             key is automatically deleted. This enables "rename" operations
             while maintaining data integrity.
 
+            When no pipeline is provided, save() uses an internal pipeline
+            and calls execute() before returning. This guarantees that all
+            index writes are visible to subsequent filter() calls. When an
+            external pipeline is provided, index writes are queued but NOT
+            flushed -- the caller must call pipeline.execute() before
+            querying, or filter() may miss the saved record.
+
         Example:
-            # Single save
+            # Single save (immediately queryable after return)
             user.save()
 
-            # Batched saves
+            # Batched saves (NOT queryable until execute)
             pipe = redis.pipeline()
             user1.save(pipeline=pipe)
             user2.save(pipeline=pipe)
-            pipe.execute()
+            pipe.execute()  # indexes now visible to filter()
 
             # Partial save (only update specific fields)
             user.name = "new_name"
@@ -1198,6 +1206,7 @@ class Model(metaclass=ModelBase):
                     )
                 results = internal_pipeline.execute()
                 db_response = results[0]  # HSET result
+                self._is_persisted = True
                 self._redis_key = new_db_key.redis_key
                 # Merge into saved_field_values (preserve existing, update listed)
                 for field_name in update_fields:
@@ -1370,9 +1379,12 @@ class Model(metaclass=ModelBase):
                 if new_hash:
                     internal_pipeline.hset(index_key, new_hash, new_db_key.redis_key)
 
+            # pipeline.execute() is synchronous in redis-py: it blocks until
+            # all responses are received, guaranteeing write visibility after return
             results = internal_pipeline.execute()
             db_response = results[0]  # HSET result (backward compat)
 
+            self._is_persisted = True
             self._redis_key = new_db_key.redis_key  # 7
             # Store field values for proper cleanup on delete  # 8
             self._saved_field_values = {

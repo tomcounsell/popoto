@@ -344,6 +344,7 @@ def decode_popoto_model_hashmap(
             field_name: getattr(model_instance, field_name)
             for field_name in model_instance._meta.fields.keys()
         }
+        model_instance._is_persisted = True
 
         return model_instance
 
@@ -409,6 +410,7 @@ def _create_lazy_model(model_class: "Model", redis_hash: dict) -> "Model":
     instance.obsolete_redis_key = None
     instance._ttl = model_class._meta.ttl
     instance._expire_at = None
+    instance._is_persisted = True
 
     return instance
 
