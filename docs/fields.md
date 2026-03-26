@@ -787,6 +787,13 @@ else:
 | `definitely_missing(model_class, fingerprint)` | `bool` | True if fingerprint is guaranteed absent. |
 | `fill_ratio(model_class)` | `float` | Proportion of set bits (0.0-1.0). Monitor for capacity warnings. |
 
+**Tokenization:** Fingerprints are automatically tokenized on save. A fingerprint like
+`"kubernetes deployment guide"` is split into individual tokens (`"kubernetes"`,
+`"deployment"`, `"guide"`), each added to the bloom filter separately. This enables
+word-level queries: `might_exist("kubernetes")` returns True after saving that fingerprint.
+Queries are normalized with the same rules (lowercase, stop word removal, min-length 3).
+See [ExistenceFilter feature docs](features/existence-filter.md#tokenization) for details.
+
 `on_delete()` is a no-op -- Bloom filters do not support removal. Stale positives are
 harmless for a pre-filter use case.
 

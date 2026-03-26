@@ -17,6 +17,15 @@ Design:
     h_i(x) = (h1(x) + i * h2(x)) mod m, where h1 is DJB2 and h2 is FNV-1.
     Two hash functions simulate k independent ones with identical guarantees.
 
+    Tokenization:
+    On save, fingerprint strings are automatically tokenized into individual words.
+    Each token is added to the bloom filter / count-min sketch separately. This
+    enables word-level queries: saving "kubernetes deployment guide" allows
+    might_exist("kubernetes") to return True. Tokenization lowercases, splits on
+    non-word characters, filters tokens shorter than 3 characters, and removes
+    common English stop words. If tokenization produces zero tokens, the raw
+    fingerprint is used as a fallback.
+
 Redis Key Patterns:
     - Bloom filter: $EF:{ClassName}:{field_name} — single Redis string (bit array)
     - Count-Min Sketch: $FS:{ClassName}:{field_name} — single Redis hash
@@ -52,6 +61,7 @@ Example:
 
 import logging
 import math
+import re
 
 import redis
 
@@ -60,6 +70,55 @@ from ..redis_db import POPOTO_REDIS_DB
 from .field import Field
 
 logger = logging.getLogger("POPOTO.ExistenceFilter")
+
+# ---------------------------------------------------------------------------
+# Tokenization
+# ---------------------------------------------------------------------------
+
+# Minimum token length to include in the bloom filter / CMS.
+# Tokens shorter than this are noise (e.g., "a", "is", "to").
+_MIN_TOKEN_LENGTH = 3
+
+# Common English stop words filtered out during tokenization.
+# Kept minimal — the bloom filter tolerates a few extra entries.
+_STOP_WORDS = frozenset({
+    "the", "and", "for", "are", "but", "not", "you", "all",
+    "can", "had", "her", "was", "one", "our", "out", "has",
+    "his", "how", "its", "may", "new", "now", "old", "see",
+    "way", "who", "did", "got", "let", "say", "she", "too",
+    "use", "with", "have", "from", "this", "that", "they",
+    "been", "will", "into", "than", "them", "then", "what",
+    "when", "which", "would", "there", "their", "about",
+})
+
+# Split pattern: any sequence of non-word characters
+_SPLIT_PATTERN = re.compile(r"\W+")
+
+
+def tokenize(text):
+    """Tokenize a fingerprint string into individual terms for bloom indexing.
+
+    Lowercases the input, splits on non-word characters, filters out tokens
+    shorter than 3 characters and common English stop words, and deduplicates.
+
+    Args:
+        text: The fingerprint string to tokenize.
+
+    Returns:
+        list[str]: Unique tokens suitable for bloom filter insertion.
+            Returns an empty list if no tokens survive filtering.
+    """
+    if not text:
+        return []
+    lowered = text.lower()
+    raw_tokens = _SPLIT_PATTERN.split(lowered)
+    seen = set()
+    tokens = []
+    for t in raw_tokens:
+        if len(t) >= _MIN_TOKEN_LENGTH and t not in _STOP_WORDS and t not in seen:
+            seen.add(t)
+            tokens.append(t)
+    return tokens
 
 # ---------------------------------------------------------------------------
 # Lua Scripts — Bloom Filter
@@ -86,6 +145,32 @@ h2 = h2 % m
 for i = 0, k - 1 do
     local pos = (h1 + i * h2) % m
     redis.call('SETBIT', key, pos, 1)
+end
+return 1
+"""
+
+BLOOM_ADD_MULTI_LUA = """
+local key = KEYS[1]
+local m = tonumber(ARGV[1])
+local k = tonumber(ARGV[2])
+local LARGE_MOD = 4503599627370496  -- 2^52, safe for Lua doubles
+
+-- Loop over all tokens passed as ARGV[3..N]
+for t = 3, #ARGV do
+    local item = ARGV[t]
+    local h1 = 5381
+    local h2 = 16777619
+    for i = 1, #item do
+        local c = string.byte(item, i)
+        h1 = ((h1 * 33) + c) % LARGE_MOD
+        h2 = ((h2 * 16777619) + c) % LARGE_MOD
+    end
+    h1 = h1 % m
+    h2 = h2 % m
+    for i = 0, k - 1 do
+        local pos = (h1 + i * h2) % m
+        redis.call('SETBIT', key, pos, 1)
+    end
 end
 return 1
 """
@@ -134,6 +219,27 @@ for row = 0, d - 1 do
     end
     h = h % w
     redis.call('HINCRBY', key, row .. ':' .. h, 1)
+end
+return 1
+"""
+
+CMS_INCR_MULTI_LUA = """
+local key = KEYS[1]
+local w = tonumber(ARGV[1])
+local d = tonumber(ARGV[2])
+local LARGE_MOD = 4503599627370496  -- 2^52, safe for Lua doubles
+
+-- Loop over all tokens passed as ARGV[3..N]
+for t = 3, #ARGV do
+    local item = ARGV[t]
+    for row = 0, d - 1 do
+        local h = 5381 + row * 16777619
+        for i = 1, #item do
+            h = ((h * 33) + string.byte(item, i)) % LARGE_MOD
+        end
+        h = h % w
+        redis.call('HINCRBY', key, row .. ':' .. h, 1)
+    end
 end
 return 1
 """
@@ -279,10 +385,12 @@ class ExistenceFilter(Field):
         pipeline=None,
         **kwargs,
     ):
-        """Add the model instance's fingerprint to the Bloom filter.
+        """Add the model instance's fingerprint tokens to the Bloom filter.
 
         Called automatically by Model.save() for each field. Computes the
-        fingerprint and runs the BLOOM_ADD_LUA script to set k bits.
+        fingerprint, tokenizes it into individual words, and runs
+        BLOOM_ADD_MULTI_LUA to set bits for each token. If tokenization
+        produces no tokens, falls back to adding the raw fingerprint.
 
         Args:
             model_instance: The model instance being saved.
@@ -301,7 +409,13 @@ class ExistenceFilter(Field):
         client = (
             pipeline if isinstance(pipeline, redis.client.Pipeline) else POPOTO_REDIS_DB
         )
-        client.eval(BLOOM_ADD_LUA, 1, key, fingerprint, m, k)
+        tokens = tokenize(fingerprint)
+        if not tokens:
+            # Fallback: add the raw fingerprint lowercased (handles empty strings,
+            # short tokens, redis keys, etc.)
+            client.eval(BLOOM_ADD_LUA, 1, key, fingerprint.lower(), m, k)
+        else:
+            client.eval(BLOOM_ADD_MULTI_LUA, 1, key, m, k, *tokens)
         return pipeline if pipeline else None
 
     @classmethod
@@ -327,6 +441,11 @@ class ExistenceFilter(Field):
     def might_exist(self, model_class, fingerprint):
         """Check if a fingerprint might exist in the Bloom filter.
 
+        The query is tokenized using the same rules as on_save(). If the query
+        produces tokens, returns True if ANY token is found in the filter.
+        If tokenization produces no tokens, checks the raw lowercased query
+        (matching the on_save fallback behavior).
+
         Returns True if the fingerprint is possibly in the set (may be a false
         positive). Returns False if the fingerprint is definitely not in the set
         (guaranteed correct).
@@ -340,8 +459,20 @@ class ExistenceFilter(Field):
         """
         key = f"$EF:{model_class.__name__}:{self.name}"
         m, k = self._compute_params()
-        result = POPOTO_REDIS_DB.eval(BLOOM_EXISTS_LUA, 1, key, str(fingerprint), m, k)
-        return bool(result)
+        query_str = str(fingerprint)
+        tokens = tokenize(query_str)
+        if not tokens:
+            # Fallback: check the raw lowercased query (matches on_save fallback)
+            result = POPOTO_REDIS_DB.eval(
+                BLOOM_EXISTS_LUA, 1, key, query_str.lower(), m, k
+            )
+            return bool(result)
+        # Check if ANY token is in the bloom filter
+        for token in tokens:
+            result = POPOTO_REDIS_DB.eval(BLOOM_EXISTS_LUA, 1, key, token, m, k)
+            if bool(result):
+                return True
+        return False
 
     def definitely_missing(self, model_class, fingerprint):
         """Check if a fingerprint is definitely not in the Bloom filter.
@@ -450,9 +581,11 @@ class FrequencySketch(Field):
         pipeline=None,
         **kwargs,
     ):
-        """Increment the Count-Min Sketch counters for this instance's fingerprint.
+        """Increment the Count-Min Sketch counters for this instance's fingerprint tokens.
 
-        Called automatically by Model.save() for each field.
+        Called automatically by Model.save() for each field. Tokenizes the
+        fingerprint and increments counters for each token individually.
+        If tokenization produces no tokens, falls back to the raw fingerprint.
 
         Args:
             model_instance: The model instance being saved.
@@ -470,7 +603,14 @@ class FrequencySketch(Field):
         client = (
             pipeline if isinstance(pipeline, redis.client.Pipeline) else POPOTO_REDIS_DB
         )
-        client.eval(CMS_INCR_LUA, 1, key, fingerprint, field.width, field.depth)
+        tokens = tokenize(fingerprint)
+        if not tokens:
+            # Fallback: increment the raw fingerprint lowercased
+            client.eval(CMS_INCR_LUA, 1, key, fingerprint.lower(), field.width, field.depth)
+        else:
+            client.eval(
+                CMS_INCR_MULTI_LUA, 1, key, field.width, field.depth, *tokens
+            )
         return pipeline if pipeline else None
 
     @classmethod
@@ -495,8 +635,12 @@ class FrequencySketch(Field):
     def get_frequency(self, model_class, fingerprint):
         """Query the approximate frequency of a fingerprint.
 
-        Returns the minimum counter value across all hash function rows,
-        which is the Count-Min Sketch estimate. This value may overcount
+        The query is tokenized using the same rules as on_save(). If the query
+        produces tokens, returns the minimum frequency across those tokens
+        (conservative estimate). If tokenization produces no tokens, queries
+        the raw lowercased fingerprint (matching the on_save fallback).
+
+        Returns the Count-Min Sketch estimate. This value may overcount
         but never undercounts.
 
         Args:
@@ -508,7 +652,21 @@ class FrequencySketch(Field):
                 has never been seen or the CMS key doesn't exist yet.
         """
         key = f"$FS:{model_class.__name__}:{self.name}"
-        result = POPOTO_REDIS_DB.eval(
-            CMS_QUERY_LUA, 1, key, str(fingerprint), self.width, self.depth
-        )
-        return int(result) if result else 0
+        query_str = str(fingerprint)
+        tokens = tokenize(query_str)
+        if not tokens:
+            # Fallback: query the raw lowercased fingerprint
+            result = POPOTO_REDIS_DB.eval(
+                CMS_QUERY_LUA, 1, key, query_str.lower(), self.width, self.depth
+            )
+            return int(result) if result else 0
+        # For multi-token queries, return min frequency (conservative)
+        min_freq = None
+        for token in tokens:
+            result = POPOTO_REDIS_DB.eval(
+                CMS_QUERY_LUA, 1, key, token, self.width, self.depth
+            )
+            freq = int(result) if result else 0
+            if min_freq is None or freq < min_freq:
+                min_freq = freq
+        return min_freq if min_freq is not None else 0
