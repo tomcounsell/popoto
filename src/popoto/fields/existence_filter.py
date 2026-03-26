@@ -411,9 +411,9 @@ class ExistenceFilter(Field):
         )
         tokens = tokenize(fingerprint)
         if not tokens:
-            # Fallback: add the raw fingerprint (handles empty strings,
+            # Fallback: add the raw fingerprint lowercased (handles empty strings,
             # short tokens, redis keys, etc.)
-            client.eval(BLOOM_ADD_LUA, 1, key, fingerprint, m, k)
+            client.eval(BLOOM_ADD_LUA, 1, key, fingerprint.lower(), m, k)
         else:
             client.eval(BLOOM_ADD_MULTI_LUA, 1, key, m, k, *tokens)
         return pipeline if pipeline else None
@@ -605,8 +605,8 @@ class FrequencySketch(Field):
         )
         tokens = tokenize(fingerprint)
         if not tokens:
-            # Fallback: increment the raw fingerprint
-            client.eval(CMS_INCR_LUA, 1, key, fingerprint, field.width, field.depth)
+            # Fallback: increment the raw fingerprint lowercased
+            client.eval(CMS_INCR_LUA, 1, key, fingerprint.lower(), field.width, field.depth)
         else:
             client.eval(
                 CMS_INCR_MULTI_LUA, 1, key, field.width, field.depth, *tokens

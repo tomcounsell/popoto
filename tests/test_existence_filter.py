@@ -607,6 +607,17 @@ class TestExistenceFilterTokenization:
         # The raw lowercased string should match via fallback
         assert BloomModel.bloom.might_exist(BloomModel, "a is") is True
 
+    def test_empty_tokenization_fallback_mixed_case(self):
+        """Fallback path lowercases fingerprint so mixed-case queries match."""
+        # "AB" is 2 chars, below 3-char token minimum, so tokenize returns [].
+        # The fallback must lowercase before storing so queries match.
+        item = BloomModel(name="fallback-case", topic="AB")
+        item.save()
+
+        assert BloomModel.bloom.might_exist(BloomModel, "AB") is True
+        assert BloomModel.bloom.might_exist(BloomModel, "ab") is True
+        assert BloomModel.bloom.might_exist(BloomModel, "Ab") is True
+
     def test_multiword_query_matches_any_token(self):
         """Multi-word query returns True if ANY token matches."""
         item = BloomModel(name="partial", topic="kubernetes deployment")
@@ -644,3 +655,12 @@ class TestFrequencySketchTokenization:
 
         # "an" is < 3 chars, tokenizes to []. Raw "an" is stored.
         assert FreqModel.freq.get_frequency(FreqModel, "an") == 1
+
+    def test_empty_tokenization_fallback_frequency_mixed_case(self):
+        """Fallback path lowercases fingerprint so mixed-case frequency queries match."""
+        FreqModel(name="freq-case-fb", topic="XY").save()
+
+        # "XY" tokenizes to [] (too short). Fallback must lowercase.
+        assert FreqModel.freq.get_frequency(FreqModel, "XY") == 1
+        assert FreqModel.freq.get_frequency(FreqModel, "xy") == 1
+        assert FreqModel.freq.get_frequency(FreqModel, "Xy") == 1
