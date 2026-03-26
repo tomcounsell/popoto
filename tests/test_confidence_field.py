@@ -272,6 +272,37 @@ class TestGetConfidence:
         assert data["contradictions"] == 0
 
 
+# --- Attribute Access Tests (issue #281) ---
+
+
+class TestAttributeAccess:
+    def test_attribute_returns_initial_confidence_after_create(self):
+        """instance.certainty returns initial_confidence, not None (issue #281)."""
+        item = ConfidenceItem.create(name="attr1")
+        assert item.certainty == 0.5
+
+    def test_attribute_returns_custom_initial_confidence(self):
+        """instance.certainty returns custom initial_confidence after create."""
+        item = ConfidenceCustom.create(name="attr2")
+        assert item.certainty == 0.8
+
+    def test_attribute_returns_initial_before_save(self):
+        """instance.certainty returns initial_confidence even before save."""
+        item = ConfidenceItem(name="attr3")
+        assert item.certainty == 0.5
+
+    def test_attribute_returns_updated_value_after_update(self):
+        """instance.certainty reflects updated confidence after update_confidence."""
+        item = ConfidenceItem.create(name="attr4")
+        ConfidenceField.update_confidence(item, "certainty", signal=0.9)
+        assert abs(item.certainty - 0.9) < 1e-6
+
+    def test_attribute_not_none(self):
+        """instance.certainty is never None with default config (issue #281)."""
+        item = ConfidenceItem.create(name="attr5")
+        assert item.certainty is not None
+
+
 # --- Error Cases ---
 
 
