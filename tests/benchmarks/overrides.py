@@ -86,6 +86,15 @@ VALID_RANGES = {
     "WILSON_CI_THRESHOLD": (0.0, 1.0, False, False),
     "COMPETITIVE_SUPPRESSION_SIGNAL": (0.0, 1.0, True, True),
     "DEFAULT_SURFACING_THRESHOLD": (0.0, 1.0, True, True),
+    # PredictionLedger
+    "PL_CONFIDENCE_ERROR_THRESHOLD": (0.0, 1.0, False, True),
+    "PL_CONFIDENCE_LOW_SIGNAL": (0.0, 1.0, True, True),
+    "PL_AUTO_RESOLVE_ACTED": (0.0, 1.0, True, True),
+    "PL_AUTO_RESOLVE_DISMISSED": (0.0, 1.0, True, True),
+    "PL_AUTO_RESOLVE_CONTRADICTED": (0.0, 1.0, True, True),
+    # PolicyCache (already in MODULE_CONSTANTS but missing valid ranges)
+    "CHI_SQUARED_P_THRESHOLD": (0.001, 0.5, True, True),
+    "INITIAL_CYCLE_AMPLITUDE": (0.0, 5.0, False, True),
 }
 
 
