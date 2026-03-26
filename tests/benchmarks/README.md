@@ -20,7 +20,8 @@ tests/benchmarks/
         multi_step_reasoning.py  # Co-occurrence chain retrieval
         temporal_scheduling.py   # Cyclic decay task scheduling
     results/
-        summary.json         # Latest sweep results
+        sweep_*.json         # Timestamped sweep results
+        latest.json          # Symlink to most recent run
 ```
 
 ## Quick Start

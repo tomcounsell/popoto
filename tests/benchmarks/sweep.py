@@ -316,20 +316,24 @@ class ResultsAggregator:
             return None, 0.0
 
         # Group by value, average across scenarios
+        # Use frozenset for dict values (e.g. score_weights) to make them hashable
         value_scores: Dict[Any, List[float]] = {}
+        orig_values: Dict[Any, Any] = {}  # hashable key -> original value
         for p in ok_points:
             score = getattr(p, metric, 0.0)
-            value_scores.setdefault(p.value, []).append(score)
+            key = frozenset(p.value.items()) if isinstance(p.value, dict) else p.value
+            orig_values[key] = p.value
+            value_scores.setdefault(key, []).append(score)
 
         avg_scores = {v: sum(s) / len(s) for v, s in value_scores.items()}
 
         # For calibration_error, lower is better
         if metric == "calibration_error":
-            best_value = min(avg_scores, key=avg_scores.get)
+            best_key = min(avg_scores, key=avg_scores.get)
         else:
-            best_value = max(avg_scores, key=avg_scores.get)
+            best_key = max(avg_scores, key=avg_scores.get)
 
-        return best_value, avg_scores[best_value]
+        return orig_values[best_key], avg_scores[best_key]
 
     def get_sensitivity_curve(
         self,
@@ -353,12 +357,16 @@ class ResultsAggregator:
             ok_points = [p for p in ok_points if p.scenario_name == scenario_name]
 
         value_scores: Dict[Any, List[float]] = {}
+        orig_values: Dict[Any, Any] = {}
         for p in ok_points:
             score = getattr(p, metric, 0.0)
-            value_scores.setdefault(p.value, []).append(score)
+            key = frozenset(p.value.items()) if isinstance(p.value, dict) else p.value
+            orig_values[key] = p.value
+            value_scores.setdefault(key, []).append(score)
 
-        curve = [(v, sum(s) / len(s)) for v, s in value_scores.items()]
-        curve.sort(key=lambda x: x[0])
+        curve = [(orig_values[k], sum(s) / len(s)) for k, s in value_scores.items()]
+        # Sort numerically where possible; dict values go at end
+        curve.sort(key=lambda x: (isinstance(x[0], dict), x[0] if not isinstance(x[0], dict) else 0))
         return curve
 
     def detect_cliff_effects(
