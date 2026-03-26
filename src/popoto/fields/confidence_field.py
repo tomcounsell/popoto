@@ -122,8 +122,10 @@ class ConfidenceField(Field):
             )
 
         # ConfidenceField stores float confidence values
+        # Default to initial_confidence so instance.field returns
+        # the configured value rather than None (fixes #281)
         kwargs.setdefault("type", float)
-        kwargs.setdefault("default", None)
+        kwargs.setdefault("default", self.initial_confidence)
         kwargs.setdefault("null", True)
         super().__init__(**kwargs)
 
@@ -240,6 +242,10 @@ class ConfidenceField(Field):
         )
 
         new_confidence = float(result[0])
+
+        # Sync the instance attribute so instance.field returns
+        # the updated confidence (fixes #281)
+        setattr(model_instance, field_name, new_confidence)
 
         # EventStreamMixin: log confidence update event
         from .event_stream import EventStreamMixin
