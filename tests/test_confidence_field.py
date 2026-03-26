@@ -302,6 +302,13 @@ class TestAttributeAccess:
         item = ConfidenceItem.create(name="attr5")
         assert item.certainty is not None
 
+    def test_confidence_reload_from_redis(self):
+        """Reloading from Redis preserves initial_confidence (issue #289)."""
+        ConfidenceItem.create(name="reload1")
+        loaded = ConfidenceItem.query.get(name="reload1")
+        assert loaded.certainty is not None
+        assert loaded.certainty == 0.5
+
 
 # --- Error Cases ---
 
