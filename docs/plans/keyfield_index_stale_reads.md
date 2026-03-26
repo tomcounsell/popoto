@@ -1,5 +1,5 @@
 ---
-status: Planning
+status: Done
 type: bug
 appetite: Small
 owner: Agent
