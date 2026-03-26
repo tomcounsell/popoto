@@ -555,10 +555,21 @@ class TestTokenizeFunction:
         assert tokens == ["test", "again"]
 
     def test_unicode_characters(self):
-        """Unicode text is tokenized without crashing."""
-        tokens = tokenize("deploying kubernetes")
+        """Unicode text (CJK, accented) is tokenized without crashing."""
+        # CJK characters
+        tokens = tokenize("部署 kubernetes")
         assert "kubernetes" in tokens
-        assert "deploying" in tokens
+
+        # Accented Latin characters
+        tokens = tokenize("déploiement réseau")
+        assert "déploiement" in tokens
+        assert "réseau" in tokens
+
+        # Mixed unicode and ASCII
+        tokens = tokenize("café naïve über")
+        assert "café" in tokens
+        assert "naïve" in tokens
+        assert "über" in tokens
 
 
 class TestExistenceFilterTokenization:
@@ -579,6 +590,21 @@ class TestExistenceFilterTokenization:
         item.save()
 
         assert BloomModel.bloom.definitely_missing(BloomModel, "terraform") is True
+
+    def test_multiword_definitely_missing(self):
+        """Multi-word definitely_missing query checks all tokens."""
+        item = BloomModel(name="multi-dm", topic="kubernetes deployment")
+        item.save()
+
+        # Neither word was saved -> definitely missing
+        assert BloomModel.bloom.definitely_missing(BloomModel, "terraform migration") is True
+
+        # One word ("kubernetes") was saved -> not definitely missing
+        # (might_exist uses ANY semantics, so definitely_missing returns False)
+        assert BloomModel.bloom.definitely_missing(BloomModel, "kubernetes migration") is False
+
+        # Both words saved -> not definitely missing
+        assert BloomModel.bloom.definitely_missing(BloomModel, "kubernetes deployment") is False
 
     def test_case_insensitive_query(self):
         """Case-insensitive: save mixed case, query lowercase."""
@@ -641,6 +667,19 @@ class TestFrequencySketchTokenization:
         assert FreqModel.freq.get_frequency(FreqModel, "deployment") == 1
         # "scaling" appears in only one save
         assert FreqModel.freq.get_frequency(FreqModel, "scaling") == 1
+
+    def test_multiword_query_returns_min_frequency(self):
+        """Multi-word get_frequency query returns the MIN across tokens."""
+        FreqModel(name="freq-mw-1", topic="kubernetes deployment").save()
+        FreqModel(name="freq-mw-2", topic="kubernetes scaling").save()
+        FreqModel(name="freq-mw-3", topic="kubernetes monitoring").save()
+
+        # "kubernetes" has freq 3, "deployment" has freq 1.
+        # A multi-word query should return MIN(3, 1) = 1.
+        assert FreqModel.freq.get_frequency(FreqModel, "kubernetes deployment") == 1
+
+        # "kubernetes scaling" -> MIN(3, 1) = 1
+        assert FreqModel.freq.get_frequency(FreqModel, "kubernetes scaling") == 1
 
     def test_case_insensitive_frequency(self):
         """Frequency queries are case-insensitive."""
