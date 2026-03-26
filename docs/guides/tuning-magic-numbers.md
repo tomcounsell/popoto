@@ -109,11 +109,15 @@ Tier 4 also re-evaluates `_wf_min_threshold`, `_wf_priority_threshold`, and `ini
 
 ## Cliff Effects
 
-Only one constant showed a cliff effect in the sweep:
+Two constants showed cliff effects in the full sweep (648 evaluations across all tiers):
 
 **`ACTED_CYCLE_STRENGTHEN_FACTOR`**: Values below 1.0 cause a 23% drop in nDCG@5 for the temporal scheduling scenario. When the strengthen factor is < 1.0, acted outcomes actually weaken cycle amplitude instead of strengthening it, causing the system to suppress recurring tasks that should be reinforced.
 
 **Recommendation**: Keep this constant at >= 1.0. The default of 1.2 is well within the safe zone.
+
+**`default_importance`**: Values at or below 0.1 cause a total nDCG collapse (drop of 1.0) when transitioning from 0.1 to 0.3. Memories saved with near-zero importance are effectively invisible to retrieval, starving the pipeline of usable context.
+
+**Recommendation**: Keep this at >= 0.3. The default of 0.5 provides a safe margin.
 
 ## Interaction Effects
 
@@ -166,7 +170,7 @@ Tier 4 scenarios use fixture data (JSON files in `tests/benchmarks/fixtures/`) w
 
 ### Sweep Design
 
-Each constant was swept independently while holding others at defaults. Grid sizes ranged from 4 to 7 values per constant. All three scenarios were evaluated per grid point. Total: 19 constants swept, 5 pairwise interactions, ~390 scenario evaluations.
+Each constant was swept independently while holding others at defaults. Grid sizes ranged from 4 to 7 values per constant. All scenarios were evaluated per grid point. A full sweep across all 4 tiers with interactions runs ~648 evaluations in ~5 seconds.
 
 Tier 4 adds 8 experiments covering SubconsciousMemory-layer constants across 3 recipe-layer scenarios, plus pairwise interaction sweeps for 4 constant pairs.
 
@@ -197,4 +201,4 @@ pytest tests/benchmarks/test_sweep.py -x -q
 pytest tests/benchmarks/test_tier4.py -x -q
 ```
 
-Results are saved to `tests/benchmarks/results/summary.json`.
+Results are saved to `tests/benchmarks/results/sweep_YYYYMMDD_HHMMSS.json` with a `latest.json` symlink pointing to the most recent run. Each result file includes performance metadata (p50/p95/p99 query durations, wall-clock time, platform info).
