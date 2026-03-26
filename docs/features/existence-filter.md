@@ -50,6 +50,23 @@ Add items to the filter:
 ExistenceFilter.add(Memory, "topic_filter", "deployment")
 ```
 
+### Tokenization
+
+Fingerprints are automatically tokenized on write. When `on_save()` runs, the fingerprint string is split into individual words so that word-level queries work correctly.
+
+For example, saving a model with fingerprint `"kubernetes deployment guide"` adds three separate tokens to the bloom filter: `"kubernetes"`, `"deployment"`, and `"guide"`. A subsequent call to `might_exist("kubernetes")` returns `True`.
+
+**Tokenization rules:**
+- Input is lowercased
+- Split on non-word characters (whitespace, hyphens, colons, etc.)
+- Tokens shorter than 3 characters are filtered out
+- Common English stop words are filtered out (the, and, for, with, etc.)
+- Duplicate tokens are removed
+
+**Fallback:** If tokenization produces zero tokens (e.g., the fingerprint is all stop words or very short), the raw fingerprint string is stored as-is.
+
+**Query normalization:** Queries are tokenized using the same rules. For multi-token queries, `might_exist()` returns `True` if ANY token matches. For `get_frequency()`, the minimum frequency across tokens is returned.
+
 ### Architecture
 
 - **Redis key pattern**: `$EF:{ClassName}:{field_name}` (string used as bit array)

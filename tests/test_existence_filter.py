@@ -28,6 +28,7 @@ from src import popoto  # noqa: E402
 from src.popoto.fields.existence_filter import (
     ExistenceFilter,
     FrequencySketch,
+    tokenize,
 )  # noqa: E402
 from src.popoto.fields.write_filter import WriteFilterMixin  # noqa: E402
 from src.popoto.redis_db import POPOTO_REDIS_DB  # noqa: E402
@@ -227,10 +228,10 @@ class TestExistenceFilterDefaultFingerprint:
             is True
         )
 
-        # A different key should not be found
+        # A completely different fingerprint should not be found
         assert (
             BloomDefaultFingerprintModel.bloom.definitely_missing(
-                BloomDefaultFingerprintModel, "nonexistent-key"
+                BloomDefaultFingerprintModel, "zzzmissingzzz"
             )
             is True
         )
@@ -241,17 +242,17 @@ class TestExistenceFilterOnDelete:
 
     def test_delete_does_not_remove_from_bloom(self):
         """After deleting a model instance, the Bloom filter still contains its fingerprint."""
-        item = BloomModel(name="deleteme", topic="will-be-deleted")
+        item = BloomModel(name="deleteme", topic="ephemeral")
         item.save()
 
         # Confirm it's in the Bloom filter
-        assert BloomModel.bloom.might_exist(BloomModel, "will-be-deleted") is True
+        assert BloomModel.bloom.might_exist(BloomModel, "ephemeral") is True
 
         # Delete the model instance
         item.delete()
 
         # Bloom filter should still report it as possibly present
-        assert BloomModel.bloom.might_exist(BloomModel, "will-be-deleted") is True
+        assert BloomModel.bloom.might_exist(BloomModel, "ephemeral") is True
 
 
 class TestExistenceFilterPipeline:
@@ -260,12 +261,12 @@ class TestExistenceFilterPipeline:
     def test_on_save_with_pipeline(self):
         """on_save() works within a Redis pipeline."""
         pipeline = POPOTO_REDIS_DB.pipeline()
-        item = BloomModel(name="pipelined", topic="pipeline-test")
+        item = BloomModel(name="pipelined", topic="pipelining")
         # Save normally to create the model, which triggers on_save via pipeline internally
         item.save()
 
         # Verify the Bloom filter was updated
-        assert BloomModel.bloom.might_exist(BloomModel, "pipeline-test") is True
+        assert BloomModel.bloom.might_exist(BloomModel, "pipelining") is True
 
 
 class TestExistenceFilterFillRatio:
@@ -279,7 +280,7 @@ class TestExistenceFilterFillRatio:
     def test_fill_ratio_increases_with_saves(self):
         """Fill ratio increases as items are added."""
         for i in range(100):
-            BloomModel(name=f"fill-{i}", topic=f"topic-{i}").save()
+            BloomModel(name=f"fill-{i}", topic=f"uniquetopic{i:04d}").save()
 
         ratio = BloomModel.bloom.fill_ratio(BloomModel)
         assert 0.0 < ratio < 1.0
@@ -292,20 +293,26 @@ class TestExistenceFilterStatistical:
         """False positive rate should be within 2x of configured error_rate.
 
         Uses StatisticalBloomModel with error_rate=0.05 and capacity=10,000.
-        Inserts 10,000 items, then queries 10,000 items that were never inserted.
-        The false positive rate should be <= 0.10 (2x the configured 0.05).
+        Inserts 10,000 items with unique single-word topics, then queries
+        10,000 items that were never inserted. The false positive rate should
+        be <= 0.10 (2x the configured 0.05).
+
+        Topics are single tokens (no hyphens/spaces) so each save adds exactly
+        one token to the bloom filter, matching pre-tokenization behavior.
         """
-        # Insert 10,000 items
+        # Insert 10,000 items with unique single-word topics
         num_items = 10_000
         for i in range(num_items):
-            StatisticalBloomModel(name=f"stat-{i}", topic=f"inserted-{i}").save()
+            StatisticalBloomModel(
+                name=f"stat-{i}", topic=f"xinserted{i:06d}"
+            ).save()
 
         # Query 10,000 items that were never inserted
         false_positives = 0
         num_queries = 10_000
         for i in range(num_queries):
             if StatisticalBloomModel.bloom.might_exist(
-                StatisticalBloomModel, f"never-inserted-{i}"
+                StatisticalBloomModel, f"xneverhere{i:06d}"
             ):
                 false_positives += 1
 
@@ -347,11 +354,11 @@ class TestFrequencySketchBasic:
     def test_different_topics_independent(self):
         """Different fingerprints are counted independently."""
         for i in range(3):
-            FreqModel(name=f"a-{i}", topic="topic-a").save()
-        FreqModel(name="b-0", topic="topic-b").save()
+            FreqModel(name=f"a-{i}", topic="analytics").save()
+        FreqModel(name="b-0", topic="blockchain").save()
 
-        assert FreqModel.freq.get_frequency(FreqModel, "topic-a") == 3
-        assert FreqModel.freq.get_frequency(FreqModel, "topic-b") == 1
+        assert FreqModel.freq.get_frequency(FreqModel, "analytics") == 3
+        assert FreqModel.freq.get_frequency(FreqModel, "blockchain") == 1
 
     def test_query_unseen_returns_zero(self):
         """Querying a fingerprint never seen returns 0."""
@@ -369,13 +376,13 @@ class TestFrequencySketchOnDelete:
 
     def test_delete_does_not_decrement(self):
         """After deleting a model instance, frequency count is unchanged."""
-        item = FreqModel(name="del-freq", topic="count-me")
+        item = FreqModel(name="del-freq", topic="counting")
         item.save()
-        assert FreqModel.freq.get_frequency(FreqModel, "count-me") == 1
+        assert FreqModel.freq.get_frequency(FreqModel, "counting") == 1
 
         item.delete()
         # Count should still be 1 (no decrement on delete)
-        assert FreqModel.freq.get_frequency(FreqModel, "count-me") == 1
+        assert FreqModel.freq.get_frequency(FreqModel, "counting") == 1
 
 
 # --- Combo Tests ---
@@ -386,15 +393,15 @@ class TestBloomFreqCombo:
 
     def test_both_fields_work_together(self):
         """Both fields maintain their indexes independently."""
-        item = BloomFreqComboModel(name="combo1", topic="dual-test")
+        item = BloomFreqComboModel(name="combo1", topic="synergy")
         item.save()
 
         assert (
-            BloomFreqComboModel.bloom.might_exist(BloomFreqComboModel, "dual-test")
+            BloomFreqComboModel.bloom.might_exist(BloomFreqComboModel, "synergy")
             is True
         )
         assert (
-            BloomFreqComboModel.freq.get_frequency(BloomFreqComboModel, "dual-test")
+            BloomFreqComboModel.freq.get_frequency(BloomFreqComboModel, "synergy")
             == 1
         )
 
@@ -415,7 +422,7 @@ class TestWriteFilterSynergy:
         # importance=0.1 < min_threshold=0.2 -> SkipSaveException
         item = FilteredBloomModel(
             name="filtered-out",
-            topic="low-importance",
+            topic="negligible",
             importance=0.1,
         )
         item.save()  # silently discarded
@@ -423,7 +430,7 @@ class TestWriteFilterSynergy:
         # Bloom filter should NOT contain this fingerprint
         assert (
             FilteredBloomModel.bloom.definitely_missing(
-                FilteredBloomModel, "low-importance"
+                FilteredBloomModel, "negligible"
             )
             is True
         )
@@ -433,13 +440,13 @@ class TestWriteFilterSynergy:
         # importance=0.5 >= min_threshold=0.2 -> saved normally
         item = FilteredBloomModel(
             name="accepted",
-            topic="high-importance",
+            topic="significant",
             importance=0.5,
         )
         item.save()
 
         assert (
-            FilteredBloomModel.bloom.might_exist(FilteredBloomModel, "high-importance")
+            FilteredBloomModel.bloom.might_exist(FilteredBloomModel, "significant")
             is True
         )
 
@@ -453,13 +460,13 @@ class TestPreFilterPattern:
 
     def test_prefilter_skips_unseen(self):
         """definitely_missing() allows skipping retrieval for unseen topics."""
-        BloomModel(name="known", topic="known-topic").save()
+        BloomModel(name="known", topic="kubernetes").save()
 
         # Known topic: don't skip
-        assert BloomModel.bloom.definitely_missing(BloomModel, "known-topic") is False
+        assert BloomModel.bloom.definitely_missing(BloomModel, "kubernetes") is False
 
         # Unknown topic: skip retrieval
-        assert BloomModel.bloom.definitely_missing(BloomModel, "unknown-topic") is True
+        assert BloomModel.bloom.definitely_missing(BloomModel, "terraform") is True
 
 
 class TestComputeParams:
@@ -500,3 +507,140 @@ class TestFingerprintFnValidation:
         item = BadFpModel(name="bad")
         with pytest.raises(ValueError, match="fingerprint_fn returned None"):
             item.save()
+
+
+# --- Tokenization Tests ---
+
+
+class TestTokenizeFunction:
+    """Unit tests for the tokenize() helper function."""
+
+    def test_basic_tokenization(self):
+        """Splits on whitespace and lowercases."""
+        tokens = tokenize("Kubernetes Deployment Guide")
+        assert set(tokens) == {"kubernetes", "deployment", "guide"}
+
+    def test_splits_on_punctuation(self):
+        """Splits on non-word characters like hyphens and colons."""
+        tokens = tokenize("redis-cache:primary")
+        assert set(tokens) == {"redis", "cache", "primary"}
+
+    def test_filters_short_tokens(self):
+        """Tokens shorter than 3 characters are removed."""
+        tokens = tokenize("a is to go run")
+        # "a", "is", "to", "go" are all < 3 chars; "run" is exactly 3
+        assert tokens == ["run"]
+
+    def test_filters_stop_words(self):
+        """Common stop words are removed."""
+        tokens = tokenize("the quick brown fox with all")
+        assert "the" not in tokens
+        assert "with" not in tokens
+        assert "all" not in tokens
+        assert "quick" in tokens
+        assert "brown" in tokens
+        assert "fox" in tokens
+
+    def test_empty_string(self):
+        """Empty string returns empty list."""
+        assert tokenize("") == []
+
+    def test_all_stop_words(self):
+        """String of only stop words returns empty list."""
+        assert tokenize("the and for with") == []
+
+    def test_deduplication(self):
+        """Duplicate tokens are removed."""
+        tokens = tokenize("test test test again")
+        assert tokens == ["test", "again"]
+
+    def test_unicode_characters(self):
+        """Unicode text is tokenized without crashing."""
+        tokens = tokenize("deploying kubernetes")
+        assert "kubernetes" in tokens
+        assert "deploying" in tokens
+
+
+class TestExistenceFilterTokenization:
+    """Test that ExistenceFilter tokenizes fingerprints on save."""
+
+    def test_multiword_save_per_word_query(self):
+        """Save a multi-word fingerprint, query individual words."""
+        item = BloomModel(name="multiword", topic="kubernetes deployment guide")
+        item.save()
+
+        assert BloomModel.bloom.might_exist(BloomModel, "kubernetes") is True
+        assert BloomModel.bloom.might_exist(BloomModel, "deployment") is True
+        assert BloomModel.bloom.might_exist(BloomModel, "guide") is True
+
+    def test_multiword_query_missing_word(self):
+        """Query a word NOT in the saved fingerprint."""
+        item = BloomModel(name="missing", topic="kubernetes deployment guide")
+        item.save()
+
+        assert BloomModel.bloom.definitely_missing(BloomModel, "terraform") is True
+
+    def test_case_insensitive_query(self):
+        """Case-insensitive: save mixed case, query lowercase."""
+        item = BloomModel(name="case", topic="Kubernetes")
+        item.save()
+
+        assert BloomModel.bloom.might_exist(BloomModel, "kubernetes") is True
+        assert BloomModel.bloom.might_exist(BloomModel, "KUBERNETES") is True
+
+    def test_stop_words_not_indexed(self):
+        """Stop words from the fingerprint are not indexed."""
+        item = BloomModel(name="stops", topic="the quick brown fox")
+        item.save()
+
+        # "the" is a stop word, should not be in the bloom filter
+        # (unless it's a false positive, which is unlikely for a near-empty filter)
+        assert BloomModel.bloom.might_exist(BloomModel, "quick") is True
+        assert BloomModel.bloom.might_exist(BloomModel, "brown") is True
+
+    def test_empty_tokenization_fallback(self):
+        """Fingerprint that tokenizes to nothing falls back to raw string."""
+        # "a is" tokenizes to [] (both too short or stop words), so raw "a is" is stored
+        item = BloomModel(name="fallback", topic="a is")
+        item.save()
+
+        # The raw lowercased string should match via fallback
+        assert BloomModel.bloom.might_exist(BloomModel, "a is") is True
+
+    def test_multiword_query_matches_any_token(self):
+        """Multi-word query returns True if ANY token matches."""
+        item = BloomModel(name="partial", topic="kubernetes deployment")
+        item.save()
+
+        # "kubernetes migration" shares token "kubernetes" with the saved fingerprint
+        assert BloomModel.bloom.might_exist(BloomModel, "kubernetes migration") is True
+
+
+class TestFrequencySketchTokenization:
+    """Test that FrequencySketch tokenizes fingerprints on save."""
+
+    def test_multiword_per_token_frequency(self):
+        """Each token in a multi-word fingerprint gets its own frequency count."""
+        FreqModel(name="freq-multi-1", topic="kubernetes deployment").save()
+        FreqModel(name="freq-multi-2", topic="kubernetes scaling").save()
+
+        # "kubernetes" appears in both saves
+        assert FreqModel.freq.get_frequency(FreqModel, "kubernetes") == 2
+        # "deployment" appears in only one save
+        assert FreqModel.freq.get_frequency(FreqModel, "deployment") == 1
+        # "scaling" appears in only one save
+        assert FreqModel.freq.get_frequency(FreqModel, "scaling") == 1
+
+    def test_case_insensitive_frequency(self):
+        """Frequency queries are case-insensitive."""
+        FreqModel(name="freq-case", topic="Kubernetes").save()
+
+        assert FreqModel.freq.get_frequency(FreqModel, "kubernetes") == 1
+        assert FreqModel.freq.get_frequency(FreqModel, "KUBERNETES") == 1
+
+    def test_empty_tokenization_fallback_frequency(self):
+        """Fingerprint that tokenizes to nothing uses raw string for frequency."""
+        FreqModel(name="freq-empty", topic="an").save()
+
+        # "an" is < 3 chars, tokenizes to []. Raw "an" is stored.
+        assert FreqModel.freq.get_frequency(FreqModel, "an") == 1
