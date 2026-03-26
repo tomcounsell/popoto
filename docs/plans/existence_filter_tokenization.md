@@ -1,5 +1,5 @@
 ---
-status: In Progress
+status: Shipped
 type: bugfix
 appetite: Small
 owner: Valor Engels

@@ -63,7 +63,7 @@ For example, saving a model with fingerprint `"kubernetes deployment guide"` add
 - Common English stop words are filtered out (the, and, for, with, etc.)
 - Duplicate tokens are removed
 
-**Fallback:** If tokenization produces zero tokens (e.g., the fingerprint is all stop words or very short), the raw fingerprint string is stored as-is.
+**Fallback:** If tokenization produces zero tokens (e.g., the fingerprint is all stop words or very short), the raw fingerprint string is stored lowercased as a single entry.
 
 **Query normalization:** Queries are tokenized using the same rules. For multi-token queries, `might_exist()` returns `True` if ANY token matches. For `get_frequency()`, the minimum frequency across tokens is returned.
 
