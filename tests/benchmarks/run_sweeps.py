@@ -2,6 +2,8 @@
 
 Usage:
     python -m tests.benchmarks.run_sweeps [--tier 1|2|3|4|all] [--interactions]
+    python -m tests.benchmarks.run_sweeps --parametric [--tier 1|2|3]
+    python -m tests.benchmarks.run_sweeps --ratchet
 
 Results are saved to tests/benchmarks/results/sweep_YYYYMMDD_HHMMSS.json
 with a latest.json symlink pointing to the most recent run.
@@ -271,6 +273,45 @@ def run_tier4_interactions(runner, aggregator):
         logger.info("    %d/%d points OK", ok_count, len(results))
 
 
+def run_parametric(tier_sweeps, tier_name, aggregator):
+    """Run sweeps using parametrically generated scenarios."""
+    from tests.benchmarks.scenarios.factory import ScenarioFactory
+
+    logger.info("Generating parametric scenarios...")
+    scenario_classes = ScenarioFactory.create_all(n=50)
+    runner = SweepRunner(scenario_classes)
+
+    logger.info(
+        "Starting %s parametric sweeps (%d constants, %d scenarios)...",
+        tier_name,
+        len(tier_sweeps),
+        len(scenario_classes),
+    )
+    tier_start = time.monotonic()
+
+    for constant_name, values in tier_sweeps.items():
+        logger.info("  Sweeping %s over %s", constant_name, values)
+        results = runner.run_single_sweep(constant_name, values)
+        aggregator.add_sweep(constant_name, results)
+
+        ok_count = sum(1 for r in results if r.status == "ok")
+        logger.info("    %d/%d points OK", ok_count, len(results))
+
+    elapsed = time.monotonic() - tier_start
+    logger.info("%s parametric complete in %.1fs", tier_name, elapsed)
+
+
+def run_ratchet():
+    """Run the full ratchet pipeline and print results."""
+    from tests.benchmarks.ratchet import RatchetLoop
+
+    logger.info("Starting ratchet loop...")
+    loop = RatchetLoop(n_seeds=50)
+    summary = loop.run()
+    print(summary.format_report())
+    return summary
+
+
 def main():
     parser = argparse.ArgumentParser(description="Run parameter sweeps")
     parser.add_argument(
@@ -285,11 +326,29 @@ def main():
         help="Run interaction effect sweeps",
     )
     parser.add_argument(
+        "--parametric",
+        action="store_true",
+        help="Use parametrically generated scenarios instead of hand-crafted ones",
+    )
+    parser.add_argument(
+        "--ratchet",
+        action="store_true",
+        help="Run the full ratchet pipeline (generate, sweep, validate, propose)",
+    )
+    parser.add_argument(
         "--output",
         default="summary.json",
         help="Output filename (default: summary.json)",
     )
     args = parser.parse_args()
+
+    # Ratchet mode: run the full pipeline and exit
+    if args.ratchet:
+        total_start = time.monotonic()
+        ratchet_summary = run_ratchet()
+        total_elapsed = time.monotonic() - total_start
+        logger.info("Ratchet complete in %.1fs", total_elapsed)
+        return 0
 
     # Select scenarios based on tier
     if args.tier == "4":
@@ -301,17 +360,30 @@ def main():
 
     total_start = time.monotonic()
 
-    if args.tier in ("1", "all"):
-        run_tier(TIER1_SWEEPS, "Tier 1", runner, aggregator)
+    if args.parametric:
+        # Parametric mode: use generated scenarios for Tiers 1-3
+        sweeps = {}
+        if args.tier in ("1", "all"):
+            sweeps.update(TIER1_SWEEPS)
+        if args.tier in ("2", "all"):
+            sweeps.update(TIER2_SWEEPS)
+        if args.tier in ("3", "all"):
+            sweeps.update(TIER3_SWEEPS)
+        if sweeps:
+            run_parametric(sweeps, f"Tier {args.tier}", aggregator)
+    else:
+        # Standard mode: use hand-crafted scenarios
+        if args.tier in ("1", "all"):
+            run_tier(TIER1_SWEEPS, "Tier 1", runner, aggregator)
 
-    if args.tier in ("2", "all"):
-        run_tier(TIER2_SWEEPS, "Tier 2", runner, aggregator)
+        if args.tier in ("2", "all"):
+            run_tier(TIER2_SWEEPS, "Tier 2", runner, aggregator)
 
-    if args.tier in ("3", "all"):
-        run_tier(TIER3_SWEEPS, "Tier 3", runner, aggregator)
+        if args.tier in ("3", "all"):
+            run_tier(TIER3_SWEEPS, "Tier 3", runner, aggregator)
 
-    if args.tier in ("4", "all"):
-        # Tier 4 uses recipe-layer scenarios
+    if args.tier in ("4", "all") and not args.parametric:
+        # Tier 4 uses recipe-layer scenarios (not parametric)
         tier4_runner = SweepRunner(TIER4_SCENARIOS)
         run_tier4(tier4_runner, aggregator)
 
@@ -329,6 +401,7 @@ def main():
             "wall_clock_seconds": round(total_elapsed, 2),
             "tiers_run": args.tier,
             "interactions_run": args.interactions,
+            "parametric": args.parametric,
         },
     )
 
