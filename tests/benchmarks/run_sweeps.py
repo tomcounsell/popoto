@@ -61,7 +61,9 @@ TIER1_SWEEPS = {
 # ---------------------------------------------------------------------------
 
 TIER2_SWEEPS = {
-    "ACTED_CYCLE_STRENGTHEN_FACTOR": [0.3, 0.5, 0.8, 1.0, 1.2, 1.5, 2.0],
+    "ACTED_CYCLE_STRENGTHEN_FACTOR": [
+        0.3, 0.5, 0.8, 0.9, 0.95, 1.0, 1.02, 1.05, 1.08, 1.1, 1.12, 1.15, 1.2, 1.5, 2.0,
+    ],
     "DISMISSED_CYCLE_WEAKEN_FACTOR": [0.3, 0.5, 0.8, 1.0, 1.2, 1.5, 2.0],
     "CONTRADICTED_CYCLE_WEAKEN_FACTOR": [0.3, 0.5, 0.8, 1.0, 1.2, 1.5, 2.0],
     "decay_factor": [0.5, 0.7, 0.85, 0.9, 0.95, 0.99],
@@ -82,6 +84,14 @@ TIER3_SWEEPS = {
     "TD_GAMMA": [0.8, 0.9, 0.95, 0.99],
     "WILSON_CI_THRESHOLD": [0.3, 0.5, 0.6, 0.7, 0.8],
     "AUTO_DISCHARGE_CONFIDENCE_THRESHOLD": [0.05, 0.1, 0.2, 0.3],
+    "CHI_SQUARED_P_THRESHOLD": [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.2],
+    "INITIAL_CYCLE_AMPLITUDE": [0.1, 0.25, 0.5, 0.75, 1.0, 2.0],
+    # PredictionLedger constants
+    "PL_CONFIDENCE_ERROR_THRESHOLD": [0.3, 0.5, 0.7, 0.85, 0.95],
+    "PL_CONFIDENCE_LOW_SIGNAL": [0.05, 0.1, 0.2, 0.3, 0.5],
+    "PL_AUTO_RESOLVE_ACTED": [0.05, 0.1, 0.2, 0.3, 0.5],
+    "PL_AUTO_RESOLVE_DISMISSED": [0.2, 0.3, 0.5, 0.7, 0.9],
+    "PL_AUTO_RESOLVE_CONTRADICTED": [0.5, 0.7, 0.8, 0.9, 0.95],
 }
 
 # ---------------------------------------------------------------------------
@@ -89,20 +99,40 @@ TIER3_SWEEPS = {
 # ---------------------------------------------------------------------------
 
 INTERACTION_PAIRS = [
-    ("decay_rate", [0.3, 0.5, 0.7], "initial_confidence", [0.3, 0.5, 0.7]),
-    ("_wf_min_threshold", [0.1, 0.2, 0.3], "initial_weight", [0.05, 0.1, 0.2]),
+    # Expanded existing pairs to 5×5 grids (25 combinations each)
+    ("decay_rate", [0.1, 0.3, 0.5, 0.7, 0.9], "initial_confidence", [0.1, 0.3, 0.5, 0.7, 0.9]),
+    ("_wf_min_threshold", [0.05, 0.1, 0.2, 0.3, 0.5], "initial_weight", [0.01, 0.05, 0.1, 0.2, 0.5]),
     (
         "ACTED_CONFIDENCE_SIGNAL",
-        [0.5, 0.7, 0.9],
+        [0.3, 0.5, 0.7, 0.8, 0.9],
         "ACTED_CYCLE_STRENGTHEN_FACTOR",
-        [0.8, 1.2, 1.5],
+        [0.5, 0.8, 1.0, 1.2, 1.5],
     ),
-    ("TD_ALPHA", [0.05, 0.1, 0.2], "TD_GAMMA", [0.9, 0.95, 0.99]),
+    ("TD_ALPHA", [0.01, 0.05, 0.1, 0.2, 0.5], "TD_GAMMA", [0.8, 0.9, 0.95, 0.97, 0.99]),
     (
         "_wf_min_threshold",
-        [0.1, 0.2, 0.3],
+        [0.05, 0.1, 0.2, 0.3, 0.5],
         "_wf_priority_threshold",
-        [0.5, 0.7, 0.9],
+        [0.3, 0.5, 0.7, 0.8, 0.9],
+    ),
+    # New interaction pairs from issue #279
+    (
+        "ACTED_CYCLE_STRENGTHEN_FACTOR",
+        [0.5, 0.8, 1.0, 1.2, 1.5],
+        "DISMISSED_CYCLE_WEAKEN_FACTOR",
+        [0.3, 0.5, 0.8, 1.0, 1.2],
+    ),
+    (
+        "DEFAULT_SURFACING_THRESHOLD",
+        [0.1, 0.3, 0.5, 0.7, 0.9],
+        "COMPETITIVE_SUPPRESSION_SIGNAL",
+        [0.1, 0.2, 0.3, 0.5, 0.7],
+    ),
+    (
+        "decay_rate",
+        [0.1, 0.3, 0.5, 0.7, 0.9],
+        "_wf_min_threshold",
+        [0.05, 0.1, 0.2, 0.3, 0.5],
     ),
 ]
 
@@ -122,7 +152,9 @@ TIER4_SWEEPS = {
     "extraction_min_length": [5, 8, 10, 15, 20, 30, 50, 80],
     "max_items": [3, 5, 7, 10, 15, 20, 30],
     "max_tokens": [500, 1000, 2000, 4000, 6000, 8000, 12000],
-    "default_importance": [0.1, 0.3, 0.5, 0.7, 0.9],
+    "default_importance": [
+        0.05, 0.1, 0.12, 0.15, 0.18, 0.2, 0.22, 0.25, 0.28, 0.3, 0.35, 0.5, 0.7, 0.9,
+    ],
     "_wf_min_threshold": [0.05, 0.1, 0.2, 0.3, 0.5],
     "initial_confidence": [0.1, 0.3, 0.5, 0.7, 0.9],
 }
@@ -139,10 +171,21 @@ TIER4_SCORE_WEIGHTS = [
 
 # Experiment 8: Interaction effects at recipe layer
 TIER4_INTERACTION_PAIRS = [
-    ("max_items", [5, 10, 20], "max_tokens", [1000, 4000, 12000]),
-    ("extraction_min_length", [5, 10, 30], "default_importance", [0.3, 0.5, 0.7]),
-    ("_wf_min_threshold", [0.1, 0.2, 0.3], "initial_confidence", [0.3, 0.5, 0.7]),
-    ("max_items", [5, 10, 20], "default_importance", [0.3, 0.5, 0.7]),
+    # Expanded to 5×5 grids
+    ("max_items", [3, 5, 10, 20, 30], "max_tokens", [500, 1000, 4000, 8000, 12000]),
+    (
+        "extraction_min_length",
+        [5, 10, 20, 30, 50],
+        "default_importance",
+        [0.1, 0.2, 0.3, 0.5, 0.7],
+    ),
+    (
+        "_wf_min_threshold",
+        [0.05, 0.1, 0.2, 0.3, 0.5],
+        "initial_confidence",
+        [0.1, 0.3, 0.5, 0.7, 0.9],
+    ),
+    ("max_items", [3, 5, 10, 20, 30], "default_importance", [0.1, 0.2, 0.3, 0.5, 0.7]),
 ]
 
 
@@ -199,7 +242,9 @@ def run_tier4(runner, aggregator):
         logger.info("    %d/%d points OK", ok_count, len(results))
 
     # Score weights sweep (dict-valued)
-    logger.info("  Sweeping score_weights over %d configurations", len(TIER4_SCORE_WEIGHTS))
+    logger.info(
+        "  Sweeping score_weights over %d configurations", len(TIER4_SCORE_WEIGHTS)
+    )
     results = runner.run_single_sweep("score_weights", TIER4_SCORE_WEIGHTS)
     aggregator.add_sweep("score_weights", results)
     ok_count = sum(1 for r in results if r.status == "ok")
