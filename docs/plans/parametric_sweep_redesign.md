@@ -1,5 +1,5 @@
 ---
-status: In Progress
+status: Shipped
 type: enhancement
 appetite: Large
 owner: Valor Engels

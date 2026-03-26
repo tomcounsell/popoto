@@ -2,11 +2,13 @@
 
 > **New to Agent Memory?** Start with the [Quickstart Guide](agent-memory-quickstart.md) for a progressive adoption path.
 
-This guide documents the ~25 behavioral constants that control Popoto's agent-memory primitives. Each constant has been validated through systematic parameter sweeps across three benchmark scenarios.
+This guide documents the ~25 behavioral constants that control Popoto's agent-memory primitives. Each constant has been validated through systematic parameter sweeps across hand-crafted benchmark scenarios and parametrically generated stress-test scenarios.
 
 ## Overview
 
 Popoto's agent-memory stack uses constants that control scoring, decay, strengthening, weakening, filtering, and learning. These were initially set to reasonable guesses and have now been validated through a benchmark harness that measures retrieval quality (precision@k, nDCG) and calibration error across factual recall, multi-step reasoning, and temporal scheduling scenarios.
+
+For Tiers 1-3, a `ScenarioFactory` can generate 50 diverse stress-test scenarios from parameterized seeds, with a 70/30 train/validation split to guard against overfitting. A ratchet loop automates keep/discard decisions for proposed constant changes. See [Parametric Sweep](../features/parametric-sweep.md) for details.
 
 **Key finding**: The initial defaults are all within their safe operating ranges. The only constant with a cliff effect is `ACTED_CYCLE_STRENGTHEN_FACTOR`, which must be >= 1.0.
 
@@ -174,16 +176,31 @@ Each constant was swept independently while holding others at defaults. Grid siz
 
 Tier 4 adds 8 experiments covering SubconsciousMemory-layer constants across 3 recipe-layer scenarios, plus pairwise interaction sweeps for 4 constant pairs.
 
+### Parametric Scenarios (Tiers 1-3)
+
+The `--parametric` flag replaces hand-crafted scenarios with 50 generated stress-test scenarios from `ScenarioFactory`. Each scenario is built from a `ScenarioSeed` with 7 axes: record count (5-100), importance distribution shape (uniform, clustered, bimodal, exponential, flat), access pattern (all_recent, half_stale, mostly_stale, interleaved), outcome frequency, noise ratio, link density, and age spread. Larger record counts and clustered distributions force constants to break ties, exposing sensitivity that the 3 hand-crafted scenarios (with 8-13 records each) cannot detect.
+
+### Ratchet Loop
+
+The `--ratchet` flag runs an automated pipeline that sweeps all Tier 1-3 constants on a 70% train split of generated scenarios, validates proposed optimal values on the held-out 30%, checks cliff safety margins (10% buffer), and produces a human-readable diff proposal. The ratchet never writes to `constants.py` directly -- it outputs accept/reject recommendations for human review.
+
 ## Running the Benchmarks
 
 ```bash
-# Run all sweeps (Tiers 1-4)
+# Run all sweeps (Tiers 1-4) with hand-crafted scenarios
 python -m tests.benchmarks.run_sweeps --tier all --interactions
 
 # Run field-level sweeps only (Tiers 1-3)
 python -m tests.benchmarks.run_sweeps --tier 1
 python -m tests.benchmarks.run_sweeps --tier 2
 python -m tests.benchmarks.run_sweeps --tier 3
+
+# Run with parametrically generated scenarios (Tiers 1-3)
+python -m tests.benchmarks.run_sweeps --parametric --tier all
+python -m tests.benchmarks.run_sweeps --parametric --tier 1
+
+# Run the ratchet pipeline (generate, sweep, validate, propose)
+python -m tests.benchmarks.run_sweeps --ratchet
 
 # Run recipe-layer sweeps (Tier 4 -- SubconsciousMemory experiments)
 python -m tests.benchmarks.run_sweeps --tier 4
@@ -199,6 +216,9 @@ pytest tests/benchmarks/test_sweep.py -x -q
 
 # Run Tier 4 scenario and metrics tests
 pytest tests/benchmarks/test_tier4.py -x -q
+
+# Run parametric scenario tests
+pytest tests/benchmarks/test_factory.py tests/benchmarks/test_split.py tests/benchmarks/test_ratchet.py -x -q
 ```
 
 Results are saved to `tests/benchmarks/results/sweep_YYYYMMDD_HHMMSS.json` with a `latest.json` symlink pointing to the most recent run. Each result file includes performance metadata (p50/p95/p99 query durations, wall-clock time, platform info).
