@@ -58,7 +58,9 @@ def _swap_db(target_db, **extra_kwargs):
     current_kwargs.setdefault("socket_timeout", 5)
     current_kwargs.setdefault("socket_connect_timeout", 5)
     new_pool = redis.ConnectionPool(**current_kwargs)
+    old_pool = db_obj.connection_pool
     db_obj.connection_pool = new_pool
+    old_pool.disconnect()
 
 
 def pytest_addoption(parser):
@@ -139,5 +141,18 @@ def _popoto_reset_async():
     redis_db._POPOTO_ASYNC_REDIS_DB = aioredis.Redis(**async_kwargs)
     redis_db._async_redis_lock = asyncio.Lock()
     yield
-    # Clean up: set to None so next test gets a fresh connection
+    # Clean up: close the async client's connection pool and set to None
+    try:
+        if redis_db._POPOTO_ASYNC_REDIS_DB is not None:
+            pool = redis_db._POPOTO_ASYNC_REDIS_DB.connection_pool
+            # disconnect() is a coroutine on async pools; run it synchronously
+            try:
+                loop = asyncio.get_running_loop()
+                # Loop is running (e.g. async test); schedule cleanup
+                loop.create_task(pool.disconnect())
+            except RuntimeError:
+                # No running loop; safe to use asyncio.run()
+                asyncio.run(pool.disconnect())
+    except Exception:
+        pass
     redis_db._POPOTO_ASYNC_REDIS_DB = None
