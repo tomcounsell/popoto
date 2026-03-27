@@ -26,10 +26,13 @@ python -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"
 pytest                          # Run all tests (requires Redis on localhost:6379)
 pytest tests/test_queries.py    # Run specific test file
 pytest -k "test_name"           # Run single test by name
+pytest -p no:popoto             # Run tests without the auto-isolation plugin
 mypy src/                       # Type checking
 black src/ tests/               # Format code
 mkdocs serve                    # Serve docs locally
 ```
+
+Tests automatically use Redis DB 15 for isolation (via the `popoto.pytest_plugin` entry point). Each test gets a clean DB via `flushdb()`. Override with `POPOTO_TEST_DB=<n>` env var or `popoto_test_db` in `pyproject.toml` `[tool.pytest.ini_options]`.
 
 ## Debugging with Redis/Valkey CLI
 
