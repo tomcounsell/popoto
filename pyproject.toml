@@ -59,6 +59,9 @@ Homepage = "https://github.com/tomcounsell/popoto"
 Documentation = "https://popoto.readthedocs.io"
 Bug_Tracker = "https://github.com/tomcounsell/popoto/issues"
 
+[project.entry-points.pytest11]
+popoto = "popoto.pytest_plugin"
+
 [tool.pytest.ini_options]
 markers = [
     "slow: stress and performance tests (deselect with '-m \"not slow\"')",

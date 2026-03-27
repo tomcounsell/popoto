@@ -2,22 +2,45 @@
 
 Provides helpers for test isolation when running tests against Redis.
 
-Example usage in pytest::
+Automatic Plugin (Recommended):
 
-    # conftest.py
-    import pytest
-    from popoto.testing import use_test_db, flush_test_db
+    If you install popoto and use pytest, the ``popoto.pytest_plugin`` is
+    registered automatically via entry points. It switches to a dedicated
+    test database (default: DB 15), flushes before each test, and resets
+    the async connection. No configuration needed -- just run ``pytest``.
 
-    @pytest.fixture(scope="session", autouse=True)
-    def setup_test_db():
-        use_test_db(15)
-        yield
-        flush_test_db()
+    To override the test DB number::
 
-    @pytest.fixture(autouse=True)
-    def clean_db():
-        yield
-        flush_test_db()
+        # Environment variable
+        POPOTO_TEST_DB=14 pytest
+
+        # Or in pyproject.toml
+        [tool.pytest.ini_options]
+        popoto_test_db = 14
+
+    To disable the plugin::
+
+        pytest -p no:popoto
+
+Manual Helpers (for non-pytest or custom setups):
+
+    The functions below are available for test runners other than pytest
+    or for cases where you need manual control over DB switching::
+
+        # conftest.py
+        import pytest
+        from popoto.testing import use_test_db, flush_test_db
+
+        @pytest.fixture(scope="session", autouse=True)
+        def setup_test_db():
+            use_test_db(15)
+            yield
+            flush_test_db()
+
+        @pytest.fixture(autouse=True)
+        def clean_db():
+            yield
+            flush_test_db()
 """
 
 from .redis_db import set_REDIS_DB_settings, POPOTO_REDIS_DB
