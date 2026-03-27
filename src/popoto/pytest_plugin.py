@@ -82,11 +82,18 @@ def _popoto_test_db(request):
     """
     # Determine test DB number
     env_db = os.environ.get("POPOTO_TEST_DB", "").strip()
-    if env_db:
-        test_db = int(env_db)
-    else:
-        ini_val = request.config.getini("popoto_test_db")
-        test_db = int(ini_val)
+    raw_value = env_db if env_db else request.config.getini("popoto_test_db")
+    try:
+        test_db = int(raw_value)
+    except (ValueError, TypeError):
+        raise ValueError(
+            f"popoto_test_db must be an integer, got {raw_value!r}"
+        )
+    if test_db == 0:
+        raise ValueError(
+            "popoto_test_db=0 is not allowed — DB 0 is typically production. "
+            "Use a non-zero DB (default: 15) or disable the plugin with -p no:popoto."
+        )
 
     # Save original connection kwargs for restoration
     original_kwargs = dict(redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs)
