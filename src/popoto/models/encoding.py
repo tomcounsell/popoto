@@ -387,6 +387,13 @@ def _create_lazy_model(model_class: "Model", redis_hash: dict) -> "Model":
     the instance for lazy field loading. Fields are decoded from msgpack
     on first access via Model.__getattribute__.
 
+    KeyField values are eagerly decoded so that ``_redis_key`` and
+    ``_saved_field_values`` are populated immediately. This is required for
+    correct key-migration behaviour in ``save()`` — without it, changing a
+    KeyField on a filter()-loaded instance would create a duplicate Redis
+    entry instead of replacing the old one.  Only KeyField values are
+    decoded eagerly; all other fields remain lazy.
+
     Args:
         model_class: The Model subclass to instantiate.
         redis_hash: Raw Redis hash with msgpack-encoded values.
@@ -411,6 +418,25 @@ def _create_lazy_model(model_class: "Model", redis_hash: dict) -> "Model":
     instance._ttl = model_class._meta.ttl
     instance._expire_at = None
     instance._is_persisted = True
+
+    # Eagerly decode KeyField values so _redis_key and _saved_field_values
+    # are correct.  This mirrors what __init__ does at base.py L604-608 for
+    # non-lazy instances.  Only KeyFields are decoded here — all other fields
+    # stay in _lazy_fields for on-demand decoding.
+    for key_field_name in model_class._meta.key_field_names:
+        if key_field_name in instance._lazy_fields:
+            decoded_value = decode_lazy_field(instance._lazy_fields[key_field_name])
+            instance._decoded_fields[key_field_name] = decoded_value
+            instance._saved_field_values[key_field_name] = decoded_value
+
+    # Compute _redis_key from the (now-decoded) KeyField values, matching
+    # the logic in Model.__init__.  db_key reads attributes via
+    # __getattribute__ which will find them in _decoded_fields.
+    if None not in [
+        instance._decoded_fields.get(kf)
+        for kf in model_class._meta.key_field_names
+    ]:
+        instance._redis_key = instance.db_key.redis_key
 
     return instance
 
