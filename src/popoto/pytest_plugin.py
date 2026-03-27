@@ -57,7 +57,8 @@ def _swap_db(target_db, **extra_kwargs):
     # Preserve socket timeouts
     current_kwargs.setdefault("socket_timeout", 5)
     current_kwargs.setdefault("socket_connect_timeout", 5)
-    new_pool = redis.ConnectionPool(**current_kwargs)
+    connection_class = db_obj.connection_pool.connection_class
+    new_pool = redis.ConnectionPool(connection_class=connection_class, **current_kwargs)
     old_pool = db_obj.connection_pool
     db_obj.connection_pool = new_pool
     old_pool.disconnect()
@@ -116,7 +117,7 @@ def _popoto_test_db(request):
 
 
 @pytest.fixture(autouse=True)
-def _popoto_flush_db():
+def _popoto_flush_db(_popoto_test_db):
     """Flush the test database before each test for a clean slate."""
     redis_db.POPOTO_REDIS_DB.flushdb()
     yield
