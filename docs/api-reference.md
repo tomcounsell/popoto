@@ -1831,6 +1831,8 @@ The `popoto.pytest_plugin` module is registered as a [pytest11 entry point](http
 2. `popoto_test_db` ini option in `pyproject.toml` `[tool.pytest.ini_options]`
 3. Default: `15`
 
+DB 0 is rejected to prevent accidental test runs against production data. Non-integer values produce a clear error message.
+
 ```ini
 # pyproject.toml
 [tool.pytest.ini_options]

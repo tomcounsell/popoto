@@ -32,7 +32,7 @@ black src/ tests/               # Format code
 mkdocs serve                    # Serve docs locally
 ```
 
-Tests automatically use Redis DB 15 for isolation (via the `popoto.pytest_plugin` entry point). Each test gets a clean DB via `flushdb()`. Override with `POPOTO_TEST_DB=<n>` env var or `popoto_test_db` in `pyproject.toml` `[tool.pytest.ini_options]`.
+Tests automatically use Redis DB 15 for isolation (via the `popoto.pytest_plugin` entry point). Each test gets a clean DB via `flushdb()`. Override with `POPOTO_TEST_DB=<n>` env var or `popoto_test_db` in `pyproject.toml` `[tool.pytest.ini_options]`. DB 0 is rejected to prevent accidental production data loss.
 
 ## Debugging with Redis/Valkey CLI
 
