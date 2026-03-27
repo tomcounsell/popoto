@@ -125,15 +125,15 @@ No prerequisites -- all required infrastructure (`set_REDIS_DB_settings`, `POPOT
 ## Failure Path Test Strategy
 
 ### Exception Handling Coverage
-- [ ] Test plugin behavior when Redis is unreachable (fixture should raise clear error, not hang)
-- [ ] Test that invalid DB numbers (e.g., negative, > 15) produce clear errors
+- [x] Test plugin behavior when Redis is unreachable (fixture should raise clear error, not hang)
+- [x] Test that invalid DB numbers (e.g., negative, > 15) produce clear errors
 
 ### Empty/Invalid Input Handling
-- [ ] Test with `POPOTO_TEST_DB=""` (should fall back to ini option or default)
-- [ ] Test with `POPOTO_TEST_DB` set to non-numeric value (should raise or warn)
+- [x] Test with `POPOTO_TEST_DB=""` (should fall back to ini option or default)
+- [x] Test with `POPOTO_TEST_DB` set to non-numeric value (should raise or warn)
 
 ### Error State Rendering
-- [ ] Not applicable -- no user-visible output changes beyond pytest fixture errors
+- [x] Not applicable -- no user-visible output changes beyond pytest fixture errors
 
 ## Test Impact
 
@@ -188,21 +188,21 @@ No agent integration required -- this is an open-source library (tomcounsell/pop
 
 ## Documentation
 
-- [ ] Add docstring to `src/popoto/pytest_plugin.py` explaining plugin behavior, configuration options, and how to disable
-- [ ] Update `src/popoto/testing.py` module docstring to reference the automatic plugin
-- [ ] Add `tests/conftest.py` with comments explaining plugin-provided fixtures
+- [x] Add docstring to `src/popoto/pytest_plugin.py` explaining plugin behavior, configuration options, and how to disable
+- [x] Update `src/popoto/testing.py` module docstring to reference the automatic plugin
+- [x] Add `tests/conftest.py` with comments explaining plugin-provided fixtures
 
 ## Success Criteria
 
-- [ ] Running `pytest` with popoto installed automatically uses Redis DB 15 (not DB 0)
-- [ ] `POPOTO_TEST_DB=14 pytest` overrides the default to DB 14
-- [ ] `popoto_test_db = 14` in `pyproject.toml` `[tool.pytest.ini_options]` works as override
-- [ ] Each test starts with an empty database (verified by `DBSIZE` returning 0)
-- [ ] DB 0 is unaffected after a full test run
-- [ ] Async tests pass without manually resetting the async connection
-- [ ] Existing test files with their own cleanup fixtures still pass
-- [ ] Plugin works with `REDIS_URL` containing authentication credentials
-- [ ] Plugin can be disabled with `pytest -p no:popoto`
+- [x] Running `pytest` with popoto installed automatically uses Redis DB 15 (not DB 0)
+- [x] `POPOTO_TEST_DB=14 pytest` overrides the default to DB 14
+- [x] `popoto_test_db = 14` in `pyproject.toml` `[tool.pytest.ini_options]` works as override
+- [x] Each test starts with an empty database (verified by `DBSIZE` returning 0)
+- [x] DB 0 is unaffected after a full test run
+- [x] Async tests pass without manually resetting the async connection
+- [x] Existing test files with their own cleanup fixtures still pass
+- [x] Plugin works with `REDIS_URL` containing authentication credentials
+- [x] Plugin can be disabled with `pytest -p no:popoto`
 
 ## Team Orchestration
 
