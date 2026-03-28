@@ -60,6 +60,19 @@ The key intervention point is step 4: the setup phase must exercise family-speci
 
 No prerequisites -- this work extends existing benchmark infrastructure with no external dependencies.
 
+## Real-World Grounding
+
+These benchmark scenarios are modeled after the Popoto-backed SubconsciousMemory system used in the AI Valor Engels project (github.com/tomcounsell/ai). That system stores agent observations as Memory records using DecayingSortedField, ConfidenceField, WriteFilterMixin, ExistenceFilter, and CoOccurrenceField -- exercising every constant family targeted here.
+
+The existing recipe-layer fixtures (support_agent, coding_assistant, research_agent) provide narrative templates for scenario generation. Each family scenario below is grounded in a concrete usage pattern from this real consumer, so the parameter sweeps reflect actual operating conditions rather than arbitrary numeric ranges. The goal is that every scenario "feels like" a plausible session history that a Popoto-backed application would produce.
+
+Key real-world characteristics informing scenario design:
+- **Sessions spread across days and weeks** -- a developer works daily for a sprint, switches projects for months, then returns. Memories from active vs stale periods have dramatically different ages.
+- **Mixed outcomes across multiple sessions** -- some memories are repeatedly useful (corrections like "always use OAuth2"), others are chronically dismissed (stale patterns), some get contradicted by newer information.
+- **Extraction produces signal and noise** -- from a support conversation, account numbers and resolution actions are essential; greetings and filler are noise. The write filter determines what survives.
+- **Topic co-occurrence through natural language** -- memories about "bridge refactoring" co-occur with "Telegram integration." Encountering "Telegram reconnection" should surface bridge memories via co-occurrence links even without shared keywords.
+- **Structured metadata** -- categories (CORRECTION, DECISION, PATTERN, SURPRISE), file paths, and domain tags provide context for how records are created and queried.
+
 ## Solution
 
 ### Key Elements
@@ -88,6 +101,16 @@ No prerequisites -- this work extends existing benchmark infrastructure with no 
 **Constants exercised**: `DECAY_RATE`
 **Expected sensitivity**: At `decay_rate=0.1`, old records barely lose score. At `decay_rate=1.0`, old records are heavily penalized. With clustered importance, the ranking order should flip between these extremes.
 
+### Real-World Scenario: Developer Returns After Project Switch
+
+A developer uses a Popoto-backed coding assistant daily for two weeks while building a Telegram bridge integration. During that sprint, the system extracts ~40 memories: debugging tips, API patterns, architectural decisions -- all with similar importance (0.45-0.55) because they come from routine development work, not critical corrections.
+
+The developer then switches to a different project for 3 months. When they return to the bridge work, the assistant needs to surface the most relevant memories. Half the memories were last accessed during the active sprint (age ~90 days), while a handful were touched in a brief check-in partway through (age ~45 days).
+
+**How this exercises DECAY_RATE**: With a low decay rate (0.1), the 90-day-old memories score nearly the same as the 45-day-old ones -- the assistant treats the entire sprint as equally relevant. With a high decay rate (1.0), the 45-day-old memories dominate because 90-day-old memories are heavily penalized. The "correct" behavior depends on the application: a coding assistant should probably use moderate decay so that the most recently touched memories rank higher, but sprint-era memories are not completely buried.
+
+**Parameter mapping**: `age_spread_days=90` represents the 3-month project switch. The bimodal age distribution (half at 90 days, half at 45 days) represents the active sprint vs the brief check-in. Clustered importance (0.45-0.55) represents routine development observations where no single memory is dramatically more important than another.
+
 #### Family 2: Confidence Lifecycle (`ACTED_CONFIDENCE_SIGNAL`, `CONTRADICTED_CONFIDENCE_SIGNAL`, `ACTED_CYCLE_STRENGTHEN_FACTOR`, `DISMISSED_CYCLE_WEAKEN_FACTOR`, `CONTRADICTED_CYCLE_WEAKEN_FACTOR`, `AUTO_DISCHARGE_CONFIDENCE_THRESHOLD`, `INITIAL_CONFIDENCE`)
 
 **Problem**: The current factory calls `on_context_used()` once with only `"acted"` outcomes. The Bayesian confidence update formula is `confidence + (signal - confidence) / sqrt(evidence_count + 1)`. With one update and `signal=0.9`, the confidence goes from 0.5 to 0.9 for acted records and stays at 0.5 for others. The certainty axis only contributes 40% of the composite score, and the first update has the same magnitude regardless of the signal value (because `evidence_count=0` makes `sqrt(1)=1`, so the update is `signal - 0.5`).
@@ -102,6 +125,16 @@ No prerequisites -- this work extends existing benchmark infrastructure with no 
 
 **Constants exercised**: `ACTED_CONFIDENCE_SIGNAL`, `CONTRADICTED_CONFIDENCE_SIGNAL`, `INITIAL_CONFIDENCE`, `ACTED_CYCLE_STRENGTHEN_FACTOR`, `DISMISSED_CYCLE_WEAKEN_FACTOR`, `CONTRADICTED_CYCLE_WEAKEN_FACTOR`, `AUTO_DISCHARGE_CONFIDENCE_THRESHOLD`
 **Expected sensitivity**: High signal values (0.9) push confidence toward 1.0 faster than low values (0.5). After 5 rounds, the gap between corroborated and contradicted records is much wider with extreme signals than with moderate ones. This changes the ranking.
+
+### Real-World Scenario: Mixed Feedback Across Support Sessions
+
+A support agent powered by Popoto memories handles customer conversations over 5 sessions across a week. After each session, the system extracts observations and classifies injected thoughts as "acted" (the agent used the memory), "dismissed" (surfaced but ignored), or "contradicted" (the agent did the opposite).
+
+Some memories prove consistently valuable: "Always verify account ownership before making changes" gets acted on in every session. Others are stale: "The billing portal is down for maintenance" was relevant on Monday but gets dismissed for the rest of the week. A few get contradicted: "Refunds require manager approval" was true under the old policy but the new policy allows self-service refunds -- the agent contradicts this memory when it processes a refund without escalation.
+
+**How this exercises confidence constants**: The "verify account ownership" memory goes through 5 rounds of "acted" outcomes. With `ACTED_CONFIDENCE_SIGNAL=0.9`, its confidence rapidly approaches 1.0 and it always ranks near the top. The "billing portal down" memory gets 1 "acted" then 4 "dismissed" outcomes -- `DISMISSED_CYCLE_WEAKEN_FACTOR` controls how quickly it drops. The "refunds require manager approval" memory gets "acted" twice (old sessions) then "contradicted" three times -- `CONTRADICTED_CONFIDENCE_SIGNAL` and `CONTRADICTED_CYCLE_WEAKEN_FACTOR` determine whether it still surfaces.
+
+**Parameter mapping**: 5 rounds of `on_context_used()` represent 5 support sessions. The mix of acted/dismissed/contradicted outcomes across records represents real feedback patterns where some memories prove durable, some become stale, and some become actively wrong. The certainty-weighted composite score (0.3 relevance, 0.7 certainty) represents a system that prioritizes proven memories over merely relevant ones.
 
 #### Family 3: Write Filter (`WF_MIN_THRESHOLD`, `WF_PRIORITY_THRESHOLD`)
 
@@ -120,6 +153,16 @@ No prerequisites -- this work extends existing benchmark infrastructure with no 
 **Constants exercised**: `WF_MIN_THRESHOLD`, `WF_PRIORITY_THRESHOLD`
 **Expected sensitivity**: At threshold 0.05, nearly all records survive (including noise), so retrieval must separate signal from noise. At threshold 0.5, many mid-importance relevant records are filtered out, so nDCG drops because the ground truth expects them. The optimal threshold balances these effects and depends on the importance distribution.
 
+### Real-World Scenario: Noisy Extraction from Customer Conversation
+
+After a support conversation, the memory extraction pipeline processes the full transcript and produces ~30 candidate observations. The conversation involved resolving a billing dispute: the customer provided their account number, described the incorrect charge, the agent looked up plan details, applied a credit, and explained the new billing cycle.
+
+The extraction yields a mix of signal and noise: "Account #7234 had a duplicate charge on March 15" (important, specific), "Customer's plan is Business Premium with annual billing" (moderately important), "Applied $49 credit to account" (important action), "Customer said hello and asked how to reach billing" (low-value filler), "Agent confirmed the weather is nice today" (noise from small talk). The intended ground truth includes the account details, plan info, and resolution actions -- but NOT the greetings or small talk.
+
+**How this exercises write filter constants**: With `WF_MIN_THRESHOLD=0.05`, virtually everything survives including "customer said hello" -- retrieval later has to wade through noise to find the resolution actions. With `WF_MIN_THRESHOLD=0.5`, the noise is filtered but so are moderately important observations like plan details that fall below the threshold. The nDCG score reflects whether the query can retrieve the full set of intended memories, not just whatever survived filtering.
+
+**Parameter mapping**: The ~30 candidate records represent a typical post-session extraction batch. The importance distribution spans 0.1 (small talk) to 0.9 (resolution actions) with a cluster of moderate-importance records (0.3-0.5) representing contextual details that are useful but not critical. The pre-filter ground truth represents what a human would consider the "complete and correct" memory set from this conversation.
+
 #### Family 4: Co-occurrence (`CO_OCCURRENCE_INITIAL_WEIGHT`, `CO_OCCURRENCE_DECAY_PER_HOP`, `CO_OCCURRENCE_DECAY_FACTOR`)
 
 **Problem**: The current factory creates co-occurrence links as raw Redis keys (`POPOTO_REDIS_DB.set(link_key, "1")`), not through the `CoOccurrenceField` API. The links are never queried through `propagate()` or injected into `composite_score()` via the `co_occurrence_boost` parameter.
@@ -136,6 +179,18 @@ No prerequisites -- this work extends existing benchmark infrastructure with no 
 
 **Constants exercised**: `CO_OCCURRENCE_INITIAL_WEIGHT`, `CO_OCCURRENCE_DECAY_PER_HOP`, `CO_OCCURRENCE_DECAY_FACTOR`
 **Expected sensitivity**: At `decay_per_hop=0.9`, propagation reaches many hops with high weight, boosting distant records. At `decay_per_hop=0.1`, only direct neighbors get meaningful boost. This changes which records appear in the top-K.
+
+### Real-World Scenario: Cross-Topic Memory Surfacing via Shared Context
+
+A coding assistant accumulates memories across several weeks of work on a Telegram bridge project. Some memories are about "bridge refactoring" (connection pooling, reconnection logic, error handling). Others are about "Telegram integration" (API rate limits, message formatting, bot commands). A third cluster covers "Redis performance" (connection timeouts, pipeline batching, memory usage).
+
+These topics co-occur naturally: bridge refactoring memories were extracted from the same sessions as Telegram integration memories (the developer was refactoring the bridge's Telegram connection code). Telegram integration memories co-occur with Redis performance memories (the bot stores message state in Redis). But bridge refactoring and Redis performance never directly co-occur -- they are connected only through the Telegram integration cluster as a bridge.
+
+When the developer later encounters a "Telegram reconnection timeout" issue, the query directly matches Telegram integration memories. Through co-occurrence propagation, bridge refactoring memories (1 hop away) should also surface because they were discussed in the same sessions. With deep enough propagation, Redis performance memories (2 hops away, via Telegram integration) might also surface -- which is actually useful because Redis connection timeouts could be causing the Telegram reconnection failures.
+
+**How this exercises co-occurrence constants**: `CO_OCCURRENCE_INITIAL_WEIGHT` controls how strongly directly co-occurring memories (bridge + Telegram) are linked. `CO_OCCURRENCE_DECAY_PER_HOP` determines whether the 2-hop connection (bridge -> Telegram -> Redis) carries enough weight to surface Redis memories. At `decay_per_hop=0.9`, the Redis memories get a meaningful boost and appear in the top-K. At `decay_per_hop=0.1`, only the directly linked bridge memories get boosted -- the Redis connection is too attenuated.
+
+**Parameter mapping**: 3 topic clusters of 8-10 records each represent natural project knowledge domains. Direct links between clusters represent session co-occurrence (memories extracted from the same conversation). The 2-hop path (bridge -> Telegram -> Redis) represents the real-world pattern where topics are related through an intermediary context rather than direct co-occurrence. Seed records are the Telegram integration memories that match the reconnection query; the ground truth includes both directly linked (bridge) and transitively linked (Redis) memories.
 
 ### Constant-to-Family Mapping
 
