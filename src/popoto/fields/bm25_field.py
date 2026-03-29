@@ -35,8 +35,6 @@ Example:
 
 import logging
 
-import redis
-
 from ._tokenizer import tokenize
 from .field import Field
 from ..redis_db import POPOTO_REDIS_DB

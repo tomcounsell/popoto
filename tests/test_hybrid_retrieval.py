@@ -12,7 +12,6 @@ import os
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
 
-import pytest  # noqa: E402
 from src import popoto  # noqa: E402
 from src.popoto.fields.bm25_field import BM25Field  # noqa: E402
 
