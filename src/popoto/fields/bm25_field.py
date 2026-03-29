@@ -414,7 +414,8 @@ class BM25Field(Field):
                     source_value = ""
 
         source_value = str(source_value)
-        tokens = tokenize(source_value)
+        # Use unique=False to preserve raw term counts for accurate tf
+        tokens = tokenize(source_value, unique=False)
 
         # Get the document's Redis key
         doc_key = model_instance.db_key.redis_key

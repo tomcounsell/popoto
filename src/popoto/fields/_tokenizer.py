@@ -73,27 +73,37 @@ STOP_WORDS = frozenset(
 _SPLIT_PATTERN = re.compile(r"\W+")
 
 
-def tokenize(text):
+def tokenize(text, unique=True):
     """Tokenize a text string into individual terms for indexing.
 
     Lowercases the input, splits on non-word characters, filters out tokens
-    shorter than 3 characters and common English stop words, and deduplicates.
+    shorter than 3 characters and common English stop words.
 
     Args:
         text: The text string to tokenize.
+        unique: If True (default), deduplicate tokens. Set to False to
+            preserve raw term counts needed for BM25 term frequency.
 
     Returns:
-        list[str]: Unique tokens suitable for indexing.
+        list[str]: Tokens suitable for indexing. Deduplicated if unique=True,
+            raw (with repeats) if unique=False.
             Returns an empty list if no tokens survive filtering.
     """
     if not text:
         return []
     lowered = text.lower()
     raw_tokens = _SPLIT_PATTERN.split(lowered)
-    seen = set()
-    tokens = []
-    for t in raw_tokens:
-        if len(t) >= MIN_TOKEN_LENGTH and t not in STOP_WORDS and t not in seen:
-            seen.add(t)
-            tokens.append(t)
-    return tokens
+    if unique:
+        seen = set()
+        tokens = []
+        for t in raw_tokens:
+            if len(t) >= MIN_TOKEN_LENGTH and t not in STOP_WORDS and t not in seen:
+                seen.add(t)
+                tokens.append(t)
+        return tokens
+    else:
+        return [
+            t
+            for t in raw_tokens
+            if len(t) >= MIN_TOKEN_LENGTH and t not in STOP_WORDS
+        ]

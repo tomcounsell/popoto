@@ -172,3 +172,64 @@ class TestHybridRetrieval:
             limit=5,
         )
         assert len(results) > 0
+
+    def test_bm25_term_frequency_greater_than_one(self):
+        """BM25 correctly records tf > 1 for repeated terms.
+
+        A document with 'redis redis redis' should have tf=3 for 'redis',
+        not tf=1 (which would indicate broken deduplication).
+        """
+        doc = HybridDoc(
+            name="tf_test_repeated",
+            raw_content="redis redis redis deployment",
+        )
+        doc.save()
+
+        # Inspect the forward index directly to verify tf
+        prefix = f"$BM25:HybridDoc:content"
+        tf_key = f"{prefix}:tf:{doc.db_key.redis_key}"
+        from src.popoto.redis_db import POPOTO_REDIS_DB
+
+        tf_redis = POPOTO_REDIS_DB.zscore(tf_key, "redis")
+        assert tf_redis is not None, "Term 'redis' not found in forward index"
+        assert int(tf_redis) == 3, f"Expected tf=3 for 'redis', got {int(tf_redis)}"
+
+        # Also verify document length reflects total tokens, not unique count
+        dl_key = f"{prefix}:dl"
+        dl = POPOTO_REDIS_DB.zscore(dl_key, doc.db_key.redis_key)
+        assert int(dl) == 4, f"Expected dl=4 (total tokens), got {int(dl)}"
+
+    def test_bm25_higher_tf_ranks_above_lower_tf(self):
+        """BM25 ranks a document with higher term frequency above one with lower tf.
+
+        Given two documents of similar length where one repeats the query term
+        more often, the high-tf document should score higher.
+        """
+        # high_tf: 'redis' appears 4 times
+        high_tf = HybridDoc(
+            name="tf_rank_high",
+            raw_content="redis redis redis redis cluster setup",
+        )
+        high_tf.save()
+
+        # low_tf: 'redis' appears 1 time, same total length
+        low_tf = HybridDoc(
+            name="tf_rank_low",
+            raw_content="redis cluster setup configuration monitoring alerts",
+        )
+        low_tf.save()
+
+        results = BM25Field.search(HybridDoc, "content", "redis", limit=10)
+        result_keys = [k for k, _s in results]
+
+        high_key = high_tf.db_key.redis_key
+        low_key = low_tf.db_key.redis_key
+
+        assert high_key in result_keys, "High-tf doc not found in results"
+        assert low_key in result_keys, "Low-tf doc not found in results"
+
+        high_idx = result_keys.index(high_key)
+        low_idx = result_keys.index(low_key)
+        assert high_idx < low_idx, (
+            f"High-tf doc (idx={high_idx}) should rank above low-tf doc (idx={low_idx})"
+        )
