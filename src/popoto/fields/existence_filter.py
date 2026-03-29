@@ -61,7 +61,6 @@ Example:
 
 import logging
 import math
-import re
 
 import redis
 
@@ -72,53 +71,10 @@ from .field import Field
 logger = logging.getLogger("POPOTO.ExistenceFilter")
 
 # ---------------------------------------------------------------------------
-# Tokenization
+# Tokenization — delegates to shared module
 # ---------------------------------------------------------------------------
 
-# Minimum token length to include in the bloom filter / CMS.
-# Tokens shorter than this are noise (e.g., "a", "is", "to").
-_MIN_TOKEN_LENGTH = 3
-
-# Common English stop words filtered out during tokenization.
-# Kept minimal — the bloom filter tolerates a few extra entries.
-_STOP_WORDS = frozenset({
-    "the", "and", "for", "are", "but", "not", "you", "all",
-    "can", "had", "her", "was", "one", "our", "out", "has",
-    "his", "how", "its", "may", "new", "now", "old", "see",
-    "way", "who", "did", "got", "let", "say", "she", "too",
-    "use", "with", "have", "from", "this", "that", "they",
-    "been", "will", "into", "than", "them", "then", "what",
-    "when", "which", "would", "there", "their", "about",
-})
-
-# Split pattern: any sequence of non-word characters
-_SPLIT_PATTERN = re.compile(r"\W+")
-
-
-def tokenize(text):
-    """Tokenize a fingerprint string into individual terms for bloom indexing.
-
-    Lowercases the input, splits on non-word characters, filters out tokens
-    shorter than 3 characters and common English stop words, and deduplicates.
-
-    Args:
-        text: The fingerprint string to tokenize.
-
-    Returns:
-        list[str]: Unique tokens suitable for bloom filter insertion.
-            Returns an empty list if no tokens survive filtering.
-    """
-    if not text:
-        return []
-    lowered = text.lower()
-    raw_tokens = _SPLIT_PATTERN.split(lowered)
-    seen = set()
-    tokens = []
-    for t in raw_tokens:
-        if len(t) >= _MIN_TOKEN_LENGTH and t not in _STOP_WORDS and t not in seen:
-            seen.add(t)
-            tokens.append(t)
-    return tokens
+from ._tokenizer import tokenize  # noqa: F401, E402
 
 # ---------------------------------------------------------------------------
 # Lua Scripts — Bloom Filter
@@ -606,11 +562,11 @@ class FrequencySketch(Field):
         tokens = tokenize(fingerprint)
         if not tokens:
             # Fallback: increment the raw fingerprint lowercased
-            client.eval(CMS_INCR_LUA, 1, key, fingerprint.lower(), field.width, field.depth)
-        else:
             client.eval(
-                CMS_INCR_MULTI_LUA, 1, key, field.width, field.depth, *tokens
+                CMS_INCR_LUA, 1, key, fingerprint.lower(), field.width, field.depth
             )
+        else:
+            client.eval(CMS_INCR_MULTI_LUA, 1, key, field.width, field.depth, *tokens)
         return pipeline if pipeline else None
 
     @classmethod
