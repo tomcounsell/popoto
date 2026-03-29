@@ -34,6 +34,8 @@ The primitives ship incrementally. Each builds on the ones before it.
 | [EventStreamMixin](#eventstreammixin) | Append-only mutation log via Redis Streams | Shipped |
 | [CompositeScoreQuery](#compositescorequery) | Multi-factor retrieval — combine N sorted indexes with weights | Shipped |
 | [ExistenceFilter](#existencefilter) | Bloom filter for O(1) "do I know anything about X?" checks | Shipped |
+| [BM25Field](hybrid-retrieval.md#bm25field) | Ranked keyword search with BM25 scoring in Redis sorted sets | Shipped ([PR #306](https://github.com/tomcounsell/popoto/pull/306)) |
+| [Hybrid Retrieval (RRF)](hybrid-retrieval.md) | Multi-signal fusion — combine keyword, semantic, and graph signals via Reciprocal Rank Fusion | Shipped ([PR #306](https://github.com/tomcounsell/popoto/pull/306)) |
 | [FrequencySketch](#frequencysketch) | Count-Min Sketch for approximate frequency counting | Shipped |
 | [PredictionLedger](#predictionledger) | Outcome tracking — record predictions, observe results, compute error | Shipped |
 | [StreamConsumer](#streamconsumer) | Background processing framework for Redis Streams | Shipped ([PR #238](https://github.com/tomcounsell/popoto/pull/238)) |
