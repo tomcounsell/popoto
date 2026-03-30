@@ -199,6 +199,8 @@ The `QueryBuilder` returned by `filter()` supports these chainable methods:
 | `top_by_decay(field_name, n)` | Return top-N by time-decayed score ([API ref](api-reference.md#querytop_by_decay)) |
 | `composite_score(indexes, limit, temperature)` | Return top-K by weighted composite of multiple sorted indexes ([API ref](api-reference.md#querycomposite_score)) |
 | `semantic_search(query_text, indexes, limit)` | Return top-K by semantic similarity, optionally combined with sorted indexes ([API ref](api-reference.md#querysemantic_search)) |
+| `keyword_search(query_text, field, limit)` | Return instances ranked by BM25 keyword relevance. See [Hybrid Retrieval](features/hybrid-retrieval.md). |
+| `fuse(k, limit, post_filter, **ranked_lists)` | Reciprocal Rank Fusion across heterogeneous ranked lists. See [Hybrid Retrieval](features/hybrid-retrieval.md). |
 | `all()` | Execute query and return all results as a list |
 | `first()` | Execute query and return first result or None |
 | `count()` | Count matching results without loading objects |
@@ -1270,4 +1272,6 @@ for restaurant in Restaurant.query.all():
 | `filter(geo=..., radius=...)` | GEORADIUS | O(N + log M) |
 | `all()` | SMEMBERS + pipeline HGETALL | O(N) |
 | `composite_score(...)` | ZUNIONSTORE + ZREVRANGE + pipeline HGETALL | O(K log K + M) |
+| `keyword_search(...)` | Lua BM25 scoring over inverted index | O(T * D) where T = query terms, D = docs per term |
+| `fuse(...)` | Rank-merge + pipeline HGETALL | O(sum of list lengths + K log K) |
 | `values(...)` on KeyFields only | No Redis call | O(1) |

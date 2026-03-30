@@ -820,6 +820,174 @@ class QueryBuilder:
         finally:
             POPOTO_REDIS_DB.delete(sim_key)
 
+    def keyword_search(
+        self,
+        query_text: str,
+        field: str = None,
+        limit: int = 10,
+    ) -> list:
+        """Return instances ranked by BM25 keyword relevance.
+
+        Delegates to BM25Field.search() and hydrates model instances.
+        The BM25 score is attached to each instance as ``_bm25_score``.
+
+        Args:
+            query_text: The search query string.
+            field: Name of the BM25Field to search. Optional when the model
+                has exactly one BM25Field.
+            limit: Maximum results to return. Default 10.
+
+        Returns:
+            List of model instances ranked by BM25 score (descending).
+
+        Raises:
+            QueryException: If the model has no BM25Field or field name
+                is invalid.
+        """
+        from .encoding import decode_popoto_model_hashmap
+        from ..fields.bm25_field import BM25Field
+
+        model_class = self._query.model_class
+
+        # Auto-detect BM25Field if not specified
+        if field is None:
+            bm25_fields = [
+                name
+                for name, f in model_class._meta.fields.items()
+                if isinstance(f, BM25Field)
+            ]
+            if len(bm25_fields) == 1:
+                field = bm25_fields[0]
+            elif len(bm25_fields) == 0:
+                raise QueryException(
+                    f"'{model_class.__name__}' has no BM25Field for keyword_search()"
+                )
+            else:
+                raise QueryException(
+                    f"Multiple BM25Fields on '{model_class.__name__}': "
+                    f"{bm25_fields}. Specify field= explicitly."
+                )
+
+        # Get raw scored results
+        scored = BM25Field.search(model_class, field, query_text, limit=limit)
+        if not scored:
+            return []
+
+        # Hydrate model instances
+        pipe = POPOTO_REDIS_DB.pipeline()
+        for key, _score in scored:
+            pipe.hgetall(key)
+        hashes = pipe.execute()
+
+        instances = []
+        for (key, score), data in zip(scored, hashes):
+            if data:
+                instance = decode_popoto_model_hashmap(model_class, data)
+                instance._bm25_score = score
+                instances.append(instance)
+
+        if not self._no_track:
+            _fire_on_read(model_class, instances)
+
+        return instances
+
+    def fuse(
+        self,
+        k: int = 60,
+        limit: int = 10,
+        post_filter: Optional[Callable] = None,
+        **ranked_lists,
+    ) -> list:
+        """Reciprocal Rank Fusion across heterogeneous ranked lists.
+
+        Combines multiple ranked lists from different retrieval signals
+        (keyword search, semantic search, graph propagation, etc.) using
+        the RRF formula: ``score(d) = sum(1 / (k + rank_i(d)))``
+
+        Each ranked list is a sequence of ``(redis_key, score)`` tuples.
+        The scores are used only for ordering within each list -- RRF uses
+        ranks, not raw scores.
+
+        Args:
+            k: RRF constant (default 60). Higher values reduce the influence
+                of high-ranking items. Standard value from Cormack et al.
+            limit: Maximum results to return. Default 10.
+            post_filter: Optional ``(redis_key, rrf_score) -> bool`` callback.
+                Return True to keep the result.
+            **ranked_lists: Named ranked lists. Each value is a list of
+                ``(redis_key, score)`` tuples sorted by score descending.
+
+        Returns:
+            List of model instances ranked by RRF score (descending).
+
+        Raises:
+            QueryException: If no ranked lists are provided.
+
+        Example:
+            results = Memory.query.fuse(
+                keyword=BM25Field.search(Memory, "content", "redis", limit=50),
+                semantic=[(key, sim) for key, sim in similarity_results],
+                k=60,
+                limit=10,
+            )
+        """
+        from .encoding import decode_popoto_model_hashmap
+
+        model_class = self._query.model_class
+
+        if not ranked_lists:
+            raise QueryException(
+                "fuse() requires at least one ranked list as a keyword argument"
+            )
+
+        # Compute RRF scores
+        rrf_scores = {}  # doc_key -> accumulated RRF score
+
+        for list_name, ranked_list in ranked_lists.items():
+            if not ranked_list:
+                continue
+            for rank_idx, (doc_key, _score) in enumerate(ranked_list):
+                doc_key = str(doc_key)
+                rrf_scores[doc_key] = rrf_scores.get(doc_key, 0.0) + (
+                    1.0 / (k + rank_idx + 1)
+                )
+
+        if not rrf_scores:
+            return []
+
+        # Sort by RRF score descending
+        sorted_results = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
+
+        # Apply post_filter
+        if post_filter is not None:
+            sorted_results = [
+                (key, score) for key, score in sorted_results if post_filter(key, score)
+            ]
+
+        # Take top-K
+        sorted_results = sorted_results[:limit]
+
+        if not sorted_results:
+            return []
+
+        # Hydrate model instances
+        pipe = POPOTO_REDIS_DB.pipeline()
+        for key, _score in sorted_results:
+            pipe.hgetall(key)
+        hashes = pipe.execute()
+
+        instances = []
+        for (key, score), data in zip(sorted_results, hashes):
+            if data:
+                instance = decode_popoto_model_hashmap(model_class, data)
+                instance._rrf_score = score
+                instances.append(instance)
+
+        if not self._no_track:
+            _fire_on_read(model_class, instances)
+
+        return instances
+
     def _resolve_index(self, model_class, field_name, weight, uid, temp_keys):
         """Resolve a field name to a Redis sorted set key for composite scoring.
 
@@ -1928,6 +2096,60 @@ class Query:
             post_filter=post_filter,
             co_occurrence_boost=co_occurrence_boost,
             temperature=temperature,
+        )
+
+    def keyword_search(
+        self,
+        query_text: str,
+        field: str = None,
+        limit: int = 10,
+    ) -> list:
+        """Return instances ranked by BM25 keyword relevance.
+
+        Convenience method that creates a QueryBuilder and delegates.
+
+        Args:
+            query_text: The search query string.
+            field: Name of the BM25Field to search. Optional when the model
+                has exactly one BM25Field.
+            limit: Maximum results to return. Default 10.
+
+        Returns:
+            List of model instances ranked by BM25 score (descending).
+        """
+        builder = QueryBuilder(self)
+        return builder.keyword_search(
+            query_text=query_text,
+            field=field,
+            limit=limit,
+        )
+
+    def fuse(
+        self,
+        k: int = 60,
+        limit: int = 10,
+        post_filter: Optional[Callable] = None,
+        **ranked_lists,
+    ) -> list:
+        """Reciprocal Rank Fusion across heterogeneous ranked lists.
+
+        Convenience method that creates a QueryBuilder and delegates.
+
+        Args:
+            k: RRF constant (default 60).
+            limit: Maximum results to return. Default 10.
+            post_filter: Optional (redis_key, rrf_score) -> bool callback.
+            **ranked_lists: Named ranked lists of (redis_key, score) tuples.
+
+        Returns:
+            List of model instances ranked by RRF score (descending).
+        """
+        builder = QueryBuilder(self)
+        return builder.fuse(
+            k=k,
+            limit=limit,
+            post_filter=post_filter,
+            **ranked_lists,
         )
 
     def _execute_filter(

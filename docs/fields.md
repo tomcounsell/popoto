@@ -800,6 +800,56 @@ harmless for a pre-filter use case.
 See [Agent Memory -- ExistenceFilter](features/agent-memory.md#existencefilter) for the
 full agent memory context.
 
+## BM25Field
+
+`BM25Field` provides ranked keyword search using BM25 scoring, backed entirely by Redis
+sorted sets and Lua scripts. No Redis modules required -- works on both Redis and Valkey.
+
+Like `ExistenceFilter`, `BM25Field` is a "side-effect field" -- it does not store a value
+on the model instance. It maintains an inverted index and corpus statistics via
+`on_save()`/`on_delete()` hooks, and computes BM25 scores at query time server-side.
+
+```python
+from popoto import Model, AutoKeyField
+from popoto.fields.bm25_field import BM25Field
+from popoto.fields.content_field import ContentField
+
+class Memory(Model):
+    key = AutoKeyField()
+    raw_content = ContentField()
+    content_bm25 = BM25Field(source="raw_content")
+```
+
+Search via `keyword_search()` on the query builder:
+
+```python
+results = Memory.query.keyword_search("redis deployment timeout", limit=10)
+for memory in results:
+    print(f"{memory.key}: {memory._bm25_score:.3f}")
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `source` | `str` | Yes | Name of the field to read content from for indexing. |
+
+| Class Constant | Default | Description |
+|----------------|---------|-------------|
+| `BM25_K1` | `1.2` | Term frequency saturation parameter. |
+| `BM25_B` | `0.75` | Document length normalization parameter (0 = none, 1 = full). |
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `search(model_class, field_name, query_text, limit)` | `list[tuple[str, float]]` | Raw BM25 search returning `(redis_key, score)` tuples. |
+| `recompute_stats(model_class, field_name)` | `None` | Recompute avgdl/n from scratch to correct floating-point drift. |
+
+**Tokenization** uses the same shared tokenizer as ExistenceFilter (`fields/_tokenizer.py`):
+lowercase, split on non-word characters, filter tokens shorter than 3 characters, remove
+stop words. BM25Field preserves duplicate tokens (`unique=False`) for accurate term
+frequency counts.
+
+See [Hybrid Retrieval](features/hybrid-retrieval.md) for the full feature documentation
+including RRF fusion and the hybrid retrieval recipe.
+
 ## FrequencySketch
 
 `FrequencySketch` is a Count-Min Sketch for approximate frequency counting. Tracks how
