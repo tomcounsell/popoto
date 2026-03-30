@@ -15,18 +15,16 @@ Usage:
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import Any, Dict, List, Optional, Tuple
 
-from .scenarios.base import Scenario
 from .scenarios.factory import ScenarioFactory, ScenarioSeed
-from .split import SplitRunner, ValidationResult, make_split
+from .scenarios.family_factory import FamilyScenarioFactory
+from .split import SplitRunner, make_split
 from .sweep import ResultsAggregator, SweepRunner
 
-logger = logging.getLogger("POPOTO.Benchmark.Ratchet")
-
-
-# Import tier definitions from run_sweeps
 from .run_sweeps import TIER1_SWEEPS, TIER2_SWEEPS, TIER3_SWEEPS
+
+logger = logging.getLogger("POPOTO.Benchmark.Ratchet")
 
 
 @dataclass
@@ -162,11 +160,14 @@ class RatchetLoop:
         self.seeds = seeds
         train_seeds, val_seeds = make_split(seeds)
 
-        # Create scenario classes
+        # Create scenario classes: generic + family-specific
         self.train_scenarios = ScenarioFactory.create_all(train_seeds)
         self.val_scenarios = ScenarioFactory.create_all(val_seeds)
 
-        # Build runners
+        # Family scenarios are used per-constant in the run() method
+        self._family_scenarios = FamilyScenarioFactory.create_all()
+
+        # Build runners (generic baseline -- family scenarios added per-constant)
         self.split_runner = SplitRunner(self.train_scenarios, self.val_scenarios)
 
         # For cliff detection, we need a separate aggregator with train data
@@ -258,8 +259,14 @@ class RatchetLoop:
 
             current_default = self._get_current_default(constant_name)
 
-            # Run sweep and validate
-            result = self.split_runner.sweep_and_validate(
+            # Build per-constant runner: family scenarios + generic scenarios
+            family_for_constant = FamilyScenarioFactory.for_constant(constant_name)
+            train_with_family = family_for_constant + self.train_scenarios
+            val_with_family = family_for_constant + self.val_scenarios
+            per_constant_runner = SplitRunner(train_with_family, val_with_family)
+
+            # Run sweep and validate using family-aware runner
+            result = per_constant_runner.sweep_and_validate(
                 constant_name,
                 values,
                 current_default=current_default,
@@ -270,7 +277,10 @@ class RatchetLoop:
             val_delta = result.delta
 
             # Check sensitivity: if train variance is too low, mark as no_sensitivity
-            if abs(train_delta) < self.sensitivity_threshold and abs(val_delta) < self.sensitivity_threshold:
+            if (
+                abs(train_delta) < self.sensitivity_threshold
+                and abs(val_delta) < self.sensitivity_threshold
+            ):
                 decision = RatchetDecision(
                     constant_name=constant_name,
                     current_value=current_default,
