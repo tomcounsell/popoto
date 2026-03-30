@@ -4,12 +4,13 @@ Complete reference for all public classes, methods, and functions in the Popoto 
 
 ```python
 from popoto import Model, Field, KeyField, AutoKeyField, UniqueKeyField
+from popoto import IndexedField, UniqueField
 from popoto import SortedField, SortedKeyField, GeoField, DatetimeField, Relationship
 from popoto import DecayingSortedField, CyclicDecayField, TemporalPeriod, InteractionWeight, Defaults
 from popoto import AccessTrackerMixin, ObservationProtocol, RecallProposal, ConfidenceField, PredictionLedgerMixin
 from popoto import ContentField, EmbeddingField
 from popoto import Publisher, Subscriber
-from popoto import ModelException, QueryException, PublisherException, SubscriberException
+from popoto import ModelException, KeyMutationError, QueryException, PublisherException, SubscriberException
 ```
 
 ---
@@ -66,6 +67,7 @@ Model.save(
     ignore_errors: bool = False,
     skip_auto_now: bool = False,
     update_fields: list = None,
+    migrate_key: bool = False,
     **kwargs,
 )
 ```
@@ -84,8 +86,11 @@ partial saves via `update_fields`.
 | `ignore_errors` | `bool` | If `True`, log validation errors instead of raising `ModelException`. |
 | `skip_auto_now` | `bool` | If `True`, suppress `auto_now` timestamp updates. Useful during migrations. |
 | `update_fields` | `list` | Optional list of field names for partial save. Only the listed fields are written to Redis and only their `on_save` hooks fire. An empty list is a no-op. `auto_now` fields are excluded unless explicitly listed. |
+| `migrate_key` | `bool` | If `True`, allow KeyField value changes (key migration). By default, changing a KeyField value after initial save raises `KeyMutationError`. |
 
 **Returns:** Redis `HSET` response (int) or pipeline.
+
+**Raises:** `KeyMutationError` if a KeyField value has changed and `migrate_key` is not `True`.
 
 ```python
 restaurant = Restaurant(name="Sushi Spot", cuisine="Japanese", rating=4.8)
@@ -979,6 +984,60 @@ class Customer(Model):
     username = KeyField()
     email = UniqueKeyField()
 ```
+
+### IndexedField
+
+```python
+IndexedField(type=str, null=True, unique=False, **kwargs)
+```
+
+A non-key field with Set-based secondary indexing. Enables efficient `filter()` queries
+without making the field part of the model's Redis key. Equivalent to `Field(indexed=True)`.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `type` | `type` | `str` | Python type for the value. |
+| `null` | `bool` | `True` | Allow `None` values. |
+| `unique` | `bool` | `False` | Enforce per-value uniqueness. |
+
+**Supported filter lookups:**
+
+| Lookup | Example | Description |
+|--------|---------|-------------|
+| exact | `status="active"` | Exact match (SMEMBERS). |
+| `__isnull` | `status__isnull=True` | Match `None` values. |
+| `__startswith` | `status__startswith="act"` | Prefix match (SCAN). |
+| `__endswith` | `status__endswith="ive"` | Suffix match (SCAN). |
+| `__in` | `status__in=["active", "pending"]` | Match any value (SUNION). |
+
+```python
+class Order(Model):
+    order_id = AutoKeyField()
+    status = IndexedField(type=str)
+    region = IndexedField(type=str, null=True)
+```
+
+See [Indexed Fields](indexed_fields.md) for the full guide.
+
+### UniqueField
+
+```python
+UniqueField(type=str, **kwargs)
+```
+
+An indexed non-key field with a per-value uniqueness constraint. Cannot be null.
+Equivalent to `Field(indexed=True, unique=True)`.
+
+!!! warning
+    Setting `unique=False` or `null=True` raises `ModelException`.
+
+```python
+class User(Model):
+    user_id = AutoKeyField()
+    email = UniqueField(type=str)
+```
+
+Supports the same filter lookups as `IndexedField`. See [Indexed Fields](indexed_fields.md).
 
 ### SortedField
 
@@ -1874,6 +1933,27 @@ Automatically reported when [error reporting](configuration.md#error-reporting-o
 
 ```python
 from popoto import ModelException
+```
+
+### KeyMutationError
+
+```python
+class KeyMutationError(ModelException)
+```
+
+Raised when a `KeyField` value is changed after initial save and `save()` is called without
+`migrate_key=True`. This prevents accidental identity changes that could orphan references.
+
+```python
+from popoto import KeyMutationError
+
+instance = MyModel.query.get(name="old_name")
+instance.name = "new_name"
+
+try:
+    instance.save()  # Raises KeyMutationError
+except KeyMutationError:
+    instance.save(migrate_key=True)  # Intentional migration succeeds
 ```
 
 ### QueryException

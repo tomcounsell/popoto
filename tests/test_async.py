@@ -230,9 +230,9 @@ async def test_async_update_and_save():
         project_key="valor", status="pending", priority=1, created_at=1.0
     )
 
-    # Update status
+    # Update status (KeyField mutation requires migrate_key=True)
     job.status = "running"
-    await job.async_save()
+    await job.async_save(migrate_key=True)
 
     # Reload and verify - need to use new key since status is a KeyField
     loaded = TestJob.query.get(job_id=job.job_id, project_key="valor", status="running")

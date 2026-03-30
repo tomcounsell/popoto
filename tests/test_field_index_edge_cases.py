@@ -198,9 +198,9 @@ class TestSortedFieldPartitionKeyChange:
         members = POPOTO_REDIS_DB.zrangebyscore(old_ss_key, "-inf", "+inf")
         assert len(members) == 1
 
-        # Mutate: move to "veggie" category
+        # Mutate: move to "veggie" category (KeyField change requires migrate_key)
         item.category = "veggie"
-        item.save()
+        item.save(migrate_key=True)
 
         # Query-level check
         fruit_items = EdgeMenuItem.query.filter(category="fruit", price__gte=0)
@@ -216,9 +216,9 @@ class TestSortedFieldPartitionKeyChange:
         new_members = POPOTO_REDIS_DB.zrangebyscore(new_ss_key, "-inf", "+inf")
 
         # This is the critical assertion -- old partition should not have orphan
-        assert (
-            len(old_members) == 0
-        ), "Old partition sorted set should be empty after key change"
+        assert len(old_members) == 0, (
+            "Old partition sorted set should be empty after key change"
+        )
         assert len(new_members) == 1, "Item should be in new partition sorted set"
 
 
@@ -315,9 +315,9 @@ class TestGeoFieldCoordinateUpdate:
             radius=10,
             unit="km",
         )
-        assert (
-            len(near_rome_after) == 0
-        ), "Place should no longer be near Rome after coordinate update"
+        assert len(near_rome_after) == 0, (
+            "Place should no longer be near Rome after coordinate update"
+        )
 
 
 # ===========================================================================
@@ -341,21 +341,21 @@ class TestKeyFieldNonNullToNull:
         # Query-level check
         assert len(EdgeNullableKey.query.filter(status="active")) == 1
 
-        # Mutate: set to None
+        # Mutate: set to None (KeyField change requires migrate_key)
         item.status = None
-        item.save()
+        item.save(migrate_key=True)
 
         # Query-level: should no longer appear in "active" filter
         active_items = EdgeNullableKey.query.filter(status="active")
-        assert (
-            len(active_items) == 0
-        ), "Item should not appear in 'active' after null transition"
+        assert len(active_items) == 0, (
+            "Item should not appear in 'active' after null transition"
+        )
 
         # Raw Redis: old set should be empty
         old_members = POPOTO_REDIS_DB.smembers(active_key)
-        assert (
-            len(old_members) == 0
-        ), "Old index set should be empty after null transition"
+        assert len(old_members) == 0, (
+            "Old index set should be empty after null transition"
+        )
 
         # The item should be in the "None" set
         null_members = POPOTO_REDIS_DB.smembers(none_key)
@@ -381,9 +381,9 @@ class TestKeyFieldNullToNonNull:
         null_items = EdgeNullableKey.query.filter(status__isnull=True)
         assert len(null_items) == 1
 
-        # Mutate: set a real value
+        # Mutate: set a real value (KeyField change requires migrate_key)
         item.status = "active"
-        item.save()
+        item.save(migrate_key=True)
 
         # Query-level
         active_items = EdgeNullableKey.query.filter(status="active")
@@ -426,7 +426,7 @@ class TestUniqueKeyFieldMutationCleanup:
         # Mutate item1's email
         # UniqueKeyField is part of the Redis key, so this changes the key
         item1.email = "alice_new@example.com"
-        item1.save()
+        item1.save(migrate_key=True)
 
         # The new email index should contain the item
         new_members = POPOTO_REDIS_DB.smembers(new_key)
@@ -435,9 +435,9 @@ class TestUniqueKeyFieldMutationCleanup:
         # The old email index should be cleaned up
         old_members = POPOTO_REDIS_DB.smembers(old_key)
 
-        assert (
-            len(old_members) == 0
-        ), "Old email index should be empty after value change"
+        assert len(old_members) == 0, (
+            "Old email index should be empty after value change"
+        )
 
         # Another instance should now be able to use the old email
         item2 = EdgeUniqueItem.create(email="alice@example.com", name="New Alice")
@@ -472,9 +472,9 @@ class TestPartialSaveKeyField:
 
         assert len(POPOTO_REDIS_DB.smembers(draft_key)) == 1
 
-        # Partial save: update only status
+        # Partial save: update only status (KeyField change requires migrate_key)
         item.status = "published"
-        item.save(update_fields=["status"])
+        item.save(update_fields=["status"], migrate_key=True)
 
         # Raw Redis: check if old index was cleaned up
         draft_members = POPOTO_REDIS_DB.smembers(draft_key)
@@ -485,9 +485,9 @@ class TestPartialSaveKeyField:
 
         # After fix for #156, partial save detects obsolete_redis_key and
         # cleans up old index entries properly.
-        assert (
-            len(draft_members) == 0
-        ), "Draft index should be empty after partial save to published"
+        assert len(draft_members) == 0, (
+            "Draft index should be empty after partial save to published"
+        )
 
 
 # ===========================================================================
@@ -515,30 +515,30 @@ class TestPartialSaveIndexCleanup:
 
         assert len(POPOTO_REDIS_DB.smembers(new_key)) == 1
 
-        # First partial save: new -> processing
+        # First partial save: new -> processing (KeyField change requires migrate_key)
         item.status = "processing"
-        item.save(update_fields=["status"])
+        item.save(update_fields=["status"], migrate_key=True)
 
         new_members = POPOTO_REDIS_DB.smembers(new_key)
         processing_members = POPOTO_REDIS_DB.smembers(processing_key)
 
         # After fix for #156, partial save handles obsolete_redis_key cleanup.
-        assert (
-            len(new_members) == 0
-        ), "New index should be empty after partial save to processing"
+        assert len(new_members) == 0, (
+            "New index should be empty after partial save to processing"
+        )
 
         assert len(processing_members) == 1
 
-        # Second partial save: processing -> done
+        # Second partial save: processing -> done (KeyField change requires migrate_key)
         item.status = "done"
-        item.save(update_fields=["status"])
+        item.save(update_fields=["status"], migrate_key=True)
 
-        assert (
-            len(POPOTO_REDIS_DB.smembers(processing_key)) == 0
-        ), "Processing index should be empty after second partial save"
-        assert (
-            len(POPOTO_REDIS_DB.smembers(done_key)) == 1
-        ), "Done index should have the item"
+        assert len(POPOTO_REDIS_DB.smembers(processing_key)) == 0, (
+            "Processing index should be empty after second partial save"
+        )
+        assert len(POPOTO_REDIS_DB.smembers(done_key)) == 1, (
+            "Done index should have the item"
+        )
 
 
 # ===========================================================================
@@ -563,9 +563,9 @@ class TestCompositeKeyFieldChange:
 
         old_redis_key = item.db_key.redis_key
 
-        # Mutate one key field: region changes
+        # Mutate one key field: region changes (requires migrate_key)
         item.region = "us-west"
-        item.save()
+        item.save(migrate_key=True)
 
         new_redis_key = item.db_key.redis_key
         assert old_redis_key != new_redis_key, "Redis key should change"
@@ -576,18 +576,18 @@ class TestCompositeKeyFieldChange:
 
         assert len(new_region_members) == 1, "New region index should have the item"
 
-        assert (
-            len(old_region_members) == 0
-        ), "Old region index should be empty after composite key change"
+        assert len(old_region_members) == 0, (
+            "Old region index should be empty after composite key change"
+        )
 
         # user_id index should contain the new key, not the old key
         user_members = POPOTO_REDIS_DB.smembers(user_key)
         assert len(user_members) == 1, "user_id index should have exactly one entry"
 
         # The old Redis key should no longer exist
-        assert not POPOTO_REDIS_DB.exists(
-            old_redis_key
-        ), "Old Redis key should be deleted"
+        assert not POPOTO_REDIS_DB.exists(old_redis_key), (
+            "Old Redis key should be deleted"
+        )
 
 
 # ===========================================================================
@@ -626,20 +626,20 @@ class TestDeleteAllIndexCleanup:
         assert EdgeMenuItem.query.count() == 0
 
         # Sorted set indexes should be empty
-        assert (
-            len(POPOTO_REDIS_DB.zrangebyscore(food_ss_key, "-inf", "+inf")) == 0
-        ), "Food sorted set should be empty after delete_all"
-        assert (
-            len(POPOTO_REDIS_DB.zrangebyscore(drink_ss_key, "-inf", "+inf")) == 0
-        ), "Drink sorted set should be empty after delete_all"
+        assert len(POPOTO_REDIS_DB.zrangebyscore(food_ss_key, "-inf", "+inf")) == 0, (
+            "Food sorted set should be empty after delete_all"
+        )
+        assert len(POPOTO_REDIS_DB.zrangebyscore(drink_ss_key, "-inf", "+inf")) == 0, (
+            "Drink sorted set should be empty after delete_all"
+        )
 
         # KeyField indexes should be empty
-        assert (
-            len(POPOTO_REDIS_DB.smembers(food_kf_key)) == 0
-        ), "Food key field set should be empty after delete_all"
-        assert (
-            len(POPOTO_REDIS_DB.smembers(drink_kf_key)) == 0
-        ), "Drink key field set should be empty after delete_all"
+        assert len(POPOTO_REDIS_DB.smembers(food_kf_key)) == 0, (
+            "Food key field set should be empty after delete_all"
+        )
+        assert len(POPOTO_REDIS_DB.smembers(drink_kf_key)) == 0, (
+            "Drink key field set should be empty after delete_all"
+        )
 
 
 # ===========================================================================
@@ -673,11 +673,11 @@ class TestRapidCreateMutateDelete:
         # Verify item exists in all indexes
         assert len(POPOTO_REDIS_DB.smembers(status_key)) == 1
 
-        # Mutate
+        # Mutate (status is a KeyField, requires migrate_key)
         item.status = "running"
         item.score = 99.0
         item.location = GeoField.Coordinates(latitude=48.8566, longitude=2.3522)
-        item.save()
+        item.save(migrate_key=True)
 
         running_key = _keyfield_set_key(EdgeLifecycle, "status", "running")
 
@@ -726,13 +726,13 @@ class TestRelationshipClearToNone:
 
         # Raw Redis: player should be removed from team's relationship set
         still_in_team = POPOTO_REDIS_DB.sismember(set_key_team, player.db_key.redis_key)
-        assert (
-            not still_in_team
-        ), "Player should be removed from team's relationship set"
+        assert not still_in_team, (
+            "Player should be removed from team's relationship set"
+        )
 
-        assert (
-            len(team_players) == 0
-        ), "Player should not appear in team query after clearing relationship"
+        assert len(team_players) == 0, (
+            "Player should not appear in team query after clearing relationship"
+        )
 
         # Note: The current on_save design does not add instances to a "None"
         # relationship set when the relationship is cleared. Setting to None

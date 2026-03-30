@@ -184,6 +184,7 @@ class Field(metaclass=FieldBase):
     max_length: int = None
     default = ""
     sorted: bool = False
+    indexed: bool = False
 
     def __init__(self, **kwargs):
         """
@@ -215,6 +216,7 @@ class Field(metaclass=FieldBase):
             "max_length": None,
             "default": None,
             "sorted": False,
+            "indexed": False,
         }
         # set field_options, let kwargs override
         field_options = self.field_defaults.copy()

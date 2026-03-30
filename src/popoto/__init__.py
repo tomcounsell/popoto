@@ -4,6 +4,7 @@ from .exceptions import (
     PublisherException,
     SubscriberException,
     SkipSaveException,
+    KeyMutationError,
 )
 from .fields.field import Field
 from .fields.shortcuts import (
@@ -24,6 +25,8 @@ from .fields.shortcuts import (
     UniqueKeyField,
     SortedField,
     SortedKeyField,
+    IndexedField,
+    UniqueField,
 )
 from .fields.decaying_sorted_field import DecayingSortedField
 from .fields.access_tracker import AccessTrackerMixin
@@ -150,6 +153,8 @@ __all__ = [
     "UniqueKeyField",
     "SortedField",
     "SortedKeyField",
+    "IndexedField",
+    "UniqueField",
     "DecayingSortedField",
     "AccessTrackerMixin",
     "WriteFilterMixin",
@@ -177,6 +182,7 @@ __all__ = [
     "Publisher",
     "Subscriber",
     "ModelException",
+    "KeyMutationError",
     "QueryException",
     "PublisherException",
     "SubscriberException",

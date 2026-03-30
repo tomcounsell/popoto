@@ -154,7 +154,7 @@ class TestAtomicSave:
 
         # Change the status (a KeyField), which changes the redis key
         obj.status = "new_status"
-        obj.save()
+        obj.save(migrate_key=True)
 
         new_key = obj.db_key.redis_key
         assert old_key != new_key
