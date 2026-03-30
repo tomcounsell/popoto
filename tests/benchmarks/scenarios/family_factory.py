@@ -148,8 +148,10 @@ class DecayFamilyScenario(Scenario):
             ss_key = f"{instance.db_key.redis_key}:relevance"
             try:
                 POPOTO_REDIS_DB.zadd(ss_key, {instance.db_key.redis_key: old_time})
-            except Exception:
-                pass
+            except Exception as e:
+                return ScenarioResult(
+                    status="error", error_message=f"zadd age manipulation failed: {e}"
+                )
 
     def run(self) -> ScenarioResult:
         if len(self._instances) < 3:
@@ -306,8 +308,11 @@ class ConfidenceFamilyScenario(Scenario):
             with apply_overrides(self.overrides):
                 try:
                     ObservationProtocol.on_context_used(self._instances, outcome_map)
-                except Exception:
-                    pass
+                except Exception as e:
+                    return ScenarioResult(
+                        status="error",
+                        error_message=f"on_context_used round {round_idx} failed: {e}",
+                    )
 
     def run(self) -> ScenarioResult:
         if len(self._instances) < 3:
@@ -475,13 +480,16 @@ class WriteFilterFamilyScenario(Scenario):
             imp = inst.importance or 0
             if 0.15 <= imp <= 0.50:
                 # Boost confidence for mid-importance records
-                for _ in range(4):
+                for boost_round in range(4):
                     try:
                         ConfidenceField.update_confidence(
                             inst, "certainty", signal=0.95
                         )
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        return ScenarioResult(
+                            status="error",
+                            error_message=f"confidence boost failed round {boost_round}: {e}",
+                        )
 
     def run(self) -> ScenarioResult:
         if len(self._instances) < 3:
@@ -536,7 +544,9 @@ class WriteFilterFamilyScenario(Scenario):
             if idx is not None and idx in relevant_indices:
                 relevant_ids.add(key)
 
-        n_filtered_relevant = 0
+        # Count how many relevant records survived the write filter
+        # (relevant_ids only contains survivors, so its size is n_relevant_survived)
+        n_relevant_survived = len(relevant_ids)
 
         return ScenarioResult(
             retrieved_ids=retrieved_ids,
@@ -547,9 +557,8 @@ class WriteFilterFamilyScenario(Scenario):
                 "seed_id": self._seed.seed_id,
                 "n_planned": self._seed.record_count,
                 "n_survived": len(self._instances),
-                "n_relevant_planned": len(relevant_ids),
-                "n_relevant_survived": len(relevant_ids),
-                "n_filtered_relevant": n_filtered_relevant,
+                "n_relevant_planned": n_relevant,
+                "n_relevant_survived": n_relevant_survived,
                 "wf_min_threshold": self.overrides.get("_wf_min_threshold", 0.2),
             },
         )
@@ -648,8 +657,11 @@ class CoOccurrenceFamilyScenario(Scenario):
                         hop1_pk,
                         initial_weight=initial_weight,
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    return ScenarioResult(
+                        status="error",
+                        error_message=f"link seed->hop1 failed: {e}",
+                    )
 
         # Link hop1 <-> hop2 (one more hop away)
         for hop1_inst in self._clusters["hop1"]:
@@ -663,8 +675,11 @@ class CoOccurrenceFamilyScenario(Scenario):
                         hop2_pk,
                         initial_weight=initial_weight,
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    return ScenarioResult(
+                        status="error",
+                        error_message=f"link hop1->hop2 failed: {e}",
+                    )
 
         self._assoc_field = assoc_field
 
@@ -854,17 +869,21 @@ class FamilyScenarioFactory:
                     variant=variant,
                 )
 
-                # Create a unique subclass per variant
+                # Create a unique subclass per variant.
+                # Use default parameter trick to capture loop variables by value,
+                # avoiding late-binding closure bug where all variants share the
+                # last iteration's values.
                 variant_name = f"family_{family_name}_v{variant}"
-                _seed = seed
-                _cls = scenario_class
 
-                class VariantScenario(_cls):
-                    name = variant_name
+                def _make_variant(cls=scenario_class, s=seed, vname=variant_name):
+                    class VariantScenario(cls):
+                        name = vname
 
-                    def __init__(self, overrides=None):
-                        super().__init__(overrides=overrides, seed=_seed)
+                        def __init__(self, overrides=None, _bound_seed=s):
+                            super().__init__(overrides=overrides, seed=_bound_seed)
 
-                scenarios.append(VariantScenario)
+                    return VariantScenario
+
+                scenarios.append(_make_variant())
 
         return scenarios

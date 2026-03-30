@@ -323,15 +323,12 @@ def run_parametric(tier_sweeps, tier_name, aggregator):
     logger.info("Generating parametric + family-aware scenarios...")
     # Generic scenarios for baseline (reduced count since families carry the load)
     generic_classes = ScenarioFactory.create_all(n=20)
-    # Family-specific scenarios with variants for diversity
-    family_classes = FamilyScenarioFactory.create_varied(n_per_family=3)
 
     logger.info(
-        "Starting %s parametric sweeps (%d constants, %d generic + %d family scenarios)...",
+        "Starting %s parametric sweeps (%d constants, %d generic scenarios)...",
         tier_name,
         len(tier_sweeps),
         len(generic_classes),
-        len(family_classes),
     )
     tier_start = time.monotonic()
 
