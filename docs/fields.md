@@ -396,6 +396,8 @@ functionally identical to `Field(type=...)`.
 | `DateField`     | `Field(type=date)`       |
 | `DatetimeField` | `Field(type=datetime)`   |
 | `TimeField`     | `Field(type=time)`       |
+| `IndexedField`  | `Field(indexed=True)`    |
+| `UniqueField`   | `Field(indexed=True, unique=True)` |
 
 Import shortcuts from `popoto.fields.shortcuts`:
 
@@ -594,6 +596,74 @@ early_week = DailySpecial.query.filter(day_number__lte=2)
 print(len(early_week))
 # => 2
 ```
+
+## IndexedField
+
+`IndexedField` provides Set-based secondary indexing on non-key fields. Unlike
+`KeyField`, an `IndexedField` does not become part of the Redis key -- it only
+enables efficient exact-match queries via `filter()`.
+
+This decouples querying from identity: you can filter on `status`, `category`, or
+`region` without those fields affecting the Redis storage key.
+
+```python
+from popoto import Model, AutoKeyField, IndexedField, Field
+
+class Order(Model):
+    order_id = AutoKeyField()
+    status = IndexedField(type=str)
+    region = IndexedField(type=str, null=True)
+    notes = Field(type=str)
+```
+
+Query indexed fields with exact match, `__in`, `__isnull`, `__startswith`, and
+`__endswith` lookups:
+
+```python
+Order.query.filter(status="shipped")
+Order.query.filter(status__in=["pending", "processing"])
+Order.query.filter(region__startswith="US-")
+Order.query.filter(region__isnull=False)
+```
+
+You can also enable indexing on a plain `Field` with `indexed=True`:
+
+```python
+category = Field(type=str, indexed=True)  # equivalent to IndexedField(type=str)
+```
+
+See [Indexed Fields](indexed_fields.md) for full details on index key patterns,
+performance characteristics, and the comparison table.
+
+## UniqueField
+
+`UniqueField` combines secondary indexing with a per-value uniqueness constraint. It
+guarantees that no two model instances share the same value for this field, without
+making the field part of the Redis key.
+
+```python
+from popoto import Model, AutoKeyField, UniqueField, Field
+
+class User(Model):
+    user_id = AutoKeyField()
+    email = UniqueField(type=str)
+    name = Field(type=str)
+
+user = User.create(email="alice@example.com", name="Alice")
+
+# Duplicate email raises ModelException
+try:
+    User.create(email="alice@example.com", name="Not Alice")
+except Exception as e:
+    print(e)
+    # => Uniqueness violation on User.email: value 'alice@example.com' is already taken
+```
+
+`UniqueField` cannot be null and cannot have `unique=False`. It supports the same
+query lookups as `IndexedField`.
+
+See [Indexed Fields](indexed_fields.md) for the uniqueness trade-offs under
+concurrent writes and the full comparison table.
 
 ## DecayingSortedField
 
