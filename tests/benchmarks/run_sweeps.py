@@ -64,7 +64,21 @@ TIER1_SWEEPS = {
 
 TIER2_SWEEPS = {
     "ACTED_CYCLE_STRENGTHEN_FACTOR": [
-        0.3, 0.5, 0.8, 0.9, 0.95, 1.0, 1.02, 1.05, 1.08, 1.1, 1.12, 1.15, 1.2, 1.5, 2.0,
+        0.3,
+        0.5,
+        0.8,
+        0.9,
+        0.95,
+        1.0,
+        1.02,
+        1.05,
+        1.08,
+        1.1,
+        1.12,
+        1.15,
+        1.2,
+        1.5,
+        2.0,
     ],
     "DISMISSED_CYCLE_WEAKEN_FACTOR": [0.3, 0.5, 0.8, 1.0, 1.2, 1.5, 2.0],
     "CONTRADICTED_CYCLE_WEAKEN_FACTOR": [0.3, 0.5, 0.8, 1.0, 1.2, 1.5, 2.0],
@@ -102,8 +116,18 @@ TIER3_SWEEPS = {
 
 INTERACTION_PAIRS = [
     # Expanded existing pairs to 5×5 grids (25 combinations each)
-    ("decay_rate", [0.1, 0.3, 0.5, 0.7, 0.9], "initial_confidence", [0.1, 0.3, 0.5, 0.7, 0.9]),
-    ("_wf_min_threshold", [0.05, 0.1, 0.2, 0.3, 0.5], "initial_weight", [0.01, 0.05, 0.1, 0.2, 0.5]),
+    (
+        "decay_rate",
+        [0.1, 0.3, 0.5, 0.7, 0.9],
+        "initial_confidence",
+        [0.1, 0.3, 0.5, 0.7, 0.9],
+    ),
+    (
+        "_wf_min_threshold",
+        [0.05, 0.1, 0.2, 0.3, 0.5],
+        "initial_weight",
+        [0.01, 0.05, 0.1, 0.2, 0.5],
+    ),
     (
         "ACTED_CONFIDENCE_SIGNAL",
         [0.3, 0.5, 0.7, 0.8, 0.9],
@@ -155,7 +179,20 @@ TIER4_SWEEPS = {
     "max_items": [3, 5, 7, 10, 15, 20, 30],
     "max_tokens": [500, 1000, 2000, 4000, 6000, 8000, 12000],
     "default_importance": [
-        0.05, 0.1, 0.12, 0.15, 0.18, 0.2, 0.22, 0.25, 0.28, 0.3, 0.35, 0.5, 0.7, 0.9,
+        0.05,
+        0.1,
+        0.12,
+        0.15,
+        0.18,
+        0.2,
+        0.22,
+        0.25,
+        0.28,
+        0.3,
+        0.35,
+        0.5,
+        0.7,
+        0.9,
     ],
     "_wf_min_threshold": [0.05, 0.1, 0.2, 0.3, 0.5],
     "initial_confidence": [0.1, 0.3, 0.5, 0.7, 0.9],
@@ -274,23 +311,43 @@ def run_tier4_interactions(runner, aggregator):
 
 
 def run_parametric(tier_sweeps, tier_name, aggregator):
-    """Run sweeps using parametrically generated scenarios."""
-    from tests.benchmarks.scenarios.factory import ScenarioFactory
+    """Run sweeps using family-aware and parametrically generated scenarios.
 
-    logger.info("Generating parametric scenarios...")
-    scenario_classes = ScenarioFactory.create_all(n=50)
-    runner = SweepRunner(scenario_classes)
+    For each constant, uses family-specific scenarios that exercise the
+    constant's actual code path, combined with a sample of generic parametric
+    scenarios for baseline coverage.
+    """
+    from tests.benchmarks.scenarios.factory import ScenarioFactory
+    from tests.benchmarks.scenarios.family_factory import FamilyScenarioFactory
+
+    logger.info("Generating parametric + family-aware scenarios...")
+    # Generic scenarios for baseline (reduced count since families carry the load)
+    generic_classes = ScenarioFactory.create_all(n=20)
 
     logger.info(
-        "Starting %s parametric sweeps (%d constants, %d scenarios)...",
+        "Starting %s parametric sweeps (%d constants, %d generic scenarios)...",
         tier_name,
         len(tier_sweeps),
-        len(scenario_classes),
+        len(generic_classes),
     )
     tier_start = time.monotonic()
 
     for constant_name, values in tier_sweeps.items():
-        logger.info("  Sweeping %s over %s", constant_name, values)
+        # Get family-specific scenarios for this constant
+        family_for_constant = FamilyScenarioFactory.for_constant(constant_name)
+        # Combine: family scenarios first (they exercise the code path),
+        # then generic scenarios (baseline coverage)
+        combined = family_for_constant + generic_classes
+        runner = SweepRunner(combined)
+
+        logger.info(
+            "  Sweeping %s over %s (%d scenarios: %d family + %d generic)",
+            constant_name,
+            values,
+            len(combined),
+            len(family_for_constant),
+            len(generic_classes),
+        )
         results = runner.run_single_sweep(constant_name, values)
         aggregator.add_sweep(constant_name, results)
 
@@ -345,7 +402,7 @@ def main():
     # Ratchet mode: run the full pipeline and exit
     if args.ratchet:
         total_start = time.monotonic()
-        ratchet_summary = run_ratchet()
+        run_ratchet()
         total_elapsed = time.monotonic() - total_start
         logger.info("Ratchet complete in %.1fs", total_elapsed)
         return 0
