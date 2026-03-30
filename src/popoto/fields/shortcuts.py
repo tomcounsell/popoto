@@ -52,6 +52,7 @@ from .field import Field
 from .key_field_mixin import KeyFieldMixin
 from .auto_field_mixin import AutoFieldMixin
 from .sorted_field_mixin import SortedFieldMixin
+from .indexed_field_mixin import IndexedFieldMixin
 from ..exceptions import ModelException
 from ..redis_db import POPOTO_REDIS_DB
 
@@ -956,4 +957,92 @@ class SortedKeyField(SortedFieldMixin, KeyFieldMixin, Field):
                 - unique (bool): Enforce single-field uniqueness. Default: False.
                 - partition_by (str or tuple): Partition field(s) for the Sorted Set.
         """
+        super().__init__(**kwargs)
+
+
+class IndexedField(IndexedFieldMixin, Field):
+    """A non-key field with Set-based secondary indexing for exact-match queries.
+
+    IndexedField maintains a Redis Set index for the field value, enabling
+    efficient ``filter()`` queries without making the field part of the
+    model's Redis key (identity).
+
+    This decouples querying from identity: you can filter on ``status``,
+    ``email``, or ``category`` without those fields affecting the Redis
+    storage key.
+
+    Supports filter lookups: exact, ``__in``, ``__isnull``,
+    ``__startswith``, ``__endswith``.
+
+    Example:
+        class User(Model):
+            user_id = AutoKeyField()
+            status = IndexedField(type=str)
+            role = IndexedField(type=str, null=True)
+
+        User.query.filter(status="active")
+        User.query.filter(role__in=["admin", "moderator"])
+        User.query.filter(status__startswith="act")
+
+    See Also:
+        - UniqueField: IndexedField with uniqueness enforcement
+        - KeyField: For fields that should be part of the Redis key
+    """
+
+    def __init__(self, *args, **kwargs):
+        """
+        Initialize an IndexedField with secondary indexing enabled.
+
+        Args:
+            **kwargs: Passed through mixin chain. Common options:
+                - type: Field type (default: str)
+                - null (bool): Allow None values. Default: True
+                - unique (bool): Enforce uniqueness. Default: False
+                - max_length (int): Maximum string length
+        """
+        kwargs["indexed"] = True
+        super().__init__(**kwargs)
+
+
+class UniqueField(IndexedFieldMixin, Field):
+    """An indexed non-key field with a per-value uniqueness constraint.
+
+    UniqueField combines secondary indexing with uniqueness enforcement.
+    It guarantees that no two model instances can have the same value for
+    this field, while keeping it separate from the model's Redis key.
+
+    Cannot be null (unique + null is logically inconsistent).
+
+    Example:
+        class User(Model):
+            user_id = AutoKeyField()
+            email = UniqueField(type=str)
+
+        user1 = User.create(email="alice@example.com")
+        user2 = User.create(email="alice@example.com")  # Raises ModelException
+
+    See Also:
+        - IndexedField: For indexed fields without uniqueness
+        - UniqueKeyField: For unique fields that are part of the Redis key
+    """
+
+    def __init__(self, *args, **kwargs):
+        """
+        Initialize a UniqueField with indexing and uniqueness enforcement.
+
+        Args:
+            **kwargs: Passed through mixin chain. Restrictions:
+                - unique: Must be True (or omitted). Raises ModelException if False.
+                - null: Must be False (or omitted). Raises ModelException if True.
+
+        Raises:
+            ModelException: If unique=False or null=True is specified.
+        """
+        if kwargs.get("unique") is False:
+            raise ModelException("you may not set unique=False on this field type")
+        kwargs["unique"] = True
+        if kwargs.get("null") is True:
+            raise ModelException("you may not set null=True on this field type")
+        kwargs["null"] = False
+        kwargs["indexed"] = True
         super().__init__(**kwargs)

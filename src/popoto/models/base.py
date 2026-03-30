@@ -51,12 +51,13 @@ from .db_key import DB_key
 from .query import Query
 from ..fields.auto_field_mixin import AutoFieldMixin
 from ..fields.field import Field, VALID_FIELD_TYPES
+from ..fields.indexed_field_mixin import IndexedFieldMixin
 from ..fields.key_field_mixin import KeyFieldMixin
 from ..fields.sorted_field_mixin import SortedFieldMixin
 from ..fields.geo_field import GeoField
 from ..fields.relationship import Relationship
 from ..redis_db import POPOTO_REDIS_DB
-from ..exceptions import ModelException, SkipSaveException
+from ..exceptions import ModelException, KeyMutationError, SkipSaveException
 
 logger = logging.getLogger("POPOTO.model_base")
 
@@ -125,6 +126,7 @@ class ModelOptions:
         self.relationship_field_names = set()
         self.sorted_field_names = set()
         self.geo_field_names = set()
+        self.indexed_field_names = set()
         # todo: should this be a dict of related objects or just a list of field names?
         # self.related_fields = {}  # model becomes graph node
 
@@ -190,6 +192,8 @@ class ModelOptions:
             self.sorted_field_names.add(field_name)
         if isinstance(field, GeoField):
             self.geo_field_names.add(field_name)
+        if isinstance(field, IndexedFieldMixin):
+            self.indexed_field_names.add(field_name)
         # if isinstance(field, ListField):
         #     self.list_field_names.add(field_name)
         if isinstance(field, Relationship):
@@ -992,6 +996,7 @@ class Model(metaclass=ModelBase):
         ignore_errors: bool = False,
         skip_auto_now: bool = False,
         update_fields: list = None,
+        migrate_key: bool = False,
         **kwargs,
     ) -> Union["Pipeline", int, bool]:
         """Persist the model instance to Redis.
@@ -1015,12 +1020,19 @@ class Model(metaclass=ModelBase):
                 When provided, only listed fields are serialized, validated,
                 and indexed. None means full save (default behavior).
                 Empty list is a no-op.
+            migrate_key: If True, allow KeyField value changes (key migration).
+                By default, changing a KeyField value after initial save raises
+                KeyMutationError to prevent accidental identity changes.
             **kwargs: Passed to field on_save hooks.
 
         Returns:
             - If pipeline: The pipeline with queued commands
             - If no pipeline: Redis HSET response (number of fields set)
             - On error with ignore_errors: False
+
+        Raises:
+            KeyMutationError: If a KeyField value has changed since last save
+                and migrate_key is not True.
 
         Note:
             When KeyField values change between load and save, the old Redis
@@ -1047,11 +1059,33 @@ class Model(metaclass=ModelBase):
             # Partial save (only update specific fields)
             user.name = "new_name"
             user.save(update_fields=["name"])
+
+            # Key migration (intentional identity change)
+            instance.name = "new_key_value"
+            instance.save(migrate_key=True)
         """
 
         # Handle update_fields empty list as no-op
         if update_fields is not None and len(update_fields) == 0:
             return pipeline or 0
+
+        # Immutability guard: prevent accidental KeyField mutation
+        # Only fires when _saved_field_values is populated (loaded from DB or
+        # previously saved) and migrate_key is not explicitly True.
+        if not migrate_key and self._saved_field_values:
+            for key_field_name in self._meta.key_field_names:
+                # Skip auto key fields -- they are set once and never change
+                if key_field_name in self._meta.auto_field_names:
+                    continue
+                old_value = self._saved_field_values.get(key_field_name)
+                new_value = getattr(self, key_field_name, None)
+                if old_value is not None and old_value != new_value:
+                    raise KeyMutationError(
+                        f"Cannot change KeyField '{key_field_name}' from "
+                        f"'{old_value}' to '{new_value}' without "
+                        f"migrate_key=True. KeyField values form the model's "
+                        f"Redis identity and cannot be changed accidentally."
+                    )
 
         # WriteFilterMixin: check write filter before any save work
         from ..fields.write_filter import WriteFilterMixin
@@ -2259,6 +2293,7 @@ class Model(metaclass=ModelBase):
         ignore_errors: bool = False,
         skip_auto_now: bool = False,
         update_fields: list = None,
+        migrate_key: bool = False,
         **kwargs,
     ):
         """Async version of save().
@@ -2279,6 +2314,7 @@ class Model(metaclass=ModelBase):
             update_fields: Optional list of field names for partial save.
                 When provided, only listed fields are serialized, validated,
                 and indexed.
+            migrate_key: If True, allow KeyField value changes (key migration).
             **kwargs: Additional arguments passed to save()
 
         Returns:
@@ -2290,6 +2326,7 @@ class Model(metaclass=ModelBase):
             ignore_errors=ignore_errors,
             skip_auto_now=skip_auto_now,
             update_fields=update_fields,
+            migrate_key=migrate_key,
             **kwargs,
         )
 

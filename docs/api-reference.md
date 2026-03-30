@@ -4,12 +4,13 @@ Complete reference for all public classes, methods, and functions in the Popoto 
 
 ```python
 from popoto import Model, Field, KeyField, AutoKeyField, UniqueKeyField
+from popoto import IndexedField, UniqueField
 from popoto import SortedField, SortedKeyField, GeoField, DatetimeField, Relationship
 from popoto import DecayingSortedField, CyclicDecayField, TemporalPeriod, InteractionWeight, Defaults
 from popoto import AccessTrackerMixin, ObservationProtocol, RecallProposal, ConfidenceField, PredictionLedgerMixin
 from popoto import ContentField, EmbeddingField
 from popoto import Publisher, Subscriber
-from popoto import ModelException, QueryException, PublisherException, SubscriberException
+from popoto import ModelException, KeyMutationError, QueryException, PublisherException, SubscriberException
 ```
 
 ---
@@ -66,6 +67,7 @@ Model.save(
     ignore_errors: bool = False,
     skip_auto_now: bool = False,
     update_fields: list = None,
+    migrate_key: bool = False,
     **kwargs,
 )
 ```
@@ -84,8 +86,11 @@ partial saves via `update_fields`.
 | `ignore_errors` | `bool` | If `True`, log validation errors instead of raising `ModelException`. |
 | `skip_auto_now` | `bool` | If `True`, suppress `auto_now` timestamp updates. Useful during migrations. |
 | `update_fields` | `list` | Optional list of field names for partial save. Only the listed fields are written to Redis and only their `on_save` hooks fire. An empty list is a no-op. `auto_now` fields are excluded unless explicitly listed. |
+| `migrate_key` | `bool` | If `True`, allow KeyField value changes (key migration). By default, changing a KeyField value after initial save raises `KeyMutationError`. |
 
 **Returns:** Redis `HSET` response (int) or pipeline.
+
+**Raises:** `KeyMutationError` if a KeyField value has changed and `migrate_key` is not `True`.
 
 ```python
 restaurant = Restaurant(name="Sushi Spot", cuisine="Japanese", rating=4.8)
@@ -980,6 +985,60 @@ class Customer(Model):
     email = UniqueKeyField()
 ```
 
+### IndexedField
+
+```python
+IndexedField(type=str, null=True, unique=False, **kwargs)
+```
+
+A non-key field with Set-based secondary indexing. Enables efficient `filter()` queries
+without making the field part of the model's Redis key. Equivalent to `Field(indexed=True)`.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `type` | `type` | `str` | Python type for the value. |
+| `null` | `bool` | `True` | Allow `None` values. |
+| `unique` | `bool` | `False` | Enforce per-value uniqueness. |
+
+**Supported filter lookups:**
+
+| Lookup | Example | Description |
+|--------|---------|-------------|
+| exact | `status="active"` | Exact match (SMEMBERS). |
+| `__isnull` | `status__isnull=True` | Match `None` values. |
+| `__startswith` | `status__startswith="act"` | Prefix match (SCAN). |
+| `__endswith` | `status__endswith="ive"` | Suffix match (SCAN). |
+| `__in` | `status__in=["active", "pending"]` | Match any value (SUNION). |
+
+```python
+class Order(Model):
+    order_id = AutoKeyField()
+    status = IndexedField(type=str)
+    region = IndexedField(type=str, null=True)
+```
+
+See [Indexed Fields](indexed_fields.md) for the full guide.
+
+### UniqueField
+
+```python
+UniqueField(type=str, **kwargs)
+```
+
+An indexed non-key field with a per-value uniqueness constraint. Cannot be null.
+Equivalent to `Field(indexed=True, unique=True)`.
+
+!!! warning
+    Setting `unique=False` or `null=True` raises `ModelException`.
+
+```python
+class User(Model):
+    user_id = AutoKeyField()
+    email = UniqueField(type=str)
+```
+
+Supports the same filter lookups as `IndexedField`. See [Indexed Fields](indexed_fields.md).
+
 ### SortedField
 
 ```python
@@ -1811,6 +1870,55 @@ See [Configuration — Error Reporting](configuration.md#error-reporting-opt-in)
 
 ---
 
+## Testing
+
+Popoto includes a pytest plugin that automatically isolates tests in a dedicated Redis DB.
+
+### Pytest Plugin (auto-registered)
+
+The `popoto.pytest_plugin` module is registered as a [pytest11 entry point](https://docs.pytest.org/en/stable/how-to/writing_plugins.html#making-your-plugin-installable-by-others) and loads automatically when Popoto is installed. No configuration is required.
+
+**What the plugin does:**
+
+- Switches all Redis operations to DB 15 (or a configured DB) for the test session
+- Runs `flushdb()` before each test for a clean slate
+- Resets the async Redis connection per test to avoid event-loop conflicts
+
+**Configuration priority** (highest to lowest):
+
+1. `POPOTO_TEST_DB` environment variable
+2. `popoto_test_db` ini option in `pyproject.toml` `[tool.pytest.ini_options]`
+3. Default: `15`
+
+DB 0 is rejected to prevent accidental test runs against production data. Non-integer values produce a clear error message.
+
+```ini
+# pyproject.toml
+[tool.pytest.ini_options]
+popoto_test_db = "14"
+```
+
+**Disabling the plugin:**
+
+```bash
+pytest -p no:popoto
+```
+
+### Manual Test Helpers
+
+The `popoto.testing` module provides helpers for non-pytest test runners or manual use:
+
+```python
+from popoto.testing import use_test_db, flush_test_db
+
+use_test_db(db=15)   # Switch to test DB
+flush_test_db()      # Clear the test DB
+```
+
+These are not needed when using the pytest plugin, which handles both automatically.
+
+---
+
 ## Exceptions
 
 ### ModelException
@@ -1825,6 +1933,27 @@ Automatically reported when [error reporting](configuration.md#error-reporting-o
 
 ```python
 from popoto import ModelException
+```
+
+### KeyMutationError
+
+```python
+class KeyMutationError(ModelException)
+```
+
+Raised when a `KeyField` value is changed after initial save and `save()` is called without
+`migrate_key=True`. This prevents accidental identity changes that could orphan references.
+
+```python
+from popoto import KeyMutationError
+
+instance = MyModel.query.get(name="old_name")
+instance.name = "new_name"
+
+try:
+    instance.save()  # Raises KeyMutationError
+except KeyMutationError:
+    instance.save(migrate_key=True)  # Intentional migration succeeds
 ```
 
 ### QueryException

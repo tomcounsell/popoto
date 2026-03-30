@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "popoto"
-version = "1.4.1"
+version = "1.4.3"
 description = "A Python Redis ORM"
 readme = "README.md"
 authors = [{ name = "Tom Counsell", email = "other@tomcounsell.com" }]
@@ -58,6 +58,9 @@ dev = [
 Homepage = "https://github.com/tomcounsell/popoto"
 Documentation = "https://popoto.readthedocs.io"
 Bug_Tracker = "https://github.com/tomcounsell/popoto/issues"
+
+[project.entry-points.pytest11]
+popoto = "popoto.pytest_plugin"
 
 [tool.pytest.ini_options]
 markers = [

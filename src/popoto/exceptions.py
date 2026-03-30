@@ -27,6 +27,29 @@ class SubscriberException(Exception):
     pass
 
 
+class KeyMutationError(ModelException):
+    """Raised when a KeyField value is changed after initial save.
+
+    KeyField values form the Redis storage key (identity) of a model instance.
+    Changing them silently would delete the old key and create a new one,
+    potentially orphaning references. This exception prevents accidental
+    identity changes.
+
+    To intentionally migrate a key, use ``save(migrate_key=True)``.
+
+    Example::
+
+        instance = MyModel.query.get(name="old_name")
+        instance.name = "new_name"
+        instance.save()  # Raises KeyMutationError
+
+        # Intentional migration:
+        instance.save(migrate_key=True)  # Succeeds
+    """
+
+    pass
+
+
 class SkipSaveException(ModelException):
     """Raised by WriteFilterMixin to silently abort a save operation.
 

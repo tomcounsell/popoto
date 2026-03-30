@@ -4,6 +4,7 @@ from .exceptions import (
     PublisherException,
     SubscriberException,
     SkipSaveException,
+    KeyMutationError,
 )
 from .fields.field import Field
 from .fields.shortcuts import (
@@ -24,6 +25,8 @@ from .fields.shortcuts import (
     UniqueKeyField,
     SortedField,
     SortedKeyField,
+    IndexedField,
+    UniqueField,
 )
 from .fields.decaying_sorted_field import DecayingSortedField
 from .fields.access_tracker import AccessTrackerMixin
@@ -33,6 +36,7 @@ from .fields.cyclic_decay_field import CyclicDecayField
 from .fields.confidence_field import ConfidenceField
 from .fields.co_occurrence_field import CoOccurrenceField
 from .fields.existence_filter import ExistenceFilter, FrequencySketch
+from .fields.bm25_field import BM25Field
 from .fields.constants import TemporalPeriod, InteractionWeight, Defaults
 from .fields.observation import ObservationProtocol, RecallProposal
 from .fields.prediction_ledger import PredictionLedgerMixin
@@ -149,6 +153,8 @@ __all__ = [
     "UniqueKeyField",
     "SortedField",
     "SortedKeyField",
+    "IndexedField",
+    "UniqueField",
     "DecayingSortedField",
     "AccessTrackerMixin",
     "WriteFilterMixin",
@@ -176,6 +182,7 @@ __all__ = [
     "Publisher",
     "Subscriber",
     "ModelException",
+    "KeyMutationError",
     "QueryException",
     "PublisherException",
     "SubscriberException",
@@ -186,6 +193,7 @@ __all__ = [
     "AssemblyResult",
     "ContentField",
     "EmbeddingField",
+    "BM25Field",
     "configure",
     "enable_error_reporting",
 ]

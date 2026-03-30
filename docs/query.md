@@ -199,6 +199,8 @@ The `QueryBuilder` returned by `filter()` supports these chainable methods:
 | `top_by_decay(field_name, n)` | Return top-N by time-decayed score ([API ref](api-reference.md#querytop_by_decay)) |
 | `composite_score(indexes, limit, temperature)` | Return top-K by weighted composite of multiple sorted indexes ([API ref](api-reference.md#querycomposite_score)) |
 | `semantic_search(query_text, indexes, limit)` | Return top-K by semantic similarity, optionally combined with sorted indexes ([API ref](api-reference.md#querysemantic_search)) |
+| `keyword_search(query_text, field, limit)` | Return instances ranked by BM25 keyword relevance. See [Hybrid Retrieval](features/hybrid-retrieval.md). |
+| `fuse(k, limit, post_filter, **ranked_lists)` | Reciprocal Rank Fusion across heterogeneous ranked lists. See [Hybrid Retrieval](features/hybrid-retrieval.md). |
 | `all()` | Execute query and return all results as a list |
 | `first()` | Execute query and return first result or None |
 | `count()` | Count matching results without loading objects |
@@ -533,6 +535,7 @@ Q objects support all the same lookups as regular filter kwargs:
 | Field Type | Supported Lookups |
 |------------|-------------------|
 | KeyField | `=`, `__in`, `__contains`, `__startswith`, `__endswith`, `__isnull` |
+| IndexedField / UniqueField | `=`, `__in`, `__startswith`, `__endswith`, `__isnull` |
 | SortedField | `=`, `__gt`, `__gte`, `__lt`, `__lte` |
 | GeoField | `location=`, `location_radius=`, etc. |
 | Field | `=` (exact match) |
@@ -929,6 +932,50 @@ Restaurant.query.filter(name__isnull=False)
     the model and filter in Python. For large datasets, prefer exact match or `__in` lookups
     which use Redis set operations directly.
 
+## IndexedField Filters
+
+IndexedField and UniqueField filters use Redis Set operations for efficient exact-match queries
+on non-key fields. They support the same lookups as KeyField (except `__contains`).
+
+| Lookup | Description |
+|--------|-------------|
+| `status=` | Exact match |
+| `status__isnull=` | Filter for null (`True`) or non-null (`False`) values |
+| `status__startswith=` | Prefix match |
+| `status__endswith=` | Suffix match |
+| `status__in=` | Match any value in the provided list |
+
+Here are examples using an `Order` model with `status = IndexedField(type=str)`.
+
+```python
+from popoto import Model, AutoKeyField, IndexedField, SortedField
+
+class Order(Model):
+    order_id = AutoKeyField()
+    status = IndexedField(type=str)
+    total = SortedField(type=float)
+
+# Exact match
+Order.query.filter(status="shipped")
+
+# Match any of several statuses (server-side SUNION)
+Order.query.filter(status__in=["pending", "processing"])
+
+# Orders with a non-null status
+Order.query.filter(status__isnull=False)
+
+# Prefix match
+Order.query.filter(status__startswith="ship")
+
+# Combine with SortedField range queries
+Order.query.filter(status="pending", total__gte=100.0)
+```
+
+!!! note
+    IndexedField `__startswith` and `__endswith` lookups use Redis SCAN, similar to KeyField
+    pattern queries. For large datasets, prefer exact match or `__in` lookups which use
+    direct Set operations.
+
 ## SortedField Filters
 
 SortedField filters use Redis sorted sets for efficient numeric and date/time range queries.
@@ -1265,9 +1312,13 @@ for restaurant in Restaurant.query.all():
 | `get(key=...)` | HGETALL | O(1) |
 | `filter(field=...)` | SMEMBERS | O(1) |
 | `filter(field__in=[...])` | SUNION | O(N) where N = total members |
+| `filter(indexed_field=...)` | SMEMBERS | O(1) |
+| `filter(indexed_field__in=[...])` | SUNION | O(N) where N = total members |
 | `filter(field__startswith=...)` | SCAN | O(N) where N = total keys |
 | `filter(sorted__gte=...)` | ZRANGEBYSCORE | O(log N + M) |
 | `filter(geo=..., radius=...)` | GEORADIUS | O(N + log M) |
 | `all()` | SMEMBERS + pipeline HGETALL | O(N) |
 | `composite_score(...)` | ZUNIONSTORE + ZREVRANGE + pipeline HGETALL | O(K log K + M) |
+| `keyword_search(...)` | Lua BM25 scoring over inverted index | O(T * D) where T = query terms, D = docs per term |
+| `fuse(...)` | Rank-merge + pipeline HGETALL | O(sum of list lengths + K log K) |
 | `values(...)` on KeyFields only | No Redis call | O(1) |

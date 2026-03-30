@@ -332,6 +332,7 @@ popoto.enable_error_reporting(dsn="https://your-key@your-org.ingest.sentry.io/yo
 | `POPOTO_CONTENT_PATH` | `~/.popoto/content` | Base directory for ContentField filesystem storage and EmbeddingField `.npy` files. |
 | `POPOTO_LOG_LEVEL` | `WARNING` | Log level for POPOTO-REDIS_DB logger (DEBUG, INFO, WARNING, ERROR, CRITICAL) |
 | `POPOTO_SENTRY_DSN` | *(built-in)* | Override the Sentry DSN used by `enable_error_reporting()`. |
+| `POPOTO_TEST_DB` | `15` | Redis DB number used by the pytest plugin for test isolation. Overrides the `popoto_test_db` ini option. DB 0 is rejected to prevent accidental production data loss. |
 
 ## Thread Safety
 

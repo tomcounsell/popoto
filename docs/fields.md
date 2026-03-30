@@ -396,6 +396,8 @@ functionally identical to `Field(type=...)`.
 | `DateField`     | `Field(type=date)`       |
 | `DatetimeField` | `Field(type=datetime)`   |
 | `TimeField`     | `Field(type=time)`       |
+| `IndexedField`  | `Field(indexed=True)`    |
+| `UniqueField`   | `Field(indexed=True, unique=True)` |
 
 Import shortcuts from `popoto.fields.shortcuts`:
 
@@ -594,6 +596,74 @@ early_week = DailySpecial.query.filter(day_number__lte=2)
 print(len(early_week))
 # => 2
 ```
+
+## IndexedField
+
+`IndexedField` provides Set-based secondary indexing on non-key fields. Unlike
+`KeyField`, an `IndexedField` does not become part of the Redis key -- it only
+enables efficient exact-match queries via `filter()`.
+
+This decouples querying from identity: you can filter on `status`, `category`, or
+`region` without those fields affecting the Redis storage key.
+
+```python
+from popoto import Model, AutoKeyField, IndexedField, Field
+
+class Order(Model):
+    order_id = AutoKeyField()
+    status = IndexedField(type=str)
+    region = IndexedField(type=str, null=True)
+    notes = Field(type=str)
+```
+
+Query indexed fields with exact match, `__in`, `__isnull`, `__startswith`, and
+`__endswith` lookups:
+
+```python
+Order.query.filter(status="shipped")
+Order.query.filter(status__in=["pending", "processing"])
+Order.query.filter(region__startswith="US-")
+Order.query.filter(region__isnull=False)
+```
+
+You can also enable indexing on a plain `Field` with `indexed=True`:
+
+```python
+category = Field(type=str, indexed=True)  # equivalent to IndexedField(type=str)
+```
+
+See [Indexed Fields](indexed_fields.md) for full details on index key patterns,
+performance characteristics, and the comparison table.
+
+## UniqueField
+
+`UniqueField` combines secondary indexing with a per-value uniqueness constraint. It
+guarantees that no two model instances share the same value for this field, without
+making the field part of the Redis key.
+
+```python
+from popoto import Model, AutoKeyField, UniqueField, Field
+
+class User(Model):
+    user_id = AutoKeyField()
+    email = UniqueField(type=str)
+    name = Field(type=str)
+
+user = User.create(email="alice@example.com", name="Alice")
+
+# Duplicate email raises ModelException
+try:
+    User.create(email="alice@example.com", name="Not Alice")
+except Exception as e:
+    print(e)
+    # => Uniqueness violation on User.email: value 'alice@example.com' is already taken
+```
+
+`UniqueField` cannot be null and cannot have `unique=False`. It supports the same
+query lookups as `IndexedField`.
+
+See [Indexed Fields](indexed_fields.md) for the uniqueness trade-offs under
+concurrent writes and the full comparison table.
 
 ## DecayingSortedField
 
@@ -799,6 +869,56 @@ harmless for a pre-filter use case.
 
 See [Agent Memory -- ExistenceFilter](features/agent-memory.md#existencefilter) for the
 full agent memory context.
+
+## BM25Field
+
+`BM25Field` provides ranked keyword search using BM25 scoring, backed entirely by Redis
+sorted sets and Lua scripts. No Redis modules required -- works on both Redis and Valkey.
+
+Like `ExistenceFilter`, `BM25Field` is a "side-effect field" -- it does not store a value
+on the model instance. It maintains an inverted index and corpus statistics via
+`on_save()`/`on_delete()` hooks, and computes BM25 scores at query time server-side.
+
+```python
+from popoto import Model, AutoKeyField
+from popoto.fields.bm25_field import BM25Field
+from popoto.fields.content_field import ContentField
+
+class Memory(Model):
+    key = AutoKeyField()
+    raw_content = ContentField()
+    content_bm25 = BM25Field(source="raw_content")
+```
+
+Search via `keyword_search()` on the query builder:
+
+```python
+results = Memory.query.keyword_search("redis deployment timeout", limit=10)
+for memory in results:
+    print(f"{memory.key}: {memory._bm25_score:.3f}")
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `source` | `str` | Yes | Name of the field to read content from for indexing. |
+
+| Class Constant | Default | Description |
+|----------------|---------|-------------|
+| `BM25_K1` | `1.2` | Term frequency saturation parameter. |
+| `BM25_B` | `0.75` | Document length normalization parameter (0 = none, 1 = full). |
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `search(model_class, field_name, query_text, limit)` | `list[tuple[str, float]]` | Raw BM25 search returning `(redis_key, score)` tuples. |
+| `recompute_stats(model_class, field_name)` | `None` | Recompute avgdl/n from scratch to correct floating-point drift. |
+
+**Tokenization** uses the same shared tokenizer as ExistenceFilter (`fields/_tokenizer.py`):
+lowercase, split on non-word characters, filter tokens shorter than 3 characters, remove
+stop words. BM25Field preserves duplicate tokens (`unique=False`) for accurate term
+frequency counts.
+
+See [Hybrid Retrieval](features/hybrid-retrieval.md) for the full feature documentation
+including RRF fusion and the hybrid retrieval recipe.
 
 ## FrequencySketch
 

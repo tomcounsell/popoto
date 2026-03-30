@@ -8,6 +8,7 @@ nav:
     - Configuration: 'configuration.md'
     - Models and Fields: 'fields.md'
     - Model Meta Options: 'meta.md'
+    - Indexed Fields: 'indexed_fields.md'
     - Making Queries: 'query.md'
     - Relationship Field: 'relationship.md'
     - Multi-Tenancy: 'multi-tenancy.md'
@@ -26,6 +27,7 @@ nav:
             - Composite Score Query: 'features/composite-score-query.md'
             - PolicyCache: 'features/policy-cache.md'
             - ContextAssembler: 'features/context-assembler.md'
+            - Hybrid Retrieval (BM25 + RRF): 'features/hybrid-retrieval.md'
         - Meta Class Implementation: 'features/meta-class-implementation.md'
         - Kitchen Edge Case Demo: 'features/kitchen-edge-case-demo.md'
     - Guides:

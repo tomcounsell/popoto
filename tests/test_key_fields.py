@@ -149,6 +149,9 @@ class MutableKeyModel(popoto.Model):
     data = popoto.Field(null=True)
 
 
+# Clean up any stale data from previous runs
+MutableKeyModel.delete_all()
+
 # Setup: create two jobs in "pending"
 job1 = MutableKeyModel.create(status="pending", data="job1")
 job2 = MutableKeyModel.create(status="pending", data="job2")
@@ -161,16 +164,17 @@ assert len(MutableKeyModel.query.filter(status="running")) == 0
 assert len(POPOTO_REDIS_DB.smembers(pending_key)) == 2
 
 # Mutate job1 status and save — this is the bug scenario
+# migrate_key=True is required because KeyFields are immutable by default
 job1.status = "running"
-job1.save()
+job1.save(migrate_key=True)
 
 # After mutation: job1 should be in "running" only, not in "pending"
-assert (
-    len(MutableKeyModel.query.filter(status="pending")) == 1
-), "Ghost entry: job1 still appears in pending index after status change"
-assert (
-    len(MutableKeyModel.query.filter(status="running")) == 1
-), "job1 should appear in running index after status change"
+assert len(MutableKeyModel.query.filter(status="pending")) == 1, (
+    "Ghost entry: job1 still appears in pending index after status change"
+)
+assert len(MutableKeyModel.query.filter(status="running")) == 1, (
+    "job1 should appear in running index after status change"
+)
 assert len(POPOTO_REDIS_DB.smembers(pending_key)) == 1
 assert len(POPOTO_REDIS_DB.smembers(running_key)) == 1
 
@@ -182,7 +186,7 @@ assert running_jobs[0].data == "job1"
 
 # Mutate again: running -> completed
 job1.status = "completed"
-job1.save()
+job1.save(migrate_key=True)
 completed_key = f"{MutableKeyModel._meta.fields['status'].get_special_use_field_db_key(MutableKeyModel, 'status')}:completed"
 
 assert len(MutableKeyModel.query.filter(status="running")) == 0
