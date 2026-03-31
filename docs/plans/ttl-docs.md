@@ -14,7 +14,7 @@ Create a dedicated `docs/ttl.md` page that consolidates all TTL documentation in
 
 ## Tasks
 
-- [ ] Create `docs/ttl.md` with the following sections:
+- [x] Create `docs/ttl.md` with the following sections:
   - Overview: what TTL does and when to use it
   - Model-level TTL via `class Meta: ttl = N` with explanation of `EXPIRE` during `save()`
   - TTL reset behavior on every `save()` call
@@ -23,9 +23,9 @@ Create a dedicated `docs/ttl.md` page that consolidates all TTL documentation in
   - Mutual exclusion constraint: cannot set both `_ttl` and `_expire_at`
   - Complete example: `AgentSession` model with 90-day TTL showing creation, override, and absolute expiration
   - Cross-references to `meta.md` and `api-reference.md`
-- [ ] Update `mkdocs.yml` nav to add TTL page between "Model Meta Options" and "Indexed Fields"
-- [ ] Update `docs/api-reference.md` to document `_ttl` and `_expire_at` as instance attributes in the Model class section
-- [ ] Cross-link from `docs/meta.md` TTL section to the new dedicated page
+- [x] Update `mkdocs.yml` nav to add TTL page between "Model Meta Options" and "Indexed Fields"
+- [x] Update `docs/api-reference.md` to document `_ttl` and `_expire_at` as instance attributes in the Model class section
+- [x] Cross-link from `docs/meta.md` TTL section to the new dedicated page
 
 ## No-Gos
 
@@ -54,9 +54,9 @@ No existing tests affected -- this is a documentation-only change with no code m
 
 ## Documentation
 
-- [ ] Create `docs/ttl.md` as the primary deliverable (this is a docs-only issue)
-- [ ] Update `docs/api-reference.md` with `_ttl` and `_expire_at` instance attribute docs
-- [ ] Update cross-references in `docs/meta.md`
+- [x] Create `docs/ttl.md` as the primary deliverable (this is a docs-only issue)
+- [x] Update `docs/api-reference.md` with `_ttl` and `_expire_at` instance attribute docs
+- [x] Update cross-references in `docs/meta.md`
 
 ## Rabbit Holes
 
