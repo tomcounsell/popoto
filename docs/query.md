@@ -834,8 +834,9 @@ keys = Restaurant.query.keys()
 ```
 
 !!! warning
-    The `keys()` method returns bytes objects. For debugging stale data, you can pass
-    `clean=True` to remove orphaned keys, but this should never be used in production.
+    The `keys()` method returns bytes objects. The `clean=True` parameter is deprecated.
+    Use [`Model.clean_indexes()`](api-reference.md#modelclean_indexes) for production-safe
+    orphan removal that covers all five index types.
 
 ## Values
 

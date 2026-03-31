@@ -3001,6 +3001,168 @@ class Model(metaclass=ModelBase):
         return result
 
     @classmethod
+    def clean_indexes(cls, batch_size: int = 1000) -> int:
+        """Remove orphaned entries from all secondary indexes.
+
+        Scans all five index types (class set, key fields, sorted fields,
+        geo fields, composite indexes) and removes entries that reference
+        instance keys which no longer exist in Redis. This is the write
+        counterpart to check_indexes().
+
+        Uses SCAN-based iteration (SSCAN, ZSCAN, HSCAN) instead of the
+        KEYS command, making it safe to run on production databases.
+        For best results, run during low-traffic periods to minimize
+        the chance of race conditions with concurrent writes.
+
+        Args:
+            batch_size: Number of EXISTS/removal commands per pipeline
+                batch. Default is 1000. Lower values use less memory
+                but require more round-trips.
+
+        Returns:
+            Total number of orphaned index entries removed.
+
+        Example:
+            # Check first, then clean
+            result = User.check_indexes()
+            if result['total'] > 0:
+                removed = User.clean_indexes()
+                print(f"Removed {removed} orphaned index entries")
+        """
+
+        def _collect_orphans(keys_to_check: list) -> list:
+            """Pipeline EXISTS in batches, return list of non-existent keys."""
+            orphans = []
+            for i in range(0, len(keys_to_check), batch_size):
+                batch = keys_to_check[i : i + batch_size]
+                pipe = POPOTO_REDIS_DB.pipeline()
+                for key in batch:
+                    pipe.exists(key)
+                results = pipe.execute()
+                for key, exists in zip(batch, results):
+                    if not exists:
+                        orphans.append(key)
+            return orphans
+
+        def _scan_set_members(set_key: str) -> list:
+            """SSCAN all members of a Redis set."""
+            members = []
+            cursor = 0
+            while True:
+                cursor, batch = POPOTO_REDIS_DB.sscan(set_key, cursor, count=1000)
+                members.extend(batch)
+                if cursor == 0:
+                    break
+            return members
+
+        def _scan_sorted_set_members(zset_key: str) -> list:
+            """ZSCAN all members of a Redis sorted set."""
+            members = []
+            cursor = 0
+            while True:
+                cursor, batch = POPOTO_REDIS_DB.zscan(zset_key, cursor, count=1000)
+                members.extend(member for member, _score in batch)
+                if cursor == 0:
+                    break
+            return members
+
+        def _scan_hash_entries(hash_key: str) -> list:
+            """HSCAN all key-value pairs of a Redis hash."""
+            entries = []
+            cursor = 0
+            while True:
+                cursor, batch = POPOTO_REDIS_DB.hscan(hash_key, cursor, count=1000)
+                entries.extend(batch.items())
+                if cursor == 0:
+                    break
+            return entries
+
+        removed = 0
+
+        # 1. Clean class set
+        class_set_key = cls._meta.db_class_set_key.redis_key
+        members = _scan_set_members(class_set_key)
+        if members:
+            orphans = _collect_orphans(members)
+            if orphans:
+                pipe = POPOTO_REDIS_DB.pipeline()
+                for orphan in orphans:
+                    pipe.srem(class_set_key, orphan)
+                pipe.execute()
+                removed += len(orphans)
+
+        # 2. Clean key field sets
+        for field_name in cls._meta.key_field_names:
+            field = cls._meta.fields[field_name]
+            # Skip auto fields - they don't maintain index sets
+            if getattr(field, "auto", False):
+                continue
+            base_key = field.get_special_use_field_db_key(cls, field_name)
+            pattern = base_key.redis_key + ":*"
+            for key in POPOTO_REDIS_DB.scan_iter(match=pattern, count=1000):
+                if isinstance(key, bytes):
+                    key = key.decode("utf-8")
+                members = _scan_set_members(key)
+                if members:
+                    orphans = _collect_orphans(members)
+                    if orphans:
+                        pipe = POPOTO_REDIS_DB.pipeline()
+                        for orphan in orphans:
+                            pipe.srem(key, orphan)
+                        pipe.execute()
+                        removed += len(orphans)
+
+        # 3. Clean sorted field sets
+        for field_name in cls._meta.sorted_field_names:
+            field = cls._meta.fields[field_name]
+            base_key = field.get_special_use_field_db_key(cls, field_name)
+            pattern = base_key.redis_key + "*"
+            for key in POPOTO_REDIS_DB.scan_iter(match=pattern, count=1000):
+                if isinstance(key, bytes):
+                    key = key.decode("utf-8")
+                members = _scan_sorted_set_members(key)
+                if members:
+                    orphans = _collect_orphans(members)
+                    if orphans:
+                        pipe = POPOTO_REDIS_DB.pipeline()
+                        for orphan in orphans:
+                            pipe.zrem(key, orphan)
+                        pipe.execute()
+                        removed += len(orphans)
+
+        # 4. Clean geo fields
+        for field_name in cls._meta.geo_field_names:
+            geo_key = GeoField.get_geo_db_key(cls, field_name)
+            members = _scan_sorted_set_members(geo_key.redis_key)
+            if members:
+                orphans = _collect_orphans(members)
+                if orphans:
+                    pipe = POPOTO_REDIS_DB.pipeline()
+                    for orphan in orphans:
+                        pipe.zrem(geo_key.redis_key, orphan)
+                    pipe.execute()
+                    removed += len(orphans)
+
+        # 5. Clean composite indexes
+        for field_names, is_unique in cls._meta.indexes:
+            index_key = cls._meta.get_index_key(tuple(field_names))
+            entries = _scan_hash_entries(index_key)
+            if entries:
+                # values are instance redis keys, keys are index hashes
+                values_to_check = [value for _hash_field, value in entries]
+                orphans = _collect_orphans(values_to_check)
+                if orphans:
+                    orphan_set = set(orphans)
+                    pipe = POPOTO_REDIS_DB.pipeline()
+                    for hash_field, value in entries:
+                        if value in orphan_set:
+                            pipe.hdel(index_key, hash_field)
+                    pipe.execute()
+                    removed += len(orphan_set)
+
+        return removed
+
+    @classmethod
     async def async_check_indexes(cls, batch_size: int = 1000) -> dict:
         """Async version of check_indexes().
 
@@ -3019,6 +3181,27 @@ class Model(metaclass=ModelBase):
                 await User.async_rebuild_indexes()
         """
         return await to_thread(cls.check_indexes, batch_size=batch_size)
+
+    @classmethod
+    async def async_clean_indexes(cls, batch_size: int = 1000) -> int:
+        """Async version of clean_indexes().
+
+        Runs the synchronous clean_indexes() method in a thread pool
+        to avoid blocking the event loop.
+
+        Args:
+            batch_size: Number of EXISTS/removal commands per pipeline
+                batch.
+
+        Returns:
+            Total number of orphaned index entries removed.
+
+        Example:
+            result = await User.async_check_indexes()
+            if result['total'] > 0:
+                removed = await User.async_clean_indexes()
+        """
+        return await to_thread(cls.clean_indexes, batch_size=batch_size)
 
     @classmethod
     async def async_rebuild_indexes(cls, batch_size: int = 1000) -> int:
