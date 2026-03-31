@@ -112,7 +112,7 @@ class TestPartitionedLifecycle:
         """Saving with partition_by creates hash key with partition value."""
         item = PartitionedConfidence.create(name="t1", project="atlas")
         field = item._meta.fields["certainty"]
-        data_hash_key = field._get_data_hash_key(item, "certainty")
+        data_hash_key = field.get_data_hash_key(item, "certainty")
         assert ":data:atlas" in data_hash_key
 
     def test_on_save_initializes_data_in_partitioned_hash(self):
@@ -140,7 +140,7 @@ class TestPartitionedLifecycle:
         """Deleting removes entry from the correct partition hash."""
         item = PartitionedConfidence.create(name="del1", project="atlas")
         field = item._meta.fields["certainty"]
-        data_hash_key = field._get_data_hash_key(item, "certainty")
+        data_hash_key = field.get_data_hash_key(item, "certainty")
         member_key = item.db_key.redis_key
 
         # Verify entry exists
@@ -157,7 +157,7 @@ class TestPartitionedLifecycle:
             name="m1", project="atlas", category="facts"
         )
         field = item._meta.fields["certainty"]
-        data_hash_key = field._get_data_hash_key(item, "certainty")
+        data_hash_key = field.get_data_hash_key(item, "certainty")
         assert ":data:atlas:facts" in data_hash_key
 
 
@@ -202,7 +202,7 @@ class TestPartitionedConfidenceOps:
 
         # Verify data is in the partition hash
         field = item._meta.fields["certainty"]
-        data_hash_key = field._get_data_hash_key(item, "certainty")
+        data_hash_key = field.get_data_hash_key(item, "certainty")
         assert ":data:atlas" in data_hash_key
         assert POPOTO_REDIS_DB.hget(data_hash_key, item.db_key.redis_key) is not None
 
@@ -230,7 +230,7 @@ class TestPartitionedConfidenceOps:
         item = PartitionedConfidence.create(name="empty1", project="atlas")
         # Delete the companion hash entry manually
         field = item._meta.fields["certainty"]
-        data_hash_key = field._get_data_hash_key(item, "certainty")
+        data_hash_key = field.get_data_hash_key(item, "certainty")
         POPOTO_REDIS_DB.hdel(data_hash_key, item.db_key.redis_key)
 
         conf = ConfidenceField.get_confidence(item, "certainty")
@@ -257,7 +257,7 @@ class TestBackwardCompatibility:
         """Unpartitioned hash key has no partition suffix."""
         item = UnpartitionedConfidence.create(name="compat2")
         field = item._meta.fields["certainty"]
-        data_hash_key = field._get_data_hash_key(item, "certainty")
+        data_hash_key = field.get_data_hash_key(item, "certainty")
         assert data_hash_key.endswith(":data")
         assert (
             ":data:" not in data_hash_key.split(":data")[1]
@@ -277,7 +277,7 @@ class TestBackwardCompatibility:
 
         # Delete should clean up
         field = item._meta.fields["certainty"]
-        data_hash_key = field._get_data_hash_key(item, "certainty")
+        data_hash_key = field.get_data_hash_key(item, "certainty")
         member_key = item.db_key.redis_key
         item.delete()
         assert POPOTO_REDIS_DB.hget(data_hash_key, member_key) is None
@@ -466,21 +466,21 @@ class TestPartitionedErrors:
     def test_partition_by_nonexistent_field_none_value(self):
         """on_save with None partition value still works (writes to base key)."""
         # This tests graceful handling - partition value None is skipped
-        # in _get_data_hash_key, so the key is the same as unpartitioned
+        # in get_data_hash_key, so the key is the same as unpartitioned
         _item = PartitionedConfidence(name="err1", project=None)  # noqa: F841
         # Model should still be creatable if the field allows null
         # (KeyField does not allow null by default, so this tests the boundary)
 
     def test_get_data_hash_key_from_values_missing_partition(self):
-        """_get_data_hash_key_from_values raises QueryException for missing partition."""
+        """get_data_hash_key_from_values raises QueryException for missing partition."""
         field = PartitionedConfidence._meta.fields["certainty"]
         with pytest.raises(QueryException, match="partitioned by"):
-            field._get_data_hash_key_from_values(PartitionedConfidence, "certainty")
+            field.get_data_hash_key_from_values(PartitionedConfidence, "certainty")
 
     def test_get_data_hash_key_from_values_with_partition(self):
-        """_get_data_hash_key_from_values builds correct key with partition values."""
+        """get_data_hash_key_from_values builds correct key with partition values."""
         field = PartitionedConfidence._meta.fields["certainty"]
-        key = field._get_data_hash_key_from_values(
+        key = field.get_data_hash_key_from_values(
             PartitionedConfidence, "certainty", project="atlas"
         )
         assert ":data:atlas" in key

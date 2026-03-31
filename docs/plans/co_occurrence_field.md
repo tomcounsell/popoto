@@ -265,7 +265,7 @@ No agent integration required — this is a standalone ORM field in the popoto l
 - **Parallel**: true
 - Create `src/popoto/fields/co_occurrence_field.py`
 - Implement `__init__` with `symmetric`, `max_edges`, `decay_factor` params
-- Implement `_get_edge_key(model_class, pk)` → returns Redis key `$CoOcF:{ClassName}:{field_name}:{pk}`
+- Implement `get_edge_key(model_class, pk)` → returns Redis key `$CoOcF:{ClassName}:{field_name}:{pk}`
 - Implement `link()` with ZADD, symmetric mirror, and atomic Lua prune
 - Implement `strengthen()` with ZINCRBY and symmetric mirror
 - Implement `unlink()` with ZREM and symmetric mirror

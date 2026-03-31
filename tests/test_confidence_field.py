@@ -153,7 +153,7 @@ class TestConfidenceFieldLifecycle:
         # After delete, get_confidence_data should return defaults
         # (but we can't call it on deleted instance easily, so check Redis directly)
         field = item._meta.fields["certainty"]
-        data_hash_key = field._get_data_hash_key(item, "certainty")
+        data_hash_key = field.get_data_hash_key(item, "certainty")
         member_key = f"ConfidenceItem:{item.name}"
         raw = POPOTO_REDIS_DB.hget(data_hash_key, member_key)
         assert raw is None
@@ -408,7 +408,7 @@ class TestEntrainment:
 
         # Build up some pressure by setting last_resolved to far in the past
         rel_field = item._meta.fields["relevance"]
-        pressure_hash_key = rel_field._get_pressure_hash_key(item, "relevance")
+        pressure_hash_key = rel_field.get_pressure_hash_key(item, "relevance")
         member_key = item.db_key.redis_key
         pressure_data = {
             "rate": 0.1,
@@ -420,7 +420,7 @@ class TestEntrainment:
 
         # Manually set confidence below 0.1 to trigger auto-discharge
         conf_field = item._meta.fields["certainty"]
-        data_hash_key = conf_field._get_data_hash_key(item, "certainty")
+        data_hash_key = conf_field.get_data_hash_key(item, "certainty")
         low_conf_data = {
             "confidence": 0.05,
             "evidence_count": 20,

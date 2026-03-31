@@ -242,8 +242,13 @@ class CoOccurrenceField(Field):
         kwargs.setdefault("default", None)
         super().__init__(**kwargs)
 
-    def _get_edge_key(self, model_class, pk):
+    def get_edge_key(self, model_class, pk):
         """Build the Redis key for a PK's edge sorted set.
+
+        Public API for external callers that need direct Redis access to
+        a PK's edge set (e.g., bulk edge inspection, custom graph queries,
+        monitoring). Prefer the higher-level methods (link, get_linked,
+        propagate) for normal operations.
 
         Pattern: $CoOcF:{ClassName}:{field_name}:{pk}
 
@@ -257,8 +262,11 @@ class CoOccurrenceField(Field):
         base_key = self.get_special_use_field_db_key(model_class, self.name)
         return base_key.redis_key + ":" + str(pk)
 
-    def _get_edge_key_prefix(self, model_class):
+    def get_edge_key_prefix(self, model_class):
         """Build the Redis key prefix for BFS propagation.
+
+        Public API for external callers that need to scan or iterate over
+        all edge sorted sets for a field (e.g., graph analytics, bulk cleanup).
 
         Pattern: $CoOcF:{ClassName}:{field_name}:
 
@@ -306,7 +314,7 @@ class CoOccurrenceField(Field):
         if source_pk == target_pk:
             raise ValueError("Cannot link a PK to itself (no self-loops)")
 
-        source_key = self._get_edge_key(model_class, source_pk)
+        source_key = self.get_edge_key(model_class, source_pk)
         result = POPOTO_REDIS_DB.eval(
             LINK_WITH_PRUNE_LUA,
             1,
@@ -317,7 +325,7 @@ class CoOccurrenceField(Field):
         )
 
         if self.symmetric:
-            target_key = self._get_edge_key(model_class, target_pk)
+            target_key = self.get_edge_key(model_class, target_pk)
             POPOTO_REDIS_DB.eval(
                 LINK_WITH_PRUNE_LUA,
                 1,
@@ -360,12 +368,12 @@ class CoOccurrenceField(Field):
         source_pk = str(source_pk)
         target_pk = str(target_pk)
 
-        source_key = self._get_edge_key(model_class, source_pk)
+        source_key = self.get_edge_key(model_class, source_pk)
         db = pipeline if pipeline else POPOTO_REDIS_DB
         new_weight = db.zincrby(source_key, delta, target_pk)
 
         if self.symmetric:
-            target_key = self._get_edge_key(model_class, target_pk)
+            target_key = self.get_edge_key(model_class, target_pk)
             db.zincrby(target_key, delta, source_pk)
 
         # EventStreamMixin: log strengthen event
@@ -421,12 +429,12 @@ class CoOccurrenceField(Field):
         source_pk = str(source_pk)
         target_pk = str(target_pk)
 
-        source_key = self._get_edge_key(model_class, source_pk)
+        source_key = self.get_edge_key(model_class, source_pk)
         db = pipeline if pipeline else POPOTO_REDIS_DB
         db.zrem(source_key, target_pk)
 
         if self.symmetric:
-            target_key = self._get_edge_key(model_class, target_pk)
+            target_key = self.get_edge_key(model_class, target_pk)
             db.zrem(target_key, source_pk)
 
     def weaken_all(self, model_class, pk, factor=None, pipeline=None):
@@ -455,7 +463,7 @@ class CoOccurrenceField(Field):
             raise ValueError(f"factor must be between 0 and 1 inclusive (got {factor})")
 
         pk = str(pk)
-        edge_key = self._get_edge_key(model_class, pk)
+        edge_key = self.get_edge_key(model_class, pk)
 
         if factor == 0:
             # Special case: remove all edges
@@ -488,7 +496,7 @@ class CoOccurrenceField(Field):
                 sorted by weight descending.
         """
         pk = str(pk)
-        edge_key = self._get_edge_key(model_class, pk)
+        edge_key = self.get_edge_key(model_class, pk)
 
         # ZREVRANGEBYSCORE: highest to lowest, with score filter
         results = POPOTO_REDIS_DB.zrevrangebyscore(
@@ -544,7 +552,7 @@ class CoOccurrenceField(Field):
         if depth == 0:
             return {pk: 1.0 for pk in seed_pks}
 
-        key_prefix = self._get_edge_key_prefix(model_class)
+        key_prefix = self.get_edge_key_prefix(model_class)
 
         result = POPOTO_REDIS_DB.eval(
             PROPAGATE_BFS_LUA,
@@ -600,7 +608,7 @@ class CoOccurrenceField(Field):
         member_key = kwargs.get("saved_redis_key") or model_instance.db_key.redis_key
 
         # Get the edge key for this instance
-        edge_key = field._get_edge_key(model_instance, member_key)
+        edge_key = field.get_edge_key(model_instance, member_key)
 
         if field.symmetric:
             # Get all linked PKs so we can remove reverse edges
@@ -608,7 +616,7 @@ class CoOccurrenceField(Field):
             for target_pk in linked:
                 if isinstance(target_pk, bytes):
                     target_pk = target_pk.decode("utf-8")
-                target_edge_key = field._get_edge_key(model_instance, target_pk)
+                target_edge_key = field.get_edge_key(model_instance, target_pk)
                 if pipeline:
                     pipeline.zrem(target_edge_key, member_key)
                 else:

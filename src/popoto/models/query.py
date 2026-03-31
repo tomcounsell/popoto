@@ -383,10 +383,10 @@ class QueryBuilder:
 
         if isinstance(field, CyclicDecayField):
             # Build companion hash keys from partition values
-            cycles_hash_key = CyclicDecayField._get_cycles_hash_key_from_parts(
+            cycles_hash_key = CyclicDecayField.get_cycles_hash_key_from_parts(
                 model_class, field_name, *partition_values
             )
-            pressure_hash_key = CyclicDecayField._get_pressure_hash_key_from_parts(
+            pressure_hash_key = CyclicDecayField.get_pressure_hash_key_from_parts(
                 model_class, field_name, *partition_values
             )
 
@@ -1116,10 +1116,10 @@ class QueryBuilder:
 
         # Get all decay scores via Lua
         if isinstance(field, CyclicDecayField):
-            cycles_hash_key = CyclicDecayField._get_cycles_hash_key_from_parts(
+            cycles_hash_key = CyclicDecayField.get_cycles_hash_key_from_parts(
                 model_class, field_name, *partition_values
             )
-            pressure_hash_key = CyclicDecayField._get_pressure_hash_key_from_parts(
+            pressure_hash_key = CyclicDecayField.get_pressure_hash_key_from_parts(
                 model_class, field_name, *partition_values
             )
             result = POPOTO_REDIS_DB.eval(
@@ -1204,13 +1204,14 @@ class QueryBuilder:
                         f"Query must include filter(s) for: {', '.join(missing)}"
                     )
                 partition_values[pf] = self._filters[pf]
-            data_hash_key = field._get_data_hash_key_from_values(
+            data_hash_key = field.get_data_hash_key_from_values(
                 model_class, field_name, **partition_values
             )
         else:
             # Unpartitioned: single global hash
-            base_key = field.get_special_use_field_db_key(model_class, field_name)
-            data_hash_key = base_key.redis_key + ":data"
+            data_hash_key = field.get_data_hash_key_from_values(
+                model_class, field_name
+            )
 
         # Read all entries from companion hash
         all_data = POPOTO_REDIS_DB.hgetall(data_hash_key)

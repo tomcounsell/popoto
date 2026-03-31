@@ -256,7 +256,7 @@ class TestFullMemoryLoop:
 
         # Manually set pressure to simulate time passing
         field = m._meta.fields["relevance"]
-        pressure_hash_key = field._get_pressure_hash_key(m, "relevance")
+        pressure_hash_key = field.get_pressure_hash_key(m, "relevance")
         member_key = m.db_key.redis_key
         pressure_data = {
             "rate": 0.1,
@@ -602,7 +602,7 @@ class TestTemporalDynamics:
 
         # Set pressure with old last_resolved to simulate time passing
         field = m._meta.fields["relevance"]
-        pressure_hash_key = field._get_pressure_hash_key(m, "relevance")
+        pressure_hash_key = field.get_pressure_hash_key(m, "relevance")
         member_key = m.db_key.redis_key
         pressure_data = {
             "rate": 0.1,
@@ -637,7 +637,7 @@ class TestTemporalDynamics:
 
         # Set pressure with old last_resolved
         field = m._meta.fields["relevance"]
-        pressure_hash_key = field._get_pressure_hash_key(m, "relevance")
+        pressure_hash_key = field.get_pressure_hash_key(m, "relevance")
         member_key = m.db_key.redis_key
         pressure_data = {
             "rate": 0.1,
@@ -678,7 +678,7 @@ class TestTemporalDynamics:
 
         # Set up old pressure
         field = m._meta.fields["relevance"]
-        pressure_hash_key = field._get_pressure_hash_key(m, "relevance")
+        pressure_hash_key = field.get_pressure_hash_key(m, "relevance")
         member_key = m.db_key.redis_key
         pressure_data = {
             "rate": 0.1,
@@ -711,7 +711,7 @@ class TestTemporalDynamics:
 
         # Read original cycle amplitude
         field = m._meta.fields["relevance"]
-        cycles_hash_key = field._get_cycles_hash_key(m, "relevance")
+        cycles_hash_key = field.get_cycles_hash_key(m, "relevance")
         member_key = m.db_key.redis_key
         raw_before = POPOTO_REDIS_DB.hget(cycles_hash_key, member_key)
 
