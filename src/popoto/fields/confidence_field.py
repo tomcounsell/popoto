@@ -167,6 +167,11 @@ class ConfidenceField(Field):
     def get_data_hash_key(self, model_instance, field_name):
         """Build the Redis key for the confidence companion hash.
 
+        Public API for external callers that need to perform direct Redis
+        operations on the companion hash (e.g., bulk reads, migrations,
+        or monitoring). Prefer the higher-level class methods
+        (get_confidence, update_confidence) for normal operations.
+
         When partition_by is set and a model instance is provided,
         appends partition field values to the key.
 
@@ -188,7 +193,9 @@ class ConfidenceField(Field):
     ):
         """Build the companion hash key from explicit partition values.
 
-        Used in query paths where we have filter params but not an instance.
+        Public API for query paths and external callers that have partition
+        field values but not a model instance (e.g., custom query builders,
+        bulk operations scoped to a partition).
 
         Args:
             model_class: The Model class.
@@ -220,7 +227,8 @@ class ConfidenceField(Field):
         """Build the companion hash key using saved (old) partition field values.
 
         Used during on_save/on_delete to find the old partition hash when
-        a partition key has changed.
+        a partition key has changed. External callers performing custom
+        partition migrations may also need this to locate stale hash entries.
 
         Returns:
             str or None: The old hash key, or None if no saved values exist.

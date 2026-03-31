@@ -212,6 +212,9 @@ class CyclicDecayField(DecayingSortedField):
     def get_cycles_hash_key(self, model_instance, field_name):
         """Build the Redis key for the cycles companion hash.
 
+        Public API for external callers that need direct Redis access to
+        cycle data (e.g., bulk inspection, custom cycle updates, monitoring).
+
         Pattern: $CyclicDecayF:{Model}:{field}:{partitions}:cycles
         """
         ss_key = self.get_partitioned_sortedset_db_key(model_instance, field_name)
@@ -220,16 +223,21 @@ class CyclicDecayField(DecayingSortedField):
     def get_pressure_hash_key(self, model_instance, field_name):
         """Build the Redis key for the pressure companion hash.
 
+        Public API for external callers that need direct Redis access to
+        pressure data (e.g., bulk pressure resets, monitoring dashboards).
+
         Pattern: $CyclicDecayF:{Model}:{field}:{partitions}:pressure
         """
         ss_key = self.get_partitioned_sortedset_db_key(model_instance, field_name)
         return ss_key.redis_key + ":pressure"
 
     @classmethod
-    def get_cycles_hash_key_from_parts(
-        cls, model_class, field_name, *partition_values
-    ):
-        """Build cycles hash key from model class and partition values."""
+    def get_cycles_hash_key_from_parts(cls, model_class, field_name, *partition_values):
+        """Build cycles hash key from model class and explicit partition values.
+
+        Public API for query paths and external callers that have partition
+        values but not a model instance.
+        """
         ss_key = cls.get_sortedset_db_key(model_class, field_name, *partition_values)
         return ss_key.redis_key + ":cycles"
 
@@ -237,7 +245,11 @@ class CyclicDecayField(DecayingSortedField):
     def get_pressure_hash_key_from_parts(
         cls, model_class, field_name, *partition_values
     ):
-        """Build pressure hash key from model class and partition values."""
+        """Build pressure hash key from model class and explicit partition values.
+
+        Public API for query paths and external callers that have partition
+        values but not a model instance.
+        """
         ss_key = cls.get_sortedset_db_key(model_class, field_name, *partition_values)
         return ss_key.redis_key + ":pressure"
 

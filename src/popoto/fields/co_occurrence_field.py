@@ -245,6 +245,11 @@ class CoOccurrenceField(Field):
     def get_edge_key(self, model_class, pk):
         """Build the Redis key for a PK's edge sorted set.
 
+        Public API for external callers that need direct Redis access to
+        a PK's edge set (e.g., bulk edge inspection, custom graph queries,
+        monitoring). Prefer the higher-level methods (link, get_linked,
+        propagate) for normal operations.
+
         Pattern: $CoOcF:{ClassName}:{field_name}:{pk}
 
         Args:
@@ -259,6 +264,9 @@ class CoOccurrenceField(Field):
 
     def get_edge_key_prefix(self, model_class):
         """Build the Redis key prefix for BFS propagation.
+
+        Public API for external callers that need to scan or iterate over
+        all edge sorted sets for a field (e.g., graph analytics, bulk cleanup).
 
         Pattern: $CoOcF:{ClassName}:{field_name}:
 
