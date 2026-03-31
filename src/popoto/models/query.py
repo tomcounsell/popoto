@@ -1554,6 +1554,68 @@ class Query:
         # or not hasattr(instance, 'db_key')
         return instance or None
 
+    def get_many(self, redis_keys: list, skip_none: bool = False) -> list:
+        """Retrieve multiple model instances by their Redis keys in a single pipeline.
+
+        Uses a Redis pipeline to batch HGETALL calls, reducing N sequential
+        round-trips to a single pipelined round-trip. Input order is preserved:
+        each position in the returned list corresponds to the same position in
+        ``redis_keys``.
+
+        Unlike the internal ``get_many_objects()`` static method (which takes a
+        set of bytes keys and silently drops missing entries), this public method
+        takes a list of string keys, preserves order, and returns ``None`` for
+        missing keys.
+
+        Args:
+            redis_keys: List of Redis key strings to look up (e.g.
+                ``["User:alice:acme", "User:bob:acme"]``).
+            skip_none: If True, filter out ``None`` entries from the result so
+                that only successfully hydrated instances are returned. When
+                False (default), the returned list has the same length as
+                ``redis_keys`` with ``None`` at positions where the key was
+                missing.
+
+        Returns:
+            List of Model instances (and/or ``None`` when *skip_none* is False).
+
+        Example:
+            # Bulk hydration after a set-based query
+            keys = ["Product:widget:001", "Product:widget:002", "Product:widget:003"]
+            products = Product.query.get_many(redis_keys=keys)
+            # [<Product>, None, <Product>]  -- second key was missing
+
+            # Skip missing entries
+            products = Product.query.get_many(redis_keys=keys, skip_none=True)
+            # [<Product>, <Product>]
+        """
+        if not redis_keys:
+            return []
+
+        from ..models.encoding import decode_popoto_model_hashmap
+
+        pipeline = POPOTO_REDIS_DB.pipeline()
+        for key in redis_keys:
+            pipeline.hgetall(key)
+        hashes_list = pipeline.execute()
+
+        results = []
+        live_instances = []
+        for hashmap in hashes_list:
+            if hashmap:
+                instance = decode_popoto_model_hashmap(self.model_class, hashmap)
+                results.append(instance)
+                live_instances.append(instance)
+            else:
+                results.append(None)
+
+        if live_instances:
+            _fire_on_read(self.model_class, live_instances)
+
+        if skip_none:
+            return [r for r in results if r is not None]
+        return results
+
     def keys(self, catchall=False, clean=False, **kwargs) -> list:
         """Return a list of Redis key bytes for all instances of this model.
 
@@ -2576,6 +2638,51 @@ class Query:
             instance = instances[0] if len(instances) == 1 else None
 
         return instance or None
+
+    async def async_get_many(self, redis_keys: list, skip_none: bool = False) -> list:
+        """Async version of get_many() using native async Redis.
+
+        Retrieves multiple model instances by their Redis keys in a single
+        async pipeline. See :meth:`Query.get_many` for full documentation.
+
+        Args:
+            redis_keys: List of Redis key strings to look up.
+            skip_none: If True, filter out ``None`` entries from the result.
+
+        Returns:
+            List of Model instances (and/or ``None`` when *skip_none* is False).
+
+        Example:
+            keys = ["Product:widget:001", "Product:widget:002"]
+            products = await Product.query.async_get_many(redis_keys=keys)
+        """
+        if not redis_keys:
+            return []
+
+        from ..models.encoding import decode_popoto_model_hashmap
+
+        async_redis = await get_async_redis_db()
+        pipeline = async_redis.pipeline()
+        for key in redis_keys:
+            pipeline.hgetall(key)
+        hashes_list = await pipeline.execute()
+
+        results = []
+        live_instances = []
+        for hashmap in hashes_list:
+            if hashmap:
+                instance = decode_popoto_model_hashmap(self.model_class, hashmap)
+                results.append(instance)
+                live_instances.append(instance)
+            else:
+                results.append(None)
+
+        if live_instances:
+            await to_thread(_fire_on_read, self.model_class, live_instances)
+
+        if skip_none:
+            return [r for r in results if r is not None]
+        return results
 
     async def async_filter(self, **kwargs) -> list:
         """Async version of filter() using native async Redis.

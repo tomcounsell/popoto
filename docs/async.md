@@ -184,6 +184,27 @@ async def audit_keys():
     print(f"Order keys in Redis: {len(keys)}")
 ```
 
+### async_get_many()
+
+Retrieve multiple instances by Redis key in a single async pipeline. This is the async
+counterpart of `query.get_many()` -- see [Making Queries](query.md#get-multiple-objects-by-key)
+for full details on ordering and `skip_none` behavior.
+
+```python
+async def bulk_lookup():
+    keys = ["Restaurant:Siam Garden", "Restaurant:Bella Napoli", "Restaurant:Gone"]
+    restaurants = await Restaurant.query.async_get_many(redis_keys=keys)
+    # => [<Restaurant>, <Restaurant>, None]
+
+    # Drop missing entries
+    restaurants = await Restaurant.query.async_get_many(redis_keys=keys, skip_none=True)
+    # => [<Restaurant>, <Restaurant>]
+```
+
+!!! tip
+    `async_get_many()` uses a native async Redis pipeline, so it does not block the event
+    loop even when hydrating hundreds of keys.
+
 ## Concurrent Operations
 
 The real power of async shows up when you need to perform independent operations at the
@@ -499,7 +520,7 @@ and edge cases. Each scenario listed below has at least one dedicated test.
 | Category | Tested Scenarios |
 |----------|-----------------|
 | **CRUD basics** | `async_create`, `async_save`, `async_delete`, `async_load`, `async_get` |
-| **Query methods** | `async_filter`, `async_all`, `async_count`, `async_keys` |
+| **Query methods** | `async_filter`, `async_all`, `async_count`, `async_keys`, `async_get_many` |
 | **SortedField queries** | `__lte`, `__lt`, `__gt`, `__gte`, range (between), `limit`, `order_by` |
 | **GeoField queries** | Radius search via `async_filter` with coordinates and distance units |
 | **Relationship fields** | Lazy-loading related objects through async queries |

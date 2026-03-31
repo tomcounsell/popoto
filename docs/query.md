@@ -93,6 +93,43 @@ If no matching instance exists, `get()` returns `None`. If more than one instanc
     For models with composite keys, pass all key field values to `get()`. For models with
     `AutoKeyField`, use the auto-generated key value or `redis_key`.
 
+## Get Multiple Objects by Key
+
+When you already have a list of Redis keys (for example, from a set intersection, a cache of
+"recently viewed" items, or a secondary index), use `query.get_many()` to hydrate them all in
+a single round-trip. Internally this uses a Redis pipeline to batch `HGETALL` calls, turning
+N sequential lookups into one network exchange.
+
+```python
+keys = ["Restaurant:Burger Palace", "Restaurant:Sushi Zen", "Restaurant:Gone Place"]
+restaurants = Restaurant.query.get_many(redis_keys=keys)
+print(restaurants)
+# => [<Restaurant>, <Restaurant>, None]  -- third key did not exist
+```
+
+The returned list preserves the same order as the input keys. Missing keys appear as `None`
+so you can correlate each position with the original key list.
+
+If you do not need the `None` placeholders, pass `skip_none=True` to drop them.
+
+```python
+restaurants = Restaurant.query.get_many(redis_keys=keys, skip_none=True)
+print(restaurants)
+# => [<Restaurant>, <Restaurant>]  -- only existing objects
+```
+
+An empty input list returns an empty list immediately, without touching Redis.
+
+!!! tip
+    `get_many()` is ideal for the "fan-out then hydrate" pattern: use `query.keys()` or a
+    Redis set operation to collect keys, then hydrate them in bulk. This avoids the overhead
+    of loading and filtering all instances when you already know which keys you want.
+
+!!! note
+    `get_many()` differs from the internal `get_many_objects()` method. The public method
+    takes a list of string keys, preserves input order, and returns `None` for missing entries.
+    The internal method takes a set of bytes keys and silently drops missing entries.
+
 ## Get All Objects
 
 Use `query.all()` to retrieve every instance of a model. This fetches all Redis keys registered
