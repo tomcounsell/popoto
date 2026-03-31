@@ -1675,7 +1675,7 @@ class Query:
         """
         if clean:
             logger.warning(
-                "{clean} is for debugging purposes only. Not for use in production environment"
+                "Query.keys(clean=True) is deprecated. Use Model.clean_indexes() for production-safe orphan cleanup."
             )
             pipeline = POPOTO_REDIS_DB.pipeline()
             from ..fields.key_field_mixin import KeyFieldMixin
