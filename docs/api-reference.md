@@ -1217,12 +1217,13 @@ See [ConfidenceField feature docs](features/confidence-field.md) for the full re
 Bayesian update formula, convergence behavior, and entrainment with ObservationProtocol.
 
 ```python
-ConfidenceField(initial_confidence=0.5, **kwargs)
+ConfidenceField(initial_confidence=0.5, partition_by=(), **kwargs)
 ```
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `initial_confidence` | `float` | `0.5` | Starting confidence for new members (0-1). |
+| `partition_by` | `str` or `tuple` | `()` | Field name(s) to partition the companion hash. Splits the single Redis hash into per-partition hashes for efficient reads. Mirrors SortedField's `partition_by` API. |
 
 #### ConfidenceField.update\_confidence(instance, field\_name, signal)
 
@@ -1249,6 +1250,35 @@ Read the current confidence value.
 Read all confidence metadata.
 
 **Returns:** Dict with keys `confidence`, `evidence_count`, `corroborations`, `contradictions`.
+
+#### ConfidenceField.get\_confidence\_filtered(model\_class, field\_name, pattern="\*")
+
+Get confidence data for members matching an HSCAN pattern. Useful for filtered reads on
+unpartitioned hashes without loading all entries into memory.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `model_class` | `Model` | The Model class. |
+| `field_name` | `str` | Name of the `ConfidenceField`. |
+| `pattern` | `str` | Redis MATCH pattern for HSCAN (default `*`). |
+
+**Returns:** Dict of `{member_key: {confidence, evidence_count, ...}}` for matching entries.
+
+#### ConfidenceField.migrate\_to\_partitioned(model\_class, field\_name, dry\_run=False)
+
+Migrate existing unpartitioned hash data into partitioned hashes. Reads all entries from the
+single companion hash, loads each model instance to determine partition field values, and
+writes to the appropriate partitioned hash.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `model_class` | `Model` | The Model class with the `ConfidenceField`. |
+| `field_name` | `str` | Name of the `ConfidenceField` to migrate. |
+| `dry_run` | `bool` | If `True`, report what would happen without modifying data. |
+
+**Returns:** Dict with `total`, `migrated`, `errors`, and `partitions` counts.
+
+**Raises:** `ModelException` if the field has no `partition_by` configured.
 
 #### ObservationProtocol entrainment
 

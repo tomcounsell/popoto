@@ -120,6 +120,84 @@ new_episode = Episode.create(
 This keeps the namespace explicit at the model level while avoiding repetitive
 string passing in application code.
 
+## Hash-based field partitioning (ConfidenceField)
+
+SortedField partitions sorted set indexes. ConfidenceField partitions its companion
+Redis hash, which stores per-member Bayesian metadata (`{confidence, evidence_count,
+corroborations, contradictions}`).
+
+Without partitioning, reads require `HGETALL` on a single hash containing every
+member across all tenants. With `partition_by`, each tenant gets its own hash,
+making reads O(partition_size) instead of O(total_members).
+
+```python
+from popoto import Model, KeyField, UniqueKeyField, StringField
+from popoto.fields.confidence_field import ConfidenceField
+
+class Memory(Model):
+    project = KeyField(type=str)
+    key = UniqueKeyField()
+    content = StringField()
+    certainty = ConfidenceField(initial_confidence=0.5, partition_by='project')
+```
+
+This creates per-project companion hashes:
+
+| Without partition_by | With partition_by='project' |
+|----------------------|----------------------------|
+| `$ConfidencF:Memory:certainty:data` (all members) | `$ConfidencF:Memory:certainty:data:atlas` (project atlas only) |
+| | `$ConfidencF:Memory:certainty:data:hermes` (project hermes only) |
+
+Usage is identical to unpartitioned ConfidenceField -- the partition is resolved
+automatically from the model instance:
+
+```python
+memory = Memory.create(project="atlas", key="fact1", content="The sky is blue")
+
+# Writes to the 'atlas' partition hash automatically
+ConfidenceField.update_confidence(memory, "certainty", signal=0.9)
+
+# Reads from the 'atlas' partition hash automatically
+confidence = ConfidenceField.get_confidence(memory, "certainty")
+```
+
+### Partition key changes
+
+If a model instance changes its partition key value (e.g., moves from project A to
+project B), ConfidenceField automatically detects the change during `on_save()` and
+moves the entry from the old partition hash to the new one. No manual intervention
+is needed.
+
+### Migrating existing data
+
+If you add `partition_by` to an existing ConfidenceField that already has data in a
+single unpartitioned hash, use the migration helper:
+
+```python
+# Preview what would happen
+report = ConfidenceField.migrate_to_partitioned(Memory, "certainty", dry_run=True)
+print(report)
+# {'total': 1200, 'migrated': 0, 'errors': [], 'partitions': {'atlas': 800, 'hermes': 400}}
+
+# Run the actual migration
+report = ConfidenceField.migrate_to_partitioned(Memory, "certainty")
+```
+
+The migration reads each entry from the unpartitioned hash, loads the corresponding
+model instance to determine its partition field values, and writes to the correct
+partitioned hash. The old unpartitioned hash is deleted after a successful migration.
+
+### Filtered reads without partitioning
+
+If partitioning is not appropriate for your use case, `get_confidence_filtered()`
+provides an HSCAN-based alternative that avoids loading all entries into memory:
+
+```python
+# Match members by Redis key pattern
+results = ConfidenceField.get_confidence_filtered(Memory, "certainty", pattern="Memory:atlas:*")
+# Returns: {member_key: {confidence, evidence_count, ...}} for matching entries
+```
+
 ## When to use separate Redis databases instead
 
 For stronger isolation (e.g., compliance requirements, independent TTL policies,
@@ -140,5 +218,7 @@ This is heavier but provides complete data separation at the connection level.
 | Approach | Isolation level | Complexity | Best for |
 |----------|----------------|------------|----------|
 | KeyField (recommended) | Key prefix + index partitioning | None — uses existing fields | Most multi-tenant apps |
+| SortedField partition_by | Per-tenant sorted set indexes | One parameter | Sorted range queries within a tenant |
+| ConfidenceField partition_by | Per-tenant companion hashes | One parameter | Large confidence hashes with tenant-scoped reads |
 | ContextVar helper | Same as KeyField, less boilerplate | Minimal application code | Web apps with per-request tenancy |
 | Separate Redis databases | Full connection isolation | Configuration management | Compliance, independent scaling |

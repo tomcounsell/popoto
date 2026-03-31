@@ -15,6 +15,7 @@ The field stores its metadata in a companion Redis hash:
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `initial_confidence` | float | 0.5 | Starting confidence for new members (0-1) |
+| `partition_by` | str or tuple | `()` | Field name(s) to partition the companion hash by. Splits the single Redis hash into per-partition hashes for efficient reads. |
 
 ## Usage
 
@@ -100,11 +101,53 @@ Read all confidence metadata.
 
 - **Returns**: Dict with keys `confidence`, `evidence_count`, `corroborations`, `contradictions`.
 
+## Partitioned Reads
+
+When the companion hash grows large (thousands of members), reads become expensive because
+`HGETALL` loads every entry. The `partition_by` parameter splits the hash by one or more
+field values, so each read only touches the relevant partition.
+
+```python
+class Memory(Model):
+    project = KeyField(type=str)
+    key = UniqueKeyField()
+    content = StringField()
+    certainty = ConfidenceField(initial_confidence=0.5, partition_by='project')
+```
+
+All read and write operations automatically resolve the correct partition hash from the
+model instance. Queries on partitioned ConfidenceFields must include the partition field
+value(s), or a `QueryException` is raised.
+
+See [Multi-Tenancy: Hash-based field partitioning](../multi-tenancy.md#hash-based-field-partitioning-confidencefield)
+for the full pattern including migration from unpartitioned data.
+
+### HSCAN Filtered Reads
+
+For unpartitioned hashes, `get_confidence_filtered()` uses HSCAN with MATCH to iterate
+without loading all entries into memory:
+
+```python
+results = ConfidenceField.get_confidence_filtered(Memory, "certainty", pattern="Memory:atlas:*")
+# Returns: {member_key: {confidence, evidence_count, ...}}
+```
+
+### Migration Helper
+
+```python
+# Dry run — see what would happen
+report = ConfidenceField.migrate_to_partitioned(Memory, "certainty", dry_run=True)
+
+# Execute migration
+report = ConfidenceField.migrate_to_partitioned(Memory, "certainty")
+```
+
 ## Redis Key Patterns
 
 | Key | Type | Description |
 |-----|------|-------------|
-| `$ConfidencF:{Model}:{field}:data` | HASH | Member -> msgpack confidence metadata |
+| `$ConfidencF:{Model}:{field}:data` | HASH | Unpartitioned: all members' confidence metadata |
+| `$ConfidencF:{Model}:{field}:data:{partition_value}` | HASH | Partitioned: members in one partition |
 
 ## Companion Fields
 
