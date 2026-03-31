@@ -1169,6 +1169,9 @@ class QueryBuilder:
         """Materialize a ConfidenceField's confidence values into a temp ZSET.
 
         Reads the companion hash and extracts confidence values for each member.
+        When the field has partition_by and the query includes partition field
+        values, reads only the partition-scoped hash. When partition fields are
+        missing from a partitioned query, raises QueryException.
 
         Args:
             model_class: The Model class.
@@ -1179,15 +1182,35 @@ class QueryBuilder:
 
         Returns:
             str: Redis key of the temp sorted set.
+
+        Raises:
+            QueryException: If a partitioned field is queried without providing
+                values for all partition fields.
         """
         import msgpack
 
         model_name = model_class.__name__
 
-        # Build companion hash key
-        # Pattern: $ConfidencF:{Model}:{field}:data
-        base_key = field.get_special_use_field_db_key(model_class, field_name)
-        data_hash_key = base_key.redis_key + ":data"
+        # Build companion hash key — partition-aware
+        if field.partition_by:
+            # Extract partition values from query filters
+            partition_values = {}
+            for pf in field.partition_by:
+                if pf not in self._filters:
+                    missing = [p for p in field.partition_by if p not in self._filters]
+                    raise QueryException(
+                        f"ConfidenceField '{field_name}' is partitioned by "
+                        f"{', '.join(field.partition_by)}. "
+                        f"Query must include filter(s) for: {', '.join(missing)}"
+                    )
+                partition_values[pf] = self._filters[pf]
+            data_hash_key = field._get_data_hash_key_from_values(
+                model_class, field_name, **partition_values
+            )
+        else:
+            # Unpartitioned: single global hash
+            base_key = field.get_special_use_field_db_key(model_class, field_name)
+            data_hash_key = base_key.redis_key + ":data"
 
         # Read all entries from companion hash
         all_data = POPOTO_REDIS_DB.hgetall(data_hash_key)

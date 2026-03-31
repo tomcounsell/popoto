@@ -8,13 +8,24 @@ Companion Redis hash stores per-member confidence metadata:
     - $ConfidencF:{Model}:{field}:data — msgpack {confidence, evidence_count,
       corroborations, contradictions}
 
+Partitioning:
+    When ``partition_by`` is specified, the companion hash is split into
+    per-partition hashes, avoiding O(N) HGETALL on the global hash:
+
+        ConfidenceField(partition_by='project')
+        # Hash key: $ConfidencF:{Model}:{field}:data:{project_value}
+
+    This mirrors SortedField's partition_by API. Queries on partitioned
+    ConfidenceFields must include the partition field value(s).
+
 Example:
     class Memory(Model):
         key = UniqueKeyField()
+        project = KeyField()
         content = StringField()
-        certainty = ConfidenceField(initial_confidence=0.5)
+        certainty = ConfidenceField(initial_confidence=0.5, partition_by='project')
 
-    memory = Memory.create(key="fact1", content="The sky is blue")
+    memory = Memory.create(key="fact1", project="atlas", content="The sky is blue")
     ConfidenceField.update_confidence(memory, "certainty", signal=0.9)
     print(ConfidenceField.get_confidence(memory, "certainty"))
 """
@@ -25,6 +36,7 @@ import msgpack
 import redis
 
 from ..exceptions import ModelException
+from ..models.query import QueryException
 from ..redis_db import POPOTO_REDIS_DB
 from .constants import Defaults
 from .field import Field
@@ -95,6 +107,11 @@ class ConfidenceField(Field):
 
     Args:
         initial_confidence: Starting confidence for new members. Default 0.5.
+        partition_by: Optional field name or tuple of field names to partition
+            the companion hash. When set, each unique combination of partition
+            field values gets its own Redis hash, reducing the cost of reads
+            from O(total_members) to O(partition_members). Mirrors SortedField's
+            partition_by API.
 
     Example:
         class Memory(Model):
@@ -105,6 +122,16 @@ class ConfidenceField(Field):
         memory = Memory.create(key="fact1", content="The sky is blue")
         ConfidenceField.update_confidence(memory, "certainty", signal=0.9)
         print(ConfidenceField.get_confidence(memory, "certainty"))
+
+    Partitioned example:
+        class Memory(Model):
+            key = UniqueKeyField()
+            project = KeyField()
+            content = StringField()
+            certainty = ConfidenceField(initial_confidence=0.5, partition_by='project')
+
+        memory = Memory.create(key="fact1", project="atlas", content="...")
+        ConfidenceField.update_confidence(memory, "certainty", signal=0.9)
     """
 
     def __init__(self, **kwargs):
@@ -121,6 +148,14 @@ class ConfidenceField(Field):
                 f"(got {self.initial_confidence})"
             )
 
+        # Handle partition_by parameter
+        partition_by = kwargs.pop("partition_by", tuple())
+        if isinstance(partition_by, str):
+            partition_by = (partition_by,)
+        elif partition_by and not isinstance(partition_by, tuple):
+            raise ModelException("partition_by must be str or tuple of str field names")
+        self.partition_by = partition_by
+
         # ConfidenceField stores float confidence values
         # Default to initial_confidence so instance.field returns
         # the configured value rather than None (fixes #281)
@@ -132,14 +167,87 @@ class ConfidenceField(Field):
     def _get_data_hash_key(self, model_instance, field_name):
         """Build the Redis key for the confidence companion hash.
 
-        Pattern: $ConfidencF:{Model}:{field}:data
+        When partition_by is set and a model instance is provided,
+        appends partition field values to the key.
+
+        Pattern (unpartitioned): $ConfidencF:{Model}:{field}:data
+        Pattern (partitioned):   $ConfidencF:{Model}:{field}:data:{partition_val1}:{partition_val2}
         """
         base_key = self.get_special_use_field_db_key(model_instance, field_name)
-        return base_key.redis_key + ":data"
+        key = base_key.redis_key + ":data"
+
+        if self.partition_by:
+            for partition_field_name in self.partition_by:
+                val = getattr(model_instance, partition_field_name, None)
+                if val is not None:
+                    key += f":{val}"
+        return key
+
+    def _get_data_hash_key_from_values(
+        self, model_class, field_name, **partition_values
+    ):
+        """Build the companion hash key from explicit partition values.
+
+        Used in query paths where we have filter params but not an instance.
+
+        Args:
+            model_class: The Model class.
+            field_name: Name of the ConfidenceField.
+            **partition_values: Mapping of partition field names to values.
+
+        Returns:
+            str: The Redis hash key.
+
+        Raises:
+            QueryException: If a required partition field is missing.
+        """
+        base_key = self.get_special_use_field_db_key(model_class, field_name)
+        key = base_key.redis_key + ":data"
+
+        if self.partition_by:
+            for pf in self.partition_by:
+                val = partition_values.get(pf)
+                if val is None:
+                    raise QueryException(
+                        f"ConfidenceField '{field_name}' is partitioned by "
+                        f"{', '.join(self.partition_by)}. "
+                        f"Query must include filter(s) for: {pf}"
+                    )
+                key += f":{val}"
+        return key
+
+    def _get_old_data_hash_key(self, model_instance, field_name):
+        """Build the companion hash key using saved (old) partition field values.
+
+        Used during on_save/on_delete to find the old partition hash when
+        a partition key has changed.
+
+        Returns:
+            str or None: The old hash key, or None if no saved values exist.
+        """
+        saved = getattr(model_instance, "_saved_field_values", None)
+        if not saved:
+            return None
+
+        base_key = self.get_special_use_field_db_key(model_instance, field_name)
+        key = base_key.redis_key + ":data"
+
+        if self.partition_by:
+            for pf in self.partition_by:
+                val = saved.get(pf)
+                if val is not None:
+                    key += f":{val}"
+        return key
 
     @classmethod
     def on_save(cls, model_instance, field_name, field_value, pipeline=None, **kwargs):
-        """Initialize companion hash with initial_confidence on first save."""
+        """Initialize companion hash with initial_confidence on first save.
+
+        For partitioned fields, detects partition key changes and moves
+        the entry from the old partition hash to the new one. Also handles
+        key migration (migrate_key=True) where on_delete preserves old
+        confidence data on the instance for restoration here.
+        """
         result = super().on_save(
             model_instance, field_name, field_value, pipeline=pipeline, **kwargs
         )
@@ -151,6 +259,46 @@ class ConfidenceField(Field):
         member_key = model_instance.db_key.redis_key
         data_hash_key = field._get_data_hash_key(model_instance, field_name)
 
+        db = (
+            pipeline if isinstance(pipeline, redis.client.Pipeline) else POPOTO_REDIS_DB
+        )
+
+        # Check if on_delete preserved migration data (key migration scenario)
+        migration_data = getattr(model_instance, "_confidence_migration_data", {})
+        if field_name in migration_data:
+            old_raw = migration_data.pop(field_name)
+            db.hset(data_hash_key, member_key, old_raw)
+            # Clean up the temp attribute if empty
+            if not migration_data:
+                try:
+                    del model_instance._confidence_migration_data
+                except AttributeError:
+                    pass
+            return result
+
+        # Handle partition key change without key migration (partition field
+        # changed but redis key stayed the same, e.g. partition field is a
+        # regular Field, not a KeyField)
+        if field.partition_by and hasattr(model_instance, "_saved_field_values"):
+            saved = model_instance._saved_field_values
+            if saved:
+                partition_changed = any(
+                    saved.get(pf) is not None
+                    and saved.get(pf) != getattr(model_instance, pf, None)
+                    for pf in field.partition_by
+                )
+                if partition_changed:
+                    old_hash_key = field._get_old_data_hash_key(
+                        model_instance, field_name
+                    )
+                    if old_hash_key and old_hash_key != data_hash_key:
+                        # Read old data directly from Redis
+                        old_raw = POPOTO_REDIS_DB.hget(old_hash_key, member_key)
+                        if old_raw:
+                            db.hset(data_hash_key, member_key, old_raw)
+                            db.hdel(old_hash_key, member_key)
+                            return result
+
         # Initialize with HSETNX (atomic set-if-not-exists, no race condition)
         initial_data = {
             "confidence": field.initial_confidence,
@@ -158,9 +306,6 @@ class ConfidenceField(Field):
             "corroborations": 0,
             "contradictions": 0,
         }
-        db = (
-            pipeline if isinstance(pipeline, redis.client.Pipeline) else POPOTO_REDIS_DB
-        )
         db.hsetnx(data_hash_key, member_key, msgpack.packb(initial_data))
 
         return result
@@ -169,14 +314,36 @@ class ConfidenceField(Field):
     def on_delete(
         cls, model_instance, field_name, field_value, pipeline=None, **kwargs
     ):
-        """Remove companion hash entry on delete."""
+        """Remove companion hash entry on delete.
+
+        When saved_redis_key is provided (key migration), preserves the raw
+        confidence data on the model instance so on_save can restore it into
+        the new partition hash without data loss.
+        """
         field = model_instance._meta.fields[field_name]
 
         if isinstance(field, ConfidenceField):
             member_key = (
                 kwargs.get("saved_redis_key") or model_instance.db_key.redis_key
             )
-            data_hash_key = field._get_data_hash_key(model_instance, field_name)
+
+            # Build hash key from saved partition values (old partition)
+            if field.partition_by and kwargs.get("saved_redis_key"):
+                old_hash_key = field._get_old_data_hash_key(model_instance, field_name)
+                data_hash_key = old_hash_key or field._get_data_hash_key(
+                    model_instance, field_name
+                )
+            else:
+                data_hash_key = field._get_data_hash_key(model_instance, field_name)
+
+            # During key migration (saved_redis_key present), preserve confidence
+            # data so on_save can restore it in the new partition hash.
+            if kwargs.get("saved_redis_key"):
+                old_raw = POPOTO_REDIS_DB.hget(data_hash_key, member_key)
+                if old_raw:
+                    if not hasattr(model_instance, "_confidence_migration_data"):
+                        model_instance._confidence_migration_data = {}
+                    model_instance._confidence_migration_data[field_name] = old_raw
 
             db = (
                 pipeline
@@ -316,3 +483,143 @@ class ConfidenceField(Field):
             }
 
         return msgpack.unpackb(raw, raw=False)
+
+    @classmethod
+    def get_confidence_filtered(cls, model_class, field_name, pattern="*"):
+        """Get confidence data for members matching an HSCAN pattern.
+
+        Useful for filtered reads on unpartitioned hashes without loading
+        all entries into memory.
+
+        Args:
+            model_class: The Model class.
+            field_name: Name of the ConfidenceField.
+            pattern: Redis MATCH pattern for HSCAN (default '*' matches all).
+
+        Returns:
+            dict: {member_key: {confidence, evidence_count, ...}} for matches.
+        """
+        field = model_class._meta.fields.get(field_name)
+        if not isinstance(field, ConfidenceField):
+            raise TypeError(f"{field_name} is not a ConfidenceField")
+
+        base_key = field.get_special_use_field_db_key(model_class, field_name)
+        data_hash_key = base_key.redis_key + ":data"
+
+        result = {}
+        cursor = 0
+        while True:
+            cursor, data = POPOTO_REDIS_DB.hscan(
+                data_hash_key, cursor=cursor, match=pattern, count=100
+            )
+            for member_key, raw_value in data.items():
+                if isinstance(member_key, bytes):
+                    member_key = member_key.decode()
+                try:
+                    result[member_key] = msgpack.unpackb(raw_value, raw=False)
+                except Exception:
+                    logger.warning(
+                        "Failed to unpack confidence data for %s", member_key
+                    )
+            if cursor == 0:
+                break
+        return result
+
+    @classmethod
+    def migrate_to_partitioned(cls, model_class, field_name, dry_run=False):
+        """Migrate existing unpartitioned hash data into partitioned hashes.
+
+        Reads all entries from the single companion hash, loads each model
+        instance from Redis to determine its partition field values, and
+        writes each entry to the appropriate partitioned hash.
+
+        Args:
+            model_class: The Model class with the ConfidenceField.
+            field_name: Name of the ConfidenceField to migrate.
+            dry_run: If True, report what would happen without modifying data.
+
+        Returns:
+            dict: Migration report with counts per partition and any errors.
+
+        Raises:
+            ModelException: If the field has no partition_by configured.
+        """
+        from ..models.encoding import decode_popoto_model_hashmap
+
+        field = model_class._meta.fields.get(field_name)
+        if not isinstance(field, ConfidenceField):
+            raise ModelException(f"{field_name} is not a ConfidenceField")
+
+        if not field.partition_by:
+            raise ModelException(
+                f"ConfidenceField '{field_name}' has no partition_by configured. "
+                f"Nothing to migrate."
+            )
+
+        # Read the unpartitioned hash
+        base_key = field.get_special_use_field_db_key(model_class, field_name)
+        unpartitioned_key = base_key.redis_key + ":data"
+
+        all_data = POPOTO_REDIS_DB.hgetall(unpartitioned_key)
+        if not all_data:
+            return {"total": 0, "migrated": 0, "errors": [], "partitions": {}}
+
+        report = {
+            "total": len(all_data),
+            "migrated": 0,
+            "errors": [],
+            "partitions": {},
+        }
+
+        for member_key_raw, raw_value in all_data.items():
+            member_key = (
+                member_key_raw.decode()
+                if isinstance(member_key_raw, bytes)
+                else member_key_raw
+            )
+
+            # Load the model instance from Redis to read partition field values
+            try:
+                redis_hash = POPOTO_REDIS_DB.hgetall(member_key)
+                if not redis_hash:
+                    report["errors"].append(
+                        {
+                            "member_key": member_key,
+                            "error": "Instance not found in Redis",
+                        }
+                    )
+                    continue
+                instance = decode_popoto_model_hashmap(model_class, redis_hash)
+                if instance is None:
+                    report["errors"].append(
+                        {"member_key": member_key, "error": "Failed to decode instance"}
+                    )
+                    continue
+            except Exception as e:
+                report["errors"].append({"member_key": member_key, "error": str(e)})
+                continue
+
+            # Build the partitioned hash key
+            partitioned_key = field._get_data_hash_key(instance, field_name)
+            partition_label = (
+                partitioned_key.split(":data:")[-1]
+                if ":data:" in partitioned_key
+                else "default"
+            )
+
+            if partition_label not in report["partitions"]:
+                report["partitions"][partition_label] = 0
+            report["partitions"][partition_label] += 1
+
+            if not dry_run:
+                POPOTO_REDIS_DB.hset(partitioned_key, member_key, raw_value)
+                report["migrated"] += 1
+
+        # Delete the old unpartitioned hash after successful migration
+        if not dry_run and report["migrated"] == report["total"] - len(
+            report["errors"]
+        ):
+            if report["migrated"] > 0:
+                POPOTO_REDIS_DB.delete(unpartitioned_key)
+
+        return report
