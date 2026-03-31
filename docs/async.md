@@ -532,7 +532,7 @@ and edge cases. Each scenario listed below has at least one dedicated test.
 | **Client-side filtering** | Filtering on plain `Field` (non-indexed) via `async_filter` |
 | **Meta options** | `Meta.order_by` default sorting, `Meta.ttl` automatic expiration |
 | **Atomicity** | Pipeline-based `async_save`, concurrent writes (last-write-wins) |
-| **Index maintenance** | `async_check_indexes`, `async_rebuild_indexes` via `to_thread` |
+| **Index maintenance** | `async_check_indexes`, `async_clean_indexes`, `async_rebuild_indexes` via `to_thread` |
 
 Run the async tests with:
 

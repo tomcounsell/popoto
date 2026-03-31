@@ -653,8 +653,10 @@ This method makes **zero writes** to Redis. It is safe to call in production at 
 result = User.check_indexes()
 if result['total'] > 0:
     print(f"Found {result['total']} orphaned index entries")
-    # Optionally repair
-    User.rebuild_indexes()
+    # Surgically remove orphans (production-safe)
+    User.clean_indexes()
+    # Or fully rebuild indexes (destructive)
+    # User.rebuild_indexes()
 
 # Check with smaller batches for memory-constrained environments
 result = User.check_indexes(batch_size=100)
@@ -693,18 +695,68 @@ print(f"Rebuilt indexes for {count} users")
     secondary indexes. During the rebuild window, queries relying on those indexes
     may return incomplete results.
 
+### Model.clean_indexes()
+
+```python
+@classmethod
+Model.clean_indexes(batch_size: int = 1000) -> int
+```
+
+Production-safe orphan cleanup that surgically removes orphaned index entries without
+rebuilding from scratch. Scans all five index types using SCAN-based iteration and
+removes only the entries whose referenced instance keys no longer exist in Redis.
+
+Unlike `rebuild_indexes()`, this method does not delete and recreate indexes. It
+performs targeted removals (SREM, ZREM, HDEL) only on orphaned entries, leaving
+valid entries untouched. This makes it safe to run during normal operations with
+minimal impact on concurrent queries.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `batch_size` | `int` | 1000 | Number of EXISTS commands per pipeline batch. Lower values use less memory but require more round-trips. |
+
+**Returns:** Integer count of orphaned entries removed across all index types.
+
+```python
+# Remove orphaned index entries
+removed = User.clean_indexes()
+print(f"Removed {removed} orphaned index entries")
+
+# Typical workflow: check first, then clean
+result = User.check_indexes()
+if result['total'] > 0:
+    removed = User.clean_indexes()
+    print(f"Cleaned {removed} orphans")
+
+# Verify cleanup was complete
+result = User.check_indexes()
+assert result['total'] == 0
+```
+
+!!! tip
+    Use `check_indexes()` to diagnose index health, `clean_indexes()` to surgically
+    remove orphans, and `rebuild_indexes()` as a last resort for full reconstruction.
+    In most production scenarios, `clean_indexes()` is the right choice because it
+    preserves valid index entries and avoids the query gap that `rebuild_indexes()`
+    creates.
+
 ### Async Index Maintenance
 
 | Sync | Async |
 |------|-------|
 | `Model.check_indexes()` | `await Model.async_check_indexes()` |
+| `Model.clean_indexes()` | `await Model.async_clean_indexes()` |
 | `Model.rebuild_indexes()` | `await Model.async_rebuild_indexes()` |
 
 ```python
-# Async health check and conditional repair
+# Async health check and targeted cleanup
 result = await User.async_check_indexes()
 if result['total'] > 0:
-    await User.async_rebuild_indexes()
+    removed = await User.async_clean_indexes()
+    print(f"Cleaned {removed} orphans")
+
+# Full rebuild as last resort
+await User.async_rebuild_indexes()
 ```
 
 ---
