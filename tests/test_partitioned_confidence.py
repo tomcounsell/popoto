@@ -471,13 +471,13 @@ class TestPartitionedErrors:
         # Model should still be creatable if the field allows null
         # (KeyField does not allow null by default, so this tests the boundary)
 
-    def testget_data_hash_key_from_values_missing_partition(self):
+    def test_get_data_hash_key_from_values_missing_partition(self):
         """get_data_hash_key_from_values raises QueryException for missing partition."""
         field = PartitionedConfidence._meta.fields["certainty"]
         with pytest.raises(QueryException, match="partitioned by"):
             field.get_data_hash_key_from_values(PartitionedConfidence, "certainty")
 
-    def testget_data_hash_key_from_values_with_partition(self):
+    def test_get_data_hash_key_from_values_with_partition(self):
         """get_data_hash_key_from_values builds correct key with partition values."""
         field = PartitionedConfidence._meta.fields["certainty"]
         key = field.get_data_hash_key_from_values(
