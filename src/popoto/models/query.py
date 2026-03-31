@@ -1514,9 +1514,16 @@ class Query:
             # Direct lookup when all keys are known (single Redis command)
             user = User.query.get(username="alice", tenant_id="acme")
 
+            # Positional redis_key string (e.g. from a previous query or external source)
+            user = User.query.get("User:alice:acme")
+
             # Fallback to filter when using non-key fields
             user = User.query.get(email="alice@example.com")  # May be slower
         """
+        if isinstance(db_key, str) and not redis_key:
+            redis_key = db_key
+            db_key = None
+
         if (
             not db_key
             and not redis_key
