@@ -635,6 +635,35 @@ class Order(Model):
         ttl = 2592000  # 30 days
 ```
 
+### Instance TTL Attributes
+
+Every model instance exposes two attributes for controlling expiration. These
+are set per-instance before calling `save()`. See [TTL](ttl.md) for full
+documentation and examples.
+
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `_ttl` | `int` or `None` | Value of `Meta.ttl` | Time-to-live in seconds. Set to `None` to make the instance permanent. Takes precedence over `Meta.ttl`. |
+| `_expire_at` | `datetime` or `None` | `None` | Absolute expiration timestamp. Calls Redis `EXPIREAT` on save. |
+
+!!! warning
+    Setting both `_ttl` and `_expire_at` on the same instance raises a
+    `ModelException` during validation. Use one or the other.
+
+```python
+from datetime import datetime
+
+# Override model TTL for one instance
+order = Order(order_id="rush-123", total=49.99)
+order._ttl = 604800  # 7 days instead of the default 30
+order.save()
+
+# Set absolute expiration
+order._ttl = None
+order._expire_at = datetime(2026, 12, 31, 23, 59, 59)
+order.save()
+```
+
 ---
 
 ## Query Class

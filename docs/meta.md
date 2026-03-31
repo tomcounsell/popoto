@@ -72,6 +72,11 @@ expensive_first = Order.query.all(order_by="-total")
 
 ## ttl
 
+!!! tip
+    For a dedicated guide covering model-level TTL, per-instance overrides,
+    absolute expiration, and a complete session example, see the
+    [TTL documentation](ttl.md).
+
 The `ttl` (time-to-live) option tells Redis to automatically delete model
 instances after a specified number of seconds. When you save a model with a
 TTL, Popoto calls Redis's `EXPIRE` command on the key. After that many

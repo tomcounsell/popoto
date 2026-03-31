@@ -8,6 +8,7 @@ nav:
     - Configuration: 'configuration.md'
     - Models and Fields: 'fields.md'
     - Model Meta Options: 'meta.md'
+    - TTL (Time-to-Live): 'ttl.md'
     - Indexed Fields: 'indexed_fields.md'
     - Making Queries: 'query.md'
     - Relationship Field: 'relationship.md'
