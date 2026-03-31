@@ -612,6 +612,103 @@ print(f"Permanently removed {deleted_count} restaurants")
 
 ---
 
+## Index Maintenance
+
+Popoto maintains secondary indexes (sorted sets, key field sets, geo indexes, composite
+indexes, and the class set) alongside your model data. Over time, indexes can accumulate
+orphaned entries -- references to instance keys that no longer exist in Redis. This
+typically happens after direct Redis deletions, TTL expirations, or interrupted operations.
+
+### Model.check_indexes()
+
+```python
+@classmethod
+Model.check_indexes(batch_size: int = 1000) -> dict
+```
+
+Read-only health check that counts orphaned index entries. Scans all five index types
+and checks whether each referenced instance key still exists in Redis.
+
+This method makes **zero writes** to Redis. It is safe to call in production at any time.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `batch_size` | `int` | 1000 | Number of EXISTS commands per pipeline batch. Lower values use less memory but require more round-trips. |
+
+**Returns:** Dict with orphan counts per index type:
+
+```python
+{
+    'class_set': int,
+    'key_fields': {field_name: int, ...},
+    'sorted_fields': {field_name: int, ...},
+    'geo_fields': {field_name: int, ...},
+    'composite_indexes': {index_key: int, ...},
+    'total': int,
+}
+```
+
+```python
+# Check for orphaned index entries
+result = User.check_indexes()
+if result['total'] > 0:
+    print(f"Found {result['total']} orphaned index entries")
+    # Optionally repair
+    User.rebuild_indexes()
+
+# Check with smaller batches for memory-constrained environments
+result = User.check_indexes(batch_size=100)
+```
+
+!!! tip
+    Use `check_indexes()` as a diagnostic step before deciding whether to run the
+    destructive `rebuild_indexes()`. This is especially useful in production where
+    you want to assess index health without modifying any data.
+
+### Model.rebuild_indexes()
+
+```python
+@classmethod
+Model.rebuild_indexes(batch_size: int = 1000) -> int
+```
+
+Delete all secondary indexes and reconstruct them from source hash data. This is useful
+for repairing corrupted indexes, after bulk data imports that bypassed normal `save()`
+hooks, or when upgrading field types that change index structure.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `batch_size` | `int` | 1000 | Number of instances to process per pipeline batch. |
+
+**Returns:** Number of instances processed.
+
+```python
+# Rebuild all indexes for User model
+count = User.rebuild_indexes()
+print(f"Rebuilt indexes for {count} users")
+```
+
+!!! warning
+    `rebuild_indexes()` is a destructive operation that deletes and recreates all
+    secondary indexes. During the rebuild window, queries relying on those indexes
+    may return incomplete results.
+
+### Async Index Maintenance
+
+| Sync | Async |
+|------|-------|
+| `Model.check_indexes()` | `await Model.async_check_indexes()` |
+| `Model.rebuild_indexes()` | `await Model.async_rebuild_indexes()` |
+
+```python
+# Async health check and conditional repair
+result = await User.async_check_indexes()
+if result['total'] > 0:
+    await User.async_rebuild_indexes()
+```
+
+---
+
 ### Meta Inner Class
 
 Configure model-level behavior by defining a `Meta` inner class. See [Meta Options](meta.md) for

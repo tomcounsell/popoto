@@ -2844,6 +2844,183 @@ class Model(metaclass=ModelBase):
         return count
 
     @classmethod
+    def check_indexes(cls, batch_size: int = 1000) -> dict:
+        """Read-only health check that counts orphaned index entries.
+
+        Scans all five index types (class set, key fields, sorted fields,
+        geo fields, composite indexes) and checks whether each referenced
+        instance key still exists in Redis. Returns a structured dict with
+        orphan counts per index type.
+
+        This method makes zero writes to Redis. It is safe to call in
+        production at any time. Note that counts are point-in-time snapshots;
+        concurrent writes may cause minor discrepancies.
+
+        Args:
+            batch_size: Number of EXISTS commands per pipeline batch.
+                Default is 1000. Lower values use less memory but require
+                more round-trips.
+
+        Returns:
+            Dict with orphan counts per index type::
+
+                {
+                    'class_set': int,
+                    'key_fields': {field_name: int, ...},
+                    'sorted_fields': {field_name: int, ...},
+                    'geo_fields': {field_name: int, ...},
+                    'composite_indexes': {index_key: int, ...},
+                    'total': int,
+                }
+
+        Example:
+            result = User.check_indexes()
+            if result['total'] > 0:
+                print(f"Found {result['total']} orphaned index entries")
+                User.rebuild_indexes()
+        """
+
+        def _count_orphans(keys_to_check: list) -> int:
+            """Pipeline EXISTS in batches, return count of non-existent keys."""
+            orphan_count = 0
+            for i in range(0, len(keys_to_check), batch_size):
+                batch = keys_to_check[i : i + batch_size]
+                pipe = POPOTO_REDIS_DB.pipeline()
+                for key in batch:
+                    pipe.exists(key)
+                results = pipe.execute()
+                orphan_count += sum(1 for exists in results if not exists)
+            return orphan_count
+
+        def _scan_set_members(set_key: str) -> list:
+            """SSCAN all members of a Redis set."""
+            members = []
+            cursor = 0
+            while True:
+                cursor, batch = POPOTO_REDIS_DB.sscan(set_key, cursor, count=1000)
+                members.extend(batch)
+                if cursor == 0:
+                    break
+            return members
+
+        def _scan_sorted_set_members(zset_key: str) -> list:
+            """ZSCAN all members of a Redis sorted set."""
+            members = []
+            cursor = 0
+            while True:
+                cursor, batch = POPOTO_REDIS_DB.zscan(zset_key, cursor, count=1000)
+                members.extend(member for member, _score in batch)
+                if cursor == 0:
+                    break
+            return members
+
+        def _scan_hash_values(hash_key: str) -> list:
+            """HSCAN all values of a Redis hash."""
+            values = []
+            cursor = 0
+            while True:
+                cursor, batch = POPOTO_REDIS_DB.hscan(hash_key, cursor, count=1000)
+                values.extend(batch.values())
+                if cursor == 0:
+                    break
+            return values
+
+        result = {
+            "class_set": 0,
+            "key_fields": {},
+            "sorted_fields": {},
+            "geo_fields": {},
+            "composite_indexes": {},
+            "total": 0,
+        }
+
+        # 1. Check class set
+        class_set_key = cls._meta.db_class_set_key.redis_key
+        members = _scan_set_members(class_set_key)
+        if members:
+            result["class_set"] = _count_orphans(members)
+
+        # 2. Check key field sets
+        for field_name in cls._meta.key_field_names:
+            field = cls._meta.fields[field_name]
+            # Skip auto fields - they don't maintain index sets
+            if getattr(field, "auto", False):
+                continue
+            base_key = field.get_special_use_field_db_key(cls, field_name)
+            pattern = base_key.redis_key + ":*"
+            field_orphans = 0
+            for key in POPOTO_REDIS_DB.scan_iter(match=pattern, count=1000):
+                if isinstance(key, bytes):
+                    key = key.decode("utf-8")
+                members = _scan_set_members(key)
+                if members:
+                    field_orphans += _count_orphans(members)
+            result["key_fields"][field_name] = field_orphans
+
+        # 3. Check sorted field sets
+        for field_name in cls._meta.sorted_field_names:
+            field = cls._meta.fields[field_name]
+            base_key = field.get_special_use_field_db_key(cls, field_name)
+            pattern = base_key.redis_key + "*"
+            field_orphans = 0
+            for key in POPOTO_REDIS_DB.scan_iter(match=pattern, count=1000):
+                if isinstance(key, bytes):
+                    key = key.decode("utf-8")
+                members = _scan_sorted_set_members(key)
+                if members:
+                    field_orphans += _count_orphans(members)
+            result["sorted_fields"][field_name] = field_orphans
+
+        # 4. Check geo fields
+        for field_name in cls._meta.geo_field_names:
+            geo_key = GeoField.get_geo_db_key(cls, field_name)
+            members = _scan_sorted_set_members(geo_key.redis_key)
+            field_orphans = 0
+            if members:
+                field_orphans = _count_orphans(members)
+            result["geo_fields"][field_name] = field_orphans
+
+        # 5. Check composite indexes
+        for field_names, is_unique in cls._meta.indexes:
+            index_key = cls._meta.get_index_key(tuple(field_names))
+            values = _scan_hash_values(index_key)
+            index_orphans = 0
+            if values:
+                index_orphans = _count_orphans(values)
+            result["composite_indexes"][index_key] = index_orphans
+
+        # Compute total
+        result["total"] = (
+            result["class_set"]
+            + sum(result["key_fields"].values())
+            + sum(result["sorted_fields"].values())
+            + sum(result["geo_fields"].values())
+            + sum(result["composite_indexes"].values())
+        )
+
+        return result
+
+    @classmethod
+    async def async_check_indexes(cls, batch_size: int = 1000) -> dict:
+        """Async version of check_indexes().
+
+        Runs the synchronous check_indexes() method in a thread pool
+        to avoid blocking the event loop.
+
+        Args:
+            batch_size: Number of EXISTS commands per pipeline batch.
+
+        Returns:
+            Dict with orphan counts per index type (same as check_indexes).
+
+        Example:
+            result = await User.async_check_indexes()
+            if result['total'] > 0:
+                await User.async_rebuild_indexes()
+        """
+        return await to_thread(cls.check_indexes, batch_size=batch_size)
+
+    @classmethod
     async def async_rebuild_indexes(cls, batch_size: int = 1000) -> int:
         """Async version of rebuild_indexes().
 

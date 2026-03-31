@@ -181,11 +181,12 @@ No agent integration required -- this is a library method in the popoto package.
 ## Documentation
 
 ### Inline Documentation
-- [ ] Comprehensive docstring on `check_indexes()` with Args, Returns, Example sections (matching `rebuild_indexes()` docstring style at line 2707)
-- [ ] Comprehensive docstring on `async_check_indexes()` matching async conventions in the file
+- [x] Comprehensive docstring on `check_indexes()` with Args, Returns, Example sections (matching `rebuild_indexes()` docstring style at line 2707)
+- [x] Comprehensive docstring on `async_check_indexes()` matching async conventions in the file
 
 ### External Documentation Site
-- [ ] No external docs site changes needed -- popoto does not currently have a docs site
+- [x] Added Index Maintenance section to `docs/api-reference.md` with full docs for `check_indexes()` and `rebuild_indexes()`
+- [x] Updated `docs/async.md` index maintenance row to include `async_check_indexes`
 
 ## Success Criteria
 
