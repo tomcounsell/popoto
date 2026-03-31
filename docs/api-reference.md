@@ -665,6 +665,30 @@ Retrieve a single model instance. Look up by `db_key`, `redis_key`, or keyword f
 restaurant = Restaurant.query.get(name="Taco Town")
 ```
 
+### Query.get\_many()
+
+```python
+Query.get_many(redis_keys: list[str], skip_none: bool = False) -> list
+```
+
+Retrieve multiple model instances by their Redis keys in a single pipelined round-trip.
+The returned list preserves the order of `redis_keys`; positions where no Redis hash exists
+contain `None` (or are omitted when `skip_none=True`).
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `redis_keys` | `list[str]` | | List of Redis key strings to look up. |
+| `skip_none` | `bool` | `False` | When `True`, missing keys are dropped instead of appearing as `None`. |
+
+**Returns:** `list` of `Model` instances (and `None` placeholders unless `skip_none=True`).
+
+```python
+keys = ["Restaurant:Burger Palace", "Restaurant:Sushi Zen"]
+restaurants = Restaurant.query.get_many(redis_keys=keys)
+```
+
+The async counterpart is `await Model.query.async_get_many(redis_keys=keys)`.
+
 ### Query.filter()
 
 ```python
