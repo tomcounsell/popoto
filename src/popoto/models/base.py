@@ -1980,7 +1980,7 @@ class Model(metaclass=ModelBase):
 
         now = time.time()
         member_key = self._redis_key or self.db_key.redis_key
-        pressure_hash_key = field._get_pressure_hash_key(self, field_name)
+        pressure_hash_key = field.get_pressure_hash_key(self, field_name)
 
         pressure_data = {
             "rate": field.pressure_rate,
@@ -2073,7 +2073,7 @@ class Model(metaclass=ModelBase):
         import msgpack
 
         member_key = self._redis_key or self.db_key.redis_key
-        cycles_hash_key = field._get_cycles_hash_key(self, field_name)
+        cycles_hash_key = field.get_cycles_hash_key(self, field_name)
 
         # Read current cycles
         raw = POPOTO_REDIS_DB.hget(cycles_hash_key, member_key)

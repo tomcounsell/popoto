@@ -240,7 +240,7 @@ class TestCyclicDecayFieldSave:
     def test_save_stores_cycles_hash(self):
         item = CyclicWithCycles.create(name="cycles_test")
         field = CyclicWithCycles._meta.fields["relevance"]
-        cycles_key = field._get_cycles_hash_key(item, "relevance")
+        cycles_key = field.get_cycles_hash_key(item, "relevance")
         raw = popoto.POPOTO_REDIS_DB.hget(cycles_key, item.db_key.redis_key)
         assert raw is not None
         decoded = msgpack.unpackb(raw, raw=False)
@@ -251,7 +251,7 @@ class TestCyclicDecayFieldSave:
     def test_save_stores_pressure_hash(self):
         item = CyclicWithPressure.create(name="pressure_test")
         field = CyclicWithPressure._meta.fields["relevance"]
-        pressure_key = field._get_pressure_hash_key(item, "relevance")
+        pressure_key = field.get_pressure_hash_key(item, "relevance")
         raw = popoto.POPOTO_REDIS_DB.hget(pressure_key, item.db_key.redis_key)
         assert raw is not None
         decoded = msgpack.unpackb(raw, raw=False)
@@ -262,7 +262,7 @@ class TestCyclicDecayFieldSave:
         """Re-saving does not overwrite last_resolved."""
         item = CyclicWithPressure.create(name="preserve_lr")
         field = CyclicWithPressure._meta.fields["relevance"]
-        pressure_key = field._get_pressure_hash_key(item, "relevance")
+        pressure_key = field.get_pressure_hash_key(item, "relevance")
 
         raw1 = popoto.POPOTO_REDIS_DB.hget(pressure_key, item.db_key.redis_key)
         lr1 = msgpack.unpackb(raw1, raw=False)["last_resolved"]
@@ -278,7 +278,7 @@ class TestCyclicDecayFieldSave:
         """CyclicDecayField with empty cycles removes stale cycle data."""
         item = CyclicItem.create(name="no_cycles")
         field = CyclicItem._meta.fields["relevance"]
-        cycles_key = field._get_cycles_hash_key(item, "relevance")
+        cycles_key = field.get_cycles_hash_key(item, "relevance")
         raw = popoto.POPOTO_REDIS_DB.hget(cycles_key, item.db_key.redis_key)
         assert raw is None
 
@@ -298,7 +298,7 @@ class TestCyclicDecayFieldDelete:
     def test_delete_cleans_cycles_hash(self):
         item = CyclicFull.create(name="del_cycles")
         field = CyclicFull._meta.fields["relevance"]
-        cycles_key = field._get_cycles_hash_key(item, "relevance")
+        cycles_key = field.get_cycles_hash_key(item, "relevance")
         member_key = item.db_key.redis_key
 
         # Verify data exists
@@ -310,7 +310,7 @@ class TestCyclicDecayFieldDelete:
     def test_delete_cleans_pressure_hash(self):
         item = CyclicFull.create(name="del_pressure")
         field = CyclicFull._meta.fields["relevance"]
-        pressure_key = field._get_pressure_hash_key(item, "relevance")
+        pressure_key = field.get_pressure_hash_key(item, "relevance")
         member_key = item.db_key.redis_key
 
         assert popoto.POPOTO_REDIS_DB.hget(pressure_key, member_key) is not None
@@ -353,7 +353,7 @@ class TestTopByDecayCyclic:
 
         # Set peak_item cycles with phase = now (peak now)
         # Set trough_item cycles with phase = now - half_year (trough now)
-        cycles_key = field._get_cycles_hash_key(peak_item, "relevance")
+        cycles_key = field.get_cycles_hash_key(peak_item, "relevance")
         half_year = TemporalPeriod.YEARLY / 2
 
         # Peak cycle: phase aligns so cos(2*pi*(now-phase)/period) = 1
@@ -409,7 +409,7 @@ class TestTopByDecayPressure:
         )
 
         # Set old_item pressure to have been unresolved for 30 days
-        pressure_key = field._get_pressure_hash_key(old_item, "relevance")
+        pressure_key = field.get_pressure_hash_key(old_item, "relevance")
         old_pressure = {"rate": 0.1, "last_resolved": now - 86400 * 30}
         new_pressure = {"rate": 0.1, "last_resolved": now}
 
@@ -435,7 +435,7 @@ class TestTopByDecayPressure:
         field = CyclicWithPressure._meta.fields["relevance"]
 
         item = CyclicWithPressure.create(name="resolve_test")
-        pressure_key = field._get_pressure_hash_key(item, "relevance")
+        pressure_key = field.get_pressure_hash_key(item, "relevance")
 
         # Set old last_resolved
         old_pressure = {"rate": 0.1, "last_resolved": now - 86400 * 30}
@@ -488,7 +488,7 @@ class TestThreeForcesSuperposition:
         )
 
         # Set cycles: yearly, amplitude 5.0, phase=now (cos(0)=1)
-        cycles_key = field._get_cycles_hash_key(item, "relevance")
+        cycles_key = field.get_cycles_hash_key(item, "relevance")
         popoto.POPOTO_REDIS_DB.hset(
             cycles_key,
             item.db_key.redis_key,
@@ -496,7 +496,7 @@ class TestThreeForcesSuperposition:
         )
 
         # Set pressure: rate=0.1, 10 days unresolved
-        pressure_key = field._get_pressure_hash_key(item, "relevance")
+        pressure_key = field.get_pressure_hash_key(item, "relevance")
         popoto.POPOTO_REDIS_DB.hset(
             pressure_key,
             item.db_key.redis_key,
@@ -504,10 +504,10 @@ class TestThreeForcesSuperposition:
         )
 
         # Run the Lua script directly to get the raw score
-        cycles_hash_key = CyclicDecayField._get_cycles_hash_key_from_parts(
+        cycles_hash_key = CyclicDecayField.get_cycles_hash_key_from_parts(
             CyclicFull, "relevance"
         )
-        pressure_hash_key = CyclicDecayField._get_pressure_hash_key_from_parts(
+        pressure_hash_key = CyclicDecayField.get_pressure_hash_key_from_parts(
             CyclicFull, "relevance"
         )
 
@@ -658,7 +658,7 @@ class TestResolvePressure:
         pipe.execute()
 
         field = CyclicWithPressure._meta.fields["relevance"]
-        pressure_key = field._get_pressure_hash_key(item, "relevance")
+        pressure_key = field.get_pressure_hash_key(item, "relevance")
         raw = popoto.POPOTO_REDIS_DB.hget(pressure_key, item.db_key.redis_key)
         decoded = msgpack.unpackb(raw, raw=False)
         assert abs(decoded["last_resolved"] - time.time()) < 2.0
@@ -690,10 +690,10 @@ class TestNilCompanionHash:
         popoto.POPOTO_REDIS_DB.zadd(ss_key.redis_key, {fake_key: now - 86400})
 
         # Should not crash — orphan member gets pure decay score
-        cycles_hash_key = CyclicDecayField._get_cycles_hash_key_from_parts(
+        cycles_hash_key = CyclicDecayField.get_cycles_hash_key_from_parts(
             CyclicWithCycles, "relevance"
         )
-        pressure_hash_key = CyclicDecayField._get_pressure_hash_key_from_parts(
+        pressure_hash_key = CyclicDecayField.get_pressure_hash_key_from_parts(
             CyclicWithCycles, "relevance"
         )
 
@@ -730,10 +730,10 @@ class TestCyclicBenchmarks:
     def test_1k_members(self):
         """Extended Lua handles 1K members with cycle+pressure data."""
         ss_key = CyclicDecayField.get_sortedset_db_key(CyclicFull, "relevance")
-        cycles_hash_key = CyclicDecayField._get_cycles_hash_key_from_parts(
+        cycles_hash_key = CyclicDecayField.get_cycles_hash_key_from_parts(
             CyclicFull, "relevance"
         )
-        pressure_hash_key = CyclicDecayField._get_pressure_hash_key_from_parts(
+        pressure_hash_key = CyclicDecayField.get_pressure_hash_key_from_parts(
             CyclicFull, "relevance"
         )
         now = time.time()
@@ -781,10 +781,10 @@ class TestCyclicBenchmarks:
     def test_10k_members(self):
         """Extended Lua handles 10K members with cycle+pressure data."""
         ss_key = CyclicDecayField.get_sortedset_db_key(CyclicFull, "relevance")
-        cycles_hash_key = CyclicDecayField._get_cycles_hash_key_from_parts(
+        cycles_hash_key = CyclicDecayField.get_cycles_hash_key_from_parts(
             CyclicFull, "relevance"
         )
-        pressure_hash_key = CyclicDecayField._get_pressure_hash_key_from_parts(
+        pressure_hash_key = CyclicDecayField.get_pressure_hash_key_from_parts(
             CyclicFull, "relevance"
         )
         now = time.time()

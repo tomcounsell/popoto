@@ -107,7 +107,7 @@ def _cleanup_proposals():
 def _get_cycles(instance, field_name="relevance"):
     """Read current cycle amplitudes from Redis."""
     field = instance._meta.fields[field_name]
-    cycles_hash_key = field._get_cycles_hash_key(instance, field_name)
+    cycles_hash_key = field.get_cycles_hash_key(instance, field_name)
     member_key = instance._redis_key or instance.db_key.redis_key
     raw = POPOTO_REDIS_DB.hget(cycles_hash_key, member_key)
     if not raw:
@@ -252,7 +252,7 @@ class TestActedOutcome:
 
         # Manually backdate pressure to simulate buildup
         field = item._meta.fields["relevance"]
-        pressure_hash_key = field._get_pressure_hash_key(item, "relevance")
+        pressure_hash_key = field.get_pressure_hash_key(item, "relevance")
         member_key = item.db_key.redis_key
         old_pressure = {"rate": 0.1, "last_resolved": time.time() - 86400}
         POPOTO_REDIS_DB.hset(pressure_hash_key, member_key, msgpack.packb(old_pressure))
@@ -671,7 +671,7 @@ class TestCycleMethods:
         # NoPressureMemory has cycles in its field def, so cycles ARE stored.
         # Let's test with a model that has cycles stored and then delete them.
         field = item._meta.fields["relevance"]
-        cycles_hash_key = field._get_cycles_hash_key(item, "relevance")
+        cycles_hash_key = field.get_cycles_hash_key(item, "relevance")
         member_key = item.db_key.redis_key
         POPOTO_REDIS_DB.hdel(cycles_hash_key, member_key)
 

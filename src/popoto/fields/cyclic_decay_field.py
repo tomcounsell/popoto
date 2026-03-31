@@ -209,7 +209,7 @@ class CyclicDecayField(DecayingSortedField):
 
         super().__init__(**kwargs)
 
-    def _get_cycles_hash_key(self, model_instance, field_name):
+    def get_cycles_hash_key(self, model_instance, field_name):
         """Build the Redis key for the cycles companion hash.
 
         Pattern: $CyclicDecayF:{Model}:{field}:{partitions}:cycles
@@ -217,7 +217,7 @@ class CyclicDecayField(DecayingSortedField):
         ss_key = self.get_partitioned_sortedset_db_key(model_instance, field_name)
         return ss_key.redis_key + ":cycles"
 
-    def _get_pressure_hash_key(self, model_instance, field_name):
+    def get_pressure_hash_key(self, model_instance, field_name):
         """Build the Redis key for the pressure companion hash.
 
         Pattern: $CyclicDecayF:{Model}:{field}:{partitions}:pressure
@@ -226,7 +226,7 @@ class CyclicDecayField(DecayingSortedField):
         return ss_key.redis_key + ":pressure"
 
     @classmethod
-    def _get_cycles_hash_key_from_parts(
+    def get_cycles_hash_key_from_parts(
         cls, model_class, field_name, *partition_values
     ):
         """Build cycles hash key from model class and partition values."""
@@ -234,7 +234,7 @@ class CyclicDecayField(DecayingSortedField):
         return ss_key.redis_key + ":cycles"
 
     @classmethod
-    def _get_pressure_hash_key_from_parts(
+    def get_pressure_hash_key_from_parts(
         cls, model_class, field_name, *partition_values
     ):
         """Build pressure hash key from model class and partition values."""
@@ -259,8 +259,8 @@ class CyclicDecayField(DecayingSortedField):
             return result
 
         member_key = model_instance.db_key.redis_key
-        cycles_hash_key = field._get_cycles_hash_key(model_instance, field_name)
-        pressure_hash_key = field._get_pressure_hash_key(model_instance, field_name)
+        cycles_hash_key = field.get_cycles_hash_key(model_instance, field_name)
+        pressure_hash_key = field.get_pressure_hash_key(model_instance, field_name)
 
         # Normalize cycles to 3-tuples for storage
         normalized_cycles = []
@@ -314,8 +314,8 @@ class CyclicDecayField(DecayingSortedField):
             member_key = (
                 kwargs.get("saved_redis_key") or model_instance.db_key.redis_key
             )
-            cycles_hash_key = field._get_cycles_hash_key(model_instance, field_name)
-            pressure_hash_key = field._get_pressure_hash_key(model_instance, field_name)
+            cycles_hash_key = field.get_cycles_hash_key(model_instance, field_name)
+            pressure_hash_key = field.get_pressure_hash_key(model_instance, field_name)
 
             db = (
                 pipeline
