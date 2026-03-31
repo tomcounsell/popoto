@@ -3012,6 +3012,11 @@ class Model(metaclass=ModelBase):
 
         Returns:
             Dict with orphan counts per index type (same as check_indexes).
+
+        Example:
+            result = await User.async_check_indexes()
+            if result['total'] > 0:
+                await User.async_rebuild_indexes()
         """
         return await to_thread(cls.check_indexes, batch_size=batch_size)
 
