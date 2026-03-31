@@ -1517,6 +1517,10 @@ class Query:
             # Fallback to filter when using non-key fields
             user = User.query.get(email="alice@example.com")  # May be slower
         """
+        if isinstance(db_key, str) and not redis_key:
+            redis_key = db_key
+            db_key = None
+
         if (
             not db_key
             and not redis_key
