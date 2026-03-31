@@ -26,11 +26,12 @@ from src.popoto.fields.embedding_field import (
     EmbeddingField,
     set_default_provider,
     invalidate_cache,
+    _read_index,
+    _index_path,
 )
 from src.popoto.stores.filesystem import FilesystemStore
 from src.popoto.embeddings import AbstractEmbeddingProvider
 from src.popoto.redis_db import POPOTO_REDIS_DB
-
 
 # --- Mock Provider ---
 
@@ -155,6 +156,13 @@ class TestEmbeddingFieldSave:
         npy_path = EmbeddingField._embedding_path("EmbDoc", redis_key)
         assert os.path.exists(npy_path)
 
+        # Verify SHA-256 filename format: 64 hex chars + .npy
+        filename = os.path.basename(npy_path)
+        assert len(filename) == 68  # 64 hex chars + '.npy'
+        assert filename.endswith(".npy")
+        hex_part = filename[:-4]
+        assert all(c in "0123456789abcdef" for c in hex_part)
+
         vec = np.load(npy_path)
         assert vec.shape == (4,)
         assert vec.dtype == np.float32
@@ -203,8 +211,17 @@ class TestEmbeddingFieldDelete:
         npy_path = EmbeddingField._embedding_path("EmbDoc", redis_key)
         assert os.path.exists(npy_path)
 
+        # Verify index entry exists before delete
+        index = _read_index("EmbDoc")
+        npy_filename = os.path.basename(npy_path)
+        assert npy_filename in index
+
         doc.delete()
         assert not os.path.exists(npy_path)
+
+        # Verify index entry removed after delete
+        index = _read_index("EmbDoc")
+        assert npy_filename not in index
 
 
 class TestEmbeddingCache:
@@ -276,3 +293,158 @@ class TestEmbeddingFieldErrors:
         # Should not raise -- just skip embedding
         doc.save()
         set_default_provider(MockProvider(dim=4))
+
+
+class TestEmbeddingFilenameLimit:
+    """Test SHA-256 hashing prevents filename length errors."""
+
+    def test_long_redis_key_filename(self):
+        """A Redis key >125 chars should produce a valid filename via SHA-256."""
+        # Use a name long enough that hex encoding would exceed 255 bytes
+        long_name = "x" * 200
+        doc = EmbDocPlainSource(name=long_name, text="Long key content")
+        # This would raise OSError with hex encoding; SHA-256 keeps it under 255
+        doc.save()
+
+        redis_key = doc._redis_key or doc.db_key.redis_key
+        npy_path = EmbeddingField._embedding_path("EmbDocPlainSource", redis_key)
+        assert os.path.exists(npy_path)
+
+        # Filename is always 68 bytes regardless of key length
+        filename = os.path.basename(npy_path)
+        assert len(filename) == 68
+
+
+class TestEmbeddingIndex:
+    """Test _index.json sidecar operations."""
+
+    def test_index_json_written_on_save(self):
+        """Saving a doc should create _index.json with the correct mapping."""
+        doc = EmbDoc(name="idx1", content="Index test")
+        doc.save()
+
+        redis_key = doc._redis_key or doc.db_key.redis_key
+        npy_path = EmbeddingField._embedding_path("EmbDoc", redis_key)
+        npy_filename = os.path.basename(npy_path)
+
+        index = _read_index("EmbDoc")
+        assert npy_filename in index
+        assert index[npy_filename] == redis_key
+
+    def test_index_entry_removed_on_delete(self):
+        """Deleting a doc should remove its entry from _index.json."""
+        doc = EmbDoc(name="idx2", content="Delete index test")
+        doc.save()
+
+        redis_key = doc._redis_key or doc.db_key.redis_key
+        npy_path = EmbeddingField._embedding_path("EmbDoc", redis_key)
+        npy_filename = os.path.basename(npy_path)
+
+        # Verify entry exists
+        index = _read_index("EmbDoc")
+        assert npy_filename in index
+
+        doc.delete()
+
+        # Verify entry removed
+        index = _read_index("EmbDoc")
+        assert npy_filename not in index
+
+    def test_legacy_migration_on_save(self, tmp_path):
+        """Saving a key that has a legacy hex-encoded file should migrate it."""
+        import hashlib
+
+        doc = EmbDoc(name="legacy1", content="Legacy migration test")
+        # Manually figure out what the redis key will be
+        doc.save()
+        redis_key = doc._redis_key or doc.db_key.redis_key
+
+        # Get the new SHA-256 path and the legacy hex path
+        new_path = EmbeddingField._embedding_path("EmbDoc", redis_key)
+        legacy_path = EmbeddingField._legacy_embedding_path("EmbDoc", redis_key)
+
+        # If they happen to be the same (very short key), skip this test
+        if new_path == legacy_path:
+            pytest.skip("Key too short for hex and sha256 paths to differ")
+
+        # Delete the new file and create a legacy hex-encoded file instead
+        vec = np.load(new_path)
+        os.unlink(new_path)
+        os.makedirs(os.path.dirname(legacy_path), exist_ok=True)
+        np.save(legacy_path, vec)
+        assert os.path.exists(legacy_path)
+        assert not os.path.exists(new_path)
+
+        # Clear the index entry
+        index = _read_index("EmbDoc")
+        new_filename = os.path.basename(new_path)
+        index.pop(new_filename, None)
+        from src.popoto.fields.embedding_field import _write_index
+
+        _write_index("EmbDoc", index)
+
+        # Re-save -- should migrate the legacy file
+        invalidate_cache("EmbDoc")
+        doc2 = EmbDoc(name="legacy1", content="Legacy migration test updated")
+        doc2.save()
+
+        # Legacy file should be gone, new file should exist
+        assert not os.path.exists(legacy_path)
+        assert os.path.exists(new_path)
+
+        # Index should have the new entry
+        index = _read_index("EmbDoc")
+        assert new_filename in index
+
+    def test_load_without_index_falls_back(self, tmp_path):
+        """Loading embeddings with hex-encoded files but no index should work."""
+        from src.popoto.fields.embedding_field import _get_embeddings_dir
+
+        # Save a doc normally (creates SHA-256 file + index)
+        doc = EmbDoc(name="fallback1", content="Fallback test")
+        doc.save()
+        redis_key = doc._redis_key or doc.db_key.redis_key
+
+        # Get the embedding directory
+        emb_dir = os.path.join(_get_embeddings_dir(), "EmbDoc")
+
+        # Remove the index file
+        idx_path = _index_path("EmbDoc")
+        if os.path.exists(idx_path):
+            os.unlink(idx_path)
+
+        # Rename the SHA-256 file to a legacy hex-encoded filename
+        new_path = EmbeddingField._embedding_path("EmbDoc", redis_key)
+        legacy_path = EmbeddingField._legacy_embedding_path("EmbDoc", redis_key)
+
+        if new_path != legacy_path:
+            os.rename(new_path, legacy_path)
+
+        # Clear cache so load_embeddings reads from disk
+        invalidate_cache("EmbDoc")
+
+        # load_embeddings should still work via hex-decode fallback
+        matrix, keys = EmbeddingField.load_embeddings(EmbDoc)
+        assert matrix is not None
+        assert len(keys) == 1
+        assert keys[0] == redis_key
+
+    def test_unrecognized_npy_skipped(self, tmp_path):
+        """A .npy file with a non-hex, non-indexed name should be skipped."""
+        from src.popoto.fields.embedding_field import _get_embeddings_dir
+
+        # Create model embedding directory
+        emb_dir = os.path.join(_get_embeddings_dir(), "EmbDoc")
+        os.makedirs(emb_dir, exist_ok=True)
+
+        # Create a .npy file with a name that is NOT valid hex and NOT in index
+        bogus_path = os.path.join(emb_dir, "not_a_valid_hex_name.npy")
+        np.save(bogus_path, np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32))
+
+        invalidate_cache("EmbDoc")
+
+        # load_embeddings should skip the bogus file without crashing
+        matrix, keys = EmbeddingField.load_embeddings(EmbDoc)
+        # The bogus file should not appear in the results
+        for key in keys:
+            assert key != "not_a_valid_hex_name"

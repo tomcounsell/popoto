@@ -23,6 +23,8 @@ Example:
     m.save()  # embedding generated automatically via provider
 """
 
+import hashlib
+import json
 import logging
 import os
 import tempfile
@@ -63,6 +65,48 @@ def _get_embeddings_dir():
         os.path.join(os.path.expanduser("~"), ".popoto", "content"),
     )
     return os.path.join(base, ".embeddings")
+
+
+def _index_path(model_class_name: str) -> str:
+    """Return the path to the _index.json sidecar for a model class."""
+    base = _get_embeddings_dir()
+    return os.path.join(base, model_class_name, "_index.json")
+
+
+def _read_index(model_class_name: str) -> dict:
+    """Read the _index.json sidecar, returning a dict mapping filenames to Redis keys.
+
+    Returns an empty dict if the file is missing or corrupt.
+    """
+    path = _index_path(model_class_name)
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            return data
+        return {}
+    except (json.JSONDecodeError, OSError):
+        logger.warning(f"Could not read index file {path}, returning empty index")
+        return {}
+
+
+def _write_index(model_class_name: str, index_dict: dict) -> None:
+    """Atomically write the _index.json sidecar (temp file + rename)."""
+    path = _index_path(model_class_name)
+    directory = os.path.dirname(path)
+    os.makedirs(directory, exist_ok=True)
+
+    fd, tmp_path = tempfile.mkstemp(dir=directory, suffix=".json")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(index_dict, f, ensure_ascii=False)
+        os.rename(tmp_path, path)
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise
 
 
 def invalidate_cache(model_class_name: str = None):
@@ -133,9 +177,21 @@ class EmbeddingField(Field):
     def _embedding_path(cls, model_class_name: str, redis_key: str) -> str:
         """Return the .npy file path for a model instance's embedding.
 
-        Uses hex encoding of the Redis key to ensure lossless round-trip:
-        any bytes in the key are preserved exactly when decoded back.
+        Uses SHA-256 hash of the Redis key to produce a fixed-length
+        filename (64 hex chars + '.npy' = 68 bytes), avoiding the
+        255-byte filesystem limit that hex encoding could exceed with
+        long Redis keys.
+
+        Since SHA-256 is one-way, a sidecar ``_index.json`` file maps
+        hash filenames back to Redis keys for reverse lookup.
         """
+        base = _get_embeddings_dir()
+        hash_key = hashlib.sha256(redis_key.encode("utf-8")).hexdigest()
+        return os.path.join(base, model_class_name, f"{hash_key}.npy")
+
+    @classmethod
+    def _legacy_embedding_path(cls, model_class_name: str, redis_key: str) -> str:
+        """Return the legacy hex-encoded .npy file path for migration."""
         base = _get_embeddings_dir()
         hex_key = redis_key.encode("utf-8").hex()
         return os.path.join(base, model_class_name, f"{hex_key}.npy")
@@ -238,6 +294,26 @@ class EmbeddingField(Field):
                 os.unlink(tmp_path)
             raise
 
+        # Update the _index.json sidecar with the hash-to-key mapping
+        model_class_name = model_instance.__class__.__name__
+        npy_filename = os.path.basename(npy_path)
+        index = _read_index(model_class_name)
+        index[npy_filename] = redis_key
+        _write_index(model_class_name, index)
+
+        # Migrate legacy hex-encoded file if it exists
+        legacy_path = cls._legacy_embedding_path(model_class_name, redis_key)
+        if legacy_path != npy_path and os.path.exists(legacy_path):
+            try:
+                os.unlink(legacy_path)
+                # Remove legacy filename from index if present
+                legacy_filename = os.path.basename(legacy_path)
+                if legacy_filename in index:
+                    del index[legacy_filename]
+                    _write_index(model_class_name, index)
+            except OSError:
+                logger.warning(f"Failed to remove legacy embedding file {legacy_path}")
+
         # Store dimension count in Redis field
         dim_count = len(embedding)
         setattr(model_instance, field_name, dim_count)
@@ -280,6 +356,13 @@ class EmbeddingField(Field):
         if os.path.exists(npy_path):
             os.unlink(npy_path)
 
+        # Remove entry from _index.json sidecar
+        npy_filename = os.path.basename(npy_path)
+        index = _read_index(model_class_name)
+        if npy_filename in index:
+            del index[npy_filename]
+            _write_index(model_class_name, index)
+
         invalidate_cache(model_class_name)
         return pipeline if pipeline else None
 
@@ -316,20 +399,47 @@ class EmbeddingField(Field):
         vectors = []
         keys = []
 
+        # Read the index for hash-to-key mapping
+        index = _read_index(model_name)
+        index_updated = False
+
         for filename in os.listdir(emb_dir):
             if not filename.endswith(".npy"):
                 continue
             filepath = os.path.join(emb_dir, filename)
             try:
                 vec = np.load(filepath)
-                # Reconstruct Redis key from hex-encoded filename
-                hex_key = filename[:-4]  # strip .npy
-                redis_key = bytes.fromhex(hex_key).decode("utf-8")
+
+                # Look up Redis key from the index first
+                if filename in index:
+                    redis_key = index[filename]
+                else:
+                    # Fallback: try legacy hex-decode for backward compatibility
+                    hex_key = filename[:-4]  # strip .npy
+                    try:
+                        redis_key = bytes.fromhex(hex_key).decode("utf-8")
+                        # Add to index for future lookups
+                        index[filename] = redis_key
+                        index_updated = True
+                    except (ValueError, UnicodeDecodeError):
+                        logger.warning(
+                            f"Skipping unrecognized embedding file {filename}: "
+                            "not in index and not a valid hex-encoded key"
+                        )
+                        continue
+
                 vectors.append(vec.astype(np.float32))
                 keys.append(redis_key)
             except Exception as e:
                 logger.warning(f"Failed to load embedding {filepath}: {e}")
                 continue
+
+        # Persist any index updates from legacy fallback
+        if index_updated:
+            try:
+                _write_index(model_name, index)
+            except Exception:
+                logger.warning(f"Failed to update index for {model_name}")
 
         if not vectors:
             return None, []
