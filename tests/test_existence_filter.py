@@ -703,3 +703,138 @@ class TestFrequencySketchTokenization:
         assert FreqModel.freq.get_frequency(FreqModel, "XY") == 1
         assert FreqModel.freq.get_frequency(FreqModel, "xy") == 1
         assert FreqModel.freq.get_frequency(FreqModel, "Xy") == 1
+
+
+# --- Batch Bloom Filter Tests ---
+
+
+class TestMightExistBatch:
+    """Tests for ExistenceFilter.might_exist_batch() — single round-trip batch check."""
+
+    def test_batch_empty_list(self):
+        """Empty input list returns empty dict."""
+        result = BloomModel.bloom.might_exist_batch(BloomModel, [])
+        assert result == {}
+
+    def test_batch_all_missing(self):
+        """All fingerprints missing when bloom is empty returns all False."""
+        result = BloomModel.bloom.might_exist_batch(
+            BloomModel, ["alpha", "beta", "gamma"]
+        )
+        assert result == {"alpha": False, "beta": False, "gamma": False}
+
+    def test_batch_all_present(self):
+        """All fingerprints found after saving them."""
+        for i, topic in enumerate(["kubernetes", "deployment", "monitoring"]):
+            BloomModel(name=f"batch-{i}", topic=topic).save()
+
+        result = BloomModel.bloom.might_exist_batch(
+            BloomModel, ["kubernetes", "deployment", "monitoring"]
+        )
+        assert result["kubernetes"] is True
+        assert result["deployment"] is True
+        assert result["monitoring"] is True
+
+    def test_batch_mixed_present_and_missing(self):
+        """Mix of present and missing fingerprints returns correct results."""
+        BloomModel(name="batch-mix-1", topic="kubernetes").save()
+        BloomModel(name="batch-mix-2", topic="deployment").save()
+
+        result = BloomModel.bloom.might_exist_batch(
+            BloomModel, ["kubernetes", "terraform", "deployment", "ansible"]
+        )
+        assert result["kubernetes"] is True
+        assert result["deployment"] is True
+        assert result["terraform"] is False
+        assert result["ansible"] is False
+
+    def test_batch_single_item(self):
+        """Degenerate batch with one fingerprint works correctly."""
+        BloomModel(name="batch-single", topic="kubernetes").save()
+
+        result = BloomModel.bloom.might_exist_batch(BloomModel, ["kubernetes"])
+        assert result == {"kubernetes": True}
+
+    def test_batch_duplicate_fingerprints(self):
+        """Duplicate fingerprints are deduplicated in result."""
+        BloomModel(name="batch-dup", topic="kubernetes").save()
+
+        result = BloomModel.bloom.might_exist_batch(
+            BloomModel, ["kubernetes", "kubernetes", "kubernetes"]
+        )
+        assert result == {"kubernetes": True}
+        assert len(result) == 1
+
+    def test_batch_multiword_fingerprints(self):
+        """Multi-word fingerprints are tokenized; ANY token match = hit."""
+        BloomModel(name="batch-mw", topic="kubernetes deployment guide").save()
+
+        result = BloomModel.bloom.might_exist_batch(
+            BloomModel, ["kubernetes migration", "terraform setup"]
+        )
+        # "kubernetes migration" shares "kubernetes" with saved data
+        assert result["kubernetes migration"] is True
+        # "terraform setup" shares no tokens
+        assert result["terraform setup"] is False
+
+    def test_batch_fallback_short_tokens(self):
+        """Fingerprints that tokenize to nothing use raw lowercased fallback."""
+        BloomModel(name="batch-short", topic="AB").save()
+
+        result = BloomModel.bloom.might_exist_batch(BloomModel, ["AB", "CD"])
+        assert result["AB"] is True
+        assert result["CD"] is False
+
+    def test_batch_bloom_key_doesnt_exist(self):
+        """When bloom key does not exist, all results are False."""
+        result = BloomModel.bloom.might_exist_batch(
+            BloomModel, ["never", "seen", "these"]
+        )
+        assert all(v is False for v in result.values())
+
+    def test_batch_matches_individual_calls(self):
+        """Batch results match individual might_exist() calls."""
+        for i, topic in enumerate(["redis", "postgres", "mongodb"]):
+            BloomModel(name=f"batch-match-{i}", topic=topic).save()
+
+        fingerprints = ["redis", "postgres", "mongodb", "mysql", "sqlite"]
+        batch_result = BloomModel.bloom.might_exist_batch(BloomModel, fingerprints)
+
+        for fp in fingerprints:
+            individual = BloomModel.bloom.might_exist(BloomModel, fp)
+            assert batch_result[fp] == individual, (
+                f"Mismatch for '{fp}': batch={batch_result[fp]}, "
+                f"individual={individual}"
+            )
+
+
+class TestMightExistCount:
+    """Tests for ExistenceFilter.might_exist_count() — convenience counter."""
+
+    def test_count_empty_list(self):
+        """Empty input returns 0."""
+        assert BloomModel.bloom.might_exist_count(BloomModel, []) == 0
+
+    def test_count_all_missing(self):
+        """All missing returns 0."""
+        assert BloomModel.bloom.might_exist_count(
+            BloomModel, ["alpha", "beta"]
+        ) == 0
+
+    def test_count_all_present(self):
+        """All present returns full count."""
+        for i, topic in enumerate(["redis", "postgres"]):
+            BloomModel(name=f"count-{i}", topic=topic).save()
+
+        assert BloomModel.bloom.might_exist_count(
+            BloomModel, ["redis", "postgres"]
+        ) == 2
+
+    def test_count_mixed(self):
+        """Mix of present and missing returns correct count."""
+        BloomModel(name="count-mix", topic="kubernetes").save()
+
+        count = BloomModel.bloom.might_exist_count(
+            BloomModel, ["kubernetes", "terraform", "ansible"]
+        )
+        assert count == 1

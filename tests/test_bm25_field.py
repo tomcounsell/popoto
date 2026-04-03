@@ -323,3 +323,218 @@ class TestKeywordSearchQueryMethod:
         """keyword_search() on model without BM25Field raises QueryException."""
         with pytest.raises(QueryException):
             BM25DocNoBM25.query.keyword_search("test", limit=10)
+
+
+class TestBM25GetIdf:
+    """Tests for BM25Field.get_idf() — IDF selectivity signal."""
+
+    def test_get_idf_unseen_tokens(self):
+        """Tokens that don't appear in any document get high IDF (rare = selective)."""
+        # These tokens were never saved in any BM25Doc
+        result = BM25Field.get_idf(BM25Doc, "content", ["xyzzyplugh", "quuxblargh"])
+        # Unseen tokens have df=0, so IDF = log((N - 0 + 0.5) / (0 + 0.5))
+        # which is a positive number (high selectivity). Just verify they're >= 0.
+        for token, idf in result.items():
+            assert idf >= 0.0
+
+    def test_get_idf_single_token_string(self):
+        """Single token as a string (not list) is handled gracefully."""
+        doc = BM25Doc(name="idf-single", raw_content="kubernetes cluster setup")
+        doc.save()
+
+        result = BM25Field.get_idf(BM25Doc, "content", "kubernetes")
+        assert isinstance(result, dict)
+        assert "kubernetes" in result
+        assert result["kubernetes"] > 0
+
+    def test_get_idf_empty_token_list(self):
+        """Empty token list returns empty dict."""
+        result = BM25Field.get_idf(BM25Doc, "content", [])
+        assert result == {}
+
+    def test_get_idf_token_not_in_corpus(self):
+        """Token not in corpus gets high IDF (maximum selectivity)."""
+        doc = BM25Doc(name="idf-absent", raw_content="kubernetes deployment guide")
+        doc.save()
+
+        result = BM25Field.get_idf(BM25Doc, "content", ["xyznonexistent"])
+        # Token with df=0 should have high IDF (very selective)
+        assert result["xyznonexistent"] > 1.0
+
+    def test_get_idf_common_vs_rare_token(self):
+        """Common tokens have lower IDF than rare tokens."""
+        # Save multiple docs with "kubernetes", one with "watchdog"
+        for i in range(5):
+            BM25Doc(
+                name=f"idf-common-{i}",
+                raw_content=f"kubernetes topic number {i:03d}extra",
+            ).save()
+        BM25Doc(
+            name="idf-rare",
+            raw_content="watchdog monitoring alerting system",
+        ).save()
+
+        result = BM25Field.get_idf(
+            BM25Doc, "content", ["kubernetes", "watchdog"]
+        )
+        # "kubernetes" appears in 5/6 docs -> low IDF
+        # "watchdog" appears in 1/6 docs -> high IDF
+        assert result["watchdog"] > result["kubernetes"]
+
+    def test_get_idf_on_non_bm25_field_raises(self):
+        """get_idf() on a non-BM25 field raises QueryException."""
+        with pytest.raises(QueryException):
+            BM25Field.get_idf(BM25DocNoBM25, "raw_content", ["test"])
+
+    def test_get_idf_multiple_tokens(self):
+        """Batch IDF lookup returns correct values for multiple tokens."""
+        BM25Doc(
+            name="idf-multi-1",
+            raw_content="redis caching strategies performance",
+        ).save()
+        BM25Doc(
+            name="idf-multi-2",
+            raw_content="redis cluster deployment production",
+        ).save()
+
+        result = BM25Field.get_idf(
+            BM25Doc, "content", ["redis", "caching", "cluster"]
+        )
+        assert len(result) == 3
+        # "redis" in 2/2 docs -> low IDF
+        # "caching" in 1/2, "cluster" in 1/2 -> higher IDF
+        assert result["caching"] > result["redis"]
+        assert result["cluster"] > result["redis"]
+
+
+class TestBM25FilterSelectiveTokens:
+    """Tests for BM25Field.filter_selective_tokens()."""
+
+    def test_filter_empty_list(self):
+        """Empty token list returns empty list."""
+        result = BM25Field.filter_selective_tokens(
+            BM25Doc, "content", [], min_idf=1.0
+        )
+        assert result == []
+
+    def test_filter_keeps_rare_tokens(self):
+        """Rare tokens (high IDF) are kept, common ones filtered out."""
+        # Create corpus where "common" appears in all docs, "rare" in one
+        for i in range(5):
+            BM25Doc(
+                name=f"filter-common-{i}",
+                raw_content=f"common baseline topic {i:03d}extra",
+            ).save()
+        BM25Doc(
+            name="filter-rare",
+            raw_content="rare specialized watchdog alerting",
+        ).save()
+
+        result = BM25Field.filter_selective_tokens(
+            BM25Doc, "content", ["common", "rare"], min_idf=0.5
+        )
+        # "rare" should be kept (high IDF), "common" depends on threshold
+        assert "rare" in result
+
+    def test_filter_preserves_order(self):
+        """Filtered tokens maintain original order."""
+        BM25Doc(
+            name="filter-order",
+            raw_content="alpha bravo charlie delta",
+        ).save()
+
+        tokens = ["alpha", "bravo", "charlie", "delta"]
+        result = BM25Field.filter_selective_tokens(
+            BM25Doc, "content", tokens, min_idf=0.0
+        )
+        # With min_idf=0.0 and all tokens present, all should be kept in order
+        assert result == tokens
+
+    def test_filter_absent_tokens_included(self):
+        """Tokens not in corpus get max IDF and are included (maximally selective)."""
+        BM25Doc(
+            name="filter-absent",
+            raw_content="kubernetes deployment guide",
+        ).save()
+
+        result = BM25Field.filter_selective_tokens(
+            BM25Doc, "content", ["kubernetes", "xyznonexistent"], min_idf=1.0
+        )
+        # "xyznonexistent" has max IDF (not in corpus) -> included
+        assert "xyznonexistent" in result
+
+
+class TestBatchBloomIdfIntegration:
+    """End-to-end: batch bloom check -> IDF filter -> search."""
+
+    def test_full_pipeline(self):
+        """Batch bloom + IDF filter + search returns relevant results."""
+        from src.popoto.fields.existence_filter import ExistenceFilter
+
+        # Create a model with both bloom and BM25
+        class IntegrationModel(popoto.Model):
+            name = popoto.UniqueKeyField()
+            raw_content = popoto.Field(type=str)
+            content = BM25Field(source="raw_content")
+            bloom = ExistenceFilter(
+                error_rate=0.01,
+                capacity=10_000,
+                fingerprint_fn=lambda inst: inst.raw_content,
+            )
+
+        # Clean up
+        for pattern in [
+            "$EF:IntegrationModel:*",
+            "$BM25:IntegrationModel:*",
+            "IntegrationModel:*",
+        ]:
+            for key in POPOTO_REDIS_DB.scan_iter(match=pattern):
+                POPOTO_REDIS_DB.delete(key)
+
+        # Save some docs
+        IntegrationModel(
+            name="int-1",
+            raw_content="kubernetes deployment production cluster management",
+        ).save()
+        IntegrationModel(
+            name="int-2",
+            raw_content="kubernetes monitoring alerting watchdog system",
+        ).save()
+        IntegrationModel(
+            name="int-3",
+            raw_content="redis caching performance optimization",
+        ).save()
+
+        # Step 1: Batch bloom check
+        keywords = ["kubernetes", "watchdog", "terraform", "redis"]
+        bloom_results = IntegrationModel.bloom.might_exist_batch(
+            IntegrationModel, keywords
+        )
+        bloom_hits = [k for k, v in bloom_results.items() if v]
+
+        # "kubernetes", "watchdog", "redis" should hit; "terraform" should miss
+        assert "kubernetes" in bloom_hits
+        assert "watchdog" in bloom_hits
+        assert "redis" in bloom_hits
+        assert "terraform" not in bloom_hits
+
+        # Step 2: Filter by selectivity
+        selective = BM25Field.filter_selective_tokens(
+            IntegrationModel, "content", bloom_hits, min_idf=0.1
+        )
+        assert len(selective) > 0
+
+        # Step 3: Search with selective tokens
+        results = BM25Field.search(
+            IntegrationModel, "content", " ".join(selective), limit=10
+        )
+        assert len(results) > 0
+
+        # Clean up
+        for pattern in [
+            "$EF:IntegrationModel:*",
+            "$BM25:IntegrationModel:*",
+            "IntegrationModel:*",
+        ]:
+            for key in POPOTO_REDIS_DB.scan_iter(match=pattern):
+                POPOTO_REDIS_DB.delete(key)
