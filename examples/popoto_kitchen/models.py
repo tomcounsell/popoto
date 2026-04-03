@@ -7,11 +7,12 @@ These models demonstrate all major Popoto features:
 - Relationship for model associations
 - DatetimeField with auto timestamps
 - Model Meta options (ttl, order_by)
+- ConfidenceField with partition_by (v1.4.4)
 """
 
 from datetime import datetime
 
-from popoto import Field, KeyField, Model, Relationship, SortedField
+from popoto import ConfidenceField, Field, KeyField, Model, Relationship, SortedField
 from popoto.fields.geo_field import GeoField
 from popoto.fields.shortcuts import AutoKeyField, UniqueKeyField
 
@@ -166,6 +167,30 @@ class Order(Model):
         except ValueError:
             pass
         return False
+
+
+
+class ReviewScore(Model):
+    """A review confidence score for a restaurant by a customer.
+
+    Demonstrates:
+    - ConfidenceField with partition_by for per-restaurant confidence tracking
+    - Bayesian confidence updates via ConfidenceField.update_confidence()
+    - Companion hash key inspection via get_data_hash_key()
+
+    The confidence score starts at 0.5 (neutral) and moves toward 1.0 or 0.0
+    as evidence accumulates. Partitioning by restaurant keeps each restaurant's
+    confidence data in a separate Redis hash, avoiding large monolithic hashes.
+
+    Redis key pattern: ReviewScore:<restaurant>:<reviewer>
+    """
+
+    restaurant = KeyField()
+    reviewer = KeyField()
+    score = ConfidenceField(initial_confidence=0.5, partition_by="restaurant")
+
+    def __str__(self) -> str:
+        return f"ReviewScore({self.restaurant}, {self.reviewer}): {self.score:.4f}"
 
 
 # Cuisine types for seeding

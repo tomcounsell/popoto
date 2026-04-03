@@ -2,7 +2,9 @@
 
 Usage:
     python -m popoto_kitchen
-    python -m popoto_kitchen --seed  # Seed sample data first
+    python -m popoto_kitchen --seed              # Seed sample data first
+    python -m popoto_kitchen --seed-only --clear  # Seed fresh data only
+    python -m popoto_kitchen --ops               # Run v1.4.4 operations demos
 """
 
 import argparse
@@ -27,6 +29,11 @@ def main():
         "--clear",
         action="store_true",
         help="Clear all existing data before seeding",
+    )
+    parser.add_argument(
+        "--ops",
+        action="store_true",
+        help="Run v1.4.4 operations demos (get_many, check/clean indexes, companion keys)",
     )
     args = parser.parse_args()
 
@@ -54,6 +61,12 @@ def main():
 
         if args.seed_only:
             return
+
+    if args.ops:
+        from .operations import run_all
+
+        run_all()
+        return
 
     from .app import PopotoKitchen
 

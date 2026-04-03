@@ -6,10 +6,13 @@ Generates:
 - 500 customers
 - 50 drivers with random locations
 - 2,000 orders (mix of statuses)
+- 100 review scores with confidence signals (v1.4.4)
 """
 
 import random
 from datetime import datetime, timedelta
+
+from popoto import ConfidenceField
 
 from .models import (
     CUISINES,
@@ -18,6 +21,7 @@ from .models import (
     MenuItem,
     Order,
     Restaurant,
+    ReviewScore,
 )
 
 # Sample data for generating realistic names
@@ -287,7 +291,7 @@ def restaurant_name(cuisine: str) -> str:
 def clear_database():
     """Clear all existing data including secondary indexes."""
     # Delete models with relationships first, then referenced models
-    for model in [Order, MenuItem, Customer, Driver, Restaurant]:
+    for model in [Order, MenuItem, Customer, Driver, ReviewScore, Restaurant]:
         model.delete_all()
     print("Cleared all Popoto Kitchen data")
 
@@ -465,12 +469,70 @@ def seed_database(
         if (i + 1) % 500 == 0:
             print(f"  Created {i + 1} orders...")
 
+    # Seed review scores using ConfidenceField
+    review_count = seed_review_scores(restaurants, customers)
+
     print("\nSeeding complete!")
     print(f"  - {len(restaurants)} restaurants")
     print(f"  - {len(menu_items)} menu items")
     print(f"  - {len(customers)} customers")
     print(f"  - {len(drivers)} drivers")
     print(f"  - {num_orders} orders")
+    print(f"  - {review_count} review scores")
+
+
+
+def seed_review_scores(restaurants, customers, reviews_per_restaurant=5):
+    """Seed ReviewScore instances with Bayesian confidence signals.
+
+    Creates review scores for a subset of customer/restaurant pairs and
+    applies varied confidence signals to build evidence history. This
+    demonstrates ConfidenceField's Bayesian update mechanism where each
+    signal nudges the confidence toward 0 or 1 with diminishing effect.
+
+    Args:
+        restaurants: List of Restaurant instances to review.
+        customers: List of Customer instances who leave reviews.
+        reviews_per_restaurant: Number of reviews per restaurant (default 5).
+
+    Returns:
+        int: Total number of ReviewScore instances created.
+    """
+    print("Seeding review scores...")
+    count = 0
+
+    # Use a subset of restaurants (first 20) and random customers
+    sample_restaurants = restaurants[:20]
+
+    for restaurant in sample_restaurants:
+        # Pick random customers to be reviewers for this restaurant
+        reviewers = random.sample(
+            customers, min(reviews_per_restaurant, len(customers))
+        )
+
+        for customer in reviewers:
+            review = ReviewScore(
+                restaurant=restaurant.name,
+                reviewer=customer.username,
+            )
+            review.save()
+
+            # Apply 2-6 confidence signals to build evidence history.
+            # Signals near 1.0 = positive review, near 0.0 = negative.
+            # Mix of signals creates realistic confidence distributions.
+            num_signals = random.randint(2, 6)
+            for _ in range(num_signals):
+                # Most reviews are positive (0.6-0.95), some negative (0.1-0.4)
+                if random.random() > 0.25:
+                    signal = random.uniform(0.6, 0.95)
+                else:
+                    signal = random.uniform(0.1, 0.4)
+                ConfidenceField.update_confidence(review, "score", signal=signal)
+
+            count += 1
+
+    print(f"  Created {count} review scores with confidence signals")
+    return count
 
 
 if __name__ == "__main__":
