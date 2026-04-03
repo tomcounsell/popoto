@@ -2190,7 +2190,7 @@ content from a `source` field and maintains an inverted index and corpus statist
 
 ```python
 @classmethod
-BM25Field.search(model_class, field_name, query, limit=10) -> list[tuple[str, float]]
+BM25Field.search(model_class, field_name, query_text, limit=10) -> list[tuple[str, float]]
 ```
 
 Run a BM25-ranked keyword search. Returns a list of `(redis_key, bm25_score)` tuples
