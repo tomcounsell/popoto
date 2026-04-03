@@ -742,22 +742,88 @@ assert result['total'] == 0
 
 ### Async Index Maintenance
 
+All three index maintenance methods have async counterparts that use `asyncio.to_thread`
+under the hood, keeping the event loop free during potentially long-running scans.
+
 | Sync | Async |
 |------|-------|
 | `Model.check_indexes()` | `await Model.async_check_indexes()` |
 | `Model.clean_indexes()` | `await Model.async_clean_indexes()` |
 | `Model.rebuild_indexes()` | `await Model.async_rebuild_indexes()` |
 
-```python
-# Async health check and targeted cleanup
-result = await User.async_check_indexes()
-if result['total'] > 0:
-    removed = await User.async_clean_indexes()
-    print(f"Cleaned {removed} orphans")
+#### async_check_indexes()
 
-# Full rebuild as last resort
-await User.async_rebuild_indexes()
+Read-only health check. Returns the same dict structure as the synchronous version.
+
+```python
+async def audit_index_health():
+    result = await User.async_check_indexes()
+    if result['total'] > 0:
+        print(f"Found {result['total']} orphaned entries")
+        for field, count in result.get('sorted_fields', {}).items():
+            if count > 0:
+                print(f"  {field}: {count} orphans")
+    else:
+        print("All indexes healthy")
 ```
+
+#### async_clean_indexes()
+
+Production-safe orphan cleanup. Returns the number of entries removed.
+
+```python
+async def scheduled_cleanup():
+    result = await User.async_check_indexes()
+    if result['total'] > 0:
+        removed = await User.async_clean_indexes()
+        print(f"Cleaned {removed} orphaned index entries")
+
+        # Verify cleanup was complete
+        after = await User.async_check_indexes()
+        assert after['total'] == 0
+```
+
+#### async_rebuild_indexes()
+
+Full destructive rebuild as a last resort. Returns the number of instances processed.
+
+```python
+async def emergency_rebuild():
+    count = await User.async_rebuild_indexes()
+    print(f"Rebuilt indexes for {count} users")
+```
+
+These async methods work well with `asyncio.gather()` when maintaining indexes across
+multiple models:
+
+```python
+async def maintain_all_indexes():
+    """Check and clean indexes for all models concurrently."""
+    results = await asyncio.gather(
+        User.async_check_indexes(),
+        Restaurant.async_check_indexes(),
+        Order.async_check_indexes(),
+    )
+
+    for model_name, result in zip(["User", "Restaurant", "Order"], results):
+        if result['total'] > 0:
+            print(f"{model_name}: {result['total']} orphans found, cleaning...")
+
+    # Clean only models with orphans
+    if results[0]['total'] > 0:
+        await User.async_clean_indexes()
+    if results[1]['total'] > 0:
+        await Restaurant.async_clean_indexes()
+    if results[2]['total'] > 0:
+        await Order.async_clean_indexes()
+```
+
+!!! warning
+    `async_rebuild_indexes()` is destructive -- during the rebuild window, queries relying
+    on those indexes may return incomplete results. Prefer `async_clean_indexes()` for
+    routine maintenance.
+
+See [Async Operations](async.md) for the full async API reference.
 
 ---
 
@@ -2000,6 +2066,162 @@ These convenience fields set the `type` parameter automatically.
 | `TimeField` | `datetime.time` | |
 
 All accept the same keyword arguments as `Field` (except `type`, which is preset).
+
+### ExistenceFilter
+
+```python
+from popoto.fields.existence_filter import ExistenceFilter
+
+ExistenceFilter(error_rate=0.01, capacity=100_000, fingerprint_fn=None, **kwargs)
+```
+
+Bloom filter for O(1) probabilistic membership checks. A "side-effect field" that maintains a Bloom
+filter index in Redis via `on_save()` hooks. Does not store a value on the model instance.
+
+See [ExistenceFilter feature docs](features/existence-filter.md) for architecture and tokenization details.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `error_rate` | `float` | `0.01` | Target false positive rate (1%). |
+| `capacity` | `int` | `100_000` | Expected number of distinct items. |
+| `fingerprint_fn` | `callable` | `None` | Takes a model instance, returns a fingerprint string. Required. |
+
+#### ExistenceFilter.might\_exist()
+
+```python
+ExistenceFilter.might_exist(model_class, fingerprint) -> bool
+```
+
+Check if a fingerprint might exist in the Bloom filter. Returns `True` if possibly present
+(may be a false positive), `False` if definitely absent (guaranteed correct). The query is
+tokenized using the same rules as `on_save()`.
+
+#### ExistenceFilter.definitely\_missing()
+
+```python
+ExistenceFilter.definitely_missing(model_class, fingerprint) -> bool
+```
+
+Convenience inverse of `might_exist()`. Returns `True` when the caller can safely skip
+expensive retrieval.
+
+#### ExistenceFilter.might\_exist\_batch()
+
+```python
+ExistenceFilter.might_exist_batch(model_class, fingerprints) -> dict[str, bool]
+```
+
+Check multiple fingerprints against the Bloom filter in a single Redis round-trip. Each
+fingerprint is tokenized; a fingerprint is a hit if ANY of its tokens is found. Uses a
+single Lua EVAL for all tokens, avoiding per-keyword network overhead.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `model_class` | `Model` | The Model class to check against. |
+| `fingerprints` | `list[str]` | List of fingerprint strings to check. |
+
+**Returns:** `dict[str, bool]` mapping each fingerprint to its result. Duplicates are deduplicated.
+Returns empty dict for empty input.
+
+```python
+# Check many keywords in one round-trip instead of N separate calls
+results = Memory.bloom.might_exist_batch(Memory, ["kubernetes", "deployment", "postgres"])
+# {"kubernetes": True, "deployment": True, "postgres": False}
+
+# Use as a pre-filter before expensive queries
+candidates = [kw for kw, hit in results.items() if hit]
+```
+
+#### ExistenceFilter.might\_exist\_count()
+
+```python
+ExistenceFilter.might_exist_count(model_class, fingerprints) -> int
+```
+
+Count how many fingerprints might exist in the Bloom filter. Convenience wrapper around
+`might_exist_batch()` that returns just the hit count.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `model_class` | `Model` | The Model class to check against. |
+| `fingerprints` | `list[str]` | List of fingerprint strings to check. |
+
+**Returns:** `int` -- number of fingerprints that might exist.
+
+```python
+# Quick selectivity check: how many of these keywords are known?
+hit_count = Memory.bloom.might_exist_count(Memory, ["kubernetes", "deployment", "postgres"])
+if hit_count == 0:
+    return []  # Skip query entirely -- nothing relevant in the corpus
+```
+
+#### ExistenceFilter.fill\_ratio()
+
+```python
+ExistenceFilter.fill_ratio(model_class) -> float
+```
+
+Diagnostic: proportion of set bits in the Bloom filter (0.0 to 1.0). When `fill_ratio`
+approaches 0.5, the false positive rate degrades beyond the configured `error_rate`.
+
+### BM25Field
+
+```python
+from popoto.fields.bm25_field import BM25Field
+
+BM25Field(source=None, **kwargs)
+```
+
+BM25 ranked keyword search field backed by Redis sorted sets. A "side-effect field" that reads
+content from a `source` field and maintains an inverted index and corpus statistics via
+`on_save()`/`on_delete()` hooks.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `source` | `str` | `None` | Name of the field to read content from. Required. |
+
+#### BM25Field.search()
+
+```python
+@classmethod
+BM25Field.search(model_class, field_name, query, limit=10) -> list[tuple[str, float]]
+```
+
+Run a BM25-ranked keyword search. Returns a list of `(redis_key, bm25_score)` tuples
+ordered by relevance.
+
+#### BM25Field.get\_idf()
+
+```python
+@classmethod
+BM25Field.get_idf(model_class, field_name, tokens) -> dict[str, float]
+```
+
+Get IDF (inverse document frequency) scores for tokens without running a full search. Reads
+document frequency from the existing BM25 sorted set and computes standard BM25 IDF:
+`idf = log((N - df + 0.5) / (df + 0.5) + 1)`.
+
+Uses `ZMSCORE` (Redis >= 6.2, Valkey compatible) for batch lookup with automatic `ZSCORE`
+fallback.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `model_class` | `Model` | The Model class. |
+| `field_name` | `str` | Name of the BM25Field on the model. |
+| `tokens` | `str` or `list[str]` | Single token or list of tokens to score. |
+
+**Returns:** `dict[str, float]` mapping each token to its IDF score. Tokens absent from the
+corpus get maximum IDF (`log(N + 1)` when df=0). Returns `{token: 0.0}` for all tokens when
+the corpus is empty.
+
+```python
+# Lightweight selectivity signal -- no full search needed
+idf_scores = BM25Field.get_idf(Memory, "content", ["kubernetes", "the", "deployment"])
+# {"kubernetes": 4.2, "the": 0.1, "deployment": 2.8}
+
+# Use IDF to rank query terms by selectivity before searching
+selective_terms = sorted(idf_scores, key=idf_scores.get, reverse=True)
+```
 
 ---
 
