@@ -187,6 +187,35 @@ The migration reads each entry from the unpartitioned hash, loads the correspond
 model instance to determine its partition field values, and writes to the correct
 partitioned hash. The old unpartitioned hash is deleted after a successful migration.
 
+### Verifying tenant isolation
+
+Use the companion key methods to confirm that each tenant's companion hash is stored
+under a separate Redis key. This is useful for auditing, monitoring dashboards, or
+integration tests that validate isolation.
+
+```python
+field = Memory._options.fields["certainty"]
+
+# Build keys for each tenant without loading instances
+atlas_key = field.get_data_hash_key_from_values(Memory, "certainty", project="atlas")
+hermes_key = field.get_data_hash_key_from_values(Memory, "certainty", project="hermes")
+
+print(atlas_key)   # => "$ConfidencF:Memory:certainty:data:atlas"
+print(hermes_key)  # => "$ConfidencF:Memory:certainty:data:hermes"
+assert atlas_key != hermes_key  # Companion hashes are fully isolated
+```
+
+You can also verify isolation for instance-based keys:
+
+```python
+memory_a = Memory.query.get(project="atlas", key="fact1")
+memory_b = Memory.query.get(project="hermes", key="fact2")
+
+key_a = field.get_data_hash_key(memory_a, "certainty")
+key_b = field.get_data_hash_key(memory_b, "certainty")
+assert key_a != key_b  # Each tenant's data lives in a separate hash
+```
+
 ### Filtered reads without partitioning
 
 If partitioning is not appropriate for your use case, `get_confidence_filtered()`
