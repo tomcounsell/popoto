@@ -740,6 +740,12 @@ assert result['total'] == 0
     preserves valid index entries and avoids the query gap that `rebuild_indexes()`
     creates.
 
+!!! example "Live demo"
+    The [Popoto Kitchen example app](../examples/README.md) demonstrates the
+    `check_indexes()` then `clean_indexes()` workflow across all models. Run
+    `python -m popoto_kitchen --ops` to see it in action. Source:
+    [`examples/popoto_kitchen/operations.py`](../examples/popoto_kitchen/operations.py).
+
 ### Async Index Maintenance
 
 | Sync | Async |

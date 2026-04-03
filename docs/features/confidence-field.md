@@ -195,6 +195,24 @@ report = ConfidenceField.migrate_to_partitioned(Memory, "certainty")
 | `$ConfidencF:{Model}:{field}:data` | HASH | Unpartitioned: all members' confidence metadata |
 | `$ConfidencF:{Model}:{field}:data:{partition_value}` | HASH | Partitioned: members in one partition |
 
+## Working Example: Popoto Kitchen
+
+The [Popoto Kitchen example app](../../examples/README.md) includes a `ReviewScore`
+model that demonstrates `ConfidenceField` with `partition_by="restaurant"`. Run the
+operations demo to see Bayesian updates, companion hash key inspection, and
+partitioned confidence in action:
+
+```bash
+cd examples
+uv run popoto-kitchen --seed-only --clear
+uv run popoto-kitchen --ops
+```
+
+See [`examples/popoto_kitchen/operations.py`](../../examples/popoto_kitchen/operations.py)
+for the full source, and the
+[kitchen demo docs](kitchen-edge-case-demo.md#v144-feature-demos-pr-346)
+for a walkthrough.
+
 ## Companion Fields
 
 `ConfidenceField` works alongside other memory system fields:
