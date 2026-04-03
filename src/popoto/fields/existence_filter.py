@@ -157,6 +157,38 @@ end
 return 1
 """
 
+BLOOM_EXISTS_BATCH_LUA = """
+local key = KEYS[1]
+local m = tonumber(ARGV[1])
+local k = tonumber(ARGV[2])
+local LARGE_MOD = 4503599627370496  -- 2^52, safe for Lua doubles
+
+local results = {}
+for t = 3, #ARGV do
+    local item = ARGV[t]
+    local h1 = 5381
+    local h2 = 16777619
+    for i = 1, #item do
+        local c = string.byte(item, i)
+        h1 = ((h1 * 33) + c) % LARGE_MOD
+        h2 = ((h2 * 16777619) + c) % LARGE_MOD
+    end
+    h1 = h1 % m
+    h2 = h2 % m
+
+    local found = 1
+    for i = 0, k - 1 do
+        local pos = (h1 + i * h2) % m
+        if redis.call('GETBIT', key, pos) == 0 then
+            found = 0
+            break
+        end
+    end
+    results[#results + 1] = found
+end
+return results
+"""
+
 # ---------------------------------------------------------------------------
 # Lua Scripts — Count-Min Sketch
 # ---------------------------------------------------------------------------
@@ -462,6 +494,84 @@ class ExistenceFilter(Field):
         m, _ = self._compute_params()
         set_bits = POPOTO_REDIS_DB.bitcount(key)
         return set_bits / m if m > 0 else 0.0
+
+    def might_exist_batch(self, model_class, fingerprints):
+        """Check multiple fingerprints against the Bloom filter in one round-trip.
+
+        Each fingerprint is tokenized using the same rules as might_exist().
+        A fingerprint is considered a hit if ANY of its tokens is found in the
+        filter. Uses a single Lua EVAL call for all tokens, then maps results
+        back to the original fingerprints.
+
+        Args:
+            model_class: The Model class to check against.
+            fingerprints: List of fingerprint strings to check.
+
+        Returns:
+            dict[str, bool]: Mapping of fingerprint -> might_exist result.
+                Returns empty dict for empty input list.
+        """
+        if not fingerprints:
+            return {}
+
+        key = f"$EF:{model_class.__name__}:{self.name}"
+        m, k = self._compute_params()
+
+        # Tokenize each fingerprint and build a flat token list with a mapping
+        # back to the original fingerprint.
+        all_tokens = []
+        # Maps: token index in all_tokens -> list of fingerprint strings
+        token_to_fingerprints = []
+        fingerprint_order = []
+        seen_fingerprints = set()
+
+        for fp in fingerprints:
+            if fp in seen_fingerprints:
+                continue
+            seen_fingerprints.add(fp)
+            fingerprint_order.append(fp)
+
+            query_str = str(fp)
+            tokens = tokenize(query_str)
+            if not tokens:
+                # Fallback: use raw lowercased query (matches might_exist behavior)
+                tokens = [query_str.lower()]
+
+            for token in tokens:
+                all_tokens.append(token)
+                token_to_fingerprints.append(fp)
+
+        if not all_tokens:
+            return {fp: False for fp in fingerprint_order}
+
+        # Single Lua EVAL for all tokens
+        raw_results = POPOTO_REDIS_DB.eval(
+            BLOOM_EXISTS_BATCH_LUA, 1, key, m, k, *all_tokens
+        )
+
+        # Map token results back to fingerprints (ANY token hit = fingerprint hit)
+        result = {fp: False for fp in fingerprint_order}
+        for i, token_result in enumerate(raw_results):
+            if bool(token_result):
+                result[token_to_fingerprints[i]] = True
+
+        return result
+
+    def might_exist_count(self, model_class, fingerprints):
+        """Count how many fingerprints might exist in a single round-trip.
+
+        Convenience wrapper around might_exist_batch(). Returns the number
+        of fingerprints for which might_exist would return True.
+
+        Args:
+            model_class: The Model class to check against.
+            fingerprints: List of fingerprint strings to check.
+
+        Returns:
+            int: Number of fingerprints that might exist.
+        """
+        batch_result = self.might_exist_batch(model_class, fingerprints)
+        return sum(1 for v in batch_result.values() if v)
 
 
 class FrequencySketch(Field):

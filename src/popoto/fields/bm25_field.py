@@ -34,6 +34,7 @@ Example:
 """
 
 import logging
+import math
 
 from ._tokenizer import tokenize
 from .field import Field
@@ -575,3 +576,109 @@ class BM25Field(Field):
             POPOTO_REDIS_DB.set(avgdl_key, str(total_dl / actual_n))
         else:
             POPOTO_REDIS_DB.set(avgdl_key, "0")
+
+    @classmethod
+    def get_idf(cls, model_class, field_name, tokens):
+        """Get IDF scores for tokens without running a full search.
+
+        Reads document frequency from the existing BM25 df sorted set
+        and total doc count. Computes standard BM25 IDF:
+            idf = log((N - df + 0.5) / (df + 0.5) + 1)
+
+        Uses ZMSCORE (Redis >= 6.2, Valkey compatible) for batch df lookup.
+        Falls back to individual ZSCORE calls if ZMSCORE is unavailable.
+
+        Args:
+            model_class: The Model class.
+            field_name: Name of the BM25Field.
+            tokens: Single token string or list of token strings.
+
+        Returns:
+            dict[str, float]: Mapping of token -> IDF score. Tokens not in
+                the corpus get maximum IDF (log(N + 1) when df=0).
+                Returns empty dict for empty token list.
+                Returns {token: 0.0} for all tokens when corpus is empty (N=0).
+        """
+        field = model_class._meta.fields.get(field_name)
+        if not isinstance(field, BM25Field):
+            from ..models.query import QueryException
+
+            raise QueryException(
+                f"get_idf() requires a BM25Field. "
+                f"'{field_name}' is "
+                f"{type(field).__name__ if field else 'not found'}"
+            )
+
+        # Normalize single token to list
+        if isinstance(tokens, str):
+            tokens = [tokens]
+        if not tokens:
+            return {}
+
+        prefix = field._key_prefix(model_class)
+        n_key = f"{prefix}:n"
+        df_key = f"{prefix}:df"
+
+        # Read total doc count
+        n_raw = POPOTO_REDIS_DB.get(n_key)
+        N = int(n_raw) if n_raw else 0
+
+        if N == 0:
+            return {token: 0.0 for token in tokens}
+
+        # Batch df lookup via ZMSCORE (Redis >= 6.2) with ZSCORE fallback
+        df_values = cls._batch_zscore(df_key, tokens)
+
+        # Compute IDF for each token
+        result = {}
+        for token, df_raw in zip(tokens, df_values):
+            df = float(df_raw) if df_raw is not None else 0.0
+            idf = math.log((N - df + 0.5) / (df + 0.5) + 1)
+            result[token] = idf
+
+        return result
+
+    @classmethod
+    def _batch_zscore(cls, key, members):
+        """Batch-read sorted set scores using ZMSCORE with ZSCORE fallback.
+
+        ZMSCORE was added in Redis 6.2 and is supported by Valkey.
+        Falls back to individual ZSCORE calls if ZMSCORE is unavailable.
+
+        Args:
+            key: Redis sorted set key.
+            members: List of member strings to look up.
+
+        Returns:
+            list: Scores for each member (None if member not in set).
+        """
+        try:
+            return POPOTO_REDIS_DB.zmscore(key, members)
+        except (AttributeError, Exception):
+            # ZMSCORE not available -- fall back to individual ZSCORE
+            return [POPOTO_REDIS_DB.zscore(key, m) for m in members]
+
+    @classmethod
+    def filter_selective_tokens(
+        cls, model_class, field_name, tokens, min_idf=1.0
+    ):
+        """Filter tokens to only those with IDF above a threshold.
+
+        Useful for pre-filtering keywords before running search().
+        Tokens not in the corpus are considered maximally selective
+        and included.
+
+        Args:
+            model_class: The Model class.
+            field_name: Name of the BM25Field.
+            tokens: List of token strings.
+            min_idf: Minimum IDF score to keep. Default 1.0.
+
+        Returns:
+            list[str]: Tokens with IDF >= min_idf, preserving original order.
+        """
+        if not tokens:
+            return []
+
+        idf_scores = cls.get_idf(model_class, field_name, tokens)
+        return [t for t in tokens if idf_scores.get(t, 0.0) >= min_idf]
