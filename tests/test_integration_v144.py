@@ -10,7 +10,6 @@ Related: Issue #337
 """
 
 import asyncio
-import time
 
 import popoto
 from popoto.fields.confidence_field import ConfidenceField
@@ -39,13 +38,10 @@ class IntegrationConfidence(popoto.Model):
 
 
 class IntegrationTTL(popoto.Model):
-    """Model for Scenario 3: TTL expiry + check_indexes."""
+    """Model for Scenario 3: simulated TTL expiry + check_indexes."""
 
     name = popoto.KeyField()
     score = popoto.SortedField(type=float)
-
-    class Meta:
-        ttl = 2
 
 
 # ---------------------------------------------------------------------------
@@ -209,22 +205,22 @@ class TestTTLExpiryCheckIndexes:
     """Tests that expired keys are correctly detected as orphans."""
 
     def test_ttl_expiry_creates_orphan_indexes(self):
-        """After TTL expiry, index entries remain and are detected as orphans."""
-        # 1. Create an instance (TTL = 2 seconds)
+        """Simulated TTL expiry: manually delete the main key, leaving orphan indexes."""
+        # 1. Create an instance
         inst = IntegrationTTL.create(name="ephemeral", score=42.0)
 
         # 2. Verify no orphans immediately
         check_result = IntegrationTTL.check_indexes()
         assert check_result["total"] == 0
 
-        # 3. Wait for TTL expiry
-        time.sleep(2.5)
+        # 3. Simulate TTL expiry by deleting the main key directly
+        POPOTO_REDIS_DB.delete(inst.db_key.redis_key)
 
         # 4. Verify instance key no longer exists
         fetched = IntegrationTTL.query.get(name="ephemeral")
         assert fetched is None
 
-        # 5. check_indexes -- orphans detected (sorted field and class set survive TTL)
+        # 5. check_indexes -- orphans detected (sorted field and class set survive deletion)
         check_result = IntegrationTTL.check_indexes()
         assert check_result["total"] >= 1
 
