@@ -143,7 +143,7 @@ New CLI flags added to `__main__.py`:
 # Start the TUI (interactive edge case demos)
 python -m examples.popoto_kitchen
 
-# Clear any stale seeded data first (category → KeyField is a breaking schema change)
+# Clear any stale seeded data first (category -> KeyField is a breaking schema change)
 # In the Dashboard screen, click "Clear All Data", then "Seed Data"
 
 # Run the v1.4.4 operations demos (non-interactive, stdout output)
