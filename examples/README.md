@@ -33,6 +33,10 @@ uv run popoto-kitchen --clear --seed
 
 # Only seed, don't start the app
 uv run popoto-kitchen --seed-only
+
+# Seed fresh data and run v1.4.4 operations demos
+uv run popoto-kitchen --seed-only --clear
+uv run popoto-kitchen --ops
 ```
 
 ## Features
@@ -104,6 +108,34 @@ uv run popoto-kitchen --seed-only
 | `↑/↓` | Navigate table rows |
 | `Enter` | Select row |
 
+### v1.4.4 Operations Demos
+
+The `--ops` flag runs standalone demos for features added in v1.4.4. These print
+results to stdout rather than launching the TUI.
+
+| Demo | Feature | What it shows |
+|------|---------|---------------|
+| `demo_get_many()` | [`query.get_many()`](../docs/query.md) | Bulk-load instances in a single pipeline call; `skip_none=True` mode |
+| `demo_check_and_clean_indexes()` | [`Model.check_indexes()`](../docs/api-reference.md) / [`Model.clean_indexes()`](../docs/api-reference.md) | Read-only index health check followed by surgical orphan removal |
+| `demo_companion_hash_keys()` | [`get_data_hash_key()`](../docs/features/confidence-field.md) | Inspect companion Redis hash keys for ConfidenceField with partition_by |
+
+See `examples/popoto_kitchen/operations.py` for the full source.
+
+### ReviewScore Model (v1.4.4)
+
+The `ReviewScore` model demonstrates `ConfidenceField` with `partition_by`:
+
+```python
+class ReviewScore(Model):
+    restaurant = KeyField()
+    reviewer = KeyField()
+    score = ConfidenceField(initial_confidence=0.5, partition_by="restaurant")
+```
+
+Each restaurant gets its own companion Redis hash, keeping hash sizes manageable.
+The seed script creates review scores with varied Bayesian confidence signals to
+build realistic evidence histories.
+
 ## Sample Data
 
 The seed script generates:
@@ -112,6 +144,7 @@ The seed script generates:
 - 200 customers
 - 20 drivers
 - 500 orders with various statuses
+- 100 review scores with Bayesian confidence signals (v1.4.4)
 
 All data is located in the NYC area for realistic geo queries.
 
@@ -119,10 +152,11 @@ All data is located in the NYC area for realistic geo queries.
 
 ```
 popoto_kitchen/
-├── __main__.py      # Entry point
+├── __main__.py      # Entry point (--seed, --ops flags)
 ├── app.py           # Main Textual application
-├── models.py        # Popoto models (Restaurant, MenuItem, etc.)
-├── seed.py          # Sample data generator
+├── models.py        # Popoto models (Restaurant, MenuItem, ReviewScore, etc.)
+├── operations.py    # v1.4.4 feature demos (get_many, check/clean indexes, companion keys)
+├── seed.py          # Sample data generator (includes confidence signals)
 ├── screens/
 │   ├── dashboard.py # Overview with stats
 │   ├── restaurants.py # Restaurant CRUD + geo
@@ -135,8 +169,8 @@ popoto_kitchen/
 
 ## Popoto Features Showcased
 
-| Feature | Screen | Example |
-|---------|--------|---------|
+| Feature | Screen / Demo | Example |
+|---------|---------------|---------|
 | KeyField | Restaurants | `Restaurant.name` as unique key |
 | AutoKeyField | Orders, Drivers | UUID-based order IDs |
 | UniqueKeyField | Customers, Drivers | Unique email/phone |
@@ -146,6 +180,11 @@ popoto_kitchen/
 | Meta.order_by | Orders | Default sort by created_at |
 | Range queries | Menu | `price__gte`, `price__lte` |
 | Geo queries | Restaurants, Drivers | `location_radius`, `location_with_distances` |
+| ConfidenceField | `--ops` demo | Bayesian confidence with `partition_by` |
+| get_many() | `--ops` demo | Bulk-load instances in one pipeline call |
+| check_indexes() | `--ops` demo | Read-only index health check |
+| clean_indexes() | `--ops` demo | Surgical orphan removal |
+| get_data_hash_key() | `--ops` demo | Companion hash key inspection |
 
 ## Development
 

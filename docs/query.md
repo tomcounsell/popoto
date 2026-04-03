@@ -130,6 +130,12 @@ An empty input list returns an empty list immediately, without touching Redis.
     takes a list of string keys, preserves input order, and returns `None` for missing entries.
     The internal method takes a set of bytes keys and silently drops missing entries.
 
+!!! example "Live demo"
+    The [Popoto Kitchen example app](../examples/README.md) demonstrates `get_many()` in its
+    operations script. Run `python -m popoto_kitchen --ops` to see bulk Order loading with both
+    default and `skip_none=True` modes. Source:
+    [`examples/popoto_kitchen/operations.py`](../examples/popoto_kitchen/operations.py).
+
 ### Async get_many()
 
 The async counterpart `async_get_many()` uses a native async Redis pipeline, so it does

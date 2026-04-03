@@ -99,15 +99,57 @@ from the old driver's relationship index and added to the new driver's index.
 5. `Restaurant.query.all()` returns the restaurant under the new key; the old
    key is gone.
 
+## v1.4.4 Feature Demos (PR #346)
+
+PR #346 added a new `ReviewScore` model and an operations script that
+demonstrates four v1.4.4 features outside of the TUI. These are invoked
+via `python -m popoto_kitchen --ops` and print results to stdout.
+
+### ReviewScore Model
+
+A new model using `ConfidenceField` with `partition_by="restaurant"` to
+track review confidence per restaurant. See
+[ConfidenceField docs](confidence-field.md) for the Bayesian update formula.
+
+```python
+class ReviewScore(Model):
+    restaurant = KeyField()
+    reviewer = KeyField()
+    score = ConfidenceField(initial_confidence=0.5, partition_by="restaurant")
+```
+
+The seed script creates 100 review scores with varied confidence signals
+(2-6 signals per review, mix of positive and negative) to build realistic
+evidence histories.
+
+### Operations Script (`operations.py`)
+
+| Demo | Feature | Description |
+|------|---------|-------------|
+| `demo_get_many()` | `query.get_many()` | Bulk-loads Order instances by key in a single pipeline call. Shows both default mode (with `None` placeholders) and `skip_none=True` mode. |
+| `demo_check_and_clean_indexes()` | `check_indexes()` / `clean_indexes()` | Runs a read-only health check on all models, then surgically removes any orphaned index entries found. |
+| `demo_companion_hash_keys()` | `get_data_hash_key()` | Inspects the companion Redis hash keys for ReviewScore's ConfidenceField, showing how `partition_by` creates per-restaurant hashes. Also demonstrates `get_data_hash_key_from_values()` for building keys without a loaded instance. |
+
+### Entry Point Changes
+
+New CLI flags added to `__main__.py`:
+
+- `--ops` -- Run v1.4.4 operations demos and exit
+- `--seed-only --clear` -- Seed fresh data without launching the TUI
+
 ## Running the Demo
 
 ```bash
+# Start the TUI (interactive edge case demos)
+python -m examples.popoto_kitchen
+
 # Clear any stale seeded data first (category → KeyField is a breaking schema change)
 # In the Dashboard screen, click "Clear All Data", then "Seed Data"
 
-# Start the TUI
-python -m examples.popoto_kitchen
+# Run the v1.4.4 operations demos (non-interactive, stdout output)
+python -m popoto_kitchen --seed-only --clear
+python -m popoto_kitchen --ops
 ```
 
 Navigate to each screen and use the new buttons to observe the edge case
-behaviors described above.
+behaviors described above. Use `--ops` for the v1.4.4 feature demos.
