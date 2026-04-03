@@ -749,14 +749,26 @@ assert result['total'] == 0
 | `Model.rebuild_indexes()` | `await Model.async_rebuild_indexes()` |
 
 ```python
-# Async health check and targeted cleanup
-result = await User.async_check_indexes()
-if result['total'] > 0:
-    removed = await User.async_clean_indexes()
-    print(f"Cleaned {removed} orphans")
+async def health_check():
+    """Non-blocking index health audit."""
+    result = await Restaurant.async_check_indexes()
+    print(f"Orphaned entries: {result['total']}")
+    # => {'class_set': 0, 'key_fields': {}, 'sorted_fields': {}, ...}
 
-# Full rebuild as last resort
-await User.async_rebuild_indexes()
+async def scheduled_cleanup():
+    """Production-safe orphan removal in an async worker."""
+    result = await Restaurant.async_check_indexes()
+    if result['total'] > 0:
+        removed = await Restaurant.async_clean_indexes()
+        print(f"Cleaned {removed} orphans")
+
+        # Verify cleanup
+        after = await Restaurant.async_check_indexes()
+        assert after['total'] == 0
+
+async def full_rebuild():
+    """Full rebuild as last resort -- causes a brief query gap."""
+    await Restaurant.async_rebuild_indexes()
 ```
 
 ---
@@ -1101,6 +1113,7 @@ See [Semantic Search](query.md#semantic-search) for conceptual overview and
 | `Model.query.all(...)` | `await Model.query.async_all(...)` |
 | `Model.query.count(...)` | `await Model.query.async_count(...)` |
 | `Model.query.keys(...)` | `await Model.query.async_keys(...)` |
+| `Model.query.get_many(...)` | `await Model.query.async_get_many(...)` |
 
 ---
 
@@ -1481,6 +1494,61 @@ writes to the appropriate partitioned hash.
 **Returns:** Dict with `total`, `migrated`, `errors`, and `partitions` counts.
 
 **Raises:** `ModelException` if the field has no `partition_by` configured.
+
+#### ConfidenceField.get\_data\_hash\_key(instance, field\_name)
+
+Build the Redis key for the confidence companion hash from a model instance. When
+`partition_by` is set, appends partition field values to the key.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `instance` | `Model` | A saved model instance. |
+| `field_name` | `str` | Name of the `ConfidenceField`. |
+
+**Returns:** `str` -- Redis key for the companion hash.
+
+**Key pattern (unpartitioned):** `$ConfidencF:{Model}:{field}:data`
+**Key pattern (partitioned):** `$ConfidencF:{Model}:{field}:data:{partition_val}`
+
+```python
+field = Memory._options.fields["certainty"]
+hash_key = field.get_data_hash_key(memory, "certainty")
+# => "$ConfidencF:Memory:certainty:data"
+```
+
+#### ConfidenceField.get\_data\_hash\_key\_from\_values(model\_class, field\_name, \*\*partition\_values)
+
+Build the companion hash key from explicit partition values, without needing a model
+instance. Useful in query paths and bulk operations scoped to a partition.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `model_class` | `Model` | The Model class. |
+| `field_name` | `str` | Name of the `ConfidenceField`. |
+| `**partition_values` | | Mapping of partition field names to values. |
+
+**Returns:** `str` -- Redis key for the companion hash.
+
+**Raises:** `QueryException` if a required partition field value is missing.
+
+```python
+field = Memory._options.fields["certainty"]
+key = field.get_data_hash_key_from_values(Memory, "certainty", project="atlas")
+# => "$ConfidencF:Memory:certainty:data:atlas"
+```
+
+#### ConfidenceField.get\_old\_data\_hash\_key(instance, field\_name)
+
+Build the companion hash key using saved (pre-mutation) partition field values. Used
+during `on_save`/`on_delete` to locate the old partition hash when a partition key has
+changed. Also useful for custom partition migration logic.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `instance` | `Model` | A saved model instance. |
+| `field_name` | `str` | Name of the `ConfidenceField`. |
+
+**Returns:** `str` or `None` -- The old hash key, or `None` if no saved values exist.
 
 #### ObservationProtocol entrainment
 

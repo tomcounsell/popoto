@@ -130,6 +130,27 @@ An empty input list returns an empty list immediately, without touching Redis.
     takes a list of string keys, preserves input order, and returns `None` for missing entries.
     The internal method takes a set of bytes keys and silently drops missing entries.
 
+### Async Usage
+
+The async counterpart uses a native async Redis pipeline for non-blocking bulk retrieval.
+
+```python
+async def bulk_lookup():
+    keys = ["Restaurant:Burger Palace", "Restaurant:Sushi Zen", "Restaurant:Gone Place"]
+    restaurants = await Restaurant.query.async_get_many(redis_keys=keys)
+    # => [<Restaurant>, <Restaurant>, None]
+
+    # Drop missing entries
+    restaurants = await Restaurant.query.async_get_many(redis_keys=keys, skip_none=True)
+    # => [<Restaurant>, <Restaurant>]
+```
+
+!!! tip
+    `async_get_many()` uses a native async Redis pipeline, so it does not block the event
+    loop even when hydrating hundreds of keys.
+
+See [Async Operations](async.md#async_get_many) for more examples.
+
 ## Get All Objects
 
 Use `query.all()` to retrieve every instance of a model. This fetches all Redis keys registered
