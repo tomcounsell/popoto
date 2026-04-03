@@ -101,6 +101,52 @@ Read all confidence metadata.
 
 - **Returns**: Dict with keys `confidence`, `evidence_count`, `corroborations`, `contradictions`.
 
+### Inspecting Companion Hash Keys
+
+Each `ConfidenceField` stores its Bayesian metadata in a companion Redis hash alongside
+the main model hash. The public companion key methods let you build these Redis keys
+for debugging, monitoring, or direct Redis inspection without reverse-engineering
+suffix conventions.
+
+```python
+import redis
+from popoto import Model, UniqueKeyField, StringField
+from popoto.fields.confidence_field import ConfidenceField
+
+class Memory(Model):
+    key = UniqueKeyField()
+    content = StringField()
+    certainty = ConfidenceField(initial_confidence=0.5)
+
+# Create and update a memory
+memory = Memory.create(key="fact1", content="The sky is blue")
+ConfidenceField.update_confidence(memory, "certainty", signal=0.9)
+
+# Get the companion hash key for direct Redis inspection
+field = Memory._options.fields["certainty"]
+hash_key = field.get_data_hash_key(memory, "certainty")
+print(hash_key)
+# => "$ConfidencF:Memory:certainty:data"
+
+# Inspect the raw companion hash in Redis
+r = redis.from_url("redis://localhost:6379")
+raw_data = r.hgetall(hash_key)
+print(raw_data)
+# Shows all members and their msgpack-encoded confidence metadata
+```
+
+When you do not have an instance loaded, use `get_data_hash_key_from_values` to build
+the key from explicit values:
+
+```python
+# Build the key without loading a model instance
+key = field.get_data_hash_key_from_values(Memory, "certainty")
+# => "$ConfidencF:Memory:certainty:data"
+
+# For partitioned fields, pass the partition values as keyword arguments
+# key = field.get_data_hash_key_from_values(Memory, "certainty", project="atlas")
+```
+
 ## Partitioned Reads
 
 When the companion hash grows large (thousands of members), reads become expensive because

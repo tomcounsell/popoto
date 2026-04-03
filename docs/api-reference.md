@@ -1318,6 +1318,58 @@ See [CyclicDecayField](features/cyclic-decay-field.md) for usage examples and
 | `pressure_rate` | `float` | `0.0` | Rate of urgency buildup per unresolved day. Must be >= 0. |
 | `partition_by` | `str` or `tuple` | `()` | Partition the sorted set by key field values (inherited). |
 
+#### CyclicDecayField.get\_cycles\_hash\_key(instance, field\_name)
+
+Build the Redis key for the cycles companion hash from a model instance.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `instance` | `Model` | A saved model instance. |
+| `field_name` | `str` | Name of the `CyclicDecayField`. |
+
+**Returns:** `str` -- Redis key for the cycles companion hash.
+
+**Key pattern:** `$CyclicDecayF:{Model}:{field}:{partitions}:cycles`
+
+#### CyclicDecayField.get\_pressure\_hash\_key(instance, field\_name)
+
+Build the Redis key for the pressure companion hash from a model instance.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `instance` | `Model` | A saved model instance. |
+| `field_name` | `str` | Name of the `CyclicDecayField`. |
+
+**Returns:** `str` -- Redis key for the pressure companion hash.
+
+**Key pattern:** `$CyclicDecayF:{Model}:{field}:{partitions}:pressure`
+
+#### CyclicDecayField.get\_cycles\_hash\_key\_from\_parts(model\_class, field\_name, \*partition\_values)
+
+Class method. Build the cycles hash key from a model class and explicit partition values,
+without needing a model instance.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `model_class` | `Model` | The Model class. |
+| `field_name` | `str` | Name of the `CyclicDecayField`. |
+| `*partition_values` | | Positional partition field values. |
+
+**Returns:** `str` -- Redis key for the cycles companion hash.
+
+#### CyclicDecayField.get\_pressure\_hash\_key\_from\_parts(model\_class, field\_name, \*partition\_values)
+
+Class method. Build the pressure hash key from a model class and explicit partition values,
+without needing a model instance.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `model_class` | `Model` | The Model class. |
+| `field_name` | `str` | Name of the `CyclicDecayField`. |
+| `*partition_values` | | Positional partition field values. |
+
+**Returns:** `str` -- Redis key for the pressure companion hash.
+
 ### AccessTrackerMixin
 
 ```python
@@ -1482,6 +1534,61 @@ writes to the appropriate partitioned hash.
 
 **Raises:** `ModelException` if the field has no `partition_by` configured.
 
+#### ConfidenceField.get\_data\_hash\_key(instance, field\_name)
+
+Build the Redis key for the confidence companion hash from a model instance. When
+`partition_by` is set, appends partition field values to the key.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `instance` | `Model` | A saved model instance. |
+| `field_name` | `str` | Name of the `ConfidenceField`. |
+
+**Returns:** `str` -- Redis key for the companion hash.
+
+**Key pattern (unpartitioned):** `$ConfidencF:{Model}:{field}:data`
+**Key pattern (partitioned):** `$ConfidencF:{Model}:{field}:data:{partition_val}`
+
+```python
+field = Memory._options.fields["certainty"]
+hash_key = field.get_data_hash_key(memory, "certainty")
+# => "$ConfidencF:Memory:certainty:data"
+```
+
+#### ConfidenceField.get\_data\_hash\_key\_from\_values(model\_class, field\_name, \*\*partition\_values)
+
+Build the companion hash key from explicit partition values, without needing a model
+instance. Useful in query paths and bulk operations scoped to a partition.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `model_class` | `Model` | The Model class. |
+| `field_name` | `str` | Name of the `ConfidenceField`. |
+| `**partition_values` | | Mapping of partition field names to values. |
+
+**Returns:** `str` -- Redis key for the companion hash.
+
+**Raises:** `QueryException` if a required partition field value is missing.
+
+```python
+field = Memory._options.fields["certainty"]
+key = field.get_data_hash_key_from_values(Memory, "certainty", project="atlas")
+# => "$ConfidencF:Memory:certainty:data:atlas"
+```
+
+#### ConfidenceField.get\_old\_data\_hash\_key(instance, field\_name)
+
+Build the companion hash key using saved (pre-mutation) partition field values. Used
+during `on_save`/`on_delete` to locate the old partition hash when a partition key has
+changed. Also useful for custom partition migration logic.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `instance` | `Model` | A saved model instance. |
+| `field_name` | `str` | Name of the `ConfidenceField`. |
+
+**Returns:** `str` or `None` -- The old hash key, or `None` if no saved values exist.
+
 #### ObservationProtocol entrainment
 
 When used with `ObservationProtocol.on_context_used()`, confidence is automatically updated:
@@ -1589,6 +1696,49 @@ for custom error metrics.
 - Overall: mean across all keys
 
 **Returns:** Float in `[0, 1]`.
+
+### CoOccurrenceField
+
+```python
+from popoto.fields.co_occurrence_field import CoOccurrenceField
+```
+
+A field that maintains a co-occurrence graph as Redis sorted sets. Each primary key gets
+an edge sorted set tracking weighted links to other PKs. See
+[CoOccurrenceField feature docs](features/co-occurrence-field.md) for usage examples.
+
+#### CoOccurrenceField.get\_edge\_key(model\_class, pk)
+
+Build the Redis key for a PK's edge sorted set. Use this for direct Redis access to
+a specific node's edges (e.g., bulk edge inspection, custom graph queries, monitoring).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `model_class` | `Model` | The Model class (or instance). |
+| `pk` | `str` | The primary key string. |
+
+**Returns:** `str` -- Redis key for this PK's edge sorted set.
+
+**Key pattern:** `$CoOcF:{ClassName}:{field_name}:{pk}`
+
+```python
+field = Memory._options.fields["associations"]
+edge_key = field.get_edge_key(Memory, "fact1")
+# => "$CoOcF:Memory:associations:fact1"
+```
+
+#### CoOccurrenceField.get\_edge\_key\_prefix(model\_class)
+
+Build the Redis key prefix for scanning or iterating over all edge sorted sets for a
+field (e.g., graph analytics, bulk cleanup).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `model_class` | `Model` | The Model class. |
+
+**Returns:** `str` -- Key prefix ending with colon.
+
+**Key pattern:** `$CoOcF:{ClassName}:{field_name}:`
 
 ### InteractionWeight
 
