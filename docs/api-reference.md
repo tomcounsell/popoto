@@ -748,22 +748,88 @@ assert result['total'] == 0
 
 ### Async Index Maintenance
 
+All three index maintenance methods have async counterparts that use `asyncio.to_thread`
+under the hood, keeping the event loop free during potentially long-running scans.
+
 | Sync | Async |
 |------|-------|
 | `Model.check_indexes()` | `await Model.async_check_indexes()` |
 | `Model.clean_indexes()` | `await Model.async_clean_indexes()` |
 | `Model.rebuild_indexes()` | `await Model.async_rebuild_indexes()` |
 
-```python
-# Async health check and targeted cleanup
-result = await User.async_check_indexes()
-if result['total'] > 0:
-    removed = await User.async_clean_indexes()
-    print(f"Cleaned {removed} orphans")
+#### async_check_indexes()
 
-# Full rebuild as last resort
-await User.async_rebuild_indexes()
+Read-only health check. Returns the same dict structure as the synchronous version.
+
+```python
+async def audit_index_health():
+    result = await User.async_check_indexes()
+    if result['total'] > 0:
+        print(f"Found {result['total']} orphaned entries")
+        for field, count in result.get('sorted_fields', {}).items():
+            if count > 0:
+                print(f"  {field}: {count} orphans")
+    else:
+        print("All indexes healthy")
 ```
+
+#### async_clean_indexes()
+
+Production-safe orphan cleanup. Returns the number of entries removed.
+
+```python
+async def scheduled_cleanup():
+    result = await User.async_check_indexes()
+    if result['total'] > 0:
+        removed = await User.async_clean_indexes()
+        print(f"Cleaned {removed} orphaned index entries")
+
+        # Verify cleanup was complete
+        after = await User.async_check_indexes()
+        assert after['total'] == 0
+```
+
+#### async_rebuild_indexes()
+
+Full destructive rebuild as a last resort. Returns the number of instances processed.
+
+```python
+async def emergency_rebuild():
+    count = await User.async_rebuild_indexes()
+    print(f"Rebuilt indexes for {count} users")
+```
+
+These async methods work well with `asyncio.gather()` when maintaining indexes across
+multiple models:
+
+```python
+async def maintain_all_indexes():
+    """Check and clean indexes for all models concurrently."""
+    results = await asyncio.gather(
+        User.async_check_indexes(),
+        Restaurant.async_check_indexes(),
+        Order.async_check_indexes(),
+    )
+
+    for model_name, result in zip(["User", "Restaurant", "Order"], results):
+        if result['total'] > 0:
+            print(f"{model_name}: {result['total']} orphans found, cleaning...")
+
+    # Clean only models with orphans
+    if results[0]['total'] > 0:
+        await User.async_clean_indexes()
+    if results[1]['total'] > 0:
+        await Restaurant.async_clean_indexes()
+    if results[2]['total'] > 0:
+        await Order.async_clean_indexes()
+```
+
+!!! warning
+    `async_rebuild_indexes()` is destructive -- during the rebuild window, queries relying
+    on those indexes may return incomplete results. Prefer `async_clean_indexes()` for
+    routine maintenance.
+
+See [Async Operations](async.md) for the full async API reference.
 
 ---
 

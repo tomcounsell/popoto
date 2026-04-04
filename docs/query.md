@@ -136,6 +136,37 @@ An empty input list returns an empty list immediately, without touching Redis.
     default and `skip_none=True` modes. Source:
     [`examples/popoto_kitchen/operations.py`](../examples/popoto_kitchen/operations.py).
 
+### Async get_many()
+
+The async counterpart `async_get_many()` uses a native async Redis pipeline, so it does
+not block the event loop even when hydrating hundreds of keys. It accepts the same
+parameters and preserves the same ordering guarantees as the synchronous version.
+
+```python
+async def bulk_lookup():
+    keys = ["Restaurant:Burger Palace", "Restaurant:Sushi Zen", "Restaurant:Gone Place"]
+    restaurants = await Restaurant.query.async_get_many(redis_keys=keys)
+    # => [<Restaurant>, <Restaurant>, None]
+
+    # Drop missing entries
+    restaurants = await Restaurant.query.async_get_many(redis_keys=keys, skip_none=True)
+    # => [<Restaurant>, <Restaurant>]
+```
+
+This pairs naturally with `async_keys()` for the "fan-out then hydrate" pattern:
+
+```python
+async def hydrate_all():
+    keys = await Restaurant.query.async_keys()
+    restaurants = await Restaurant.query.async_get_many(redis_keys=keys, skip_none=True)
+    print(f"Loaded {len(restaurants)} restaurants")
+```
+
+!!! tip
+    `async_get_many()` is especially useful inside `asyncio.gather()` when you need to
+    hydrate keys from multiple models concurrently. See [Async Operations](async.md#async_get_many)
+    for more examples.
+
 ## Get All Objects
 
 Use `query.all()` to retrieve every instance of a model. This fetches all Redis keys registered
@@ -1362,6 +1393,7 @@ for restaurant in Restaurant.query.all():
 | `filter(sorted__gte=...)` | ZRANGEBYSCORE | O(log N + M) |
 | `filter(geo=..., radius=...)` | GEORADIUS | O(N + log M) |
 | `all()` | SMEMBERS + pipeline HGETALL | O(N) |
+| `get_many(redis_keys=...)` | pipeline HGETALL | O(N) where N = number of keys |
 | `composite_score(...)` | ZUNIONSTORE + ZREVRANGE + pipeline HGETALL | O(K log K + M) |
 | `keyword_search(...)` | Lua BM25 scoring over inverted index | O(T * D) where T = query terms, D = docs per term |
 | `fuse(...)` | Rank-merge + pipeline HGETALL | O(sum of list lengths + K log K) |
