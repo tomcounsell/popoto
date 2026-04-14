@@ -10,6 +10,7 @@ pass a provider instance directly to EmbeddingField.
 Available providers:
     - VoyageProvider: Voyage AI embeddings (requires voyageai package)
     - OpenAIProvider: OpenAI embeddings (requires openai package)
+    - OllamaProvider: Local Ollama embeddings (no extra dependencies)
 """
 
 from abc import ABC, abstractmethod
@@ -68,4 +69,6 @@ class AbstractEmbeddingProvider(ABC):
         ...
 
 
-__all__ = ["AbstractEmbeddingProvider"]
+from .ollama import OllamaProvider  # noqa: E402 -- must follow class definition
+
+__all__ = ["AbstractEmbeddingProvider", "OllamaProvider"]

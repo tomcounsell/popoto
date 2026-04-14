@@ -202,6 +202,30 @@ popoto.configure(embedding_provider=provider)
 OpenAI embeddings ignore the `input_type` parameter. Batch size limit is 2048
 texts per API call.
 
+#### Ollama (local, no API key)
+
+`OllamaProvider` connects to a locally-running [Ollama](https://ollama.com) server. No API key or extra Python package required — it uses only Python's standard library.
+
+```bash
+# 1. Start Ollama
+ollama serve
+
+# 2. Pull a model
+ollama pull nomic-embed-text
+```
+
+```python
+from popoto.embeddings.ollama import OllamaProvider
+
+provider = OllamaProvider(
+    base_url="http://localhost:11434",  # default
+    model="nomic-embed-text",           # default (768-dim)
+)
+popoto.configure(embedding_provider=provider)
+```
+
+Dimensions are auto-detected from the first `embed()` call. Pass `dim=<n>` if you need to read the `dimensions` property before any call has been made.
+
 #### Custom Providers
 
 Implement `AbstractEmbeddingProvider` to use any embedding service:

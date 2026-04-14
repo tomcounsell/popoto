@@ -126,6 +126,44 @@ provider = OpenAIProvider(
 
 Install: `pip install popoto[openai]`
 
+#### OllamaProvider
+
+Local embeddings via a [self-hosted Ollama server](https://ollama.com). No API key required — all inference runs on your own hardware.
+
+```python
+from popoto.embeddings.ollama import OllamaProvider
+
+provider = OllamaProvider(
+    base_url="http://localhost:11434",  # default
+    model="nomic-embed-text",           # default (768-dim)
+    dim=None,                           # auto-detected on first embed()
+)
+```
+
+No extra installation needed — `OllamaProvider` uses only Python's standard library.
+
+**Setup:**
+
+```bash
+# 1. Install and start Ollama (https://ollama.com)
+ollama serve
+
+# 2. Pull a model
+ollama pull nomic-embed-text
+```
+
+Common models and their dimensions:
+
+| Model | Dimensions |
+|-------|-----------|
+| `nomic-embed-text` | 768 |
+| `mxbai-embed-large` | 1024 |
+| `all-minilm` | 384 |
+
+The `dim` parameter is optional. When omitted, dimensions are auto-detected from the first `embed()` call. Pass `dim=<n>` explicitly if you need to access the `dimensions` property before the first call.
+
+Error messages are clear: a connection failure reminds you to run `ollama serve`, and a missing model reminds you to run `ollama pull <model>`.
+
 #### Custom Providers
 
 Implement `AbstractEmbeddingProvider`:
@@ -242,6 +280,7 @@ invalidate_cache()
 |-------|---------|----------|
 | Base | `pip install popoto` | ContentField (no extra deps) |
 | Embeddings | `pip install popoto[embeddings]` | numpy |
+| Ollama | `pip install popoto[embeddings]` | numpy (no extra Python deps) |
 | Voyage AI | `pip install popoto[voyage]` | numpy, voyageai |
 | OpenAI | `pip install popoto[openai]` | numpy, openai |
 
@@ -252,6 +291,7 @@ invalidate_cache()
 | `POPOTO_CONTENT_PATH` | `~/.popoto/content` | Base directory for content files and embeddings |
 | `VOYAGE_API_KEY` | *(none)* | API key for VoyageProvider (alternative to passing `api_key=`) |
 | `OPENAI_API_KEY` | *(none)* | API key for OpenAIProvider (alternative to passing `api_key=`) |
+| *(none)* | — | OllamaProvider requires no API key |
 
 ## See Also
 
