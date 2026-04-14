@@ -6,6 +6,7 @@ owner: valorengels
 created: 2026-04-14
 tracking: https://github.com/tomcounsell/popoto/issues/354
 last_comment_id:
+revision_applied: true
 ---
 
 # OllamaProvider for Local Embeddings
@@ -124,11 +125,13 @@ The implementation mirrors the existing `openai.py` almost exactly, with `urllib
 
 - Mirror the structure of `openai.py`: same constructor pattern, same `embed()` signature, same property implementations
 - Use `urllib.request.urlopen()` with `json.dumps().encode()` for the POST body and `json.loads()` for the response
-- Wrap connection errors in a clear `RuntimeError` with actionable message
+- Wrap `URLError` (connection refused) in a `RuntimeError` with "ollama serve" hint; wrap `HTTPError` with JSON body parsing (see below)
 - Default model: `nomic-embed-text`, default base_url: `http://localhost:11434`
-- `max_batch_size`: 512 (Ollama handles batches well locally; conservative default)
+- `max_batch_size`: 32 (conservative for local inference — local forward-pass with 512 texts can OOM on modest hardware; users who need higher throughput can subclass and override)
 - No retry/backoff -- local inference should fast-fail
 - No `input_type` handling -- Ollama ignores it
+- **`dimensions` property guard (C1):** When `self._dim is None` (i.e., `embed()` has not yet been called and no `dim` was passed to the constructor), the `dimensions` property MUST raise `RuntimeError("OllamaProvider: dimensions unknown — call embed() first or pass dim=<n> to the constructor")`. Never return `None` or `0` silently — the `AbstractEmbeddingProvider` contract types `dimensions` as `int`.
+- **HTTP error discrimination (C2):** Non-2xx responses from Ollama raise `urllib.error.HTTPError`. Handle explicitly: `except urllib.error.HTTPError as e: body = e.read().decode(); parsed = json.loads(body) if body else {}; msg = parsed.get("error", ""); if "not found" in msg.lower() or "model" in msg.lower(): raise RuntimeError(f"Model '{self._model}' not found. Run: ollama pull {self._model}") from e; else: raise RuntimeError(f"Ollama HTTP {e.code}: {msg}") from e`. This ensures "not found" and "other HTTP error" paths produce distinct, actionable messages.
 
 ## Failure Path Test Strategy
 
@@ -243,12 +246,12 @@ No agent integration required -- this is a Popoto library embedding provider use
 - Implement `OllamaProvider(base_url="http://localhost:11434", model="nomic-embed-text", dim=None)`
 - Implement `embed()` using `urllib.request.urlopen()` POST to `/api/embed` with JSON body `{"model": model, "input": texts}`
 - Parse response JSON `{"embeddings": [[...], ...]}` and return the embeddings list
-- Auto-detect dimensions from first response vector length; cache in `self._dim`
-- If `dim` is provided to constructor, use it directly (skip auto-detection)
+- Auto-detect dimensions from first response vector length; cache in `self._dim`; if `dim` is provided to constructor, use it directly (skip auto-detection)
+- `dimensions` property: if `self._dim is None`, raise `RuntimeError("OllamaProvider: dimensions unknown — call embed() first or pass dim=<n> to the constructor")` — never return `None` silently
 - Raise `RuntimeError` with "ollama serve" message on `URLError` (connection refused)
-- Raise `RuntimeError` with "ollama pull <model>" message on HTTP error indicating missing model
+- For `HTTPError`: read body, parse JSON `{"error": "..."}`, branch on "not found"/"model" keywords to raise `RuntimeError(f"Model '{self._model}' not found. Run: ollama pull {self._model}")`, else raise generic `RuntimeError(f"Ollama HTTP {e.code}: {msg}")`
 - Return `[]` for empty input list
-- Set `max_batch_size` to 512
+- Set `max_batch_size` to 32 (conservative for local inference; users may subclass to override)
 
 ### 2. Update embeddings __init__ exports
 - **Task ID**: build-exports
@@ -282,6 +285,7 @@ No agent integration required -- this is a Popoto library embedding provider use
 ### 4. Validate implementation
 - **Task ID**: validate-provider
 - **Depends On**: build-tests
+- **Validates**: `pytest tests/test_ollama_provider.py tests/test_embedding_provider.py -v`
 - **Assigned To**: provider-validator
 - **Agent Type**: validator
 - **Parallel**: false
@@ -323,9 +327,14 @@ No agent integration required -- this is a Popoto library embedding provider use
 
 ## Critique Results
 
-<!-- Populated by /do-plan-critique (war room). Leave empty until critique is run. -->
+<!-- Populated by /do-plan-critique (war room). -->
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
+| CONCERN | Skeptic, Adversary | C1: `dimensions` returns `None` before first `embed()` — type contract violation against `AbstractEmbeddingProvider.dimensions -> int` | Technical Approach; Task 1 | Raise `RuntimeError` in `dimensions` property when `self._dim is None`: "OllamaProvider: dimensions unknown — call embed() first or pass dim=<n> to the constructor" |
+| CONCERN | Skeptic, Adversary | C2: HTTP error discrimination unreliable — plan lacked spec for parsing Ollama's JSON error body from `HTTPError` | Technical Approach; Task 1 | `except HTTPError as e: body = e.read().decode(); parsed = json.loads(body) if body else {}; msg = parsed.get("error", ""); branch on "not found"/"model" keywords for specific vs generic RuntimeError` |
+| CONCERN | Skeptic, Operator | C3: `max_batch_size=512` unvalidated for local inference — may OOM on modest hardware | Technical Approach; Task 1 | Lower to `max_batch_size=32`; document that users may subclass to override |
+| NIT | Archaeologist | N1: Minimum Ollama version for `/api/embed` not documented | ollama.py (inline comment) | Add one-line comment in `ollama.py` noting minimum Ollama version that introduced `/api/embed` |
+| NIT | Operator | N2: Tasks 4–6 missing `**Validates**:` fields — inconsistent with tasks 1–3 | Task 4 | Add `**Validates**: pytest tests/test_ollama_provider.py tests/test_embedding_provider.py -v` to Task 4 |
 
 ---
 
