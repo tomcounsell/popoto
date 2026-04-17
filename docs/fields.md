@@ -1307,7 +1307,7 @@ generate an embedding, and writes the vector atomically to disk.
 
 ### Embedding Providers
 
-Popoto ships with two built-in providers. You can also implement your own by
+Popoto ships with three built-in providers. You can also implement your own by
 subclassing `AbstractEmbeddingProvider`.
 
 **VoyageProvider** (recommended for retrieval):
@@ -1333,6 +1333,23 @@ provider = OpenAIProvider(
     dimensions=1536,                  # default
 )
 ```
+
+**OllamaProvider** (local, no API key):
+
+```python
+from popoto.embeddings.ollama import OllamaProvider
+
+provider = OllamaProvider(
+    base_url="http://localhost:11434",  # default
+    model="nomic-embed-text",           # default (768-dim)
+    dim=None,                           # auto-detect on first embed()
+)
+```
+
+Requires a running Ollama server (`ollama serve`) with the model pulled
+(`ollama pull nomic-embed-text`). Uses stdlib only -- no extras to install.
+See [Content and Embedding Fields](features/content-and-embedding-fields.md#ollamaprovider)
+for setup details.
 
 ### Querying with semantic_search()
 

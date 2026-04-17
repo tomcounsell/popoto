@@ -1,5 +1,5 @@
 ---
-status: Ready
+status: docs_complete
 type: feature
 appetite: Small
 owner: valorengels
@@ -136,16 +136,16 @@ The implementation mirrors the existing `openai.py` almost exactly, with `urllib
 ## Failure Path Test Strategy
 
 ### Exception Handling Coverage
-- [ ] `urllib.error.URLError` when Ollama is not running -- test that `RuntimeError` is raised with "ollama serve" message
-- [ ] HTTP error responses (e.g., model not found) -- test that `RuntimeError` includes the model name and "ollama pull" hint
-- [ ] Malformed JSON response -- test graceful error
+- [x] `urllib.error.URLError` when Ollama is not running -- test that `RuntimeError` is raised with "ollama serve" message
+- [x] HTTP error responses (e.g., model not found) -- test that `RuntimeError` includes the model name and "ollama pull" hint
+- [x] Malformed JSON response -- test graceful error
 
 ### Empty/Invalid Input Handling
-- [ ] Empty text list returns `[]` (matches existing provider pattern)
-- [ ] None or empty string in texts list -- verify behavior
+- [x] Empty text list returns `[]` (matches existing provider pattern)
+- [x] None or empty string in texts list -- verify behavior
 
 ### Error State Rendering
-- [ ] Error messages include actionable instructions (not just stack traces)
+- [x] Error messages include actionable instructions (not just stack traces)
 
 ## Test Impact
 
@@ -194,27 +194,28 @@ No agent integration required -- this is a Popoto library embedding provider use
 ## Documentation
 
 ### Feature Documentation
-- [ ] Update `docs/features/content-and-embedding-fields.md` to add OllamaProvider section
-- [ ] Update `docs/configuration.md` to show OllamaProvider in configure() examples
+- [x] Update `docs/features/content-and-embedding-fields.md` to add OllamaProvider section
+- [x] Update `docs/configuration.md` to show OllamaProvider in configure() examples
+- [x] Update `docs/fields.md` Embedding Providers list (cascade: three providers, OllamaProvider subsection)
 
 ### External Documentation Site
-- [ ] Update `docs/guides/agent-memory-quickstart.md` with Ollama setup option
-- [ ] Verify docs build passes with `mkdocs build`
+- [x] Update `docs/guides/agent-memory-quickstart.md` with Ollama setup option
+- [x] Verify docs build passes with `mkdocs build`
 
 ### Inline Documentation
-- [ ] Docstrings on `OllamaProvider` class and all public methods
-- [ ] Code comments on error handling logic
+- [x] Docstrings on `OllamaProvider` class and all public methods
+- [x] Code comments on error handling logic
 
 ## Success Criteria
 
-- [ ] `src/popoto/embeddings/ollama.py` ships with working `OllamaProvider` class
-- [ ] `OllamaProvider` is importable: `from popoto.embeddings.ollama import OllamaProvider`
-- [ ] `popoto.embeddings.__init__` exports `OllamaProvider` in `__all__`
-- [ ] Clear error message when Ollama is not running (mentions `ollama serve`)
-- [ ] Clear error message when model is not found (mentions `ollama pull <model>`)
-- [ ] Tests pass with mock HTTP responses (no real Ollama required for CI)
-- [ ] Tests pass (`/do-test`)
-- [ ] Documentation updated (`/do-docs`)
+- [x] `src/popoto/embeddings/ollama.py` ships with working `OllamaProvider` class
+- [x] `OllamaProvider` is importable: `from popoto.embeddings.ollama import OllamaProvider`
+- [x] `popoto.embeddings.__init__` exports `OllamaProvider` in `__all__`
+- [x] Clear error message when Ollama is not running (mentions `ollama serve`)
+- [x] Clear error message when model is not found (mentions `ollama pull <model>`)
+- [x] Tests pass with mock HTTP responses (no real Ollama required for CI)
+- [x] Tests pass (`/do-test`)
+- [x] Documentation updated (`/do-docs`)
 
 ## Team Orchestration
 

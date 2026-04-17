@@ -155,7 +155,7 @@ for field-level configuration.
 
 ### Embedding Providers
 
-Popoto ships with two built-in embedding providers. Both implement the
+Popoto ships with three built-in embedding providers. All implement the
 `AbstractEmbeddingProvider` interface from `popoto.embeddings`.
 
 #### Voyage AI
@@ -202,29 +202,36 @@ popoto.configure(embedding_provider=provider)
 OpenAI embeddings ignore the `input_type` parameter. Batch size limit is 2048
 texts per API call.
 
-#### Ollama (local, no API key)
+#### Ollama (local)
 
-`OllamaProvider` connects to a locally-running [Ollama](https://ollama.com) server. No API key or extra Python package required — it uses only Python's standard library.
+Local embeddings via a running Ollama server. No API key, no network
+round-trip, no per-token cost. Uses stdlib only (no extras to install).
+
+Prerequisites: install Ollama from <https://ollama.com>, pull an
+embedding model, and start the server:
 
 ```bash
-# 1. Start Ollama
-ollama serve
-
-# 2. Pull a model
 ollama pull nomic-embed-text
+ollama serve
 ```
 
 ```python
+import popoto
 from popoto.embeddings.ollama import OllamaProvider
 
 provider = OllamaProvider(
     base_url="http://localhost:11434",  # default
     model="nomic-embed-text",           # default (768-dim)
+    dim=None,                           # auto-detect on first embed()
 )
 popoto.configure(embedding_provider=provider)
 ```
 
-Dimensions are auto-detected from the first `embed()` call. Pass `dim=<n>` if you need to read the `dimensions` property before any call has been made.
+Ollama ignores the `input_type` parameter. Default batch size limit is
+32 texts per call (conservative for local inference; subclass to raise
+it). If the server is unreachable, you will get a `RuntimeError` that
+points at `ollama serve`; if the model is missing, the error points at
+`ollama pull <model>`.
 
 #### Custom Providers
 

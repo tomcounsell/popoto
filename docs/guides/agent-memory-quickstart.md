@@ -237,6 +237,17 @@ popoto.configure(
     content_path="/data/agent-memory",
 )
 
+# ----
+# Prefer no API keys? Run Ollama locally and swap providers.
+# Prerequisite: `ollama pull nomic-embed-text` and `ollama serve`.
+#
+# from popoto.embeddings.ollama import OllamaProvider
+# popoto.configure(
+#     embedding_provider=OllamaProvider(model="nomic-embed-text"),
+#     content_path="/data/agent-memory",
+# )
+# ----
+
 class Memory(Model):
     memory_id = AutoKeyField()
     agent_id = KeyField()
@@ -281,7 +292,7 @@ results = Memory.query.semantic_search(
 
 **What you get:** Memories are searchable by meaning, not just keywords. Combined with decay and confidence, the most relevant, recent, and trusted memories surface first.
 
-> **Install extras:** `pip install popoto[voyage]` for Voyage AI embeddings, `pip install popoto[openai]` for OpenAI, or use `OllamaProvider` from `popoto.embeddings.ollama` for fully local inference with no API key (requires a running [Ollama](https://ollama.com) server). See [Content and Embedding Fields](../features/content-and-embedding-fields.md) for all provider options.
+> **Install extras:** `pip install popoto[voyage]` for Voyage AI embeddings, or `pip install popoto[openai]` for OpenAI. For a no-API-key setup, run [Ollama](https://ollama.com) locally and use `OllamaProvider` (no extras needed -- stdlib only). See [Content and Embedding Fields](../features/content-and-embedding-fields.md) for all provider options.
 
 ## Import Cheat Sheet
 

@@ -128,41 +128,39 @@ Install: `pip install popoto[openai]`
 
 #### OllamaProvider
 
-Local embeddings via a [self-hosted Ollama server](https://ollama.com). No API key required — all inference runs on your own hardware.
+Local embeddings via a running [Ollama](https://ollama.com) server. No API
+key, no per-token cost, no network dependency on a paid provider.
 
 ```python
 from popoto.embeddings.ollama import OllamaProvider
 
 provider = OllamaProvider(
-    base_url="http://localhost:11434",  # default
-    model="nomic-embed-text",           # default (768-dim)
-    dim=None,                           # auto-detected on first embed()
+    base_url="http://localhost:11434",   # default
+    model="nomic-embed-text",            # default (768-dim)
+    dim=None,                            # auto-detect from first response
 )
 ```
-
-No extra installation needed — `OllamaProvider` uses only Python's standard library.
 
 **Setup:**
 
 ```bash
-# 1. Install and start Ollama (https://ollama.com)
-ollama serve
-
-# 2. Pull a model
-ollama pull nomic-embed-text
+# Install Ollama from https://ollama.com
+ollama pull nomic-embed-text    # or mxbai-embed-large (1024-dim), all-minilm (384-dim)
+ollama serve                    # run the local server
 ```
 
-Common models and their dimensions:
+**Behaviour:**
 
-| Model | Dimensions |
-|-------|-----------|
-| `nomic-embed-text` | 768 |
-| `mxbai-embed-large` | 1024 |
-| `all-minilm` | 384 |
+- Uses the batch-capable `/api/embed` endpoint (Ollama v0.2.0+).
+- Vector dimensions are auto-detected from the first `embed()` response
+  and cached. Pass `dim=<n>` to the constructor to declare them up front.
+- `max_batch_size` defaults to 32 (conservative for local inference on
+  modest hardware). Subclass to raise it.
+- No external dependencies -- uses stdlib `urllib.request`.
+- Error messages include actionable hints: connection refused points at
+  `ollama serve`; missing models point at `ollama pull <model>`.
 
-The `dim` parameter is optional. When omitted, dimensions are auto-detected from the first `embed()` call. Pass `dim=<n>` explicitly if you need to access the `dimensions` property before the first call.
-
-Error messages are clear: a connection failure reminds you to run `ollama serve`, and a missing model reminds you to run `ollama pull <model>`.
+Install: `pip install popoto` (stdlib-only; no extras needed).
 
 #### Custom Providers
 

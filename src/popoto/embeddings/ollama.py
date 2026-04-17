@@ -1,17 +1,21 @@
 """
 Ollama embedding provider.
 
-Wraps the Ollama local inference server behind the AbstractEmbeddingProvider
-interface. Uses only stdlib (urllib.request) -- no additional dependencies.
+Wraps a locally-running Ollama server behind the AbstractEmbeddingProvider
+interface. Uses only the Python standard library (urllib.request) -- no
+additional dependencies required.
 
-Requires a running Ollama instance (https://ollama.com). Start it with:
-    ollama serve
+Ollama runs locally and requires:
+    - An Ollama server running (``ollama serve``)
+    - The embedding model pulled (``ollama pull nomic-embed-text``)
 
-Pull a model before use:
-    ollama pull nomic-embed-text
+Because inference happens on the local machine there is no API key, no
+per-token cost, and no network dependency on a paid external provider.
 
-The /api/embed endpoint was introduced in Ollama v0.1.26 (2024-01). Versions
-older than v0.1.26 only have the legacy /api/embeddings endpoint (single-text).
+Note:
+    The ``/api/embed`` endpoint (batch-capable) was introduced in Ollama
+    v0.2.0 (July 2024). This provider targets that endpoint rather than
+    the legacy ``/api/embeddings`` (single-text) endpoint.
 
 Example:
     from popoto.embeddings.ollama import OllamaProvider
@@ -30,24 +34,24 @@ from . import AbstractEmbeddingProvider
 class OllamaProvider(AbstractEmbeddingProvider):
     """Ollama local embedding provider.
 
-    Connects to a locally-running Ollama server and generates embeddings
-    using a locally-hosted model. No API key required. No network calls to
-    external services.
-
-    Dimensions are auto-detected from the first embed() call if not supplied
-    via the ``dim`` constructor argument.
+    Speaks to a locally-running Ollama server via its ``/api/embed``
+    endpoint. No API key, no network dependency on a paid service.
 
     Args:
-        base_url: URL of the Ollama server. Default "http://localhost:11434".
-        model: Ollama model name to use. Default "nomic-embed-text" (768-dim).
-            Common alternatives: "mxbai-embed-large" (1024-dim),
-            "all-minilm" (384-dim).
-        dim: Embedding dimensions. If None, auto-detected on first embed()
-            call. Provide an explicit value to skip auto-detection and to
-            allow calling the ``dimensions`` property before the first embed.
+        base_url: Base URL of the Ollama server. Default
+            ``http://localhost:11434``.
+        model: Name of an Ollama embedding model that has been pulled
+            locally. Default ``nomic-embed-text`` (768-dim).
+        dim: Optional explicit vector dimensionality. If provided,
+            ``dimensions`` returns this value immediately without
+            requiring an ``embed()`` call. If ``None`` (default),
+            dimensions are auto-detected from the first ``embed()``
+            response and cached.
 
     Raises:
-        RuntimeError: If Ollama is not running or the model is not found.
+        RuntimeError: At ``embed()`` time if the Ollama server is
+            unreachable (``ollama serve`` not running) or the requested
+            model is not available (run ``ollama pull <model>``).
     """
 
     def __init__(
@@ -56,9 +60,12 @@ class OllamaProvider(AbstractEmbeddingProvider):
         model: str = "nomic-embed-text",
         dim: Optional[int] = None,
     ):
+        # Normalise trailing slash so we can safely concat the endpoint.
         self._base_url = base_url.rstrip("/")
         self._model = model
-        self._dim = dim
+        # _dim is None until either the user supplies it explicitly or
+        # the first successful embed() call auto-detects it.
+        self._dim: Optional[int] = dim
 
     def embed(
         self,
@@ -67,60 +74,93 @@ class OllamaProvider(AbstractEmbeddingProvider):
     ) -> List[List[float]]:
         """Generate embeddings via the local Ollama server.
 
-        Posts a batch request to ``/api/embed`` and returns one vector per
-        input text. The ``input_type`` parameter is accepted for interface
-        compatibility but is ignored -- Ollama does not distinguish document
-        vs. query embeddings.
-
         Args:
             texts: List of text strings to embed.
-            input_type: Accepted but ignored (Ollama has no input-type concept).
+            input_type: Accepted for interface compatibility but ignored.
+                Ollama's embedding endpoint does not distinguish between
+                document and query inputs.
 
         Returns:
-            List of embedding vectors, one per input text. Empty list if
-            ``texts`` is empty.
+            List of embedding vectors, one per input text.
 
         Raises:
-            RuntimeError: If Ollama is not running (mentions ``ollama serve``).
-            RuntimeError: If the model is not found (mentions ``ollama pull``).
-            RuntimeError: If the HTTP response indicates another error.
+            RuntimeError: If the Ollama server is unreachable, the model
+                is not available, or the server returns an HTTP error.
         """
         if not texts:
             return []
 
-        payload = json.dumps({"model": self._model, "input": texts}).encode()
-        request = urllib.request.Request(
-            f"{self._base_url}/api/embed",
+        url = f"{self._base_url}/api/embed"
+        payload = json.dumps({"model": self._model, "input": texts}).encode("utf-8")
+        req = urllib.request.Request(
+            url,
             data=payload,
             headers={"Content-Type": "application/json"},
             method="POST",
         )
 
         try:
-            with urllib.request.urlopen(request) as response:
-                body = response.read().decode()
+            # No retry/backoff: local inference should fail fast so the
+            # caller sees the underlying problem (ollama serve down,
+            # model missing) immediately.
+            with urllib.request.urlopen(req) as resp:
+                body = resp.read().decode("utf-8")
         except urllib.error.HTTPError as e:
-            # Read the error body to extract Ollama's error message.
-            raw = e.read().decode()
-            parsed = json.loads(raw) if raw else {}
-            msg = parsed.get("error", "")
-            if "not found" in msg.lower() or "model" in msg.lower():
+            # Ollama returns JSON like {"error": "model 'foo' not found"}.
+            # Discriminate between "model not available" (actionable via
+            # `ollama pull`) and generic HTTP failures.
+            raw = b""
+            try:
+                raw = e.read()
+            except Exception:
+                # Some HTTPError instances may already have a consumed body.
+                pass
+            body_text = raw.decode("utf-8", errors="replace") if raw else ""
+            try:
+                parsed = json.loads(body_text) if body_text else {}
+            except json.JSONDecodeError:
+                parsed = {}
+            msg = parsed.get("error", "") if isinstance(parsed, dict) else ""
+            msg_lower = msg.lower()
+            # Only trigger the `ollama pull` hint when the error body is an
+            # unambiguous "not found" -- an earlier version also matched on
+            # the bare word "model", which misfires on errors like
+            # "model load failed: out of memory" or "model inference failed"
+            # and tells the user to pull a model that is already present.
+            if "not found" in msg_lower:
                 raise RuntimeError(
-                    f"Model '{self._model}' not found. "
-                    f"Run: ollama pull {self._model}"
+                    f"Model '{self._model}' not found on Ollama server at "
+                    f"{self._base_url}. Run: ollama pull {self._model}"
                 ) from e
-            raise RuntimeError(f"Ollama HTTP {e.code}: {msg}") from e
-        except urllib.error.URLError as e:
             raise RuntimeError(
-                f"Cannot connect to Ollama at {self._base_url}. "
-                "Is the server running? Start it with: ollama serve"
+                f"Ollama HTTP {e.code}: {msg or body_text or e.reason}"
+            ) from e
+        except urllib.error.URLError as e:
+            # Connection refused, DNS failure, etc. -- server not running.
+            raise RuntimeError(
+                f"Cannot reach Ollama server at {self._base_url}: "
+                f"{e.reason}. Is it running? Start it with: ollama serve"
             ) from e
 
-        data = json.loads(body)
-        embeddings: List[List[float]] = data["embeddings"]
+        try:
+            parsed = json.loads(body)
+        except json.JSONDecodeError as e:
+            raise RuntimeError(
+                f"Ollama returned malformed JSON from {url}: {e.msg}"
+            ) from e
 
-        # Auto-detect dimensions from the first response vector.
-        if self._dim is None and embeddings:
+        embeddings = parsed.get("embeddings")
+        if not isinstance(embeddings, list) or not embeddings:
+            raise RuntimeError(
+                f"Ollama response missing 'embeddings' field or returned "
+                f"empty list. Response keys: {list(parsed.keys())}"
+            )
+
+        # Auto-detect dimensions from the first vector the first time we
+        # successfully embed something. Subsequent calls keep the cached
+        # value. If the user passed ``dim`` to the constructor we leave
+        # it alone.
+        if self._dim is None:
             self._dim = len(embeddings[0])
 
         return embeddings
@@ -129,25 +169,26 @@ class OllamaProvider(AbstractEmbeddingProvider):
     def dimensions(self) -> int:
         """Return the embedding vector dimensionality.
 
-        Returns the constructor-supplied ``dim`` value, or the value
-        auto-detected from the first ``embed()`` call.
-
         Raises:
-            RuntimeError: If ``embed()`` has not been called yet and ``dim``
-                was not supplied to the constructor.
+            RuntimeError: If dimensions have not been established yet --
+                i.e., ``dim`` was not supplied to the constructor and
+                ``embed()`` has not yet been called successfully.
+                The ``AbstractEmbeddingProvider`` contract types this
+                as ``int``, so we refuse to return ``None`` silently.
         """
         if self._dim is None:
             raise RuntimeError(
-                "OllamaProvider: dimensions unknown — "
-                "call embed() first or pass dim=<n> to the constructor"
+                "OllamaProvider: dimensions unknown -- call embed() "
+                "first or pass dim=<n> to the constructor"
             )
         return self._dim
 
     @property
     def max_batch_size(self) -> int:
-        """Maximum texts per batch call.
+        """Conservative batch limit for local inference.
 
-        Conservative default for local inference -- large batches can exhaust
-        GPU/CPU memory on modest hardware. Subclass and override to increase.
+        Local forward-pass with hundreds of texts can OOM on modest
+        hardware. Users with more GPU/RAM headroom can subclass and
+        override this property.
         """
         return 32
