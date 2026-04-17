@@ -52,7 +52,7 @@ The sorted set score is always a timestamp. A Lua script computes decay-ranked r
 decayed_score = base_score × elapsed_days ^ (-decay_rate)
 ```
 
-With the default `decay_rate=0.5`, a record scores 1.0 after 1 day, 0.5 after 4 days, and 0.1 after 100 days.
+With the default `decay_rate=0.1` (empirically tuned in sweep 2026-04-17; prior default was `0.5`), a record scores 1.0 after 1 day, 0.87 after 4 days, and 0.63 after 100 days.
 
 ### Basic usage
 
@@ -79,7 +79,7 @@ memories = (
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `decay_rate` | `float` | `0.5` | Controls how fast scores drop. Higher = faster decay. |
+| `decay_rate` | `float` | `0.1` | Controls how fast scores drop. Higher = faster decay. (Empirically tuned in sweep 2026-04-17; prior default was `0.5`.) |
 | `base_score_field` | `str` | `None` | Name of a companion field whose value multiplies the decay curve. When `None`, base score is 1.0. |
 | `partition_by` | `str` or `tuple` | `()` | Partition the sorted set by key field values, inherited from `SortedField`. |
 
@@ -95,7 +95,7 @@ class Memory(Model):
     relevance = DecayingSortedField(base_score_field="importance")
 ```
 
-A record with `importance=5.0` stays relevant 25x longer than one with `importance=1.0` (at decay_rate=0.5).
+A record with `importance=5.0` stays relevant longer than one with `importance=1.0` — the multiplier is `score^(1/decay_rate)`. At the default `decay_rate=0.1` importance strongly dominates recency; at `decay_rate=0.5` the multiplier is 25×.
 
 ### Source weighting for teamwork
 
@@ -145,7 +145,7 @@ class InteractionWeight:
         return source + role
 ```
 
-With `decay_rate=0.5`, lifetime ≈ score² days:
+With `decay_rate=0.5`, lifetime ≈ score² days (at the current default `decay_rate=0.1`, lifetime grows much more slowly with time — see [Tuning Magic Numbers](../guides/tuning-magic-numbers.md) for the empirical rationale):
 
 | Combination | Score | Effective lifetime |
 |-------------|-------|--------------------|
@@ -214,7 +214,7 @@ class Directive(Model):
     agent_id = KeyField()
     content = Field(type=str)
     relevance = CyclicDecayField(
-        decay_rate=0.5,
+        decay_rate=0.5,  # override default (0.1) for faster forgetting
         cycles=[(TemporalPeriod.QUARTERLY, 5.0, 0)],
         pressure_rate=0.1,
     )
@@ -236,7 +236,7 @@ directive.resolve_pressure("relevance")
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `decay_rate` | `float` | `0.5` | Power-law decay exponent (inherited). |
+| `decay_rate` | `float` | `0.1` | Power-law decay exponent (inherited). Empirically tuned in sweep 2026-04-17; prior default was `0.5`. |
 | `base_score_field` | `str` | `None` | Companion field whose value multiplies the decay curve (inherited). |
 | `cycles` | `list` | `[]` | List of `(period, amplitude, phase)` tuples. Use `TemporalPeriod` constants for period values. |
 | `pressure_rate` | `float` | `0.0` | Rate of urgency buildup per unresolved day. |
@@ -344,7 +344,7 @@ class Memory(AccessTrackerMixin, Model):
     agent_id = KeyField()
     content = Field(type=str)
     relevance = CyclicDecayField(
-        decay_rate=0.5,
+        decay_rate=0.5,  # override default (0.1) for faster forgetting
         cycles=[(TemporalPeriod.QUARTERLY, 5.0, 0)],
         pressure_rate=0.1,
     )
@@ -441,8 +441,8 @@ class Memory(WriteFilterMixin, Model):
     def compute_filter_score(self):
         return self.importance or 0.0
 
-# Score 0.1 < min_threshold (0.2) — silently discarded
-Memory(agent_id="a1", content="noise", importance=0.1).save()
+# Score 0.05 < min_threshold (0.1) — silently discarded
+Memory(agent_id="a1", content="noise", importance=0.05).save()
 
 # Score 0.5 — persisted normally
 Memory(agent_id="a1", content="useful", importance=0.5).save()
@@ -455,7 +455,7 @@ You provide the scoring logic; Popoto provides the gate. This keeps low-value ob
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `_wf_min_threshold` | `0.2` | Below this score, `save()` silently discards via `SkipSaveException` |
+| `_wf_min_threshold` | `0.1` | Below this score, `save()` silently discards via `SkipSaveException`. (Empirically tuned in sweep 2026-04-17; prior default was `0.2`.) |
 | `_wf_priority_threshold` | `0.7` | At or above this score, record is added to `$WF:{ClassName}:priority` sorted set |
 
 Priority-tagged records are stored in a Redis sorted set keyed `$WF:{ClassName}:priority`, scored by the filter score. On `delete()`, cleanup removes the record from the priority set automatically.

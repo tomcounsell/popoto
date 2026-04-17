@@ -92,28 +92,45 @@ class PredictionLedgerMixin:
         class MyModel(PredictionLedgerMixin, Model):
             _pl_partition = "default"
 
-    Class Attributes:
+    Class Attributes (resolution order):
         _pl_partition: Partition key for error sorted set. Default "default".
-        _pl_confidence_error_threshold: Error above which confidence is reduced.
-            Default 0.7.
-        _pl_confidence_low_signal: Signal value sent to ConfidenceField when
-            error exceeds threshold. Default 0.2.
-        _pl_auto_resolve_errors: Mapping of ObservationProtocol outcomes to
-            prediction error values. Default: acted=0.1, dismissed=0.5,
-            contradicted=0.9.
+          Plain class attribute on the mixin; subclasses override by assigning
+          a different value.
+        _pl_confidence_error_threshold, _pl_confidence_low_signal,
+        _pl_auto_resolve_errors:
+          - Subclasses may override by assigning a plain class attribute
+            (subclass-dict-first lookup shadows the parent property).
+          - Otherwise the mixin reads from ``Defaults.*`` at attribute-access
+            time so runtime overrides via ``apply_overrides`` are observed.
 
     Note: Attributes prefixed with underscore to avoid conflict with
     Popoto's ModelBase metaclass, which requires public attributes to be Fields.
     """
 
     _pl_partition: str = "default"
-    _pl_confidence_error_threshold: float = Defaults.PL_CONFIDENCE_ERROR_THRESHOLD
-    _pl_confidence_low_signal: float = Defaults.PL_CONFIDENCE_LOW_SIGNAL
-    _pl_auto_resolve_errors: dict = {
-        "acted": Defaults.PL_AUTO_RESOLVE_ACTED,
-        "dismissed": Defaults.PL_AUTO_RESOLVE_DISMISSED,
-        "contradicted": Defaults.PL_AUTO_RESOLVE_CONTRADICTED,
-    }
+
+    # Runtime-lookup properties — read Defaults.* at attribute-access time
+    # so that apply_overrides() patches of Defaults are observed. A subclass
+    # may shadow any of these with a plain class attribute; subclass-dict-
+    # first lookup in ``__getattribute__`` means the plain attribute wins
+    # over the parent property without any descriptor trickery required.
+    @property
+    def _pl_confidence_error_threshold(self):
+        return Defaults.PL_CONFIDENCE_ERROR_THRESHOLD
+
+    @property
+    def _pl_confidence_low_signal(self):
+        return Defaults.PL_CONFIDENCE_LOW_SIGNAL
+
+    @property
+    def _pl_auto_resolve_errors(self):
+        # Rebuilt per-call so overrides of the individual PL_AUTO_RESOLVE_*
+        # constants take effect without a cache invalidation step.
+        return {
+            "acted": Defaults.PL_AUTO_RESOLVE_ACTED,
+            "dismissed": Defaults.PL_AUTO_RESOLVE_DISMISSED,
+            "contradicted": Defaults.PL_AUTO_RESOLVE_CONTRADICTED,
+        }
 
     @staticmethod
     def _meta_key(instance):

@@ -1,0 +1,1972 @@
+{
+  "run_id": "20260417_141047",
+  "timestamp": 1776435047.71563,
+  "timestamp_iso": "2026-04-17T14:10:47.715450+00:00",
+  "metadata": {
+    "python_version": "3.12.13",
+    "platform": "macOS-26.3.1-arm64-arm-64bit",
+    "total_evaluations": 4392,
+    "total_ok": 4087,
+    "overall_query_duration": {
+      "p50_ms": 19.85716598574072,
+      "p95_ms": 68.63170792348683,
+      "p99_ms": 83.98983394727111,
+      "mean_ms": 24.85,
+      "min_ms": 2.7327919378876686,
+      "max_ms": 140.7655420480296,
+      "total_ms": 101543.12,
+      "count": 4087
+    },
+    "wall_clock_seconds": 244.22,
+    "tiers_run": "all",
+    "interactions_run": false,
+    "parametric": true
+  },
+  "constants": {
+    "decay_rate": {
+      "best_value": 0.1,
+      "best_ndcg_at_5": 0.949960147585142,
+      "sensitivity_curve": [
+        [
+          0.1,
+          0.949960147585142
+        ],
+        [
+          0.2,
+          0.9323646149104027
+        ],
+        [
+          0.3,
+          0.9278762733064123
+        ],
+        [
+          0.5,
+          0.9113891504852251
+        ],
+        [
+          0.7,
+          0.891427442480382
+        ],
+        [
+          0.9,
+          0.8830489942967628
+        ],
+        [
+          1.0,
+          0.8831812524399745
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 112,
+      "n_points_total": 126,
+      "n_errors": 14,
+      "n_degenerate": 0,
+      "scenarios": [
+        "gen_000_uniform_all_recent",
+        "gen_004_flat_all_recent",
+        "gen_005_uniform_interleaved",
+        "gen_009_flat_interleaved",
+        "family_decay_v2",
+        "gen_002_bimodal_mostly_stale",
+        "family_decay_v5",
+        "gen_001_clustered_interleaved",
+        "gen_006_clustered_mostly_stale",
+        "family_decay_v6",
+        "family_decay_v1",
+        "family_decay_v3",
+        "gen_007_bimodal_half_stale",
+        "family_decay_v0",
+        "family_decay_v4",
+        "family_decay_v7"
+      ],
+      "query_duration": {
+        "p50_ms": 6.757292081601918,
+        "p95_ms": 48.02641610149294,
+        "p99_ms": 50.284416996873915,
+        "mean_ms": 14.46,
+        "min_ms": 3.4193339524790645,
+        "max_ms": 53.198124980553985,
+        "total_ms": 1619.78,
+        "count": 112
+      }
+    },
+    "initial_confidence": {
+      "best_value": 0.9,
+      "best_ndcg_at_5": 0.8396649351570371,
+      "sensitivity_curve": [
+        [
+          0.1,
+          0.838524209956649
+        ],
+        [
+          0.3,
+          0.8385793059770618
+        ],
+        [
+          0.5,
+          0.8388734719179667
+        ],
+        [
+          0.7,
+          0.8393415866218342
+        ],
+        [
+          0.9,
+          0.8396649351570371
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 80,
+      "n_points_total": 90,
+      "n_errors": 10,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_confidence_v3",
+        "family_confidence_v7",
+        "gen_000_uniform_all_recent",
+        "gen_004_flat_all_recent",
+        "family_confidence_v6",
+        "gen_005_uniform_interleaved",
+        "gen_009_flat_interleaved",
+        "family_confidence_v1",
+        "gen_002_bimodal_mostly_stale",
+        "family_confidence_v4",
+        "gen_001_clustered_interleaved",
+        "gen_006_clustered_mostly_stale",
+        "family_confidence_v0",
+        "family_confidence_v5",
+        "family_confidence_v2",
+        "gen_007_bimodal_half_stale"
+      ],
+      "query_duration": {
+        "p50_ms": 20.837916992604733,
+        "p95_ms": 50.29916705098003,
+        "p99_ms": 51.55308300163597,
+        "mean_ms": 21.97,
+        "min_ms": 3.4338750410825014,
+        "max_ms": 51.55308300163597,
+        "total_ms": 1757.3,
+        "count": 80
+      }
+    },
+    "_wf_min_threshold": {
+      "best_value": 0.1,
+      "best_ndcg_at_5": 0.8201306841395658,
+      "sensitivity_curve": [
+        [
+          0.05,
+          0.8193133394948858
+        ],
+        [
+          0.1,
+          0.8201306841395658
+        ],
+        [
+          0.2,
+          0.8009692299388544
+        ],
+        [
+          0.3,
+          0.7811590939780672
+        ],
+        [
+          0.5,
+          0.7522161553731934
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 79,
+      "n_points_total": 90,
+      "n_errors": 11,
+      "n_degenerate": 0,
+      "scenarios": [
+        "gen_000_uniform_all_recent",
+        "family_write_filter_v2",
+        "family_write_filter_v0",
+        "family_write_filter_v1",
+        "gen_003_exponential_half_stale",
+        "gen_004_flat_all_recent",
+        "gen_005_uniform_interleaved",
+        "gen_008_exponential_all_recent",
+        "family_write_filter_v4",
+        "gen_009_flat_interleaved",
+        "family_write_filter_v7",
+        "gen_002_bimodal_mostly_stale",
+        "gen_001_clustered_interleaved",
+        "family_write_filter_v6",
+        "gen_006_clustered_mostly_stale",
+        "family_write_filter_v3",
+        "family_write_filter_v5",
+        "gen_007_bimodal_half_stale"
+      ],
+      "query_duration": {
+        "p50_ms": 13.252791948616505,
+        "p95_ms": 71.12891599535942,
+        "p99_ms": 102.71120793186128,
+        "mean_ms": 21.29,
+        "min_ms": 2.7327919378876686,
+        "max_ms": 102.71120793186128,
+        "total_ms": 1681.65,
+        "count": 79
+      }
+    },
+    "ACTED_CONFIDENCE_SIGNAL": {
+      "best_value": 0.1,
+      "best_ndcg_at_5": 0.8579032926571055,
+      "sensitivity_curve": [
+        [
+          0.1,
+          0.8579032926571055
+        ],
+        [
+          0.3,
+          0.8523295563576376
+        ],
+        [
+          0.5,
+          0.844251166761171
+        ],
+        [
+          0.7,
+          0.8383140062797984
+        ],
+        [
+          0.9,
+          0.8388734719179667
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 80,
+      "n_points_total": 90,
+      "n_errors": 10,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_confidence_v3",
+        "family_confidence_v7",
+        "gen_000_uniform_all_recent",
+        "gen_004_flat_all_recent",
+        "family_confidence_v6",
+        "gen_005_uniform_interleaved",
+        "gen_009_flat_interleaved",
+        "family_confidence_v1",
+        "gen_002_bimodal_mostly_stale",
+        "family_confidence_v4",
+        "gen_001_clustered_interleaved",
+        "gen_006_clustered_mostly_stale",
+        "family_confidence_v0",
+        "family_confidence_v5",
+        "family_confidence_v2",
+        "gen_007_bimodal_half_stale"
+      ],
+      "query_duration": {
+        "p50_ms": 25.545665994286537,
+        "p95_ms": 80.53641708102077,
+        "p99_ms": 140.7655420480296,
+        "mean_ms": 35.23,
+        "min_ms": 3.515375079587102,
+        "max_ms": 140.7655420480296,
+        "total_ms": 2818.14,
+        "count": 80
+      }
+    },
+    "CONTRADICTED_CONFIDENCE_SIGNAL": {
+      "best_value": 0.9,
+      "best_ndcg_at_5": 0.8583521381802732,
+      "sensitivity_curve": [
+        [
+          0.1,
+          0.8388734719179667
+        ],
+        [
+          0.3,
+          0.8378458915759308
+        ],
+        [
+          0.5,
+          0.8434597035221006
+        ],
+        [
+          0.7,
+          0.8518446561203474
+        ],
+        [
+          0.9,
+          0.8583521381802732
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 80,
+      "n_points_total": 90,
+      "n_errors": 10,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_confidence_v3",
+        "family_confidence_v7",
+        "gen_000_uniform_all_recent",
+        "gen_004_flat_all_recent",
+        "family_confidence_v6",
+        "gen_005_uniform_interleaved",
+        "gen_009_flat_interleaved",
+        "family_confidence_v1",
+        "gen_002_bimodal_mostly_stale",
+        "family_confidence_v4",
+        "gen_001_clustered_interleaved",
+        "gen_006_clustered_mostly_stale",
+        "family_confidence_v0",
+        "family_confidence_v5",
+        "family_confidence_v2",
+        "gen_007_bimodal_half_stale"
+      ],
+      "query_duration": {
+        "p50_ms": 27.673125034198165,
+        "p95_ms": 77.52066699322313,
+        "p99_ms": 93.44437497202307,
+        "mean_ms": 32.84,
+        "min_ms": 3.695750026963651,
+        "max_ms": 93.44437497202307,
+        "total_ms": 2627.09,
+        "count": 80
+      }
+    },
+    "ACTED_CYCLE_STRENGTHEN_FACTOR": {
+      "best_value": 0.3,
+      "best_ndcg_at_5": 0.8388734719179667,
+      "sensitivity_curve": [
+        [
+          0.3,
+          0.8388734719179667
+        ],
+        [
+          0.5,
+          0.8388734719179667
+        ],
+        [
+          0.8,
+          0.8388734719179667
+        ],
+        [
+          0.9,
+          0.8388734719179667
+        ],
+        [
+          0.95,
+          0.8388734719179667
+        ],
+        [
+          1.0,
+          0.8388734719179667
+        ],
+        [
+          1.02,
+          0.8388734719179667
+        ],
+        [
+          1.05,
+          0.8388734719179667
+        ],
+        [
+          1.08,
+          0.8388734719179667
+        ],
+        [
+          1.1,
+          0.8388734719179667
+        ],
+        [
+          1.12,
+          0.8388734719179667
+        ],
+        [
+          1.15,
+          0.8388734719179667
+        ],
+        [
+          1.2,
+          0.8388734719179667
+        ],
+        [
+          1.5,
+          0.8388734719179667
+        ],
+        [
+          2.0,
+          0.8388734719179667
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 240,
+      "n_points_total": 270,
+      "n_errors": 30,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_confidence_v3",
+        "family_confidence_v7",
+        "gen_000_uniform_all_recent",
+        "gen_004_flat_all_recent",
+        "family_confidence_v6",
+        "gen_005_uniform_interleaved",
+        "gen_009_flat_interleaved",
+        "family_confidence_v1",
+        "gen_002_bimodal_mostly_stale",
+        "family_confidence_v4",
+        "gen_001_clustered_interleaved",
+        "gen_006_clustered_mostly_stale",
+        "family_confidence_v0",
+        "family_confidence_v5",
+        "family_confidence_v2",
+        "gen_007_bimodal_half_stale"
+      ],
+      "query_duration": {
+        "p50_ms": 29.349499964155257,
+        "p95_ms": 81.15937502589077,
+        "p99_ms": 99.57516693975776,
+        "mean_ms": 33.73,
+        "min_ms": 3.5278330324217677,
+        "max_ms": 114.74495800212026,
+        "total_ms": 8096.38,
+        "count": 240
+      }
+    },
+    "DISMISSED_CYCLE_WEAKEN_FACTOR": {
+      "best_value": 0.3,
+      "best_ndcg_at_5": 0.8388734719179667,
+      "sensitivity_curve": [
+        [
+          0.3,
+          0.8388734719179667
+        ],
+        [
+          0.5,
+          0.8388734719179667
+        ],
+        [
+          0.8,
+          0.8388734719179667
+        ],
+        [
+          1.0,
+          0.8388734719179667
+        ],
+        [
+          1.2,
+          0.8388734719179667
+        ],
+        [
+          1.5,
+          0.8388734719179667
+        ],
+        [
+          2.0,
+          0.8388734719179667
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 112,
+      "n_points_total": 126,
+      "n_errors": 14,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_confidence_v3",
+        "family_confidence_v7",
+        "gen_000_uniform_all_recent",
+        "gen_004_flat_all_recent",
+        "family_confidence_v6",
+        "gen_005_uniform_interleaved",
+        "gen_009_flat_interleaved",
+        "family_confidence_v1",
+        "gen_002_bimodal_mostly_stale",
+        "family_confidence_v4",
+        "gen_001_clustered_interleaved",
+        "gen_006_clustered_mostly_stale",
+        "family_confidence_v0",
+        "family_confidence_v5",
+        "family_confidence_v2",
+        "gen_007_bimodal_half_stale"
+      ],
+      "query_duration": {
+        "p50_ms": 24.696000036783516,
+        "p95_ms": 76.53908408246934,
+        "p99_ms": 89.4802080001682,
+        "mean_ms": 32.95,
+        "min_ms": 3.5035830223932862,
+        "max_ms": 96.77879197988659,
+        "total_ms": 3690.18,
+        "count": 112
+      }
+    },
+    "CONTRADICTED_CYCLE_WEAKEN_FACTOR": {
+      "best_value": 0.3,
+      "best_ndcg_at_5": 0.8388734719179667,
+      "sensitivity_curve": [
+        [
+          0.3,
+          0.8388734719179667
+        ],
+        [
+          0.5,
+          0.8388734719179667
+        ],
+        [
+          0.8,
+          0.8388734719179667
+        ],
+        [
+          1.0,
+          0.8388734719179667
+        ],
+        [
+          1.2,
+          0.8388734719179667
+        ],
+        [
+          1.5,
+          0.8388734719179667
+        ],
+        [
+          2.0,
+          0.8388734719179667
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 112,
+      "n_points_total": 126,
+      "n_errors": 14,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_confidence_v3",
+        "family_confidence_v7",
+        "gen_000_uniform_all_recent",
+        "gen_004_flat_all_recent",
+        "family_confidence_v6",
+        "gen_005_uniform_interleaved",
+        "gen_009_flat_interleaved",
+        "family_confidence_v1",
+        "gen_002_bimodal_mostly_stale",
+        "family_confidence_v4",
+        "gen_001_clustered_interleaved",
+        "gen_006_clustered_mostly_stale",
+        "family_confidence_v0",
+        "family_confidence_v5",
+        "family_confidence_v2",
+        "gen_007_bimodal_half_stale"
+      ],
+      "query_duration": {
+        "p50_ms": 26.88424999359995,
+        "p95_ms": 81.46145800128579,
+        "p99_ms": 88.32704205997288,
+        "mean_ms": 34.56,
+        "min_ms": 3.5727079957723618,
+        "max_ms": 137.9897081060335,
+        "total_ms": 3870.88,
+        "count": 112
+      }
+    },
+    "decay_factor": {
+      "best_value": 0.5,
+      "best_ndcg_at_5": 0.9106029970070874,
+      "sensitivity_curve": [
+        [
+          0.5,
+          0.9106029970070874
+        ],
+        [
+          0.7,
+          0.9106029970070874
+        ],
+        [
+          0.85,
+          0.9106029970070874
+        ],
+        [
+          0.9,
+          0.9106029970070874
+        ],
+        [
+          0.95,
+          0.9106029970070874
+        ],
+        [
+          0.99,
+          0.9106029970070874
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 96,
+      "n_points_total": 108,
+      "n_errors": 12,
+      "n_degenerate": 0,
+      "scenarios": [
+        "gen_000_uniform_all_recent",
+        "family_co_occurrence_v2",
+        "gen_004_flat_all_recent",
+        "gen_005_uniform_interleaved",
+        "gen_009_flat_interleaved",
+        "gen_002_bimodal_mostly_stale",
+        "gen_001_clustered_interleaved",
+        "family_co_occurrence_v1",
+        "gen_006_clustered_mostly_stale",
+        "family_co_occurrence_v0",
+        "family_co_occurrence_v3",
+        "gen_007_bimodal_half_stale",
+        "family_co_occurrence_v5",
+        "family_co_occurrence_v6",
+        "family_co_occurrence_v4",
+        "family_co_occurrence_v7"
+      ],
+      "query_duration": {
+        "p50_ms": 22.836375050246716,
+        "p95_ms": 83.75533309299499,
+        "p99_ms": 139.93262499570847,
+        "mean_ms": 30.86,
+        "min_ms": 3.496624995023012,
+        "max_ms": 139.93262499570847,
+        "total_ms": 2962.99,
+        "count": 96
+      }
+    },
+    "initial_weight": {
+      "best_value": 0.01,
+      "best_ndcg_at_5": 0.9984170735218594,
+      "sensitivity_curve": [
+        [
+          0.01,
+          0.9984170735218594
+        ],
+        [
+          0.05,
+          0.8542627607550409
+        ],
+        [
+          0.1,
+          0.9106029970070874
+        ],
+        [
+          0.2,
+          0.905628755028601
+        ],
+        [
+          0.5,
+          0.9072688184975052
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 72,
+      "n_points_total": 90,
+      "n_errors": 10,
+      "n_degenerate": 8,
+      "scenarios": [
+        "gen_000_uniform_all_recent",
+        "gen_004_flat_all_recent",
+        "gen_005_uniform_interleaved",
+        "family_co_occurrence_v2",
+        "gen_009_flat_interleaved",
+        "family_co_occurrence_v4",
+        "gen_002_bimodal_mostly_stale",
+        "gen_001_clustered_interleaved",
+        "family_co_occurrence_v1",
+        "gen_006_clustered_mostly_stale",
+        "family_co_occurrence_v0",
+        "family_co_occurrence_v3",
+        "family_co_occurrence_v5",
+        "family_co_occurrence_v6",
+        "gen_007_bimodal_half_stale",
+        "family_co_occurrence_v7"
+      ],
+      "query_duration": {
+        "p50_ms": 17.818582942709327,
+        "p95_ms": 75.44829195830971,
+        "p99_ms": 82.10229210089892,
+        "mean_ms": 27.31,
+        "min_ms": 3.5495839547365904,
+        "max_ms": 82.10229210089892,
+        "total_ms": 1966.61,
+        "count": 72
+      }
+    },
+    "delta": {
+      "best_value": 0.01,
+      "best_ndcg_at_5": 0.7856836956265378,
+      "sensitivity_curve": [
+        [
+          0.01,
+          0.7856836956265378
+        ],
+        [
+          0.02,
+          0.7856836956265378
+        ],
+        [
+          0.05,
+          0.7856836956265378
+        ],
+        [
+          0.1,
+          0.7856836956265378
+        ],
+        [
+          0.2,
+          0.7856836956265378
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 200,
+      "n_points_total": 210,
+      "n_errors": 10,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_confidence_v3",
+        "gen_000_uniform_all_recent",
+        "family_write_filter_v7",
+        "family_confidence_v1",
+        "gen_002_bimodal_mostly_stale",
+        "family_confidence_v2",
+        "family_decay_v5",
+        "family_decay_v6",
+        "family_decay_v1",
+        "family_confidence_v5",
+        "family_decay_v7",
+        "family_confidence_v7",
+        "gen_004_flat_all_recent",
+        "gen_005_uniform_interleaved",
+        "gen_009_flat_interleaved",
+        "family_confidence_v4",
+        "family_write_filter_v6",
+        "family_co_occurrence_v0",
+        "gen_007_bimodal_half_stale",
+        "family_decay_v4",
+        "family_co_occurrence_v7",
+        "family_write_filter_v0",
+        "family_confidence_v6",
+        "gen_001_clustered_interleaved",
+        "family_co_occurrence_v1",
+        "family_write_filter_v3",
+        "family_co_occurrence_v5",
+        "family_decay_v0",
+        "family_write_filter_v5",
+        "family_write_filter_v2",
+        "family_co_occurrence_v2",
+        "family_write_filter_v1",
+        "family_write_filter_v4",
+        "gen_006_clustered_mostly_stale",
+        "family_confidence_v0",
+        "family_decay_v3",
+        "family_co_occurrence_v3",
+        "family_decay_v2",
+        "family_co_occurrence_v6",
+        "family_co_occurrence_v4"
+      ],
+      "query_duration": {
+        "p50_ms": 19.030291005037725,
+        "p95_ms": 59.78637502994388,
+        "p99_ms": 106.28920909948647,
+        "mean_ms": 23.52,
+        "min_ms": 3.4627499990165234,
+        "max_ms": 108.70558302849531,
+        "total_ms": 4703.42,
+        "count": 200
+      }
+    },
+    "decay_per_hop": {
+      "best_value": 0.5,
+      "best_ndcg_at_5": 0.9106029970070874,
+      "sensitivity_curve": [
+        [
+          0.1,
+          0.7982979066917046
+        ],
+        [
+          0.3,
+          0.8886303040683716
+        ],
+        [
+          0.5,
+          0.9106029970070874
+        ],
+        [
+          0.7,
+          0.9001511919094994
+        ],
+        [
+          0.9,
+          0.9005227737177586
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 80,
+      "n_points_total": 90,
+      "n_errors": 10,
+      "n_degenerate": 0,
+      "scenarios": [
+        "gen_000_uniform_all_recent",
+        "family_co_occurrence_v2",
+        "gen_004_flat_all_recent",
+        "gen_005_uniform_interleaved",
+        "gen_009_flat_interleaved",
+        "gen_002_bimodal_mostly_stale",
+        "gen_001_clustered_interleaved",
+        "family_co_occurrence_v1",
+        "gen_006_clustered_mostly_stale",
+        "family_co_occurrence_v0",
+        "family_co_occurrence_v3",
+        "gen_007_bimodal_half_stale",
+        "family_co_occurrence_v5",
+        "family_co_occurrence_v6",
+        "family_co_occurrence_v4",
+        "family_co_occurrence_v7"
+      ],
+      "query_duration": {
+        "p50_ms": 22.602415992878377,
+        "p95_ms": 80.74025006499141,
+        "p99_ms": 89.64566700160503,
+        "mean_ms": 29.36,
+        "min_ms": 3.4951670095324516,
+        "max_ms": 89.64566700160503,
+        "total_ms": 2348.53,
+        "count": 80
+      }
+    },
+    "COMPETITIVE_SUPPRESSION_SIGNAL": {
+      "best_value": 0.1,
+      "best_ndcg_at_5": 0.7856836956265378,
+      "sensitivity_curve": [
+        [
+          0.1,
+          0.7856836956265378
+        ],
+        [
+          0.2,
+          0.7856836956265378
+        ],
+        [
+          0.3,
+          0.7856836956265378
+        ],
+        [
+          0.5,
+          0.7856836956265378
+        ],
+        [
+          0.7,
+          0.7856836956265378
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 200,
+      "n_points_total": 210,
+      "n_errors": 10,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_confidence_v3",
+        "gen_000_uniform_all_recent",
+        "family_write_filter_v7",
+        "family_confidence_v1",
+        "gen_002_bimodal_mostly_stale",
+        "family_confidence_v2",
+        "family_decay_v5",
+        "family_decay_v6",
+        "family_decay_v1",
+        "family_confidence_v5",
+        "family_decay_v7",
+        "family_confidence_v7",
+        "gen_004_flat_all_recent",
+        "gen_005_uniform_interleaved",
+        "gen_009_flat_interleaved",
+        "family_confidence_v4",
+        "family_write_filter_v6",
+        "family_co_occurrence_v0",
+        "gen_007_bimodal_half_stale",
+        "family_decay_v4",
+        "family_co_occurrence_v7",
+        "family_write_filter_v0",
+        "family_confidence_v6",
+        "gen_001_clustered_interleaved",
+        "family_co_occurrence_v1",
+        "family_write_filter_v3",
+        "family_co_occurrence_v5",
+        "family_decay_v0",
+        "family_write_filter_v5",
+        "family_write_filter_v2",
+        "family_co_occurrence_v2",
+        "family_write_filter_v1",
+        "family_write_filter_v4",
+        "gen_006_clustered_mostly_stale",
+        "family_confidence_v0",
+        "family_decay_v3",
+        "family_co_occurrence_v3",
+        "family_decay_v2",
+        "family_co_occurrence_v6",
+        "family_co_occurrence_v4"
+      ],
+      "query_duration": {
+        "p50_ms": 18.178833066485822,
+        "p95_ms": 57.346041896380484,
+        "p99_ms": 81.62195805925876,
+        "mean_ms": 23.28,
+        "min_ms": 3.5100419772788882,
+        "max_ms": 129.82533394824713,
+        "total_ms": 4655.41,
+        "count": 200
+      }
+    },
+    "DEFAULT_SURFACING_THRESHOLD": {
+      "best_value": 0.1,
+      "best_ndcg_at_5": 0.7856836956265378,
+      "sensitivity_curve": [
+        [
+          0.1,
+          0.7856836956265378
+        ],
+        [
+          0.3,
+          0.7856836956265378
+        ],
+        [
+          0.5,
+          0.7856836956265378
+        ],
+        [
+          0.7,
+          0.7856836956265378
+        ],
+        [
+          0.9,
+          0.7856836956265378
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 200,
+      "n_points_total": 210,
+      "n_errors": 10,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_confidence_v3",
+        "gen_000_uniform_all_recent",
+        "family_write_filter_v7",
+        "family_confidence_v1",
+        "gen_002_bimodal_mostly_stale",
+        "family_confidence_v2",
+        "family_decay_v5",
+        "family_decay_v6",
+        "family_decay_v1",
+        "family_confidence_v5",
+        "family_decay_v7",
+        "family_confidence_v7",
+        "gen_004_flat_all_recent",
+        "gen_005_uniform_interleaved",
+        "gen_009_flat_interleaved",
+        "family_confidence_v4",
+        "family_write_filter_v6",
+        "family_co_occurrence_v0",
+        "gen_007_bimodal_half_stale",
+        "family_decay_v4",
+        "family_co_occurrence_v7",
+        "family_write_filter_v0",
+        "family_confidence_v6",
+        "gen_001_clustered_interleaved",
+        "family_co_occurrence_v1",
+        "family_write_filter_v3",
+        "family_co_occurrence_v5",
+        "family_decay_v0",
+        "family_write_filter_v5",
+        "family_write_filter_v2",
+        "family_co_occurrence_v2",
+        "family_write_filter_v1",
+        "family_write_filter_v4",
+        "gen_006_clustered_mostly_stale",
+        "family_confidence_v0",
+        "family_decay_v3",
+        "family_co_occurrence_v3",
+        "family_decay_v2",
+        "family_co_occurrence_v6",
+        "family_co_occurrence_v4"
+      ],
+      "query_duration": {
+        "p50_ms": 17.16354105155915,
+        "p95_ms": 62.17325001489371,
+        "p99_ms": 79.76724999025464,
+        "mean_ms": 23.14,
+        "min_ms": 3.444249974563718,
+        "max_ms": 118.03262506145984,
+        "total_ms": 4628.27,
+        "count": 200
+      }
+    },
+    "MIN_EVENTS_FOR_CRYSTALLIZATION": {
+      "best_value": 1,
+      "best_ndcg_at_5": 0.7856836956265378,
+      "sensitivity_curve": [
+        [
+          1,
+          0.7856836956265378
+        ],
+        [
+          2,
+          0.7856836956265378
+        ],
+        [
+          3,
+          0.7856836956265378
+        ],
+        [
+          5,
+          0.7856836956265378
+        ],
+        [
+          10,
+          0.7856836956265378
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 200,
+      "n_points_total": 210,
+      "n_errors": 10,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_confidence_v3",
+        "gen_000_uniform_all_recent",
+        "family_write_filter_v7",
+        "family_confidence_v1",
+        "gen_002_bimodal_mostly_stale",
+        "family_confidence_v2",
+        "family_decay_v5",
+        "family_decay_v6",
+        "family_decay_v1",
+        "family_confidence_v5",
+        "family_decay_v7",
+        "family_confidence_v7",
+        "gen_004_flat_all_recent",
+        "gen_005_uniform_interleaved",
+        "gen_009_flat_interleaved",
+        "family_confidence_v4",
+        "family_write_filter_v6",
+        "family_co_occurrence_v0",
+        "gen_007_bimodal_half_stale",
+        "family_decay_v4",
+        "family_co_occurrence_v7",
+        "family_write_filter_v0",
+        "family_confidence_v6",
+        "gen_001_clustered_interleaved",
+        "family_co_occurrence_v1",
+        "family_write_filter_v3",
+        "family_co_occurrence_v5",
+        "family_decay_v0",
+        "family_write_filter_v5",
+        "family_write_filter_v2",
+        "family_co_occurrence_v2",
+        "family_write_filter_v1",
+        "family_write_filter_v4",
+        "gen_006_clustered_mostly_stale",
+        "family_confidence_v0",
+        "family_decay_v3",
+        "family_co_occurrence_v3",
+        "family_decay_v2",
+        "family_co_occurrence_v6",
+        "family_co_occurrence_v4"
+      ],
+      "query_duration": {
+        "p50_ms": 18.11158296186477,
+        "p95_ms": 59.46391599718481,
+        "p99_ms": 78.5730000352487,
+        "mean_ms": 22.6,
+        "min_ms": 3.4618749050423503,
+        "max_ms": 81.77049993537366,
+        "total_ms": 4520.34,
+        "count": 200
+      }
+    },
+    "TD_ALPHA": {
+      "best_value": 0.01,
+      "best_ndcg_at_5": 0.7856836956265378,
+      "sensitivity_curve": [
+        [
+          0.01,
+          0.7856836956265378
+        ],
+        [
+          0.05,
+          0.7856836956265378
+        ],
+        [
+          0.1,
+          0.7856836956265378
+        ],
+        [
+          0.2,
+          0.7856836956265378
+        ],
+        [
+          0.5,
+          0.7856836956265378
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 200,
+      "n_points_total": 210,
+      "n_errors": 10,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_confidence_v3",
+        "gen_000_uniform_all_recent",
+        "family_write_filter_v7",
+        "family_confidence_v1",
+        "gen_002_bimodal_mostly_stale",
+        "family_confidence_v2",
+        "family_decay_v5",
+        "family_decay_v6",
+        "family_decay_v1",
+        "family_confidence_v5",
+        "family_decay_v7",
+        "family_confidence_v7",
+        "gen_004_flat_all_recent",
+        "gen_005_uniform_interleaved",
+        "gen_009_flat_interleaved",
+        "family_confidence_v4",
+        "family_write_filter_v6",
+        "family_co_occurrence_v0",
+        "gen_007_bimodal_half_stale",
+        "family_decay_v4",
+        "family_co_occurrence_v7",
+        "family_write_filter_v0",
+        "family_confidence_v6",
+        "gen_001_clustered_interleaved",
+        "family_co_occurrence_v1",
+        "family_write_filter_v3",
+        "family_co_occurrence_v5",
+        "family_decay_v0",
+        "family_write_filter_v5",
+        "family_write_filter_v2",
+        "family_co_occurrence_v2",
+        "family_write_filter_v1",
+        "family_write_filter_v4",
+        "gen_006_clustered_mostly_stale",
+        "family_confidence_v0",
+        "family_decay_v3",
+        "family_co_occurrence_v3",
+        "family_decay_v2",
+        "family_co_occurrence_v6",
+        "family_co_occurrence_v4"
+      ],
+      "query_duration": {
+        "p50_ms": 17.602624953724444,
+        "p95_ms": 72.76629109401256,
+        "p99_ms": 95.78750003129244,
+        "mean_ms": 22.36,
+        "min_ms": 3.4739580005407333,
+        "max_ms": 128.2437089830637,
+        "total_ms": 4471.34,
+        "count": 200
+      }
+    },
+    "TD_GAMMA": {
+      "best_value": 0.8,
+      "best_ndcg_at_5": 0.7856836956265378,
+      "sensitivity_curve": [
+        [
+          0.8,
+          0.7856836956265378
+        ],
+        [
+          0.9,
+          0.7856836956265378
+        ],
+        [
+          0.95,
+          0.7856836956265378
+        ],
+        [
+          0.99,
+          0.7856836956265378
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 160,
+      "n_points_total": 168,
+      "n_errors": 8,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_confidence_v3",
+        "gen_000_uniform_all_recent",
+        "family_write_filter_v7",
+        "family_confidence_v1",
+        "gen_002_bimodal_mostly_stale",
+        "family_confidence_v2",
+        "family_decay_v5",
+        "family_decay_v6",
+        "family_decay_v1",
+        "family_confidence_v5",
+        "family_decay_v7",
+        "family_confidence_v7",
+        "gen_004_flat_all_recent",
+        "gen_005_uniform_interleaved",
+        "gen_009_flat_interleaved",
+        "family_confidence_v4",
+        "family_write_filter_v6",
+        "family_co_occurrence_v0",
+        "gen_007_bimodal_half_stale",
+        "family_decay_v4",
+        "family_co_occurrence_v7",
+        "family_write_filter_v0",
+        "family_confidence_v6",
+        "gen_001_clustered_interleaved",
+        "family_co_occurrence_v1",
+        "family_write_filter_v3",
+        "family_co_occurrence_v5",
+        "family_decay_v0",
+        "family_write_filter_v5",
+        "family_write_filter_v2",
+        "family_co_occurrence_v2",
+        "family_write_filter_v1",
+        "family_write_filter_v4",
+        "gen_006_clustered_mostly_stale",
+        "family_confidence_v0",
+        "family_decay_v3",
+        "family_co_occurrence_v3",
+        "family_decay_v2",
+        "family_co_occurrence_v6",
+        "family_co_occurrence_v4"
+      ],
+      "query_duration": {
+        "p50_ms": 18.01804208662361,
+        "p95_ms": 75.55966696236283,
+        "p99_ms": 84.4988749595359,
+        "mean_ms": 23.32,
+        "min_ms": 3.540167002938688,
+        "max_ms": 103.50170801393688,
+        "total_ms": 3731.0,
+        "count": 160
+      }
+    },
+    "WILSON_CI_THRESHOLD": {
+      "best_value": 0.3,
+      "best_ndcg_at_5": 0.7856836956265378,
+      "sensitivity_curve": [
+        [
+          0.3,
+          0.7856836956265378
+        ],
+        [
+          0.5,
+          0.7856836956265378
+        ],
+        [
+          0.6,
+          0.7856836956265378
+        ],
+        [
+          0.7,
+          0.7856836956265378
+        ],
+        [
+          0.8,
+          0.7856836956265378
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 200,
+      "n_points_total": 210,
+      "n_errors": 10,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_confidence_v3",
+        "gen_000_uniform_all_recent",
+        "family_write_filter_v7",
+        "family_confidence_v1",
+        "gen_002_bimodal_mostly_stale",
+        "family_confidence_v2",
+        "family_decay_v5",
+        "family_decay_v6",
+        "family_decay_v1",
+        "family_confidence_v5",
+        "family_decay_v7",
+        "family_confidence_v7",
+        "gen_004_flat_all_recent",
+        "gen_005_uniform_interleaved",
+        "gen_009_flat_interleaved",
+        "family_confidence_v4",
+        "family_write_filter_v6",
+        "family_co_occurrence_v0",
+        "gen_007_bimodal_half_stale",
+        "family_decay_v4",
+        "family_co_occurrence_v7",
+        "family_write_filter_v0",
+        "family_confidence_v6",
+        "gen_001_clustered_interleaved",
+        "family_co_occurrence_v1",
+        "family_write_filter_v3",
+        "family_co_occurrence_v5",
+        "family_decay_v0",
+        "family_write_filter_v5",
+        "family_write_filter_v2",
+        "family_co_occurrence_v2",
+        "family_write_filter_v1",
+        "family_write_filter_v4",
+        "gen_006_clustered_mostly_stale",
+        "family_confidence_v0",
+        "family_decay_v3",
+        "family_co_occurrence_v3",
+        "family_decay_v2",
+        "family_co_occurrence_v6",
+        "family_co_occurrence_v4"
+      ],
+      "query_duration": {
+        "p50_ms": 17.42725004442036,
+        "p95_ms": 66.25520903617144,
+        "p99_ms": 82.16174994595349,
+        "mean_ms": 23.32,
+        "min_ms": 3.5333329578861594,
+        "max_ms": 94.672332983464,
+        "total_ms": 4664.03,
+        "count": 200
+      }
+    },
+    "AUTO_DISCHARGE_CONFIDENCE_THRESHOLD": {
+      "best_value": 0.05,
+      "best_ndcg_at_5": 0.8388734719179667,
+      "sensitivity_curve": [
+        [
+          0.05,
+          0.8388734719179667
+        ],
+        [
+          0.1,
+          0.8388734719179667
+        ],
+        [
+          0.2,
+          0.8388734719179667
+        ],
+        [
+          0.3,
+          0.8388734719179667
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 64,
+      "n_points_total": 72,
+      "n_errors": 8,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_confidence_v3",
+        "family_confidence_v7",
+        "gen_000_uniform_all_recent",
+        "gen_004_flat_all_recent",
+        "family_confidence_v6",
+        "gen_005_uniform_interleaved",
+        "gen_009_flat_interleaved",
+        "family_confidence_v1",
+        "gen_002_bimodal_mostly_stale",
+        "family_confidence_v4",
+        "gen_001_clustered_interleaved",
+        "gen_006_clustered_mostly_stale",
+        "family_confidence_v0",
+        "family_confidence_v5",
+        "family_confidence_v2",
+        "gen_007_bimodal_half_stale"
+      ],
+      "query_duration": {
+        "p50_ms": 23.6518329475075,
+        "p95_ms": 80.0808749627322,
+        "p99_ms": 126.2738750083372,
+        "mean_ms": 34.07,
+        "min_ms": 3.5534589551389217,
+        "max_ms": 126.2738750083372,
+        "total_ms": 2180.3,
+        "count": 64
+      }
+    },
+    "CHI_SQUARED_P_THRESHOLD": {
+      "best_value": 0.001,
+      "best_ndcg_at_5": 0.7856836956265378,
+      "sensitivity_curve": [
+        [
+          0.001,
+          0.7856836956265378
+        ],
+        [
+          0.005,
+          0.7856836956265378
+        ],
+        [
+          0.01,
+          0.7856836956265378
+        ],
+        [
+          0.025,
+          0.7856836956265378
+        ],
+        [
+          0.05,
+          0.7856836956265378
+        ],
+        [
+          0.1,
+          0.7856836956265378
+        ],
+        [
+          0.2,
+          0.7856836956265378
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 280,
+      "n_points_total": 294,
+      "n_errors": 14,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_confidence_v3",
+        "gen_000_uniform_all_recent",
+        "family_write_filter_v7",
+        "family_confidence_v1",
+        "gen_002_bimodal_mostly_stale",
+        "family_confidence_v2",
+        "family_decay_v5",
+        "family_decay_v6",
+        "family_decay_v1",
+        "family_confidence_v5",
+        "family_decay_v7",
+        "family_confidence_v7",
+        "gen_004_flat_all_recent",
+        "gen_005_uniform_interleaved",
+        "gen_009_flat_interleaved",
+        "family_confidence_v4",
+        "family_write_filter_v6",
+        "family_co_occurrence_v0",
+        "gen_007_bimodal_half_stale",
+        "family_decay_v4",
+        "family_co_occurrence_v7",
+        "family_write_filter_v0",
+        "family_confidence_v6",
+        "gen_001_clustered_interleaved",
+        "family_co_occurrence_v1",
+        "family_write_filter_v3",
+        "family_co_occurrence_v5",
+        "family_decay_v0",
+        "family_write_filter_v5",
+        "family_write_filter_v2",
+        "family_co_occurrence_v2",
+        "family_write_filter_v1",
+        "family_write_filter_v4",
+        "gen_006_clustered_mostly_stale",
+        "family_confidence_v0",
+        "family_decay_v3",
+        "family_co_occurrence_v3",
+        "family_decay_v2",
+        "family_co_occurrence_v6",
+        "family_co_occurrence_v4"
+      ],
+      "query_duration": {
+        "p50_ms": 17.670916975475848,
+        "p95_ms": 60.304958024062216,
+        "p99_ms": 80.57400002144277,
+        "mean_ms": 23.04,
+        "min_ms": 3.447582945227623,
+        "max_ms": 82.41020806599408,
+        "total_ms": 6450.54,
+        "count": 280
+      }
+    },
+    "INITIAL_CYCLE_AMPLITUDE": {
+      "best_value": 0.1,
+      "best_ndcg_at_5": 0.7856836956265378,
+      "sensitivity_curve": [
+        [
+          0.1,
+          0.7856836956265378
+        ],
+        [
+          0.25,
+          0.7856836956265378
+        ],
+        [
+          0.5,
+          0.7856836956265378
+        ],
+        [
+          0.75,
+          0.7856836956265378
+        ],
+        [
+          1.0,
+          0.7856836956265378
+        ],
+        [
+          2.0,
+          0.7856836956265378
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 240,
+      "n_points_total": 252,
+      "n_errors": 12,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_confidence_v3",
+        "gen_000_uniform_all_recent",
+        "family_write_filter_v7",
+        "family_confidence_v1",
+        "gen_002_bimodal_mostly_stale",
+        "family_confidence_v2",
+        "family_decay_v5",
+        "family_decay_v6",
+        "family_decay_v1",
+        "family_confidence_v5",
+        "family_decay_v7",
+        "family_confidence_v7",
+        "gen_004_flat_all_recent",
+        "gen_005_uniform_interleaved",
+        "gen_009_flat_interleaved",
+        "family_confidence_v4",
+        "family_write_filter_v6",
+        "family_co_occurrence_v0",
+        "gen_007_bimodal_half_stale",
+        "family_decay_v4",
+        "family_co_occurrence_v7",
+        "family_write_filter_v0",
+        "family_confidence_v6",
+        "gen_001_clustered_interleaved",
+        "family_co_occurrence_v1",
+        "family_write_filter_v3",
+        "family_co_occurrence_v5",
+        "family_decay_v0",
+        "family_write_filter_v5",
+        "family_write_filter_v2",
+        "family_co_occurrence_v2",
+        "family_write_filter_v1",
+        "family_write_filter_v4",
+        "gen_006_clustered_mostly_stale",
+        "family_confidence_v0",
+        "family_decay_v3",
+        "family_co_occurrence_v3",
+        "family_decay_v2",
+        "family_co_occurrence_v6",
+        "family_co_occurrence_v4"
+      ],
+      "query_duration": {
+        "p50_ms": 16.28841704223305,
+        "p95_ms": 59.14408399257809,
+        "p99_ms": 79.96604195795953,
+        "mean_ms": 21.87,
+        "min_ms": 3.494416014291346,
+        "max_ms": 98.58820808585733,
+        "total_ms": 5248.75,
+        "count": 240
+      }
+    },
+    "PL_CONFIDENCE_ERROR_THRESHOLD": {
+      "best_value": 0.3,
+      "best_ndcg_at_5": 0.7856836956265378,
+      "sensitivity_curve": [
+        [
+          0.3,
+          0.7856836956265378
+        ],
+        [
+          0.5,
+          0.7856836956265378
+        ],
+        [
+          0.7,
+          0.7856836956265378
+        ],
+        [
+          0.85,
+          0.7856836956265378
+        ],
+        [
+          0.95,
+          0.7856836956265378
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 200,
+      "n_points_total": 210,
+      "n_errors": 10,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_confidence_v3",
+        "gen_000_uniform_all_recent",
+        "family_write_filter_v7",
+        "family_confidence_v1",
+        "gen_002_bimodal_mostly_stale",
+        "family_confidence_v2",
+        "family_decay_v5",
+        "family_decay_v6",
+        "family_decay_v1",
+        "family_confidence_v5",
+        "family_decay_v7",
+        "family_confidence_v7",
+        "gen_004_flat_all_recent",
+        "gen_005_uniform_interleaved",
+        "gen_009_flat_interleaved",
+        "family_confidence_v4",
+        "family_write_filter_v6",
+        "family_co_occurrence_v0",
+        "gen_007_bimodal_half_stale",
+        "family_decay_v4",
+        "family_co_occurrence_v7",
+        "family_write_filter_v0",
+        "family_confidence_v6",
+        "gen_001_clustered_interleaved",
+        "family_co_occurrence_v1",
+        "family_write_filter_v3",
+        "family_co_occurrence_v5",
+        "family_decay_v0",
+        "family_write_filter_v5",
+        "family_write_filter_v2",
+        "family_co_occurrence_v2",
+        "family_write_filter_v1",
+        "family_write_filter_v4",
+        "gen_006_clustered_mostly_stale",
+        "family_confidence_v0",
+        "family_decay_v3",
+        "family_co_occurrence_v3",
+        "family_decay_v2",
+        "family_co_occurrence_v6",
+        "family_co_occurrence_v4"
+      ],
+      "query_duration": {
+        "p50_ms": 17.055083066225052,
+        "p95_ms": 53.59654198400676,
+        "p99_ms": 83.97316699847579,
+        "mean_ms": 22.78,
+        "min_ms": 3.509541042149067,
+        "max_ms": 95.18770896829665,
+        "total_ms": 4556.09,
+        "count": 200
+      }
+    },
+    "PL_CONFIDENCE_LOW_SIGNAL": {
+      "best_value": 0.05,
+      "best_ndcg_at_5": 0.7856836956265378,
+      "sensitivity_curve": [
+        [
+          0.05,
+          0.7856836956265378
+        ],
+        [
+          0.1,
+          0.7856836956265378
+        ],
+        [
+          0.2,
+          0.7856836956265378
+        ],
+        [
+          0.3,
+          0.7856836956265378
+        ],
+        [
+          0.5,
+          0.7856836956265378
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 200,
+      "n_points_total": 210,
+      "n_errors": 10,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_confidence_v3",
+        "gen_000_uniform_all_recent",
+        "family_write_filter_v7",
+        "family_confidence_v1",
+        "gen_002_bimodal_mostly_stale",
+        "family_confidence_v2",
+        "family_decay_v5",
+        "family_decay_v6",
+        "family_decay_v1",
+        "family_confidence_v5",
+        "family_decay_v7",
+        "family_confidence_v7",
+        "gen_004_flat_all_recent",
+        "gen_005_uniform_interleaved",
+        "gen_009_flat_interleaved",
+        "family_confidence_v4",
+        "family_write_filter_v6",
+        "family_co_occurrence_v0",
+        "gen_007_bimodal_half_stale",
+        "family_decay_v4",
+        "family_co_occurrence_v7",
+        "family_write_filter_v0",
+        "family_confidence_v6",
+        "gen_001_clustered_interleaved",
+        "family_co_occurrence_v1",
+        "family_write_filter_v3",
+        "family_co_occurrence_v5",
+        "family_decay_v0",
+        "family_write_filter_v5",
+        "family_write_filter_v2",
+        "family_co_occurrence_v2",
+        "family_write_filter_v1",
+        "family_write_filter_v4",
+        "gen_006_clustered_mostly_stale",
+        "family_confidence_v0",
+        "family_decay_v3",
+        "family_co_occurrence_v3",
+        "family_decay_v2",
+        "family_co_occurrence_v6",
+        "family_co_occurrence_v4"
+      ],
+      "query_duration": {
+        "p50_ms": 19.043374923057854,
+        "p95_ms": 64.23949997406453,
+        "p99_ms": 79.98004090040922,
+        "mean_ms": 23.49,
+        "min_ms": 3.520375001244247,
+        "max_ms": 83.56716705020517,
+        "total_ms": 4697.25,
+        "count": 200
+      }
+    },
+    "PL_AUTO_RESOLVE_ACTED": {
+      "best_value": 0.05,
+      "best_ndcg_at_5": 0.7856836956265378,
+      "sensitivity_curve": [
+        [
+          0.05,
+          0.7856836956265378
+        ],
+        [
+          0.1,
+          0.7856836956265378
+        ],
+        [
+          0.2,
+          0.7856836956265378
+        ],
+        [
+          0.3,
+          0.7856836956265378
+        ],
+        [
+          0.5,
+          0.7856836956265378
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 200,
+      "n_points_total": 210,
+      "n_errors": 10,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_confidence_v3",
+        "gen_000_uniform_all_recent",
+        "family_write_filter_v7",
+        "family_confidence_v1",
+        "gen_002_bimodal_mostly_stale",
+        "family_confidence_v2",
+        "family_decay_v5",
+        "family_decay_v6",
+        "family_decay_v1",
+        "family_confidence_v5",
+        "family_decay_v7",
+        "family_confidence_v7",
+        "gen_004_flat_all_recent",
+        "gen_005_uniform_interleaved",
+        "gen_009_flat_interleaved",
+        "family_confidence_v4",
+        "family_write_filter_v6",
+        "family_co_occurrence_v0",
+        "gen_007_bimodal_half_stale",
+        "family_decay_v4",
+        "family_co_occurrence_v7",
+        "family_write_filter_v0",
+        "family_confidence_v6",
+        "gen_001_clustered_interleaved",
+        "family_co_occurrence_v1",
+        "family_write_filter_v3",
+        "family_co_occurrence_v5",
+        "family_decay_v0",
+        "family_write_filter_v5",
+        "family_write_filter_v2",
+        "family_co_occurrence_v2",
+        "family_write_filter_v1",
+        "family_write_filter_v4",
+        "gen_006_clustered_mostly_stale",
+        "family_confidence_v0",
+        "family_decay_v3",
+        "family_co_occurrence_v3",
+        "family_decay_v2",
+        "family_co_occurrence_v6",
+        "family_co_occurrence_v4"
+      ],
+      "query_duration": {
+        "p50_ms": 17.321874969638884,
+        "p95_ms": 58.50408296100795,
+        "p99_ms": 83.98983394727111,
+        "mean_ms": 22.18,
+        "min_ms": 3.504415974020958,
+        "max_ms": 87.29212498292327,
+        "total_ms": 4435.66,
+        "count": 200
+      }
+    },
+    "PL_AUTO_RESOLVE_DISMISSED": {
+      "best_value": 0.2,
+      "best_ndcg_at_5": 0.7856836956265378,
+      "sensitivity_curve": [
+        [
+          0.2,
+          0.7856836956265378
+        ],
+        [
+          0.3,
+          0.7856836956265378
+        ],
+        [
+          0.5,
+          0.7856836956265378
+        ],
+        [
+          0.7,
+          0.7856836956265378
+        ],
+        [
+          0.9,
+          0.7856836956265378
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 200,
+      "n_points_total": 210,
+      "n_errors": 10,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_confidence_v3",
+        "gen_000_uniform_all_recent",
+        "family_write_filter_v7",
+        "family_confidence_v1",
+        "gen_002_bimodal_mostly_stale",
+        "family_confidence_v2",
+        "family_decay_v5",
+        "family_decay_v6",
+        "family_decay_v1",
+        "family_confidence_v5",
+        "family_decay_v7",
+        "family_confidence_v7",
+        "gen_004_flat_all_recent",
+        "gen_005_uniform_interleaved",
+        "gen_009_flat_interleaved",
+        "family_confidence_v4",
+        "family_write_filter_v6",
+        "family_co_occurrence_v0",
+        "gen_007_bimodal_half_stale",
+        "family_decay_v4",
+        "family_co_occurrence_v7",
+        "family_write_filter_v0",
+        "family_confidence_v6",
+        "gen_001_clustered_interleaved",
+        "family_co_occurrence_v1",
+        "family_write_filter_v3",
+        "family_co_occurrence_v5",
+        "family_decay_v0",
+        "family_write_filter_v5",
+        "family_write_filter_v2",
+        "family_co_occurrence_v2",
+        "family_write_filter_v1",
+        "family_write_filter_v4",
+        "gen_006_clustered_mostly_stale",
+        "family_confidence_v0",
+        "family_decay_v3",
+        "family_co_occurrence_v3",
+        "family_decay_v2",
+        "family_co_occurrence_v6",
+        "family_co_occurrence_v4"
+      ],
+      "query_duration": {
+        "p50_ms": 17.180708004161716,
+        "p95_ms": 52.942374954000115,
+        "p99_ms": 82.79825001955032,
+        "mean_ms": 22.94,
+        "min_ms": 3.5044170217588544,
+        "max_ms": 85.74345801025629,
+        "total_ms": 4587.47,
+        "count": 200
+      }
+    },
+    "PL_AUTO_RESOLVE_CONTRADICTED": {
+      "best_value": 0.5,
+      "best_ndcg_at_5": 0.7856836956265378,
+      "sensitivity_curve": [
+        [
+          0.5,
+          0.7856836956265378
+        ],
+        [
+          0.7,
+          0.7856836956265378
+        ],
+        [
+          0.8,
+          0.7856836956265378
+        ],
+        [
+          0.9,
+          0.7856836956265378
+        ],
+        [
+          0.95,
+          0.7856836956265378
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 200,
+      "n_points_total": 210,
+      "n_errors": 10,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_confidence_v3",
+        "gen_000_uniform_all_recent",
+        "family_write_filter_v7",
+        "family_confidence_v1",
+        "gen_002_bimodal_mostly_stale",
+        "family_confidence_v2",
+        "family_decay_v5",
+        "family_decay_v6",
+        "family_decay_v1",
+        "family_confidence_v5",
+        "family_decay_v7",
+        "family_confidence_v7",
+        "gen_004_flat_all_recent",
+        "gen_005_uniform_interleaved",
+        "gen_009_flat_interleaved",
+        "family_confidence_v4",
+        "family_write_filter_v6",
+        "family_co_occurrence_v0",
+        "gen_007_bimodal_half_stale",
+        "family_decay_v4",
+        "family_co_occurrence_v7",
+        "family_write_filter_v0",
+        "family_confidence_v6",
+        "gen_001_clustered_interleaved",
+        "family_co_occurrence_v1",
+        "family_write_filter_v3",
+        "family_co_occurrence_v5",
+        "family_decay_v0",
+        "family_write_filter_v5",
+        "family_write_filter_v2",
+        "family_co_occurrence_v2",
+        "family_write_filter_v1",
+        "family_write_filter_v4",
+        "gen_006_clustered_mostly_stale",
+        "family_confidence_v0",
+        "family_decay_v3",
+        "family_co_occurrence_v3",
+        "family_decay_v2",
+        "family_co_occurrence_v6",
+        "family_co_occurrence_v4"
+      ],
+      "query_duration": {
+        "p50_ms": 18.862165976315737,
+        "p95_ms": 65.03941596020013,
+        "p99_ms": 85.3869590209797,
+        "mean_ms": 22.87,
+        "min_ms": 3.5252500092610717,
+        "max_ms": 90.57395800482482,
+        "total_ms": 4573.71,
+        "count": 200
+      }
+    }
+  },
+  "pairwise": {}
+}

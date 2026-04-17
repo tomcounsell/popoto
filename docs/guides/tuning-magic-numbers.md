@@ -41,14 +41,14 @@ Source: `src/popoto/fields/write_filter.py`
 
 | Constant | Default | Optimal Range | Sensitivity |
 |----------|---------|--------------|-------------|
-| `_wf_min_threshold` | 0.2 | [0.05, 0.5] | Low |
+| `_wf_min_threshold` | **0.1** (sweep 2026-04-17) | [0.05, 0.5] | **Medium** (variance 0.068) |
 | `_wf_priority_threshold` | 0.7 | [0.5, 0.9] | Low |
 
 ### DecayingSortedField / CyclicDecayField
 
 | Constant | Default | Optimal Range | Sensitivity |
 |----------|---------|--------------|-------------|
-| `decay_rate` | 0.5 | [0.1, 1.0] | Low |
+| `decay_rate` | **0.1** (sweep 2026-04-17) | [0.1, 1.0] | **Medium** (variance 0.067) |
 
 ### CoOccurrenceField
 

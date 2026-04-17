@@ -47,7 +47,7 @@ class Memory(WriteFilterMixin, AccessTrackerMixin, Model):
     )
     confidence = ConfidenceField(initial_confidence=0.5)
 
-    _wf_min_threshold = 0.2
+    _wf_min_threshold = 0.1  # default after sweep 2026-04-17 (was 0.2)
     _wf_priority_threshold = 0.7
 
     def compute_filter_score(self):

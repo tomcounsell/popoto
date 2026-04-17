@@ -53,14 +53,14 @@ class Memory(WriteFilterMixin, AccessTrackerMixin, Model):
         partition_by="agent_id",
     )
 
-    _wf_min_threshold = 0.2       # below this: silently discarded
+    _wf_min_threshold = 0.1       # below this: silently discarded (default; was 0.2 before sweep 2026-04-17)
     _wf_priority_threshold = 0.7  # above this: tagged as priority
 
     def compute_filter_score(self):
         return self.importance or 0.0
 
 # Low-value record is silently dropped (save returns False)
-result = Memory(agent_id="agent-1", content="noise", importance=0.1).save()
+result = Memory(agent_id="agent-1", content="noise", importance=0.05).save()
 assert result is False
 
 # High-value record persists normally
@@ -91,7 +91,7 @@ class Memory(WriteFilterMixin, AccessTrackerMixin, Model):
     )
     confidence = ConfidenceField(initial_confidence=0.5)
 
-    _wf_min_threshold = 0.2
+    _wf_min_threshold = 0.1  # default after sweep 2026-04-17 (was 0.2)
     _wf_priority_threshold = 0.7
 
     def compute_filter_score(self):
@@ -132,7 +132,7 @@ class Memory(WriteFilterMixin, AccessTrackerMixin, Model):
     confidence = ConfidenceField(initial_confidence=0.5)
     associations = CoOccurrenceField(symmetric=True, max_edges=50)
 
-    _wf_min_threshold = 0.2
+    _wf_min_threshold = 0.1  # default after sweep 2026-04-17 (was 0.2)
     _wf_priority_threshold = 0.7
 
     def compute_filter_score(self):

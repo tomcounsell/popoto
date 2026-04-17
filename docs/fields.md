@@ -675,8 +675,8 @@ Lua script computes decay-ranked results server-side:
 decayed_score = base_score × elapsed_days ^ (-decay_rate)
 ```
 
-With the default `decay_rate=0.5`, a record scores 1.0 after 1 day, 0.5 after 4 days,
-and 0.1 after 100 days.
+With the default `decay_rate=0.1` (empirically tuned in sweep 2026-04-17; prior default
+was `0.5`), a record scores 1.0 after 1 day, 0.87 after 4 days, and 0.63 after 100 days.
 
 ```python
 from popoto import Model, KeyField, Field, FloatField
@@ -712,7 +712,7 @@ memory.touch("relevance")  # Resets the decay clock
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `decay_rate` | `float` | `0.5` | Controls how fast scores drop. Higher = faster decay. Must be > 0. |
+| `decay_rate` | `float` | `0.1` | Controls how fast scores drop. Higher = faster decay. Must be > 0. (Empirically tuned in sweep 2026-04-17; prior default was `0.5`.) |
 | `base_score_field` | `str` | `None` | Name of a companion field whose value multiplies the decay curve. When `None`, base score is 1.0. |
 | `partition_by` | `str` or `tuple` | `()` | Partition the sorted set by key field values (inherited from `SortedField`). |
 
@@ -743,7 +743,7 @@ class Directive(Model):
     agent_id = KeyField()
     content = Field(type=str)
     relevance = CyclicDecayField(
-        decay_rate=0.5,
+        decay_rate=0.5,  # override default (0.1) for faster forgetting
         cycles=[(TemporalPeriod.QUARTERLY, 5.0, 0)],
         pressure_rate=0.1,
     )
@@ -764,7 +764,7 @@ directive.touch("relevance")
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `decay_rate` | `float` | `0.5` | Power-law decay exponent (inherited). |
+| `decay_rate` | `float` | `0.1` | Power-law decay exponent (inherited). Empirically tuned in sweep 2026-04-17; prior default was `0.5`. |
 | `base_score_field` | `str` | `None` | Companion field whose value multiplies the decay curve (inherited). |
 | `cycles` | `list` | `[]` | List of `(period, amplitude, phase)` tuples. Use `TemporalPeriod` constants for period. |
 | `pressure_rate` | `float` | `0.0` | Rate of urgency buildup per unresolved day. |
@@ -1152,8 +1152,9 @@ class Memory(WriteFilterMixin, Model):
 The mixin adds three behaviors to your model:
 
 1. **Gate on save**: Before persisting, `compute_filter_score()` is called. If the
-   score is below `_wf_min_threshold` (default 0.2), a `SkipSaveException` is raised
-   and caught by `Model.save()`, silently aborting the write.
+   score is below `_wf_min_threshold` (default `0.1` after sweep 2026-04-17; prior
+   default was `0.2`), a `SkipSaveException` is raised and caught by `Model.save()`,
+   silently aborting the write.
 
 2. **Priority tagging**: If the score meets or exceeds `_wf_priority_threshold`
    (default 0.7), the record's Redis key is added to a sorted set at
@@ -1163,8 +1164,8 @@ The mixin adds three behaviors to your model:
    priority sorted set automatically.
 
 ```python
-# Silently discarded — score 0.1 < min_threshold 0.2
-low = Memory(agent_id="a1", content="noise", importance=0.1)
+# Silently discarded — score 0.05 < min_threshold 0.1
+low = Memory(agent_id="a1", content="noise", importance=0.05)
 low.save()  # No error, but record is NOT in Redis
 
 # Persisted normally — score 0.5 between thresholds
@@ -1187,7 +1188,7 @@ class StrictMemory(WriteFilterMixin, Model):
 
 | Attribute | Default | Description |
 |-----------|---------|-------------|
-| `_wf_min_threshold` | `0.2` | Minimum score to persist |
+| `_wf_min_threshold` | `0.1` | Minimum score to persist. (Empirically tuned in sweep 2026-04-17; prior default was `0.2`.) |
 | `_wf_priority_threshold` | `0.7` | Minimum score for priority tagging |
 
 !!! tip

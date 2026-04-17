@@ -10,13 +10,13 @@ The sorted set score is always a timestamp. A Lua script computes decay-ranked r
 decayed_score = base_score * elapsed_days ^ (-decay_rate)
 ```
 
-With the default `decay_rate=0.5`, a record scores 1.0 after 1 day, 0.5 after 4 days, and 0.1 after 100 days. All computation happens server-side in Lua — no round trips for ranking.
+With the default `decay_rate=0.1` (empirically tuned in sweep 2026-04-17; prior default was `0.5`), a record scores 1.0 after 1 day, 0.87 after 4 days, and 0.63 after 100 days. All computation happens server-side in Lua — no round trips for ranking.
 
 ## Parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `decay_rate` | `float` | `0.5` | Controls how fast scores drop. Higher = faster decay. Configurable via `Defaults.DECAY_RATE`. |
+| `decay_rate` | `float` | `0.1` | Controls how fast scores drop. Higher = faster decay. Configurable via `Defaults.DECAY_RATE`. (Empirically tuned in sweep 2026-04-17; prior default was `0.5`.) |
 | `base_score_field` | `str` | `None` | Name of a companion field whose value multiplies the decay curve. When `None`, base score is 1.0. |
 | `partition_by` | `str` or `tuple` | `()` | Partition the sorted set by key field values, inherited from `SortedField`. |
 
@@ -52,7 +52,7 @@ class Memory(Model):
     relevance = DecayingSortedField(base_score_field="importance")
 ```
 
-A record with `importance=5.0` stays relevant 25x longer than one with `importance=1.0` (at decay_rate=0.5).
+A record with `importance=5.0` stays relevant longer than one with `importance=1.0` — at a given threshold, lifetime scales as `score^(1/decay_rate)`. With the default `decay_rate=0.1` this ratio is very large (importance strongly dominates recency); with the prior `decay_rate=0.5` the ratio was `score²` (a more modest 25× for 5× importance). If you need faster forgetting, pass `decay_rate=0.5` or higher on the field constructor.
 
 ### Source Weighting with InteractionWeight
 

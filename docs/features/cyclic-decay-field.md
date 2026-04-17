@@ -17,7 +17,7 @@ When `cycles=[]` and `pressure_rate=0.0`, behavior is identical to `DecayingSort
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `decay_rate` | float | 0.5 | Power-law decay exponent (inherited) |
+| `decay_rate` | float | 0.1 | Power-law decay exponent (inherited). Empirically tuned in sweep 2026-04-17; prior default was `0.5`. |
 | `base_score_field` | str | None | Companion field whose value multiplies the decay curve (inherited) |
 | `cycles` | list | `[]` | List of `(period, amplitude, phase)` tuples |
 | `pressure_rate` | float | 0.0 | Rate of urgency buildup per unresolved day |
@@ -57,7 +57,7 @@ class Directive(Model):
     agent_id = KeyField()
     content = Field(type=str)
     relevance = CyclicDecayField(
-        decay_rate=0.5,
+        decay_rate=0.5,  # override default (0.1) for faster forgetting
         cycles=[(TemporalPeriod.QUARTERLY, 5.0, 0)],
         pressure_rate=0.1,
     )

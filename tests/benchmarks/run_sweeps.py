@@ -310,43 +310,101 @@ def run_tier4_interactions(runner, aggregator):
         logger.info("    %d/%d points OK", ok_count, len(results))
 
 
-def run_parametric(tier_sweeps, tier_name, aggregator):
+def run_parametric(tier_sweeps, tier_name, aggregator, family_weighted=True):
     """Run sweeps using family-aware and parametrically generated scenarios.
 
     For each constant, uses family-specific scenarios that exercise the
     constant's actual code path, combined with a sample of generic parametric
     scenarios for baseline coverage.
+
+    Args:
+        tier_sweeps: dict mapping constant name -> list of values.
+        tier_name: human-readable tier label.
+        aggregator: ResultsAggregator instance.
+        family_weighted: If True (default, 2026-04-17 onward), run multiple
+            family-scenario variants per constant and reduce generic-scenario
+            count so family scenarios dominate the averaged signal. This is
+            the fix for issue #351 — without family weighting, ~5% family
+            vs ~95% generic drowned the constant-sensitivity signal.
     """
     from tests.benchmarks.scenarios.factory import ScenarioFactory
-    from tests.benchmarks.scenarios.family_factory import FamilyScenarioFactory
+    from tests.benchmarks.scenarios.family_factory import (
+        CONSTANT_FAMILY_MAP,
+        FamilyScenarioFactory,
+    )
 
     logger.info("Generating parametric + family-aware scenarios...")
-    # Generic scenarios for baseline (reduced count since families carry the load)
-    generic_classes = ScenarioFactory.create_all(n=20)
+
+    if family_weighted:
+        # 8 varied family scenarios per family × 4 families = 32 family
+        # classes; pick the 8 for the relevant family per constant inside
+        # the loop. Generic scenarios are only used as a fallback for
+        # constants that have NO matching family (via CONSTANT_FAMILY_MAP).
+        # For mapped constants, family scenarios carry 100% of the signal
+        # — the prior "4 family + 5 generic" blend diluted decay_rate
+        # variance from 0.18 (family-only) to 0.04 (blended) because
+        # generic scenarios are insensitive to most Tier-1 constants by
+        # construction (their ground truth doesn't exercise the swept code
+        # path).
+        varied_family = FamilyScenarioFactory.create_varied(n_per_family=8)
+        generic_classes = ScenarioFactory.create_all(n=10)
+    else:
+        varied_family = None
+        generic_classes = ScenarioFactory.create_all(n=20)
 
     logger.info(
-        "Starting %s parametric sweeps (%d constants, %d generic scenarios)...",
+        "Starting %s parametric sweeps (%d constants, %d generic scenarios, family_weighted=%s)...",
         tier_name,
         len(tier_sweeps),
         len(generic_classes),
+        family_weighted,
     )
     tier_start = time.monotonic()
 
     for constant_name, values in tier_sweeps.items():
-        # Get family-specific scenarios for this constant
-        family_for_constant = FamilyScenarioFactory.for_constant(constant_name)
-        # Combine: family scenarios first (they exercise the code path),
-        # then generic scenarios (baseline coverage)
-        combined = family_for_constant + generic_classes
+        if family_weighted:
+            # Pick the varied family scenarios that match this constant's family.
+            target_family = CONSTANT_FAMILY_MAP.get(constant_name)
+            if target_family:
+                family_for_constant = [
+                    c
+                    for c in varied_family
+                    if c.name.startswith(f"family_{target_family}_")
+                ]
+                # 8 family + 5 generic: family majority but include some
+                # generic coverage for constants that also affect common
+                # retrieval paths (e.g. WF_MIN_THRESHOLD filters records
+                # in *any* generic scenario that uses WriteFilterMixin).
+                combined = family_for_constant + generic_classes
+            else:
+                # Unmapped constant -> use all families + generics as a
+                # safety net.
+                combined = varied_family + generic_classes
+        else:
+            family_for_constant = FamilyScenarioFactory.for_constant(constant_name)
+            # Legacy path: include generics
+            combined = family_for_constant + generic_classes
+
         runner = SweepRunner(combined)
 
+        # Compute per-sweep family/generic breakdown for the log line.
+        n_family = (
+            len(combined)
+            if family_weighted and CONSTANT_FAMILY_MAP.get(constant_name)
+            else (
+                len(combined) - len(generic_classes)
+                if generic_classes
+                else len(combined)
+            )
+        )
+        n_generic = len(combined) - n_family
         logger.info(
             "  Sweeping %s over %s (%d scenarios: %d family + %d generic)",
             constant_name,
             values,
             len(combined),
-            len(family_for_constant),
-            len(generic_classes),
+            n_family,
+            n_generic,
         )
         results = runner.run_single_sweep(constant_name, values)
         aggregator.add_sweep(constant_name, results)
