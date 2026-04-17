@@ -200,6 +200,26 @@ class TestHttpErrors:
             with pytest.raises(RuntimeError, match="Ollama HTTP 500"):
                 provider.embed(["hi"])
 
+    def test_http_error_mentioning_model_but_not_not_found_is_generic(self):
+        # Pins the discrimination contract: an error body that mentions
+        # the word "model" but is NOT a not-found error must surface as a
+        # generic Ollama HTTP <code> message, NOT the `ollama pull` hint.
+        # Before the heuristic was tightened, messages like "model load
+        # failed: out of memory" incorrectly routed to the pull branch.
+        provider = OllamaProvider(model="mystery-model")
+        err = self._http_error(
+            500,
+            json.dumps({"error": "model load failed: out of memory"}).encode(),
+        )
+        with patch("urllib.request.urlopen") as m:
+            m.side_effect = err
+            with pytest.raises(RuntimeError) as exc_info:
+                provider.embed(["hi"])
+        msg = str(exc_info.value)
+        assert "Ollama HTTP 500" in msg
+        # Must NOT advise pulling the model -- the model is already loaded.
+        assert "ollama pull" not in msg
+
     def test_http_error_with_empty_body(self):
         provider = OllamaProvider()
         err = self._http_error(503, b"")

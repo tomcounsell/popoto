@@ -122,7 +122,12 @@ class OllamaProvider(AbstractEmbeddingProvider):
                 parsed = {}
             msg = parsed.get("error", "") if isinstance(parsed, dict) else ""
             msg_lower = msg.lower()
-            if "not found" in msg_lower or "model" in msg_lower:
+            # Only trigger the `ollama pull` hint when the error body is an
+            # unambiguous "not found" -- an earlier version also matched on
+            # the bare word "model", which misfires on errors like
+            # "model load failed: out of memory" or "model inference failed"
+            # and tells the user to pull a model that is already present.
+            if "not found" in msg_lower:
                 raise RuntimeError(
                     f"Model '{self._model}' not found on Ollama server at "
                     f"{self._base_url}. Run: ollama pull {self._model}"
