@@ -435,7 +435,8 @@ class TestWriteFilterSynergy:
 
     def test_accepted_record_in_bloom(self):
         """Record above WriteFilter threshold IS in Bloom filter."""
-        # importance=0.5 >= min_threshold=0.2 -> saved normally
+        # importance=0.5 >= min_threshold=0.1 (2026-04-17 tuning)
+        # -> saved normally
         item = FilteredBloomModel(
             name="accepted",
             topic="significant",
