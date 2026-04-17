@@ -1,5 +1,5 @@
 ---
-status: Ready
+status: docs_complete
 type: feature
 appetite: Small
 owner: valorengels
@@ -194,16 +194,17 @@ No agent integration required -- this is a Popoto library embedding provider use
 ## Documentation
 
 ### Feature Documentation
-- [ ] Update `docs/features/content-and-embedding-fields.md` to add OllamaProvider section
-- [ ] Update `docs/configuration.md` to show OllamaProvider in configure() examples
+- [x] Update `docs/features/content-and-embedding-fields.md` to add OllamaProvider section
+- [x] Update `docs/configuration.md` to show OllamaProvider in configure() examples
+- [x] Update `docs/fields.md` Embedding Providers list (cascade: three providers, OllamaProvider subsection)
 
 ### External Documentation Site
-- [ ] Update `docs/guides/agent-memory-quickstart.md` with Ollama setup option
-- [ ] Verify docs build passes with `mkdocs build`
+- [x] Update `docs/guides/agent-memory-quickstart.md` with Ollama setup option
+- [x] Verify docs build passes with `mkdocs build`
 
 ### Inline Documentation
-- [ ] Docstrings on `OllamaProvider` class and all public methods
-- [ ] Code comments on error handling logic
+- [x] Docstrings on `OllamaProvider` class and all public methods
+- [x] Code comments on error handling logic
 
 ## Success Criteria
 

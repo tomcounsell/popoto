@@ -155,7 +155,7 @@ for field-level configuration.
 
 ### Embedding Providers
 
-Popoto ships with two built-in embedding providers. Both implement the
+Popoto ships with three built-in embedding providers. All implement the
 `AbstractEmbeddingProvider` interface from `popoto.embeddings`.
 
 #### Voyage AI
