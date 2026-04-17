@@ -114,10 +114,6 @@ class DecayFamilyScenario(Scenario):
 
     def setup(self):
         rng = random.Random(self._seed.seed_id)
-        # Oracle RNG is SEPARATE from the setup RNG so the oracle permutation
-        # is stable across override values (same seed_id -> same permutation)
-        # but independent of any swept constant. Salt chosen arbitrarily.
-        oracle_rng = random.Random(self._seed.seed_id ^ 0xDECA5A17)
         decay_rate = self.overrides.get("decay_rate", 0.5)
 
         class DecayMemory(popoto.Model):
@@ -132,24 +128,28 @@ class DecayFamilyScenario(Scenario):
         self._instances = []
         self._importance_values = []
         self._age_days = []
-        # Oracle ranks — a random permutation stable per seed_id but
-        # STRUCTURALLY INDEPENDENT of any input signal the retriever can
-        # see (importance, age, decay_rate). This is the B1-fix fallback
-        # from the plan: when the log1p(age) oracle still correlates too
-        # strongly with power-law retrieval, use a shuffled oracle that
-        # the retriever cannot achieve by tuning decay_rate.
-        n = self._seed.record_count
-        perm = list(range(n))
-        oracle_rng.shuffle(perm)
-        # _oracle_score[idx] in [0, 1]; higher = more relevant
-        self._oracle_score = {idx: (n - rank) / n for rank, idx in enumerate(perm)}
+        # Oracle (B1 fix): purely importance-based ranking, with SPREAD
+        # importance values (not clustered) so there's a clear importance
+        # ordering. Retrieval uses ``importance * age^(-decay_rate)`` which
+        # MIXES importance with age. Low decay_rate -> retrieval ~
+        # importance-dominated -> matches oracle well; high decay_rate ->
+        # retrieval mostly age-dominated -> diverges from the importance
+        # oracle. Oracle has no age dependency so there's a monotonic
+        # relationship between decay_rate and nDCG (high decay_rate
+        # should score worse).
 
         now = time.time()
         n = self._seed.record_count
 
         for idx in range(n):
-            # Clustered importance: all records between 0.45 and 0.55
-            imp = rng.uniform(0.45, 0.55)
+            # SPREAD importance: strong variation (0.1-0.95) so the
+            # importance-based oracle has a clear ordering. Prior version
+            # used clustered 0.45-0.55, which combined with age bimodality
+            # meant retrieval was 100% driven by decay — no importance
+            # component for decay_rate to trade off against. With spread
+            # importance, retrieval ``importance * age^(-decay_rate)``
+            # genuinely mixes the two signals.
+            imp = rng.uniform(0.1, 0.95)
             self._importance_values.append(imp)
 
             instance = DecayMemory(
@@ -214,24 +214,21 @@ class DecayFamilyScenario(Scenario):
             key = getattr(r, "_redis_key", None) or r.db_key.redis_key
             retrieved_ids.append(key)
 
-        # Ground truth: shuffled oracle (B1 fix fallback).
-        # Each record has a pre-computed oracle rank (via _oracle_score in
-        # setup). The permutation is stable per seed_id but is
-        # STRUCTURALLY INDEPENDENT of importance, age, and decay_rate — so
-        # no choice of decay_rate can achieve perfect ranking by
-        # construction. The retriever has to balance "rank by
-        # importance*age^(-decay)" against a scrambled oracle; different
-        # decay_rate values produce different permutations of retrieval,
-        # which produce different overlap with the scrambled oracle top-K,
-        # which produces nDCG variance.
+        # Ground truth (B1 fix): rank by IMPORTANCE ALONE. No age
+        # component. Retrieval mixes importance * age^(-decay_rate). Low
+        # decay_rate -> retrieval ~= importance-ordered -> high nDCG; high
+        # decay_rate -> retrieval dominated by age -> recent records top
+        # regardless of importance -> diverges from the oracle -> low
+        # nDCG. This gives a monotonic nDCG-vs-decay_rate relationship
+        # and substantial variance.
         decay_rate = self.overrides.get("decay_rate", 0.5)
 
         relevance_scores = {}
         for i, inst in enumerate(self._instances):
             key = getattr(inst, "_redis_key", None) or inst.db_key.redis_key
-            relevance_scores[key] = self._oracle_score[i]
+            relevance_scores[key] = self._importance_values[i]
 
-        # Top 30% by oracle score are relevant
+        # Top 30% by importance are relevant
         sorted_by_score = sorted(
             relevance_scores.items(), key=lambda x: x[1], reverse=True
         )
@@ -247,7 +244,7 @@ class DecayFamilyScenario(Scenario):
                 "seed_id": self._seed.seed_id,
                 "n_instances": len(self._instances),
                 "decay_rate": decay_rate,
-                "oracle": "seeded random permutation (shuffled)",
+                "oracle": "importance-only ranking (no age component)",
             },
         )
 
@@ -290,6 +287,7 @@ class ConfidenceFamilyScenario(Scenario):
         )
 
     def setup(self):
+        rng = random.Random(self._seed.seed_id)
         initial_confidence = self.overrides.get("initial_confidence", 0.5)
 
         class ConfMemory(popoto.Model):
@@ -308,6 +306,28 @@ class ConfidenceFamilyScenario(Scenario):
 
         n = self._seed.record_count
 
+        def _sample_tier(p_acted: float, p_dismissed: float, length: int):
+            """Sample a length-N outcome sequence.
+
+            Each round independently draws from
+            {acted, dismissed, contradicted} with the given probabilities
+            (contradicted fills the remainder). Per-record randomness makes
+            records within the same importance tier have different outcome
+            histories, so ACTED_CONFIDENCE_SIGNAL / CONTRADICTED_CONFIDENCE_
+            SIGNAL produce different confidence rankings instead of
+            collapsing every tier to a single constant.
+            """
+            outcomes = []
+            for _ in range(length):
+                r = rng.random()
+                if r < p_acted:
+                    outcomes.append("acted")
+                elif r < p_acted + p_dismissed:
+                    outcomes.append("dismissed")
+                else:
+                    outcomes.append("contradicted")
+            return outcomes
+
         # Create records with spread importance for outcome assignment
         for idx in range(n):
             imp = 0.15 + (0.80 * idx / max(n - 1, 1))
@@ -325,30 +345,27 @@ class ConfidenceFamilyScenario(Scenario):
             except Exception as e:
                 return ScenarioResult(status="error", error_message=f"save failed: {e}")
 
-            # Assign 8-round outcome sequence based on importance tier.
-            # Retriever observes seq[0:5]; ground truth uses seq[5:8].
+            # Assign 8-round outcome sequence as a STOCHASTIC draw from a
+            # per-tier distribution. Tier distributions are CLOSE together
+            # so the top-30% held-out-acted set isn't trivially the top
+            # importance tier — confidence-based retrieval actually has to
+            # predict which records will be acted-heavy in the held-out
+            # window. Overlap between tiers means ACTED_CONFIDENCE_SIGNAL
+            # and CONTRADICTED_CONFIDENCE_SIGNAL overrides measurably
+            # change the ranking of borderline records. Retriever observes
+            # seq[0:5]; ground truth uses seq[5:8].
             if imp >= 0.7:
-                # High importance: mostly acted across all 8 rounds
-                seq = ["acted"] * 8
+                # High-importance tier: 60% acted / 25% dismissed / 15% contradicted
+                seq = _sample_tier(0.60, 0.25, 8)
             elif imp >= 0.5:
-                # Medium-high: mostly acted with occasional dismissed
-                seq = [
-                    "acted", "acted", "dismissed", "acted", "acted",
-                    "acted", "dismissed", "acted",
-                ]
+                # Medium-high: 50% acted / 30% dismissed / 20% contradicted
+                seq = _sample_tier(0.50, 0.30, 8)
             elif imp >= 0.3:
-                # Medium: mixed outcomes, fairly even split
-                seq = [
-                    "acted", "dismissed", "contradicted", "acted", "dismissed",
-                    "dismissed", "acted", "contradicted",
-                ]
+                # Medium: 40% acted / 35% dismissed / 25% contradicted
+                seq = _sample_tier(0.40, 0.35, 8)
             else:
-                # Low: mostly contradicted/dismissed
-                seq = [
-                    "contradicted", "contradicted", "dismissed",
-                    "contradicted", "contradicted",
-                    "contradicted", "dismissed", "contradicted",
-                ]
+                # Low: 25% acted / 35% dismissed / 40% contradicted
+                seq = _sample_tier(0.25, 0.35, 8)
             self._outcome_sequences.append(seq)
 
         if not self._instances:
