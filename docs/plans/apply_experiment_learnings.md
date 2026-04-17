@@ -6,6 +6,8 @@ owner: Valor Engels
 created: 2026-04-17
 tracking: https://github.com/tomcounsell/popoto/issues/351
 last_comment_id:
+revision_applied: true
+revision_date: 2026-04-17
 ---
 
 # Apply experiment learnings: fix overrides, ground truth, and update constants
@@ -120,13 +122,13 @@ No prerequisites — Redis (localhost:6379) is already required for the standard
 
 - **Override-reachable mixin reads**: `WriteFilterMixin` and `PredictionLedgerMixin` stop caching `Defaults.*` at class body. Reads become runtime lookups (property or `getattr(self, ...)` with fallback to `Defaults.*`), so `apply_overrides()` patching `Defaults` is actually observed.
 - **Override registry coverage**: `tests/benchmarks/overrides.py` gains an explicit `CLASS_ATTR_CONSTANTS` entry for WF_MIN_THRESHOLD, WF_PRIORITY_THRESHOLD, and the 5 PL_* constants. Each override patches `Defaults` AND any class-body fallbacks still present on relevant mixins. A new test `tests/benchmarks/test_overrides_reach.py` asserts, for all 19 constants, that the effective value inside the context manager differs from the default.
-- **Decoupled family ground truth**: Each of the 4 family scenarios gets its ground truth rewritten so that relevance is determined by the *outcome of the constant's behavior* rather than the input signal:
-  - `DecayFamilyScenario`: ground truth = records the retrieval system *would rank in the top-K if decay_rate were correct for this data's age distribution*. Use a held-out reference decay_rate (e.g., 0.5 as the "truth") and score nDCG against its ranking. Overrides that deviate should drop nDCG.
-  - `ConfidenceFamilyScenario`: ground truth = records whose *future* outcome sequence (a second, unseen set of interactions) is "acted"-dominant. The retriever only sees past outcomes; ground truth uses held-out ones.
-  - `WriteFilterFamilyScenario`: ground truth = top-K by importance from the *full intended set* (kept as-is, this one was already decoupled) — verify and document.
-  - `CoOccurrenceFamilyScenario`: ground truth already uses cluster membership (hop1, hop2), not the raw propagation score — verify and document.
+- **Decoupled family ground truth**: Each of the 4 family scenarios gets its ground truth rewritten so that relevance is determined by a signal *orthogonal to* the one the retriever consumes, not a scaled copy of it (per critique B1/B2/C1):
+  - `DecayFamilyScenario` (B1 fix — oracle must not be a power-law of the same inputs): ground truth = oracle rank computed as `importance * log1p(age_days)` (logarithmic, not a power law). Retrieval continues to use `importance * age^(-decay_rate)` via `DecayingSortedField`. Because log-growth and power-law-decay are structurally different, an override of `decay_rate=0.1` vs `0.9` will actually diverge from the oracle ordering instead of producing symmetric permutations that score identically. Alternative (if log still correlates too strongly in testing): `rng.shuffle(list(range(n)))` seeded with a fixed salt independent of the constant being swept.
+  - `ConfidenceFamilyScenario` (C4 fix — held-out split must be concretely specified): generate **8-round** outcome sequences per record using the same per-tier distribution rule currently used for 5-round sequences. Feed `seq[:5]` to `ObservationProtocol` in the 5-round observation loop (unchanged). In `run()`, compute `relevance_scores[key] = mean(seq[5:8] == "acted")`. Ground truth `relevant_ids` = top 30% by this held-out acted-rate. The retriever's confidence state (based on observed rounds 0–4) is evaluated on its ability to predict future (rounds 5–7) acted-rate.
+  - `WriteFilterFamilyScenario` (C1 fix — NOT already decoupled, contrary to prior plan wording): in `setup()`, add an orthogonal urgency field `self._gt_urgency = {idx: rng.random() for idx in range(n)}`. Ground truth = top-K by urgency **for records not filtered by `wf_min`**. Retrieval still filters by importance. As the override threshold rises, high-urgency-low-importance records get filtered out, dropping nDCG. This isolates "filter removes valuable-by-orthogonal-signal records" from "retrieval favors what survived."
+  - `CoOccurrenceFamilyScenario` (B2 fix — NOT already decoupled; hop-depth strictly orders retrieval regardless of `decay_per_hop`): add a small number of "noise" hop2 records with direct seed↔hop2 links weighted at `initial_weight * 0.3` (the standard seed↔hop1 weight is `initial_weight`). Retrieval ordering of hop1 vs hop2-noise now depends on whether `decay_per_hop^1 * initial_weight` exceeds `decay_per_hop^0 * (initial_weight * 0.3)` — i.e., depends on `decay_per_hop` itself. Ground truth continues to rank hop1 (topological cluster membership) above hop2-noise, independent of the propagation math.
 - **Family-weighted sweep**: Run `run_sweeps.py --parametric --tier all` with a reduced generic-scenario count so family scenarios are not drowned. Alternatively add a `--family-only` flag.
-- **Evidence-driven defaults**: For each constant with nDCG variance > 0.05, update `Defaults.*` to the best-scoring value. For constants with variance ≤ 0.05 after decoupled ground truth, add a one-line comment `# empirically inert (sweep YYYY-MM-DD)` next to the default. Commit the sweep result alongside the `constants.py` update.
+- **Evidence-driven defaults**: For each constant with nDCG variance > 0.05, update `Defaults.*` to the best-scoring value. For constants with variance ≤ 0.05 after decoupled ground truth, add a one-line comment `# empirically inert (sweep YYYY-MM-DD)` next to the default. **Commit the final sweep JSON into `tests/benchmarks/results/` alongside the `constants.py` update, per existing precedent** (prior sweeps are already checked in).
 
 ### Flow
 
@@ -139,10 +141,11 @@ Current `constants.py` defaults → `/do-build` lands override fixes + decoupled
   - *Option B (preferred for PredictionLedgerMixin):* Keep class attributes but make them lazy — use a `classmethod` accessor `_get_pl_setting(name)` that reads from `Defaults` at call time. The existing `_pl_auto_resolve_errors` dict is rebuilt per-call. The mixin's private callers already use `getattr(instance, '_pl_confidence_error_threshold', 0.7)`, so they adapt naturally.
   - **Validation:** Write `tests/benchmarks/test_overrides_reach.py::test_all_constants_patchable` that iterates all 19 constant names, enters `apply_overrides({name: sentinel_value})`, reads the effective value via the production code path, and asserts it equals `sentinel_value`.
 - **Fix 2 — Extend `overrides.py` registry.** Add `CLASS_ATTR_CONSTANTS` parallel to `MODULE_CONSTANTS` that maps constants to the mixin classes needing class-attr patches. `apply_overrides()` saves and restores class attributes for these. After Fix 1, this may be a no-op for the refactored mixin, but it is a belt-and-suspenders guard and makes the registry authoritative.
-- **Fix 3 — Decouple ground truth.** In `family_factory.py`, each scenario's `run()` computes `relevance_scores` from a signal *different* from the one the retriever consumes:
-  - `DecayFamilyScenario`: add `self._reference_decay_rate = 0.5` during `setup()`. Ground truth uses `importance * age^(-reference_decay_rate)`. Retrieval uses the overridden `decay_rate`. Now an override of 0.1 or 0.9 will diverge from the reference ordering, and nDCG will drop.
-  - `ConfidenceFamilyScenario`: split `_outcome_sequences` into `_observed_outcomes` (fed to ObservationProtocol) and `_held_out_outcomes` (used to compute ground truth). The retriever only sees past outcomes; ground truth is future behavior.
-  - `WriteFilterFamilyScenario` and `CoOccurrenceFamilyScenario`: audit each — if ground truth is already decoupled (top-K by planned importance; cluster hop membership), just add a comment noting the decoupling and skip further changes.
+- **Fix 3 — Decouple ground truth.** In `family_factory.py`, each scenario's `run()` computes `relevance_scores` from a signal *structurally orthogonal* to the one the retriever consumes (not a scaled copy). The critique verified that the prior "reference constant" approach produces symmetric permutations that score identically — the oracle must not be a power-law of the same inputs:
+  - `DecayFamilyScenario` (replaces B1-circular design): In `setup()`, after age assignment, compute `self._oracle_ranks` using `importance * log1p(age_days)` — a logarithmic growth function of age, structurally different from the power-law decay `age^(-decay_rate)` the retrieval uses. Ground truth = top-K by oracle rank. Retrieval continues using `DecayingSortedField` with the overridden `decay_rate`. An override of `0.1` vs `0.9` now diverges from the oracle rather than producing symmetric inversions. Fallback if `log1p(age)` still correlates too strongly with `age^(-decay)` in sanity tests: use `rng.shuffle(list(range(n)))` seeded with a fixed salt independent of the swept constant.
+  - `ConfidenceFamilyScenario` (replaces C4-underspecified split): Modify the `seq = ["acted"] * 5` lines in `ConfidenceFamilyScenario.setup()` to produce **8-length sequences** using the same per-tier distribution rule (same RNG, same distribution, just longer). Feed `seq[:5]` to `ObservationProtocol` during the 5-round observation loop — the retriever only sees observed rounds. In `run()`, compute `relevance_scores[key] = mean(seq[5:8] == "acted")` — this is what a well-calibrated confidence state *should* predict. Ground truth `relevant_ids` = top 30% by this held-out acted-rate. Add a code comment explaining: retriever trains on rounds 0–4, ground truth is rounds 5–7.
+  - `WriteFilterFamilyScenario` (fixes C1 — was NOT decoupled, contrary to prior plan text): In `setup()`, add `self._gt_urgency = {idx: rng.random() for idx in range(n)}` — an orthogonal scalar uncorrelated with `importance`. Ground truth = top-K by urgency **restricted to records not filtered by `wf_min`** (i.e., whose importance ≥ the threshold at sweep time). Retrieval continues to filter by importance and score by composite. As the override threshold rises, high-urgency-low-importance records get filtered out, dropping nDCG. This isolates "filter removes valuable-by-orthogonal-signal records" from "retrieval favors what survived."
+  - `CoOccurrenceFamilyScenario` (fixes B2 — was NOT decoupled; hop-depth strictly orders retrieval): Add a small number of "noise" hop2 records with **direct seed↔hop2 links** weighted at `initial_weight * 0.3` (where the standard seed↔hop1 weight is `initial_weight`). After this change, retrieval ordering of hop1 vs hop2-noise depends on whether `decay_per_hop^1 * initial_weight` exceeds `decay_per_hop^0 * (initial_weight * 0.3)` — i.e., depends on `decay_per_hop` itself. At low `decay_per_hop` the hop2-noise outscores hop1 (direct link wins); at high `decay_per_hop` hop1 wins. Ground truth continues to rank hop1 (topological cluster membership) above hop2-noise, independent of the propagation math. Fixes the B2 circularity.
 - **Fix 4 — Run sweep, apply, commit.**
   1. `python -m tests.benchmarks.run_sweeps --parametric --tier 1` (verify sensitivity with fixed scaffolding).
   2. If ≥5 constants show variance > 0.05, extend to `--tier 2` and `--tier 3`. Otherwise, investigate and iterate on ground-truth decoupling.
@@ -163,13 +166,16 @@ Two existing plan docs (`experimental_tuning_magic_numbers.md`, `scenario_code_p
 ### Error State Rendering
 - Sweep output is machine-readable JSON; errors surface as `status: "error"` entries in the result file. No user-facing rendering path.
 
-## Test Impact
-
-- `tests/benchmarks/test_overrides_reach.py` — CREATE: new test asserting all 19 constants are patchable end-to-end.
-- `tests/benchmarks/test_factory.py` — INSPECT: confirms family scenario construction. May need UPDATE if ground-truth decoupling changes scenario signatures.
+- `tests/benchmarks/test_overrides_reach.py` — CREATE: new test file covering:
+  - `test_all_constants_patchable` — parameterized over all 19 constants; asserts effective value inside `apply_overrides()` equals the sentinel via the production code path.
+  - `test_unknown_name_raises_keyerror` (C3 transition test) — asserts `apply_overrides({'DOES_NOT_EXIST': 0.5})` raises `KeyError` (or logs a deprecation warning if the migration period is still active — see task 2).
+  - `test_all_registered_names_dont_raise` — asserts every name in `MODULE_CONSTANTS ∪ CLASS_ATTR_CONSTANTS ∪ Defaults.*` registry does NOT trigger the unknown-name path.
+- `tests/benchmarks/test_factory.py` — INSPECT + UPDATE: ground-truth decoupling changes scenario internals. Add `test_decay_family_produces_variance` (B1 sanity test): asserts nDCG at `decay_rate=0.1` vs `decay_rate=0.9` in `DecayFamilyScenario` differs by > 0.05. This test is designed to FAIL under the prior `age^(-0.5)` oracle design and to PASS under the `log1p(age)` oracle.
 - `tests/benchmarks/test_sweep.py` — INSPECT: may need UPDATE if new `CLASS_ATTR_CONSTANTS` branch is added to `apply_overrides`.
-- `tests/test_write_filter.py` (if exists) — INSPECT: if Option A is chosen for Fix 1, tests that directly set `_wf_min_threshold` as a class attribute still need to work. The property should yield to any class-level override in a subclass.
-- `tests/test_prediction_ledger.py` (if exists) — INSPECT: same as above for PL_* constants.
+- `tests/test_write_filter.py` (C5 perf + subclass guard tests):
+  - `test_subclass_class_attr_wins_over_property` — covers existing subclass override pattern (`tests/test_write_filter.py:41-42` sets `_wf_min_threshold = 0.5` on a subclass). Property in parent; class attribute in subclass must still win via `__getattribute__` subclass-dict-first lookup.
+  - `test_save_perf_post_property` — saves 1000 records and asserts total wall-clock time < 1.5x the baseline (record baseline with `git stash` + `pytest --benchmark-only` before the refactor). If regression exceeds 5%, cache resolved value on the instance (`self._wf_min_threshold_resolved`) and have the property return the cached value, with a classmethod to invalidate on `Defaults` patch.
+- `tests/test_prediction_ledger.py` (if exists) — INSPECT: same subclass-wins guard for PL_* constants if Option B (classmethod accessor) is used; the classmethod itself is not a descriptor, so the subclass override pattern is different — document in the test.
 
 No deletions expected. All changes are additive or refactor-safe.
 
@@ -184,12 +190,17 @@ No deletions expected. All changes are additive or refactor-safe.
 ## Risks
 
 ### Risk 1: Ground-truth decoupling makes scenarios pathologically easy or hard
-**Impact:** A reference-ordering ground truth could produce nDCG values clustered at 1.0 or 0.0 regardless of the override, defeating the sensitivity signal a second time.
-**Mitigation:** After Fix 3, before running the full sweep, run one targeted `--tier 1` sweep and inspect variance. If variance is still < 0.05, iterate on the scenario before spending compute on full sweeps. Include a quick `test_family_factory_produces_variance` check that asserts `decay_rate=0.1` and `decay_rate=0.9` produce nDCG values differing by > 0.05 in `DecayFamilyScenario`.
+**Impact:** An oracle signal that still correlates strongly with the retrieval signal (even if not identical to it) could produce nDCG values clustered at 1.0 or 0.0 regardless of the override, defeating the sensitivity signal a second time. The critique specifically flagged the prior `age^(-reference)` oracle as failing this way — symmetric power-law swings around the reference produce identical nDCG at override extremes.
+**Mitigation:** Fix 3 now uses structurally orthogonal oracles (log-growth vs power-decay, urgency vs importance, held-out future vs observed past, cross-cluster noise links). Before running the full sweep, run the task-4 sanity tests (`test_decay_family_produces_variance`, `test_cooccurrence_noise_links_break_circularity`, etc.) to confirm each family produces variance > 0.05 between override extremes. If any sanity test fails, iterate on that family's oracle before spending compute on the full sweep. If `log1p(age)` still correlates too strongly in `DecayFamilyScenario`, fall back to the `rng.shuffle` oracle noted in task 4.
 
-### Risk 2: Option A (property) breaks subclasses that set `_wf_min_threshold` as a class attribute
-**Impact:** Models that extend `WriteFilterMixin` and set `_wf_min_threshold = 0.3` at class body might silently hit the property instead of their override.
-**Mitigation:** Python's MRO evaluates descriptors first, so a subclass class attribute *does* shadow a parent property — but only if the subclass attribute is a plain value, not a property itself. Add a test `test_subclass_override_wins` that extends the mixin with a class-level 0.3 and asserts reads return 0.3 even when `Defaults.WF_MIN_THRESHOLD` is patched to 0.7.
+### Risk 2: Option A (property) subclass override + per-call performance overhead on `save()`
+**Impact:** Two sub-risks identified by critique C5:
+- (a) Subclass override pattern: existing code at `tests/test_write_filter.py:41-42` sets `_wf_min_threshold = 0.5` on a subclass. A plain class attribute in the subclass **does** correctly shadow a parent property — Python's attribute lookup uses subclass-dict-first in `__getattribute__`, so `subclass._wf_min_threshold` resolves to the plain value before the parent property is consulted. (The prior plan text incorrectly described MRO descriptor evaluation order — corrected here.) The subclass-wins path is safe but requires an explicit regression test since relying on it was implicit before.
+- (b) Performance: converting `_wf_min_threshold` from a cached class attribute to a property introduces a per-call `Defaults.WF_MIN_THRESHOLD` lookup on the `save()` hot path (`write_filter.py:115` reads `self._wf_min_threshold`). Uncached property access on a hot loop can regress throughput.
+
+**Mitigation:**
+- Add `tests/test_write_filter.py::test_subclass_class_attr_wins_over_property` that extends `WriteFilterMixin` with a class-level `_wf_min_threshold = 0.3` and asserts reads return 0.3 even when `Defaults.WF_MIN_THRESHOLD` is patched to 0.7.
+- Add `tests/test_write_filter.py::test_save_perf_post_property` that saves 1000 records and asserts total time < 1.5x the baseline. Record baseline with `git stash` + `pytest --benchmark-only` (or a manual `time.perf_counter()` loop) **before** the refactor. If the guard fails, cache the resolved value on the instance (`self._wf_min_threshold_resolved = Defaults.WF_MIN_THRESHOLD` at `__init__`); have the property return the cached value; expose a classmethod `invalidate_wf_cache()` to be called from `apply_overrides()` when `Defaults` changes.
 
 ### Risk 3: Updating `Defaults.*` values breaks downstream tests that depend on the old defaults
 **Impact:** Tests that were tuned around `DECAY_RATE=0.5` (for example) might fail if we set it to 0.1.
@@ -285,9 +296,12 @@ No agent integration required — Popoto is a library consumed by other projects
 - **Assigned To**: overrides-builder
 - **Agent Type**: builder
 - **Parallel**: true
-- Convert `WriteFilterMixin._wf_min_threshold` and `_wf_priority_threshold` to properties that read `Defaults.WF_MIN_THRESHOLD`/`WF_PRIORITY_THRESHOLD` at access time. Preserve subclass-override semantics.
+- **Baseline the hot path FIRST** (before any refactor): record `save()` throughput for `WriteFilterMixin`-using models by running `pytest --benchmark-only` or a manual 1000-record timing loop on current main. Note the wall-clock number; this is the pass/fail threshold for the C5 perf guard test.
+- Convert `WriteFilterMixin._wf_min_threshold` and `_wf_priority_threshold` to properties that read `Defaults.WF_MIN_THRESHOLD`/`WF_PRIORITY_THRESHOLD` at access time. Preserve subclass-override semantics — a plain subclass class attribute (e.g. `_wf_min_threshold = 0.3`) must still shadow the property via `__getattribute__` subclass-dict-first lookup.
 - Convert `PredictionLedgerMixin._pl_*` attributes to a classmethod `_get_pl_setting(name)` reading `Defaults.*` at call time; rebuild `_pl_auto_resolve_errors` per-call if needed.
 - Update internal callers (`_check_write_filter`, `_tag_priority`, `_apply_confidence_feedback`) to use the new accessors.
+- Add `tests/test_write_filter.py::test_subclass_class_attr_wins_over_property` — extends `WriteFilterMixin` with a class-level `_wf_min_threshold = 0.3`; asserts reads return 0.3 even when `Defaults.WF_MIN_THRESHOLD` is patched to 0.7.
+- Add `tests/test_write_filter.py::test_save_perf_post_property` — saves 1000 records and asserts total time < 1.5x the recorded baseline. If the guard fails: cache resolved value on the instance (`self._wf_min_threshold_resolved` at `__init__`), have the property return it, and add a classmethod `WriteFilterMixin.invalidate_wf_cache()` called from `apply_overrides()` on patch/restore.
 
 ### 2. Extend `apply_overrides` registry for class attrs
 - **Task ID**: build-overrides-registry
@@ -298,7 +312,10 @@ No agent integration required — Popoto is a library consumed by other projects
 - **Parallel**: false
 - Add `CLASS_ATTR_CONSTANTS` dict mapping WF_* and PL_* names to `(MixinClass, attr_name)` pairs. (No-op after Fix 1 but authoritative and future-proof.)
 - In `apply_overrides`, after the existing `Defaults`/module patching, also patch the mixin class attribute if the name is in `CLASS_ATTR_CONSTANTS`. Save original for restore.
-- Raise `KeyError` on unknown override names instead of silently ignoring (currently `elif hasattr(Defaults, name.upper())` silently no-ops).
+- **Handle unknown override names safely (C3 migration path):** FIRST grep `tests/benchmarks/ratchet.py`, `tests/benchmarks/sweep.py`, and `tests/benchmarks/split.py` for every `apply_overrides({...})` call site. Confirm none of them construct override names dynamically (from data, config files, or computed strings) that could miss the registry. If all call sites pass statically-known names, raise `KeyError` on unknown names directly. If ANY call site builds names dynamically, issue a `logger.warning("unknown override name %r — will raise in next release", name)` for this release and defer the hard error to a follow-up ticket. Document the decision in a code comment on the raise/warn branch.
+- Add tests to `tests/benchmarks/test_overrides_reach.py`:
+  - `test_unknown_name_raises_keyerror` — asserts the chosen behavior (raise OR log-warn) matches the decision above.
+  - `test_all_registered_names_dont_raise` — iterates every name in `MODULE_CONSTANTS ∪ CLASS_ATTR_CONSTANTS ∪ Defaults.*`-derived names and confirms none fall into the unknown-name branch.
 
 ### 3. Write `test_overrides_reach.py`
 - **Task ID**: build-test-overrides-reach
@@ -306,23 +323,28 @@ No agent integration required — Popoto is a library consumed by other projects
 - **Assigned To**: overrides-builder
 - **Agent Type**: test-engineer
 - **Parallel**: false
-- New file `tests/benchmarks/test_overrides_reach.py`.
-- Single parameterized test over all 19 constant names from `TIER1_SWEEPS | TIER2_SWEEPS | TIER3_SWEEPS`.
-- For each: enter `apply_overrides({name: sentinel})` where `sentinel` is a valid-range value != default; read the effective value via the production code path (instantiate a minimal model or call the accessor); assert equal to `sentinel`.
+- New file `tests/benchmarks/test_overrides_reach.py` with three tests:
+  - `test_all_constants_patchable` — parameterized over all 19 constant names from `TIER1_SWEEPS | TIER2_SWEEPS | TIER3_SWEEPS`. For each: enter `apply_overrides({name: sentinel})` where `sentinel` is a valid-range value != default; read the effective value via the production code path (instantiate a minimal model or call the accessor); assert equal to `sentinel`.
+  - `test_unknown_name_raises_keyerror` — asserts the behavior chosen in task 2 (raise `KeyError` OR emit `logger.warning` during the migration window). Document the expected behavior in the test docstring so the migration period is auditable.
+  - `test_all_registered_names_dont_raise` — iterates every name in `MODULE_CONSTANTS`, `CLASS_ATTR_CONSTANTS`, and every uppercase attribute on `Defaults`; confirms none fall into the unknown-name branch. Guards against future registry drift.
 
 ### 4. Decouple family-scenario ground truth
 - **Task ID**: build-decouple-ground-truth
 - **Depends On**: none (can parallelize with task 1)
 - **Validates**: `tests/benchmarks/test_factory.py`
-- **Informed By**: Research finding on nDCG requiring external ground truth
+- **Informed By**: Research finding on nDCG requiring external ground truth; critique findings B1, B2, C1, C4
 - **Assigned To**: scenarios-builder
 - **Agent Type**: builder
 - **Parallel**: true
-- In `DecayFamilyScenario`: introduce `self._reference_decay_rate = 0.5` in setup. Compute ground truth with reference, not override. Retrieval continues using override.
-- In `ConfidenceFamilyScenario`: split `_outcome_sequences` into observed (5 rounds → ObservationProtocol) and held-out (next 3 rounds → ground truth). Relevance = held-out "acted" fraction.
-- Add code comments explaining the decoupling in both scenarios.
-- Audit `WriteFilterFamilyScenario` and `CoOccurrenceFamilyScenario`: confirm ground truth is already decoupled. Add explanatory comment.
-- Add quick sanity test `tests/benchmarks/test_factory.py::test_decay_family_produces_variance` asserting `decay_rate=0.1` vs `decay_rate=0.9` in `DecayFamilyScenario` yields nDCG difference > 0.05.
+- **`DecayFamilyScenario` (B1 fix):** In `setup()`, after age assignment, compute `self._oracle_ranks` using `importance * log1p(age_days)` — a logarithmic growth function, structurally different from the power-law `age^(-decay_rate)` retrieval uses. Ground truth top-K = top-K records by `_oracle_ranks`. Retrieval continues via `DecayingSortedField` with the overridden `decay_rate`. Add a code comment: "Oracle uses log-growth of age; retrieval uses power-law decay — the two are not symmetric permutations of each other, so decay_rate variation changes nDCG." If the sanity test (below) fails under the log oracle, fall back to `self._oracle_ranks = rng.shuffle(list(range(n)))` seeded with a fixed salt independent of any swept constant.
+- **`ConfidenceFamilyScenario` (C4 fix):** Modify the `seq = ["acted"] * 5` lines in `setup()` to produce **8-length sequences** drawn from the same per-tier distribution. Feed `seq[:5]` to `ObservationProtocol` in the observation loop (rounds 0–4). In `run()`, compute `relevance_scores[key] = mean(seq[5:8] == "acted")`. Ground truth `relevant_ids` = top 30% by this held-out acted-rate. Add a code comment: "Retriever sees observed rounds 0–4 via ObservationProtocol; ground truth is held-out future behavior rounds 5–7. A well-calibrated confidence state predicts the future acted-rate."
+- **`WriteFilterFamilyScenario` (C1 fix — was NOT decoupled, contrary to prior plan wording):** In `setup()`, add `self._gt_urgency = {idx: rng.random() for idx in range(n)}`. Ground truth = top-K by urgency **restricted to records whose importance ≥ the current `wf_min` threshold** (i.e., records that survived the write filter). Retrieval continues via composite score driven by importance. Add a code comment: "Urgency is orthogonal to importance; filter removes high-urgency-low-importance records as threshold rises, which drops nDCG."
+- **`CoOccurrenceFamilyScenario` (B2 fix — was NOT decoupled):** Add a small number of noise hop2 records with direct seed↔hop2 links weighted at `initial_weight * 0.3` (vs the standard `initial_weight` for seed↔hop1). Retrieval ordering of hop1 vs hop2-noise now depends on `decay_per_hop` (compares `decay_per_hop^1 * initial_weight` vs `decay_per_hop^0 * initial_weight * 0.3`). Ground truth continues to rank hop1 (cluster membership) above hop2-noise. Add a code comment: "Cross-cluster noise links make retrieval ordering depend on decay_per_hop value, not just topology."
+- **Sanity tests in `tests/benchmarks/test_factory.py`:**
+  - `test_decay_family_produces_variance` (B1 guard) — asserts `DecayFamilyScenario` nDCG at `decay_rate=0.1` vs `decay_rate=0.9` differs by > 0.05. This test is designed to FAIL under the prior `age^(-0.5)` oracle and to PASS under the `log1p(age)` oracle.
+  - `test_confidence_family_held_out_split` — asserts `_outcome_sequences` have length 8; `ObservationProtocol` only sees `seq[:5]`; `relevance_scores` derived from `seq[5:8]`.
+  - `test_write_filter_family_urgency_orthogonal` — asserts `_gt_urgency` has near-zero Pearson correlation (|r| < 0.2) with `importance` across 100 records.
+  - `test_cooccurrence_noise_links_break_circularity` — asserts at least some hop2-noise records exist in the scenario graph and that `decay_per_hop=0.1` vs `0.9` yield nDCG difference > 0.05.
 
 ### 5. Run Tier 1 sweep and verify variance target
 - **Task ID**: run-tier1-sweep
@@ -332,7 +354,7 @@ No agent integration required — Popoto is a library consumed by other projects
 - **Parallel**: false
 - Run `python -m tests.benchmarks.run_sweeps --parametric --tier 1`.
 - Open the resulting JSON; compute variance per constant.
-- If ≥3 of 5 Tier-1 constants show variance > 0.05, proceed. Otherwise iterate on ground-truth decoupling (return to task 4).
+- **Variance gate (C2 fix):** If ≥4 of 5 Tier-1 constants show variance > 0.05, proceed to task 6. Otherwise return to task 4, cap at **2 iterations total** before filing a follow-up issue to escalate. This gate is tightened from the prior "3 of 5" to keep Tier 1 in-line with the global "≥5 total constants" acceptance criterion.
 
 ### 6. Run full-tier sweep
 - **Task ID**: run-full-sweep
@@ -342,7 +364,7 @@ No agent integration required — Popoto is a library consumed by other projects
 - **Parallel**: false
 - Run `python -m tests.benchmarks.run_sweeps --parametric --tier all`.
 - Verify at least 5 constants across all tiers show variance > 0.05 (acceptance criterion).
-- If not, investigate and extend scenario coverage or return to task 4.
+- **Rollback gate (C2 fix):** If fewer than 5 constants total (across all tiers) show variance > 0.05, STOP and return to task 4. Escalate to PM after **2 iterations total** of the task 4 → task 5 → task 6 loop (combined count — iterations at task 5 count toward the same budget). Filing a follow-up issue for remaining inert constants is acceptable once the budget is exhausted.
 
 ### 7. Apply sweep results to `constants.py`
 - **Task ID**: build-apply-defaults
@@ -352,7 +374,8 @@ No agent integration required — Popoto is a library consumed by other projects
 - **Parallel**: false
 - For each constant with variance > 0.05: update `Defaults.X = best_value` and add `# best from sweep YYYY-MM-DD, variance=V` comment.
 - For each constant with variance ≤ 0.05 after decoupling: add `# empirically inert (sweep YYYY-MM-DD)` comment. Do not remove.
-- Commit with message referencing the sweep JSON filename.
+- **Update docstrings in place (N1 fix):** For every `Defaults.X` value change, also update any docstring that cites that default in `src/popoto/fields/write_filter.py` (module docstring at `write_filter.py:10-11` cites WF_MIN_THRESHOLD/WF_PRIORITY_THRESHOLD) and `src/popoto/fields/prediction_ledger.py` (cites PL_* defaults). Grep `src/popoto/fields/*.py` for literal old values before committing; any match in a docstring or comment must be updated to the new value.
+- **Commit the final sweep JSON (N2-aligned):** Move/copy the final sweep result file into `tests/benchmarks/results/` alongside the `constants.py` update, per existing precedent. Include the sweep JSON filename in the commit message.
 
 ### 8. Run full test suite and resolve regressions
 - **Task ID**: validate-tests
@@ -395,7 +418,89 @@ No agent integration required — Popoto is a library consumed by other projects
 
 ## Critique Results
 
-<!-- Populated by /do-plan-critique (war room). Leave empty until critique is run. -->
+**Critics:** Skeptic, Operator, Archaeologist, Adversary, Simplifier, User
+**Findings:** 9 total (2 blockers, 5 concerns, 2 nits)
+**Date:** 2026-04-17
+
+### Blockers
+
+#### B1. `DecayFamilyScenario` ground-truth decoupling is still circular
+- **Critics:** Skeptic, Adversary
+- **Location:** Technical Approach / Fix 3 bullet 1; Solution bullet on DecayFamilyScenario
+- **Finding:** The plan proposes ground truth = `importance * age^(-reference_decay_rate=0.5)` while retrieval uses overridden `decay_rate`. But `importance` values are clustered at 0.45-0.55 (per `family_factory.py:122-123`), so the ordering is dominated by `age^(-decay_rate)`. When the overridden `decay_rate` equals the reference (0.5 is a swept value in `TIER1_SWEEPS`), nDCG must equal 1.0 by construction, and at 0.1 vs 0.9 the ordering of a bimodal (recent/old) age distribution is *exactly inverted but symmetric*, producing identical nDCG against both extremes. The "decoupling" only adds a scalar constant; it does not decouple the signal.
+- **Suggestion:** Ground truth should NOT be derived from any power-law of the same inputs. Options: (a) pre-score with an orthogonal function (e.g., a learned permutation fixed per-seed); (b) use an external ranking from a held-out "oracle" decay rate chosen to be OUTSIDE the swept range so that no override matches; (c) score against "recent half vs old half" as binary relevance independent of exact decay math.
+- **Implementation Note:** In `DecayFamilyScenario.setup()`, after age assignment, compute `self._oracle_ranks = [...]` using `rng.shuffle(list(range(n)))` seeded once at class-load with a fixed salt independent of the constant being swept, OR use `importance * log1p(age_days)` (not a power law) as the oracle. Retrieval continues to use `importance * age^(-decay_rate)` via `DecayingSortedField`. For the sanity test in task 4, assert that nDCG at `decay_rate=0.1` vs `decay_rate=0.9` differs by > 0.05 — this test will FAIL with the currently-proposed `age^(-0.5)` oracle because a symmetric swing around the reference produces the same nDCG at 0.1 and 0.9.
+
+#### B2. `CoOccurrenceFamilyScenario` ground truth is already circular; plan says "verify and document"
+- **Critics:** Skeptic, Simplifier
+- **Location:** Technical Approach / Fix 3 bullet 4; Solution Key Elements bullet 3
+- **Finding:** Per `family_factory.py:700-767`, retrieval calls `self._assoc_field.propagate(..., decay_per_hop=decay_per_hop)` and uses the resulting scores as `co_occurrence_boost` in `composite_score`. Ground truth assigns `hop1=1.0, hop2=0.5`. But the propagate() result is strictly hop-depth ordered: hop1 records will always score higher than hop2 records regardless of `decay_per_hop` value (0.1 vs 0.9 just changes the magnitude of the gap). So retrieval will ALWAYS rank hop1 before hop2 before unlinked — matching ground truth — giving nDCG ≈ 1.0 for any `decay_per_hop`. Plan claims this is already decoupled; it is not.
+- **Suggestion:** Introduce at least one cross-cluster link (e.g., 1-2 seed↔hop2 direct links) or vary initial_weight per link so that only certain `decay_per_hop` values produce hop1-dominant ordering. OR: define ground truth from an independent seed cluster assignment that does not match the link topology.
+- **Implementation Note:** Add a few "noise" hop2 records with direct seed links weighted at `initial_weight * 0.3`. Now retrieval ordering of hop1 vs hop2 depends on whether `decay_per_hop^1 * initial_weight` (standard hop1) exceeds `decay_per_hop^0 * (initial_weight * 0.3)` (noise hop2) — i.e., depends on `decay_per_hop` itself. Ground truth continues to rank hop1 (topological) above hop2-noise. Fixes the circularity.
+
+### Concerns
+
+#### C1. `WriteFilterFamilyScenario` ground truth is NOT decoupled and plan mis-classifies it
+- **Critics:** Skeptic, Adversary
+- **Location:** Solution Key Elements / WriteFilterFamilyScenario bullet; Fix 3 bullet 3
+- **Finding:** Per `family_factory.py:527-545`, ground truth is "top 30% by importance from the full intended set" while retrieval uses `composite_score(relevance=0.4, certainty=0.6)`. `relevance` is `DecayingSortedField(base_score_field="importance")` — so retrieval is ALSO driven by importance (plus confidence boost). The "decoupling" the plan claims is just "retrieve from surviving set, compare against planned set" — but since WF_MIN_THRESHOLD filters by importance and ground truth ranks by importance, the filter monotonically removes the low end of both. Variance comes from survivors + confidence boost interaction, not from a truly independent signal.
+- **Suggestion:** Define ground truth as a signal that does NOT correlate with importance. Options: (a) an explicit `self._ground_truth_ids` set chosen by `rng.sample()` independent of importance; (b) use a separate "urgency" field distinct from "importance" and rank ground truth by urgency while retrieval filters by importance.
+- **Implementation Note:** In `WriteFilterFamilyScenario.setup()`, add `self._gt_urgency = {idx: rng.random() for idx in range(n)}`. Ground truth: top-K by urgency for records not filtered by `wf_min`. As threshold rises, high-urgency-low-importance records get filtered, dropping nDCG. This isolates "filter removes valuable-by-orthogonal-signal records" from "retrieval favors what survived."
+
+#### C2. Success criterion "variance > 0.05 for ≥5 constants" vs task 5 gate "≥3 of 5 Tier-1"
+- **Critics:** Skeptic
+- **Location:** Step-by-step task 5 bullet 3 ("If ≥3 of 5 Tier-1 constants show variance > 0.05, proceed") vs Success Criteria line 4 ("≥5 constants")
+- **Finding:** Tier 1 has exactly 5 constants. Task 5 gate says 3/5 is enough to proceed to Tier 2; Success Criteria requires 5 total across all tiers. The gate is weaker than the acceptance criterion, creating a path where Tier 1 shows 3 variant constants, Tier 2/3 show 0-1 each, total = 3-4 < 5, and task 6 "verify at least 5 constants" fails AFTER significant compute has been spent. No rollback to "iterate on ground truth" is specified at task 6 — only task 5 mentions iteration back to task 4.
+- **Suggestion:** Either (a) tighten task 5 gate to "all 5 Tier-1 constants show variance > 0.05", or (b) explicitly allow task 6 to loop back to task 4 if the cumulative variance-passing count is below 5, with a bounded iteration count (e.g., max 2 re-design cycles before opening a follow-up issue).
+- **Implementation Note:** Replace task 5 bullet 3 with: "If ≥4 of 5 Tier-1 constants show variance > 0.05, proceed. Otherwise return to task 4, cap at 2 iterations total before filing a follow-up issue." Add to task 6: "If fewer than 5 constants total (across all tiers) show variance > 0.05, STOP and return to task 4. Escalate to PM after 2 iterations."
+
+#### C3. Task 2 raises `KeyError` on unknown overrides — breaking change with no migration
+- **Critics:** Operator, Adversary
+- **Location:** Step-by-step task 2 bullet 3
+- **Finding:** Current behavior (`overrides.py:152`) silently no-ops on unknown overrides via `elif hasattr(Defaults, name.upper())`. Task 2 changes this to raise KeyError. This is a breaking behavior change that will crash any existing caller passing an unexpected name (including typos in future sweep configs). The ratchet loop (`ratchet.py`) and parametric sweeps may construct override names from data. No test is specified to catch callers that currently depend on the silent-ignore behavior.
+- **Suggestion:** Before raising, log the current silent-no-op behavior with `logger.warning` for one release cycle. Alternatively, issue a deprecation warning now and convert to error later. Add a test that covers a known-misspelled name to document the transition behavior.
+- **Implementation Note:** Task 2 step should be "Raise `KeyError` — but FIRST grep `tests/benchmarks/ratchet.py`, `tests/benchmarks/sweep.py`, `tests/benchmarks/split.py` for any `apply_overrides({...})` call site to confirm none pass dynamically-named keys that could miss the registry. If any dynamic callers exist, log-warn for one release and defer the hard error." Add to Test Impact: `tests/benchmarks/test_overrides_reach.py::test_unknown_name_raises_keyerror` and `test_overrides_reach.py::test_all_registered_names_dont_raise`.
+
+#### C4. `ConfidenceFamilyScenario` split into observed/held-out is underspecified
+- **Critics:** Adversary, User
+- **Location:** Technical Approach / Fix 3 bullet 2
+- **Finding:** Plan says "split `_outcome_sequences` into observed (5 rounds) and held-out (next 3 rounds)." But current `_outcome_sequences` (family_factory.py:278-295) is hard-coded to 5 entries per record. No guidance on (a) how to generate the 3 held-out rounds (same deterministic schedule? fresh RNG?), (b) whether held-out outcomes should come from a different distribution than observed ones (otherwise the "future" is just more of the same and doesn't test confidence calibration), (c) how to score relevance from the held-out fraction ("acted"-dominant — but using what threshold?).
+- **Suggestion:** Be concrete: generate 8-round sequences with the same distribution-per-tier rule; fed rounds 0-4 to ObservationProtocol; compute ground truth as `sum(rounds[5:8].count("acted")) / 3 ≥ 0.5 → relevant`. OR: keep observed rounds from the same distribution but draw held-out rounds with added noise so "calibrated confidence" is what actually predicts future acted-rate.
+- **Implementation Note:** Modify the `seq = ["acted"] * 5` lines in `ConfidenceFamilyScenario.setup()` to produce 8-length sequences. Feed `seq[:5]` to ObservationProtocol in the 5-round loop. In `run()`, compute `relevance_scores[key] = mean(seq[5:8] == "acted")` — this is what the retriever's confidence state should predict. Ground truth `relevant_ids` = top 30% by this held-out acted-rate. Cite this in the code comment per Fix 3 bullet.
+
+#### C5. Option A (property) subtly breaks existing subclass override pattern
+- **Critics:** Adversary, Skeptic
+- **Location:** Technical Approach / Fix 1 Option A; Risk 2 mitigation
+- **Finding:** Risk 2 claims "Python's MRO evaluates descriptors first, so a subclass class attribute does shadow a parent property." This is backwards — a property in a parent class that is NOT shadowed with another property will correctly be overridden by a subclass CLASS ATTRIBUTE (because the subclass dict wins in `__getattribute__` lookup). However, the existing test pattern (`tests/test_write_filter.py:41-42`) sets `_wf_min_threshold = 0.5` on a subclass — which WILL work. But if the subclass INHERITS without overriding, reads go through the property — and the property returns `Defaults.WF_MIN_THRESHOLD`. Existing code at `write_filter.py:115` reads `self._wf_min_threshold`. After Fix 1, reads become a method call, introducing a per-call lookup overhead on the hot `save()` path. This should be measured.
+- **Suggestion:** Add a micro-benchmark: time `save()` with and without the property conversion across 10k calls. If regression > 5%, cache the resolved value on the instance (`self._wf_min_threshold_resolved = Defaults.WF_MIN_THRESHOLD` at `__init__`) and have the property return that, with a classmethod to invalidate caches when `Defaults` changes.
+- **Implementation Note:** Task 1 should explicitly add a performance guard test: `tests/test_write_filter.py::test_save_perf_post_property` that saves 1000 records and asserts total time < 1.5x the current baseline (record baseline with `git stash` + `pytest --benchmark-only` before refactor). Also add `tests/test_write_filter.py::test_subclass_class_attr_wins_over_property` covering the existing subclass override pattern.
+
+### Nits
+
+#### N1. "Defaults of 0.5, 0.2, 0.7" in Solution don't match `constants.py`
+- **Location:** Solution Key Elements
+- **Finding:** The plan repeatedly cites `WF_MIN_THRESHOLD = 0.2` and `WF_PRIORITY_THRESHOLD = 0.7`. Verified correct. But the docstring in `write_filter.py:10-11` references the same defaults. When applying sweep results, make sure the docstring in `write_filter.py` is also updated, not just `constants.py`.
+- **Suggestion:** Add to task 7 bullet: "Also update docstrings in `write_filter.py` and `prediction_ledger.py` that cite default values."
+
+#### N2. Open Question #4 should be resolved, not left open
+- **Location:** Open Questions (bottom)
+- **Finding:** Precedent is clearly established (sweeps ARE committed under `tests/benchmarks/results/`). The question "commit the sweep JSON or reference by filename" wastes a PM cycle to re-confirm established behavior.
+- **Suggestion:** Remove Open Question 4 and move to Solution: "Commit final sweep JSON alongside the constants update, per existing precedent."
+
+### Structural Check Results
+
+| Check | Status | Detail |
+|-------|--------|--------|
+| Required sections (Documentation, Update System, Agent Integration, Test Impact) | PASS | All four present, non-empty |
+| Task numbering | PASS | 1-10 contiguous |
+| Dependencies valid | PASS | All Depends On references point to valid task IDs (build-mixin-refactor, build-overrides-registry, etc.) |
+| File paths exist | PASS | All referenced paths exist: `write_filter.py`, `prediction_ledger.py`, `constants.py`, `overrides.py`, `family_factory.py`, `test_write_filter.py`, `test_prediction_ledger.py`. Only `test_overrides_reach.py` is intentionally new. |
+| Prerequisites met | PASS | Redis on localhost:6379 is the only prereq |
+| Cross-references | PASS | All Success Criteria map to at least one task; no No-Gos appear in Solution as planned work |
+
+### Verdict
+
+**READY TO BUILD (with concerns)** — No catastrophic blockers that prevent build start, but B1 and B2 need the Implementation Notes embedded before coding or the fresh sweep will repeat the "flat sensitivity" failure mode (the same failure this plan is meant to fix). Recommend running a `/do-plan` revision pass to embed the Implementation Notes for B1, B2, C1, C3, C4, C5 directly into the Technical Approach section before `/do-build`. After revision, proceed to build.
 
 ---
 
@@ -404,4 +509,5 @@ No agent integration required — Popoto is a library consumed by other projects
 1. **Option A vs Option B for mixin refactor:** Property (Option A) gives clean subclass shadowing but changes attribute semantics subtly; classmethod accessor (Option B) is more explicit but requires more caller updates. Preference?
 2. **Constants that remain inert after decoupling:** Document in place with `# empirically inert` (plan default), or open a follow-up issue to evaluate removal? The issue text says "documented OR removed" — my read is "document now, remove in a later targeted cleanup." Confirm.
 3. **If Tier 2/3 constants cannot be swept in reasonable time:** Acceptable to land defaults updates for Tier 1 only and defer Tiers 2/3 to a follow-up issue, as long as the override-reach test covers all 19?
-4. **Sweep reproducibility:** Should we commit the final sweep JSON into the repo alongside the `constants.py` update, or reference it by filename only? Latest sweep JSONs are already checked in under `tests/benchmarks/results/` — precedent suggests yes.
+
+*(Q4 about sweep JSON commit was removed during the 2026-04-17 revision pass — resolved inline in Solution / Key Elements and task 7: commit the final sweep JSON alongside the `constants.py` update per existing precedent.)*
