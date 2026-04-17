@@ -32,7 +32,6 @@ from src.popoto.redis_db import POPOTO_REDIS_DB
 from ..overrides import apply_overrides
 from .base import Scenario, ScenarioResult
 
-
 # Constant-to-family mapping
 CONSTANT_FAMILY_MAP = {
     # Decay family

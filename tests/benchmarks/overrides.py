@@ -259,9 +259,7 @@ def apply_overrides(overrides: Dict[str, Any]) -> Generator[None, None, None]:
             if defaults_attr and hasattr(Defaults, defaults_attr):
                 # Save the original once per Defaults attr (first-write wins).
                 if defaults_attr not in originals_defaults:
-                    originals_defaults[defaults_attr] = getattr(
-                        Defaults, defaults_attr
-                    )
+                    originals_defaults[defaults_attr] = getattr(Defaults, defaults_attr)
                 setattr(Defaults, defaults_attr, value)
                 patched = True
             elif (

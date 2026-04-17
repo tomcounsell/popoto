@@ -46,7 +46,6 @@ from tests.benchmarks.run_sweeps import (  # noqa: E402
     TIER3_SWEEPS,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers: resolve the effective value through the same path production uses.
 # ---------------------------------------------------------------------------
@@ -84,9 +83,7 @@ def _read_effective(name: str):
 
 # All swept constants across the three main tiers.
 ALL_SWEPT_CONSTANTS = (
-    list(TIER1_SWEEPS.keys())
-    + list(TIER2_SWEEPS.keys())
-    + list(TIER3_SWEEPS.keys())
+    list(TIER1_SWEEPS.keys()) + list(TIER2_SWEEPS.keys()) + list(TIER3_SWEEPS.keys())
 )
 
 
@@ -213,7 +210,8 @@ def test_unknown_name_emits_warning(caplog):
 
     # No exception. Warning was emitted.
     assert any(
-        unknown in record.getMessage() and "unknown override name" in record.getMessage()
+        unknown in record.getMessage()
+        and "unknown override name" in record.getMessage()
         for record in caplog.records
     ), (
         "Expected a WARNING containing 'unknown override name' and the "
@@ -223,9 +221,9 @@ def test_unknown_name_emits_warning(caplog):
 
     # Defaults must be unchanged.
     post = {k: v for k, v in vars(Defaults).items() if not k.startswith("_")}
-    assert post == baseline_defaults_snapshot, (
-        "apply_overrides on an unknown name must not mutate Defaults."
-    )
+    assert (
+        post == baseline_defaults_snapshot
+    ), "apply_overrides on an unknown name must not mutate Defaults."
 
 
 # ---------------------------------------------------------------------------

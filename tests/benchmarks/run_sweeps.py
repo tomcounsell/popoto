@@ -367,7 +367,8 @@ def run_parametric(tier_sweeps, tier_name, aggregator, family_weighted=True):
             target_family = CONSTANT_FAMILY_MAP.get(constant_name)
             if target_family:
                 family_for_constant = [
-                    c for c in varied_family
+                    c
+                    for c in varied_family
                     if c.name.startswith(f"family_{target_family}_")
                 ]
                 # 8 family + 5 generic: family majority but include some
@@ -390,7 +391,11 @@ def run_parametric(tier_sweeps, tier_name, aggregator, family_weighted=True):
         n_family = (
             len(combined)
             if family_weighted and CONSTANT_FAMILY_MAP.get(constant_name)
-            else (len(combined) - len(generic_classes) if generic_classes else len(combined))
+            else (
+                len(combined) - len(generic_classes)
+                if generic_classes
+                else len(combined)
+            )
         )
         n_generic = len(combined) - n_family
         logger.info(

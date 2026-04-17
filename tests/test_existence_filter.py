@@ -303,9 +303,7 @@ class TestExistenceFilterStatistical:
         # Insert 10,000 items with unique single-word topics
         num_items = 10_000
         for i in range(num_items):
-            StatisticalBloomModel(
-                name=f"stat-{i}", topic=f"xinserted{i:06d}"
-            ).save()
+            StatisticalBloomModel(name=f"stat-{i}", topic=f"xinserted{i:06d}").save()
 
         # Query 10,000 items that were never inserted
         false_positives = 0
@@ -401,8 +399,7 @@ class TestBloomFreqCombo:
             is True
         )
         assert (
-            BloomFreqComboModel.freq.get_frequency(BloomFreqComboModel, "synergy")
-            == 1
+            BloomFreqComboModel.freq.get_frequency(BloomFreqComboModel, "synergy") == 1
         )
 
 
@@ -598,14 +595,23 @@ class TestExistenceFilterTokenization:
         item.save()
 
         # Neither word was saved -> definitely missing
-        assert BloomModel.bloom.definitely_missing(BloomModel, "terraform migration") is True
+        assert (
+            BloomModel.bloom.definitely_missing(BloomModel, "terraform migration")
+            is True
+        )
 
         # One word ("kubernetes") was saved -> not definitely missing
         # (might_exist uses ANY semantics, so definitely_missing returns False)
-        assert BloomModel.bloom.definitely_missing(BloomModel, "kubernetes migration") is False
+        assert (
+            BloomModel.bloom.definitely_missing(BloomModel, "kubernetes migration")
+            is False
+        )
 
         # Both words saved -> not definitely missing
-        assert BloomModel.bloom.definitely_missing(BloomModel, "kubernetes deployment") is False
+        assert (
+            BloomModel.bloom.definitely_missing(BloomModel, "kubernetes deployment")
+            is False
+        )
 
     def test_case_insensitive_query(self):
         """Case-insensitive: save mixed case, query lowercase."""
@@ -818,18 +824,16 @@ class TestMightExistCount:
 
     def test_count_all_missing(self):
         """All missing returns 0."""
-        assert BloomModel.bloom.might_exist_count(
-            BloomModel, ["alpha", "beta"]
-        ) == 0
+        assert BloomModel.bloom.might_exist_count(BloomModel, ["alpha", "beta"]) == 0
 
     def test_count_all_present(self):
         """All present returns full count."""
         for i, topic in enumerate(["redis", "postgres"]):
             BloomModel(name=f"count-{i}", topic=topic).save()
 
-        assert BloomModel.bloom.might_exist_count(
-            BloomModel, ["redis", "postgres"]
-        ) == 2
+        assert (
+            BloomModel.bloom.might_exist_count(BloomModel, ["redis", "postgres"]) == 2
+        )
 
     def test_count_mixed(self):
         """Mix of present and missing returns correct count."""

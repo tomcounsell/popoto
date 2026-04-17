@@ -55,14 +55,24 @@ class Defaults:
     # -- ObservationProtocol (fields/observation.py) --------------------------
     ACTED_CONFIDENCE_SIGNAL = 0.9  # sweep 2026-04-17 variance=0.020 (borderline); best in-range was 0.1 but 0.9 better reflects the "strong positive" semantics and per-scenario effect is small
     CONTRADICTED_CONFIDENCE_SIGNAL = 0.1  # sweep 2026-04-17 variance=0.021 (borderline); best in-range was 0.9 (inverse of default — within noise, kept at 0.1 for compat)
-    ACTED_CYCLE_STRENGTHEN_FACTOR = 1.2  # empirically inert (sweep 2026-04-17, variance=0.0)
-    DISMISSED_CYCLE_WEAKEN_FACTOR = 0.8  # empirically inert (sweep 2026-04-17, variance=0.0)
-    CONTRADICTED_CYCLE_WEAKEN_FACTOR = 0.5  # empirically inert (sweep 2026-04-17, variance=0.0)
-    AUTO_DISCHARGE_CONFIDENCE_THRESHOLD = 0.1  # empirically inert (sweep 2026-04-17, variance=0.0)
+    ACTED_CYCLE_STRENGTHEN_FACTOR = (
+        1.2  # empirically inert (sweep 2026-04-17, variance=0.0)
+    )
+    DISMISSED_CYCLE_WEAKEN_FACTOR = (
+        0.8  # empirically inert (sweep 2026-04-17, variance=0.0)
+    )
+    CONTRADICTED_CYCLE_WEAKEN_FACTOR = (
+        0.5  # empirically inert (sweep 2026-04-17, variance=0.0)
+    )
+    AUTO_DISCHARGE_CONFIDENCE_THRESHOLD = (
+        0.1  # empirically inert (sweep 2026-04-17, variance=0.0)
+    )
 
     # -- WriteFilterMixin (fields/write_filter.py) ----------------------------
     WF_MIN_THRESHOLD = 0.1  # best from sweep 2026-04-17, variance=0.068, prior=0.2
-    WF_PRIORITY_THRESHOLD = 0.7  # not swept separately (Tier 1 covers WF_MIN); kept at prior
+    WF_PRIORITY_THRESHOLD = (
+        0.7  # not swept separately (Tier 1 covers WF_MIN); kept at prior
+    )
 
     # -- CoOccurrenceField (fields/co_occurrence_field.py) --------------------
     CO_OCCURRENCE_DECAY_FACTOR = 0.95  # empirically inert (sweep 2026-04-17, variance=0.0) — family scenario never calls weaken_all()
@@ -73,8 +83,12 @@ class Defaults:
     PL_CONFIDENCE_ERROR_THRESHOLD = 0.7  # empirically inert (sweep 2026-04-17, variance=0.0) — no family scenario exercises prediction ledger
     PL_CONFIDENCE_LOW_SIGNAL = 0.2  # empirically inert (sweep 2026-04-17, variance=0.0)
     PL_AUTO_RESOLVE_ACTED = 0.1  # empirically inert (sweep 2026-04-17, variance=0.0)
-    PL_AUTO_RESOLVE_DISMISSED = 0.5  # empirically inert (sweep 2026-04-17, variance=0.0)
-    PL_AUTO_RESOLVE_CONTRADICTED = 0.9  # empirically inert (sweep 2026-04-17, variance=0.0)
+    PL_AUTO_RESOLVE_DISMISSED = (
+        0.5  # empirically inert (sweep 2026-04-17, variance=0.0)
+    )
+    PL_AUTO_RESOLVE_CONTRADICTED = (
+        0.9  # empirically inert (sweep 2026-04-17, variance=0.0)
+    )
 
     # -- PolicyCache (recipes/policy_cache.py) --------------------------------
     MIN_EVENTS_FOR_CRYSTALLIZATION = 3  # empirically inert (sweep 2026-04-17, variance=0.0) — no family scenario exercises policy cache
@@ -85,8 +99,12 @@ class Defaults:
     INITIAL_CYCLE_AMPLITUDE = 0.5  # empirically inert (sweep 2026-04-17, variance=0.0)
 
     # -- ContextAssembler (recipes/context_assembler.py) ----------------------
-    COMPETITIVE_SUPPRESSION_SIGNAL = 0.3  # empirically inert (sweep 2026-04-17, variance=0.0)
-    DEFAULT_SURFACING_THRESHOLD = 0.5  # empirically inert (sweep 2026-04-17, variance=0.0)
+    COMPETITIVE_SUPPRESSION_SIGNAL = (
+        0.3  # empirically inert (sweep 2026-04-17, variance=0.0)
+    )
+    DEFAULT_SURFACING_THRESHOLD = (
+        0.5  # empirically inert (sweep 2026-04-17, variance=0.0)
+    )
 
 
 class TemporalPeriod:

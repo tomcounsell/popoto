@@ -40,33 +40,53 @@ class TestScenarioSeed:
     def test_invalid_record_count_low(self):
         with pytest.raises(AssertionError):
             ScenarioSeed(
-                seed_id=0, record_count=2, importance_shape="uniform",
-                access_pattern="all_recent", outcome_frequency=0.5,
-                noise_ratio=0.0, link_density=0.0, age_spread_days=30,
+                seed_id=0,
+                record_count=2,
+                importance_shape="uniform",
+                access_pattern="all_recent",
+                outcome_frequency=0.5,
+                noise_ratio=0.0,
+                link_density=0.0,
+                age_spread_days=30,
             )
 
     def test_invalid_record_count_high(self):
         with pytest.raises(AssertionError):
             ScenarioSeed(
-                seed_id=0, record_count=101, importance_shape="uniform",
-                access_pattern="all_recent", outcome_frequency=0.5,
-                noise_ratio=0.0, link_density=0.0, age_spread_days=30,
+                seed_id=0,
+                record_count=101,
+                importance_shape="uniform",
+                access_pattern="all_recent",
+                outcome_frequency=0.5,
+                noise_ratio=0.0,
+                link_density=0.0,
+                age_spread_days=30,
             )
 
     def test_invalid_importance_shape(self):
         with pytest.raises(AssertionError):
             ScenarioSeed(
-                seed_id=0, record_count=10, importance_shape="invalid",
-                access_pattern="all_recent", outcome_frequency=0.5,
-                noise_ratio=0.0, link_density=0.0, age_spread_days=30,
+                seed_id=0,
+                record_count=10,
+                importance_shape="invalid",
+                access_pattern="all_recent",
+                outcome_frequency=0.5,
+                noise_ratio=0.0,
+                link_density=0.0,
+                age_spread_days=30,
             )
 
     def test_invalid_noise_ratio(self):
         with pytest.raises(AssertionError):
             ScenarioSeed(
-                seed_id=0, record_count=10, importance_shape="uniform",
-                access_pattern="all_recent", outcome_frequency=0.5,
-                noise_ratio=0.6, link_density=0.0, age_spread_days=30,
+                seed_id=0,
+                record_count=10,
+                importance_shape="uniform",
+                access_pattern="all_recent",
+                outcome_frequency=0.5,
+                noise_ratio=0.6,
+                link_density=0.0,
+                age_spread_days=30,
             )
 
 
@@ -75,6 +95,7 @@ class TestImportanceDistributions:
 
     def test_uniform_spread(self):
         import random
+
         rng = random.Random(42)
         values = _generate_importance_values(rng, 20, "uniform", 0.0)
         assert len(values) == 20
@@ -84,6 +105,7 @@ class TestImportanceDistributions:
 
     def test_clustered_tight_groups(self):
         import random
+
         rng = random.Random(42)
         values = _generate_importance_values(rng, 30, "clustered", 0.0)
         assert len(values) == 30
@@ -95,6 +117,7 @@ class TestImportanceDistributions:
 
     def test_bimodal_separation(self):
         import random
+
         rng = random.Random(42)
         values = _generate_importance_values(rng, 20, "bimodal", 0.0)
         low = [v for v in values if v < 0.5]
@@ -104,6 +127,7 @@ class TestImportanceDistributions:
 
     def test_exponential_skew(self):
         import random
+
         rng = random.Random(42)
         values = _generate_importance_values(rng, 30, "exponential", 0.0)
         assert len(values) == 30
@@ -116,6 +140,7 @@ class TestImportanceDistributions:
 
     def test_flat_narrow_range(self):
         import random
+
         rng = random.Random(42)
         values = _generate_importance_values(rng, 20, "flat", 0.0)
         assert len(values) == 20
@@ -124,6 +149,7 @@ class TestImportanceDistributions:
 
     def test_noise_ratio_adds_low_values(self):
         import random
+
         rng = random.Random(42)
         values = _generate_importance_values(rng, 20, "uniform", 0.3)
         assert len(values) == 20
@@ -132,6 +158,7 @@ class TestImportanceDistributions:
 
     def test_all_shapes_produce_correct_count(self):
         import random
+
         for shape in IMPORTANCE_SHAPES:
             rng = random.Random(42)
             values = _generate_importance_values(rng, 15, shape, 0.1)
@@ -141,24 +168,28 @@ class TestImportanceDistributions:
 class TestAccessPatterns:
     def test_all_recent_no_stale(self):
         import random
+
         rng = random.Random(42)
         stale = _select_stale_indices(rng, 20, "all_recent")
         assert len(stale) == 0
 
     def test_half_stale(self):
         import random
+
         rng = random.Random(42)
         stale = _select_stale_indices(rng, 20, "half_stale")
         assert len(stale) == 10
 
     def test_mostly_stale(self):
         import random
+
         rng = random.Random(42)
         stale = _select_stale_indices(rng, 20, "mostly_stale")
         assert len(stale) == 16  # 80% of 20
 
     def test_interleaved(self):
         import random
+
         rng = random.Random(42)
         stale = _select_stale_indices(rng, 20, "interleaved")
         assert len(stale) == 10
@@ -171,10 +202,16 @@ class TestAccessPatterns:
 class TestScenarioFactory:
     def test_create_returns_scenario_class(self):
         from tests.benchmarks.scenarios.base import Scenario
+
         seed = ScenarioSeed(
-            seed_id=0, record_count=5, importance_shape="uniform",
-            access_pattern="all_recent", outcome_frequency=0.5,
-            noise_ratio=0.0, link_density=0.0, age_spread_days=30,
+            seed_id=0,
+            record_count=5,
+            importance_shape="uniform",
+            access_pattern="all_recent",
+            outcome_frequency=0.5,
+            noise_ratio=0.0,
+            link_density=0.0,
+            age_spread_days=30,
         )
         cls = ScenarioFactory.create(seed)
         assert isinstance(cls, type)
@@ -182,14 +219,24 @@ class TestScenarioFactory:
 
     def test_scenario_has_unique_name(self):
         seed1 = ScenarioSeed(
-            seed_id=0, record_count=5, importance_shape="uniform",
-            access_pattern="all_recent", outcome_frequency=0.5,
-            noise_ratio=0.0, link_density=0.0, age_spread_days=30,
+            seed_id=0,
+            record_count=5,
+            importance_shape="uniform",
+            access_pattern="all_recent",
+            outcome_frequency=0.5,
+            noise_ratio=0.0,
+            link_density=0.0,
+            age_spread_days=30,
         )
         seed2 = ScenarioSeed(
-            seed_id=1, record_count=10, importance_shape="clustered",
-            access_pattern="half_stale", outcome_frequency=0.3,
-            noise_ratio=0.1, link_density=0.0, age_spread_days=60,
+            seed_id=1,
+            record_count=10,
+            importance_shape="clustered",
+            access_pattern="half_stale",
+            outcome_frequency=0.3,
+            noise_ratio=0.1,
+            link_density=0.0,
+            age_spread_days=60,
         )
         cls1 = ScenarioFactory.create(seed1)
         cls2 = ScenarioFactory.create(seed2)
@@ -197,9 +244,14 @@ class TestScenarioFactory:
 
     def test_scenario_executes_successfully(self):
         seed = ScenarioSeed(
-            seed_id=42, record_count=8, importance_shape="uniform",
-            access_pattern="all_recent", outcome_frequency=0.5,
-            noise_ratio=0.0, link_density=0.0, age_spread_days=30,
+            seed_id=42,
+            record_count=8,
+            importance_shape="uniform",
+            access_pattern="all_recent",
+            outcome_frequency=0.5,
+            noise_ratio=0.0,
+            link_density=0.0,
+            age_spread_days=30,
         )
         cls = ScenarioFactory.create(seed)
         instance = cls(overrides={})
@@ -211,16 +263,24 @@ class TestScenarioFactory:
 
     def test_determinism_same_seed_same_result(self):
         seed = ScenarioSeed(
-            seed_id=99, record_count=10, importance_shape="bimodal",
-            access_pattern="half_stale", outcome_frequency=0.3,
-            noise_ratio=0.1, link_density=0.0, age_spread_days=30,
+            seed_id=99,
+            record_count=10,
+            importance_shape="bimodal",
+            access_pattern="half_stale",
+            outcome_frequency=0.3,
+            noise_ratio=0.1,
+            link_density=0.0,
+            age_spread_days=30,
         )
         cls = ScenarioFactory.create(seed)
 
         def extract_record_suffixes(ids):
             """Extract rec_XXXX suffixes to compare ordering ignoring UUID prefix."""
             import re
-            return [re.search(r"(rec_\d+)", rid).group(1) for rid in ids if "rec_" in rid]
+
+            return [
+                re.search(r"(rec_\d+)", rid).group(1) for rid in ids if "rec_" in rid
+            ]
 
         # Run 3 times, verify identical ordering by record suffix
         results = []
@@ -237,9 +297,14 @@ class TestScenarioFactory:
 
     def test_scenario_with_overrides(self):
         seed = ScenarioSeed(
-            seed_id=7, record_count=8, importance_shape="uniform",
-            access_pattern="all_recent", outcome_frequency=0.5,
-            noise_ratio=0.0, link_density=0.0, age_spread_days=30,
+            seed_id=7,
+            record_count=8,
+            importance_shape="uniform",
+            access_pattern="all_recent",
+            outcome_frequency=0.5,
+            noise_ratio=0.0,
+            link_density=0.0,
+            age_spread_days=30,
         )
         cls = ScenarioFactory.create(seed)
         instance = cls(overrides={"decay_rate": 0.3})
@@ -248,9 +313,14 @@ class TestScenarioFactory:
 
     def test_scenario_with_link_density(self):
         seed = ScenarioSeed(
-            seed_id=5, record_count=8, importance_shape="uniform",
-            access_pattern="all_recent", outcome_frequency=0.5,
-            noise_ratio=0.0, link_density=0.5, age_spread_days=30,
+            seed_id=5,
+            record_count=8,
+            importance_shape="uniform",
+            access_pattern="all_recent",
+            outcome_frequency=0.5,
+            noise_ratio=0.0,
+            link_density=0.5,
+            age_spread_days=30,
         )
         cls = ScenarioFactory.create(seed)
         instance = cls(overrides={})
@@ -411,9 +481,7 @@ class TestFamilyGroundTruthDecoupling:
         all_imps: list = []
         all_urg: list = []
         for seed_id in (3000, 3100, 3200):
-            seed = FamilySeed(
-                seed_id=seed_id, family="write_filter", record_count=30
-            )
+            seed = FamilySeed(seed_id=seed_id, family="write_filter", record_count=30)
             scenario = WriteFilterFamilyScenario(overrides={}, seed=seed)
             scenario.setup()
             for idx, imp in enumerate(scenario._all_importance_values):
@@ -443,12 +511,12 @@ class TestFamilyGroundTruthDecoupling:
         """B2 fix: noise hop2 records exist and decay_per_hop moves nDCG."""
         scenario = CoOccurrenceFamilyScenario(overrides={})
         scenario.setup()
-        assert hasattr(scenario, "_noise_hop2"), (
-            "CoOccurrenceFamilyScenario must define _noise_hop2 after B2 fix"
-        )
-        assert len(scenario._noise_hop2) >= 1, (
-            "At least one hop2-noise record must exist to break circularity"
-        )
+        assert hasattr(
+            scenario, "_noise_hop2"
+        ), "CoOccurrenceFamilyScenario must define _noise_hop2 after B2 fix"
+        assert (
+            len(scenario._noise_hop2) >= 1
+        ), "At least one hop2-noise record must exist to break circularity"
         scenario.teardown()
 
         # End-to-end: nDCG should differ between extreme decay_per_hop values.
