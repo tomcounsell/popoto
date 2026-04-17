@@ -278,6 +278,7 @@ invalidate_cache()
 |-------|---------|----------|
 | Base | `pip install popoto` | ContentField (no extra deps) |
 | Embeddings | `pip install popoto[embeddings]` | numpy |
+| Ollama | `pip install popoto[embeddings]` | numpy (no extra Python deps) |
 | Voyage AI | `pip install popoto[voyage]` | numpy, voyageai |
 | OpenAI | `pip install popoto[openai]` | numpy, openai |
 
@@ -288,6 +289,7 @@ invalidate_cache()
 | `POPOTO_CONTENT_PATH` | `~/.popoto/content` | Base directory for content files and embeddings |
 | `VOYAGE_API_KEY` | *(none)* | API key for VoyageProvider (alternative to passing `api_key=`) |
 | `OPENAI_API_KEY` | *(none)* | API key for OpenAIProvider (alternative to passing `api_key=`) |
+| *(none)* | — | OllamaProvider requires no API key |
 
 ## See Also
 
