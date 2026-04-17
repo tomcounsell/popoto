@@ -6,7 +6,7 @@ records are tagged in a priority sorted set for preferential retrieval.
 
 Design:
     - compute_filter_score() is abstract (raises NotImplementedError)
-    - Score < min_threshold (0.2) -> SkipSaveException -> save() returns without persisting
+    - Score < min_threshold (0.1, empirically tuned 2026-04-17) -> SkipSaveException -> save() returns without persisting
     - Score >= min_threshold and < priority_threshold (0.7) -> normal save
     - Score >= priority_threshold (0.7) -> normal save AND ZADD to priority sorted set
 
@@ -22,8 +22,8 @@ Example:
         def compute_filter_score(self):
             return self.importance or 0.0
 
-    memory = Memory(key="low", content="noise", importance=0.1)
-    memory.save()  # silently discarded (0.1 < 0.2)
+    memory = Memory(key="low", content="noise", importance=0.05)
+    memory.save()  # silently discarded (0.05 < 0.1)
 
     memory = Memory(key="mid", content="useful", importance=0.5)
     memory.save()  # persisted normally
@@ -50,7 +50,7 @@ class WriteFilterMixin:
                 return self.some_score_field or 0.0
 
     Class Attributes (resolution order):
-        _wf_min_threshold:
+        _wf_min_threshold (default 0.1, empirically tuned 2026-04-17):
           - Subclass may set it as a plain class attribute to override the
             default (e.g. ``_wf_min_threshold = 0.5``). Because Python's
             ``__getattribute__`` consults the subclass dict first, a plain
@@ -58,7 +58,7 @@ class WriteFilterMixin:
           - Otherwise the mixin's property returns ``Defaults.WF_MIN_THRESHOLD``
             **at access time** so that runtime overrides (e.g. from
             ``tests/benchmarks/overrides.apply_overrides``) take effect.
-        _wf_priority_threshold: same semantics. Reads
+        _wf_priority_threshold (default 0.7): same semantics. Reads
             ``Defaults.WF_PRIORITY_THRESHOLD`` at access time.
 
     Note: Attributes prefixed with underscore to avoid conflict with

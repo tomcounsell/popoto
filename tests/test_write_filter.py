@@ -121,14 +121,19 @@ class TestWriteFilterGate:
         _cleanup_wf_keys()
 
     def test_below_threshold_not_persisted(self):
-        """Score < 0.2 -> record NOT saved to Redis."""
-        item = FilteredItem(name="low", importance=0.1)
+        """Score < WF_MIN_THRESHOLD (default 0.1) -> record NOT saved to Redis.
+
+        Uses importance=0.05 to stay below the empirically-tuned threshold
+        of 0.1 (sweep 2026-04-17). Prior to that sweep the threshold was
+        0.2 and any value < 0.2 (including 0.1) was filtered out.
+        """
+        item = FilteredItem(name="low", importance=0.05)
         result = item.save()
         assert result is False
         assert FilteredItem.query.count() == 0
 
     def test_above_min_below_priority_persisted(self):
-        """Score >= 0.2 and < 0.7 -> record saved, not in priority set."""
+        """Score >= WF_MIN_THRESHOLD and < priority -> record saved, not in priority set."""
         item = FilteredItem(name="mid", importance=0.5)
         result = item.save()
         assert result is not False
@@ -264,7 +269,9 @@ class TestPipelineMode:
         """Pipeline mode: below threshold returns pipeline unchanged."""
         redis = popoto.get_redis()
         pipe = redis.pipeline()
-        item = FilteredItem(name="pipe_low", importance=0.1)
+        # importance=0.05 is below the default 0.1 threshold (2026-04-17
+        # empirical tuning).
+        item = FilteredItem(name="pipe_low", importance=0.05)
         result = item.save(pipeline=pipe)
         # Should return the pipeline (not add any commands)
         assert result is pipe
@@ -320,8 +327,12 @@ class TestSynergyDecayingSortedField:
         FilteredWithDecay.delete_all()
 
     def test_filtered_out_not_in_sorted_set(self):
-        """Record filtered out never appears in DecayingSortedField index."""
-        item = FilteredWithDecay(name="decay_low", importance=0.1, score=5.0)
+        """Record filtered out never appears in DecayingSortedField index.
+
+        Uses importance=0.05 to stay below the default 0.1 threshold
+        (2026-04-17 empirical tuning).
+        """
+        item = FilteredWithDecay(name="decay_low", importance=0.05, score=5.0)
         result = item.save()
         assert result is False
         # The DecayingSortedField index should have no entries

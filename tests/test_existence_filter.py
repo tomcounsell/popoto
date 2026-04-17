@@ -419,11 +419,12 @@ class TestWriteFilterSynergy:
 
     def test_rejected_record_not_in_bloom(self):
         """Record below WriteFilter threshold is not in Bloom filter."""
-        # importance=0.1 < min_threshold=0.2 -> SkipSaveException
+        # importance=0.05 < min_threshold=0.1 (2026-04-17 tuning)
+        # -> SkipSaveException
         item = FilteredBloomModel(
             name="filtered-out",
             topic="negligible",
-            importance=0.1,
+            importance=0.05,
         )
         item.save()  # silently discarded
 

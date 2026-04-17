@@ -70,9 +70,12 @@ class TestDecayingSortedFieldInit:
     """Test field construction and validation."""
 
     def test_default_decay_rate(self):
-        """Default decay_rate is 0.5."""
+        """Default decay_rate is ``Defaults.DECAY_RATE`` (0.1 after the
+        2026-04-17 empirical tuning; see sweep_20260417_141047.json)."""
+        from src.popoto.fields.constants import Defaults
+
         field = DecayItem._meta.fields["relevance"]
-        assert field.decay_rate == 0.5
+        assert field.decay_rate == Defaults.DECAY_RATE
 
     def test_custom_decay_rate(self):
         """Custom decay_rate is preserved."""
