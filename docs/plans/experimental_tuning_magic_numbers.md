@@ -386,3 +386,26 @@ No agent integration required -- this is a development-only benchmarking tool.
 3. **Default update policy**: When sweep results suggest a different default, should the change be applied immediately (potentially breaking existing applications relying on current defaults) or should new defaults be opt-in via a version flag?
 
 4. **Scenario design**: The issue mentions "progressive stack activation" from the roadmap Step 12 table. Should the benchmark scenarios mirror that exact activation sequence, or is it acceptable to design independent scenarios per primitive?
+
+---
+
+## Results Applied (2026-04-17)
+
+The companion plan [`apply_experiment_learnings.md`](apply_experiment_learnings.md) (issue #351) completed the experimental-tuning loop by:
+
+1. **Fixing the override-reach bug**: `WriteFilterMixin` and `PredictionLedgerMixin` previously cached `Defaults.*` values as class attributes at import time, so `apply_overrides()` couldn't reach them. They now read `Defaults.*` via properties at attribute-access time.
+2. **Decoupling family-scenario ground truth** (B1/B2/C1/C4 fixes from the 2026-04-17 plan critique).
+3. **Running the full sweep**: `tests/benchmarks/results/sweep_20260417_141047.json` — 26 constants × 5-7 values × 8 family + 10 generic scenarios.
+
+**Updated defaults** (constants.py):
+
+| Constant | Old | New | Variance | Notes |
+|----------|-----|-----|----------|-------|
+| `DECAY_RATE` | 0.5 | **0.1** | 0.067 | Low decay -> importance-preserving; best for recall. |
+| `WF_MIN_THRESHOLD` | 0.2 | **0.1** | 0.068 | Permissive write filter dominates. |
+| `CO_OCCURRENCE_DECAY_PER_HOP` | 0.5 | 0.5 (kept) | 0.112 | Smooth peak at 0.5. |
+| `CO_OCCURRENCE_INITIAL_WEIGHT` | 0.1 | 0.1 (kept) | 0.144 | Sweep best 0.01, but noise cliff — 0.1 safer. |
+
+**22 other constants** are annotated `# empirically inert (sweep 2026-04-17, variance=0.0)` in place. These constants' code paths (PredictionLedger auto-resolve, PolicyCache crystallization, ContextAssembler suppression, confidence-cycle factors) are not exercised by the current 4 family scenarios. A follow-up issue should design family scenarios for these.
+
+See the companion plan for the override refactor and family-factory decoupling details. The sweep JSON lives in `tests/benchmarks/results/sweep_20260417_141047.json`.

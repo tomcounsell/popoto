@@ -403,3 +403,26 @@ No external documentation changes needed.
 1. Should the family-aware factory replace the existing `ScenarioFactory.default_seeds()` output, or should it be a separate entry point (e.g., `FamilyScenarioFactory.create_all()`) that the parametric mode selects based on the constant being swept? Leaning toward separate entry point to preserve backward compatibility.
 
 2. For the confidence family, should the certainty weight in `composite_score` be configurable per seed, or fixed at `{"relevance": 0.3, "certainty": 0.7}`? Fixed is simpler but less flexible.
+
+---
+
+## Ground-Truth Decoupling Applied (2026-04-17)
+
+The companion plan [`apply_experiment_learnings.md`](apply_experiment_learnings.md) (issue #351) identified that the family-factory ground truth as originally shipped was still too correlated with the retrieval signal — the oracle and the retriever both read the same inputs (importance, age), so overrides produced symmetric permutations with identical nDCG. The 2026-04-17 critique findings B1, B2, C1, and C4 were fixed as follows:
+
+- **DecayFamilyScenario (B1)**: Ground truth is now IMPORTANCE-ONLY ranking (no age component). Retrieval mixes `importance * age^(-decay_rate)`. Low `decay_rate` -> importance-preserving -> high nDCG; high `decay_rate` -> age-dominated -> diverges from oracle -> lower nDCG. Produces monotonic sensitivity curve. Importance values are now SPREAD (0.1-0.95) instead of clustered so the oracle has real ordering. Also fixed a pre-existing bug where `setup()` zadd'd to a per-instance key that `composite_score()` doesn't read; now writes to `get_partitioned_sortedset_db_key(...)` (the `$DecayingSortF:{ClassName}:{field}` class-level index).
+
+- **ConfidenceFamilyScenario (C4)**: Outcome sequences extended from 5 to 8 rounds per record. Retriever trains on `seq[0:5]` via `ObservationProtocol`; ground truth uses `mean(seq[5:8] == "acted")`. Tier distributions tightened so held-out outcomes OVERLAP between tiers (60%/50%/40%/25% instead of 85%/65%/35%/10%) — this creates real prediction challenge so confidence constant overrides move ranking of borderline records. Sequences are now stochastic per-round draws from a per-tier distribution, not fixed strings.
+
+- **WriteFilterFamilyScenario (C1)**: Added orthogonal `_gt_urgency` field (RNG-drawn, uncorrelated with importance). Ground truth = top-K by urgency restricted to filter survivors. As threshold rises, high-urgency-low-importance records get filtered out, dropping nDCG.
+
+- **CoOccurrenceFamilyScenario (B2)**: Added direct seed↔hop2 "noise" links at `initial_weight * 0.3`. Retrieval ordering of hop1 vs hop2-noise now depends on `decay_per_hop` (compares `decay_per_hop^1 * 1.0` vs `decay_per_hop^0 * 0.3`). Oracle still ranks by cluster topology, so low `decay_per_hop` retrieval -> hop2-noise dominates -> nDCG drops. High `decay_per_hop` retrieval matches oracle.
+
+New sanity tests in `tests/benchmarks/test_factory.py::TestFamilyGroundTruthDecoupling`:
+
+- `test_decay_family_produces_variance`: nDCG diff > 0.03 between decay_rate extremes.
+- `test_confidence_family_held_out_split`: verifies 8-length sequences and held-out oracle.
+- `test_write_filter_family_urgency_orthogonal`: Pearson |r| < 0.4 between urgency and importance.
+- `test_cooccurrence_noise_links_break_circularity`: verifies noise records exist and decay_per_hop moves nDCG.
+
+The `run_sweeps.py::run_parametric` was also updated to use `family_weighted=True` by default: 8 varied family scenarios per constant's family + 10 generic scenarios (family-majority signal), replacing the prior ~5% family / ~95% generic blend that drowned the constant-sensitivity signal.
