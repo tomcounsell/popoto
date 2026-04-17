@@ -126,6 +126,42 @@ provider = OpenAIProvider(
 
 Install: `pip install popoto[openai]`
 
+#### OllamaProvider
+
+Local embeddings via a running [Ollama](https://ollama.com) server. No API
+key, no per-token cost, no network dependency on a paid provider.
+
+```python
+from popoto.embeddings.ollama import OllamaProvider
+
+provider = OllamaProvider(
+    base_url="http://localhost:11434",   # default
+    model="nomic-embed-text",            # default (768-dim)
+    dim=None,                            # auto-detect from first response
+)
+```
+
+**Setup:**
+
+```bash
+# Install Ollama from https://ollama.com
+ollama pull nomic-embed-text    # or mxbai-embed-large (1024-dim), all-minilm (384-dim)
+ollama serve                    # run the local server
+```
+
+**Behaviour:**
+
+- Uses the batch-capable `/api/embed` endpoint (Ollama v0.2.0+).
+- Vector dimensions are auto-detected from the first `embed()` response
+  and cached. Pass `dim=<n>` to the constructor to declare them up front.
+- `max_batch_size` defaults to 32 (conservative for local inference on
+  modest hardware). Subclass to raise it.
+- No external dependencies -- uses stdlib `urllib.request`.
+- Error messages include actionable hints: connection refused points at
+  `ollama serve`; missing models point at `ollama pull <model>`.
+
+Install: `pip install popoto` (stdlib-only; no extras needed).
+
 #### Custom Providers
 
 Implement `AbstractEmbeddingProvider`:

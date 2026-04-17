@@ -237,6 +237,17 @@ popoto.configure(
     content_path="/data/agent-memory",
 )
 
+# ----
+# Prefer no API keys? Run Ollama locally and swap providers.
+# Prerequisite: `ollama pull nomic-embed-text` and `ollama serve`.
+#
+# from popoto.embeddings.ollama import OllamaProvider
+# popoto.configure(
+#     embedding_provider=OllamaProvider(model="nomic-embed-text"),
+#     content_path="/data/agent-memory",
+# )
+# ----
+
 class Memory(Model):
     memory_id = AutoKeyField()
     agent_id = KeyField()
