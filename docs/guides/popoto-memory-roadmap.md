@@ -958,7 +958,7 @@ These constants directly affect how the memory system scores, strengthens, weake
 
 | Constant | Default | Location | What It Controls |
 |----------|---------|----------|-----------------|
-| `decay_rate` | `0.5` | DecayingSortedField | How fast records lose relevance. Higher = faster forgetting. With default, score halves at 4 days. |
+| `decay_rate` | `0.1` | DecayingSortedField | How fast records lose relevance. Higher = faster forgetting. Empirically tuned in sweep 2026-04-17 (prior default `0.5`, where score halved at 4 days). |
 | `pressure_rate` | `0.0` | CyclicDecayField | How fast urgency builds on unresolved items. Zero = disabled. |
 | Acted → confidence signal | `0.9` | ObservationProtocol `_apply_acted` | How strongly an "acted" outcome corroborates confidence. |
 | Contradicted → confidence signal | `0.1` | ObservationProtocol `_apply_contradicted` | How strongly a "contradicted" outcome penalizes confidence. |
@@ -966,7 +966,7 @@ These constants directly affect how the memory system scores, strengthens, weake
 | Dismissed → cycle weaken factor | `0.8` | ObservationProtocol `_apply_dismissed` | How much "dismissed" weakens cycle amplitudes (20% reduction). |
 | Contradicted → cycle weaken factor | `0.5` | ObservationProtocol `_apply_contradicted` | How aggressively "contradicted" weakens cycles (50% reduction). |
 | Auto-discharge confidence threshold | `0.1` | ObservationProtocol `_apply_contradicted` | Below this confidence, pressure auto-resolves (memory stops nagging). |
-| `_wf_min_threshold` | `0.2` | WriteFilterMixin | Below this score, records are silently discarded on save. |
+| `_wf_min_threshold` | `0.1` | WriteFilterMixin | Below this score, records are silently discarded on save. Empirically tuned in sweep 2026-04-17 (prior default `0.2`). |
 | `_wf_priority_threshold` | `0.7` | WriteFilterMixin | At or above this score, records get priority-tagged. |
 | `initial_confidence` | `0.5` | ConfidenceField | Starting confidence for new records. Affects how many observations are needed to reach certainty. |
 | Corroboration/contradiction boundary | `0.5` | ConfidenceField Lua script | Signal >= 0.5 counts as corroboration, < 0.5 as contradiction. |

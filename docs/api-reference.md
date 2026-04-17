@@ -1356,7 +1356,7 @@ is also indexed in a sorted set for range queries. Supports all lookups from bot
 ```python
 from popoto.fields.decaying_sorted_field import DecayingSortedField
 
-DecayingSortedField(decay_rate=0.5, base_score_field=None, partition_by=(), **kwargs)
+DecayingSortedField(decay_rate=0.1, base_score_field=None, partition_by=(), **kwargs)
 ```
 
 A `SortedField` subclass that stores timestamps as scores and computes time-decayed rankings
@@ -1365,7 +1365,7 @@ usage examples and [Agent Memory](features/agent-memory.md) for the broader cont
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `decay_rate` | `float` | `0.5` | Controls decay speed. Must be > 0. |
+| `decay_rate` | `float` | `0.1` | Controls decay speed. Must be > 0. (Empirically tuned in sweep 2026-04-17; prior default was `0.5`.) |
 | `base_score_field` | `str` | `None` | Companion field name for base score multiplier. |
 | `partition_by` | `str` or `tuple` | `()` | Partition the sorted set by key field values. |
 
@@ -1374,7 +1374,7 @@ usage examples and [Agent Memory](features/agent-memory.md) for the broader cont
 ```python
 from popoto.fields.cyclic_decay_field import CyclicDecayField
 
-CyclicDecayField(decay_rate=0.5, base_score_field=None, cycles=[], pressure_rate=0.0, partition_by=(), **kwargs)
+CyclicDecayField(decay_rate=0.1, base_score_field=None, cycles=[], pressure_rate=0.0, partition_by=(), **kwargs)
 ```
 
 A `DecayingSortedField` subclass that adds cyclical resonance and homeostatic pressure
@@ -1384,7 +1384,7 @@ See [CyclicDecayField](features/cyclic-decay-field.md) for usage examples and
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `decay_rate` | `float` | `0.5` | Controls decay speed (inherited). Must be > 0. |
+| `decay_rate` | `float` | `0.1` | Controls decay speed (inherited). Must be > 0. (Empirically tuned in sweep 2026-04-17; prior default was `0.5`.) |
 | `base_score_field` | `str` | `None` | Companion field name for base score multiplier (inherited). |
 | `cycles` | `list` | `[]` | List of `(period, amplitude, phase)` tuples. Use `TemporalPeriod` constants. |
 | `pressure_rate` | `float` | `0.0` | Rate of urgency buildup per unresolved day. Must be >= 0. |
@@ -1844,7 +1844,7 @@ Weight constants for source/role-based importance scoring, designed for use with
 InteractionWeight.combine(source: float, role: float) -> float
 ```
 
-Add source and role weights together. With `decay_rate=0.5`, effective lifetime is approximately `score**2` days.
+Add source and role weights together. With `decay_rate=0.5`, effective lifetime is approximately `score**2` days. (The current default `decay_rate=0.1` produces a much slower decay curve; the `score**2` mnemonic applies only when `decay_rate=0.5` is passed explicitly.)
 
 ```python
 # Human executive directive — stays relevant for ~7 years
