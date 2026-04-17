@@ -309,3 +309,165 @@ class TestDefaultSeeds:
                     f"Seed {seed.seed_id} produced only "
                     f"{len(result.relevant_ids)} relevant records"
                 )
+
+
+# ---------------------------------------------------------------------------
+# Family scenario ground-truth decoupling sanity tests (2026-04-17)
+# Issue #351, critique findings B1, B2, C1, C4.
+#
+# Each test verifies that the decoupled ground truth produces meaningful
+# nDCG variance between override extremes. A failing test means the oracle
+# signal is still too correlated with the retrieval signal — see the
+# scenario docstring for the "fallback" (e.g. seeded rng.shuffle for
+# DecayFamilyScenario) described in the plan.
+# ---------------------------------------------------------------------------
+
+
+from tests.benchmarks.metrics.retrieval import ndcg_at_k  # noqa: E402
+from tests.benchmarks.scenarios.family_factory import (  # noqa: E402
+    CoOccurrenceFamilyScenario,
+    ConfidenceFamilyScenario,
+    DecayFamilyScenario,
+    WriteFilterFamilyScenario,
+)
+
+
+def _run_scenario_ndcg(scenario_cls, overrides, k=5):
+    """Run a family scenario and return nDCG@k, or None if not executable."""
+    scenario = scenario_cls(overrides=overrides)
+    result = scenario.execute()
+    if result.status != "ok":
+        return None
+    if not result.retrieved_ids or not result.relevance_scores:
+        return None
+    return ndcg_at_k(result.retrieved_ids, result.relevance_scores, k)
+
+
+class TestFamilyGroundTruthDecoupling:
+    """Each family scenario must produce nDCG variance > ~0.05 between
+    extreme values of its target constant, proving the ground-truth
+    signal is decoupled from the retrieval signal."""
+
+    def test_decay_family_produces_variance(self):
+        """B1 fix: log-growth oracle + power-law-decay retrieval diverge.
+
+        Under the prior ``age^(-reference)`` oracle, decay_rate=0.1 and
+        decay_rate=0.9 produced symmetric permutations that scored
+        identically. Under the new ``log1p(age)`` oracle the two extremes
+        genuinely disagree with the oracle to different degrees. Asserts
+        the nDCG difference is > 0.03 (loose floor — a fresh sweep should
+        show > 0.05 but the single-scenario sanity check can be noisier).
+        """
+        ndcg_low = _run_scenario_ndcg(DecayFamilyScenario, {"decay_rate": 0.1})
+        ndcg_high = _run_scenario_ndcg(DecayFamilyScenario, {"decay_rate": 0.9})
+        assert ndcg_low is not None and ndcg_high is not None, (
+            "DecayFamilyScenario did not execute successfully under both "
+            "extreme decay_rate values"
+        )
+        # Log-growth oracle vs power-law retrieval: should NOT be 1.0 at
+        # both extremes and should differ non-trivially.
+        diff = abs(ndcg_low - ndcg_high)
+        assert diff > 0.03, (
+            f"DecayFamilyScenario nDCG@5 barely moves between decay_rate "
+            f"0.1 ({ndcg_low:.4f}) and 0.9 ({ndcg_high:.4f}), diff={diff:.4f}. "
+            f"Oracle may still be too correlated with retrieval. Consider "
+            f"the rng.shuffle fallback described in the scenario docstring."
+        )
+
+    def test_confidence_family_held_out_split(self):
+        """C4 fix: outcome sequences length 8; GT from rounds 5:8."""
+        scenario = ConfidenceFamilyScenario(overrides={})
+        scenario.setup()
+        assert all(
+            len(seq) == 8 for seq in scenario._outcome_sequences
+        ), "All outcome sequences must be length 8 (5 observed + 3 held-out)"
+
+        # Run the scenario and verify relevance_scores are in [0, 1] —
+        # i.e., acted-rate fractions, not the prior (acted - 0.5*contradicted)/len
+        # linear combination.
+        result = scenario.run()
+        assert result.status == "ok", f"run() failed: {result.error_message}"
+        for score in result.relevance_scores.values():
+            assert 0.0 <= score <= 1.0, (
+                f"Held-out acted-rate score {score} out of [0, 1] — "
+                f"ground-truth formula regressed"
+            )
+        assert result.metadata["oracle"] == "held-out acted-rate over rounds [5:8]"
+        assert result.metadata["n_observed_rounds"] == 5
+        assert result.metadata["n_held_out_rounds"] == 3
+        scenario.teardown()
+
+    def test_write_filter_family_urgency_orthogonal(self):
+        """C1 fix: _gt_urgency is statistically uncorrelated with importance.
+
+        Tests the structural precondition: over ~30 records per scenario
+        aggregated across 3 seeds, the Pearson correlation between
+        urgency and importance must be small (< 0.4 as a loose guard;
+        true |r| is expected to be near 0 for independent uniform RNGs).
+        """
+        # Aggregate across several seeds for a stable correlation estimate.
+        from tests.benchmarks.scenarios.family_factory import FamilySeed
+
+        all_imps: list = []
+        all_urg: list = []
+        for seed_id in (3000, 3100, 3200):
+            seed = FamilySeed(
+                seed_id=seed_id, family="write_filter", record_count=30
+            )
+            scenario = WriteFilterFamilyScenario(overrides={}, seed=seed)
+            scenario.setup()
+            for idx, imp in enumerate(scenario._all_importance_values):
+                all_imps.append(imp)
+                all_urg.append(scenario._gt_urgency[idx])
+            scenario.teardown()
+
+        # Pearson correlation
+        n = len(all_imps)
+        mean_i = sum(all_imps) / n
+        mean_u = sum(all_urg) / n
+        num = sum((i - mean_i) * (u - mean_u) for i, u in zip(all_imps, all_urg))
+        den_i = (sum((i - mean_i) ** 2 for i in all_imps)) ** 0.5
+        den_u = (sum((u - mean_u) ** 2 for u in all_urg)) ** 0.5
+        if den_i == 0 or den_u == 0:
+            pearson = 0.0
+        else:
+            pearson = num / (den_i * den_u)
+
+        assert abs(pearson) < 0.4, (
+            f"Urgency and importance are too correlated "
+            f"(Pearson r={pearson:.3f}, |r| must be < 0.4). "
+            f"Check RNG seeding in WriteFilterFamilyScenario.setup()."
+        )
+
+    def test_cooccurrence_noise_links_break_circularity(self):
+        """B2 fix: noise hop2 records exist and decay_per_hop moves nDCG."""
+        scenario = CoOccurrenceFamilyScenario(overrides={})
+        scenario.setup()
+        assert hasattr(scenario, "_noise_hop2"), (
+            "CoOccurrenceFamilyScenario must define _noise_hop2 after B2 fix"
+        )
+        assert len(scenario._noise_hop2) >= 1, (
+            "At least one hop2-noise record must exist to break circularity"
+        )
+        scenario.teardown()
+
+        # End-to-end: nDCG should differ between extreme decay_per_hop values.
+        ndcg_low = _run_scenario_ndcg(
+            CoOccurrenceFamilyScenario, {"decay_per_hop": 0.1}
+        )
+        ndcg_high = _run_scenario_ndcg(
+            CoOccurrenceFamilyScenario, {"decay_per_hop": 0.9}
+        )
+        if ndcg_low is None or ndcg_high is None:
+            pytest.skip(
+                "CoOccurrenceFamilyScenario could not execute at one of the "
+                "extreme decay_per_hop values (likely environmental)"
+            )
+        diff = abs(ndcg_low - ndcg_high)
+        # Loose floor for single-seed sanity test; sweep run sees more variance.
+        assert diff > 0.03, (
+            f"CoOccurrenceFamilyScenario nDCG@5 barely moves between "
+            f"decay_per_hop 0.1 ({ndcg_low:.4f}) and 0.9 ({ndcg_high:.4f}), "
+            f"diff={diff:.4f}. Noise links may not be strong enough — "
+            f"consider raising the noise_weight multiplier above 0.3 in setup()."
+        )

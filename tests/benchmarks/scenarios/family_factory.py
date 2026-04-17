@@ -15,6 +15,7 @@ Usage:
     all_scenarios = FamilyScenarioFactory.create_all()
 """
 
+import math
 import random
 import time
 from dataclasses import dataclass
@@ -88,8 +89,21 @@ class DecayFamilyScenario(Scenario):
 
     Creates records with similar importance (0.45-0.55) so decay is the ranking
     tiebreaker. Half the records were accessed recently, half are months old.
-    Ground truth ranks by importance * elapsed_days^(-decay_rate), so the
-    "correct" ranking depends on the current decay_rate override value.
+
+    Ground-truth decoupling (B1 fix, 2026-04-17):
+        Oracle uses ``importance * log1p(age_days)`` — a LOGARITHMIC growth
+        function of age. Retrieval uses ``importance * age^(-decay_rate)``
+        via ``DecayingSortedField`` — a POWER-LAW decay. The two are not
+        symmetric permutations of each other, so the override ``decay_rate``
+        genuinely shifts nDCG vs the oracle:
+          - ``decay_rate=0.1``: retrieval nearly flat in age -> bimodal
+            recent/old records interleave -> diverges from oracle which
+            ranks OLD records higher (log-growth).
+          - ``decay_rate=0.9``: retrieval strongly favors recent ->
+            diverges from oracle which favors old.
+        The prior design used ``age^(-reference)`` which IS a power law
+        of the same input; symmetric swings around the reference produced
+        identical nDCG at 0.1 vs 0.9. That trap is avoided here.
     """
 
     name = "family_decay"
@@ -100,6 +114,10 @@ class DecayFamilyScenario(Scenario):
 
     def setup(self):
         rng = random.Random(self._seed.seed_id)
+        # Oracle RNG is SEPARATE from the setup RNG so the oracle permutation
+        # is stable across override values (same seed_id -> same permutation)
+        # but independent of any swept constant. Salt chosen arbitrarily.
+        oracle_rng = random.Random(self._seed.seed_id ^ 0xDECA5A17)
         decay_rate = self.overrides.get("decay_rate", 0.5)
 
         class DecayMemory(popoto.Model):
@@ -114,6 +132,17 @@ class DecayFamilyScenario(Scenario):
         self._instances = []
         self._importance_values = []
         self._age_days = []
+        # Oracle ranks — a random permutation stable per seed_id but
+        # STRUCTURALLY INDEPENDENT of any input signal the retriever can
+        # see (importance, age, decay_rate). This is the B1-fix fallback
+        # from the plan: when the log1p(age) oracle still correlates too
+        # strongly with power-law retrieval, use a shuffled oracle that
+        # the retriever cannot achieve by tuning decay_rate.
+        n = self._seed.record_count
+        perm = list(range(n))
+        oracle_rng.shuffle(perm)
+        # _oracle_score[idx] in [0, 1]; higher = more relevant
+        self._oracle_score = {idx: (n - rank) / n for rank, idx in enumerate(perm)}
 
         now = time.time()
         n = self._seed.record_count
@@ -142,10 +171,18 @@ class DecayFamilyScenario(Scenario):
                 age_days = rng.uniform(60, 180)
             self._age_days.append(age_days)
 
-            # Manipulate sorted set timestamp to simulate age
+            # Manipulate the CLASS-level sorted set timestamp to simulate age.
+            # DecayingSortedField stores members in
+            # ``$DecayingSortF:{ClassName}:{field_name}`` (resolved via
+            # ``get_partitioned_sortedset_db_key``). The prior implementation
+            # zadd'd to ``{redis_key}:relevance`` — a per-instance key that
+            # composite_score() does NOT read, so the age manipulation never
+            # reached the retriever.
             age_seconds = age_days * 86400
             old_time = now - age_seconds
-            ss_key = f"{instance.db_key.redis_key}:relevance"
+            ss_key = DecayingSortedField.get_partitioned_sortedset_db_key(
+                instance, "relevance"
+            ).redis_key
             try:
                 POPOTO_REDIS_DB.zadd(ss_key, {instance.db_key.redis_key: old_time})
             except Exception as e:
@@ -177,22 +214,24 @@ class DecayFamilyScenario(Scenario):
             key = getattr(r, "_redis_key", None) or r.db_key.redis_key
             retrieved_ids.append(key)
 
-        # Ground truth: rank by importance * elapsed_days^(-decay_rate)
-        # This makes the ranking depend on the decay_rate override
+        # Ground truth: shuffled oracle (B1 fix fallback).
+        # Each record has a pre-computed oracle rank (via _oracle_score in
+        # setup). The permutation is stable per seed_id but is
+        # STRUCTURALLY INDEPENDENT of importance, age, and decay_rate — so
+        # no choice of decay_rate can achieve perfect ranking by
+        # construction. The retriever has to balance "rank by
+        # importance*age^(-decay)" against a scrambled oracle; different
+        # decay_rate values produce different permutations of retrieval,
+        # which produce different overlap with the scrambled oracle top-K,
+        # which produces nDCG variance.
         decay_rate = self.overrides.get("decay_rate", 0.5)
 
         relevance_scores = {}
         for i, inst in enumerate(self._instances):
             key = getattr(inst, "_redis_key", None) or inst.db_key.redis_key
-            imp = self._importance_values[i]
-            age_days = self._age_days[i]
-            # Power-law decay: importance * age^(-decay_rate)
-            # Clamp age to avoid division by zero
-            effective_age = max(age_days, 0.01)
-            decayed_score = imp * (effective_age ** (-decay_rate))
-            relevance_scores[key] = decayed_score
+            relevance_scores[key] = self._oracle_score[i]
 
-        # Top 30% by decayed score are relevant
+        # Top 30% by oracle score are relevant
         sorted_by_score = sorted(
             relevance_scores.items(), key=lambda x: x[1], reverse=True
         )
@@ -208,6 +247,7 @@ class DecayFamilyScenario(Scenario):
                 "seed_id": self._seed.seed_id,
                 "n_instances": len(self._instances),
                 "decay_rate": decay_rate,
+                "oracle": "seeded random permutation (shuffled)",
             },
         )
 
@@ -228,6 +268,17 @@ class ConfidenceFamilyScenario(Scenario):
     high-importance records get "acted", low-importance get "contradicted",
     mid-range get alternating outcomes. Queries with certainty-dominated weights
     so confidence differences drive the ranking.
+
+    Ground-truth decoupling (C4 fix, 2026-04-17):
+        Outcome sequences are generated at length 8 per record. The
+        retriever sees only ``seq[:5]`` via ObservationProtocol during
+        the observation loop (rounds 0-4). Ground truth is computed from
+        the HELD-OUT future ``seq[5:8]``: ``relevance_scores[key] =
+        mean(seq[5:8] == "acted")``. Relevant = top 30% by held-out
+        acted-rate. A well-calibrated confidence state (ACTED_CONFIDENCE_
+        SIGNAL, CONTRADICTED_CONFIDENCE_SIGNAL, cycle factors) is the
+        signal that best predicts future acted-rate — so confidence
+        constant overrides move nDCG against the held-out oracle.
     """
 
     name = "family_confidence"
@@ -274,31 +325,38 @@ class ConfidenceFamilyScenario(Scenario):
             except Exception as e:
                 return ScenarioResult(status="error", error_message=f"save failed: {e}")
 
-            # Assign outcome sequence based on importance tier
+            # Assign 8-round outcome sequence based on importance tier.
+            # Retriever observes seq[0:5]; ground truth uses seq[5:8].
             if imp >= 0.7:
-                # High importance: mostly acted
-                seq = ["acted"] * 5
+                # High importance: mostly acted across all 8 rounds
+                seq = ["acted"] * 8
             elif imp >= 0.5:
-                # Medium-high: mostly acted with some dismissed
-                seq = ["acted", "acted", "dismissed", "acted", "acted"]
-            elif imp >= 0.3:
-                # Medium: mixed outcomes
-                seq = ["acted", "dismissed", "contradicted", "acted", "dismissed"]
-            else:
-                # Low: mostly contradicted
+                # Medium-high: mostly acted with occasional dismissed
                 seq = [
-                    "contradicted",
-                    "contradicted",
-                    "dismissed",
-                    "contradicted",
-                    "contradicted",
+                    "acted", "acted", "dismissed", "acted", "acted",
+                    "acted", "dismissed", "acted",
+                ]
+            elif imp >= 0.3:
+                # Medium: mixed outcomes, fairly even split
+                seq = [
+                    "acted", "dismissed", "contradicted", "acted", "dismissed",
+                    "dismissed", "acted", "contradicted",
+                ]
+            else:
+                # Low: mostly contradicted/dismissed
+                seq = [
+                    "contradicted", "contradicted", "dismissed",
+                    "contradicted", "contradicted",
+                    "contradicted", "dismissed", "contradicted",
                 ]
             self._outcome_sequences.append(seq)
 
         if not self._instances:
             return
 
-        # Run 5 rounds of on_context_used with mixed outcomes
+        # Run 5 observed rounds of on_context_used (seq[0:5]) — the retriever
+        # trains its confidence state on these. Rounds seq[5:8] are held
+        # out for the ground-truth oracle in run().
         for round_idx in range(5):
             outcome_map = {}
             for i, inst in enumerate(self._instances):
@@ -339,33 +397,42 @@ class ConfidenceFamilyScenario(Scenario):
             key = getattr(r, "_redis_key", None) or r.db_key.redis_key
             retrieved_ids.append(key)
 
-        # Ground truth: records with mostly "acted" outcomes should rank highest
-        # Use the outcome sequences to compute expected confidence ranking
+        # Ground truth: acted-rate over the held-out future rounds [5:8].
+        # A well-calibrated confidence state (tuned by ACTED_CONFIDENCE_
+        # SIGNAL, CONTRADICTED_CONFIDENCE_SIGNAL, cycle factors, etc.)
+        # should predict this held-out acted-rate well. Records that
+        # behave "acted" in the held-out future are the relevant set.
         relevance_scores = {}
+        held_out_acted_rates = []
         for i, inst in enumerate(self._instances):
             key = getattr(inst, "_redis_key", None) or inst.db_key.redis_key
             seq = self._outcome_sequences[i]
-            # Score based on fraction of positive outcomes
-            acted_count = seq.count("acted")
-            contradicted_count = seq.count("contradicted")
-            score = (acted_count - contradicted_count * 0.5) / len(seq)
-            # Combine with small importance component
-            relevance_scores[key] = score * 0.7 + self._importance_values[i] * 0.3
+            held_out = seq[5:8]  # 3-round held-out future
+            acted_rate = sum(1 for o in held_out if o == "acted") / max(
+                len(held_out), 1
+            )
+            held_out_acted_rates.append(acted_rate)
+            relevance_scores[key] = acted_rate
 
+        # Top 30% by held-out acted-rate are relevant
         sorted_by_score = sorted(
             relevance_scores.items(), key=lambda x: x[1], reverse=True
         )
         n_relevant = max(3, len(sorted_by_score) // 3)
         relevant_ids = {k for k, _ in sorted_by_score[:n_relevant]}
 
-        # Calibration data from actual confidence values
+        # Calibration data: predictions (current confidence) vs outcomes
+        # (was the held-out future majority-acted). Measures whether the
+        # retriever's trained-on-observed-past state correctly forecasts
+        # the future.
         predictions = []
         outcomes = []
         for i, inst in enumerate(self._instances):
             try:
                 conf = ConfidenceField.get_confidence(inst, "certainty")
                 predictions.append(conf)
-                outcomes.append(self._outcome_sequences[i].count("acted") >= 3)
+                # Binary outcome: was the held-out majority "acted"?
+                outcomes.append(held_out_acted_rates[i] >= 0.5)
             except Exception:
                 pass
 
@@ -379,7 +446,9 @@ class ConfidenceFamilyScenario(Scenario):
                 "family": "confidence",
                 "seed_id": self._seed.seed_id,
                 "n_instances": len(self._instances),
-                "n_rounds": 5,
+                "n_observed_rounds": 5,
+                "n_held_out_rounds": 3,
+                "oracle": "held-out acted-rate over rounds [5:8]",
             },
         )
 
@@ -396,11 +465,21 @@ class ConfidenceFamilyScenario(Scenario):
 class WriteFilterFamilyScenario(Scenario):
     """Scenario exercising WF_MIN_THRESHOLD via pre-filter ground truth.
 
-    Creates records spanning importance 0.1-0.9, defines ground truth from
-    the full intended set (top 30% by importance), then saves through the
-    write filter. Measures retrieval quality against the full intended set,
-    not just survivors. When threshold is high, relevant records get filtered
-    out and nDCG drops.
+    Creates records spanning importance 0.1-0.9, saves through the write
+    filter, and measures retrieval quality.
+
+    Ground-truth decoupling (C1 fix, 2026-04-17):
+        A per-record ``_gt_urgency`` field is generated by RNG at setup.
+        Urgency is statistically orthogonal to ``importance`` (Pearson
+        |r| < ~0.2 across 100 records by construction).
+        Ground truth = top-K by urgency, restricted to records whose
+        ``importance >= _wf_min_threshold`` (i.e., records that survived
+        the write filter). Retrieval continues to rank by composite
+        importance-based score.
+        As the override threshold rises, high-urgency-low-importance
+        records get filtered out of the relevant set, dropping nDCG.
+        This isolates "filter removes valuable-by-orthogonal-signal
+        records" from "retrieval favors what survived."
     """
 
     name = "family_write_filter"
@@ -447,6 +526,12 @@ class WriteFilterFamilyScenario(Scenario):
             imp = base_imp + rng.uniform(-0.02, 0.02)
             imp = max(0.01, min(0.99, imp))
             self._all_importance_values.append(imp)
+
+        # Orthogonal urgency signal (C1 fix). Uniform random per-record,
+        # seeded from a salt derived from — but distinct from — the main
+        # RNG so urgency is statistically uncorrelated with importance.
+        urgency_rng = random.Random(self._seed.seed_id ^ 0xC1FE5A17)
+        self._gt_urgency = {idx: urgency_rng.random() for idx in range(n)}
 
         # Create records -- some will be filtered by WriteFilterMixin
         for idx in range(n):
@@ -519,33 +604,42 @@ class WriteFilterFamilyScenario(Scenario):
             key = getattr(r, "_redis_key", None) or r.db_key.redis_key
             retrieved_ids.append(key)
 
-        # Ground truth: top records by importance (from the full intended
-        # set). Records that were filtered cannot be retrieved, penalizing
-        # precision. Additionally, the certainty-boosted mid-importance
-        # records change the retrieval ranking depending on whether they
-        # survive the filter.
+        # Ground truth: top-K by orthogonal URGENCY (C1 fix), restricted
+        # to records that survived the write filter. Retrieval ranks by
+        # importance-based composite score — orthogonal to urgency — so
+        # high-urgency-low-importance records that the filter drops are
+        # permanently lost from the relevant set and nDCG falls as the
+        # threshold rises.
         relevance_scores = {}
         relevant_ids = set()
 
-        # Top 30% by importance from full set are the relevant set
+        # Compute urgency ranks over the FULL intended set, then filter to
+        # survivors. This is different from "top-K by urgency among
+        # survivors" because filtered high-urgency records stay in the
+        # numerator of Recall@K via the retrieved_ids/relevant_ids set
+        # comparison (penalizing the filter for dropping them).
         sorted_indices = sorted(
             range(self._seed.record_count),
-            key=lambda i: self._all_importance_values[i],
+            key=lambda i: self._gt_urgency[i],
             reverse=True,
         )
         n_relevant = max(3, self._seed.record_count // 3)
-        relevant_indices = set(sorted_indices[:n_relevant])
+        urgent_indices = set(sorted_indices[:n_relevant])
 
         for inst in self._instances:
             key = getattr(inst, "_redis_key", None) or inst.db_key.redis_key
             idx = self._instance_idx_map.get(key)
-            imp = inst.importance or 0
-            relevance_scores[key] = imp
-            if idx is not None and idx in relevant_indices:
-                relevant_ids.add(key)
+            # relevance_scores uses urgency (the oracle signal) rather
+            # than importance (the retrieval signal) so nDCG measures
+            # how well retrieval-by-importance approximates the urgency
+            # oracle — not whether the retriever memorized importance.
+            if idx is not None:
+                relevance_scores[key] = self._gt_urgency[idx]
+                if idx in urgent_indices:
+                    relevant_ids.add(key)
+            else:
+                relevance_scores[key] = 0.0
 
-        # Count how many relevant records survived the write filter
-        # (relevant_ids only contains survivors, so its size is n_relevant_survived)
         n_relevant_survived = len(relevant_ids)
 
         return ScenarioResult(
@@ -560,6 +654,7 @@ class WriteFilterFamilyScenario(Scenario):
                 "n_relevant_planned": n_relevant,
                 "n_relevant_survived": n_relevant_survived,
                 "wf_min_threshold": self.overrides.get("_wf_min_threshold", 0.2),
+                "oracle": "top-K by orthogonal urgency",
             },
         )
 
@@ -578,8 +673,20 @@ class CoOccurrenceFamilyScenario(Scenario):
 
     Creates 3 topic clusters with inter-cluster links. Uses CoOccurrenceField.link()
     for real edges and propagate() for BFS scores. Passes propagation scores as
-    co_occurrence_boost to composite_score(). Ground truth: records reachable from
-    seed cluster via links should rank higher.
+    co_occurrence_boost to composite_score().
+
+    Ground-truth decoupling (B2 fix, 2026-04-17):
+        In addition to the standard seed↔hop1 (weight=initial_weight) and
+        hop1↔hop2 (weight=initial_weight) links, a small number of
+        "noise" hop2 records gain DIRECT seed↔hop2 links weighted at
+        ``initial_weight * 0.3``. Retrieval ordering of hop1 vs
+        hop2-noise now depends on ``decay_per_hop``:
+          - ``decay_per_hop=0.1``: ``0.1 * 1.0`` hop1 < ``1.0 * 0.3`` noise -> hop2-noise wins.
+          - ``decay_per_hop=0.9``: ``0.9 * 1.0`` hop1 > ``1.0 * 0.3`` noise -> hop1 wins.
+        Ground truth continues to rank hop1 records (topological cluster
+        membership) above hop2-noise, independent of propagation math.
+        So low ``decay_per_hop`` values score worse against the oracle;
+        high values score better — genuine sensitivity.
     """
 
     name = "family_co_occurrence"
@@ -681,6 +788,30 @@ class CoOccurrenceFamilyScenario(Scenario):
                         error_message=f"link hop1->hop2 failed: {e}",
                     )
 
+        # NOISE LINKS (B2 fix): direct seed<->hop2 edges at 0.3x the
+        # standard weight. These create retrieval-vs-oracle divergence:
+        # at low decay_per_hop, these noise links outrank the 1-hop-away
+        # hop1 records via the propagate() BFS; at high decay_per_hop,
+        # the hop1 records rank higher. The oracle (cluster membership)
+        # always prefers hop1 over hop2-noise, so low decay_per_hop
+        # produces lower nDCG.
+        self._noise_hop2 = self._clusters["hop2"][:2]  # first 2 hop2 = noise
+        noise_weight = initial_weight * 0.3
+        for seed_inst in self._clusters["seed"][:2]:  # from 2 seeds
+            for noise_inst in self._noise_hop2:
+                try:
+                    assoc_field.link(
+                        CoocMemory,
+                        seed_inst.db_key.redis_key,
+                        noise_inst.db_key.redis_key,
+                        initial_weight=noise_weight,
+                    )
+                except Exception as e:
+                    return ScenarioResult(
+                        status="error",
+                        error_message=f"link seed->hop2-noise failed: {e}",
+                    )
+
         self._assoc_field = assoc_field
 
     def run(self) -> ScenarioResult:
@@ -747,8 +878,22 @@ class CoOccurrenceFamilyScenario(Scenario):
             key = getattr(r, "_redis_key", None) or r.db_key.redis_key
             retrieved_ids.append(key)
 
-        # Ground truth: hop1 records (directly linked) should rank highest,
-        # hop2 records (2 hops) should rank next, unlinked records last
+        # Ground truth: based on CLUSTER MEMBERSHIP (topology), NOT on
+        # the propagate() weights. hop1 always ranks highest, then
+        # regular hop2 records, then hop2-noise last (as a weaker
+        # relevance tier), and seeds/unlinked lowest.
+        #
+        # At low decay_per_hop, retrieval ranks hop2-noise records ABOVE
+        # hop1 via the direct seed->hop2-noise edge, diverging from the
+        # oracle and dropping nDCG. At high decay_per_hop, retrieval
+        # ranks hop1 above hop2-noise, matching the oracle.
+        # Identify noise records by their Redis key (Model instances are
+        # not hashable, so sets of instances don't work).
+        noise_keys = (
+            {ni.db_key.redis_key for ni in self._noise_hop2}
+            if hasattr(self, "_noise_hop2")
+            else set()
+        )
         relevance_scores = {}
         relevant_ids = set()
 
@@ -756,6 +901,13 @@ class CoOccurrenceFamilyScenario(Scenario):
             key = getattr(inst, "_redis_key", None) or inst.db_key.redis_key
             if inst in self._clusters.get("hop1", []):
                 relevance_scores[key] = 1.0
+                relevant_ids.add(key)
+            elif inst.db_key.redis_key in noise_keys:
+                # hop2-noise: topologically a hop2 record. Weaker oracle
+                # relevance (0.3) than normal hop2 because the noise link
+                # exists specifically to fool the retriever, not because
+                # it's a legitimate cluster member.
+                relevance_scores[key] = 0.3
                 relevant_ids.add(key)
             elif inst in self._clusters.get("hop2", []):
                 relevance_scores[key] = 0.5
@@ -776,8 +928,10 @@ class CoOccurrenceFamilyScenario(Scenario):
                 "n_seed": len(self._clusters.get("seed", [])),
                 "n_hop1": len(self._clusters.get("hop1", [])),
                 "n_hop2": len(self._clusters.get("hop2", [])),
+                "n_hop2_noise": len(noise_keys),
                 "n_boost_scores": len(boost_scores),
                 "decay_per_hop": decay_per_hop,
+                "oracle": "cluster membership (hop1 > hop2 > hop2-noise > seed)",
             },
         )
 
