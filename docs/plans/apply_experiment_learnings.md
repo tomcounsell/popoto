@@ -1,5 +1,5 @@
 ---
-status: Planning
+status: docs_complete
 type: chore
 appetite: Medium
 owner: Valor Engels
@@ -8,6 +8,7 @@ tracking: https://github.com/tomcounsell/popoto/issues/351
 last_comment_id:
 revision_applied: true
 revision_date: 2026-04-17
+docs_complete_date: 2026-04-17
 ---
 
 # Apply experiment learnings: fix overrides, ground truth, and update constants
@@ -234,16 +235,17 @@ No agent integration required — Popoto is a library consumed by other projects
 ## Documentation
 
 ### Feature Documentation
-- [ ] Update `docs/plans/experimental_tuning_magic_numbers.md` with a trailing "Results applied" section linking to this plan and the sweep JSON.
-- [ ] Update `docs/plans/scenario_code_path_coverage.md` with a trailing note on which scenarios had ground-truth decoupling applied.
+- [x] Update `docs/plans/experimental_tuning_magic_numbers.md` with a trailing "Results applied" section linking to this plan and the sweep JSON. *(Done in PR #361 — see "Results Applied (2026-04-17)" section citing `sweep_20260417_141047.json`.)*
+- [x] Update `docs/plans/scenario_code_path_coverage.md` with a trailing note on which scenarios had ground-truth decoupling applied. *(Done in PR #361 — see "Ground-Truth Decoupling Applied (2026-04-17)" section covering the B1/B2/C1/C4 fixes.)*
 
 ### External Documentation Site
-- [ ] If `docs/guides/` has a file on constants or tuning, add a brief note that defaults are now empirically tuned (source: `sweep_YYYYMMDD_HHMMSS.json`).
+- [x] If `docs/guides/` has a file on constants or tuning, add a brief note that defaults are now empirically tuned (source: `sweep_YYYYMMDD_HHMMSS.json`). *(Done in PR #361 — `docs/guides/tuning-magic-numbers.md` now shows the new `DECAY_RATE=0.1` and `_wf_min_threshold=0.1` defaults with "(sweep 2026-04-17)" annotations.)*
+- [x] Cascade new defaults to user-facing reference docs. *(Added in the docs stage: `docs/features/decaying-sorted-field.md`, `docs/features/cyclic-decay-field.md`, `docs/features/agent-memory.md`, `docs/fields.md`, `docs/api-reference.md`, `docs/guides/agent-memory-quickstart.md`, `docs/guides/subconscious-memory-recipe.md`, and the `popoto-memory-roadmap.md` catalog all now reflect the new defaults. Code examples that explicitly pass `decay_rate=0.5` carry an inline comment noting the override.)*
 
 ### Inline Documentation
-- [ ] Code comment on each updated `Defaults.*` line recording the sweep date and variance for auditability.
-- [ ] Code comment on each `# empirically inert` constant with the sweep date.
-- [ ] Docstring on `apply_overrides` noting the `CLASS_ATTR_CONSTANTS` mechanism (if added in Fix 2).
+- [x] Code comment on each updated `Defaults.*` line recording the sweep date and variance for auditability. *(Done in PR #361 — see `src/popoto/fields/constants.py`: `DECAY_RATE = 0.1  # best from sweep 2026-04-17, variance=0.067, prior=0.5` and `WF_MIN_THRESHOLD = 0.1  # best from sweep 2026-04-17, variance=0.068, prior=0.2`.)*
+- [x] Code comment on each `# empirically inert` constant with the sweep date. *(Done in PR #361 — 22 inert constants annotated `# empirically inert (sweep 2026-04-17, variance=0.0)` in `constants.py`.)*
+- [x] Docstring on `apply_overrides` noting the `CLASS_ATTR_CONSTANTS` mechanism (if added in Fix 2). *(Done in PR #361 — see `tests/benchmarks/overrides.py` module docstring describing the triple-patch strategy and `apply_overrides` docstring explaining the `MODULE_CONSTANTS` + `CLASS_ATTR_CONSTANTS` + kwargs channels, including the unknown-name warning path.)*
 
 ## Success Criteria
 
@@ -255,8 +257,8 @@ No agent integration required — Popoto is a library consumed by other projects
 - [ ] Inert constants have inline `# empirically inert (sweep YYYY-MM-DD)` comments.
 - [ ] `latest.json` symlink points to the newest sweep JSON (should already; verify).
 - [ ] `pytest` passes with no regressions after constant changes.
-- [ ] Tests pass (`/do-test`).
-- [ ] Documentation updated (`/do-docs`).
+- [x] Tests pass (`/do-test`). *(Full suite 1510 passed, 14 skipped; override-reach 30 passed; family ground-truth decoupling 4 passed — verified on PR #361.)*
+- [x] Documentation updated (`/do-docs`). *(Plan doc cross-links, inline constant comments, `apply_overrides` docstring, and user-facing reference doc cascade all shipped in PR #361 docs stage.)*
 
 ## Team Orchestration
 
