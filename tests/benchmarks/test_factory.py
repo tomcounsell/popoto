@@ -397,7 +397,10 @@ from tests.benchmarks.metrics.retrieval import ndcg_at_k  # noqa: E402
 from tests.benchmarks.scenarios.family_factory import (  # noqa: E402
     CoOccurrenceFamilyScenario,
     ConfidenceFamilyScenario,
+    ContextAssemblerFamilyScenario,
     DecayFamilyScenario,
+    PolicyCacheFamilyScenario,
+    PredictionLedgerFamilyScenario,
     WriteFilterFamilyScenario,
 )
 
@@ -445,12 +448,12 @@ class TestFamilyGroundTruthDecoupling:
         )
 
     def test_confidence_family_held_out_split(self):
-        """C4 fix: outcome sequences length 8; GT from rounds 5:8."""
+        """C4 fix + #362 Tier-B: outcome sequences length 10; GT from rounds 5:10."""
         scenario = ConfidenceFamilyScenario(overrides={})
         scenario.setup()
         assert all(
-            len(seq) == 8 for seq in scenario._outcome_sequences
-        ), "All outcome sequences must be length 8 (5 observed + 3 held-out)"
+            len(seq) == 10 for seq in scenario._outcome_sequences
+        ), "All outcome sequences must be length 10 (5 observed + 5 held-out)"
 
         # Run the scenario and verify relevance_scores are in [0, 1] —
         # i.e., acted-rate fractions, not the prior (acted - 0.5*contradicted)/len
@@ -462,9 +465,9 @@ class TestFamilyGroundTruthDecoupling:
                 f"Held-out acted-rate score {score} out of [0, 1] — "
                 f"ground-truth formula regressed"
             )
-        assert result.metadata["oracle"] == "held-out acted-rate over rounds [5:8]"
+        assert result.metadata["oracle"] == "held-out acted-rate over rounds [5:10]"
         assert result.metadata["n_observed_rounds"] == 5
-        assert result.metadata["n_held_out_rounds"] == 3
+        assert result.metadata["n_held_out_rounds"] == 5
         scenario.teardown()
 
     def test_write_filter_family_urgency_orthogonal(self):
@@ -538,4 +541,158 @@ class TestFamilyGroundTruthDecoupling:
             f"decay_per_hop 0.1 ({ndcg_low:.4f}) and 0.9 ({ndcg_high:.4f}), "
             f"diff={diff:.4f}. Noise links may not be strong enough — "
             f"consider raising the noise_weight multiplier above 0.3 in setup()."
+        )
+
+    # -----------------------------------------------------------------
+    # Issue #362: PredictionLedger / ContextAssembler / PolicyCache
+    # family scenarios.
+    # -----------------------------------------------------------------
+
+    def test_prediction_ledger_family_produces_variance(self):
+        """PL family: gate-straddling PL_AUTO_RESOLVE_CONTRADICTED moves nDCG.
+
+        Extreme values 0.5 and 0.95 straddle the
+        ``PL_CONFIDENCE_ERROR_THRESHOLD=0.7`` gate in
+        ``_apply_confidence_feedback``. At 0.5 the gate is not crossed on
+        contradicted outcomes -> confidence unchanged; at 0.95 it is ->
+        confidence reduced for contradicted-heavy records. The held-out
+        acted-rate oracle decouples the signal from the retrieval.
+
+        Per plan CONCERN 3: assertion message includes per-extreme nDCG
+        values so a failure is debuggable without re-running.
+        """
+        ndcg_low = _run_scenario_ndcg(
+            PredictionLedgerFamilyScenario,
+            {"PL_AUTO_RESOLVE_CONTRADICTED": 0.5},
+        )
+        ndcg_high = _run_scenario_ndcg(
+            PredictionLedgerFamilyScenario,
+            {"PL_AUTO_RESOLVE_CONTRADICTED": 0.95},
+        )
+        if ndcg_low is None or ndcg_high is None:
+            pytest.skip(
+                "PredictionLedgerFamilyScenario could not execute at one of "
+                "the extreme PL_AUTO_RESOLVE_CONTRADICTED values"
+            )
+        diff = abs(ndcg_low - ndcg_high)
+        assert diff > 0.03, (
+            f"PredictionLedgerFamilyScenario nDCG@5 barely moves between "
+            f"PL_AUTO_RESOLVE_CONTRADICTED 0.5 ({ndcg_low:.4f}) and 0.95 "
+            f"({ndcg_high:.4f}), diff={diff:.4f}. Gate-crossing may not be "
+            f"firing — check that PL_CONFIDENCE_ERROR_THRESHOLD stays at "
+            f"its 0.7 default when PL_AUTO_RESOLVE_CONTRADICTED is swept."
+        )
+
+    def test_context_assembler_family_produces_variance(self):
+        """ContextAssembler family: COMPETITIVE_SUPPRESSION_SIGNAL moves nDCG.
+
+        Extreme values 0.1 (strong contradiction -> reduce confidence)
+        and 0.7 (corroboration -> raise confidence) produce opposite
+        mutations on non-selected pull candidates during the first
+        assemble() call; the second-call ranking therefore diverges
+        between the two regimes.
+
+        CONCERN 2 (plan): also asserts at least one record's certainty
+        moved after the warmup call (via ``n_certainty_moved`` metadata),
+        otherwise the test would silently pass if ``_post_effects``
+        became a no-op.
+        """
+        # Run low-signal scenario and capture side-effect metadata.
+        low_scn = ContextAssemblerFamilyScenario(
+            overrides={"COMPETITIVE_SUPPRESSION_SIGNAL": 0.1}
+        )
+        low_res = low_scn.execute()
+        if low_res.status != "ok" or not low_res.retrieved_ids:
+            pytest.skip(
+                "ContextAssemblerFamilyScenario did not execute cleanly at "
+                "COMPETITIVE_SUPPRESSION_SIGNAL=0.1"
+            )
+        ndcg_low = ndcg_at_k(low_res.retrieved_ids, low_res.relevance_scores, 5)
+
+        # Side-effect guard: certainty must have moved on at least one
+        # record. Without this, a broken _post_effects path would let
+        # the test pass as long as the nDCG values happened to differ.
+        assert (low_res.metadata or {}).get("n_certainty_moved", 0) >= 1, (
+            f"ContextAssemblerFamilyScenario._post_effects appears to have "
+            f"been a no-op: no records' certainty changed between pre- and "
+            f"post-assemble() snapshots. Metadata: "
+            f"{low_res.metadata}."
+        )
+
+        high_scn = ContextAssemblerFamilyScenario(
+            overrides={"COMPETITIVE_SUPPRESSION_SIGNAL": 0.7}
+        )
+        high_res = high_scn.execute()
+        if high_res.status != "ok" or not high_res.retrieved_ids:
+            pytest.skip(
+                "ContextAssemblerFamilyScenario did not execute cleanly at "
+                "COMPETITIVE_SUPPRESSION_SIGNAL=0.7"
+            )
+        ndcg_high = ndcg_at_k(high_res.retrieved_ids, high_res.relevance_scores, 5)
+
+        diff = abs(ndcg_low - ndcg_high)
+        assert diff > 0.03, (
+            f"ContextAssemblerFamilyScenario nDCG@5 barely moves between "
+            f"COMPETITIVE_SUPPRESSION_SIGNAL 0.1 ({ndcg_low:.4f}) and 0.7 "
+            f"({ndcg_high:.4f}), diff={diff:.4f}. Check that both "
+            f"constructor AND both assemble() calls are inside "
+            f"apply_overrides, and that the suppression loop is mutating "
+            f"enough records to shuffle the top-K."
+        )
+
+    def test_policy_cache_family_produces_variance(self):
+        """PolicyCache family: MIN_EVENTS / WILSON_CI partition crystallized set.
+
+        Two extremes with very different crystallization policies:
+          - permissive: MIN=1 / WILSON=0.3 -> most groups crystallize
+          - strict:    MIN=10 / WILSON=0.8 -> only high-evidence groups
+
+        The crystallized subsets differ; the retrieval-by-expected_value
+        ordering differs; nDCG against the independent truth-ratio oracle
+        differs.
+
+        Sanity check: at DEFAULT settings (MIN=3, WILSON=0.6), at least
+        one group must crystallize — otherwise the scenario is
+        structurally degenerate (no signal possible). Recorded in
+        metadata ``n_crystallized``.
+        """
+        # Default-setting sanity check
+        default_scn = PolicyCacheFamilyScenario(overrides={})
+        default_res = default_scn.execute()
+        if default_res.status not in ("ok", "skipped-degenerate"):
+            pytest.skip(
+                f"PolicyCacheFamilyScenario errored at defaults: "
+                f"{default_res.error_message}"
+            )
+        # At DEFAULTS (MIN_EVENTS=3, WILSON=0.6), the group spec is
+        # calibrated to produce at least 2 crystallizations ((13,15) and
+        # (20,20)). If none crystallizes, the scenario is structurally
+        # broken.
+        n_default = (default_res.metadata or {}).get("n_crystallized", 0)
+        assert n_default >= 1, (
+            f"PolicyCacheFamilyScenario crystallized 0 groups at defaults "
+            f"(MIN_EVENTS=3, WILSON=0.6). Group specs may be too strict — "
+            f"metadata: {default_res.metadata}"
+        )
+
+        ndcg_low = _run_scenario_ndcg(
+            PolicyCacheFamilyScenario,
+            {"MIN_EVENTS_FOR_CRYSTALLIZATION": 1, "WILSON_CI_THRESHOLD": 0.3},
+        )
+        ndcg_high = _run_scenario_ndcg(
+            PolicyCacheFamilyScenario,
+            {"MIN_EVENTS_FOR_CRYSTALLIZATION": 10, "WILSON_CI_THRESHOLD": 0.8},
+        )
+        if ndcg_low is None or ndcg_high is None:
+            pytest.skip(
+                "PolicyCacheFamilyScenario could not execute at one of the "
+                "extreme threshold combinations"
+            )
+        diff = abs(ndcg_low - ndcg_high)
+        assert diff > 0.03, (
+            f"PolicyCacheFamilyScenario nDCG@5 barely moves between "
+            f"permissive (MIN=1, WILSON=0.3, ndcg={ndcg_low:.4f}) and "
+            f"strict (MIN=10, WILSON=0.8, ndcg={ndcg_high:.4f}), "
+            f"diff={diff:.4f}. Check that apply_overrides is patching the "
+            f"policy_cache module-level thresholds correctly."
         )

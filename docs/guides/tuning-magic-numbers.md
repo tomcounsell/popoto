@@ -8,9 +8,9 @@ This guide documents the ~25 behavioral constants that control Popoto's agent-me
 
 Popoto's agent-memory stack uses constants that control scoring, decay, strengthening, weakening, filtering, and learning. These were initially set to reasonable guesses and have now been validated through a benchmark harness that measures retrieval quality (precision@k, nDCG) and calibration error across factual recall, multi-step reasoning, and temporal scheduling scenarios.
 
-For Tiers 1-3, a `ScenarioFactory` can generate 50 diverse stress-test scenarios from parameterized seeds, with a 70/30 train/validation split to guard against overfitting. A ratchet loop automates keep/discard decisions for proposed constant changes. See [Parametric Sweep](../features/parametric-sweep.md) for details.
+For Tiers 1-3, a `ScenarioFactory` can generate 50 diverse stress-test scenarios from parameterized seeds, with a 70/30 train/validation split to guard against overfitting. A complementary `FamilyScenarioFactory` (see `tests/benchmarks/scenarios/family_factory.py`) adds 7 family-aware scenarios (decay, confidence, write_filter, co_occurrence, prediction_ledger, context_assembler, policy_cache) that exercise each constant's actual code path — these are the scenarios that surface the sensitivity ratings in the tables below. A ratchet loop automates keep/discard decisions for proposed constant changes. See [Parametric Sweep](../features/parametric-sweep.md) for details.
 
-**Key finding**: The initial defaults are all within their safe operating ranges. The only constant with a cliff effect is `ACTED_CYCLE_STRENGTHEN_FACTOR`, which must be >= 1.0.
+**Key finding**: The initial defaults are all within their safe operating ranges. The only constant with a cliff effect is `ACTED_CYCLE_STRENGTHEN_FACTOR`, which must be >= 1.0. As of sweep 2026-04-20 (`tests/benchmarks/results/sweep_20260420_051055.json`), 6 of 26 swept constants show nDCG@5 variance > 0.05 (`initial_weight`, `WILSON_CI_THRESHOLD`, `decay_per_hop`, `_wf_min_threshold`, `decay_rate`, `COMPETITIVE_SUPPRESSION_SIGNAL`).
 
 ## Constant Catalog
 
@@ -57,9 +57,9 @@ Source: `src/popoto/fields/co_occurrence_field.py`
 | Constant | Default | Optimal Range | Sensitivity |
 |----------|---------|--------------|-------------|
 | `decay_factor` | 0.95 | [0.5, 0.99] | Low |
-| `initial_weight` | 0.1 | [0.01, 0.5] | Low |
+| `initial_weight` | 0.1 | [0.01, 0.5] | **HIGH** (variance 0.144, sweep 2026-04-20) |
 | `delta` | 0.05 | [0.01, 0.2] | Low |
-| `decay_per_hop` | 0.5 | [0.1, 0.9] | Low |
+| `decay_per_hop` | 0.5 | [0.1, 0.9] | **HIGH** (variance 0.112, sweep 2026-04-20) |
 
 ### PredictionLedgerMixin
 
@@ -78,7 +78,7 @@ Source: `src/popoto/recipes/policy_cache.py`
 | Constant | Default | Optimal Range | Sensitivity |
 |----------|---------|--------------|-------------|
 | `MIN_EVENTS_FOR_CRYSTALLIZATION` | 3 | [1, 10] | Low |
-| `WILSON_CI_THRESHOLD` | 0.6 | [0.3, 0.8] | Low |
+| `WILSON_CI_THRESHOLD` | 0.6 | [0.3, 0.8] | **HIGH** (variance 0.130, sweep 2026-04-20 via `PolicyCacheFamilyScenario`) |
 | `TD_ALPHA` | 0.1 | [0.01, 0.5] | Low |
 | `TD_GAMMA` | 0.95 | [0.8, 0.99) | Low |
 | `CHI_SQUARED_P_THRESHOLD` | 0.05 | — | Not swept |
@@ -90,7 +90,7 @@ Source: `src/popoto/recipes/context_assembler.py`
 
 | Constant | Default | Optimal Range | Sensitivity |
 |----------|---------|--------------|-------------|
-| `COMPETITIVE_SUPPRESSION_SIGNAL` | 0.3 | [0.1, 0.7] | Low |
+| `COMPETITIVE_SUPPRESSION_SIGNAL` | 0.3 | [0.1, 0.7] | **Medium** (variance 0.053, sweep 2026-04-20 via `ContextAssemblerFamilyScenario`) |
 | `DEFAULT_SURFACING_THRESHOLD` | 0.5 | [0.1, 0.9] | Low |
 
 ### SubconsciousMemory (Tier 4)

@@ -37,74 +37,91 @@ class Defaults:
 
     # Sweep evidence for each numeric default is tagged inline. The
     # reference sweep is
-    # ``tests/benchmarks/results/sweep_20260417_141047.json`` (26 Tier 1-3
-    # constants, 8 family + 10 generic scenarios per constant). Variance is
+    # ``tests/benchmarks/results/sweep_20260420_051055.json`` (26 Tier 1-3
+    # constants, 8 family + 10 generic scenarios per constant, 7 family
+    # scenarios including PredictionLedger / ContextAssembler /
+    # PolicyCache added in issue #362). Variance is
     # max(nDCG@5) - min(nDCG@5) across the swept values. Constants with
-    # variance <= 0.05 after the 2026-04-17 ground-truth decoupling are
-    # marked "empirically inert" — the family scenarios don't exercise
-    # their code paths enough to move the sensitivity signal. Inert
-    # constants are kept at their prior values rather than removed; a
-    # follow-up can scope deeper scenarios for them.
+    # variance <= 0.05 are marked "empirically inert" — the family
+    # scenarios don't exercise their code paths enough to move the
+    # sensitivity signal. Inert constants are kept at their prior values
+    # rather than removed; a follow-up can scope deeper scenarios for
+    # them.
 
     # -- DecayingSortedField --------------------------------------------------
-    DECAY_RATE = 0.1  # best from sweep 2026-04-17, variance=0.067, prior=0.5
+    DECAY_RATE = 0.1  # best from sweep 2026-04-20, variance=0.067, prior=0.1 (stable)
 
     # -- ConfidenceField ------------------------------------------------------
-    INITIAL_CONFIDENCE = 0.5  # empirically inert (sweep 2026-04-17, variance=0.0011)
+    INITIAL_CONFIDENCE = 0.5  # empirically inert (sweep 2026-04-20, variance=0.0011)
 
     # -- ObservationProtocol (fields/observation.py) --------------------------
-    ACTED_CONFIDENCE_SIGNAL = 0.9  # sweep 2026-04-17 variance=0.020 (borderline); best in-range was 0.1 but 0.9 better reflects the "strong positive" semantics and per-scenario effect is small
-    CONTRADICTED_CONFIDENCE_SIGNAL = 0.1  # sweep 2026-04-17 variance=0.021 (borderline); best in-range was 0.9 (inverse of default — within noise, kept at 0.1 for compat)
+    ACTED_CONFIDENCE_SIGNAL = 0.9  # sweep 2026-04-20 variance=0.030 (borderline); best in-range was 0.1 but 0.9 better reflects the "strong positive" semantics and per-scenario effect is small
+    CONTRADICTED_CONFIDENCE_SIGNAL = 0.1  # sweep 2026-04-20 variance=0.030 (borderline); best in-range was 0.9 (inverse of default — within noise, kept at 0.1 for compat)
     ACTED_CYCLE_STRENGTHEN_FACTOR = (
-        1.2  # empirically inert (sweep 2026-04-17, variance=0.0)
+        1.2  # empirically inert (sweep 2026-04-20, variance=0.0)
     )
     DISMISSED_CYCLE_WEAKEN_FACTOR = (
-        0.8  # empirically inert (sweep 2026-04-17, variance=0.0)
+        0.8  # empirically inert (sweep 2026-04-20, variance=0.0)
     )
     CONTRADICTED_CYCLE_WEAKEN_FACTOR = (
-        0.5  # empirically inert (sweep 2026-04-17, variance=0.0)
+        0.5  # empirically inert (sweep 2026-04-20, variance=0.0)
     )
     AUTO_DISCHARGE_CONFIDENCE_THRESHOLD = (
-        0.1  # empirically inert (sweep 2026-04-17, variance=0.0)
+        0.1  # empirically inert (sweep 2026-04-20, variance=0.0)
     )
 
     # -- WriteFilterMixin (fields/write_filter.py) ----------------------------
-    WF_MIN_THRESHOLD = 0.1  # best from sweep 2026-04-17, variance=0.068, prior=0.2
+    WF_MIN_THRESHOLD = (
+        0.1  # best from sweep 2026-04-20, variance=0.068, prior=0.1 (stable)
+    )
     WF_PRIORITY_THRESHOLD = (
         0.7  # not swept separately (Tier 1 covers WF_MIN); kept at prior
     )
 
     # -- CoOccurrenceField (fields/co_occurrence_field.py) --------------------
-    CO_OCCURRENCE_DECAY_FACTOR = 0.95  # empirically inert (sweep 2026-04-17, variance=0.0) — family scenario never calls weaken_all()
-    CO_OCCURRENCE_INITIAL_WEIGHT = 0.1  # sweep 2026-04-17 variance=0.144; best 0.01 but curve has noise cliff, 0.1 is safer default for new users
-    CO_OCCURRENCE_DECAY_PER_HOP = 0.5  # best from sweep 2026-04-17, variance=0.112, prior=0.5 (already optimal, smooth peak at 0.5)
+    CO_OCCURRENCE_DECAY_FACTOR = 0.95  # empirically inert (sweep 2026-04-20, variance=0.0) — family scenario never calls weaken_all()
+    CO_OCCURRENCE_INITIAL_WEIGHT = 0.1  # sweep 2026-04-20 variance=0.144; best 0.01 but curve has noise cliff, 0.1 is safer default for new users
+    CO_OCCURRENCE_DECAY_PER_HOP = 0.5  # best from sweep 2026-04-20, variance=0.112, prior=0.5 (stable, smooth peak at 0.5)
 
     # -- PredictionLedgerMixin (fields/prediction_ledger.py) ------------------
-    PL_CONFIDENCE_ERROR_THRESHOLD = 0.7  # empirically inert (sweep 2026-04-17, variance=0.0) — no family scenario exercises prediction ledger
-    PL_CONFIDENCE_LOW_SIGNAL = 0.2  # empirically inert (sweep 2026-04-17, variance=0.0)
-    PL_AUTO_RESOLVE_ACTED = 0.1  # empirically inert (sweep 2026-04-17, variance=0.0)
-    PL_AUTO_RESOLVE_DISMISSED = (
-        0.5  # empirically inert (sweep 2026-04-17, variance=0.0)
-    )
-    PL_AUTO_RESOLVE_CONTRADICTED = (
-        0.9  # empirically inert (sweep 2026-04-17, variance=0.0)
-    )
+    # Issue #362 added PredictionLedgerFamilyScenario. PL_AUTO_RESOLVE_
+    # CONTRADICTED shows a gate-crossing signal (variance 0.025 between
+    # the [0.5, 0.7] plateau and the [0.8, 0.9, 0.95] plateau) but the
+    # signal dilutes below the 0.05 sweep bar when averaged across the
+    # family + generic scenario mix. PL_CONFIDENCE_ERROR_THRESHOLD shows
+    # a similar 0.025 variance. The remaining three PL_* constants (ACTED /
+    # DISMISSED / LOW_SIGNAL) are inert-by-design per plan Technical
+    # Approach §2 — their sweep grids fall entirely below the default
+    # confidence-error gate, so no auto-resolve transitions fire.
+    PL_CONFIDENCE_ERROR_THRESHOLD = 0.7  # sweep 2026-04-20 variance=0.025 (borderline); PL family scenario shows gate-crossing signal but family-average dilutes below 0.05 bar. Kept at 0.7 (semantic "moderate error floor").
+    PL_CONFIDENCE_LOW_SIGNAL = 0.2  # empirically inert (sweep 2026-04-20, variance=0.0) — fires only when error threshold is crossed; PL family scenario keeps threshold constant
+    PL_AUTO_RESOLVE_ACTED = 0.1  # empirically inert (sweep 2026-04-20, variance=0.0) — sweep grid [0.05..0.5] all below default 0.7 gate; inert-by-design per plan Technical Approach §2
+    PL_AUTO_RESOLVE_DISMISSED = 0.5  # empirically inert (sweep 2026-04-20, variance=0.0) — grid mostly below gate
+    PL_AUTO_RESOLVE_CONTRADICTED = 0.9  # sweep 2026-04-20 variance=0.025 (borderline); gate-crossing plateau at 0.5/0.7 vs 0.8/0.9/0.95. Kept at 0.9 (semantic "strong negative").
 
     # -- PolicyCache (recipes/policy_cache.py) --------------------------------
-    MIN_EVENTS_FOR_CRYSTALLIZATION = 3  # empirically inert (sweep 2026-04-17, variance=0.0) — no family scenario exercises policy cache
-    WILSON_CI_THRESHOLD = 0.6  # empirically inert (sweep 2026-04-17, variance=0.0)
-    TD_ALPHA = 0.1  # empirically inert (sweep 2026-04-17, variance=0.0)
-    TD_GAMMA = 0.95  # empirically inert (sweep 2026-04-17, variance=0.0)
-    CHI_SQUARED_P_THRESHOLD = 0.05  # empirically inert (sweep 2026-04-17, variance=0.0)
-    INITIAL_CYCLE_AMPLITUDE = 0.5  # empirically inert (sweep 2026-04-17, variance=0.0)
+    # Issue #362 added PolicyCacheFamilyScenario. WILSON_CI_THRESHOLD is
+    # now sensitive (variance 0.130) with monotonic curve peaking at 0.7;
+    # MIN_EVENTS_FOR_CRYSTALLIZATION is flat in the scenario's [1, 10]
+    # sweep range because the group specs all satisfy min_events<=10 and
+    # CI thresholds dominate the crystallized-set-membership signal.
+    MIN_EVENTS_FOR_CRYSTALLIZATION = 3  # empirically inert (sweep 2026-04-20, variance=0.0) — PolicyCache family scenario is CI-dominated; min_events signal needs a broader group-size spread to emerge
+    WILSON_CI_THRESHOLD = 0.6  # sweep 2026-04-20 variance=0.130 (sensitive), best 0.7 (nDCG 0.999 vs 0.972 at 0.6). Kept at 0.6 for semantic stability (60% lower-bound is a round threshold) and to avoid breaking callers that tune against the 0.6 baseline; the 0.027 ndcg gain is modest and downstream tests encode the 0.6 boundary (test_policy_cache.py::test_crystallization_from_events uses 8-success case with ci=0.676 that straddles 0.6 but falls below 0.7).
+    TD_ALPHA = 0.1  # empirically inert (sweep 2026-04-20, variance=0.0)
+    TD_GAMMA = 0.95  # empirically inert (sweep 2026-04-20, variance=0.0)
+    CHI_SQUARED_P_THRESHOLD = 0.05  # empirically inert (sweep 2026-04-20, variance=0.0)
+    INITIAL_CYCLE_AMPLITUDE = 0.5  # empirically inert (sweep 2026-04-20, variance=0.0)
 
     # -- ContextAssembler (recipes/context_assembler.py) ----------------------
-    COMPETITIVE_SUPPRESSION_SIGNAL = (
-        0.3  # empirically inert (sweep 2026-04-17, variance=0.0)
-    )
-    DEFAULT_SURFACING_THRESHOLD = (
-        0.5  # empirically inert (sweep 2026-04-17, variance=0.0)
-    )
+    # Issue #362 added ContextAssemblerFamilyScenario.
+    # COMPETITIVE_SUPPRESSION_SIGNAL is now sensitive (variance 0.053) —
+    # the [0.1, 0.2, 0.3, 0.5] plateau at nDCG 0.874 dips to 0.821 at 0.7
+    # (signal crosses the contradiction/corroboration boundary).
+    # DEFAULT_SURFACING_THRESHOLD remains inert because the scenario's
+    # pull path dominates and the push path is never activated above
+    # threshold.
+    COMPETITIVE_SUPPRESSION_SIGNAL = 0.3  # best-plateau from sweep 2026-04-20, variance=0.053, prior=0.3 (on plateau [0.1..0.5]; kept at 0.3 for "mild contradiction" semantics)
+    DEFAULT_SURFACING_THRESHOLD = 0.5  # empirically inert (sweep 2026-04-20, variance=0.0) — scenario's pull path never crosses the surfacing threshold
 
 
 class TemporalPeriod:
