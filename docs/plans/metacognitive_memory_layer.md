@@ -95,9 +95,9 @@ End-to-end flow for a retrieval with metacognitive signals enabled:
 4. **Merge + dedup + budget-select** (unchanged): produces `selected` list.
 5. **[NEW] Quality assessment runs** (only when `assess_quality=True`): compute `RetrievalQuality`:
    - `avg_confidence`: mean of `ConfidenceField.get_confidence()` across `selected`. Defaults to 1.0 if no ConfidenceField on model.
-   - `score_spread`: coefficient of variation (stddev / mean) of composite scores attached during retrieval.
+   - `score_spread`: coefficient of variation (stddev / mean) of composite scores attached during retrieval. Falls back to `0.0` when `abs(mean) < 1e-9` (empty scores or all-zero) — `stddev / mean` is undefined otherwise.
    - `fok_score`: for each cue value in `query_cues`, compute `0.4 * cue_familiarity + 0.4 * partial_retrieval_count + 0.2 * subthreshold_activation`, then average across cues. Components:
-     - `cue_familiarity = 1.0 if ExistenceFilter.might_exist(cue) else 0.0` (0.5 if no ExistenceFilter present)
+     - `cue_familiarity = 1.0 if (self._existence_filter and self._existence_filter.might_exist(self.model_class, str(cue_value))) else (0.5 if self._existence_filter is None else 0.0)`. Note the signature: `might_exist(model_class, fingerprint)` per `src/popoto/fields/existence_filter.py:429` — not `might_exist(cue)`. The `str(cue_value)` coercion matches the existing `_pull_path` pattern at `context_assembler.py:379` (`definitely_missing(self.model_class, str(cue_value))`).
      - `partial_retrieval_count = min(len(all_pull_candidates), max_items) / max_items`
      - `subthreshold_activation = count(candidates with score < surfacing_threshold but > 0) / max(len(all_pull_candidates), 1)`
    - `staleness_ratio`: fraction of `selected` with DecayingSortedField score below the model's configured decay threshold.
@@ -112,8 +112,7 @@ End-to-end flow for a retrieval with metacognitive signals enabled:
 
 - **New dependencies**: None beyond what popoto already uses. No new PyPI packages. No Redis modules.
 - **Interface changes**:
-  - `ContextAssembler.__init__` gains an `assess_quality: bool = False` parameter (backward compatible).
-  - `ContextAssembler.assemble()` respects `assess_quality` — when True, populates `AssemblyResult.metadata["quality"]`.
+  - `ContextAssembler.assemble()` gains an `assess_quality: bool = False` parameter (backward compatible). When True, populates `AssemblyResult.metadata["quality"]`. Rationale: per-call parameter matches the existing pattern for `agent_id` / `partition_filters` on `assemble()`; no constructor knob is added.
   - `ContextAssembler.assess(query_cues, ...) -> RetrievalQuality` — new standalone method for pre-retrieval FOK checks.
   - New dataclass `RetrievalQuality` in `src/popoto/recipes/context_assembler.py`.
   - `PredictionLedgerMixin.error_summary(model_class, partition=None, group_by=None) -> dict` — new classmethod.
@@ -155,7 +154,7 @@ Run all checks manually; no prerequisite automation required.
 
 - **`RetrievalQuality` dataclass** (new, in `context_assembler.py`): 4 required fields (`avg_confidence`, `score_spread`, `fok_score`, `staleness_ratio`) plus optional `score_distribution` (full list of scores for histogram analysis) and `per_cue_fok` (dict mapping cue value → FOK component breakdown for debugging).
 - **`ContextAssembler.assess(query_cues, partition_filters=None) -> RetrievalQuality`** (new method): computes quality *without* running the full assembly pipeline. Reads ExistenceFilter for cue_familiarity, runs a low-limit composite score to count candidates above/below threshold. Cheap — meant to be called before `assemble()` to decide whether retrieval is worth the round-trip.
-- **`ContextAssembler.assemble(..., assess_quality=False)`**: when True, computes `RetrievalQuality` on the actual `selected` list (not on a pre-retrieval probe) and attaches to `metadata["quality"]`. When False (default), existing behavior bit-for-bit.
+- **`ContextAssembler.assemble(..., assess_quality=False)`**: per-call parameter on `assemble()` only (NOT on `__init__`). When True, computes `RetrievalQuality` on the actual `selected` list (not on a pre-retrieval probe) and attaches to `metadata["quality"]`. When False (default), existing behavior bit-for-bit. This matches the existing per-call parameter pattern for `agent_id` / `partition_filters`.
 - **`PredictionLedgerMixin.error_summary(model_class, partition="default", group_by=None, limit=100) -> dict`**: aggregates errors from the error sorted set. When `group_by=None`, returns overall stats: `{count, mean, stddev, p50, p90, p99, max}`. When `group_by` is a callable `(member_key, error) -> group_label`, returns `{group_label: {...stats...}}`. When `group_by` is a string like `"weekday"` or `"hour"`, uses a built-in bucketing function over `resolved_at` timestamps read from the meta hash.
 - **New `"used"` outcome in `ObservationProtocol`**: `VALID_OUTCOMES = {"acted", "dismissed", "deferred", "contradicted", "used"}`. Applied effects: discard staged reads, auto-resolve predictions with mapped error value, no confidence or cycle updates. Rationale: "used" means the agent consumed the memory but neither acted on it nor dismissed it — it was useful context without being directly actionable, a common case that `"acted"` overcounts and `"deferred"` undercounts.
 - **`AdaptiveAssembler`** (new class in `src/popoto/recipes/adaptive_assembler.py`): wraps a `ContextAssembler` with an autoresearch keep/revert loop. Records `(RetrievalQuality, downstream_outcome_signal)` in a rolling window per call. Every `ADAPTIVE_QUALITY_WINDOW_SIZE` calls, proposes a symmetric weight perturbation (e.g., shift 0.05 from relevance to confidence), measures the next window's avg quality, and keeps or reverts.
@@ -179,23 +178,28 @@ Agent uses `AdaptiveAssembler(inner=ContextAssembler(...))` → each `adaptive.a
 **Tier 1: `RetrievalQuality` + `assess()` + `assemble(assess_quality=True)`**
 
 - Add `RetrievalQuality` dataclass to `context_assembler.py`. Dataclass, not a Model — no Redis state. Carries the 4 required metrics + optional `score_distribution: list[float] = field(default_factory=list)` and `per_cue_fok: dict = field(default_factory=dict)`.
-- Implement `ContextAssembler._compute_fok(query_cues, pull_candidates)` as a private helper. For each cue, derive the three components per the design-spec formula. When `ExistenceFilter` is not configured on the model, fall back to `cue_familiarity = 0.5` (neutral). When no pull candidates surface, `partial_retrieval_count = 0` and `subthreshold_activation = 0`. Edge case: empty `query_cues` → `fok_score = 0.0` with a warning log.
-- Implement `ContextAssembler._compute_quality(selected, all_pull_candidates, query_cues)` as a private helper invoked at the end of `assemble()` when `assess_quality=True`. Collects the 4 metrics.
+- Implement `ContextAssembler._compute_fok(query_cues, pull_candidates)` as a private helper. For each cue, derive the three components per the design-spec formula. Cue familiarity uses the verified ExistenceFilter API `might_exist(model_class, fingerprint)` (`src/popoto/fields/existence_filter.py:429`), coercing the cue value via `str(...)` to match the `_pull_path` pattern at `context_assembler.py:379`:
+  ```
+  familiar = 1.0 if (self._existence_filter and self._existence_filter.might_exist(self.model_class, str(cue_value))) else (0.5 if self._existence_filter is None else 0.0)
+  ```
+  When `ExistenceFilter` is not configured on the model, fall back to `cue_familiarity = 0.5` (neutral). When configured but `might_exist` returns False, `cue_familiarity = 0.0`. When no pull candidates surface, `partial_retrieval_count = 0` and `subthreshold_activation = 0`. Edge case: empty `query_cues` → `fok_score = 0.0` with a warning log.
+- Implement `ContextAssembler._compute_quality(selected, all_pull_candidates, query_cues)` as a private helper invoked at the end of `assemble()` when `assess_quality=True`. Collects the 4 metrics. `score_spread` computation must guard against zero-mean: `score_spread = stddev / mean if abs(mean) >= 1e-9 else 0.0` (stddev/mean is undefined when mean is zero — empty scores or all-zero scores).
 - Implement `ContextAssembler.assess(query_cues, partition_filters=None, probe_limit=None)`. Runs a low-cost probe: ExistenceFilter check + a composite_score call with `limit=probe_limit or max_items`. Does NOT run propagation, does NOT run push path, does NOT apply post-effects. Returns a `RetrievalQuality` built purely from the probe. Intended use: caller decides whether to run the full `assemble()` based on `fok_score`.
 - Expose `RetrievalQuality` in `src/popoto/__init__.py` and the `recipes/__init__.py` so callers can type-hint against it.
 
 **Tier 2: `PredictionLedgerMixin.error_summary` + `"used"` outcome**
 
-- Add classmethod `PredictionLedgerMixin.error_summary(cls, model_class, partition="default", group_by=None, limit=100)`. Read the full error sorted set via `ZRANGE error_key 0 -1 WITHSCORES`. For each member, if `group_by` is callable, invoke it; if it's a string, bucket `resolved_at` from meta hash read by pipeline (read `limit` meta entries in one `HMGET`, decode msgpack, extract `resolved_at`, apply built-in bucketer). Compute stats: count, mean, stddev, percentiles via `statistics.quantiles` or a small helper. Return `dict` keyed by group (or `{"__all__": stats}` when no grouping).
-- Built-in bucketers for string `group_by` values:
-  - `"hour"`: bucket by `datetime.fromtimestamp(resolved_at).hour` → 24 buckets
-  - `"weekday"`: 7 buckets
-  - `"day"`: `YYYY-MM-DD` strings
+- Add classmethod `PredictionLedgerMixin.error_summary(cls, model_class, partition="default", group_by=None, limit=100)`. Read the error sorted set (top `limit` by |error|) via `ZRANGE error_key 0 limit-1 WITHSCORES`. For each member, if `group_by` is callable, invoke it; if it's a string, bucket `resolved_at` read from each instance's per-instance meta hash via a **pipelined batch of per-instance `HGET` calls** (NOT a single `HMGET` — each PredictionLedger instance has its own meta hash keyed as `$PL:{ClassName}:meta:{pk}`). Invariant: `member_key == instance.db_key.redis_key == pk`, so `meta_key = f"$PL:{class_name}:meta:{member_key}"` and the read is `pipe.hget(meta_key, member_key)` for each member. After `pipe.execute()`, decode each msgpack blob, extract `resolved_at`, apply built-in bucketer. Compute stats: count, mean, stddev, percentiles via `statistics.quantiles` or a small helper. Return `dict` keyed by group (or `{"__all__": stats}` when no grouping). Bucketer contract (see built-in list below) must coerce `resolved_at` via `ts = float(data.get("resolved_at") or 0.0); if ts <= 0: continue` before any datetime conversion — `resolved_at` is stored as `str(time.time())` (see `prediction_ledger.py:300, :376`), not as a numeric type. Corrupt msgpack entries (unpack raises) must be logged at warning level and skipped, not propagated.
+- Built-in bucketers for string `group_by` values. All built-in bucketers must perform the following coercion-and-guard on every row before bucketing (since `resolved_at` is a string per `prediction_ledger.py:300, :376`): `ts = float(data.get("resolved_at") or 0.0); if ts <= 0: continue`. Corrupt msgpack entries (unpack raises) must be logged at warning level and skipped, not allowed to crash the loop.
+  - `"hour"`: bucket by `datetime.fromtimestamp(ts).hour` → 24 buckets
+  - `"weekday"`: 7 buckets (`datetime.fromtimestamp(ts).weekday()`)
+  - `"day"`: `YYYY-MM-DD` strings (`datetime.fromtimestamp(ts).date().isoformat()`)
   - Unknown string: `ValueError` with a list of known bucketers
-- Add `"used"` to `VALID_OUTCOMES` in `observation.py`. Add `_apply_used(instance, pipeline)` function:
-  - Discard staged reads (same as other discards)
+- Add `"used"` to `VALID_OUTCOMES` in `observation.py`. Add `_apply_used(instance, pipeline)` function. The behavior is approximately `_apply_deferred + confirm_access + auto_resolve` — specifically:
+  - **Confirm** the staged read via `instance.confirm_access(pipeline=pipeline)` when `hasattr(instance, "confirm_access") and callable(instance.confirm_access)` (matches `_apply_acted` at `src/popoto/fields/observation.py:219`). This commits the AccessTrackerMixin staged read as a confirmed read — the key behavioral distinction from `"deferred"`, which discards staged reads.
   - Auto-resolve predictions via `PredictionLedgerMixin.auto_resolve(instance, "used", pipeline=pipeline)`
   - Do NOT touch ConfidenceField, CyclicDecayField, or DecayingSortedField
+  - Net effect: weaker than `"acted"` (no confidence corroboration, no cycle strengthening, no decay touch) but strictly stronger than `"deferred"` (which discards staged reads and does not auto-resolve). This gives an observable, testable distinction between the two outcomes.
 - Extend `PredictionLedgerMixin._pl_auto_resolve_errors` to include `"used": Defaults.PL_AUTO_RESOLVE_USED`. Add `PL_AUTO_RESOLVE_USED = 0.3` to `Defaults` (moderate error — agent consumed but didn't act, so the prediction was neither confirmed nor contradicted).
 - Add the `"used"` branch to `_apply_outcome` dispatch in `observation.py`.
 
@@ -276,13 +280,17 @@ No existing test is deleted or modified in a breaking way. All existing tests re
 
 **Impact:** Agents might interchangeably use `"deferred"` and `"used"`, producing noisy signals.
 
-**Mitigation:** Precise docstring distinguishing them: `"deferred"` = agent ignored the memory entirely (no read, no consideration); `"used"` = agent read and reasoned over the memory but did not act on it in the response. Add an integration test that asserts different effect profiles for the two. Reinforce in `docs/features/observation-protocol.md`.
+**Mitigation:** The two outcomes are observably different in effect — not just in docstring:
+- `"deferred"` — discards staged reads (no `confirm_access` call), does not auto-resolve predictions. Net: agent set memory aside without commitment; no trace recorded.
+- `"used"` — **confirms** staged reads via `instance.confirm_access(pipeline=pipeline)` (matching `_apply_acted` at `src/popoto/fields/observation.py:219`) AND auto-resolves predictions with `PL_AUTO_RESOLVE_USED`. Net: agent committed to having consumed the memory; the read is recorded as confirmed, but no confidence/cycle/decay signal is emitted.
+
+Precise docstring distinguishing them: `"deferred"` = agent ignored the memory (no commitment to having read it); `"used"` = agent read and reasoned over the memory but did not act on it in the response. The `TestUsedOutcome` class must assert that `"used"` produces a confirmed-read trace while `"deferred"` does not. Reinforce in `docs/features/observation-protocol.md`.
 
 ### Risk 4: `error_summary` with large error sets becomes slow
 
-**Impact:** `ZRANGE error_key 0 -1 WITHSCORES` returns the full set; for agents with millions of resolved predictions, this is O(N) transfer.
+**Impact:** `ZRANGE error_key 0 limit-1 WITHSCORES` returns up to `limit` members; meta reads then require one `HGET` per instance (each PredictionLedger instance owns its own `$PL:{ClassName}:meta:{pk}` hash — there is no single hash to `HMGET` in one round-trip). For `limit=100` this is 100 pipelined `HGET` commands plus one `ZRANGE`, still one network round-trip but O(limit) Redis CPU.
 
-**Mitigation:** Cap with a `limit` parameter (default 100, meaning "sample the top-N most-erroneous"). Document that this is a sampling function, not an exhaustive scan. For exhaustive scans, users should consume `resolved_at` from meta hashes themselves. Add a warning log if `ZCARD error_key > 10_000` and `limit=-1`.
+**Mitigation:** Cap with a `limit` parameter (default 100, meaning "sample the top-N most-erroneous"). Pipeline the per-instance `HGET` batch to amortize round-trip cost. Document that this is a sampling function, not an exhaustive scan. For exhaustive scans, users should iterate over meta hashes themselves. Add a warning log if `ZCARD error_key > 10_000` and `limit=-1`.
 
 ## Race Conditions
 
@@ -296,17 +304,17 @@ No existing test is deleted or modified in a breaking way. All existing tests re
 
 **State prerequisite:** Weight mutation must not interleave with an in-flight `_pull_path`.
 
-**Mitigation:** `AdaptiveAssembler` does NOT mutate `inner.score_weights` in-place. Instead, it constructs a NEW `ContextAssembler` instance with the candidate weights and swaps the reference atomically (`self.inner = new_inner`). In-flight calls complete against their originally-held `inner` reference (Python's GIL guarantees the attribute lookup is atomic). Document that `AdaptiveAssembler` is designed for single-thread-per-agent usage; multi-threaded agents must hold their own `AdaptiveAssembler` instance per thread. Test: spawn 2 threads hammering a shared adaptive assembler, assert no AssertionError / corrupted quality window.
+**Mitigation:** `AdaptiveAssembler` is **single-threaded by design**. The inner-swap pattern (`self.inner = new_inner` in lieu of in-place mutation) only protects the `inner` reference itself; the `_current_window` / `_candidate_window` / `_baseline_quality` bookkeeping is NOT atomic across concurrent calls, and we explicitly do not add locks (that would expand scope beyond this plan). Document that `AdaptiveAssembler` is designed for single-thread-per-instance usage; multi-threaded agents must hold their own `AdaptiveAssembler` per thread. No multi-threaded test is included — attempting to assert thread-safety would require adding synchronization primitives that the class does not promise. If true multi-threaded use becomes a requirement, a follow-up plan can add locks or move bookkeeping to an atomic data structure.
 
-### Race 2: `error_summary` reading a meta hash while `auto_resolve` updates it
+### Race 2: `error_summary` reading per-instance meta hashes while `auto_resolve` updates them
 
-**Location:** `prediction_ledger.py error_summary()` reading `meta_key` via `HMGET` while another process runs `RESOLVE_PREDICTION_LUA` on the same hash.
+**Location:** `prediction_ledger.py error_summary()` reading per-instance `$PL:{ClassName}:meta:{pk}` hashes via a pipelined batch of `HGET` calls while another process runs `RESOLVE_PREDICTION_LUA` on the same hashes.
 
 **Trigger:** Concurrent resolution + summary queries.
 
-**Data prerequisite:** Summary sees a consistent view of resolved predictions. Inconsistency cost: a single summary call may miss the most recent resolution or see one in an inconsistent msgpack state.
+**Data prerequisite:** Summary sees a consistent view of resolved predictions. Inconsistency cost: a single summary call may miss the most recent resolution, or observe resolution state for instance A while missing it for instance B (since each `HGET` is independent, the batch is NOT a single snapshot).
 
-**Mitigation:** `HMGET` is atomic in Redis — it returns a snapshot. Each entry is a single msgpack blob, also atomic. Summary may under-count by one or two resolutions that land between the `ZRANGE` and `HMGET`, but it cannot corrupt. Document that `error_summary` is eventually-consistent; not a real-time gauge. No code change needed.
+**Mitigation:** Each individual `HGET` is atomic and each entry is a single msgpack blob, also atomic — so no partial-write corruption is possible. However, unlike a single `HMGET`, a pipelined batch of per-instance `HGET`s is NOT a cross-key snapshot: a resolution landing between two pipelined `HGET`s may appear in one and not another. Summary may under-count or see mixed resolution-state across instances that land between the initial `ZRANGE` and the pipelined `HGET` batch, but it cannot corrupt data. Document that `error_summary` is eventually-consistent and not a cross-instance snapshot; not a real-time gauge. No code change needed.
 
 ## No-Gos (Out of Scope)
 
@@ -336,7 +344,7 @@ No agent integration required — popoto is a library; consumers import it. Ther
 - [ ] Update `docs/features/context-assembler.md` to cross-reference the new `assess_quality` parameter.
 - [ ] Update `docs/features/prediction-ledger.md` to document `error_summary` and the new `"used"` outcome.
 - [ ] Update `docs/features/observation-protocol.md` to document the `"used"` outcome and the distinction from `"deferred"`.
-- [ ] Add entry to `docs/features/README.md` index table.
+- [ ] Update feature documentation index (create `docs/features/README.md` if missing, or update equivalent nav-level documentation).
 
 ### External Documentation Site
 
@@ -399,7 +407,7 @@ No agent integration required — popoto is a library; consumers import it. Ther
 
 - **Validator (tier-3)**
   - Name: `tier3-validator`
-  - Role: Runs the integration test multiple times (determinism check with the documented seed) to confirm >= 5% improvement is reliable, not a single-run fluke
+  - Role: Runs the integration test 5 times (determinism check with the documented seed) to confirm "reliable" improvement — defined as >=5% improvement in at least 4 of 5 runs, OR mean improvement >=5% with stddev <=2%
   - Agent Type: validator
   - Resume: true
 
@@ -430,7 +438,7 @@ No agent integration required — popoto is a library; consumers import it. Ther
 - Implement `ContextAssembler._compute_fok(query_cues, pull_candidates) -> float`
 - Implement `ContextAssembler._compute_quality(selected, all_pull_candidates, query_cues) -> RetrievalQuality`
 - Implement `ContextAssembler.assess(query_cues, partition_filters=None, probe_limit=None) -> RetrievalQuality`
-- Add `assess_quality: bool = False` parameter to `ContextAssembler.__init__` and `assemble()`; attach quality to `AssemblyResult.metadata["quality"]` when True
+- Add `assess_quality: bool = False` parameter to `ContextAssembler.assemble()` only (NOT to `__init__`); attach quality to `AssemblyResult.metadata["quality"]` when True. Matches the existing per-call parameter pattern (`agent_id`, `partition_filters`).
 - Export `RetrievalQuality` from `src/popoto/recipes/__init__.py` and `src/popoto/__init__.py`
 - Write new tests under `class TestRetrievalQuality` in `tests/test_context_assembler.py`
 
@@ -455,6 +463,10 @@ No agent integration required — popoto is a library; consumers import it. Ther
 - **Agent Type**: builder
 - **Parallel**: false
 - Add `PredictionLedgerMixin.error_summary(model_class, partition, group_by, limit)` classmethod
+  - Read error set via `ZRANGE error_key 0 limit-1 WITHSCORES`
+  - Fetch per-instance meta via a **pipelined batch of `HGET` calls** (one per member; each instance has its own `$PL:{ClassName}:meta:{pk}` hash — there is NO single hash with all members, so `HMGET` is wrong). Use `meta_key = f"$PL:{class_name}:meta:{member_key}"` and `pipe.hget(meta_key, member_key)`.
+  - Decode msgpack; corrupt entries log-and-skip (do not crash)
+  - Coerce `resolved_at` via `float(...)` with `<= 0` guard before bucketing
 - Add built-in bucketers (`"hour"`, `"weekday"`, `"day"`) and `ValueError` for unknown strings
 - Add `"used"` to `VALID_OUTCOMES` in `observation.py`
 - Implement `_apply_used(instance, pipeline)` and wire into `_apply_outcome` dispatch
@@ -497,7 +509,7 @@ No agent integration required — popoto is a library; consumers import it. Ther
 - **Agent Type**: validator
 - **Parallel**: false
 - Run `pytest tests/test_adaptive_assembler.py -v` — assert all pass
-- Run the integration test 5 times in a row — assert improvement is reliable (not >=5% on one run and <0% on another); if flaky, request a loosening of the threshold or tightening of the seed and re-run
+- Run the integration test 5 times in a row — "reliable" means: asserts >=5% improvement in at least 4 of 5 runs, OR mean improvement >=5% with stddev <=2%. If flaky by that definition, request a loosening of the threshold or tightening of the seed and re-run.
 
 ### 7. Documentation
 
@@ -510,7 +522,7 @@ No agent integration required — popoto is a library; consumers import it. Ther
 - Update `docs/features/context-assembler.md` — document `assess_quality` parameter + cross-reference to metacognitive-layer.md
 - Update `docs/features/prediction-ledger.md` — document `error_summary`
 - Update `docs/features/observation-protocol.md` — document `"used"` outcome + distinction from `"deferred"`
-- Update `docs/features/README.md` — add index entry
+- Update feature documentation index — add entry to `docs/features/README.md` if it exists, or update the equivalent nav-level index (create `docs/features/README.md` if neither exists)
 - Update `mkdocs.yml` — nav entry
 - Update `docs/api-reference.md` — new public symbols
 - Run `mkdocs serve` locally to verify build
@@ -559,8 +571,8 @@ No agent integration required — popoto is a library; consumers import it. Ther
 
 2. **Tier 3 improvement threshold: 5% or something else?** The integration test asserts a >=5% improvement in `fok_score * avg_confidence`. This is set arbitrarily. Is 5% ambitious enough to be meaningful, or so tight that noise will flake the test? Alternative: use a `t`-test with alpha=0.05 instead of a fixed threshold. Plan chose fixed threshold for simplicity; happy to revise.
 
-3. **Should `"used"` auto-resolve predictions with error 0.3, or should we emit a warning and leave predictions unresolved?** Auto-resolving loses information (the prediction was neither confirmed nor contradicted; 0.3 is an opinionated guess). Leaving unresolved means predictions hang around until explicit resolution. Proposal: auto-resolve with 0.3 by default (matches the pattern of other outcomes), but document clearly that 0.3 is a placeholder and callers who care about precise prediction accounting should use explicit `resolve_prediction()` instead.
+3. **Should `"used"` auto-resolve predictions with error 0.3, or should we emit a warning and leave predictions unresolved?** Auto-resolving loses information (the prediction was neither confirmed nor contradicted; 0.3 is an opinionated guess). Leaving unresolved means predictions hang around until explicit resolution. **Resolution: auto-resolve with 0.3 by default** (matches the pattern of other outcomes), but document clearly that 0.3 is a placeholder and callers who care about precise prediction accounting should use explicit `resolve_prediction()` instead. The `"used"` outcome is observably distinct from `"deferred"` because `_apply_used` calls `instance.confirm_access(...)` (committing the staged read) while `_apply_deferred` discards staged reads — the distinction is behavioral, not just a numeric difference in auto-resolve error.
 
 4. **Source credibility — bookkeeping only or skip entirely?** The issue lists it as Tier 2 scope. The plan scope-cuts it to "record in the outcome dict but don't apply". Is even bookkeeping worth the cognitive overhead if no one's going to wire it up in v1? Alternative: drop source credibility entirely from v1, defer the whole concept to v2. Consequence: one acceptance-criterion-adjacent goal from the issue is deferred explicitly (the issue calls out source credibility in the "Revised" recon bucket; a deferral is defensible).
 
-5. **Does `AdaptiveAssembler.inner` swap (constructing a new `ContextAssembler`) break if the outer application holds a reference to the old inner?** Python's attribute lookup is atomic, but an outer caller that captured `adaptive.inner` into a local variable will keep using the old one. Recommend: document that `AdaptiveAssembler` is meant to be called directly (not "peek at inner"). Is this restriction acceptable, or should we add a thread lock + in-place mutation as a belt-and-suspenders alternative?
+5. **Does `AdaptiveAssembler.inner` swap (constructing a new `ContextAssembler`) break if the outer application holds a reference to the old inner?** Python's attribute lookup is atomic, but an outer caller that captured `adaptive.inner` into a local variable will keep using the old one. **Resolution: single-threaded by design.** `AdaptiveAssembler` is meant to be called directly (not "peek at inner"), and only from a single thread per instance. The inner-swap protects the `inner` attribute from a half-mutated state, but the rolling-window bookkeeping (`_current_window`, `_candidate_window`, `_baseline_quality`) is not atomic across concurrent calls and we deliberately do not add locks to keep scope tight. Multi-threaded agents must hold one `AdaptiveAssembler` per thread.
