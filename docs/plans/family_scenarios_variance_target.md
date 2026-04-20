@@ -411,43 +411,43 @@ updated with best values and annotations.
 
 ### Exception Handling Coverage
 
-- [ ] `ContextAssembler._post_effects` uses pipeline and a broad
+- [x] `ContextAssembler._post_effects` uses pipeline and a broad
   `except Exception` around `pipeline.execute()`. The scenario does
   not need to test this branch directly, but the sanity test must not
   silently pass when the pipeline fails — assert the scenario status
   is `"ok"`, not simply that `retrieved_ids` is non-empty.
-- [ ] `PredictionLedgerMixin.auto_resolve` returns `None` silently
+- [x] `PredictionLedgerMixin.auto_resolve` returns `None` silently
   when no prediction is recorded. The scenario must call
   `record_prediction` before `auto_resolve` for every record; the
   sanity test must assert at least one resolution happens (via
   metadata: `n_resolutions > 0`).
-- [ ] `crystallization_handler` silently skips groups that miss
+- [x] `crystallization_handler` silently skips groups that miss
   thresholds. The sanity test must assert at least one
   crystallization occurs at default settings
   (`n_crystallized_at_default > 0`).
 
 ### Empty/Invalid Input Handling
 
-- [ ] Each new scenario's `run()` checks
+- [x] Each new scenario's `run()` checks
   `len(self._instances) < 3 → return skipped-degenerate`, matching
   the existing four scenarios.
-- [ ] Sanity tests that run the scenario at extreme override values
+- [x] Sanity tests that run the scenario at extreme override values
   must tolerate `ndcg_at_k` returning `None` for skipped-degenerate
   runs (skip the test with `pytest.skip`).
 
 ### Error State Rendering
 
-- [ ] Scenario `ScenarioResult.error_message` must be populated with
+- [x] Scenario `ScenarioResult.error_message` must be populated with
   a specific string (not empty) whenever status is `"error"`. The
   sanity tests do not assert error strings but the scenario code must
   not swallow an exception into an empty error_message.
 
 ## Test Impact
 
-- [ ] `tests/benchmarks/test_factory.py::TestFamilyGroundTruthDecoupling`
+- [x] `tests/benchmarks/test_factory.py::TestFamilyGroundTruthDecoupling`
   — UPDATE: add three new test methods (one per new scenario),
   mirroring the existing four tests' shape.
-- [ ] `tests/benchmarks/test_overrides_reach.py` — UPDATE if new family
+- [x] `tests/benchmarks/test_overrides_reach.py` — UPDATE if new family
   scenario overrides surface names not in the current registry (e.g.
   if PL/PolicyCache/ContextAssembler sanity tests register new
   short-form override keys). Verify
@@ -456,15 +456,15 @@ updated with best values and annotations.
   Defaults.MIN_EVENTS_FOR_CRYSTALLIZATION, Defaults.WILSON_CI_THRESHOLD,
   Defaults.COMPETITIVE_SUPPRESSION_SIGNAL, Defaults.DEFAULT_SURFACING_THRESHOLD
   — they are all present).
-- [ ] `tests/benchmarks/scenarios/family_factory.py` — UPDATE: add new
+- [x] `tests/benchmarks/scenarios/family_factory.py` — UPDATE: add new
   scenario classes, extend `CONSTANT_FAMILY_MAP`, `FAMILY_NAMES`,
   `FAMILY_SCENARIO_CLASSES`, and the `base_seed`/`record_count` dicts
   in `create_varied`.
-- [ ] `tests/benchmarks/run_sweeps.py` — NO CHANGE required. The
+- [x] `tests/benchmarks/run_sweeps.py` — NO CHANGE required. The
   Tier 1/2/3 sweep definitions already include all the target
   constants; `run_parametric` picks family scenarios automatically
   via `CONSTANT_FAMILY_MAP`.
-- [ ] `src/popoto/fields/constants.py` — UPDATE per-constant comments
+- [x] `src/popoto/fields/constants.py` — UPDATE per-constant comments
   after the fresh sweep. Any constant whose fresh variance exceeds
   0.05 has its `# empirically inert` annotation replaced with a
   `# best from sweep YYYY-MM-DD, variance=X.XXX, prior=...`
@@ -587,11 +587,11 @@ via `python -m tests.benchmarks.run_sweeps`. No MCP wrapping.
 
 ### Feature Documentation
 
-- [ ] Update `docs/plans/apply_experiment_learnings.md` to mark the
+- [x] Update `docs/plans/apply_experiment_learnings.md` to mark the
   `#362` acceptance bullet as checked once the fresh sweep confirms
   ≥5 sensitive constants. The plan file is already closed but the
   parent issue's tracker should reflect the follow-up completion.
-- [ ] Update any docs under `docs/guides/` that reference the
+- [x] Update any docs under `docs/guides/` that reference the
   "4 family scenarios" count (spot-check: `agent-memory`,
   `policy-cache-recipe`, `context-assembler-recipe`). Bump to
   whatever the new count is (5, 6, or 7) and cite the new sweep
@@ -599,34 +599,34 @@ via `python -m tests.benchmarks.run_sweeps`. No MCP wrapping.
 
 ### External Documentation Site
 
-- [ ] Inspect `docs/` MkDocs build — no tests expected to break, but
+- [x] Inspect `docs/` MkDocs build — no tests expected to break, but
   the family-scenario count may appear in one of the primitive
   documentation pages.
 
 ### Inline Documentation
 
-- [ ] Each new scenario class needs a docstring matching the existing
+- [x] Each new scenario class needs a docstring matching the existing
   four scenarios' format: purpose, ground-truth decoupling note,
   expected override sensitivity.
-- [ ] `CONSTANT_FAMILY_MAP` docstring / comment should be updated
+- [x] `CONSTANT_FAMILY_MAP` docstring / comment should be updated
   with the new family entries.
-- [ ] `constants.py` annotations updated per the constants-update
+- [x] `constants.py` annotations updated per the constants-update
   step above.
 
 ## Success Criteria
 
-- [ ] `FamilyScenarioFactory` registers at least one new scenario
+- [x] `FamilyScenarioFactory` registers at least one new scenario
   class targeting PredictionLedger OR PolicyCache OR ContextAssembler.
-- [ ] `CONSTANT_FAMILY_MAP` gains entries mapping at least 2 previously-
+- [x] `CONSTANT_FAMILY_MAP` gains entries mapping at least 2 previously-
   inert constants to the new scenario's family.
-- [ ] Running
+- [x] Running
   `python -m tests.benchmarks.run_sweeps --parametric --tier all`
   produces a fresh `tests/benchmarks/results/sweep_YYYYMMDD_HHMMSS.json`
   in which nDCG@5 `max(curve) - min(curve) > 0.05` holds for **≥5
   constants**.
-- [ ] At least one new constant (previously annotated as "empirically
+- [x] At least one new constant (previously annotated as "empirically
   inert") shows variance > 0.05 in the fresh sweep.
-- [ ] `tests/benchmarks/test_factory.py::TestFamilyGroundTruthDecoupling`
+- [x] `tests/benchmarks/test_factory.py::TestFamilyGroundTruthDecoupling`
   has one new method per new scenario, each asserting non-circular
   ground truth (loose floor: ndcg-between-extremes diff > 0.03).
 
@@ -649,16 +649,16 @@ rather than iterating blindly on distribution tweaks. The risk here
 is most acute for the PL family post-BLOCKER-fix — since only
 `PL_AUTO_RESOLVE_CONTRADICTED` is expected to carry signal, a low
 single-constant variance cannot be papered over by family averaging.
-- [ ] `src/popoto/fields/constants.py`: every constant whose fresh
+- [x] `src/popoto/fields/constants.py`: every constant whose fresh
   variance crosses 0.05 has its default updated to the best value
   AND its annotation replaced with a dated new-sweep comment.
-- [ ] `pytest tests/benchmarks/test_factory.py -q` passes.
-- [ ] `pytest tests/benchmarks/ -q` passes (full benchmark test
+- [x] `pytest tests/benchmarks/test_factory.py -q` passes.
+- [x] `pytest tests/benchmarks/ -q` passes (full benchmark test
   suite, not just the factory file).
-- [ ] `black src/ tests/` and `mypy src/` clean.
-- [ ] Sweep file committed alongside the constants update so the
+- [x] `black src/ tests/` and `mypy src/` clean.
+- [x] Sweep file committed alongside the constants update so the
   evidence trail is intact.
-- [ ] Documentation cascades updated (plan acceptance bullet,
+- [x] Documentation cascades updated (plan acceptance bullet,
   agent-memory guides, docs site build passes).
 
 ## Team Orchestration
