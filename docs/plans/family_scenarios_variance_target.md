@@ -6,6 +6,7 @@ owner: valorengels
 created: 2026-04-20
 tracking: https://github.com/tomcounsell/popoto/issues/362
 last_comment_id: None
+revision_applied: true
 ---
 
 # Family Scenarios — Close the 5-Constant Variance Target
@@ -303,11 +304,42 @@ updated with best values and annotations.
      Observed rounds: `seq[0:5]`; held-out: `seq[5:8]`.
    - `run()`: composite-score query on `{relevance: 0.3, certainty: 0.7}`.
      Ground truth: top-30% by held-out acted-rate.
-   - Override sensitivity: `PL_AUTO_RESOLVE_ACTED` (0.1 default) being
-     higher than `PL_AUTO_RESOLVE_DISMISSED` (0.5) reshapes the
-     confidence updates because errors above `PL_CONFIDENCE_ERROR_THRESHOLD`
-     trigger `_apply_confidence_feedback` with `PL_CONFIDENCE_LOW_SIGNAL`.
-     Varying any of these five constants should shift certainty ranking.
+   - Override sensitivity: The **primary-measured constant** is
+     `PL_AUTO_RESOLVE_CONTRADICTED` (default 0.9). Its swept range
+     `[0.5, 0.7, 0.8, 0.9, 0.95]` is the only PL_AUTO_RESOLVE_* grid
+     whose values straddle the `PL_CONFIDENCE_ERROR_THRESHOLD` gate
+     (default 0.7) in `_apply_confidence_feedback`
+     (`src/popoto/fields/prediction_ledger.py:450-454`, which
+     short-circuits with `if prediction_error <= threshold: return`).
+     Sweep extremes `0.5` vs `0.95` cross the gate and exercise a real
+     auto-resolve → confidence-feedback transition. The other four PL_*
+     constants (`PL_CONFIDENCE_ERROR_THRESHOLD`, `PL_CONFIDENCE_LOW_SIGNAL`,
+     `PL_AUTO_RESOLVE_ACTED`, `PL_AUTO_RESOLVE_DISMISSED`) are also mapped
+     to this family in `CONSTANT_FAMILY_MAP` so they're swept — but their
+     current sweep grids fall entirely on the same side of the gate
+     (acted: `[0.05, 0.1, 0.2, 0.3, 0.5]` all ≤ 0.7; dismissed:
+     `[0.2, 0.3, 0.5, 0.7, 0.9]` with only 0.9 crossing). Only
+     `PL_AUTO_RESOLVE_CONTRADICTED` is expected to carry the
+     variance-bearing signal through this scenario.
+
+   - **Implementation Note (from critique BLOCKER):** The sweep harness
+     applies overrides one constant at a time; when sweeping
+     `PL_AUTO_RESOLVE_ACTED` or `PL_AUTO_RESOLVE_DISMISSED`,
+     `PL_CONFIDENCE_ERROR_THRESHOLD` stays at its default 0.7 and
+     confidence feedback never fires, so those two constants are
+     expected to remain at variance=0 after this scenario ships — that
+     is acceptable because `PL_AUTO_RESOLVE_CONTRADICTED` alone is
+     budgeted to lift the family past the acceptance bar. Inside
+     `PredictionLedgerFamilyScenario.setup()`, also add
+     `scenario.overrides.setdefault("PL_CONFIDENCE_ERROR_THRESHOLD", 0.02)`
+     as a defensive floor so every outcome reliably triggers
+     `_apply_confidence_feedback` regardless of which PL_* constant the
+     sweep harness is currently varying; use strict inequality (the
+     gate check is `<=`, so threshold must be strictly below the
+     minimum swept error). If post-sweep `PL_AUTO_RESOLVE_CONTRADICTED`
+     variance is itself < 0.05, re-open this as a plan amendment
+     (widen the other grids in `run_sweeps.py:TIER3_SWEEPS`) rather
+     than looping on scenario tweaks.
 3. **Tier A.2 ContextAssemblerFamilyScenario**:
    - Model with `ConfidenceField` + `CyclicDecayField` +
      `ExistenceFilter` + `WriteFilterMixin` (minimal valid
@@ -597,6 +629,26 @@ via `python -m tests.benchmarks.run_sweeps`. No MCP wrapping.
 - [ ] `tests/benchmarks/test_factory.py::TestFamilyGroundTruthDecoupling`
   has one new method per new scenario, each asserting non-circular
   ground truth (loose floor: ndcg-between-extremes diff > 0.03).
+
+**Implementation Note (from critique CONCERN 3):** The 0.03 sanity-test
+floor is inherited from the existing four family tests
+(`test_factory.py:440, 536`), which had 2026-04-17 sweep variances of
+0.067 / 0.068 / 0.112 / 0.144 — well above both the 0.03 per-scenario
+floor AND the 0.05 sweep-aggregate bar. The new families start from a
+zero-baseline, so the empirical margin is unknown. A passing 0.03
+per-scenario diff could coexist with a failing < 0.05 sweep aggregate
+(which averages 8 family + 10 generic scenarios). Two defensive moves
+are baked into the tasks: (a) per `ScenarioResult` metadata, record
+the per-extreme nDCG values in the assertion message so failures are
+debuggable without re-running; (b) task 7's "< 5 constants → re-tune"
+branch must NOT silently loop on task 1 alone — if after one Tier-B
+re-tune the sweep still lands below 5 constants, re-open this
+sanity-test floor as a plan amendment (raise to `diff > 0.06`, or run
+the sanity test across three seeds and assert `median(diff) > 0.04`)
+rather than iterating blindly on distribution tweaks. The risk here
+is most acute for the PL family post-BLOCKER-fix — since only
+`PL_AUTO_RESOLVE_CONTRADICTED` is expected to carry signal, a low
+single-constant variance cannot be papered over by family averaging.
 - [ ] `src/popoto/fields/constants.py`: every constant whose fresh
   variance crosses 0.05 has its default updated to the best value
   AND its annotation replaced with a dated new-sweep comment.
@@ -700,9 +752,12 @@ here.
 - **Parallel**: false
 - Add `test_prediction_ledger_family_produces_variance` to
   `tests/benchmarks/test_factory.py::TestFamilyGroundTruthDecoupling`.
-  Two extreme values: `PL_AUTO_RESOLVE_ACTED=0.05` vs
-  `PL_AUTO_RESOLVE_ACTED=0.5` (or whichever PL_* constant the scenario
-  most strongly exercises).
+  Two extreme values: `PL_AUTO_RESOLVE_CONTRADICTED=0.5` vs
+  `PL_AUTO_RESOLVE_CONTRADICTED=0.95`. These straddle the
+  `PL_CONFIDENCE_ERROR_THRESHOLD=0.7` gate in
+  `_apply_confidence_feedback`, so they exercise a real auto-resolve
+  transition; prior `PL_AUTO_RESOLVE_ACTED=0.05` vs `=0.5` extremes
+  were both below the gate and would have tested nothing.
 - Assert ndcg-between-extremes diff > 0.03. Skip with pytest.skip if
   scenario returns skipped-degenerate at either extreme.
 
@@ -724,8 +779,13 @@ here.
   (e.g., `topic`) with 3 distinct topics × 5 records each.
 - In `run()`: apply overrides, instantiate `ContextAssembler(model_class,
   score_weights={"relevance": 0.7, "certainty": 0.3},
-  surfacing_threshold=overrides.get("DEFAULT_SURFACING_THRESHOLD", 0.5))`.
-  Call `assembler.assemble(query_cues={"topic": "topic_0"})` twice.
+  surfacing_threshold=overrides.get("DEFAULT_SURFACING_THRESHOLD",
+  Defaults.DEFAULT_SURFACING_THRESHOLD), max_items=3)`.
+  **Both the constructor AND both `assemble()` calls must be inside
+  the `with apply_overrides(...)` block**; the first call is what
+  mutates suppressed confidences and the second call is what nDCG
+  measures. Call `assembler.assemble(query_cues={"topic": "topic_0"})`
+  twice.
 - Retrieved = second-call `.records` order.
 - Oracle: the record's pre-suppression importance × topic-match
   indicator. Top 30% = relevant.
@@ -735,6 +795,35 @@ here.
   each gain a `"context_assembler"` entry (`base_seed=6000,
   record_count=15`).
 - Scenario name: `"family_context_assembler"`.
+
+- **Implementation Note (from critique CONCERN 2):**
+  `COMPETITIVE_SUPPRESSION_SIGNAL` is read at the
+  `ConfidenceField.update_confidence(..., signal=COMPETITIVE_SUPPRESSION_SIGNAL)`
+  call site in `_post_effects` (`context_assembler.py:501`), so the
+  override must be active **during the FIRST `assemble()` call** —
+  that's the call that performs the mutation; the second call is
+  just read-back. `ContextAssembler.__init__` captures
+  `surfacing_threshold` as an instance attribute at construction
+  (`context_assembler.py:230`), so the override must also be active
+  during `__init__()` — patching the module attribute after
+  construction does NOT retroactively change an assembler's
+  `self.surfacing_threshold`. That's why `surfacing_threshold` is
+  passed explicitly to the constructor above rather than left to
+  default. The competitive-suppression loop at
+  `context_assembler.py:495-496` only fires for `all_pull_candidates`
+  that are NOT in `selected_keys`; with the 15-record / 3-topic
+  setup (~5 candidates per topic) the default `max_items=10` would
+  let all candidates into the selected set and suppression would
+  mutate zero records, leaving the override untestable — that's why
+  `max_items=3` is specified above. Also: add an assertion in the
+  sanity test (task 5) that the first-call side effect actually
+  reduced the confidence of at least one suppressed record (compare
+  `ConfidenceField.get_confidence(candidate, "certainty")` before vs
+  after), otherwise the test silently passes even when `_post_effects`
+  is a no-op. Note that `relevance` is a `DecayingSortedField` — at
+  `decay_rate=0.1` (the new default), records with equal importance
+  and similar ages will tie, and the suppression signal needs
+  non-trivial spread in `certainty` to move the ranking measurably.
 
 ### 5. Add ContextAssembler sanity test
 - **Task ID**: build-ca-test
@@ -766,14 +855,48 @@ here.
 - In `setup()`: synthesize event batch — 8 distinct (fingerprint,
   action) groups with varying `(successes, total)`:
   `(1, 1), (2, 3), (3, 5), (5, 5), (3, 10), (8, 10), (10, 15), (2, 20)`.
-  Directly insert crystallized model instances for groups where
-  `total >= MIN_EVENTS_FOR_CRYSTALLIZATION AND wilson_ci_lower(successes, total) > WILSON_CI_THRESHOLD`.
-  Use `wilson_ci_lower` from `src/popoto/recipes/policy_cache.py`.
-- In `run()`: composite score query on `expected_value`. Oracle:
+  Do NOT hand-roll the gate comparison in setup — instead, call
+  `asyncio.run(crystallization_handler(entries))` inside `run()`
+  under `apply_overrides`, matching the Data Flow section.
+- In `run()`: under `apply_overrides`, invoke
+  `asyncio.run(crystallization_handler(entries))` so the handler
+  reads the overridden `MIN_EVENTS_FOR_CRYSTALLIZATION` and
+  `WILSON_CI_THRESHOLD` at their module-level binding sites. Then
+  composite-score query on `expected_value`. Oracle:
   independently-generated "truth ratio" per group, with top 30% as
   relevant. Retrieval misses groups that failed to crystallize and
   are therefore absent from the model — nDCG drops when thresholds
   are too strict.
+
+- **Implementation Note (from critique CONCERN 1):** Earlier drafts of
+  this task suggested "directly insert crystallized model instances"
+  in setup based on a setup-time Python comparison against the
+  overrides. That approach is wrong: `apply_overrides` only wraps the
+  `run()` query (see `overrides.py:apply_overrides` context manager,
+  matching every other family scenario's pattern), so any
+  `MIN_EVENTS_FOR_CRYSTALLIZATION` comparison evaluated outside the
+  override window reads `Defaults.MIN_EVENTS_FOR_CRYSTALLIZATION=3`
+  and would produce the same crystallized set regardless of the
+  override — variance stays at 0. Even pre-inserting instances under
+  the override window still bypasses the real
+  `crystallization_handler` (`policy_cache.py:410-520`) which reads
+  the module-level names at runtime. The handler is `async def`, so
+  wrap in `asyncio.run(crystallization_handler(entries))`. The
+  handler uses `PolicyEntry.bloom.definitely_missing(...)`
+  (`policy_cache.py:475`) for duplicate-skip, so each scenario run
+  needs a fresh bloom filter or a unique `state_fingerprint` prefix
+  tied to `self._prefix`. The minimal-model decision (NOT
+  `PolicyEntry`) in task 6 is preserved above but note that the
+  handler creates `PolicyEntry` specifically at
+  `policy_cache.py:499-506`; if reusing the handler forces
+  `PolicyEntry`, accept that and clean up its composed mixins in
+  teardown (`EventStreamMixin + AccessTrackerMixin +
+  PredictionLedgerMixin + Model` — saves xadd to Redis streams; the
+  existing `inst.delete()` does not clean up `$PL:*` meta hashes, so
+  add a `DEL $PL:PolicyEntry:meta:*` sweep or set
+  `_pl_partition=self._prefix` and clean by partition). Patching
+  `crystallization_handler` to accept a class argument is explicitly
+  out of scope (see Rabbit Holes).
 - `CONSTANT_FAMILY_MAP`: `"MIN_EVENTS_FOR_CRYSTALLIZATION"`,
   `"WILSON_CI_THRESHOLD"` → `"policy_cache"`.
 - Scenario name: `"family_policy_cache"`.
@@ -799,6 +922,37 @@ here.
 - Expected total sweep runtime: 20-30 seconds on warm Redis.
   `n_per_family=8` stays fixed for all new families
   (decision recorded 2026-04-20).
+
+- **Implementation Note (from critique CONCERN 4):** `n_per_family=8`
+  locked 2026-04-20 without runtime or signal-dilution evidence, and
+  there are two latent risks at the 7-family scale:
+  (i) **Runtime:** 8 variants × 7 families = 56 family scenarios per
+  override value + 10 generic = 66, vs. 22 today. Across 26 constants
+  × 5 values × 66 scenarios = 8,580 executions. The 20-30s estimate
+  may prove optimistic; if the sweep wall-clock exceeds 3 minutes,
+  that's informational (not a blocker) — the sweep is a developer
+  tool run on-demand, not a CI gate. Document the observed wall-clock
+  in task 10's final report.
+  (ii) **Signal dilution:** per-constant variance is computed from the
+  averaged nDCG curve across `family+generic`. A constant that moves
+  only one family (e.g., `DECAY_RATE` moves only the decay family) has
+  its amplitude divided by the family-count factor — `DECAY_RATE` at
+  variance 0.067 with 4 families could fall toward 0.04 with 7
+  families if the aggregation averages uniformly across families. If
+  the fresh sweep shows any previously-sensitive constant DROPPING
+  below 0.05, that's the diagnostic: check whether
+  `run_parametric` (`run_sweeps.py:313`) sets `family_weighted=True`
+  (expected) and whether the downstream aggregator does per-family
+  first or per-scenario first. If the aggregator is doing per-scenario
+  averaging, the signal-preservation fix is one of: (a) drop
+  `n_per_family` back to 3 for the new families (preserves diversity
+  for existing families while not amplifying dilution), (b) change
+  the metric to per-family-first aggregation (explicitly
+  out-of-scope per No-Gos — "don't change sweep-harness metric
+  semantics"), or (c) run a Tier-B-only sweep comparing
+  `n_per_family=8` vs `=3` before locking the full sweep. Option (a)
+  is the safest retreat if the fresh sweep demotes any previously-
+  sensitive constant.
 
 ### 8. Update constants.py with fresh sweep findings
 - **Task ID**: build-constants-update
@@ -868,7 +1022,52 @@ here.
 
 ## Critique Results
 
-<!-- Populated by /do-plan-critique. Leave empty until critique is run. -->
+**First critique (2026-04-20):** NEEDS REVISION — 1 blocker, 4 concerns,
+2 nits. Critics: Skeptic, Operator, Archaeologist, Adversary, Simplifier,
+User. Structural checks all PASS.
+
+**Blocker (resolved in revision pass):** `PL_AUTO_RESOLVE_ACTED` sweep
+grid `[0.05, 0.1, 0.2, 0.3, 0.5]` and sanity-test extremes `0.05 vs
+0.5` are all below the `PL_CONFIDENCE_ERROR_THRESHOLD=0.7` gate in
+`_apply_confidence_feedback`, so confidence feedback never fires and
+nDCG variance stays 0 regardless of scenario design. **Fix applied:**
+primary-measured constant switched to `PL_AUTO_RESOLVE_CONTRADICTED`
+(grid `[0.5, 0.7, 0.8, 0.9, 0.95]` straddles the gate); sanity-test
+extremes updated to `0.5 vs 0.95`; defensive
+`PL_CONFIDENCE_ERROR_THRESHOLD=0.02` override added in
+`PredictionLedgerFamilyScenario.setup()` so sweeps over the other four
+PL_* constants also reach `_apply_confidence_feedback`. See Technical
+Approach §2 and Task §3 for updated text.
+
+**Concerns (embedded as Implementation Notes — acknowledged risks, not
+reclassified blockers):**
+- CONCERN 1: PolicyCache scenario must invoke `crystallization_handler`
+  via `asyncio.run` under `apply_overrides`, not hand-roll the gate in
+  setup. — Implementation Note in Task §6.
+- CONCERN 2: ContextAssembler construction and both `assemble()` calls
+  must be inside the `apply_overrides` block; `surfacing_threshold`
+  must be passed explicitly to `__init__`; `max_items=3` ensures the
+  suppression loop fires. — Implementation Note in Task §4.
+- CONCERN 3: Per-scenario sanity-test floor 0.03 is close to the
+  sweep-aggregate bar 0.05 and the new scenarios have no empirical
+  cushion; task 7's `<5 constants` fallback must re-open the floor
+  rather than loop on distribution tweaks. — Implementation Note in
+  Success Criteria.
+- CONCERN 4: `n_per_family=8` × 7 families may dilute per-constant
+  variance for single-family constants (e.g., `DECAY_RATE`); if the
+  fresh sweep demotes any previously-sensitive constant, retreat to
+  `n_per_family=3` for the new families. — Implementation Note in
+  Task §7.
+
+**Nits:** (a) the 8-round outcome sequence re-describes
+`ConfidenceFamilyScenario`'s pattern — acceptable prose redundancy, no
+action; (b) the untracked `sweep_20260330_160911.json` artifact
+disposition — will be handled during task 10 cleanup.
+
+**Verdict:** READY TO BUILD (post-revision). The revision pass
+(2026-04-20) applied the blocker fix and embedded all 4 CONCERNs as
+Implementation Notes; `revision_applied: true` is set in the
+frontmatter.
 
 ---
 
