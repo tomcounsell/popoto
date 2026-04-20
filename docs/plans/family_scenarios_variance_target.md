@@ -1,5 +1,5 @@
 ---
-status: Planning
+status: Ready
 type: chore
 appetite: Medium
 owner: valorengels
@@ -269,7 +269,8 @@ moves this above Small.
 - **Tier A.3 — PolicyCacheFamilyScenario**: A new scenario that
   drives `crystallization_handler` with synthetic event streams and
   measures nDCG of the crystallized PolicyEntry retrieval against a
-  held-out optimality oracle.
+  held-out optimality oracle. Built unconditionally as part of the
+  full-closeout scope (decision 2026-04-20).
 - **CONSTANT_FAMILY_MAP extension**: Map each PL_*, policy-cache, and
   context-assembler constant to its owning family so
   `run_parametric` picks the right scenario.
@@ -747,15 +748,16 @@ here.
   `COMPETITIVE_SUPPRESSION_SIGNAL=0.1` vs
   `COMPETITIVE_SUPPRESSION_SIGNAL=0.7`. Assert diff > 0.03.
 
-### 6. (OPTIONAL) Build PolicyCacheFamilyScenario (Tier A.3)
+### 6. Build PolicyCacheFamilyScenario (Tier A.3)
 - **Task ID**: build-pc-scenario
 - **Depends On**: build-ca-scenario (same file)
 - **Validates**: `tests/benchmarks/test_factory.py::TestFamilyGroundTruthDecoupling::test_policy_cache_family_produces_variance` (new)
 - **Assigned To**: family-scenarios-builder
 - **Agent Type**: builder
 - **Parallel**: false
-- **Gate:** SKIP this task if task 7's fresh sweep already shows
-  ≥5 sensitive constants. Otherwise build it.
+- Built unconditionally as part of the full-closeout framing
+  (decision recorded 2026-04-20 — prefer full buildout over
+  minimum-viable gating).
 - Add `PolicyCacheFamilyScenario` targeting
   `MIN_EVENTS_FOR_CRYSTALLIZATION` and `WILSON_CI_THRESHOLD`.
 - Minimal model (NOT `PolicyEntry` — avoid the multi-mixin composition):
@@ -778,7 +780,7 @@ here.
 
 ### 7. Run fresh parametric sweep
 - **Task ID**: run-sweep
-- **Depends On**: build-ca-test (Tier B + A.1 + A.2 minimum) and
+- **Depends On**: build-pc-scenario (Tier B + A.1 + A.2 + A.3) and
   build-confidence-tighten
 - **Validates**: Variance-threshold acceptance criterion
 - **Assigned To**: family-scenarios-validator
@@ -791,10 +793,12 @@ here.
   and compute per-constant variance as `max(sensitivity_curve_y) -
   min(sensitivity_curve_y)`.
 - Count constants with variance > 0.05. If the count is ≥ 5,
-  proceed to task 8. If < 5 AND PolicyCache scenario has NOT been
-  built, return to task 6. If PolicyCache IS built and count is
-  still < 5, return to task 1 to re-tune Tier B distributions
-  more aggressively.
+  proceed to task 8. If < 5, return to task 1 to re-tune Tier B
+  distributions more aggressively (all four new scenarios are
+  already built by this point).
+- Expected total sweep runtime: 20-30 seconds on warm Redis.
+  `n_per_family=8` stays fixed for all new families
+  (decision recorded 2026-04-20).
 
 ### 8. Update constants.py with fresh sweep findings
 - **Task ID**: build-constants-update
@@ -868,23 +872,13 @@ here.
 
 ---
 
-## Open Questions
+## Decisions (resolved 2026-04-20)
 
-1. **Tier A.3 (PolicyCache) conditional inclusion**: The plan treats
-   PolicyCache as optional, skipped if Tier B + A.1 + A.2 already
-   clear the 5-constant bar. Do you want PolicyCache built
-   unconditionally for the "full closeout" framing in the issue's
-   Tier A description, or is the "minimum to satisfy #351" framing
-   preferred?
-2. **Sweep runtime tolerance**: A `--parametric --tier all` sweep
-   with the current 4 families + 18 scenarios per constant already
-   takes ~8-15 seconds on a warm Redis. Adding 2-3 family scenarios
-   and re-running will push total sweep time to 20-30 seconds. Is
-   that acceptable, or should `n_per_family` drop from 8 to 4-6 for
-   the new families to keep total runtime bounded?
-3. **Default value changes**: If PL_AUTO_RESOLVE_ACTED shows variance
-   > 0.05 and its best sweep value is 0.5 (mid-range) vs. current
-   default 0.1, do you want to accept the change or keep backward
-   compatibility? The PR #361 pattern was to keep defaults near
-   their semantic-meaning value when the sweep best is within noise;
-   propose continuing that policy but confirm.
+1. **Tier A.3 (PolicyCache) inclusion**: Built unconditionally.
+   Full-closeout framing preferred over minimum-viable.
+2. **Sweep runtime tolerance**: 20-30 seconds acceptable.
+   `n_per_family=8` kept fixed for all new families.
+3. **Default value changes**: Continue the PR #361 policy — keep
+   defaults near their semantic-meaning value when the sweep best
+   is within noise. Accept material changes only when the variance
+   clearly favors a different value.
