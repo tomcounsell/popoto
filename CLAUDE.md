@@ -108,7 +108,7 @@ Uses `REDIS_URL` environment variable or defaults to `localhost:6379`. Connectio
 ## Code Style
 
 - Line length: 88 (black), imports: 79 (isort)
-- Python 3.8+
+- Python 3.10+
 
 ## Git Workflow
 

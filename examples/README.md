@@ -3,7 +3,7 @@
 An interactive Terminal User Interface (TUI) demo application showcasing the Popoto Redis ORM.
 
 ![Popoto Kitchen](https://img.shields.io/badge/TUI-Textual-blue)
-![Python](https://img.shields.io/badge/python-3.8+-green)
+![Python](https://img.shields.io/badge/python-3.10+-green)
 
 ## Overview
 
@@ -13,7 +13,7 @@ Popoto Kitchen is a food delivery system simulation that demonstrates all major 
 
 ### Prerequisites
 
-- Python 3.8+
+- Python 3.10+
 - Redis server running on localhost:6379 (or set `REDIS_URL`)
 
 ### Running
