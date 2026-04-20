@@ -1,0 +1,1876 @@
+{
+  "run_id": "20260420_051055",
+  "timestamp": 1776661855.802149,
+  "timestamp_iso": "2026-04-20T05:10:55.801962+00:00",
+  "metadata": {
+    "python_version": "3.12.13",
+    "platform": "macOS-26.3.1-arm64-arm-64bit",
+    "total_evaluations": 3960,
+    "total_ok": 3655,
+    "overall_query_duration": {
+      "p50_ms": 15.922124963253736,
+      "p95_ms": 49.46708306670189,
+      "p99_ms": 52.12500016205013,
+      "mean_ms": 19.22,
+      "min_ms": 1.5160420443862677,
+      "max_ms": 64.84145787544549,
+      "total_ms": 70241.91,
+      "count": 3655
+    },
+    "wall_clock_seconds": 135.67,
+    "tiers_run": "all",
+    "interactions_run": false,
+    "parametric": true
+  },
+  "constants": {
+    "decay_rate": {
+      "best_value": 0.1,
+      "best_ndcg_at_5": 0.949960147585142,
+      "sensitivity_curve": [
+        [
+          0.1,
+          0.949960147585142
+        ],
+        [
+          0.2,
+          0.9323646149104027
+        ],
+        [
+          0.3,
+          0.9278762733064123
+        ],
+        [
+          0.5,
+          0.9113891504852251
+        ],
+        [
+          0.7,
+          0.891427442480382
+        ],
+        [
+          0.9,
+          0.8830489942967628
+        ],
+        [
+          1.0,
+          0.8831812524399745
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 112,
+      "n_points_total": 126,
+      "n_errors": 14,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_decay_v6",
+        "gen_009_flat_interleaved",
+        "family_decay_v0",
+        "gen_000_uniform_all_recent",
+        "gen_004_flat_all_recent",
+        "family_decay_v3",
+        "family_decay_v5",
+        "gen_006_clustered_mostly_stale",
+        "gen_002_bimodal_mostly_stale",
+        "family_decay_v4",
+        "gen_007_bimodal_half_stale",
+        "gen_005_uniform_interleaved",
+        "family_decay_v1",
+        "gen_001_clustered_interleaved",
+        "family_decay_v7",
+        "family_decay_v2"
+      ],
+      "query_duration": {
+        "p50_ms": 7.340791169553995,
+        "p95_ms": 50.718040904030204,
+        "p99_ms": 51.532624987885356,
+        "mean_ms": 15.21,
+        "min_ms": 3.479416947811842,
+        "max_ms": 52.909416845068336,
+        "total_ms": 1703.86,
+        "count": 112
+      }
+    },
+    "initial_confidence": {
+      "best_value": 0.9,
+      "best_ndcg_at_5": 0.9190404501217321,
+      "sensitivity_curve": [
+        [
+          0.1,
+          0.917899724921344
+        ],
+        [
+          0.3,
+          0.9179548209417567
+        ],
+        [
+          0.5,
+          0.9182489868826618
+        ],
+        [
+          0.7,
+          0.9187171015865293
+        ],
+        [
+          0.9,
+          0.9190404501217321
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 80,
+      "n_points_total": 90,
+      "n_errors": 10,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_confidence_v5",
+        "gen_000_uniform_all_recent",
+        "family_confidence_v3",
+        "gen_004_flat_all_recent",
+        "family_confidence_v0",
+        "gen_006_clustered_mostly_stale",
+        "family_confidence_v2",
+        "family_confidence_v7",
+        "family_confidence_v4",
+        "gen_002_bimodal_mostly_stale",
+        "family_confidence_v6",
+        "gen_005_uniform_interleaved",
+        "gen_007_bimodal_half_stale",
+        "family_confidence_v1",
+        "gen_001_clustered_interleaved",
+        "gen_009_flat_interleaved"
+      ],
+      "query_duration": {
+        "p50_ms": 22.030334221199155,
+        "p95_ms": 50.77837500721216,
+        "p99_ms": 51.686250139027834,
+        "mean_ms": 22.78,
+        "min_ms": 3.5707091446965933,
+        "max_ms": 51.686250139027834,
+        "total_ms": 1822.58,
+        "count": 80
+      }
+    },
+    "_wf_min_threshold": {
+      "best_value": 0.1,
+      "best_ndcg_at_5": 0.8201306841395658,
+      "sensitivity_curve": [
+        [
+          0.05,
+          0.8193133394948858
+        ],
+        [
+          0.1,
+          0.8201306841395658
+        ],
+        [
+          0.2,
+          0.8009692299388544
+        ],
+        [
+          0.3,
+          0.7811590939780672
+        ],
+        [
+          0.5,
+          0.7522161553731934
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 79,
+      "n_points_total": 90,
+      "n_errors": 11,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_write_filter_v1",
+        "family_write_filter_v0",
+        "family_write_filter_v4",
+        "family_write_filter_v5",
+        "gen_000_uniform_all_recent",
+        "gen_004_flat_all_recent",
+        "family_write_filter_v2",
+        "gen_006_clustered_mostly_stale",
+        "gen_003_exponential_half_stale",
+        "family_write_filter_v6",
+        "gen_002_bimodal_mostly_stale",
+        "family_write_filter_v3",
+        "gen_007_bimodal_half_stale",
+        "gen_005_uniform_interleaved",
+        "family_write_filter_v7",
+        "gen_008_exponential_all_recent",
+        "gen_001_clustered_interleaved",
+        "gen_009_flat_interleaved"
+      ],
+      "query_duration": {
+        "p50_ms": 13.432082952931523,
+        "p95_ms": 51.183874951675534,
+        "p99_ms": 56.767042027786374,
+        "mean_ms": 17.71,
+        "min_ms": 2.8025831561535597,
+        "max_ms": 56.767042027786374,
+        "total_ms": 1398.76,
+        "count": 79
+      }
+    },
+    "ACTED_CONFIDENCE_SIGNAL": {
+      "best_value": 0.1,
+      "best_ndcg_at_5": 0.947770793182699,
+      "sensitivity_curve": [
+        [
+          0.1,
+          0.947770793182699
+        ],
+        [
+          0.3,
+          0.9326329843419687
+        ],
+        [
+          0.5,
+          0.9307966536519269
+        ],
+        [
+          0.7,
+          0.9224593945742345
+        ],
+        [
+          0.9,
+          0.9182489868826618
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 80,
+      "n_points_total": 90,
+      "n_errors": 10,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_confidence_v5",
+        "gen_000_uniform_all_recent",
+        "family_confidence_v3",
+        "gen_004_flat_all_recent",
+        "family_confidence_v0",
+        "gen_006_clustered_mostly_stale",
+        "family_confidence_v2",
+        "family_confidence_v7",
+        "family_confidence_v4",
+        "gen_002_bimodal_mostly_stale",
+        "family_confidence_v6",
+        "gen_005_uniform_interleaved",
+        "gen_007_bimodal_half_stale",
+        "family_confidence_v1",
+        "gen_001_clustered_interleaved",
+        "gen_009_flat_interleaved"
+      ],
+      "query_duration": {
+        "p50_ms": 22.06654194742441,
+        "p95_ms": 50.857166992500424,
+        "p99_ms": 51.46141699515283,
+        "mean_ms": 22.72,
+        "min_ms": 3.5315838176757097,
+        "max_ms": 51.46141699515283,
+        "total_ms": 1817.38,
+        "count": 80
+      }
+    },
+    "CONTRADICTED_CONFIDENCE_SIGNAL": {
+      "best_value": 0.9,
+      "best_ndcg_at_5": 0.9482196387058668,
+      "sensitivity_curve": [
+        [
+          0.1,
+          0.9182489868826618
+        ],
+        [
+          0.3,
+          0.921991279870367
+        ],
+        [
+          0.5,
+          0.9300051904128566
+        ],
+        [
+          0.7,
+          0.9321480841046785
+        ],
+        [
+          0.9,
+          0.9482196387058668
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 80,
+      "n_points_total": 90,
+      "n_errors": 10,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_confidence_v5",
+        "gen_000_uniform_all_recent",
+        "family_confidence_v3",
+        "gen_004_flat_all_recent",
+        "family_confidence_v0",
+        "gen_006_clustered_mostly_stale",
+        "family_confidence_v2",
+        "family_confidence_v7",
+        "family_confidence_v4",
+        "gen_002_bimodal_mostly_stale",
+        "family_confidence_v6",
+        "gen_005_uniform_interleaved",
+        "gen_007_bimodal_half_stale",
+        "family_confidence_v1",
+        "gen_001_clustered_interleaved",
+        "gen_009_flat_interleaved"
+      ],
+      "query_duration": {
+        "p50_ms": 21.94120897911489,
+        "p95_ms": 51.1025411542505,
+        "p99_ms": 61.81433401070535,
+        "mean_ms": 23.22,
+        "min_ms": 3.6316660698503256,
+        "max_ms": 61.81433401070535,
+        "total_ms": 1857.43,
+        "count": 80
+      }
+    },
+    "ACTED_CYCLE_STRENGTHEN_FACTOR": {
+      "best_value": 0.3,
+      "best_ndcg_at_5": 0.9182489868826618,
+      "sensitivity_curve": [
+        [
+          0.3,
+          0.9182489868826618
+        ],
+        [
+          0.5,
+          0.9182489868826618
+        ],
+        [
+          0.8,
+          0.9182489868826618
+        ],
+        [
+          0.9,
+          0.9182489868826618
+        ],
+        [
+          0.95,
+          0.9182489868826618
+        ],
+        [
+          1.0,
+          0.9182489868826618
+        ],
+        [
+          1.02,
+          0.9182489868826618
+        ],
+        [
+          1.05,
+          0.9182489868826618
+        ],
+        [
+          1.08,
+          0.9182489868826618
+        ],
+        [
+          1.1,
+          0.9182489868826618
+        ],
+        [
+          1.12,
+          0.9182489868826618
+        ],
+        [
+          1.15,
+          0.9182489868826618
+        ],
+        [
+          1.2,
+          0.9182489868826618
+        ],
+        [
+          1.5,
+          0.9182489868826618
+        ],
+        [
+          2.0,
+          0.9182489868826618
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 240,
+      "n_points_total": 270,
+      "n_errors": 30,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_confidence_v5",
+        "gen_000_uniform_all_recent",
+        "family_confidence_v3",
+        "gen_004_flat_all_recent",
+        "family_confidence_v0",
+        "gen_006_clustered_mostly_stale",
+        "family_confidence_v2",
+        "family_confidence_v7",
+        "family_confidence_v4",
+        "gen_002_bimodal_mostly_stale",
+        "family_confidence_v6",
+        "gen_005_uniform_interleaved",
+        "gen_007_bimodal_half_stale",
+        "family_confidence_v1",
+        "gen_001_clustered_interleaved",
+        "gen_009_flat_interleaved"
+      ],
+      "query_duration": {
+        "p50_ms": 22.41049986332655,
+        "p95_ms": 51.09070800244808,
+        "p99_ms": 52.18054191209376,
+        "mean_ms": 23.05,
+        "min_ms": 3.631416941061616,
+        "max_ms": 57.18308291397989,
+        "total_ms": 5531.25,
+        "count": 240
+      }
+    },
+    "DISMISSED_CYCLE_WEAKEN_FACTOR": {
+      "best_value": 0.3,
+      "best_ndcg_at_5": 0.9182489868826618,
+      "sensitivity_curve": [
+        [
+          0.3,
+          0.9182489868826618
+        ],
+        [
+          0.5,
+          0.9182489868826618
+        ],
+        [
+          0.8,
+          0.9182489868826618
+        ],
+        [
+          1.0,
+          0.9182489868826618
+        ],
+        [
+          1.2,
+          0.9182489868826618
+        ],
+        [
+          1.5,
+          0.9182489868826618
+        ],
+        [
+          2.0,
+          0.9182489868826618
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 112,
+      "n_points_total": 126,
+      "n_errors": 14,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_confidence_v5",
+        "gen_000_uniform_all_recent",
+        "family_confidence_v3",
+        "gen_004_flat_all_recent",
+        "family_confidence_v0",
+        "gen_006_clustered_mostly_stale",
+        "family_confidence_v2",
+        "family_confidence_v7",
+        "family_confidence_v4",
+        "gen_002_bimodal_mostly_stale",
+        "family_confidence_v6",
+        "gen_005_uniform_interleaved",
+        "gen_007_bimodal_half_stale",
+        "family_confidence_v1",
+        "gen_001_clustered_interleaved",
+        "gen_009_flat_interleaved"
+      ],
+      "query_duration": {
+        "p50_ms": 22.31566607952118,
+        "p95_ms": 51.4874157961458,
+        "p99_ms": 52.71437484771013,
+        "mean_ms": 23.13,
+        "min_ms": 3.6640840116888285,
+        "max_ms": 58.01908299326897,
+        "total_ms": 2591.05,
+        "count": 112
+      }
+    },
+    "CONTRADICTED_CYCLE_WEAKEN_FACTOR": {
+      "best_value": 0.3,
+      "best_ndcg_at_5": 0.9182489868826618,
+      "sensitivity_curve": [
+        [
+          0.3,
+          0.9182489868826618
+        ],
+        [
+          0.5,
+          0.9182489868826618
+        ],
+        [
+          0.8,
+          0.9182489868826618
+        ],
+        [
+          1.0,
+          0.9182489868826618
+        ],
+        [
+          1.2,
+          0.9182489868826618
+        ],
+        [
+          1.5,
+          0.9182489868826618
+        ],
+        [
+          2.0,
+          0.9182489868826618
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 112,
+      "n_points_total": 126,
+      "n_errors": 14,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_confidence_v5",
+        "gen_000_uniform_all_recent",
+        "family_confidence_v3",
+        "gen_004_flat_all_recent",
+        "family_confidence_v0",
+        "gen_006_clustered_mostly_stale",
+        "family_confidence_v2",
+        "family_confidence_v7",
+        "family_confidence_v4",
+        "gen_002_bimodal_mostly_stale",
+        "family_confidence_v6",
+        "gen_005_uniform_interleaved",
+        "gen_007_bimodal_half_stale",
+        "family_confidence_v1",
+        "gen_001_clustered_interleaved",
+        "gen_009_flat_interleaved"
+      ],
+      "query_duration": {
+        "p50_ms": 22.267207968980074,
+        "p95_ms": 51.30245792679489,
+        "p99_ms": 52.69691697321832,
+        "mean_ms": 23.21,
+        "min_ms": 3.59708396717906,
+        "max_ms": 52.6998748537153,
+        "total_ms": 2599.17,
+        "count": 112
+      }
+    },
+    "decay_factor": {
+      "best_value": 0.5,
+      "best_ndcg_at_5": 0.9106029970070874,
+      "sensitivity_curve": [
+        [
+          0.5,
+          0.9106029970070874
+        ],
+        [
+          0.7,
+          0.9106029970070874
+        ],
+        [
+          0.85,
+          0.9106029970070874
+        ],
+        [
+          0.9,
+          0.9106029970070874
+        ],
+        [
+          0.95,
+          0.9106029970070874
+        ],
+        [
+          0.99,
+          0.9106029970070874
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 96,
+      "n_points_total": 108,
+      "n_errors": 12,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_co_occurrence_v3",
+        "gen_000_uniform_all_recent",
+        "gen_004_flat_all_recent",
+        "gen_006_clustered_mostly_stale",
+        "family_co_occurrence_v1",
+        "family_co_occurrence_v7",
+        "family_co_occurrence_v6",
+        "gen_002_bimodal_mostly_stale",
+        "family_co_occurrence_v5",
+        "gen_007_bimodal_half_stale",
+        "gen_005_uniform_interleaved",
+        "family_co_occurrence_v0",
+        "family_co_occurrence_v4",
+        "family_co_occurrence_v2",
+        "gen_001_clustered_interleaved",
+        "gen_009_flat_interleaved"
+      ],
+      "query_duration": {
+        "p50_ms": 15.156874898821115,
+        "p95_ms": 51.4258339535445,
+        "p99_ms": 55.82641717046499,
+        "mean_ms": 19.28,
+        "min_ms": 3.6893750075250864,
+        "max_ms": 55.82641717046499,
+        "total_ms": 1850.7,
+        "count": 96
+      }
+    },
+    "initial_weight": {
+      "best_value": 0.01,
+      "best_ndcg_at_5": 0.9984170735218594,
+      "sensitivity_curve": [
+        [
+          0.01,
+          0.9984170735218594
+        ],
+        [
+          0.05,
+          0.8542627607550409
+        ],
+        [
+          0.1,
+          0.9106029970070874
+        ],
+        [
+          0.2,
+          0.905628755028601
+        ],
+        [
+          0.5,
+          0.9072688184975052
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 72,
+      "n_points_total": 90,
+      "n_errors": 10,
+      "n_degenerate": 8,
+      "scenarios": [
+        "family_co_occurrence_v3",
+        "gen_000_uniform_all_recent",
+        "gen_004_flat_all_recent",
+        "gen_006_clustered_mostly_stale",
+        "family_co_occurrence_v1",
+        "family_co_occurrence_v7",
+        "gen_002_bimodal_mostly_stale",
+        "family_co_occurrence_v6",
+        "family_co_occurrence_v5",
+        "gen_007_bimodal_half_stale",
+        "gen_005_uniform_interleaved",
+        "family_co_occurrence_v0",
+        "family_co_occurrence_v4",
+        "family_co_occurrence_v2",
+        "gen_001_clustered_interleaved",
+        "gen_009_flat_interleaved"
+      ],
+      "query_duration": {
+        "p50_ms": 15.338958939537406,
+        "p95_ms": 51.25120794400573,
+        "p99_ms": 54.251749999821186,
+        "mean_ms": 19.94,
+        "min_ms": 3.6281251814216375,
+        "max_ms": 54.251749999821186,
+        "total_ms": 1435.62,
+        "count": 72
+      }
+    },
+    "delta": {
+      "best_value": 0.01,
+      "best_ndcg_at_5": 0.8036673642352012,
+      "sensitivity_curve": [
+        [
+          0.01,
+          0.8036673642352012
+        ],
+        [
+          0.02,
+          0.8036673642352012
+        ],
+        [
+          0.05,
+          0.8036673642352012
+        ],
+        [
+          0.1,
+          0.8036673642352012
+        ],
+        [
+          0.2,
+          0.8036673642352012
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 320,
+      "n_points_total": 330,
+      "n_errors": 10,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_policy_cache_v5",
+        "family_context_assembler_v3",
+        "family_write_filter_v5",
+        "family_prediction_ledger_v0",
+        "family_prediction_ledger_v1",
+        "family_confidence_v7",
+        "family_write_filter_v6",
+        "family_write_filter_v7",
+        "family_prediction_ledger_v7",
+        "gen_006_clustered_mostly_stale",
+        "family_co_occurrence_v4",
+        "family_co_occurrence_v2",
+        "gen_001_clustered_interleaved",
+        "family_write_filter_v0",
+        "family_confidence_v5",
+        "family_decay_v0",
+        "family_confidence_v0",
+        "family_write_filter_v2",
+        "family_co_occurrence_v1",
+        "family_co_occurrence_v7",
+        "family_confidence_v2",
+        "family_co_occurrence_v6",
+        "family_confidence_v4",
+        "family_write_filter_v3",
+        "family_co_occurrence_v5",
+        "family_context_assembler_v2",
+        "family_co_occurrence_v0",
+        "family_policy_cache_v4",
+        "gen_007_bimodal_half_stale",
+        "family_prediction_ledger_v6",
+        "family_confidence_v1",
+        "family_prediction_ledger_v4",
+        "family_context_assembler_v1",
+        "family_policy_cache_v0",
+        "family_context_assembler_v5",
+        "family_context_assembler_v0",
+        "gen_000_uniform_all_recent",
+        "family_decay_v3",
+        "family_policy_cache_v6",
+        "family_context_assembler_v4",
+        "family_decay_v4",
+        "gen_005_uniform_interleaved",
+        "family_policy_cache_v1",
+        "family_prediction_ledger_v3",
+        "family_prediction_ledger_v5",
+        "family_decay_v7",
+        "family_decay_v2",
+        "family_decay_v6",
+        "family_write_filter_v1",
+        "family_co_occurrence_v3",
+        "family_write_filter_v4",
+        "family_policy_cache_v7",
+        "family_policy_cache_v3",
+        "family_prediction_ledger_v2",
+        "family_policy_cache_v2",
+        "gen_004_flat_all_recent",
+        "family_confidence_v3",
+        "family_decay_v5",
+        "family_context_assembler_v7",
+        "gen_002_bimodal_mostly_stale",
+        "family_confidence_v6",
+        "family_decay_v1",
+        "family_context_assembler_v6",
+        "gen_009_flat_interleaved"
+      ],
+      "query_duration": {
+        "p50_ms": 15.073792077600956,
+        "p95_ms": 33.68220804259181,
+        "p99_ms": 51.63591611199081,
+        "mean_ms": 16.5,
+        "min_ms": 2.1922499872744083,
+        "max_ms": 55.89004186913371,
+        "total_ms": 5280.4,
+        "count": 320
+      }
+    },
+    "decay_per_hop": {
+      "best_value": 0.5,
+      "best_ndcg_at_5": 0.9106029970070874,
+      "sensitivity_curve": [
+        [
+          0.1,
+          0.7982979066917046
+        ],
+        [
+          0.3,
+          0.8886303040683716
+        ],
+        [
+          0.5,
+          0.9106029970070874
+        ],
+        [
+          0.7,
+          0.9001511919094994
+        ],
+        [
+          0.9,
+          0.9005227737177586
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 80,
+      "n_points_total": 90,
+      "n_errors": 10,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_co_occurrence_v3",
+        "gen_000_uniform_all_recent",
+        "gen_004_flat_all_recent",
+        "gen_006_clustered_mostly_stale",
+        "family_co_occurrence_v1",
+        "family_co_occurrence_v7",
+        "family_co_occurrence_v6",
+        "gen_002_bimodal_mostly_stale",
+        "family_co_occurrence_v5",
+        "gen_007_bimodal_half_stale",
+        "gen_005_uniform_interleaved",
+        "family_co_occurrence_v0",
+        "family_co_occurrence_v4",
+        "family_co_occurrence_v2",
+        "gen_001_clustered_interleaved",
+        "gen_009_flat_interleaved"
+      ],
+      "query_duration": {
+        "p50_ms": 15.48699988052249,
+        "p95_ms": 50.89104198850691,
+        "p99_ms": 54.564959136769176,
+        "mean_ms": 19.47,
+        "min_ms": 3.671291982755065,
+        "max_ms": 54.564959136769176,
+        "total_ms": 1557.86,
+        "count": 80
+      }
+    },
+    "COMPETITIVE_SUPPRESSION_SIGNAL": {
+      "best_value": 0.1,
+      "best_ndcg_at_5": 0.8740754541921374,
+      "sensitivity_curve": [
+        [
+          0.1,
+          0.8740754541921374
+        ],
+        [
+          0.2,
+          0.8740754541921374
+        ],
+        [
+          0.3,
+          0.8740754541921374
+        ],
+        [
+          0.5,
+          0.8740754541921374
+        ],
+        [
+          0.7,
+          0.8207718468093128
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 80,
+      "n_points_total": 90,
+      "n_errors": 10,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_context_assembler_v6",
+        "family_context_assembler_v3",
+        "family_context_assembler_v5",
+        "family_context_assembler_v0",
+        "gen_000_uniform_all_recent",
+        "gen_004_flat_all_recent",
+        "family_context_assembler_v4",
+        "family_context_assembler_v7",
+        "gen_006_clustered_mostly_stale",
+        "gen_002_bimodal_mostly_stale",
+        "gen_001_clustered_interleaved",
+        "gen_007_bimodal_half_stale",
+        "family_context_assembler_v2",
+        "gen_005_uniform_interleaved",
+        "family_context_assembler_v1",
+        "gen_009_flat_interleaved"
+      ],
+      "query_duration": {
+        "p50_ms": 15.579166123643517,
+        "p95_ms": 50.89604202657938,
+        "p99_ms": 51.586374873295426,
+        "mean_ms": 19.31,
+        "min_ms": 3.752790857106447,
+        "max_ms": 51.586374873295426,
+        "total_ms": 1544.74,
+        "count": 80
+      }
+    },
+    "DEFAULT_SURFACING_THRESHOLD": {
+      "best_value": 0.1,
+      "best_ndcg_at_5": 0.8740754541921374,
+      "sensitivity_curve": [
+        [
+          0.1,
+          0.8740754541921374
+        ],
+        [
+          0.3,
+          0.8740754541921374
+        ],
+        [
+          0.5,
+          0.8740754541921374
+        ],
+        [
+          0.7,
+          0.8740754541921374
+        ],
+        [
+          0.9,
+          0.8740754541921374
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 80,
+      "n_points_total": 90,
+      "n_errors": 10,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_context_assembler_v6",
+        "family_context_assembler_v3",
+        "family_context_assembler_v5",
+        "family_context_assembler_v0",
+        "gen_000_uniform_all_recent",
+        "gen_004_flat_all_recent",
+        "family_context_assembler_v4",
+        "family_context_assembler_v7",
+        "gen_006_clustered_mostly_stale",
+        "gen_002_bimodal_mostly_stale",
+        "gen_001_clustered_interleaved",
+        "gen_007_bimodal_half_stale",
+        "family_context_assembler_v2",
+        "gen_005_uniform_interleaved",
+        "family_context_assembler_v1",
+        "gen_009_flat_interleaved"
+      ],
+      "query_duration": {
+        "p50_ms": 16.238125041127205,
+        "p95_ms": 52.12500016205013,
+        "p99_ms": 54.437207989394665,
+        "mean_ms": 20.27,
+        "min_ms": 3.8042080122977495,
+        "max_ms": 54.437207989394665,
+        "total_ms": 1621.35,
+        "count": 80
+      }
+    },
+    "MIN_EVENTS_FOR_CRYSTALLIZATION": {
+      "best_value": 1,
+      "best_ndcg_at_5": 0.9721673093020631,
+      "sensitivity_curve": [
+        [
+          1,
+          0.9721673093020631
+        ],
+        [
+          2,
+          0.9721673093020631
+        ],
+        [
+          3,
+          0.9721673093020631
+        ],
+        [
+          5,
+          0.9721673093020631
+        ],
+        [
+          10,
+          0.9721673093020631
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 80,
+      "n_points_total": 90,
+      "n_errors": 10,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_policy_cache_v5",
+        "family_policy_cache_v7",
+        "family_policy_cache_v3",
+        "family_policy_cache_v2",
+        "gen_000_uniform_all_recent",
+        "gen_004_flat_all_recent",
+        "family_policy_cache_v6",
+        "gen_006_clustered_mostly_stale",
+        "gen_002_bimodal_mostly_stale",
+        "gen_001_clustered_interleaved",
+        "family_policy_cache_v4",
+        "gen_005_uniform_interleaved",
+        "family_policy_cache_v1",
+        "gen_007_bimodal_half_stale",
+        "family_policy_cache_v0",
+        "gen_009_flat_interleaved"
+      ],
+      "query_duration": {
+        "p50_ms": 3.915207926183939,
+        "p95_ms": 51.908208057284355,
+        "p99_ms": 64.84145787544549,
+        "mean_ms": 13.38,
+        "min_ms": 2.131209010258317,
+        "max_ms": 64.84145787544549,
+        "total_ms": 1070.57,
+        "count": 80
+      }
+    },
+    "TD_ALPHA": {
+      "best_value": 0.01,
+      "best_ndcg_at_5": 0.8036673642352012,
+      "sensitivity_curve": [
+        [
+          0.01,
+          0.8036673642352012
+        ],
+        [
+          0.05,
+          0.8036673642352012
+        ],
+        [
+          0.1,
+          0.8036673642352012
+        ],
+        [
+          0.2,
+          0.8036673642352012
+        ],
+        [
+          0.5,
+          0.8036673642352012
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 320,
+      "n_points_total": 330,
+      "n_errors": 10,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_policy_cache_v5",
+        "family_context_assembler_v3",
+        "family_write_filter_v5",
+        "family_prediction_ledger_v0",
+        "family_prediction_ledger_v1",
+        "family_confidence_v7",
+        "family_write_filter_v6",
+        "family_write_filter_v7",
+        "family_prediction_ledger_v7",
+        "gen_006_clustered_mostly_stale",
+        "family_co_occurrence_v4",
+        "family_co_occurrence_v2",
+        "gen_001_clustered_interleaved",
+        "family_write_filter_v0",
+        "family_confidence_v5",
+        "family_decay_v0",
+        "family_confidence_v0",
+        "family_write_filter_v2",
+        "family_co_occurrence_v1",
+        "family_co_occurrence_v7",
+        "family_confidence_v2",
+        "family_co_occurrence_v6",
+        "family_confidence_v4",
+        "family_write_filter_v3",
+        "family_co_occurrence_v5",
+        "family_context_assembler_v2",
+        "family_co_occurrence_v0",
+        "family_policy_cache_v4",
+        "gen_007_bimodal_half_stale",
+        "family_prediction_ledger_v6",
+        "family_confidence_v1",
+        "family_prediction_ledger_v4",
+        "family_context_assembler_v1",
+        "family_policy_cache_v0",
+        "family_context_assembler_v5",
+        "family_context_assembler_v0",
+        "gen_000_uniform_all_recent",
+        "family_decay_v3",
+        "family_policy_cache_v6",
+        "family_context_assembler_v4",
+        "family_decay_v4",
+        "gen_005_uniform_interleaved",
+        "family_policy_cache_v1",
+        "family_prediction_ledger_v3",
+        "family_prediction_ledger_v5",
+        "family_decay_v7",
+        "family_decay_v2",
+        "family_decay_v6",
+        "family_write_filter_v1",
+        "family_co_occurrence_v3",
+        "family_write_filter_v4",
+        "family_policy_cache_v7",
+        "family_policy_cache_v3",
+        "family_prediction_ledger_v2",
+        "family_policy_cache_v2",
+        "gen_004_flat_all_recent",
+        "family_confidence_v3",
+        "family_decay_v5",
+        "family_context_assembler_v7",
+        "gen_002_bimodal_mostly_stale",
+        "family_confidence_v6",
+        "family_decay_v1",
+        "family_context_assembler_v6",
+        "gen_009_flat_interleaved"
+      ],
+      "query_duration": {
+        "p50_ms": 15.074499882757664,
+        "p95_ms": 34.14787515066564,
+        "p99_ms": 50.8051251526922,
+        "mean_ms": 16.54,
+        "min_ms": 2.051166957244277,
+        "max_ms": 52.37704189494252,
+        "total_ms": 5291.27,
+        "count": 320
+      }
+    },
+    "TD_GAMMA": {
+      "best_value": 0.8,
+      "best_ndcg_at_5": 0.8036673642352012,
+      "sensitivity_curve": [
+        [
+          0.8,
+          0.8036673642352012
+        ],
+        [
+          0.9,
+          0.8036673642352012
+        ],
+        [
+          0.95,
+          0.8036673642352012
+        ],
+        [
+          0.99,
+          0.8036673642352012
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 256,
+      "n_points_total": 264,
+      "n_errors": 8,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_policy_cache_v5",
+        "family_context_assembler_v3",
+        "family_write_filter_v5",
+        "family_prediction_ledger_v0",
+        "family_prediction_ledger_v1",
+        "family_confidence_v7",
+        "family_write_filter_v6",
+        "family_write_filter_v7",
+        "family_prediction_ledger_v7",
+        "gen_006_clustered_mostly_stale",
+        "family_co_occurrence_v4",
+        "family_co_occurrence_v2",
+        "gen_001_clustered_interleaved",
+        "family_write_filter_v0",
+        "family_confidence_v5",
+        "family_decay_v0",
+        "family_confidence_v0",
+        "family_write_filter_v2",
+        "family_co_occurrence_v1",
+        "family_co_occurrence_v7",
+        "family_confidence_v2",
+        "family_co_occurrence_v6",
+        "family_confidence_v4",
+        "family_write_filter_v3",
+        "family_co_occurrence_v5",
+        "family_context_assembler_v2",
+        "family_co_occurrence_v0",
+        "family_policy_cache_v4",
+        "gen_007_bimodal_half_stale",
+        "family_prediction_ledger_v6",
+        "family_confidence_v1",
+        "family_prediction_ledger_v4",
+        "family_context_assembler_v1",
+        "family_policy_cache_v0",
+        "family_context_assembler_v5",
+        "family_context_assembler_v0",
+        "gen_000_uniform_all_recent",
+        "family_decay_v3",
+        "family_policy_cache_v6",
+        "family_context_assembler_v4",
+        "family_decay_v4",
+        "gen_005_uniform_interleaved",
+        "family_policy_cache_v1",
+        "family_prediction_ledger_v3",
+        "family_prediction_ledger_v5",
+        "family_decay_v7",
+        "family_decay_v2",
+        "family_decay_v6",
+        "family_write_filter_v1",
+        "family_co_occurrence_v3",
+        "family_write_filter_v4",
+        "family_policy_cache_v7",
+        "family_policy_cache_v3",
+        "family_prediction_ledger_v2",
+        "family_policy_cache_v2",
+        "gen_004_flat_all_recent",
+        "family_confidence_v3",
+        "family_decay_v5",
+        "family_context_assembler_v7",
+        "gen_002_bimodal_mostly_stale",
+        "family_confidence_v6",
+        "family_decay_v1",
+        "family_context_assembler_v6",
+        "gen_009_flat_interleaved"
+      ],
+      "query_duration": {
+        "p50_ms": 15.37379203364253,
+        "p95_ms": 34.34337489306927,
+        "p99_ms": 50.9233339689672,
+        "mean_ms": 16.6,
+        "min_ms": 2.22233310341835,
+        "max_ms": 51.67108285240829,
+        "total_ms": 4250.17,
+        "count": 256
+      }
+    },
+    "WILSON_CI_THRESHOLD": {
+      "best_value": 0.7,
+      "best_ndcg_at_5": 0.9992085367609297,
+      "sensitivity_curve": [
+        [
+          0.3,
+          0.8695934658543634
+        ],
+        [
+          0.5,
+          0.9443069525808159
+        ],
+        [
+          0.6,
+          0.9721673093020631
+        ],
+        [
+          0.7,
+          0.9992085367609297
+        ],
+        [
+          0.8,
+          0.9992085367609297
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 80,
+      "n_points_total": 90,
+      "n_errors": 10,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_policy_cache_v5",
+        "family_policy_cache_v7",
+        "family_policy_cache_v3",
+        "family_policy_cache_v2",
+        "gen_000_uniform_all_recent",
+        "gen_004_flat_all_recent",
+        "family_policy_cache_v6",
+        "gen_006_clustered_mostly_stale",
+        "gen_002_bimodal_mostly_stale",
+        "gen_001_clustered_interleaved",
+        "family_policy_cache_v4",
+        "gen_005_uniform_interleaved",
+        "family_policy_cache_v1",
+        "gen_007_bimodal_half_stale",
+        "family_policy_cache_v0",
+        "gen_009_flat_interleaved"
+      ],
+      "query_duration": {
+        "p50_ms": 5.206832895055413,
+        "p95_ms": 50.83112511783838,
+        "p99_ms": 52.06833314150572,
+        "mean_ms": 13.16,
+        "min_ms": 1.5160420443862677,
+        "max_ms": 52.06833314150572,
+        "total_ms": 1052.92,
+        "count": 80
+      }
+    },
+    "AUTO_DISCHARGE_CONFIDENCE_THRESHOLD": {
+      "best_value": 0.05,
+      "best_ndcg_at_5": 0.9182489868826618,
+      "sensitivity_curve": [
+        [
+          0.05,
+          0.9182489868826618
+        ],
+        [
+          0.1,
+          0.9182489868826618
+        ],
+        [
+          0.2,
+          0.9182489868826618
+        ],
+        [
+          0.3,
+          0.9182489868826618
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 64,
+      "n_points_total": 72,
+      "n_errors": 8,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_confidence_v5",
+        "gen_000_uniform_all_recent",
+        "family_confidence_v3",
+        "gen_004_flat_all_recent",
+        "family_confidence_v0",
+        "gen_006_clustered_mostly_stale",
+        "family_confidence_v2",
+        "family_confidence_v7",
+        "family_confidence_v4",
+        "gen_002_bimodal_mostly_stale",
+        "family_confidence_v6",
+        "gen_005_uniform_interleaved",
+        "gen_007_bimodal_half_stale",
+        "family_confidence_v1",
+        "gen_001_clustered_interleaved",
+        "gen_009_flat_interleaved"
+      ],
+      "query_duration": {
+        "p50_ms": 22.228250047191978,
+        "p95_ms": 51.00845894776285,
+        "p99_ms": 52.03162506222725,
+        "mean_ms": 23.08,
+        "min_ms": 3.6988749634474516,
+        "max_ms": 52.03162506222725,
+        "total_ms": 1477.01,
+        "count": 64
+      }
+    },
+    "CHI_SQUARED_P_THRESHOLD": {
+      "best_value": 0.001,
+      "best_ndcg_at_5": 0.8036673642352012,
+      "sensitivity_curve": [
+        [
+          0.001,
+          0.8036673642352012
+        ],
+        [
+          0.005,
+          0.8036673642352012
+        ],
+        [
+          0.01,
+          0.8036673642352012
+        ],
+        [
+          0.025,
+          0.8036673642352012
+        ],
+        [
+          0.05,
+          0.8036673642352012
+        ],
+        [
+          0.1,
+          0.8036673642352012
+        ],
+        [
+          0.2,
+          0.8036673642352012
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 448,
+      "n_points_total": 462,
+      "n_errors": 14,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_policy_cache_v5",
+        "family_context_assembler_v3",
+        "family_write_filter_v5",
+        "family_prediction_ledger_v0",
+        "family_prediction_ledger_v1",
+        "family_confidence_v7",
+        "family_write_filter_v6",
+        "family_write_filter_v7",
+        "family_prediction_ledger_v7",
+        "gen_006_clustered_mostly_stale",
+        "family_co_occurrence_v4",
+        "family_co_occurrence_v2",
+        "gen_001_clustered_interleaved",
+        "family_write_filter_v0",
+        "family_confidence_v5",
+        "family_decay_v0",
+        "family_confidence_v0",
+        "family_write_filter_v2",
+        "family_co_occurrence_v1",
+        "family_co_occurrence_v7",
+        "family_confidence_v2",
+        "family_co_occurrence_v6",
+        "family_confidence_v4",
+        "family_write_filter_v3",
+        "family_co_occurrence_v5",
+        "family_context_assembler_v2",
+        "family_co_occurrence_v0",
+        "family_policy_cache_v4",
+        "gen_007_bimodal_half_stale",
+        "family_prediction_ledger_v6",
+        "family_confidence_v1",
+        "family_prediction_ledger_v4",
+        "family_context_assembler_v1",
+        "family_policy_cache_v0",
+        "family_context_assembler_v5",
+        "family_context_assembler_v0",
+        "gen_000_uniform_all_recent",
+        "family_decay_v3",
+        "family_policy_cache_v6",
+        "family_context_assembler_v4",
+        "family_decay_v4",
+        "gen_005_uniform_interleaved",
+        "family_policy_cache_v1",
+        "family_prediction_ledger_v3",
+        "family_prediction_ledger_v5",
+        "family_decay_v7",
+        "family_decay_v2",
+        "family_decay_v6",
+        "family_write_filter_v1",
+        "family_co_occurrence_v3",
+        "family_write_filter_v4",
+        "family_policy_cache_v7",
+        "family_policy_cache_v3",
+        "family_prediction_ledger_v2",
+        "family_policy_cache_v2",
+        "gen_004_flat_all_recent",
+        "family_confidence_v3",
+        "family_decay_v5",
+        "family_context_assembler_v7",
+        "gen_002_bimodal_mostly_stale",
+        "family_confidence_v6",
+        "family_decay_v1",
+        "family_context_assembler_v6",
+        "gen_009_flat_interleaved"
+      ],
+      "query_duration": {
+        "p50_ms": 15.068582957610488,
+        "p95_ms": 33.63795904442668,
+        "p99_ms": 51.1806660797447,
+        "mean_ms": 16.41,
+        "min_ms": 2.0821248181164265,
+        "max_ms": 53.12029202468693,
+        "total_ms": 7351.27,
+        "count": 448
+      }
+    },
+    "INITIAL_CYCLE_AMPLITUDE": {
+      "best_value": 0.1,
+      "best_ndcg_at_5": 0.8036673642352012,
+      "sensitivity_curve": [
+        [
+          0.1,
+          0.8036673642352012
+        ],
+        [
+          0.25,
+          0.8036673642352012
+        ],
+        [
+          0.5,
+          0.8036673642352012
+        ],
+        [
+          0.75,
+          0.8036673642352012
+        ],
+        [
+          1.0,
+          0.8036673642352012
+        ],
+        [
+          2.0,
+          0.8036673642352012
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 384,
+      "n_points_total": 396,
+      "n_errors": 12,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_policy_cache_v5",
+        "family_context_assembler_v3",
+        "family_write_filter_v5",
+        "family_prediction_ledger_v0",
+        "family_prediction_ledger_v1",
+        "family_confidence_v7",
+        "family_write_filter_v6",
+        "family_write_filter_v7",
+        "family_prediction_ledger_v7",
+        "gen_006_clustered_mostly_stale",
+        "family_co_occurrence_v4",
+        "family_co_occurrence_v2",
+        "gen_001_clustered_interleaved",
+        "family_write_filter_v0",
+        "family_confidence_v5",
+        "family_decay_v0",
+        "family_confidence_v0",
+        "family_write_filter_v2",
+        "family_co_occurrence_v1",
+        "family_co_occurrence_v7",
+        "family_confidence_v2",
+        "family_co_occurrence_v6",
+        "family_confidence_v4",
+        "family_write_filter_v3",
+        "family_co_occurrence_v5",
+        "family_context_assembler_v2",
+        "family_co_occurrence_v0",
+        "family_policy_cache_v4",
+        "gen_007_bimodal_half_stale",
+        "family_prediction_ledger_v6",
+        "family_confidence_v1",
+        "family_prediction_ledger_v4",
+        "family_context_assembler_v1",
+        "family_policy_cache_v0",
+        "family_context_assembler_v5",
+        "family_context_assembler_v0",
+        "gen_000_uniform_all_recent",
+        "family_decay_v3",
+        "family_policy_cache_v6",
+        "family_context_assembler_v4",
+        "family_decay_v4",
+        "gen_005_uniform_interleaved",
+        "family_policy_cache_v1",
+        "family_prediction_ledger_v3",
+        "family_prediction_ledger_v5",
+        "family_decay_v7",
+        "family_decay_v2",
+        "family_decay_v6",
+        "family_write_filter_v1",
+        "family_co_occurrence_v3",
+        "family_write_filter_v4",
+        "family_policy_cache_v7",
+        "family_policy_cache_v3",
+        "family_prediction_ledger_v2",
+        "family_policy_cache_v2",
+        "gen_004_flat_all_recent",
+        "family_confidence_v3",
+        "family_decay_v5",
+        "family_context_assembler_v7",
+        "gen_002_bimodal_mostly_stale",
+        "family_confidence_v6",
+        "family_decay_v1",
+        "family_context_assembler_v6",
+        "gen_009_flat_interleaved"
+      ],
+      "query_duration": {
+        "p50_ms": 14.910625061020255,
+        "p95_ms": 33.45904080197215,
+        "p99_ms": 51.17275007069111,
+        "mean_ms": 16.34,
+        "min_ms": 2.196083078160882,
+        "max_ms": 52.299584029242396,
+        "total_ms": 6274.5,
+        "count": 384
+      }
+    },
+    "PL_CONFIDENCE_ERROR_THRESHOLD": {
+      "best_value": 0.95,
+      "best_ndcg_at_5": 0.822467549698354,
+      "sensitivity_curve": [
+        [
+          0.3,
+          0.8216952767743306
+        ],
+        [
+          0.5,
+          0.7980095172807445
+        ],
+        [
+          0.7,
+          0.7980095172807445
+        ],
+        [
+          0.85,
+          0.7980095172807445
+        ],
+        [
+          0.95,
+          0.822467549698354
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 80,
+      "n_points_total": 90,
+      "n_errors": 10,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_prediction_ledger_v2",
+        "family_prediction_ledger_v0",
+        "gen_000_uniform_all_recent",
+        "gen_004_flat_all_recent",
+        "gen_006_clustered_mostly_stale",
+        "family_prediction_ledger_v1",
+        "gen_002_bimodal_mostly_stale",
+        "gen_001_clustered_interleaved",
+        "gen_007_bimodal_half_stale",
+        "gen_005_uniform_interleaved",
+        "family_prediction_ledger_v7",
+        "family_prediction_ledger_v5",
+        "family_prediction_ledger_v6",
+        "family_prediction_ledger_v3",
+        "family_prediction_ledger_v4",
+        "gen_009_flat_interleaved"
+      ],
+      "query_duration": {
+        "p50_ms": 25.993833085522056,
+        "p95_ms": 51.576292142271996,
+        "p99_ms": 54.81062503531575,
+        "mean_ms": 25.29,
+        "min_ms": 3.774208016693592,
+        "max_ms": 54.81062503531575,
+        "total_ms": 2022.82,
+        "count": 80
+      }
+    },
+    "PL_CONFIDENCE_LOW_SIGNAL": {
+      "best_value": 0.05,
+      "best_ndcg_at_5": 0.822467549698354,
+      "sensitivity_curve": [
+        [
+          0.05,
+          0.822467549698354
+        ],
+        [
+          0.1,
+          0.822467549698354
+        ],
+        [
+          0.2,
+          0.822467549698354
+        ],
+        [
+          0.3,
+          0.822467549698354
+        ],
+        [
+          0.5,
+          0.822467549698354
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 80,
+      "n_points_total": 90,
+      "n_errors": 10,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_prediction_ledger_v2",
+        "family_prediction_ledger_v0",
+        "gen_000_uniform_all_recent",
+        "gen_004_flat_all_recent",
+        "gen_006_clustered_mostly_stale",
+        "family_prediction_ledger_v1",
+        "gen_002_bimodal_mostly_stale",
+        "gen_001_clustered_interleaved",
+        "gen_007_bimodal_half_stale",
+        "gen_005_uniform_interleaved",
+        "family_prediction_ledger_v7",
+        "family_prediction_ledger_v5",
+        "family_prediction_ledger_v6",
+        "family_prediction_ledger_v3",
+        "family_prediction_ledger_v4",
+        "gen_009_flat_interleaved"
+      ],
+      "query_duration": {
+        "p50_ms": 32.47025003656745,
+        "p95_ms": 50.821583019569516,
+        "p99_ms": 52.06341692246497,
+        "mean_ms": 28.22,
+        "min_ms": 3.429375123232603,
+        "max_ms": 52.06341692246497,
+        "total_ms": 2257.7,
+        "count": 80
+      }
+    },
+    "PL_AUTO_RESOLVE_ACTED": {
+      "best_value": 0.05,
+      "best_ndcg_at_5": 0.822467549698354,
+      "sensitivity_curve": [
+        [
+          0.05,
+          0.822467549698354
+        ],
+        [
+          0.1,
+          0.822467549698354
+        ],
+        [
+          0.2,
+          0.822467549698354
+        ],
+        [
+          0.3,
+          0.822467549698354
+        ],
+        [
+          0.5,
+          0.822467549698354
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 80,
+      "n_points_total": 90,
+      "n_errors": 10,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_prediction_ledger_v2",
+        "family_prediction_ledger_v0",
+        "gen_000_uniform_all_recent",
+        "gen_004_flat_all_recent",
+        "gen_006_clustered_mostly_stale",
+        "family_prediction_ledger_v1",
+        "gen_002_bimodal_mostly_stale",
+        "gen_001_clustered_interleaved",
+        "gen_007_bimodal_half_stale",
+        "gen_005_uniform_interleaved",
+        "family_prediction_ledger_v7",
+        "family_prediction_ledger_v5",
+        "family_prediction_ledger_v6",
+        "family_prediction_ledger_v3",
+        "family_prediction_ledger_v4",
+        "gen_009_flat_interleaved"
+      ],
+      "query_duration": {
+        "p50_ms": 32.63466712087393,
+        "p95_ms": 51.02258385159075,
+        "p99_ms": 51.87745811417699,
+        "mean_ms": 28.31,
+        "min_ms": 3.336833091452718,
+        "max_ms": 51.87745811417699,
+        "total_ms": 2265.04,
+        "count": 80
+      }
+    },
+    "PL_AUTO_RESOLVE_DISMISSED": {
+      "best_value": 0.2,
+      "best_ndcg_at_5": 0.822467549698354,
+      "sensitivity_curve": [
+        [
+          0.2,
+          0.822467549698354
+        ],
+        [
+          0.3,
+          0.822467549698354
+        ],
+        [
+          0.5,
+          0.822467549698354
+        ],
+        [
+          0.7,
+          0.822467549698354
+        ],
+        [
+          0.9,
+          0.822467549698354
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 80,
+      "n_points_total": 90,
+      "n_errors": 10,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_prediction_ledger_v2",
+        "family_prediction_ledger_v0",
+        "gen_000_uniform_all_recent",
+        "gen_004_flat_all_recent",
+        "gen_006_clustered_mostly_stale",
+        "family_prediction_ledger_v1",
+        "gen_002_bimodal_mostly_stale",
+        "gen_001_clustered_interleaved",
+        "gen_007_bimodal_half_stale",
+        "gen_005_uniform_interleaved",
+        "family_prediction_ledger_v7",
+        "family_prediction_ledger_v5",
+        "family_prediction_ledger_v6",
+        "family_prediction_ledger_v3",
+        "family_prediction_ledger_v4",
+        "gen_009_flat_interleaved"
+      ],
+      "query_duration": {
+        "p50_ms": 32.847583992406726,
+        "p95_ms": 51.52154201641679,
+        "p99_ms": 52.786999847739935,
+        "mean_ms": 28.75,
+        "min_ms": 3.7438750732690096,
+        "max_ms": 52.786999847739935,
+        "total_ms": 2300.2,
+        "count": 80
+      }
+    },
+    "PL_AUTO_RESOLVE_CONTRADICTED": {
+      "best_value": 0.5,
+      "best_ndcg_at_5": 0.822467549698354,
+      "sensitivity_curve": [
+        [
+          0.5,
+          0.822467549698354
+        ],
+        [
+          0.7,
+          0.822467549698354
+        ],
+        [
+          0.8,
+          0.7980095172807445
+        ],
+        [
+          0.9,
+          0.7980095172807445
+        ],
+        [
+          0.95,
+          0.7980095172807445
+        ]
+      ],
+      "cliff_effects": [],
+      "n_points_ok": 80,
+      "n_points_total": 90,
+      "n_errors": 10,
+      "n_degenerate": 0,
+      "scenarios": [
+        "family_prediction_ledger_v2",
+        "family_prediction_ledger_v0",
+        "gen_000_uniform_all_recent",
+        "gen_004_flat_all_recent",
+        "gen_006_clustered_mostly_stale",
+        "family_prediction_ledger_v1",
+        "gen_002_bimodal_mostly_stale",
+        "gen_001_clustered_interleaved",
+        "gen_007_bimodal_half_stale",
+        "gen_005_uniform_interleaved",
+        "family_prediction_ledger_v7",
+        "family_prediction_ledger_v5",
+        "family_prediction_ledger_v6",
+        "family_prediction_ledger_v3",
+        "family_prediction_ledger_v4",
+        "gen_009_flat_interleaved"
+      ],
+      "query_duration": {
+        "p50_ms": 24.603999918326735,
+        "p95_ms": 51.44712491892278,
+        "p99_ms": 61.634291894733906,
+        "mean_ms": 25.2,
+        "min_ms": 3.719417145475745,
+        "max_ms": 61.634291894733906,
+        "total_ms": 2016.29,
+        "count": 80
+      }
+    }
+  },
+  "pairwise": {}
+}
