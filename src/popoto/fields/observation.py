@@ -12,11 +12,17 @@ Three hooks:
     - ``on_context_used(instances, outcome_map)``: Fire when application
       reports how the agent responded. Applies effects based on outcome.
 
-Four outcomes:
+Five outcomes:
     - ``acted``: Memory content appeared in agent's response. Strengthen.
     - ``dismissed``: Agent explicitly ignored/rejected. Weaken.
     - ``deferred``: Agent didn't address it. No effects, pressure builds.
     - ``contradicted``: Agent explicitly contradicted. Aggressively weaken.
+    - ``used``: Agent consumed the memory (read + reasoned) but did not
+      act on it in the response. Confirms the staged read and auto-resolves
+      predictions with a moderate error, but does NOT touch ConfidenceField,
+      CyclicDecayField, or DecayingSortedField. Observable distinction from
+      ``deferred``: ``used`` records a confirmed-read trace, ``deferred``
+      discards staged reads.
 
 RecallProposal:
     Internal ORM infrastructure for tracking proactively surfaced memories.
@@ -42,7 +48,7 @@ from .constants import Defaults
 
 logger = logging.getLogger("POPOTO.ObservationProtocol")
 
-VALID_OUTCOMES = {"acted", "dismissed", "deferred", "contradicted"}
+VALID_OUTCOMES = {"acted", "dismissed", "deferred", "contradicted", "used"}
 
 # ---------------------------------------------------------------------------
 # Tuning Constants — initialized from Defaults (validated via sweep #234)
@@ -195,6 +201,8 @@ def _apply_outcome(instance, outcome, pipeline=None):
         _apply_deferred(instance, pipeline)
     elif outcome == "contradicted":
         _apply_contradicted(instance, pipeline)
+    elif outcome == "used":
+        _apply_used(instance, pipeline)
 
     if use_internal_pipeline:
         pipeline.execute()
@@ -355,6 +363,43 @@ def _apply_contradicted(instance, pipeline):
                             instance.resolve_pressure(cdf_name, pipeline=pipeline)
             except (TypeError, ValueError, AttributeError):
                 pass
+
+
+def _apply_used(instance, pipeline):
+    """Used: confirm staged reads, auto-resolve predictions. No confidence,
+    no cycle, no decay effects.
+
+    Semantic: the agent consumed the memory (read + reasoned) but did not
+    act on it in the response. Observably stronger than ``deferred``
+    (which discards staged reads) because it commits the AccessTracker
+    staged-read to a confirmed trace. Observably weaker than ``acted``
+    (which corroborates confidence and strengthens cycles).
+
+    Effects:
+        * ``confirm_access(pipeline=pipeline)`` when AccessTrackerMixin is
+          present — commits the staged read as a confirmed read.
+        * ``PredictionLedgerMixin.auto_resolve(instance, "used")`` — maps
+          to ``Defaults.PL_AUTO_RESOLVE_USED`` (0.3, moderate error).
+        * Does NOT touch ConfidenceField, CyclicDecayField, or
+          DecayingSortedField.
+
+    Args:
+        instance: A Model instance.
+        pipeline: Redis pipeline for batched operations.
+    """
+    # Confirm staged reads (AccessTrackerMixin) — this is the key behavioral
+    # distinction from `_apply_deferred`, which discards staged reads.
+    if hasattr(instance, "confirm_access") and callable(instance.confirm_access):
+        instance.confirm_access(pipeline=pipeline)
+
+    # Auto-resolve predictions (PredictionLedgerMixin)
+    from .prediction_ledger import PredictionLedgerMixin
+
+    if isinstance(instance, PredictionLedgerMixin):
+        try:
+            PredictionLedgerMixin.auto_resolve(instance, "used", pipeline=pipeline)
+        except (TypeError, ValueError):
+            pass  # Graceful degradation
 
 
 class RecallProposal:

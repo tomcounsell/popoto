@@ -851,3 +851,162 @@ class TestSynergy:
         outcome_map = {m1.db_key.redis_key: "acted"}
         ObservationProtocol.on_context_used([m1], outcome_map)
         assert len(RecallProposal.get_pending(FullMemory)) == 0
+
+
+# =========================================================================
+# "used" outcome — confirms staged reads, auto-resolves, no confidence/cycle
+# (#352 Tier 2)
+# =========================================================================
+
+from src.popoto.fields.observation import VALID_OUTCOMES  # noqa: E402
+from src.popoto.fields.prediction_ledger import PredictionLedgerMixin  # noqa: E402
+from src.popoto.fields.confidence_field import ConfidenceField  # noqa: E402
+
+
+class UsedOutcomeMemory(
+    AccessTrackerMixin, PredictionLedgerMixin, popoto.Model
+):
+    """Model with AccessTracker + PredictionLedger + ConfidenceField + CyclicDecay.
+
+    Lets us assert that "used" confirms the staged read (AccessTracker),
+    auto-resolves predictions (PredictionLedger), but does NOT touch
+    ConfidenceField or CyclicDecayField amplitudes.
+    """
+
+    name = popoto.UniqueKeyField()
+    content = popoto.StringField(default="")
+    relevance = CyclicDecayField(
+        decay_rate=0.5,
+        cycles=[(TemporalPeriod.YEARLY, 5.0, 0)],
+        pressure_rate=0.0,
+    )
+    certainty = ConfidenceField(initial_confidence=0.5)
+
+
+class TestUsedOutcome:
+    """Tests for the 'used' outcome in ObservationProtocol (#352)."""
+
+    def _cleanup(self):
+        UsedOutcomeMemory.delete_all()
+        for pattern in ("$PL:UsedOutcomeMemory:*", "$ConfidencF:UsedOutcomeMemory:*"):
+            for key in POPOTO_REDIS_DB.keys(pattern):
+                POPOTO_REDIS_DB.delete(key)
+
+    def test_used_in_valid_outcomes(self):
+        """'used' is a recognized outcome alongside the original four."""
+        assert "used" in VALID_OUTCOMES
+        # The original four must still be present — no breaking change.
+        for orig in ("acted", "dismissed", "deferred", "contradicted"):
+            assert orig in VALID_OUTCOMES
+
+    def test_used_confirms_staged_read(self):
+        """'used' calls confirm_access -> access_count increments."""
+        self._cleanup()
+        try:
+            m = UsedOutcomeMemory(name="used-confirm", content="c")
+            m.save()
+            # Stage a read (on_read stages to AccessTracker)
+            ObservationProtocol.on_read(m)
+            assert m.access_count == 0  # not yet confirmed
+
+            # "used" should confirm the staged read
+            outcome_map = {m.db_key.redis_key: "used"}
+            ObservationProtocol.on_context_used([m], outcome_map)
+
+            assert m.access_count >= 1, (
+                "'used' must confirm staged reads (distinction from 'deferred')"
+            )
+        finally:
+            self._cleanup()
+
+    def test_deferred_does_not_confirm_staged_read(self):
+        """Contrast: 'deferred' discards staged reads; access_count stays 0."""
+        self._cleanup()
+        try:
+            m = UsedOutcomeMemory(name="deferred-discard", content="c")
+            m.save()
+            ObservationProtocol.on_read(m)
+            assert m.access_count == 0
+
+            outcome_map = {m.db_key.redis_key: "deferred"}
+            ObservationProtocol.on_context_used([m], outcome_map)
+
+            assert m.access_count == 0, (
+                "'deferred' must discard staged reads (not confirm)"
+            )
+        finally:
+            self._cleanup()
+
+    def test_used_auto_resolves_prediction(self):
+        """'used' routes through PredictionLedger.auto_resolve with PL_AUTO_RESOLVE_USED."""
+        self._cleanup()
+        try:
+            m = UsedOutcomeMemory(name="used-prediction", content="c")
+            m.save()
+            PredictionLedgerMixin.record_prediction(m, predicted={"x": 1.0})
+
+            outcome_map = {m.db_key.redis_key: "used"}
+            ObservationProtocol.on_context_used([m], outcome_map)
+
+            data = PredictionLedgerMixin.get_prediction_data(m)
+            assert data is not None
+            assert data["resolved"] is True
+            assert data["resolution_mode"] == "observed"
+            # Error value should be the PL_AUTO_RESOLVE_USED default (0.3)
+            from src.popoto.fields.constants import Defaults
+
+            assert abs(data["prediction_error"] - Defaults.PL_AUTO_RESOLVE_USED) < 1e-9
+        finally:
+            self._cleanup()
+
+    def test_used_does_not_update_confidence(self):
+        """'used' MUST NOT touch ConfidenceField evidence counts.
+
+        Distinguishes 'used' from 'acted' / 'contradicted' which do.
+        """
+        self._cleanup()
+        try:
+            m = UsedOutcomeMemory(name="used-no-conf", content="c")
+            m.save()
+
+            initial_data = ConfidenceField.get_confidence_data(m, "certainty")
+            initial_count = initial_data["evidence_count"]
+
+            outcome_map = {m.db_key.redis_key: "used"}
+            ObservationProtocol.on_context_used([m], outcome_map)
+
+            after_data = ConfidenceField.get_confidence_data(m, "certainty")
+            # Evidence count should NOT have incremented — no confidence update.
+            # Note: auto_resolve with error=0.3 is BELOW the default
+            # PL_CONFIDENCE_ERROR_THRESHOLD=0.7, so _apply_confidence_feedback
+            # does not fire — this is the correct behavior.
+            assert after_data["evidence_count"] == initial_count
+        finally:
+            self._cleanup()
+
+    def test_used_does_not_strengthen_cycle(self):
+        """'used' MUST NOT call strengthen_cycle (distinguishes from 'acted')."""
+        self._cleanup()
+        try:
+            m = UsedOutcomeMemory(name="used-no-cycle", content="c")
+            m.save()
+
+            # Read the cycle amplitude before the "used" outcome
+            cycles_before = POPOTO_REDIS_DB.hget(
+                m.db_key.redis_key, "_cycles_relevance"
+            )
+            # Issue a "used" outcome — should NOT change cycle state
+            outcome_map = {m.db_key.redis_key: "used"}
+            ObservationProtocol.on_context_used([m], outcome_map)
+
+            cycles_after = POPOTO_REDIS_DB.hget(
+                m.db_key.redis_key, "_cycles_relevance"
+            )
+            # Cycle state should be unchanged.
+            assert cycles_before == cycles_after
+        finally:
+            self._cleanup()
+
+    def test_used_empty_instances_noop(self):
+        """on_context_used with empty instance list is a no-op even for 'used'."""
+        ObservationProtocol.on_context_used([], {"rk1": "used"})  # no raise

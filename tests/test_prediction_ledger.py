@@ -812,3 +812,120 @@ class TestFullIntegration:
         # Confidence should decrease (0.9 error > 0.7 threshold)
         updated_conf = ConfidenceField.get_confidence(item, "certainty")
         assert updated_conf < initial_conf
+
+
+# =========================================================================
+# error_summary — grouped prediction-error aggregation (#352 Tier 2)
+# =========================================================================
+
+
+class TestErrorSummary:
+    """Tests for PredictionLedgerMixin.error_summary."""
+
+    def _seed_errors(self, n=6):
+        """Create N resolved predictions with varying errors."""
+        items = []
+        for i in range(n):
+            item = PredictionItem(name=f"err-{i}", content=f"c-{i}")
+            item.save()
+            PredictionLedgerMixin.record_prediction(item, predicted={"x": 1.0})
+            # Resolve with varying actual values to get varying errors.
+            # Use "dismissed" outcome (error=0.5) for odd indices, "contradicted"
+            # (error=0.9) for even — to get a mix of error values.
+            outcome = "contradicted" if i % 2 == 0 else "dismissed"
+            PredictionLedgerMixin.auto_resolve(item, outcome)
+            items.append(item)
+        return items
+
+    def test_error_summary_empty_set_returns_zero_count(self):
+        """error_summary on a model with zero errors returns count=0."""
+        result = PredictionLedgerMixin.error_summary(PredictionItem)
+        assert "__all__" in result
+        assert result["__all__"]["count"] == 0
+        assert result["__all__"]["mean"] == 0.0
+
+    def test_error_summary_ungrouped_stats(self):
+        """Without group_by, returns overall stats under __all__."""
+        self._seed_errors(n=6)
+        result = PredictionLedgerMixin.error_summary(PredictionItem)
+        assert "__all__" in result
+        stats = result["__all__"]
+        assert stats["count"] == 6
+        assert 0.0 <= stats["mean"] <= 1.0
+        assert stats["max"] >= stats["mean"]
+        # We alternated 0.9 / 0.5; mean should be ~0.7
+        assert abs(stats["mean"] - 0.7) < 0.01
+
+    def test_error_summary_callable_group_by(self):
+        """Callable group_by produces per-group stats keyed by the label."""
+        self._seed_errors(n=6)
+
+        def _high_low(member_key, error):
+            return "high" if error >= 0.7 else "low"
+
+        result = PredictionLedgerMixin.error_summary(
+            PredictionItem,
+            group_by=_high_low,
+        )
+        assert "high" in result
+        assert "low" in result
+        assert result["high"]["count"] == 3
+        assert result["low"]["count"] == 3
+        assert abs(result["high"]["mean"] - 0.9) < 1e-6
+        assert abs(result["low"]["mean"] - 0.5) < 1e-6
+
+    def test_error_summary_builtin_hour(self):
+        """Built-in 'hour' bucketer groups by resolved_at hour."""
+        self._seed_errors(n=4)
+        result = PredictionLedgerMixin.error_summary(
+            PredictionItem, group_by="hour"
+        )
+        # Every entry was resolved "now", so a single hour bucket is expected.
+        # The exact hour depends on the test runner's clock; we just assert
+        # there's at least one bucket with count == 4.
+        assert result
+        totals = sum(g["count"] for g in result.values())
+        assert totals == 4
+
+    def test_error_summary_builtin_weekday(self):
+        """Built-in 'weekday' bucketer groups by resolved_at weekday 0..6."""
+        self._seed_errors(n=3)
+        result = PredictionLedgerMixin.error_summary(
+            PredictionItem, group_by="weekday"
+        )
+        # Single weekday bucket (all resolved "now") with all 3 items.
+        assert result
+        totals = sum(g["count"] for g in result.values())
+        assert totals == 3
+        # Keys should be ints 0..6
+        for label in result.keys():
+            assert isinstance(label, int)
+            assert 0 <= label <= 6
+
+    def test_error_summary_builtin_day(self):
+        """Built-in 'day' bucketer groups by resolved_at ISO date."""
+        self._seed_errors(n=3)
+        result = PredictionLedgerMixin.error_summary(
+            PredictionItem, group_by="day"
+        )
+        assert result
+        for label in result.keys():
+            # ISO date format: YYYY-MM-DD
+            assert isinstance(label, str)
+            assert len(label) == 10
+            assert label[4] == "-" and label[7] == "-"
+
+    def test_error_summary_unknown_builtin_raises_value_error(self):
+        """Unknown group_by string raises ValueError listing known bucketers."""
+        with pytest.raises(ValueError) as exc:
+            PredictionLedgerMixin.error_summary(PredictionItem, group_by="unknown")
+        msg = str(exc.value)
+        assert "hour" in msg
+        assert "weekday" in msg
+        assert "day" in msg
+
+    def test_error_summary_limit_caps_sample_size(self):
+        """limit parameter caps the number of members sampled."""
+        self._seed_errors(n=6)
+        result = PredictionLedgerMixin.error_summary(PredictionItem, limit=3)
+        assert result["__all__"]["count"] == 3
