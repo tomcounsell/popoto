@@ -8,6 +8,7 @@ from popoto import IndexedField, UniqueField
 from popoto import SortedField, SortedKeyField, GeoField, DatetimeField, Relationship
 from popoto import DecayingSortedField, CyclicDecayField, TemporalPeriod, InteractionWeight, Defaults
 from popoto import AccessTrackerMixin, ObservationProtocol, RecallProposal, ConfidenceField, PredictionLedgerMixin
+from popoto import RetrievalQuality, ContextAssembler, AdaptiveAssembler
 from popoto import ContentField, EmbeddingField
 from popoto import Publisher, Subscriber
 from popoto import ModelException, KeyMutationError, QueryException, PublisherException, SubscriberException
@@ -1769,6 +1770,21 @@ for custom error metrics.
 
 **Returns:** Float in `[0, 1]`.
 
+#### PredictionLedgerMixin.error\_summary(model\_class, partition="default", group\_by=None, limit=100)
+
+Aggregate prediction errors with optional grouping. Reads up to `limit` members from the error sorted set and fetches per-instance metadata in a pipelined batch.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `model_class` | `type` | | The Model class to query. |
+| `partition` | `str` | `"default"` | Partition key. |
+| `group_by` | `str` \| `callable` \| `None` | `None` | `None` for overall stats; `"hour"`, `"weekday"`, or `"day"` for built-in time bucketers; callable `(member_key, error) -> label` for custom grouping. Unknown strings raise `ValueError`. |
+| `limit` | `int` | `100` | Max members to sample from the error set. |
+
+**Returns:** `dict` mapping group labels to stats dicts with keys `count`, `mean`, `stddev`, `p50`, `p90`, `p99`, `max`. Ungrouped key is `"__all__"`. Empty set returns `{"__all__": {"count": 0, ...}}`.
+
+See [Metacognitive Layer — error_summary](features/metacognitive-layer.md) for full documentation.
+
 ### CoOccurrenceField
 
 ```python
@@ -1889,6 +1905,8 @@ Centralized registry of all tuning constants across the 14 agent-memory primitiv
 | `Defaults.PL_AUTO_RESOLVE_ACTED` | `0.1` | PredictionLedgerMixin |
 | `Defaults.PL_AUTO_RESOLVE_DISMISSED` | `0.5` | PredictionLedgerMixin |
 | `Defaults.PL_AUTO_RESOLVE_CONTRADICTED` | `0.9` | PredictionLedgerMixin |
+| `Defaults.PL_AUTO_RESOLVE_USED` | `0.3` | PredictionLedgerMixin / metacognitive layer |
+| `Defaults.ADAPTIVE_QUALITY_WINDOW_SIZE` | `20` | AdaptiveAssembler |
 | `Defaults.MIN_EVENTS_FOR_CRYSTALLIZATION` | `3` | PolicyCache |
 | `Defaults.WILSON_CI_THRESHOLD` | `0.6` | PolicyCache |
 | `Defaults.TD_ALPHA` | `0.1` | PolicyCache |
@@ -1908,6 +1926,103 @@ Defaults.DECAY_RATE = 0.7
 ```
 
 See [Tuning Magic Numbers](guides/tuning-magic-numbers.md) for benchmark-validated override guidance.
+
+### RetrievalQuality
+
+```python
+from popoto import RetrievalQuality
+# or: from popoto.recipes import RetrievalQuality
+# or: from popoto.recipes.context_assembler import RetrievalQuality
+```
+
+Dataclass returned by `ContextAssembler.assess()` and attached to `AssemblyResult.metadata["quality"]` when `assess_quality=True`. A purely mechanical retrieval quality signal — no LLM self-reporting.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `avg_confidence` | `float` | Mean `ConfidenceField.get_confidence()` across selected records. `1.0` when no `ConfidenceField` is configured. |
+| `score_spread` | `float` | Coefficient of variation (`stddev / mean`) of per-record composite scores. `0.0` when `abs(mean) < 1e-9`. |
+| `fok_score` | `float` | Feeling-of-knowing (0.0–1.0). Formula: `0.4 * cue_familiarity + 0.4 * partial_retrieval_count + 0.2 * subthreshold_activation`, averaged across cues. `0.0` when no cues provided. |
+| `staleness_ratio` | `float` | Fraction of selected records with `DecayingSortedField` score below `surfacing_threshold`. `0.0` when no `DecayingSortedField`. |
+| `score_distribution` | `list[float]` | Full list of per-record composite scores. Empty when unavailable. |
+| `per_cue_fok` | `dict` | Maps cue value → `{cue_familiarity, partial_retrieval_count, subthreshold_activation, component_score}`. |
+
+See [Metacognitive Layer](features/metacognitive-layer.md) for full documentation.
+
+### ContextAssembler
+
+```python
+from popoto.recipes.context_assembler import ContextAssembler
+```
+
+Orchestrates pull-path (query-driven) and push-path (proactive) retrieval into a single `assemble()` call. See [ContextAssembler feature docs](features/context-assembler.md) for full usage.
+
+#### ContextAssembler(model\_class, score\_weights, ...)
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `model_class` | `type` | | Popoto Model class to query. |
+| `score_weights` | `dict` | | Maps field names to weights for `CompositeScoreQuery`. |
+| `max_items` | `int` | `10` | Maximum records to return. |
+| `max_tokens` | `int` \| `None` | `None` | Soft token budget; records dropped to fit. |
+| `surfacing_threshold` | `float` | `0.5` | Minimum score for push-path records. |
+| `propagation_depth` | `int` | `2` | BFS depth for CoOccurrence expansion. |
+| `output_format` | `str` | `"structured"` | `"structured"` (JSON), `"xml"`, or `"natural"`. |
+| `token_counter` | `callable` \| `None` | `None` | `callable(record) -> int`. Default: `len(str(r)) // 4`. |
+
+#### ContextAssembler.assemble(query\_cues=None, agent\_id=None, partition\_filters=None, assess\_quality=False)
+
+Execute the full retrieval pipeline. Returns `AssemblyResult`.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `query_cues` | `dict` \| `None` | `None` | Query cues. If `None`, pull path is skipped. |
+| `agent_id` | `str` \| `None` | `None` | Added to `partition_filters` as `{"agent_id": agent_id}`. |
+| `partition_filters` | `dict` \| `None` | `None` | Partition key-value pairs for filtering. |
+| `assess_quality` | `bool` | `False` | When `True`, compute `RetrievalQuality` and attach to `AssemblyResult.metadata["quality"]`. Off by default; existing result shape is unchanged. |
+
+#### ContextAssembler.assess(query\_cues=None, partition\_filters=None, probe\_limit=None)
+
+Pre-retrieval quality probe. Runs `ExistenceFilter` + a single low-limit `composite_score` call — no propagation, no push path, no post-effects.
+
+**Returns:** `RetrievalQuality`.
+
+### AdaptiveAssembler
+
+```python
+from popoto.recipes.adaptive_assembler import AdaptiveAssembler
+# or: from popoto.recipes import AdaptiveAssembler
+# or: from popoto import AdaptiveAssembler
+```
+
+Wraps a `ContextAssembler` with an autoresearch-style keep/revert loop that adjusts `score_weights` online. Single-threaded by design; adaptation is per-process only (does not survive restarts).
+
+#### AdaptiveAssembler(inner, window\_size=20, quality\_metric=None, weight\_perturbation=0.05, rng=None)
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `inner` | `ContextAssembler` | | The assembler to wrap. |
+| `window_size` | `int` | `Defaults.ADAPTIVE_QUALITY_WINDOW_SIZE` (20) | Calls per rolling window. |
+| `quality_metric` | `callable` \| `None` | `lambda q: q.fok_score * q.avg_confidence` | Scalarizes `RetrievalQuality` → `float`. |
+| `weight_perturbation` | `float` | `0.05` | How much to shift per weight proposal. |
+| `rng` | `random.Random` \| `None` | `None` | Optional seeded RNG for deterministic tests. |
+
+#### AdaptiveAssembler.assemble(query\_cues=None, \*\*kwargs)
+
+Delegates to `inner.assemble()` with `assess_quality=True` forced, records the quality sample, and runs the keep/revert state machine. Returns the inner `AssemblyResult` unchanged.
+
+#### AdaptiveAssembler.current\_weights
+
+`dict` — copy of the currently-active `score_weights`.
+
+#### AdaptiveAssembler.baseline\_quality
+
+`float | None` — rolling-window mean quality under baseline weights.
+
+#### AdaptiveAssembler.is\_testing\_candidate
+
+`bool` — `True` while gathering quality samples under a candidate perturbation.
+
+See [Metacognitive Layer](features/metacognitive-layer.md) for full documentation.
 
 ### ContentField
 

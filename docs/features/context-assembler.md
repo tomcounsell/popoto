@@ -141,8 +141,27 @@ outcome_map = {r.db_key.redis_key: "acted" for r in result.records}
 ObservationProtocol.on_context_used(result.records, outcome_map)
 ```
 
+## Retrieval Quality Scoring
+
+To score the quality of a retrieval — avg confidence, feeling-of-knowing, score spread, staleness — pass `assess_quality=True` to `assemble()` or call the standalone `assess()` probe before retrieval:
+
+```python
+# Pre-retrieval probe (cheap — no propagation, no push path)
+quality = assembler.assess({"topic": "deployment"})
+if quality.fok_score < 0.3:
+    return  # skip retrieval; memory store has nothing relevant
+
+# Post-retrieval quality attached to metadata
+result = assembler.assemble({"topic": "deployment"}, assess_quality=True)
+quality = result.metadata["quality"]  # RetrievalQuality dataclass
+print(quality.avg_confidence, quality.fok_score)
+```
+
+See [Metacognitive Layer](metacognitive-layer.md) for full documentation of `RetrievalQuality`, all four metrics, the `assess()` method, and the `AdaptiveAssembler` keep/revert loop.
+
 ## See Also
 
+- [Metacognitive Layer](metacognitive-layer.md) — retrieval quality scoring, FOK, and adaptive weight tuning
 - [PolicyCache](policy-cache.md) — learned action selection (uses ContextAssembler for retrieval)
 - [CompositeScoreQuery](composite-score-query.md) — multi-factor retrieval
 - [CoOccurrenceField](co-occurrence-field.md) — associative expansion

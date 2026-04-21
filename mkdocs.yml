@@ -29,6 +29,7 @@ nav:
             - PolicyCache: 'features/policy-cache.md'
             - ContextAssembler: 'features/context-assembler.md'
             - Hybrid Retrieval (BM25 + RRF): 'features/hybrid-retrieval.md'
+            - Metacognitive Layer: 'features/metacognitive-layer.md'
         - Meta Class Implementation: 'features/meta-class-implementation.md'
         - Kitchen Edge Case Demo: 'features/kitchen-edge-case-demo.md'
     - Guides:
