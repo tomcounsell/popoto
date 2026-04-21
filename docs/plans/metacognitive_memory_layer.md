@@ -229,27 +229,27 @@ Agent uses `AdaptiveAssembler(inner=ContextAssembler(...))` → each `adaptive.a
 
 ### Exception Handling Coverage
 
-- [ ] `context_assembler.py` has existing `except Exception` blocks at lines 322 (token counter), 403 (CompositeScoreQuery), 431 (propagation), 459 (push path), 509 (post-effects pipeline). Each logs a warning. New code in `_compute_quality` and `_compute_fok` must follow the same pattern: catch exceptions per-record (e.g., `get_confidence` can raise on unsaved instances), log at warning level, contribute a sentinel value (e.g., `initial_confidence`) to the aggregate rather than aborting the whole metric.
-- [ ] `prediction_ledger.error_summary` must handle empty error sets gracefully — return `{"count": 0}` instead of raising on `statistics.stdev([])`.
-- [ ] `AdaptiveAssembler` must handle `quality_metric` exceptions — if `q.fok_score * q.avg_confidence` raises (e.g., None multiplication), log and skip that sample rather than crashing the loop.
+- [x] `context_assembler.py` has existing `except Exception` blocks at lines 322 (token counter), 403 (CompositeScoreQuery), 431 (propagation), 459 (push path), 509 (post-effects pipeline). Each logs a warning. New code in `_compute_quality` and `_compute_fok` must follow the same pattern: catch exceptions per-record (e.g., `get_confidence` can raise on unsaved instances), log at warning level, contribute a sentinel value (e.g., `initial_confidence`) to the aggregate rather than aborting the whole metric.
+- [x] `prediction_ledger.error_summary` must handle empty error sets gracefully — return `{"count": 0}` instead of raising on `statistics.stdev([])`.
+- [x] `AdaptiveAssembler` must handle `quality_metric` exceptions — if `q.fok_score * q.avg_confidence` raises (e.g., None multiplication), log and skip that sample rather than crashing the loop.
 
 ### Empty/Invalid Input Handling
 
-- [ ] `assess(query_cues={})` → return `RetrievalQuality(avg_confidence=0.0, score_spread=0.0, fok_score=0.0, staleness_ratio=0.0)` with a logged warning. Do not raise.
-- [ ] `error_summary(group_by=None)` on a model with zero recorded predictions → return `{"__all__": {"count": 0, "mean": 0.0, ...}}`.
-- [ ] `ObservationProtocol.on_context_used(instances=[], outcome_map={})` → already handled upstream (early return); add a test asserting no-op for `outcome_map={rk: "used"}` with empty instances.
-- [ ] `AdaptiveAssembler.assemble()` with `query_cues=None` — forward to inner (which already handles this) and skip quality sample that round.
+- [x] `assess(query_cues={})` → return `RetrievalQuality(avg_confidence=0.0, score_spread=0.0, fok_score=0.0, staleness_ratio=0.0)` with a logged warning. Do not raise.
+- [x] `error_summary(group_by=None)` on a model with zero recorded predictions → return `{"__all__": {"count": 0, "mean": 0.0, ...}}`.
+- [x] `ObservationProtocol.on_context_used(instances=[], outcome_map={})` → already handled upstream (early return); add a test asserting no-op for `outcome_map={rk: "used"}` with empty instances.
+- [x] `AdaptiveAssembler.assemble()` with `query_cues=None` — forward to inner (which already handles this) and skip quality sample that round.
 
 ### Error State Rendering
 
-- [ ] Not user-visible output. `RetrievalQuality` is a machine-readable dataclass; agents render it downstream. Assert dataclass `__repr__` produces a non-empty string for debug logs.
+- [x] Not user-visible output. `RetrievalQuality` is a machine-readable dataclass; agents render it downstream. Assert dataclass `__repr__` produces a non-empty string for debug logs.
 
 ## Test Impact
 
-- [ ] `tests/test_context_assembler.py` — UPDATE: add a new `class TestRetrievalQuality:` with ~8 tests covering `assess()`, `assemble(assess_quality=True)`, empty cues, missing ExistenceFilter fallback, FOK component breakdown. Existing tests pass unchanged (strict: `assemble()` with default args returns the same `AssemblyResult` modulo the new `metadata["quality"]` key which is absent by default).
-- [ ] `tests/test_prediction_ledger.py` — UPDATE: add a new `class TestErrorSummary:` with ~6 tests: no-grouping, callable grouping, `"hour"` / `"weekday"` / `"day"` built-ins, empty error set, unknown built-in string raises ValueError.
-- [ ] `tests/test_observation_protocol.py` — UPDATE: add `class TestUsedOutcome:` with ~4 tests: `"used"` in VALID_OUTCOMES, `on_context_used` with `"used"` → staged reads discarded, confidence unchanged, cycle unchanged, prediction auto-resolved with `PL_AUTO_RESOLVE_USED` error.
-- [ ] **NEW** `tests/test_adaptive_assembler.py` — CREATE: unit tests for keep/revert logic (mocked inner assembler returning fixed quality values) + one integration test (full Redis, 100 memories, 200 calls, assert final > initial).
+- [x] `tests/test_context_assembler.py` — UPDATE: add a new `class TestRetrievalQuality:` with ~8 tests covering `assess()`, `assemble(assess_quality=True)`, empty cues, missing ExistenceFilter fallback, FOK component breakdown. Existing tests pass unchanged (strict: `assemble()` with default args returns the same `AssemblyResult` modulo the new `metadata["quality"]` key which is absent by default).
+- [x] `tests/test_prediction_ledger.py` — UPDATE: add a new `class TestErrorSummary:` with ~6 tests: no-grouping, callable grouping, `"hour"` / `"weekday"` / `"day"` built-ins, empty error set, unknown built-in string raises ValueError.
+- [x] `tests/test_observation_protocol.py` — UPDATE: add `class TestUsedOutcome:` with ~4 tests: `"used"` in VALID_OUTCOMES, `on_context_used` with `"used"` → staged reads discarded, confidence unchanged, cycle unchanged, prediction auto-resolved with `PL_AUTO_RESOLVE_USED` error.
+- [x] **NEW** `tests/test_adaptive_assembler.py` — CREATE: unit tests for keep/revert logic (mocked inner assembler returning fixed quality values) + one integration test (full Redis, 100 memories, 200 calls, assert final > initial).
 
 No existing test is deleted or modified in a breaking way. All existing tests remain valid.
 
@@ -340,36 +340,36 @@ No agent integration required — popoto is a library; consumers import it. Ther
 
 ### Feature Documentation
 
-- [ ] Create `docs/features/metacognitive-layer.md` describing `RetrievalQuality`, `assess()`, `error_summary`, `"used"` outcome, and `AdaptiveAssembler`. Include worked examples.
-- [ ] Update `docs/features/context-assembler.md` to cross-reference the new `assess_quality` parameter.
-- [ ] Update `docs/features/prediction-ledger.md` to document `error_summary` and the new `"used"` outcome.
-- [ ] Update `docs/features/observation-protocol.md` to document the `"used"` outcome and the distinction from `"deferred"`.
-- [ ] Update feature documentation index (create `docs/features/README.md` if missing, or update equivalent nav-level documentation).
+- [x] Create `docs/features/metacognitive-layer.md` describing `RetrievalQuality`, `assess()`, `error_summary`, `"used"` outcome, and `AdaptiveAssembler`. Include worked examples.
+- [x] Update `docs/features/context-assembler.md` to cross-reference the new `assess_quality` parameter.
+- [x] Update `docs/features/prediction-ledger.md` to document `error_summary` and the new `"used"` outcome.
+- [x] Update `docs/features/observation-protocol.md` to document the `"used"` outcome and the distinction from `"deferred"`.
+- [x] Update feature documentation index (create `docs/features/README.md` if missing, or update equivalent nav-level documentation).
 
 ### External Documentation Site
 
-- [ ] `mkdocs.yml` — add nav entry for the new metacognitive layer feature page.
-- [ ] `docs/api-reference.md` — add references to new public classes/methods.
-- [ ] Verify `mkdocs serve` renders the new page and cross-links without warnings.
+- [x] `mkdocs.yml` — add nav entry for the new metacognitive layer feature page.
+- [x] `docs/api-reference.md` — add references to new public classes/methods.
+- [x] Verify `mkdocs serve` renders the new page and cross-links without warnings.
 
 ### Inline Documentation
 
-- [ ] Docstrings on every new public symbol (`RetrievalQuality`, `ContextAssembler.assess`, `AdaptiveAssembler`, `error_summary`, new `"used"` branches) with worked examples.
-- [ ] Comments on non-obvious FOK component logic (why 0.5 neutral fallback, why multiply product for `quality_metric`).
+- [x] Docstrings on every new public symbol (`RetrievalQuality`, `ContextAssembler.assess`, `AdaptiveAssembler`, `error_summary`, new `"used"` branches) with worked examples.
+- [x] Comments on non-obvious FOK component logic (why 0.5 neutral fallback, why multiply product for `quality_metric`).
 
 ## Success Criteria
 
-- [ ] `ContextAssembler.assess(query_cues)` returns a `RetrievalQuality` with populated `avg_confidence`, `score_spread`, `fok_score`, `staleness_ratio`.
-- [ ] `ContextAssembler.assemble(query_cues, assess_quality=True)` attaches the same `RetrievalQuality` to `AssemblyResult.metadata["quality"]`.
-- [ ] `RetrievalQuality.fok_score` uses `ExistenceFilter.might_exist()` for the cue_familiarity component.
-- [ ] `PredictionLedgerMixin.error_summary(model_class, group_by=None)` returns overall stats; `group_by=callable` returns per-group stats; `group_by="hour"|"weekday"|"day"` returns time-bucketed stats.
-- [ ] `ObservationProtocol.on_context_used(records, {rk: "used"})` discards staged reads, auto-resolves predictions, does NOT touch confidence or cycle.
-- [ ] Integration test `test_adaptive_assembler.py::test_adaptive_improves_over_baseline` demonstrates `AdaptiveAssembler` achieves >= 5% improvement in `fok_score * avg_confidence` over a fixed-weight baseline across a 200-call scenario.
-- [ ] No breaking changes to existing `ContextAssembler` API — existing `tests/test_context_assembler.py` passes without modification.
-- [ ] All existing tests pass (`pytest`).
-- [ ] `src/popoto/models/base.py` and `src/popoto/fields/field.py` are unchanged in the diff (constraint enforcement).
-- [ ] Documentation updated (`/do-docs`).
-- [ ] `mypy src/` clean; `black src/ tests/` clean.
+- [x] `ContextAssembler.assess(query_cues)` returns a `RetrievalQuality` with populated `avg_confidence`, `score_spread`, `fok_score`, `staleness_ratio`.
+- [x] `ContextAssembler.assemble(query_cues, assess_quality=True)` attaches the same `RetrievalQuality` to `AssemblyResult.metadata["quality"]`.
+- [x] `RetrievalQuality.fok_score` uses `ExistenceFilter.might_exist()` for the cue_familiarity component.
+- [x] `PredictionLedgerMixin.error_summary(model_class, group_by=None)` returns overall stats; `group_by=callable` returns per-group stats; `group_by="hour"|"weekday"|"day"` returns time-bucketed stats.
+- [x] `ObservationProtocol.on_context_used(records, {rk: "used"})` discards staged reads, auto-resolves predictions, does NOT touch confidence or cycle.
+- [x] Integration test `test_adaptive_assembler.py::test_adaptive_improves_over_baseline` demonstrates `AdaptiveAssembler` achieves >= 5% improvement in `fok_score * avg_confidence` over a fixed-weight baseline across a 200-call scenario.
+- [x] No breaking changes to existing `ContextAssembler` API — existing `tests/test_context_assembler.py` passes without modification.
+- [x] All existing tests pass (`pytest`).
+- [x] `src/popoto/models/base.py` and `src/popoto/fields/field.py` are unchanged in the diff (constraint enforcement).
+- [x] Documentation updated (`/do-docs`).
+- [x] `mypy src/` clean; `black src/ tests/` clean.
 
 ## Team Orchestration
 
