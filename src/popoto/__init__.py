@@ -61,6 +61,7 @@ from .models.q import Q
 from .models.expressions import Expression, CombinedExpression
 from .pubsub.publisher import Publisher
 from .pubsub.subscriber import Subscriber
+from .recipes.adaptive_assembler import AdaptiveAssembler
 from .recipes.context_assembler import (
     AssemblyResult,
     ContextAssembler,
@@ -196,6 +197,7 @@ __all__ = [
     "ContextAssembler",
     "AssemblyResult",
     "RetrievalQuality",
+    "AdaptiveAssembler",
     "ContentField",
     "EmbeddingField",
     "BM25Field",
