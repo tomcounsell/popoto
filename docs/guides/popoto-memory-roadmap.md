@@ -239,13 +239,14 @@ class ObservationProtocol:
 
       on_context_used(surfaced_instances, outcome_map, pipeline)
         Fires when application reports how the agent responded.
-        outcome_map: {instance_pk: "acted"|"dismissed"|"deferred"|"contradicted"}
+        outcome_map: {instance_pk: "acted"|"dismissed"|"deferred"|"contradicted"|"used"}
         Applies effects based on outcome:
           acted      → touch(), corroborate confidence, strengthen cycles,
                        discharge pressure, strengthen co-occurrence links
           dismissed  → weaken confidence, weaken cycle amplitude
           deferred   → no effects, pressure keeps building
           contradicted → contradict confidence, weaken cycles aggressively
+          used       → confirm_access() only; memory informed reasoning without citation
 
     The ORM provides hooks and resolution mechanics.
     The application layer provides the inference signal:

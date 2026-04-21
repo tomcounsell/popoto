@@ -26,7 +26,9 @@ Example:
     PredictionLedgerMixin.resolve_prediction(memory, actual={"relevance": 0.3})
 """
 
+import datetime
 import logging
+import statistics
 import time
 
 import msgpack
@@ -130,6 +132,7 @@ class PredictionLedgerMixin:
             "acted": Defaults.PL_AUTO_RESOLVE_ACTED,
             "dismissed": Defaults.PL_AUTO_RESOLVE_DISMISSED,
             "contradicted": Defaults.PL_AUTO_RESOLVE_CONTRADICTED,
+            "used": Defaults.PL_AUTO_RESOLVE_USED,
         }
 
     @staticmethod
@@ -331,7 +334,7 @@ class PredictionLedgerMixin:
 
         Args:
             instance: A saved Model instance with a recorded prediction.
-            outcome: One of "acted", "dismissed", "contradicted".
+            outcome: One of "acted", "dismissed", "contradicted", "used".
             pipeline: Optional Redis pipeline for batch operations.
 
         Returns:
@@ -344,7 +347,7 @@ class PredictionLedgerMixin:
         error_map = getattr(
             instance,
             "_pl_auto_resolve_errors",
-            {"acted": 0.1, "dismissed": 0.5, "contradicted": 0.9},
+            {"acted": 0.1, "dismissed": 0.5, "contradicted": 0.9, "used": 0.3},
         )
         if outcome not in error_map:
             raise ValueError(
@@ -438,6 +441,242 @@ class PredictionLedgerMixin:
         return [
             (m.decode() if isinstance(m, bytes) else m, score) for m, score in results
         ]
+
+    # ------------------------------------------------------------------
+    # error_summary — grouped prediction-error aggregation (#352)
+    # ------------------------------------------------------------------
+
+    #: Built-in group_by bucketers. Each takes the msgpack-decoded meta dict
+    #: and returns a hashable label. Unknown string names raise ValueError.
+    _BUILTIN_GROUP_BY = {
+        "hour",
+        "weekday",
+        "day",
+    }
+
+    @staticmethod
+    def _apply_builtin_bucketer(name, data):
+        """Apply a built-in bucketer to a single decoded meta dict.
+
+        ``resolved_at`` is stored as ``str(time.time())`` (see
+        prediction_ledger.py resolve_prediction() / auto_resolve()), so we
+        must coerce to float. Entries with no / zero / non-numeric
+        resolved_at return ``None`` so the caller can skip them.
+
+        Built-in names (see ``_BUILTIN_GROUP_BY``):
+            - ``"hour"`` -> int 0..23
+            - ``"weekday"`` -> int 0..6 (Monday=0)
+            - ``"day"`` -> str YYYY-MM-DD (ISO date)
+        """
+        raw_ts = data.get("resolved_at")
+        try:
+            ts = float(raw_ts or 0.0)
+        except (TypeError, ValueError):
+            return None
+        if ts <= 0:
+            return None
+        dt = datetime.datetime.fromtimestamp(ts)
+        if name == "hour":
+            return dt.hour
+        if name == "weekday":
+            return dt.weekday()
+        if name == "day":
+            return dt.date().isoformat()
+        return None
+
+    @staticmethod
+    def _stats_for(errors):
+        """Compute summary stats for a list of absolute errors."""
+        n = len(errors)
+        if n == 0:
+            return {
+                "count": 0,
+                "mean": 0.0,
+                "stddev": 0.0,
+                "p50": 0.0,
+                "p90": 0.0,
+                "p99": 0.0,
+                "max": 0.0,
+            }
+        mean = statistics.fmean(errors)
+        # stddev requires n >= 2; for n==1 return 0.0
+        if n >= 2:
+            try:
+                stddev = statistics.pstdev(errors)
+            except statistics.StatisticsError:
+                stddev = 0.0
+        else:
+            stddev = 0.0
+        sorted_errors = sorted(errors)
+
+        def _percentile(pct):
+            if n == 1:
+                return sorted_errors[0]
+            # Simple nearest-rank percentile on the sorted list.
+            idx = min(n - 1, max(0, int(round((pct / 100.0) * (n - 1)))))
+            return sorted_errors[idx]
+
+        return {
+            "count": n,
+            "mean": mean,
+            "stddev": stddev,
+            "p50": _percentile(50),
+            "p90": _percentile(90),
+            "p99": _percentile(99),
+            "max": sorted_errors[-1],
+        }
+
+    @classmethod
+    def error_summary(
+        cls,
+        model_class,
+        partition="default",
+        group_by=None,
+        limit=100,
+    ):
+        """Aggregate prediction errors across instances with optional grouping.
+
+        Reads up to ``limit`` members from the error sorted set (top-|error|)
+        plus their per-instance meta via a pipelined batch of HGET calls
+        against ``$PL:{ClassName}:meta:{pk}`` hashes. The per-instance
+        meta dict stores ``prediction_error`` and ``resolved_at``.
+
+        Args:
+            model_class: The Model class (same contract as
+                ``get_highest_errors``).
+            partition: Partition key. Default ``"default"``.
+            group_by: One of:
+
+                * ``None`` -> ungrouped; returns ``{"__all__": stats}``.
+                * A callable ``(member_key, error) -> label``. The label
+                  must be hashable; non-hashable labels raise ``TypeError``.
+                * One of the built-in bucketer name strings: ``"hour"``,
+                  ``"weekday"``, ``"day"``. Unknown strings raise
+                  ``ValueError`` listing the known bucketers.
+            limit: Max members to sample. Default 100. Pass a larger
+                number for broader coverage; ``error_summary`` is an
+                eventually-consistent sampling function, not an exhaustive
+                scan.
+
+        Returns:
+            dict: ``{group_label: stats_dict}`` where ``stats_dict`` has
+            keys ``count``, ``mean``, ``stddev``, ``p50``, ``p90``,
+            ``p99``, ``max``. For ungrouped, the key is ``"__all__"``.
+
+        Notes:
+            * Corrupt msgpack entries are logged at warning and skipped.
+            * When the error set is empty, returns ``{"__all__": {...}}``
+              with ``count=0`` (no raise on empty inputs).
+            * Not a cross-instance snapshot: pipelined HGETs are NOT
+              transactional, so a resolution landing mid-batch may be
+              observed for some instances and not others.
+        """
+        # Validate group_by eagerly so callers get a clear error before
+        # we even hit Redis.
+        if isinstance(group_by, str) and group_by not in cls._BUILTIN_GROUP_BY:
+            raise ValueError(
+                f"Unknown built-in group_by '{group_by}'. "
+                f"Known bucketers: {sorted(cls._BUILTIN_GROUP_BY)}."
+            )
+
+        error_key = cls._error_key(model_class, partition)
+
+        # Optional large-set warning per plan Risk 4.
+        try:
+            cardinality = POPOTO_REDIS_DB.zcard(error_key)
+            if cardinality > 10_000 and limit < 0:
+                logger.warning(
+                    "error_summary over %d errors with unbounded limit — "
+                    "this is a sampling function, not an exhaustive scan",
+                    cardinality,
+                )
+        except Exception:
+            pass
+
+        # ZRANGE-by-|error| descending. Use ZREVRANGE to get the top-N.
+        if limit <= 0:
+            raw_results = []
+        else:
+            raw_results = POPOTO_REDIS_DB.zrevrange(
+                error_key, 0, limit - 1, withscores=True
+            )
+
+        if not raw_results:
+            return {"__all__": cls._stats_for([])}
+
+        # Decode members to strings and build a list of (member_key, error)
+        decoded = []
+        for m, score in raw_results:
+            if isinstance(m, bytes):
+                m = m.decode()
+            try:
+                decoded.append((m, float(score)))
+            except (TypeError, ValueError):
+                continue
+
+        class_name = (
+            model_class.__name__
+            if isinstance(model_class, type)
+            else type(model_class).__name__
+        )
+
+        # Pipelined HGETs. Each PL instance has its own meta hash keyed by
+        # $PL:{ClassName}:meta:{pk}, so we do one HGET per member — NOT a
+        # single HMGET over one hash (there is no such shared hash).
+        pipe = POPOTO_REDIS_DB.pipeline()
+        for member_key, _ in decoded:
+            meta_key = f"$PL:{class_name}:meta:{member_key}"
+            pipe.hget(meta_key, member_key)
+        raw_meta = pipe.execute()
+
+        # Decode msgpack; log-and-skip corrupt entries.
+        decoded_meta = []
+        for (member_key, err), raw in zip(decoded, raw_meta):
+            if raw is None:
+                decoded_meta.append((member_key, err, None))
+                continue
+            try:
+                data = msgpack.unpackb(raw, raw=False)
+            except Exception as e:
+                logger.warning(
+                    "error_summary: corrupt msgpack for %s — skipping (%s)",
+                    member_key,
+                    e,
+                )
+                continue
+            decoded_meta.append((member_key, err, data))
+
+        # Group and compute.
+        if group_by is None:
+            errors_only = [err for _, err, _ in decoded_meta]
+            return {"__all__": cls._stats_for(errors_only)}
+
+        groups = {}
+        if callable(group_by):
+            for member_key, err, _data in decoded_meta:
+                try:
+                    label = group_by(member_key, err)
+                except Exception as e:
+                    logger.warning(
+                        "error_summary: group_by callable raised for %s — "
+                        "skipping (%s)",
+                        member_key,
+                        e,
+                    )
+                    continue
+                groups.setdefault(label, []).append(err)
+        else:
+            # group_by is a built-in bucketer name (validated above).
+            for member_key, err, data in decoded_meta:
+                if data is None:
+                    # No meta read -> we cannot apply any time-based bucket.
+                    continue
+                label = cls._apply_builtin_bucketer(group_by, data)
+                if label is None:
+                    continue
+                groups.setdefault(label, []).append(err)
+
+        return {label: cls._stats_for(errs) for label, errs in groups.items()}
 
     @classmethod
     def _apply_confidence_feedback(cls, instance, prediction_error):

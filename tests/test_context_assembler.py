@@ -34,8 +34,12 @@ from src.popoto.recipes.context_assembler import (  # noqa: E402
     DEFAULT_MAX_ITEMS,
     DEFAULT_PROPAGATION_DEPTH,
     DEFAULT_SURFACING_THRESHOLD,
+    FOK_WEIGHT_CUE_FAMILIARITY,
+    FOK_WEIGHT_PARTIAL_RETRIEVAL,
+    FOK_WEIGHT_SUBTHRESHOLD_ACTIVATION,
     AssemblyResult,
     ContextAssembler,
+    RetrievalQuality,
     format_natural,
     format_structured,
     format_xml,
@@ -465,3 +469,165 @@ class TestFullPipeline:
             agent_id="agent-x",
         )
         assert isinstance(result, AssemblyResult)
+
+
+# ---------------------------------------------------------------------------
+# TestRetrievalQuality — metacognitive layer (Tier 1)
+# ---------------------------------------------------------------------------
+
+
+class TestRetrievalQuality:
+    """Tests for RetrievalQuality, assess(), and assemble(assess_quality=True)."""
+
+    def test_fok_weights_match_spec(self):
+        """FOK formula weights are 0.4 / 0.4 / 0.2 per design spec."""
+        assert FOK_WEIGHT_CUE_FAMILIARITY == 0.4
+        assert FOK_WEIGHT_PARTIAL_RETRIEVAL == 0.4
+        assert FOK_WEIGHT_SUBTHRESHOLD_ACTIVATION == 0.2
+        total = (
+            FOK_WEIGHT_CUE_FAMILIARITY
+            + FOK_WEIGHT_PARTIAL_RETRIEVAL
+            + FOK_WEIGHT_SUBTHRESHOLD_ACTIVATION
+        )
+        assert abs(total - 1.0) < 1e-9
+
+    def test_assess_quality_default_off(self):
+        """assemble() by default produces no 'quality' key in metadata."""
+        m = SimpleMemory(agent_id="agent-1", content="content")
+        m.save()
+        assembler = ContextAssembler(
+            model_class=SimpleMemory,
+            score_weights={"relevance": 1.0},
+        )
+        result = assembler.assemble(query_cues={"topic": "content"})
+        assert "quality" not in result.metadata
+
+    def test_assess_quality_true_attaches_quality(self):
+        """assemble(..., assess_quality=True) attaches a RetrievalQuality."""
+        m = SimpleMemory(agent_id="agent-1", content="deployment notes")
+        m.save()
+        assembler = ContextAssembler(
+            model_class=SimpleMemory,
+            score_weights={"relevance": 1.0},
+        )
+        result = assembler.assemble(
+            query_cues={"topic": "deployment"},
+            assess_quality=True,
+        )
+        assert "quality" in result.metadata
+        quality = result.metadata["quality"]
+        assert isinstance(quality, RetrievalQuality)
+        # With no ConfidenceField on SimpleMemory, avg_confidence defaults to 1.0
+        assert quality.avg_confidence == 1.0
+
+    def test_assess_standalone_returns_retrieval_quality(self):
+        """ContextAssembler.assess() returns a RetrievalQuality dataclass."""
+        m = FullMemory(
+            agent_id="agent-1",
+            topic="deployment",
+            content="deployment notes",
+        )
+        m.save()
+        assembler = ContextAssembler(
+            model_class=FullMemory,
+            score_weights={"relevance": 0.6, "urgency": 0.4},
+        )
+        quality = assembler.assess(query_cues={"topic": "deployment"})
+        assert isinstance(quality, RetrievalQuality)
+        # Bloom should see "deployment" (we just saved it)
+        assert "deployment" in quality.per_cue_fok
+        # cue_familiarity in {0.0, 1.0} when ExistenceFilter is present
+        assert quality.per_cue_fok["deployment"]["cue_familiarity"] in (0.0, 1.0)
+
+    def test_assess_empty_cues_returns_zeros_with_warning(self, caplog):
+        """assess({}) returns zero metrics and logs a warning. Does not raise."""
+        assembler = ContextAssembler(
+            model_class=SimpleMemory,
+            score_weights={"relevance": 1.0},
+        )
+        import logging as _logging
+
+        with caplog.at_level(_logging.WARNING):
+            quality = assembler.assess(query_cues={})
+        assert quality.avg_confidence == 0.0
+        assert quality.score_spread == 0.0
+        assert quality.fok_score == 0.0
+        assert quality.staleness_ratio == 0.0
+        # Warning emitted
+        assert any("no query_cues" in rec.message for rec in caplog.records)
+
+    def test_fok_neutral_fallback_without_existence_filter(self):
+        """When model has no ExistenceFilter, cue_familiarity defaults to 0.5."""
+        m = SimpleMemory(agent_id="agent-1", content="content")
+        m.save()
+        assembler = ContextAssembler(
+            model_class=SimpleMemory,
+            score_weights={"relevance": 1.0},
+        )
+        quality = assembler.assess(query_cues={"topic": "anything"})
+        # cue_familiarity must be 0.5 when no ExistenceFilter
+        comp = quality.per_cue_fok["anything"]["cue_familiarity"]
+        assert comp == 0.5
+
+    def test_fok_cue_familiarity_with_existence_filter_present(self):
+        """Saved topics produce cue_familiarity == 1.0 under ExistenceFilter."""
+        m = FullMemory(
+            agent_id="agent-1",
+            topic="observable-topic",
+            content="saved content",
+        )
+        m.save()
+        assembler = ContextAssembler(
+            model_class=FullMemory,
+            score_weights={"relevance": 1.0},
+        )
+        quality = assembler.assess(query_cues={"topic": "observable-topic"})
+        comp = quality.per_cue_fok["observable-topic"]["cue_familiarity"]
+        # Saved topic -> ExistenceFilter.might_exist returns True -> 1.0
+        assert comp == 1.0
+
+    def test_avg_confidence_populated_with_confidence_field(self):
+        """avg_confidence reflects ConfidenceField.get_confidence() mean."""
+        m1 = FullMemory(agent_id="agent-1", topic="t1", content="c1")
+        m1.save()
+        # Update confidence so it's no longer exactly the initial value
+        ConfidenceField.update_confidence(m1, "confidence", signal=0.9)
+        assembler = ContextAssembler(
+            model_class=FullMemory,
+            score_weights={"relevance": 0.5, "confidence": 0.5},
+        )
+        result = assembler.assemble(
+            query_cues={"topic": "t1"},
+            assess_quality=True,
+        )
+        quality = result.metadata["quality"]
+        # With a saved + updated ConfidenceField, avg_confidence is >= initial
+        assert 0.0 <= quality.avg_confidence <= 1.0
+
+    def test_score_spread_zero_on_empty_results(self):
+        """score_spread is 0.0 when no records are selected (empty retrieval)."""
+        # Note: no FullMemory instances saved; this yields empty results.
+        assembler = ContextAssembler(
+            model_class=FullMemory,
+            score_weights={"relevance": 1.0},
+        )
+        result = assembler.assemble(
+            query_cues={"topic": "nothing-here"},
+            assess_quality=True,
+        )
+        quality = result.metadata["quality"]
+        assert quality.score_spread == 0.0
+        assert quality.score_distribution == []
+
+    def test_retrieval_quality_repr_is_non_empty(self):
+        """__repr__ produces a debug-friendly non-empty string."""
+        q = RetrievalQuality(
+            avg_confidence=0.5,
+            score_spread=0.1,
+            fok_score=0.7,
+            staleness_ratio=0.2,
+        )
+        s = repr(q)
+        assert s
+        assert "RetrievalQuality" in s
+        assert "fok_score=0.7" in s

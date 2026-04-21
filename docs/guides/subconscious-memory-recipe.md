@@ -121,6 +121,7 @@ Reports how the agent used the injected memories via `ObservationProtocol.on_con
 - `"dismissed"` -- the agent ignored this memory (mild weakening)
 - `"contradicted"` -- the agent found this memory incorrect (strong weakening)
 - `"deferred"` -- the agent noted but deferred action (neutral)
+- `"used"` -- the memory informed reasoning without appearing in the response (confirms access, no strength signal)
 
 ## Tuning
 

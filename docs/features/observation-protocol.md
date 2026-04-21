@@ -12,14 +12,36 @@ Outcome-driven memory effects — the application layer reports how the agent us
 
 ## Outcomes
 
-Four outcomes drive different effects:
+Five outcomes drive different effects:
 
-| Outcome | Confidence | Cycles | Pressure | Access |
-|---------|-----------|--------|----------|--------|
-| `acted` | Corroborate (signal=0.9) | Strengthen (factor=1.2) | Resolve | Confirm |
-| `dismissed` | — | Weaken (factor=0.8) | — | Discard |
-| `deferred` | — | — | Keeps building | Discard |
-| `contradicted` | Contradict (signal=0.1) | Aggressively weaken (factor=0.5) | Auto-discharge if confidence < 0.1 | Discard |
+| Outcome | Confidence | Cycles | Pressure | Access | Predictions |
+|---------|-----------|--------|----------|--------|-------------|
+| `acted` | Corroborate (signal=0.9) | Strengthen (factor=1.2) | Resolve | Confirm | Auto-resolve (error=0.1) |
+| `dismissed` | — | Weaken (factor=0.8) | — | Discard | Auto-resolve (error=0.5) |
+| `deferred` | — | — | Keeps building | Discard | — |
+| `contradicted` | Contradict (signal=0.1) | Aggressively weaken (factor=0.5) | Auto-discharge if confidence < 0.1 | Discard | Auto-resolve (error=0.9) |
+| `used` | — | — | — | **Confirm** | Auto-resolve (error=0.3) |
+
+### `"used"` vs `"deferred"`
+
+`"used"` and `"deferred"` are the two outcomes that do not emit a strength signal, but they are observably different:
+
+- **`"deferred"`** — agent set the memory aside without reading it. Staged reads are discarded (no confirmed-read trace). Pending predictions are left unresolved.
+- **`"used"`** — agent read and reasoned over the memory but did not cite it in the response. Staged reads are **confirmed** via `AccessTrackerMixin.confirm_access()`. Predictions are auto-resolved with a moderate error (0.3). No confidence, cycle, or decay signal is emitted.
+
+Use `"used"` when the memory informed the agent's reasoning without appearing directly in the output — a common case that `"acted"` overcounts and `"deferred"` undercounts.
+
+```python
+outcome_map = {
+    memory1.db_key.redis_key: "acted",    # appeared in response
+    memory2.db_key.redis_key: "used",     # informed reasoning, not cited
+    memory3.db_key.redis_key: "dismissed",
+    # memory4 not in map → defaults to "deferred"
+}
+ObservationProtocol.on_context_used(memories, outcome_map)
+```
+
+See [Metacognitive Layer](metacognitive-layer.md) for the full effects comparison table.
 
 ## Usage
 
@@ -101,6 +123,7 @@ expired = RecallProposal.expire_stale(Memory, ttl=3600)
 
 ## See Also
 
+- [Metacognitive Layer](metacognitive-layer.md) — full `"used"` outcome documentation, `error_summary`, and `AdaptiveAssembler`
 - [ConfidenceField](confidence-field.md) — Bayesian certainty tracking
 - [CyclicDecayField](cyclic-decay-field.md) — cyclical resonance and pressure
 - [PredictionLedger](prediction-ledger.md) — outcome tracking

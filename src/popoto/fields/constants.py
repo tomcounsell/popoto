@@ -98,6 +98,18 @@ class Defaults:
     PL_AUTO_RESOLVE_ACTED = 0.1  # empirically inert (sweep 2026-04-20, variance=0.0) — sweep grid [0.05..0.5] all below default 0.7 gate; inert-by-design per plan Technical Approach §2
     PL_AUTO_RESOLVE_DISMISSED = 0.5  # empirically inert (sweep 2026-04-20, variance=0.0) — grid mostly below gate
     PL_AUTO_RESOLVE_CONTRADICTED = 0.9  # sweep 2026-04-20 variance=0.025 (borderline); gate-crossing plateau at 0.5/0.7 vs 0.8/0.9/0.95. Kept at 0.9 (semantic "strong negative").
+    # Metacognitive layer (#352): "used" outcome means the agent consumed
+    # the memory (read + reasoned) but didn't act on it. Error 0.3 is a
+    # moderate placeholder — neither confirmed nor contradicted. Callers
+    # wanting precise accounting should use resolve_prediction() explicitly
+    # instead of relying on auto-resolve.
+    PL_AUTO_RESOLVE_USED = 0.3
+
+    # -- AdaptiveAssembler (recipes/adaptive_assembler.py, #352) --------------
+    # Rolling-window size for the keep/revert loop. Smaller windows adapt
+    # faster but noisier; larger windows converge more slowly but more
+    # reliably. Autoresearch pattern uses ~20 samples per proposal.
+    ADAPTIVE_QUALITY_WINDOW_SIZE = 20
 
     # -- PolicyCache (recipes/policy_cache.py) --------------------------------
     # Issue #362 added PolicyCacheFamilyScenario. WILSON_CI_THRESHOLD is

@@ -27,7 +27,7 @@ The primitives ship incrementally. Each builds on the ones before it.
 | [DecayingSortedField](#decayingsortedfield) | Time-weighted scoring — records lose relevance over time unless refreshed | Shipped ([PR #199](https://github.com/tomcounsell/popoto/pull/199)) |
 | [CyclicDecayField](#cyclicdecayfield) | Temporal rhythms + homeostatic pressure on top of decay | Shipped ([PR #201](https://github.com/tomcounsell/popoto/pull/201)) |
 | [AccessTracker](#accesstracker) | Tracks read patterns — access count, timestamps, spacing effects | Shipped ([PR #203](https://github.com/tomcounsell/popoto/pull/203)) |
-| [ObservationProtocol](#observationprotocol) | Outcome-driven memory effects — acted/dismissed/deferred/contradicted | Shipped ([PR #206](https://github.com/tomcounsell/popoto/pull/206)) |
+| [ObservationProtocol](#observationprotocol) | Outcome-driven memory effects — acted/dismissed/deferred/contradicted/used | Shipped ([PR #206](https://github.com/tomcounsell/popoto/pull/206)) |
 | [WriteFilter](#writefilter) | Gates persistence — low-value records silently discarded at write time | Shipped ([PR #214](https://github.com/tomcounsell/popoto/pull/214)) |
 | [ConfidenceField](#confidencefield) | Bayesian certainty — corroboration strengthens, contradiction weakens | Shipped ([PR #215](https://github.com/tomcounsell/popoto/pull/215)) |
 | [CoOccurrenceField](#cooccurrencefield) | Weighted associations — co-accessed records strengthen their link | Shipped ([PR #218](https://github.com/tomcounsell/popoto/pull/218)) |
@@ -323,7 +323,7 @@ When a tracked model instance is deleted, all three AccessTracker Redis keys (st
 
 ## ObservationProtocol
 
-Provides lifecycle hooks for outcome-driven memory effects. The application reports how the agent used retrieved memories (acted, dismissed, deferred, contradicted); the ORM applies effects atomically.
+Provides lifecycle hooks for outcome-driven memory effects. The application reports how the agent used retrieved memories (acted, dismissed, deferred, contradicted, used); the ORM applies effects atomically.
 
 Shipped in [PR #206](https://github.com/tomcounsell/popoto/pull/206).
 
@@ -375,7 +375,7 @@ ObservationProtocol.on_context_used(memories, outcome_map)
 | `on_surfaced(instances, reason)` | Proactive system pushes memories into context | Creates RecallProposal entries |
 | `on_context_used(instances, outcome_map)` | Application reports how agent responded | Applies outcome-specific effects |
 
-### Four outcomes
+### Five outcomes
 
 | Outcome | Meaning | Effects |
 |---------|---------|---------|
@@ -383,6 +383,9 @@ ObservationProtocol.on_context_used(memories, outcome_map)
 | `dismissed` | Agent explicitly rejected | `discard_staged_access()`, `weaken_cycle(0.8)` |
 | `deferred` | Agent didn't address it | `discard_staged_access()` only — pressure keeps building |
 | `contradicted` | Agent explicitly contradicted | `discard_staged_access()`, `weaken_cycle(0.5)`, contradict confidence (signal=0.1), auto-discharge pressure if confidence < 0.1 |
+| `used` | Agent reasoned over it without citing | `confirm_access()` only — no strength signal emitted |
+
+See [Metacognitive Layer](metacognitive-layer.md) for when to use `"used"` vs `"acted"` and how `AdaptiveAssembler` tracks outcome quality over time.
 
 ### Graceful degradation
 
@@ -941,13 +944,14 @@ error = PredictionLedgerMixin.resolve_prediction(memory, actual={"relevance": 0.
 
 ### Auto-resolution via ObservationProtocol
 
-When `ObservationProtocol.on_context_used()` fires with an `acted`, `dismissed`, or `contradicted` outcome, it automatically calls `auto_resolve()` on instances that use `PredictionLedgerMixin`:
+When `ObservationProtocol.on_context_used()` fires with an `acted`, `dismissed`, `contradicted`, or `used` outcome, it automatically calls `auto_resolve()` on instances that use `PredictionLedgerMixin`:
 
 | Outcome | Default Error | Interpretation |
 |---------|--------------|----------------|
 | `acted` | 0.1 | Prediction was roughly correct |
 | `dismissed` | 0.5 | Wrong timing or relevance |
 | `contradicted` | 0.9 | Factually wrong |
+| `used` | 0.3 | Prediction approximately correct — memory informed reasoning |
 
 These values are configurable via the `_pl_auto_resolve_errors` class attribute.
 
@@ -962,10 +966,16 @@ When prediction error exceeds `_pl_confidence_error_threshold` (default 0.7), `P
 worst = PredictionLedgerMixin.get_highest_errors(Memory, partition="default", limit=10)
 # Returns: [(redis_key, error_score), ...]
 
+# Aggregate errors grouped by time or error band
+summary = PredictionLedgerMixin.error_summary(Memory, partition="default")
+# Returns: {"mean": 0.42, "p90": 0.81, ...} — see Metacognitive Layer for group_by options
+
 # Read prediction data for a specific instance
 data = PredictionLedgerMixin.get_prediction_data(memory)
 # Returns: {"predicted": {...}, "resolved": True, "prediction_error": 0.6, ...}
 ```
+
+For temporal and band-grouped aggregations via `error_summary(group_by=...)`, see [Metacognitive Layer](metacognitive-layer.md#predictionledgermixin-errorsummary).
 
 ### Class attributes
 
@@ -974,7 +984,7 @@ data = PredictionLedgerMixin.get_prediction_data(memory)
 | `_pl_partition` | `"default"` | Partition key for the error sorted set |
 | `_pl_confidence_error_threshold` | `0.7` | Error above which confidence is reduced |
 | `_pl_confidence_low_signal` | `0.2` | Signal value sent to ConfidenceField |
-| `_pl_auto_resolve_errors` | `{"acted": 0.1, "dismissed": 0.5, "contradicted": 0.9}` | Outcome-to-error mapping |
+| `_pl_auto_resolve_errors` | `{"acted": 0.1, "dismissed": 0.5, "contradicted": 0.9, "used": 0.3}` | Outcome-to-error mapping |
 
 ### Redis key patterns
 
@@ -1272,6 +1282,8 @@ result = assembler.assemble(
 
 Returns an `AssemblyResult`. If `query_cues` is `None`, the pull path is skipped and only push-path (proactive) results are returned.
 
+Pass `assess_quality=True` to also run a pre-retrieval quality probe; the resulting `RetrievalQuality` dataclass is available in `result.metadata["quality"]`. For self-calibrating assemblies that fall back gracefully when quality is low, see `AdaptiveAssembler` in the [Metacognitive Layer](metacognitive-layer.md).
+
 #### `AssemblyResult`
 
 ```python
@@ -1416,6 +1428,7 @@ See [Defaults API reference](../api-reference.md#defaults) and [Tuning Magic Num
 
 ## Further reading
 
+- [Metacognitive Layer](metacognitive-layer.md) — quality assessment (`RetrievalQuality`, `assess()`), grouped error analysis (`error_summary`), and `AdaptiveAssembler`
 - [Popoto Memory Roadmap](../guides/popoto-memory-roadmap.md) — full implementation spec with test strategies and benchmarks
 - [Epistemic Flow in Cognitive Agent Architectures](../guides/epistemic-flow-cognitive-agent-architectures.md) — research background
 - [Programmable Memory Systems — Neuroscience Design Spec](../guides/programmable-memory-systems-neuroscience-design-spec.md) — neuroscience foundations

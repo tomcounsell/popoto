@@ -62,13 +62,49 @@ When `ObservationProtocol.on_context_used()` fires with an outcome, predictions 
 - `"acted"` -> error = 0.1 (low error, prediction was roughly right)
 - `"dismissed"` -> error = 0.5 (moderate error)
 - `"contradicted"` -> error = 0.9 (high error, confidence reduced)
+- `"used"` -> error = 0.3 (moderate; agent consumed the memory but didn't act on it)
 
 ### Querying Prediction Errors
 
 ```python
 # Get records with highest prediction errors
-errors = PredictionLedgerMixin.get_top_errors(Memory, partition="default", n=10)
+errors = PredictionLedgerMixin.get_highest_errors(Memory, partition="default", limit=10)
 ```
+
+### error_summary(group_by=...)
+
+Aggregates prediction errors from the error sorted set with optional grouping. Returns per-group summary statistics: `count`, `mean`, `stddev`, `p50`, `p90`, `p99`, `max`.
+
+```python
+# Overall stats
+summary = PredictionLedgerMixin.error_summary(Memory, partition="default")
+# {"__all__": {"count": 842, "mean": 0.31, ...}}
+
+# Group by hour of day (0–23) to find time-of-day bias
+by_hour = PredictionLedgerMixin.error_summary(
+    Memory, partition="default", group_by="hour"
+)
+
+# Group by day of week (0=Monday, 6=Sunday)
+by_weekday = PredictionLedgerMixin.error_summary(
+    Memory, partition="default", group_by="weekday"
+)
+
+# Group by calendar date (YYYY-MM-DD strings)
+by_day = PredictionLedgerMixin.error_summary(
+    Memory, partition="default", group_by="day"
+)
+
+# Custom bucketer: callable(member_key, error) -> hashable label
+def error_band(member_key, error):
+    return "high" if error >= 0.7 else ("medium" if error >= 0.3 else "low")
+
+by_band = PredictionLedgerMixin.error_summary(
+    Memory, partition="default", group_by=error_band
+)
+```
+
+The function samples up to `limit` members (default 100) from the error sorted set via `ZREVRANGE`, then fetches per-instance metadata in a single pipelined batch. Corrupt entries are skipped with a warning. See [Metacognitive Layer](metacognitive-layer.md) for full documentation.
 
 ## Prediction Error Computation
 
@@ -87,6 +123,7 @@ Missing keys contribute `1.0` error per key.
 
 ## See Also
 
+- [Metacognitive Layer](metacognitive-layer.md) — `error_summary` full documentation and `"used"` outcome
 - [ConfidenceField](confidence-field.md) — Bayesian certainty tracking (receives error feedback)
 - [ObservationProtocol](observation-protocol.md) — auto-resolution via outcome hooks
 - [Agent Memory overview](agent-memory.md) — full primitives reference

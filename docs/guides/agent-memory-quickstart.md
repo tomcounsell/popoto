@@ -107,7 +107,7 @@ ConfidenceField.update_confidence(m, "confidence", signal=0.9)
 ConfidenceField.update_confidence(m, "confidence", signal=0.1)
 
 # Report agent outcomes in bulk
-outcome_map = {m.db_key.redis_key: "acted"}  # or "dismissed", "contradicted", "deferred"
+outcome_map = {m.db_key.redis_key: "acted"}  # or "dismissed", "contradicted", "deferred", "used"
 ObservationProtocol.on_context_used([m], outcome_map)
 ```
 
