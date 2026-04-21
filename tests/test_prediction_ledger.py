@@ -877,9 +877,7 @@ class TestErrorSummary:
     def test_error_summary_builtin_hour(self):
         """Built-in 'hour' bucketer groups by resolved_at hour."""
         self._seed_errors(n=4)
-        result = PredictionLedgerMixin.error_summary(
-            PredictionItem, group_by="hour"
-        )
+        result = PredictionLedgerMixin.error_summary(PredictionItem, group_by="hour")
         # Every entry was resolved "now", so a single hour bucket is expected.
         # The exact hour depends on the test runner's clock; we just assert
         # there's at least one bucket with count == 4.
@@ -890,9 +888,7 @@ class TestErrorSummary:
     def test_error_summary_builtin_weekday(self):
         """Built-in 'weekday' bucketer groups by resolved_at weekday 0..6."""
         self._seed_errors(n=3)
-        result = PredictionLedgerMixin.error_summary(
-            PredictionItem, group_by="weekday"
-        )
+        result = PredictionLedgerMixin.error_summary(PredictionItem, group_by="weekday")
         # Single weekday bucket (all resolved "now") with all 3 items.
         assert result
         totals = sum(g["count"] for g in result.values())
@@ -905,9 +901,7 @@ class TestErrorSummary:
     def test_error_summary_builtin_day(self):
         """Built-in 'day' bucketer groups by resolved_at ISO date."""
         self._seed_errors(n=3)
-        result = PredictionLedgerMixin.error_summary(
-            PredictionItem, group_by="day"
-        )
+        result = PredictionLedgerMixin.error_summary(PredictionItem, group_by="day")
         assert result
         for label in result.keys():
             # ISO date format: YYYY-MM-DD

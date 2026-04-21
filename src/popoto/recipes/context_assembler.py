@@ -683,9 +683,7 @@ class ContextAssembler:
             try:
                 proxy_scores = self._score_proxy_for_records(pull_candidates)
                 below_threshold = sum(
-                    1
-                    for s in proxy_scores.values()
-                    if 0 < s < self.surfacing_threshold
+                    1 for s in proxy_scores.values() if 0 < s < self.surfacing_threshold
                 )
                 subthreshold_frac = below_threshold / max(n_candidates, 1)
             except Exception as e:
@@ -755,9 +753,7 @@ class ContextAssembler:
             per_field_keys[field_name] = []
             for record in records:
                 try:
-                    key = f.get_special_use_field_db_key(
-                        record, field_name
-                    ).redis_key
+                    key = f.get_special_use_field_db_key(record, field_name).redis_key
                 except Exception:
                     key = None
                 per_field_keys[field_name].append(key)

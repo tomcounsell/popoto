@@ -863,9 +863,7 @@ from src.popoto.fields.prediction_ledger import PredictionLedgerMixin  # noqa: E
 from src.popoto.fields.confidence_field import ConfidenceField  # noqa: E402
 
 
-class UsedOutcomeMemory(
-    AccessTrackerMixin, PredictionLedgerMixin, popoto.Model
-):
+class UsedOutcomeMemory(AccessTrackerMixin, PredictionLedgerMixin, popoto.Model):
     """Model with AccessTracker + PredictionLedger + ConfidenceField + CyclicDecay.
 
     Lets us assert that "used" confirms the staged read (AccessTracker),
@@ -913,9 +911,9 @@ class TestUsedOutcome:
             outcome_map = {m.db_key.redis_key: "used"}
             ObservationProtocol.on_context_used([m], outcome_map)
 
-            assert m.access_count >= 1, (
-                "'used' must confirm staged reads (distinction from 'deferred')"
-            )
+            assert (
+                m.access_count >= 1
+            ), "'used' must confirm staged reads (distinction from 'deferred')"
         finally:
             self._cleanup()
 
@@ -931,9 +929,9 @@ class TestUsedOutcome:
             outcome_map = {m.db_key.redis_key: "deferred"}
             ObservationProtocol.on_context_used([m], outcome_map)
 
-            assert m.access_count == 0, (
-                "'deferred' must discard staged reads (not confirm)"
-            )
+            assert (
+                m.access_count == 0
+            ), "'deferred' must discard staged reads (not confirm)"
         finally:
             self._cleanup()
 
@@ -999,9 +997,7 @@ class TestUsedOutcome:
             outcome_map = {m.db_key.redis_key: "used"}
             ObservationProtocol.on_context_used([m], outcome_map)
 
-            cycles_after = POPOTO_REDIS_DB.hget(
-                m.db_key.redis_key, "_cycles_relevance"
-            )
+            cycles_after = POPOTO_REDIS_DB.hget(m.db_key.redis_key, "_cycles_relevance")
             # Cycle state should be unchanged.
             assert cycles_before == cycles_after
         finally:

@@ -61,6 +61,8 @@ class TestDefaultsSync:
             "PL_AUTO_RESOLVE_ACTED",
             "PL_AUTO_RESOLVE_DISMISSED",
             "PL_AUTO_RESOLVE_CONTRADICTED",
+            "PL_AUTO_RESOLVE_USED",
+            "ADAPTIVE_QUALITY_WINDOW_SIZE",
         }
 
         expected_in_module = defaults_attrs - field_kwargs_and_class_attrs
