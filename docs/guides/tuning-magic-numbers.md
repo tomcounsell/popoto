@@ -69,7 +69,7 @@ Source: `src/popoto/fields/prediction_ledger.py`
 |----------|---------|--------------|-------------|
 | `_pl_confidence_error_threshold` | 0.7 | — | Not swept (Tier 2) |
 | `_pl_confidence_low_signal` | 0.2 | — | Not swept (Tier 2) |
-| `_pl_auto_resolve_errors` | {acted:0.1, dismissed:0.5, contradicted:0.9} | — | Not swept |
+| `_pl_auto_resolve_errors` | {acted:0.1, dismissed:0.5, contradicted:0.9, used:0.3} | — | Not swept |
 
 ### PolicyCache
 
