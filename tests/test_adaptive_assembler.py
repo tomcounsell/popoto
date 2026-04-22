@@ -379,3 +379,33 @@ class TestAdaptiveAssemblerIntegration:
             f"improvements={improvements} mean={mean_imp:.4f} stdev={std_imp:.4f} "
             f"runs_above_5pct={runs_above_5pct}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestAdaptiveAssemblerEdgeCases:
+    def test_inner_exception_does_not_corrupt_window_state(self):
+        """If inner.assemble() raises, window state must be unchanged (no partial append)."""
+        # Build a mock inner that raises RuntimeError on every call.
+        from unittest.mock import MagicMock
+
+        inner = MagicMock(spec=ContextAssembler)
+        inner.score_weights = {"relevance": 0.6, "confidence": 0.4}
+        inner.assemble.side_effect = RuntimeError("inner failure")
+
+        adaptive = AdaptiveAssembler(
+            inner=inner,
+            window_size=3,
+            rng=random.Random(0),
+        )
+
+        # The exception must propagate — inner exceptions are not quality_metric
+        # exceptions and must NOT be swallowed.
+        with pytest.raises(RuntimeError, match="inner failure"):
+            adaptive.assemble(query_cues={"topic": "x"})
+
+        # No partial append happened before the raise — window state is clean.
+        assert len(adaptive._current_window) == 0

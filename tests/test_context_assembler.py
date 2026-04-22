@@ -631,3 +631,40 @@ class TestRetrievalQuality:
         assert s
         assert "RetrievalQuality" in s
         assert "fok_score=0.7" in s
+
+
+# ---------------------------------------------------------------------------
+# TestAssessWithNoSavedMemories
+# ---------------------------------------------------------------------------
+
+
+class AssessEmptyMemory(Model):
+    """Minimal model with ConfidenceField and ExistenceFilter — no records saved."""
+
+    memory_id = AutoKeyField()
+    agent_id = KeyField()
+    topic = Field(type=str)
+    confidence = ConfidenceField(initial_confidence=0.5)
+    bloom = ExistenceFilter(
+        error_rate=0.01,
+        capacity=10_000,
+        fingerprint_fn=lambda inst: inst.topic,
+    )
+
+
+class TestAssessWithNoSavedMemories:
+    def test_assess_with_empty_db_returns_zero_quality(self):
+        """assess() with a freshly populated model class (no saved records) must not raise."""
+        assembler = ContextAssembler(
+            model_class=AssessEmptyMemory,
+            score_weights={"confidence": 1.0},
+        )
+
+        result = assembler.assess(query_cues={"topic": "anything"})
+
+        # Must return a RetrievalQuality without raising
+        assert isinstance(result, RetrievalQuality)
+        # With ExistenceFilter on an empty DB, definitely_missing=True for all cues.
+        # The early-return path returns avg_confidence=0.5 when ConfidenceField is
+        # present (neutral sentinel: no evidence against, but also none for).
+        assert result.avg_confidence == 0.5
