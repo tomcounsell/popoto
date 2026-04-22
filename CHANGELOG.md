@@ -5,6 +5,48 @@ All notable changes to Popoto will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0](https://github.com/tomcounsell/popoto/compare/v1.0.3...v1.5.0) (2026-04-21)
+
+### Popoto Agent Memory — Now in Beta
+
+After shipping 14 independent primitives across the 1.1–1.4 series, the Popoto Agent Memory system exits alpha with this release. The system gives AI agents non-cortical memory capabilities — episodic recall, salience gating, temporal decay, confidence tracking, prediction-error learning, and now retrieval self-assessment — all built on plain Redis/Valkey with no module dependencies.
+
+**Metacognitive layer** (the final piece — [#352](https://github.com/tomcounsell/popoto/issues/352)):
+
+Agents using `ContextAssembler` can now ask "how much should I trust this context?" before reasoning over it, and automatically tune their retrieval strategy over time without any ML training pipeline.
+
+#### Added
+
+- **`RetrievalQuality`** dataclass — four-signal retrieval self-assessment: `fok_score` (feeling-of-knowing via `ExistenceFilter`), `avg_confidence` (mean Bayesian certainty of returned memories), `score_spread` (retrieval confidence interval), `staleness_ratio` (fraction of memories past their decay threshold)
+- **`ContextAssembler.assess(query_cues)`** — standalone quality probe; returns `RetrievalQuality` without executing a full retrieval
+- **`ContextAssembler.assemble(query_cues, assess_quality=True)`** — attaches `RetrievalQuality` to `AssemblyResult.metadata["quality"]`; off by default, zero overhead when not used
+- **`PredictionLedgerMixin.error_summary(group_by=...)`** — aggregate prediction errors across instances, grouped by hour of day, day of week, error band, or any callable bucketer; uses pipelined Redis reads, Valkey-compatible
+- **`ObservationProtocol` `"used"` outcome** — agent consumed the memory but hasn't acted yet; confirms the staged `AccessTracker` read and auto-resolves the pending prediction with a configurable error signal (default 0.3); distinct from `"deferred"` which discards the staged read
+- **`AdaptiveAssembler`** recipe (`src/popoto/recipes/adaptive_assembler.py`) — wraps any `ContextAssembler` with an autoresearch-style keep/revert loop: proposes symmetric `score_weights` perturbations, measures quality over a rolling window, keeps improvements, reverts regressions; single-threaded by design, purely opt-in, no Redis writes for the adaptation state
+
+#### Also in this cycle (1.1–1.4 series highlights)
+
+- `OllamaProvider` — local embedding generation via Ollama, no API key required
+- `ExistenceFilter.batch_might_exist()` + `BM25Field.get_idf()` IDF selectivity signal
+- `Model.check_indexes()` — read-only index health check for production
+- `Model.clean_indexes()` — production-safe orphan index removal
+- `Query.get_many()` — bulk key hydration in a single pipeline
+- Companion hash key public API
+- `ConfidenceField` partition support
+- Adaptive constant optimizer sweep (closes constant-sensitivity variance gap from benchmarks)
+
+#### Fixed
+
+- `PredictionLedgerMixin.error_summary(group_by=...)` returned `{"__all__": ...}` instead of `{}` when called on a model with zero recorded predictions and a non-`None` `group_by`
+
+#### Notes
+
+- All metacognitive features are **opt-in** and additive — existing `ContextAssembler` API is unchanged
+- No Redis module commands anywhere in the stack — works on Redis ≥ 6 and Valkey ≥ 7
+- Cross-restart persistence for `AdaptiveAssembler` is deferred to v1.6; adaptation state is per-process
+
+---
+
 ## [1.0.3](https://github.com/tomcounsell/popoto/compare/v1.0.2...v1.0.3) (2026-03-22)
 
 
