@@ -923,3 +923,12 @@ class TestErrorSummary:
         self._seed_errors(n=6)
         result = PredictionLedgerMixin.error_summary(PredictionItem, limit=3)
         assert result["__all__"]["count"] == 3
+
+    def test_error_summary_group_by_with_empty_errors_returns_empty_groups(self):
+        """error_summary(group_by=...) with zero recorded errors returns {} not {"__all__": ...}."""
+        # No predictions recorded — error set is empty.
+        result = PredictionLedgerMixin.error_summary(PredictionItem, group_by="hour")
+        # When group_by is specified and there are no errors, the correct
+        # return is an empty grouped dict {}, not {"__all__": {count: 0, ...}}.
+        # The "__all__" sentinel belongs to the ungrouped (group_by=None) path only.
+        assert result == {}

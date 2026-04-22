@@ -602,6 +602,11 @@ class PredictionLedgerMixin:
             )
 
         if not raw_results:
+            # When group_by is provided, an empty set produces no groups — return {}
+            # rather than {"__all__": ...}, which would be semantically misleading
+            # (the caller expects per-group keys, not the ungrouped sentinel).
+            if group_by is not None:
+                return {}
             return {"__all__": cls._stats_for([])}
 
         # Decode members to strings and build a list of (member_key, error)
