@@ -16,6 +16,19 @@ from popoto import ModelException, KeyMutationError, QueryException, PublisherEx
 
 ---
 
+## Version introspection
+
+`popoto.__version__` resolves to the installed distribution's version string via `importlib.metadata` (PEP 566). `pyproject.toml` is the single source of truth — the package exposes whatever release-please wrote to `[project].version`. When importing from an uninstalled source tree, `__version__` falls back to the PEP 440-compliant sentinel `"0.0.0+unknown"`.
+
+```python
+import popoto
+print(popoto.__version__)  # e.g. "1.6.0"
+```
+
+No separate `VERSION` file, no static string in `__init__.py` — so there is no risk of version skew between the code on disk and the version reported at runtime.
+
+---
+
 ## Model Class
 
 `popoto.Model` is the base class for all Popoto models. Define public attributes as `Field` instances.

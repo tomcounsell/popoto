@@ -1,3 +1,10 @@
+from importlib.metadata import PackageNotFoundError, version as _get_version
+
+try:
+    __version__ = _get_version("popoto")
+except PackageNotFoundError:  # pragma: no cover — fallback for source-tree imports
+    __version__ = "0.0.0+unknown"
+
 from .exceptions import (
     ModelException,
     QueryException,
@@ -139,6 +146,7 @@ def configure(
 
 
 __all__ = [
+    "__version__",
     "Field",
     "IntField",
     "FloatField",
