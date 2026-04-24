@@ -24,6 +24,11 @@ Five outcomes:
       ``deferred``: ``used`` records a confirmed-read trace, ``deferred``
       discards staged reads.
 
+See Also:
+    For the effects-per-field matrix (what each outcome does to ConfidenceField,
+    CyclicDecayField, DecayingSortedField, AccessTracker, PredictionLedger), see
+    the "Effects Matrix" section of docs/features/observation-protocol.md.
+
 RecallProposal:
     Internal ORM infrastructure for tracking proactively surfaced memories.
     Redis ZSET keyed by model class and partition, scored by surfaced_at.
@@ -140,6 +145,15 @@ class ObservationProtocol:
                 strings: "acted", "dismissed", "deferred", "contradicted".
                 Instances not in the map default to "deferred".
             pipeline: Optional Redis pipeline for batch operations.
+
+        Note:
+            This method validates ``outcome_map`` strictly against
+            ``VALID_OUTCOMES``. Application-specific outcomes (e.g. a custom
+            ``"echoed"`` label) must be coerced to one of the five valid
+            values before calling, otherwise a ``ValueError`` is raised.
+            See ``docs/features/observation-protocol.md`` (where the
+            protocol lives) for guidance on mapping bespoke outcomes into
+            the canonical vocabulary.
 
         Raises:
             ValueError: If any outcome string is not a valid outcome.

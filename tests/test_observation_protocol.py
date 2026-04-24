@@ -1006,3 +1006,94 @@ class TestUsedOutcome:
     def test_used_empty_instances_noop(self):
         """on_context_used with empty instance list is a no-op even for 'used'."""
         ObservationProtocol.on_context_used([], {"rk1": "used"})  # no raise
+
+
+# ---------------------------------------------------------------------------
+# Docstring / feature-doc integration tests (issue #370, item 1 + item 4)
+# ---------------------------------------------------------------------------
+
+
+class TestFeatureDocAndDocstrings:
+    """Assert integrator-facing docstrings and the feature doc stay in sync."""
+
+    _REPO_ROOT = os.path.dirname(SCRIPT_DIR)
+    _FEATURE_DOC = os.path.join(
+        _REPO_ROOT, "docs", "features", "observation-protocol.md"
+    )
+
+    def test_observation_protocol_doc_contains_effects_table(self):
+        """The feature doc's Effects Matrix section includes all five outcomes
+        and all five row labels (ConfidenceField, CyclicDecayField,
+        DecayingSortedField, AccessTracker, PredictionLedger).
+        """
+        with open(self._FEATURE_DOC, encoding="utf-8") as f:
+            text = f.read()
+
+        # All five outcome column headers must appear.
+        for outcome in ("acted", "used", "dismissed", "deferred", "contradicted"):
+            assert (
+                outcome in text
+            ), f"Expected outcome {outcome!r} in {self._FEATURE_DOC}"
+
+        # All five row labels must appear.
+        for row_label in (
+            "ConfidenceField",
+            "CyclicDecayField",
+            "DecayingSortedField",
+            "AccessTracker",
+            "PredictionLedger",
+        ):
+            assert (
+                row_label in text
+            ), f"Expected row label {row_label!r} in {self._FEATURE_DOC}"
+
+        # And there must be a table (pipe-separated row with the columns).
+        assert (
+            "| acted" in text or "|acted" in text
+        ), "Expected a Markdown table with an 'acted' column in the Effects Matrix"
+
+    def test_observation_module_docstring_points_to_feature_doc(self):
+        """The module docstring of popoto.fields.observation references the
+        feature doc so integrators using help() find the full matrix.
+        """
+        from popoto.fields import observation
+
+        assert observation.__doc__ is not None
+        assert "docs/features/observation-protocol.md" in observation.__doc__, (
+            "Expected module docstring to reference "
+            "docs/features/observation-protocol.md as a See Also pointer"
+        )
+
+    def test_on_context_used_docstring_mentions_coerce(self):
+        """on_context_used() docstring must warn integrators about strict
+        VALID_OUTCOMES validation, mention 'coerce', 'ValueError', and
+        cross-reference observation-protocol.md (NOT metacognitive-layer.md).
+        """
+        doc = ObservationProtocol.on_context_used.__doc__
+        assert doc is not None
+        for needle in ("coerce", "ValueError", "observation-protocol.md"):
+            assert (
+                needle in doc
+            ), f"Expected {needle!r} in on_context_used docstring, got:\n{doc}"
+
+    def test_changelog_has_used_migration_note(self):
+        """CHANGELOG.md v1.5.0 section includes a Migration note mentioning
+        the bespoke 'echoed' outcome integrators need to map into the
+        canonical vocabulary.
+        """
+        changelog = os.path.join(self._REPO_ROOT, "CHANGELOG.md")
+        with open(changelog, encoding="utf-8") as f:
+            text = f.read()
+
+        # Locate the v1.5.0 section (up to the next H2).
+        start = text.find("## [1.5.0")
+        assert start != -1, "Could not find v1.5.0 section in CHANGELOG"
+        end = text.find("\n## [", start + 1)
+        section = text[start:end] if end != -1 else text[start:]
+
+        assert (
+            "Migration" in section
+        ), "Expected 'Migration' sub-section in v1.5.0 CHANGELOG entry"
+        assert (
+            "echoed" in section
+        ), "Expected 'echoed' migration guidance in v1.5.0 CHANGELOG entry"
