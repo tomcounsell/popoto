@@ -113,6 +113,23 @@ messages = [
 
 **Performance note:** `assess_quality=True` adds bounded overhead — one `might_exist` call per query cue plus one `get_confidence` read per selected record (up to `max_items` reads). On a warm cache with 10 items, expect roughly 5% additional latency on `assemble()`. Confidence reads are pipelined in a single Redis round-trip batch.
 
+### Building `RetrievalQuality` from a custom pipeline
+
+If you run your own retrieval (BM25, RRF, hybrid, vector recall) and want the metacognitive signal without adopting `ContextAssembler`, call the `RetrievalQuality.from_records()` classmethod on the already-retrieved list:
+
+```python
+from popoto import RetrievalQuality
+
+records = my_bm25_pipeline(query)  # any list of Popoto Model instances
+quality = RetrievalQuality.from_records(
+    records,
+    query_cues={"topic": query},
+    score_weights={"relevance": 1.0},
+)
+```
+
+The factory introspects `records[0]._meta.fields` once to locate `ConfidenceField`, `ExistenceFilter`, and `DecayingSortedField` capabilities, then delegates to the same pure helpers `ContextAssembler.assess()` uses. Heterogeneous record lists (two or more concrete model classes) raise `TypeError` — score weights are per-model-class and would silently produce incorrect metrics otherwise. An empty list returns a zero-valued `RetrievalQuality` without raising.
+
 ---
 
 ## Tier 2: `error_summary(group_by=...)` + `"used"` outcome

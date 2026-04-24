@@ -24,6 +24,11 @@ Five outcomes:
       ``deferred``: ``used`` records a confirmed-read trace, ``deferred``
       discards staged reads.
 
+See Also:
+    For the effects-per-field matrix (what each outcome does to ConfidenceField,
+    CyclicDecayField, DecayingSortedField, AccessTracker, PredictionLedger), see
+    the "Effects Matrix" section of docs/features/observation-protocol.md.
+
 RecallProposal:
     Internal ORM infrastructure for tracking proactively surfaced memories.
     Redis ZSET keyed by model class and partition, scored by surfaced_at.
@@ -137,9 +142,18 @@ class ObservationProtocol:
         Args:
             instances: List of Model instances that were in the agent's context.
             outcome_map: Dict mapping instance Redis keys (str) to outcome
-                strings: "acted", "dismissed", "deferred", "contradicted".
-                Instances not in the map default to "deferred".
+                strings: "acted", "used", "dismissed", "deferred",
+                "contradicted". Instances not in the map default to "deferred".
             pipeline: Optional Redis pipeline for batch operations.
+
+        Note:
+            This method validates ``outcome_map`` strictly against
+            ``VALID_OUTCOMES``. Application-specific outcomes (e.g. a custom
+            ``"echoed"`` label) must be coerced to one of the five valid
+            values before calling, otherwise a ``ValueError`` is raised.
+            See ``docs/features/observation-protocol.md`` (where the
+            protocol lives) for guidance on mapping bespoke outcomes into
+            the canonical vocabulary.
 
         Raises:
             ValueError: If any outcome string is not a valid outcome.
@@ -185,7 +199,8 @@ def _apply_outcome(instance, outcome, pipeline=None):
 
     Args:
         instance: A Model instance.
-        outcome: One of "acted", "dismissed", "deferred", "contradicted".
+        outcome: One of "acted", "used", "dismissed", "deferred",
+            "contradicted".
         pipeline: Optional Redis pipeline for batch operations.
     """
     # Use internal pipeline for atomicity if none provided
@@ -406,7 +421,7 @@ class RecallProposal:
     """Internal tracking for proactively surfaced memories.
 
     Key pattern: $RP:{ClassName}:pending:{partition} -> ZSET scored by surfaced_at
-    Statuses: pending -> acted | dismissed | deferred | contradicted | expired
+    Statuses: pending -> acted | used | dismissed | deferred | contradicted | expired
     TTL: default 3600s (1 hour). Unresolved proposals treated as deferred.
 
     This is internal ORM infrastructure, not a user-facing Model.

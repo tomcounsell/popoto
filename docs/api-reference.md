@@ -16,6 +16,19 @@ from popoto import ModelException, KeyMutationError, QueryException, PublisherEx
 
 ---
 
+## Version introspection
+
+`popoto.__version__` resolves to the installed distribution's version string via `importlib.metadata` (PEP 566). `pyproject.toml` is the single source of truth — the package exposes whatever release-please wrote to `[project].version`. When importing from an uninstalled source tree, `__version__` falls back to the PEP 440-compliant sentinel `"0.0.0+unknown"`.
+
+```python
+import popoto
+print(popoto.__version__)  # e.g. "1.6.0"
+```
+
+No separate `VERSION` file, no static string in `__init__.py` — so there is no risk of version skew between the code on disk and the version reported at runtime.
+
+---
+
 ## Model Class
 
 `popoto.Model` is the base class for all Popoto models. Define public attributes as `Field` instances.
@@ -1501,7 +1514,7 @@ Fire when application reports how agent responded to surfaced memories. Applies 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `instances` | `list` | Model instances that were in the agent's context. |
-| `outcome_map` | `dict` | Maps instance Redis keys to outcomes: `"acted"`, `"dismissed"`, `"deferred"`, `"contradicted"`. Instances not in the map default to `"deferred"`. |
+| `outcome_map` | `dict` | Maps instance Redis keys to outcomes: `"acted"`, `"used"`, `"dismissed"`, `"deferred"`, `"contradicted"`. Instances not in the map default to `"deferred"`. |
 | `pipeline` | `redis.client.Pipeline` | Optional pipeline for batching. |
 
 **Raises:** `ValueError` if any outcome string is not valid.
@@ -1945,6 +1958,22 @@ Dataclass returned by `ContextAssembler.assess()` and attached to `AssemblyResul
 | `staleness_ratio` | `float` | Fraction of selected records with `DecayingSortedField` score below `surfacing_threshold`. `0.0` when no `DecayingSortedField`. |
 | `score_distribution` | `list[float]` | Full list of per-record composite scores. Empty when unavailable. |
 | `per_cue_fok` | `dict` | Maps cue value → `{cue_familiarity, partial_retrieval_count, subthreshold_activation, component_score}`. |
+
+#### RetrievalQuality.from\_records(records, query\_cues=None, score\_weights=None, max\_items=10, surfacing\_threshold=0.5)
+
+Classmethod factory that builds a `RetrievalQuality` over an already-retrieved list of records. Intended for custom retrieval pipelines (BM25, RRF, hybrid, vector recall) that want the metacognitive signal without adopting `ContextAssembler`.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `records` | `list` | | Non-empty list of Popoto Model instances of a single concrete class. Empty list returns a zero-valued `RetrievalQuality`. |
+| `query_cues` | `dict` \| `None` | `None` | Same shape as `ContextAssembler.assess(query_cues=...)`. When falsy, `fok_score` is `0.0` and `per_cue_fok` is empty. |
+| `score_weights` | `dict` \| `None` | `None` | Maps sorted-field names to weights. Used for `score_spread` and `staleness_ratio`. When `None`, both default to `0.0` and `score_distribution` is empty. |
+| `max_items` | `int` | `10` | Denominator for `partial_retrieval_count` in the FOK formula. Matches `ContextAssembler` default. |
+| `surfacing_threshold` | `float` | `0.5` | Threshold for `subthreshold_activation` and `staleness_ratio`. Matches `ContextAssembler` default. |
+
+**Returns:** `RetrievalQuality`.
+
+**Raises:** `TypeError` if `records` contains instances of more than one concrete model class (score weights and capability field names are per-model-class).
 
 See [Metacognitive Layer](features/metacognitive-layer.md) for full documentation.
 

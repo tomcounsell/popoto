@@ -39,6 +39,19 @@ Agents using `ContextAssembler` can now ask "how much should I trust this contex
 
 - `PredictionLedgerMixin.error_summary(group_by=...)` returned `{"__all__": ...}` instead of `{}` when called on a model with zero recorded predictions and a non-`None` `group_by`
 
+#### Migration
+
+If you were using a custom `"echoed"` outcome (or any application-specific
+label semantically between `"used"` and `"dismissed"`):
+
+- Map it to `"used"` if the agent reasoned over the memory (staged read
+  should be confirmed; prediction auto-resolves with moderate error).
+- Map it to `"dismissed"` if the overlap was purely coincidental keyword
+  match (staged read discarded; confidence/cycle weakened).
+
+`on_context_used()` raises `ValueError` on unknown outcome labels — coerce
+to a valid value before calling.
+
 #### Notes
 
 - All metacognitive features are **opt-in** and additive — existing `ContextAssembler` API is unchanged

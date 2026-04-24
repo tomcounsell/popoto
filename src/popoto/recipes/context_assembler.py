@@ -199,12 +199,413 @@ class RetrievalQuality:
     score_distribution: list = field(default_factory=list)
     per_cue_fok: dict = field(default_factory=dict)
 
+    @classmethod
+    def from_records(
+        cls,
+        records,
+        query_cues=None,
+        score_weights=None,
+        max_items=DEFAULT_MAX_ITEMS,
+        surfacing_threshold=DEFAULT_SURFACING_THRESHOLD,
+    ) -> "RetrievalQuality":
+        """Build a RetrievalQuality over an already-retrieved list of records.
+
+        Intended for custom retrieval pipelines (BM25, RRF, hybrid) that
+        want the metacognitive layer without adopting
+        :class:`ContextAssembler`. All model capabilities (ConfidenceField,
+        ExistenceFilter, DecayingSortedField) are introspected from
+        ``records[0]._meta.fields``. Heterogeneous record lists are
+        rejected with ``TypeError`` — score weights and capability field
+        names are per-model-class, so a mixed list would silently produce
+        incorrect FOK / score_spread / staleness_ratio values.
+
+        Args:
+            records: Non-empty list of Popoto Model instances of a single
+                concrete class. When empty, returns a zero-valued
+                :class:`RetrievalQuality`.
+            query_cues: Optional dict of query cues — same shape as
+                ``ContextAssembler.assess(query_cues=...)``. When falsy,
+                ``fok_score`` is 0.0 and ``per_cue_fok`` is empty.
+            score_weights: Optional dict mapping sorted-field names to
+                weights. Used for ``score_spread`` and ``staleness_ratio``.
+                When None, both default to 0.0 and ``score_distribution``
+                is empty.
+            max_items: Denominator for ``partial_retrieval_count`` in the
+                FOK formula. Default matches ``ContextAssembler``.
+            surfacing_threshold: Threshold for subthreshold_activation and
+                staleness_ratio. Default matches ``ContextAssembler``.
+
+        Returns:
+            A :class:`RetrievalQuality` dataclass. Field semantics match
+            the assembler path exactly — see class docstring.
+
+        Raises:
+            TypeError: If ``records`` contains instances of more than one
+                concrete model class.
+
+        Example:
+            >>> from popoto import RetrievalQuality
+            >>> records = my_bm25_pipeline(query)  # custom retrieval
+            >>> quality = RetrievalQuality.from_records(
+            ...     records,
+            ...     query_cues={"topic": query},
+            ...     score_weights={"relevance": 1.0},
+            ... )
+            >>> if quality.fok_score < 0.3:
+            ...     return "low confidence retrieval"
+        """
+        # Empty list -> zero-valued quality, no warning.
+        if not records:
+            return cls()
+
+        # Mixed-model guard (C4): fail loudly, not silently.
+        distinct_types = {type(r) for r in records}
+        if len(distinct_types) > 1:
+            class_names = sorted(t.__name__ for t in distinct_types)
+            raise TypeError(
+                "RetrievalQuality.from_records requires a homogeneous list "
+                f"of records; got {len(distinct_types)} distinct model "
+                f"classes: {class_names}"
+            )
+
+        # All records are the same class — introspect once at the entry point.
+        model_class = type(records[0])
+        existence_filter = None
+        confidence_field_name = None
+        decaying_sorted_field_name = None
+        for name, f in model_class._meta.fields.items():
+            if isinstance(f, ExistenceFilter) and existence_filter is None:
+                existence_filter = f
+            if isinstance(f, ConfidenceField) and confidence_field_name is None:
+                confidence_field_name = name
+            if (
+                isinstance(f, DecayingSortedField)
+                and decaying_sorted_field_name is None
+            ):
+                decaying_sorted_field_name = name
+
+        # Delegate numeric work to the pure module-level helpers (C2).
+        avg_conf = _avg_confidence(
+            records,
+            confidence_field_name=confidence_field_name,
+            model_class=model_class,
+        )
+
+        if score_weights is None:
+            # Skip score_spread / staleness_ratio entirely.
+            score_spread = 0.0
+            distribution: list = []
+            staleness = 0.0
+        else:
+            score_spread, distribution = _compute_score_spread(
+                records,
+                model_class=model_class,
+                score_weights=score_weights,
+            )
+            staleness = _staleness_ratio(
+                records,
+                model_class=model_class,
+                score_weights=score_weights,
+                surfacing_threshold=surfacing_threshold,
+                decaying_sorted_field_name=decaying_sorted_field_name,
+            )
+
+        if not query_cues:
+            fok_score = 0.0
+            per_cue: dict = {}
+        else:
+            # FOK needs pull-candidates; we have already-retrieved records,
+            # so those are the candidates by construction.
+            fok_score, per_cue = _compute_fok(
+                query_cues,
+                records,
+                model_class=model_class,
+                score_weights=score_weights or {},
+                max_items=max_items,
+                surfacing_threshold=surfacing_threshold,
+                existence_filter=existence_filter,
+            )
+
+        return cls(
+            avg_confidence=avg_conf,
+            score_spread=score_spread,
+            fok_score=fok_score,
+            staleness_ratio=staleness,
+            score_distribution=distribution,
+            per_cue_fok=per_cue,
+        )
+
 
 # FOK formula weights — hard-coded per design spec (see plan
 # "Rabbit Holes": adjusting these is out-of-scope).
 FOK_WEIGHT_CUE_FAMILIARITY = 0.4
 FOK_WEIGHT_PARTIAL_RETRIEVAL = 0.4
 FOK_WEIGHT_SUBTHRESHOLD_ACTIVATION = 0.2
+
+
+# ---------------------------------------------------------------------------
+# Module-level quality helpers (pure, keyword-only; issue #370 C2)
+#
+# These functions are the single source of truth for RetrievalQuality
+# computation. Both the ContextAssembler instance methods and the public
+# RetrievalQuality.from_records() classmethod introspect model capability
+# fields ONCE at the entry point and then forward explicit kwargs into
+# these helpers. Helpers do not introspect — that is the caller's job.
+# ---------------------------------------------------------------------------
+
+
+def _cue_familiarity(cue_value, *, existence_filter, model_class) -> float:
+    """Return the FOK cue_familiarity component for a single cue value.
+
+    ``existence_filter`` is the ``ExistenceFilter`` field (or ``None``).
+    ``model_class`` is the concrete Popoto model — required because
+    ``ExistenceFilter.might_exist`` is a method on the filter that takes
+    the model class as the first argument.
+
+    Returns ``0.5`` (neutral) when no ExistenceFilter is available OR the
+    membership check fails. ``1.0`` when the bloom says might_exist,
+    ``0.0`` when definitely_missing.
+    """
+    if existence_filter is None:
+        return 0.5
+    try:
+        present = existence_filter.might_exist(model_class, str(cue_value))
+    except Exception as e:
+        logger.warning("cue_familiarity check failed for %r: %s", cue_value, e)
+        return 0.5
+    return 1.0 if present else 0.0
+
+
+def _score_proxy_for_records(records, *, model_class, score_weights):
+    """Pipelined ZSCORE proxy for composite scores.
+
+    Read-only (no ZUNIONSTORE, no temp keys). Only sorted-field-backed
+    entries in ``score_weights`` contribute; other weights are ignored
+    (ConfidenceField / WriteFilter are computed elsewhere in the quality
+    signal).
+    """
+    if not records:
+        return {}
+
+    sorted_field_names = []
+    for field_name in score_weights:
+        try:
+            f = model_class._meta.fields.get(field_name)
+        except Exception:
+            f = None
+        if f is not None and isinstance(f, SortedFieldMixin):
+            sorted_field_names.append(field_name)
+
+    if not sorted_field_names:
+        return {r_key: 0.0 for r_key in (_get_key(r) for r in records)}
+
+    per_field_keys = {}
+    for field_name in sorted_field_names:
+        f = model_class._meta.fields[field_name]
+        per_field_keys[field_name] = []
+        for record in records:
+            try:
+                key = f.get_special_use_field_db_key(record, field_name).redis_key
+            except Exception:
+                key = None
+            per_field_keys[field_name].append(key)
+
+    pipe = POPOTO_REDIS_DB.pipeline()
+    for field_name in sorted_field_names:
+        zset_keys = per_field_keys[field_name]
+        for record, zset_key in zip(records, zset_keys):
+            if zset_key is None:
+                pipe.zscore("", "")  # placeholder
+                continue
+            pipe.zscore(zset_key, _get_key(record))
+    raw = pipe.execute()
+
+    scores = {_get_key(r): 0.0 for r in records}
+    idx = 0
+    for field_name in sorted_field_names:
+        weight = float(score_weights.get(field_name, 0.0))
+        for record in records:
+            r_key = _get_key(record)
+            val = raw[idx]
+            idx += 1
+            if val is not None:
+                try:
+                    scores[r_key] += weight * float(val)
+                except (TypeError, ValueError):
+                    pass
+    return scores
+
+
+def _compute_score_spread(records, *, model_class, score_weights):
+    """Coefficient of variation of composite-score proxy across records.
+
+    Returns ``(score_spread, distribution_list)``. Falls back to
+    ``(0.0, [])`` on empty input or when ``abs(mean) < 1e-9``.
+    """
+    if not records:
+        return 0.0, []
+    try:
+        proxy = _score_proxy_for_records(
+            records, model_class=model_class, score_weights=score_weights
+        )
+    except Exception as e:
+        logger.warning("_compute_score_spread proxy failed: %s", e)
+        return 0.0, []
+    scores = list(proxy.values())
+    if not scores:
+        return 0.0, []
+    try:
+        mean = statistics.fmean(scores)
+    except statistics.StatisticsError:
+        return 0.0, scores
+    if abs(mean) < 1e-9:
+        return 0.0, scores
+    try:
+        stddev = statistics.pstdev(scores)
+    except statistics.StatisticsError:
+        return 0.0, scores
+    return stddev / mean, scores
+
+
+def _avg_confidence(records, *, confidence_field_name, model_class):
+    """Mean ConfidenceField.get_confidence() across records.
+
+    Returns ``1.0`` (neutral) when the model has no ConfidenceField.
+    Per-record exceptions log and fall back to ``initial_confidence``.
+    """
+    if not records or not confidence_field_name:
+        return 1.0
+    field_obj = model_class._meta.fields.get(confidence_field_name)
+    initial = getattr(field_obj, "initial_confidence", 0.5)
+
+    total = 0.0
+    count = 0
+    for record in records:
+        try:
+            val = ConfidenceField.get_confidence(record, confidence_field_name)
+        except Exception as e:
+            logger.warning(
+                "get_confidence failed for %s: %s — using initial_confidence",
+                _get_key(record),
+                e,
+            )
+            val = initial
+        total += float(val)
+        count += 1
+    if count == 0:
+        return 1.0
+    return total / count
+
+
+def _compute_fok(
+    query_cues,
+    pull_candidates,
+    *,
+    model_class,
+    score_weights,
+    max_items,
+    surfacing_threshold,
+    existence_filter,
+):
+    """FOK score + per-cue breakdown.
+
+    Mirrors the pre-refactor ``ContextAssembler._compute_fok`` exactly.
+    Empty ``query_cues`` -> ``(0.0, {})`` with a warning.
+    """
+    if not query_cues:
+        logger.warning("_compute_fok called with empty query_cues")
+        return 0.0, {}
+
+    n_candidates = len(pull_candidates)
+    capped_max_items = max(max_items, 1)
+    partial_retrieval = min(n_candidates, capped_max_items) / capped_max_items
+
+    subthreshold_frac = 0.0
+    if n_candidates > 0 and score_weights:
+        try:
+            proxy_scores = _score_proxy_for_records(
+                pull_candidates,
+                model_class=model_class,
+                score_weights=score_weights,
+            )
+            below_threshold = sum(
+                1 for s in proxy_scores.values() if 0 < s < surfacing_threshold
+            )
+            subthreshold_frac = below_threshold / max(n_candidates, 1)
+        except Exception as e:
+            logger.warning("Subthreshold activation computation failed: %s", e)
+            subthreshold_frac = 0.0
+
+    per_cue = {}
+    total = 0.0
+    for cue_value in query_cues.values():
+        familiarity = _cue_familiarity(
+            cue_value,
+            existence_filter=existence_filter,
+            model_class=model_class,
+        )
+        component_score = (
+            FOK_WEIGHT_CUE_FAMILIARITY * familiarity
+            + FOK_WEIGHT_PARTIAL_RETRIEVAL * partial_retrieval
+            + FOK_WEIGHT_SUBTHRESHOLD_ACTIVATION * subthreshold_frac
+        )
+        per_cue[str(cue_value)] = {
+            "cue_familiarity": familiarity,
+            "partial_retrieval_count": partial_retrieval,
+            "subthreshold_activation": subthreshold_frac,
+            "component_score": component_score,
+        }
+        total += component_score
+
+    fok_score = total / len(query_cues) if query_cues else 0.0
+    return fok_score, per_cue
+
+
+def _staleness_ratio(
+    records,
+    *,
+    model_class,
+    score_weights,
+    surfacing_threshold,
+    decaying_sorted_field_name,
+):
+    """Fraction of records whose DecayingSortedField score is below the
+    surfacing threshold. ``0.0`` when the model has no DecayingSortedField
+    or when that field is not in ``score_weights``.
+    """
+    if not records or not decaying_sorted_field_name:
+        return 0.0
+    field_name = decaying_sorted_field_name
+    try:
+        _score_proxy_for_records(
+            records, model_class=model_class, score_weights=score_weights
+        )
+    except Exception as e:
+        logger.warning("_staleness_ratio proxy failed: %s", e)
+        return 0.0
+    if field_name not in score_weights:
+        return 0.0
+    f = model_class._meta.fields[field_name]
+    pipe = POPOTO_REDIS_DB.pipeline()
+    for record in records:
+        try:
+            zkey = f.get_special_use_field_db_key(record, field_name).redis_key
+            pipe.zscore(zkey, _get_key(record))
+        except Exception:
+            pipe.zscore("", "")
+    raw = pipe.execute()
+
+    stale_count = 0
+    for val in raw:
+        if val is None:
+            stale_count += 1
+            continue
+        try:
+            if float(val) < surfacing_threshold:
+                stale_count += 1
+        except (TypeError, ValueError):
+            stale_count += 1
+    return stale_count / len(records)
 
 
 # ---------------------------------------------------------------------------
@@ -622,280 +1023,66 @@ class ContextAssembler:
     # ------------------------------------------------------------------
 
     def _cue_familiarity(self, cue_value) -> float:
-        """Compute FOK cue_familiarity component for a single cue value.
+        """Thin wrapper around the module-level :func:`_cue_familiarity`.
 
-        When the model has no ExistenceFilter, fall back to a neutral
-        ``0.5`` (we cannot prove absence, we cannot prove presence).
-        When present and ``might_exist`` returns True, ``1.0``; when
-        present and False, ``0.0``.
+        Introspects ``self`` exactly once and forwards explicit kwargs so
+        the pure helper is the single source of truth (issue #370 C2).
         """
-        if self._existence_filter is None:
-            return 0.5
-        try:
-            present = self._existence_filter.might_exist(
-                self.model_class, str(cue_value)
-            )
-        except Exception as e:
-            logger.warning("cue_familiarity check failed for %r: %s", cue_value, e)
-            return 0.5
-        return 1.0 if present else 0.0
+        return _cue_familiarity(
+            cue_value,
+            existence_filter=self._existence_filter,
+            model_class=self.model_class,
+        )
 
     def _compute_fok(self, query_cues, pull_candidates):
-        """Compute FOK score and per-cue breakdown.
-
-        Returns a tuple ``(fok_score, per_cue_map)``.
-
-        Formula (per design spec, hard-coded):
-            fok = mean_over_cues(
-                0.4 * cue_familiarity
-                + 0.4 * partial_retrieval_count
-                + 0.2 * subthreshold_activation
-            )
-
-        * ``cue_familiarity``: 1.0 if ExistenceFilter says might_exist,
-          0.0 if definitely_missing, 0.5 if no ExistenceFilter on model.
-        * ``partial_retrieval_count``: ``min(len(candidates), max_items) /
-          max_items`` — did we surface enough raw candidates to have
-          something to pick from?
-        * ``subthreshold_activation``: fraction of candidates with score
-          strictly between 0 and the surfacing threshold — "almost
-          remembered" content. Computed over pull candidates using the
-          composite score proxy (see ``_score_proxy_for_records``).
-
-        Edge cases:
-        * Empty ``query_cues`` -> ``fok_score = 0.0``, empty per-cue map,
-          with a logged warning. Do not raise.
-        * ``pull_candidates`` is empty -> partial_retrieval and subthreshold
-          both contribute 0.
-        """
-        if not query_cues:
-            logger.warning("_compute_fok called with empty query_cues")
-            return 0.0, {}
-
-        n_candidates = len(pull_candidates)
-        max_items = max(self.max_items, 1)
-        partial_retrieval = min(n_candidates, max_items) / max_items
-
-        # Subthreshold activation: pull candidates with score below the
-        # surfacing_threshold but > 0. Uses the composite-score proxy.
-        subthreshold_frac = 0.0
-        if n_candidates > 0 and self.score_weights:
-            try:
-                proxy_scores = self._score_proxy_for_records(pull_candidates)
-                below_threshold = sum(
-                    1 for s in proxy_scores.values() if 0 < s < self.surfacing_threshold
-                )
-                subthreshold_frac = below_threshold / max(n_candidates, 1)
-            except Exception as e:
-                logger.warning("Subthreshold activation computation failed: %s", e)
-                subthreshold_frac = 0.0
-
-        per_cue = {}
-        total = 0.0
-        for cue_value in query_cues.values():
-            familiarity = self._cue_familiarity(cue_value)
-            component_score = (
-                FOK_WEIGHT_CUE_FAMILIARITY * familiarity
-                + FOK_WEIGHT_PARTIAL_RETRIEVAL * partial_retrieval
-                + FOK_WEIGHT_SUBTHRESHOLD_ACTIVATION * subthreshold_frac
-            )
-            per_cue[str(cue_value)] = {
-                "cue_familiarity": familiarity,
-                "partial_retrieval_count": partial_retrieval,
-                "subthreshold_activation": subthreshold_frac,
-                "component_score": component_score,
-            }
-            total += component_score
-
-        fok_score = total / len(query_cues) if query_cues else 0.0
-        return fok_score, per_cue
+        """Thin wrapper around the module-level :func:`_compute_fok`."""
+        return _compute_fok(
+            query_cues,
+            pull_candidates,
+            model_class=self.model_class,
+            score_weights=self.score_weights,
+            max_items=self.max_items,
+            surfacing_threshold=self.surfacing_threshold,
+            existence_filter=self._existence_filter,
+        )
 
     def _score_proxy_for_records(self, records):
-        """Build a per-record composite-score proxy via pipelined ZSCORE.
-
-        Returns ``{redis_key: composite_score}``. The proxy mirrors
-        composite_score's ZUNIONSTORE aggregation: for each weighted field
-        in ``self.score_weights``, read the sorted set score for this
-        record and add ``weight * score`` to the running total. Fields
-        that are not sorted-set-backed (e.g., ConfidenceField) are read
-        via their companion hash instead.
-
-        This is a read-only helper; it does NOT mutate any Redis state
-        and does NOT recreate temp keys. It is meant for quality probes
-        where we need per-record scores without the overhead (and side
-        effects) of a full composite_score call.
+        """Thin wrapper around the module-level
+        :func:`_score_proxy_for_records`.
         """
-        if not records:
-            return {}
-
-        # We compute composite per record using only SortedFieldMixin-backed
-        # index fields. ConfidenceField / WriteFilter priority / AccessTracker
-        # are supported by composite_score proper via companion hashes; for a
-        # cheap proxy we restrict to the sorted-field path, which covers the
-        # common cases (DecayingSortedField, CyclicDecayField, SortedField).
-        sorted_field_names = []
-        for field_name in self.score_weights:
-            try:
-                f = self.model_class._meta.fields.get(field_name)
-            except Exception:
-                f = None
-            if f is not None and isinstance(f, SortedFieldMixin):
-                sorted_field_names.append(field_name)
-
-        if not sorted_field_names:
-            # No sorted-field indexes -> no proxy scores.
-            return {r_key: 0.0 for r_key in (_get_key(r) for r in records)}
-
-        # Build ZSET key per field (resolves partition_by via the instance).
-        per_field_keys = {}
-        for field_name in sorted_field_names:
-            f = self.model_class._meta.fields[field_name]
-            per_field_keys[field_name] = []
-            for record in records:
-                try:
-                    key = f.get_special_use_field_db_key(record, field_name).redis_key
-                except Exception:
-                    key = None
-                per_field_keys[field_name].append(key)
-
-        # Pipeline all ZSCORE calls.
-        pipe = POPOTO_REDIS_DB.pipeline()
-        for field_name in sorted_field_names:
-            zset_keys = per_field_keys[field_name]
-            for record, zset_key in zip(records, zset_keys):
-                if zset_key is None:
-                    pipe.zscore("", "")  # placeholder that returns None
-                    continue
-                pipe.zscore(zset_key, _get_key(record))
-        raw = pipe.execute()
-
-        # Re-aggregate per record.
-        scores = {_get_key(r): 0.0 for r in records}
-        idx = 0
-        for field_name in sorted_field_names:
-            weight = float(self.score_weights.get(field_name, 0.0))
-            for record in records:
-                r_key = _get_key(record)
-                val = raw[idx]
-                idx += 1
-                if val is not None:
-                    try:
-                        scores[r_key] += weight * float(val)
-                    except (TypeError, ValueError):
-                        pass
-        return scores
+        return _score_proxy_for_records(
+            records,
+            model_class=self.model_class,
+            score_weights=self.score_weights,
+        )
 
     def _compute_score_spread(self, records):
-        """Coefficient of variation of composite-score proxy across records.
-
-        Returns ``(score_spread, distribution_list)``. Falls back to
-        ``(0.0, [])`` on empty input or when ``abs(mean) < 1e-9``.
+        """Thin wrapper around the module-level
+        :func:`_compute_score_spread`.
         """
-        if not records:
-            return 0.0, []
-        try:
-            proxy = self._score_proxy_for_records(records)
-        except Exception as e:
-            logger.warning("_compute_score_spread proxy failed: %s", e)
-            return 0.0, []
-        scores = list(proxy.values())
-        if not scores:
-            return 0.0, []
-        try:
-            mean = statistics.fmean(scores)
-        except statistics.StatisticsError:
-            return 0.0, scores
-        if abs(mean) < 1e-9:
-            # stddev/mean is undefined when mean is zero (empty or all-zero).
-            return 0.0, scores
-        try:
-            stddev = statistics.pstdev(scores)
-        except statistics.StatisticsError:
-            return 0.0, scores
-        return stddev / mean, scores
+        return _compute_score_spread(
+            records,
+            model_class=self.model_class,
+            score_weights=self.score_weights,
+        )
 
     def _avg_confidence(self, records):
-        """Mean ConfidenceField.get_confidence() across records.
-
-        Returns ``1.0`` (neutral) when the model has no ConfidenceField,
-        matching "no evidence against the retrieval." Per-record exceptions
-        are logged and the record contributes the field's
-        ``initial_confidence`` as a sentinel rather than aborting the
-        whole metric.
-        """
-        if not records or not self._confidence_field_name:
-            return 1.0
-        field = self.model_class._meta.fields.get(self._confidence_field_name)
-        initial = getattr(field, "initial_confidence", 0.5)
-
-        total = 0.0
-        count = 0
-        for record in records:
-            try:
-                val = ConfidenceField.get_confidence(
-                    record, self._confidence_field_name
-                )
-            except Exception as e:
-                logger.warning(
-                    "get_confidence failed for %s: %s — using initial_confidence",
-                    _get_key(record),
-                    e,
-                )
-                val = initial
-            total += float(val)
-            count += 1
-        if count == 0:
-            return 1.0
-        return total / count
+        """Thin wrapper around the module-level :func:`_avg_confidence`."""
+        return _avg_confidence(
+            records,
+            confidence_field_name=self._confidence_field_name,
+            model_class=self.model_class,
+        )
 
     def _staleness_ratio(self, records):
-        """Fraction of records whose DecayingSortedField score is below
-        the field's decay threshold.
-
-        Returns ``0.0`` when the model has no DecayingSortedField (we
-        cannot measure staleness without a decay signal). The "decay
-        threshold" is interpreted as ``self.surfacing_threshold`` — the
-        same threshold used to filter push-path records. A record whose
-        decayed score is below this threshold is considered "stale"
-        for the purposes of the retrieval quality signal.
-        """
-        if not records or not self._decaying_sorted_field_name:
-            return 0.0
-        field_name = self._decaying_sorted_field_name
-        try:
-            decayed_scores = self._score_proxy_for_records(records)
-        except Exception as e:
-            logger.warning("_staleness_ratio proxy failed: %s", e)
-            return 0.0
-        # Use only the decaying field's contribution. The proxy already
-        # weights by score_weights. If DecayingSortedField isn't in the
-        # configured weights, we cannot judge staleness.
-        if field_name not in self.score_weights:
-            return 0.0
-        # When there's only one weighted field, proxy == weighted score; when
-        # mixed, the other weighted contributions inflate the score. Use
-        # direct ZSCORE for the decaying field to get a clean read.
-        f = self.model_class._meta.fields[field_name]
-        pipe = POPOTO_REDIS_DB.pipeline()
-        for record in records:
-            try:
-                zkey = f.get_special_use_field_db_key(record, field_name).redis_key
-                pipe.zscore(zkey, _get_key(record))
-            except Exception:
-                pipe.zscore("", "")  # placeholder None
-        raw = pipe.execute()
-
-        stale_count = 0
-        for val in raw:
-            if val is None:
-                stale_count += 1
-                continue
-            try:
-                if float(val) < self.surfacing_threshold:
-                    stale_count += 1
-            except (TypeError, ValueError):
-                stale_count += 1
-        return stale_count / len(records)
+        """Thin wrapper around the module-level :func:`_staleness_ratio`."""
+        return _staleness_ratio(
+            records,
+            model_class=self.model_class,
+            score_weights=self.score_weights,
+            surfacing_threshold=self.surfacing_threshold,
+            decaying_sorted_field_name=self._decaying_sorted_field_name,
+        )
 
     def _compute_quality(self, selected, all_pull_candidates, query_cues):
         """Assemble a RetrievalQuality over the selected records.

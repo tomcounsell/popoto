@@ -43,6 +43,10 @@ ObservationProtocol.on_context_used(memories, outcome_map)
 
 See [Metacognitive Layer](metacognitive-layer.md) for the full effects comparison table.
 
+### Migrating custom outcomes
+
+If you were using a custom `"echoed"` outcome (or any bespoke label between `"used"` and `"dismissed"`), map it to `"used"` when the agent reasoned over the memory or to `"dismissed"` when the overlap was coincidental; `on_context_used()` raises `ValueError` on unknown labels, so coerce to a valid outcome before calling.
+
 ## Usage
 
 ```python
@@ -95,20 +99,30 @@ Defaults.AUTO_DISCHARGE_CONFIDENCE_THRESHOLD = 0.1
 
 ## Effects Matrix
 
-When `on_context_used()` fires, effects are dispatched per-primitive:
+Each row lists what the field/mixin does for each outcome. `—` means no effect.
+
+| Effect              | acted           | used            | dismissed    | deferred | contradicted        |
+|---------------------|-----------------|-----------------|--------------|----------|---------------------|
+| ConfidenceField     | strengthen      | —               | —            | —        | weaken              |
+| CyclicDecayField    | strengthen      | —               | weaken       | —        | weaken (aggressive) |
+| DecayingSortedField | touch           | —               | —            | —        | —                   |
+| AccessTracker       | confirm         | confirm         | discard      | discard  | discard             |
+| PredictionLedger    | auto-resolve    | moderate err    | auto-resolve | —        | auto-resolve        |
+
+Supporting notes:
 
 - **DecayingSortedField**: `acted` calls `touch()` to refresh the decay clock.
-- **AccessTrackerMixin**: `acted` calls `confirm_access()`; all others call `discard_staged_access()`.
-- **CyclicDecayField**: `acted` strengthens cycles and resolves pressure; `dismissed` and `contradicted` weaken cycles.
+- **AccessTrackerMixin**: `acted` and `used` call `confirm_access()`; `dismissed`, `deferred`, and `contradicted` call `discard_staged_access()`.
+- **CyclicDecayField**: `acted` strengthens cycles and resolves pressure; `dismissed` and `contradicted` weaken cycles (`contradicted` more aggressively).
 - **ConfidenceField**: `acted` corroborates; `contradicted` contradicts.
-- **PredictionLedgerMixin**: `acted`, `dismissed`, and `contradicted` auto-resolve pending predictions with appropriate error values.
+- **PredictionLedgerMixin**: `acted`, `used`, `dismissed`, and `contradicted` auto-resolve pending predictions with appropriate error values (`used` maps to moderate error `Defaults.PL_AUTO_RESOLVE_USED`).
 
 ## RecallProposal
 
 Internal ORM infrastructure for tracking proactively surfaced memories.
 
 - **Key pattern**: `$RP:{ClassName}:pending:{partition}` (sorted set scored by surfaced_at)
-- **Lifecycle**: pending -> acted | dismissed | deferred | contradicted | expired
+- **Lifecycle**: pending -> acted | used | dismissed | deferred | contradicted | expired
 - **TTL**: 3600s (1 hour). Unresolved proposals are treated as deferred.
 
 ```python

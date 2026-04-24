@@ -78,6 +78,26 @@ class FullMemory(Model):
     )
 
 
+class FixtureMemory(Model):
+    """Deterministic fixture for numeric-regression tests (item 2a-pre, C3).
+
+    No CyclicDecayField (keeps scoring strictly on the DecayingSortedField).
+    Topics fingerprinted into ExistenceFilter for cue_familiarity.
+    """
+
+    memory_id = AutoKeyField()
+    agent_id = KeyField()
+    topic = Field(type=str)
+    content = Field(type=str)
+    relevance = DecayingSortedField(partition_by="agent_id")
+    confidence = ConfidenceField(initial_confidence=0.5)
+    bloom = ExistenceFilter(
+        error_rate=0.01,
+        capacity=10_000,
+        fingerprint_fn=lambda inst: inst.topic,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -96,11 +116,16 @@ def _clean_all():
     _clean_keys(
         "*SimpleMemory*",
         "*FullMemory*",
+        "*FixtureMemory*",
+        "*AltFixtureMemory*",
         "$EF:*Memory*",
         "$CoOcF:*Memory*",
         "$ConfidencF:*Memory*",
         "$SortedF:*Memory*",
+        "$DecayingSortF:*Memory*",
         "$CyclicDF:*Memory*",
+        "$KeyF:*Memory*",
+        "$Class:*Memory*",
         "$RP:*Memory*",
     )
 
@@ -631,6 +656,240 @@ class TestRetrievalQuality:
         assert s
         assert "RetrievalQuality" in s
         assert "fok_score=0.7" in s
+
+
+# ---------------------------------------------------------------------------
+# TestRetrievalQualityAssembler (numeric regression guard for item 2a refactor)
+# ---------------------------------------------------------------------------
+
+
+class TestRetrievalQualityAssembler:
+    """Numeric-fixture regression guard protecting the Item 2a helper
+    extraction (C2/C3). Hardcoded expected values were captured against the
+    pre-refactor code — any drift indicates the wrapper methods stopped
+    routing state through to the module-level helpers correctly.
+    """
+
+    @staticmethod
+    def _isclose(a, b):
+        import math
+
+        return math.isclose(a, b, rel_tol=1e-9, abs_tol=1e-9)
+
+    def test_assess_numeric_fixture(self):
+        """Three records with known confidences + two query cues produce
+        hardcoded scalar values for the RetrievalQuality metrics. Any
+        numeric drift after the helper refactor fails this test.
+
+        Fixture:
+            * 3 FixtureMemory instances (topics: alpha, beta, gamma),
+              confidences post-update: 0.9 signal, 0.5 signal, 0.3 signal
+            * score_weights={"relevance": 1.0}, max_items=5,
+              surfacing_threshold=0.5
+            * query_cues={"topic": "alpha", "other": "beta"}
+              (both topics are in the ExistenceFilter fingerprint)
+            * partition_filters={"agent_id": "a"}
+        """
+        m1 = FixtureMemory(agent_id="a", topic="alpha", content="c1")
+        m1.save()
+        m2 = FixtureMemory(agent_id="a", topic="beta", content="c2")
+        m2.save()
+        m3 = FixtureMemory(agent_id="a", topic="gamma", content="c3")
+        m3.save()
+
+        ConfidenceField.update_confidence(m1, "confidence", signal=0.9)
+        ConfidenceField.update_confidence(m2, "confidence", signal=0.5)
+        ConfidenceField.update_confidence(m3, "confidence", signal=0.3)
+
+        assembler = ContextAssembler(
+            model_class=FixtureMemory,
+            score_weights={"relevance": 1.0},
+            max_items=5,
+            surfacing_threshold=0.5,
+        )
+
+        quality = assembler.assess(
+            query_cues={"topic": "alpha", "other": "beta"},
+            partition_filters={"agent_id": "a"},
+        )
+
+        # Hardcoded expected scalars captured against the pre-refactor
+        # implementation. DO NOT tweak these to paper over a refactor —
+        # any divergence means the refactor changed numeric behavior.
+        assert self._isclose(quality.avg_confidence, 0.5666666666666667)
+        assert self._isclose(quality.score_spread, 0.0)
+        assert self._isclose(quality.fok_score, 0.64)
+        assert self._isclose(quality.staleness_ratio, 1.0)
+
+        # Per-cue components also hardcoded.
+        assert set(quality.per_cue_fok.keys()) == {"alpha", "beta"}
+        for cue in ("alpha", "beta"):
+            comp = quality.per_cue_fok[cue]
+            assert self._isclose(comp["cue_familiarity"], 1.0)
+            assert self._isclose(comp["partial_retrieval_count"], 0.6)
+            assert self._isclose(comp["subthreshold_activation"], 0.0)
+            assert self._isclose(comp["component_score"], 0.64)
+
+        # score_distribution contents: three zero-valued proxy scores
+        # (decayed to 0 because DecayingSortedField starts at 0 score on a
+        # freshly saved record — the deterministic fixture relies on this).
+        assert len(quality.score_distribution) == 3
+        for s in quality.score_distribution:
+            assert self._isclose(s, 0.0)
+
+
+# ---------------------------------------------------------------------------
+# TestRetrievalQualityFromRecords (issue #370 item 2b: C1 parity + C4 guard)
+# ---------------------------------------------------------------------------
+
+
+class AltFixtureMemory(Model):
+    """A second model class for the mixed-record TypeError test (C4)."""
+
+    memory_id = AutoKeyField()
+    agent_id = KeyField()
+    topic = Field(type=str)
+    relevance = DecayingSortedField(partition_by="agent_id")
+
+
+class TestRetrievalQualityFromRecords:
+    """Public classmethod: RetrievalQuality.from_records(records, ...).
+
+    Parity contract (C1): same records, same assembler config, the
+    classmethod and ``ContextAssembler.assemble(..., assess_quality=True)``
+    produce numerically equal scalar fields within 1e-9.
+    """
+
+    @staticmethod
+    def _isclose(a, b):
+        import math
+
+        return math.isclose(a, b, rel_tol=1e-9, abs_tol=1e-9)
+
+    def test_from_records_matches_assemble_quality(self):
+        """C1: ``from_records`` numerically matches ``assemble(..., assess_quality=True)``
+        when given identical records and identical assembler config
+        (score_weights, max_items, surfacing_threshold, query_cues).
+        """
+        import math
+
+        # Save records, then compute quality two ways and compare.
+        saved = []
+        for i, topic in enumerate(("one", "two", "three")):
+            m = FixtureMemory(agent_id="a", topic=topic, content=f"c{i}")
+            m.save()
+            ConfidenceField.update_confidence(m, "confidence", signal=0.5 + 0.1 * i)
+            saved.append(m)
+
+        score_weights = {"relevance": 1.0}
+        max_items = 5
+        surfacing_threshold = 0.5
+        query_cues = {"topic": "one"}
+
+        # Assembler path — use assemble(..., assess_quality=True) so that
+        # its metadata["quality"] reflects the SELECTED records.
+        assembler = ContextAssembler(
+            model_class=FixtureMemory,
+            score_weights=score_weights,
+            max_items=max_items,
+            surfacing_threshold=surfacing_threshold,
+        )
+        result = assembler.assemble(
+            query_cues=query_cues,
+            partition_filters={"agent_id": "a"},
+            assess_quality=True,
+        )
+        assembler_quality = result.metadata["quality"]
+
+        # Custom-pipeline path — hand the exact selected records to
+        # from_records. `result.records` is what assemble() produced
+        # and what its quality was computed against.
+        custom_quality = RetrievalQuality.from_records(
+            result.records,
+            query_cues=query_cues,
+            score_weights=score_weights,
+            max_items=max_items,
+            surfacing_threshold=surfacing_threshold,
+        )
+
+        assert self._isclose(
+            custom_quality.avg_confidence, assembler_quality.avg_confidence
+        )
+        assert self._isclose(
+            custom_quality.score_spread, assembler_quality.score_spread
+        )
+        assert self._isclose(custom_quality.fok_score, assembler_quality.fok_score)
+        assert self._isclose(
+            custom_quality.staleness_ratio, assembler_quality.staleness_ratio
+        )
+
+        # score_distribution element-wise tolerant comparison
+        assert len(custom_quality.score_distribution) == len(
+            assembler_quality.score_distribution
+        )
+        for a, b in zip(
+            custom_quality.score_distribution, assembler_quality.score_distribution
+        ):
+            assert math.isclose(a, b, rel_tol=1e-9, abs_tol=1e-9)
+
+        # per_cue_fok keys match; each component within tolerance.
+        assert set(custom_quality.per_cue_fok.keys()) == set(
+            assembler_quality.per_cue_fok.keys()
+        )
+        for cue, comp in custom_quality.per_cue_fok.items():
+            expected = assembler_quality.per_cue_fok[cue]
+            for k in (
+                "cue_familiarity",
+                "partial_retrieval_count",
+                "subthreshold_activation",
+                "component_score",
+            ):
+                assert math.isclose(comp[k], expected[k], rel_tol=1e-9, abs_tol=1e-9)
+
+    def test_from_records_empty_returns_zero(self):
+        """Empty records list -> zero-valued RetrievalQuality; does NOT raise."""
+        q = RetrievalQuality.from_records([])
+        assert isinstance(q, RetrievalQuality)
+        assert q.avg_confidence == 0.0
+        assert q.score_spread == 0.0
+        assert q.fok_score == 0.0
+        assert q.staleness_ratio == 0.0
+        assert q.score_distribution == []
+        assert q.per_cue_fok == {}
+
+    def test_from_records_no_cues_no_weights(self):
+        """query_cues=None + score_weights=None -> zero FOK / spread /
+        staleness, avg_confidence still computed from ConfidenceField.
+        """
+        m = FixtureMemory(agent_id="a", topic="solo", content="body")
+        m.save()
+        ConfidenceField.update_confidence(m, "confidence", signal=0.7)
+
+        q = RetrievalQuality.from_records([m])
+        assert isinstance(q, RetrievalQuality)
+        assert q.fok_score == 0.0
+        assert q.per_cue_fok == {}
+        assert q.score_spread == 0.0
+        assert q.score_distribution == []
+        assert q.staleness_ratio == 0.0
+        # avg_confidence is still computed (ConfidenceField is present).
+        assert 0.0 <= q.avg_confidence <= 1.0
+
+    def test_from_records_mixed_models_raises(self):
+        """C4: heterogeneous record lists raise TypeError whose message
+        names BOTH classes.
+        """
+        m1 = FixtureMemory(agent_id="a", topic="x", content="c")
+        m1.save()
+        m2 = AltFixtureMemory(agent_id="a", topic="y")
+        m2.save()
+
+        with pytest.raises(TypeError) as excinfo:
+            RetrievalQuality.from_records([m1, m2])
+
+        msg = str(excinfo.value)
+        assert "FixtureMemory" in msg
+        assert "AltFixtureMemory" in msg
 
 
 # ---------------------------------------------------------------------------
