@@ -287,7 +287,7 @@ class RecallProposal:
 
     Key pattern: $RP:{ClassName}:pending:{agent_partition} → ZSET by surfaced_at
 
-    Statuses: pending → acted | dismissed | deferred | contradicted | expired
+    Statuses: pending → acted | used | dismissed | deferred | contradicted | expired
 
     Proposals that expire (not resolved within TTL) are treated as deferred.
     """

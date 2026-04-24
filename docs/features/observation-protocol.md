@@ -122,7 +122,7 @@ Supporting notes:
 Internal ORM infrastructure for tracking proactively surfaced memories.
 
 - **Key pattern**: `$RP:{ClassName}:pending:{partition}` (sorted set scored by surfaced_at)
-- **Lifecycle**: pending -> acted | dismissed | deferred | contradicted | expired
+- **Lifecycle**: pending -> acted | used | dismissed | deferred | contradicted | expired
 - **TTL**: 3600s (1 hour). Unresolved proposals are treated as deferred.
 
 ```python

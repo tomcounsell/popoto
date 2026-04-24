@@ -142,8 +142,8 @@ class ObservationProtocol:
         Args:
             instances: List of Model instances that were in the agent's context.
             outcome_map: Dict mapping instance Redis keys (str) to outcome
-                strings: "acted", "dismissed", "deferred", "contradicted".
-                Instances not in the map default to "deferred".
+                strings: "acted", "used", "dismissed", "deferred",
+                "contradicted". Instances not in the map default to "deferred".
             pipeline: Optional Redis pipeline for batch operations.
 
         Note:
@@ -199,7 +199,8 @@ def _apply_outcome(instance, outcome, pipeline=None):
 
     Args:
         instance: A Model instance.
-        outcome: One of "acted", "dismissed", "deferred", "contradicted".
+        outcome: One of "acted", "used", "dismissed", "deferred",
+            "contradicted".
         pipeline: Optional Redis pipeline for batch operations.
     """
     # Use internal pipeline for atomicity if none provided
@@ -420,7 +421,7 @@ class RecallProposal:
     """Internal tracking for proactively surfaced memories.
 
     Key pattern: $RP:{ClassName}:pending:{partition} -> ZSET scored by surfaced_at
-    Statuses: pending -> acted | dismissed | deferred | contradicted | expired
+    Statuses: pending -> acted | used | dismissed | deferred | contradicted | expired
     TTL: default 3600s (1 hour). Unresolved proposals treated as deferred.
 
     This is internal ORM infrastructure, not a user-facing Model.

@@ -1514,7 +1514,7 @@ Fire when application reports how agent responded to surfaced memories. Applies 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `instances` | `list` | Model instances that were in the agent's context. |
-| `outcome_map` | `dict` | Maps instance Redis keys to outcomes: `"acted"`, `"dismissed"`, `"deferred"`, `"contradicted"`. Instances not in the map default to `"deferred"`. |
+| `outcome_map` | `dict` | Maps instance Redis keys to outcomes: `"acted"`, `"used"`, `"dismissed"`, `"deferred"`, `"contradicted"`. Instances not in the map default to `"deferred"`. |
 | `pipeline` | `redis.client.Pipeline` | Optional pipeline for batching. |
 
 **Raises:** `ValueError` if any outcome string is not valid.
