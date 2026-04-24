@@ -1,5 +1,5 @@
 ---
-status: Planning
+status: docs_complete
 type: chore
 appetite: Small
 owner: Tom
@@ -260,13 +260,14 @@ Single-file edits, no multi-component data flow to trace:
 
 ## Documentation
 
-- [ ] Upgrade the "Effects Matrix" prose in `docs/features/observation-protocol.md` to the five-row table (item 1, C6).
-- [ ] Add a one-paragraph "See Also" pointer in `src/popoto/fields/observation.py` module docstring referencing `docs/features/observation-protocol.md` (item 1, C6 — no table duplication).
-- [ ] Update `on_context_used()` docstring in `src/popoto/fields/observation.py` with the strict-validation note, xref pointing to `docs/features/observation-protocol.md` (item 4, C5).
-- [ ] Add "Migration" sub-section to `CHANGELOG.md` v1.5.0 entry (item 5).
-- [ ] Add one-line "Migrating custom outcomes" bullet to `docs/features/observation-protocol.md` (item 5).
-- [ ] Add `RetrievalQuality.from_records()` docstring inline with the classmethod (item 2). No separate doc page — the feature doc `docs/features/metacognitive-layer.md` already covers `RetrievalQuality`; add a sub-section "Building RetrievalQuality from a custom pipeline" pointing to the new classmethod with a five-line example.
-- [ ] Add a one-paragraph "Version introspection" note to `docs/api-reference.md` (or `docs/index.md` if no API reference entry for `popoto` module itself) mentioning `popoto.__version__` (item 3).
+- [x] Upgrade the "Effects Matrix" prose in `docs/features/observation-protocol.md` to the five-row table (item 1, C6).
+- [x] Add a one-paragraph "See Also" pointer in `src/popoto/fields/observation.py` module docstring referencing `docs/features/observation-protocol.md` (item 1, C6 — no table duplication).
+- [x] Update `on_context_used()` docstring in `src/popoto/fields/observation.py` with the strict-validation note, xref pointing to `docs/features/observation-protocol.md` (item 4, C5).
+- [x] Add "Migration" sub-section to `CHANGELOG.md` v1.5.0 entry (item 5).
+- [x] Add one-line "Migrating custom outcomes" bullet to `docs/features/observation-protocol.md` (item 5).
+- [x] Add `RetrievalQuality.from_records()` docstring inline with the classmethod (item 2). No separate doc page — the feature doc `docs/features/metacognitive-layer.md` already covers `RetrievalQuality`; add a sub-section "Building RetrievalQuality from a custom pipeline" pointing to the new classmethod with a five-line example.
+- [x] Add a one-paragraph "Version introspection" note to `docs/api-reference.md` (or `docs/index.md` if no API reference entry for `popoto` module itself) mentioning `popoto.__version__` (item 3).
+- [x] Cascade: Add `RetrievalQuality.from_records()` signature entry to `docs/api-reference.md` `RetrievalQuality` section (cascade update from /do-docs — not in original plan but needed for API reference consistency).
 
 ## Update System
 
