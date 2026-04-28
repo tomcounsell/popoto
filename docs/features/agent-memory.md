@@ -524,7 +524,7 @@ When confidence drops below 0.1 due to a `contradicted` outcome, homeostatic pre
 |-----------|------|---------|-------------|
 | `initial_confidence` | `float` | `0.5` | Starting confidence for new members (0-1). |
 
-See [ConfidenceField feature docs](confidence-field.md) for the full reference including convergence behavior and Redis key patterns. See [API Reference](../api-reference.md#confidencefield) for the complete method signatures.
+See [ConfidenceField feature docs](confidence-field.md) for the full reference including convergence behavior and Redis key patterns. See [API Reference: ConfidenceField](../reference/popoto/fields/confidence_field.md) for the complete method signatures.
 
 When combined with `DecayingSortedField` or `CompositeScoreQuery`, confidence acts as a multiplier on retrieval weight — low-confidence records are naturally deprioritized.
 
@@ -1424,7 +1424,7 @@ Defaults.DECAY_RATE = 0.7
 relevance = DecayingSortedField(decay_rate=0.3)  # uses 0.3, not 0.7
 ```
 
-See [Defaults API reference](../api-reference.md#defaults) and [Tuning Magic Numbers](../guides/tuning-magic-numbers.md) for the full constant table and benchmark-validated guidance.
+See [Defaults API reference](../reference/popoto/fields/constants.md) and [Tuning Magic Numbers](../guides/tuning-magic-numbers.md) for the full constant table and benchmark-validated guidance.
 
 ## Further reading
 

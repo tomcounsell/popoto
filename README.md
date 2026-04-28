@@ -1,9 +1,9 @@
 ### Status
 [![pypi package](https://badge.fury.io/py/popoto.svg)](https://pypi.org/project/popoto)
 [![total downloads](https://pepy.tech/badge/popoto)](https://pepy.tech/project/popoto)
-[![documentation status](https://readthedocs.org/projects/popoto/badge/?version=latest)](https://popoto.readthedocs.io/en/latest/?badge=latest)
+[![deploy docs](https://github.com/tomcounsell/popoto/actions/workflows/deploy-docs.yml/badge.svg)](https://github.com/tomcounsell/popoto/actions/workflows/deploy-docs.yml)
 
-### Documentation: [**popoto.readthedocs.io**](https://popoto.readthedocs.io/en/latest/)
+### Documentation: [**tomcounsell.github.io/popoto**](https://tomcounsell.github.io/popoto/)
 
 
 # Popoto - A Redis/Valkey ORM (Object-Relational Mapper)
@@ -117,7 +117,7 @@ recent_orders = Order.query.filter(
 
 # Documentation
 
-Documentation is available at [**popoto.readthedocs.io**](https://popoto.readthedocs.io/en/latest/)
+Documentation is available at [**tomcounsell.github.io/popoto**](https://tomcounsell.github.io/popoto/)
 
 Please create new feature and documentation related issues [github.com/tomcounsell/popoto/issues](https://github.com/tomcounsell/popoto/issues) or make a pull request with your improvements.
 

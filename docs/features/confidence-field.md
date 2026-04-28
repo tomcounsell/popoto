@@ -197,10 +197,10 @@ report = ConfidenceField.migrate_to_partitioned(Memory, "certainty")
 
 ## Working Example: Popoto Kitchen
 
-The [Popoto Kitchen example app](../../examples/README.md) includes a `ReviewScore`
-model that demonstrates `ConfidenceField` with `partition_by="restaurant"`. Run the
-operations demo to see Bayesian updates, companion hash key inspection, and
-partitioned confidence in action:
+The [Popoto Kitchen example app](https://github.com/tomcounsell/popoto/tree/main/examples)
+includes a `ReviewScore` model that demonstrates `ConfidenceField` with
+`partition_by="restaurant"`. Run the operations demo to see Bayesian updates,
+companion hash key inspection, and partitioned confidence in action:
 
 ```bash
 cd examples
@@ -208,7 +208,7 @@ uv run popoto-kitchen --seed-only --clear
 uv run popoto-kitchen --ops
 ```
 
-See [`examples/popoto_kitchen/operations.py`](../../examples/popoto_kitchen/operations.py)
+See [`examples/popoto_kitchen/operations.py`](https://github.com/tomcounsell/popoto/blob/main/examples/popoto_kitchen/operations.py)
 for the full source, and the
 [kitchen demo docs](kitchen-edge-case-demo.md#v144-feature-demos-pr-346)
 for a walkthrough.

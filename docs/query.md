@@ -131,10 +131,10 @@ An empty input list returns an empty list immediately, without touching Redis.
     The internal method takes a set of bytes keys and silently drops missing entries.
 
 !!! example "Live demo"
-    The [Popoto Kitchen example app](../examples/README.md) demonstrates `get_many()` in its
-    operations script. Run `python -m popoto_kitchen --ops` to see bulk Order loading with both
-    default and `skip_none=True` modes. Source:
-    [`examples/popoto_kitchen/operations.py`](../examples/popoto_kitchen/operations.py).
+    The [Popoto Kitchen example app](https://github.com/tomcounsell/popoto/tree/main/examples)
+    demonstrates `get_many()` in its operations script. Run `python -m popoto_kitchen --ops`
+    to see bulk Order loading with both default and `skip_none=True` modes. Source:
+    [`examples/popoto_kitchen/operations.py`](https://github.com/tomcounsell/popoto/blob/main/examples/popoto_kitchen/operations.py).
 
 ### Async get_many()
 
@@ -270,9 +270,9 @@ The `QueryBuilder` returned by `filter()` supports these chainable methods:
 | `values(*fields)` | Return dicts with specified fields instead of model instances |
 | `computed_sort(fn, reverse)` | Sort by a Python key function (applied after fetch, before limit) |
 | `no_track()` | Suppress `on_read()` tracking for `AccessTrackerMixin` models |
-| `top_by_decay(field_name, n)` | Return top-N by time-decayed score ([API ref](api-reference.md#querytop_by_decay)) |
-| `composite_score(indexes, limit, temperature)` | Return top-K by weighted composite of multiple sorted indexes ([API ref](api-reference.md#querycomposite_score)) |
-| `semantic_search(query_text, indexes, limit)` | Return top-K by semantic similarity, optionally combined with sorted indexes ([API ref](api-reference.md#querysemantic_search)) |
+| `top_by_decay(field_name, n)` | Return top-N by time-decayed score ([API ref](reference/popoto/models/query.md)) |
+| `composite_score(indexes, limit, temperature)` | Return top-K by weighted composite of multiple sorted indexes ([API ref](reference/popoto/models/query.md)) |
+| `semantic_search(query_text, indexes, limit)` | Return top-K by semantic similarity, optionally combined with sorted indexes ([API ref](reference/popoto/models/query.md)) |
 | `keyword_search(query_text, field, limit)` | Return instances ranked by BM25 keyword relevance. See [Hybrid Retrieval](features/hybrid-retrieval.md). |
 | `fuse(k, limit, post_filter, **ranked_lists)` | Reciprocal Rank Fusion across heterogeneous ranked lists. See [Hybrid Retrieval](features/hybrid-retrieval.md). |
 | `all()` | Execute query and return all results as a list |
@@ -872,7 +872,7 @@ keys = Restaurant.query.keys()
 
 !!! warning
     The `keys()` method returns bytes objects. The `clean=True` parameter is deprecated.
-    Use [`Model.clean_indexes()`](api-reference.md#modelclean_indexes) for production-safe
+    Use [`Model.clean_indexes()`](recipes.md#index-maintenance) for production-safe
     orphan removal that covers all five index types.
 
 ## Values

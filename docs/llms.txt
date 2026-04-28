@@ -1,0 +1,54 @@
+# Popoto
+
+> Python Redis/Valkey ORM with Django-like syntax. Provides agent-memory
+> primitives (decay, confidence, co-occurrence, prediction ledger) plus
+> standard model/query/pubsub features. Works with both Redis and Valkey
+> servers.
+
+## Documentation
+
+- [Home](https://tomcounsell.github.io/popoto/): Overview and quickstart
+- [Configuration](https://tomcounsell.github.io/popoto/configuration/): REDIS_URL, defaults, runtime knobs
+- [Models and Fields](https://tomcounsell.github.io/popoto/fields/): Defining models, available field types
+- [Model Meta Options](https://tomcounsell.github.io/popoto/meta/): `class Meta` configuration
+- [TTL (Time-to-Live)](https://tomcounsell.github.io/popoto/ttl/): Key expiration
+- [Indexed Fields](https://tomcounsell.github.io/popoto/indexed_fields/): Sorted, unique, geo indexes
+- [Making Queries](https://tomcounsell.github.io/popoto/query/): Filtering, get, get_many
+- [Relationship Field](https://tomcounsell.github.io/popoto/relationship/): Linking models
+- [Multi-Tenancy](https://tomcounsell.github.io/popoto/multi-tenancy/): Tenant isolation patterns
+- [Async Operations](https://tomcounsell.github.io/popoto/async/): async/await support
+- [PubSub](https://tomcounsell.github.io/popoto/pubsub/): Publisher/Subscriber
+
+## Agent Memory
+
+- [Overview](https://tomcounsell.github.io/popoto/features/agent-memory/): Memory primitives at a glance
+- [DecayingSortedField](https://tomcounsell.github.io/popoto/features/decaying-sorted-field/): Time-decayed scoring
+- [CyclicDecayField](https://tomcounsell.github.io/popoto/features/cyclic-decay-field/): Periodic re-weighting
+- [ConfidenceField](https://tomcounsell.github.io/popoto/features/confidence-field/): Bayesian confidence accumulator
+- [CoOccurrenceField](https://tomcounsell.github.io/popoto/features/co-occurrence-field/): Pairwise co-occurrence counts
+- [ExistenceFilter](https://tomcounsell.github.io/popoto/features/existence-filter/): Probabilistic membership
+- [ObservationProtocol](https://tomcounsell.github.io/popoto/features/observation-protocol/): Standardized observation ingestion
+- [PredictionLedger](https://tomcounsell.github.io/popoto/features/prediction-ledger/): Prediction tracking and feedback
+- [Composite Score Query](https://tomcounsell.github.io/popoto/features/composite-score-query/): Multi-signal recall
+- [PolicyCache](https://tomcounsell.github.io/popoto/features/policy-cache/): Cached policy decisions
+- [ContextAssembler](https://tomcounsell.github.io/popoto/features/context-assembler/): Token-budgeted context packing
+- [Hybrid Retrieval (BM25 + RRF)](https://tomcounsell.github.io/popoto/features/hybrid-retrieval/): Lexical + dense fusion
+- [Metacognitive Layer](https://tomcounsell.github.io/popoto/features/metacognitive-layer/): Self-monitoring primitives
+
+## Guides
+
+- [Agent Memory Quickstart](https://tomcounsell.github.io/popoto/guides/agent-memory-quickstart/): First memory model in 10 minutes
+- [Tuning Magic Numbers](https://tomcounsell.github.io/popoto/guides/tuning-magic-numbers/): When and how to override defaults
+- [Policy Cache Recipe](https://tomcounsell.github.io/popoto/guides/policy-cache-recipe/): End-to-end PolicyCache walkthrough
+- [Subconscious Memory Recipe](https://tomcounsell.github.io/popoto/guides/subconscious-memory-recipe/): Background memory consolidation
+
+## API Reference
+
+- [Full API reference](https://tomcounsell.github.io/popoto/reference/): Auto-generated from docstrings
+- [llms-full.txt](https://tomcounsell.github.io/popoto/llms-full.txt): Single-file ingest of hand-written docs
+
+## External
+
+- [Source on GitHub](https://github.com/tomcounsell/popoto)
+- [Issue tracker](https://github.com/tomcounsell/popoto/issues)
+- [PyPI package](https://pypi.org/project/popoto/)

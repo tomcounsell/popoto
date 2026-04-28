@@ -53,10 +53,18 @@ dev = [
     "black>=26.3.1",
     "ruff>=0.1.0",
 ]
+docs = [
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.25",
+    "griffe>=0.45",
+    "mkdocs-gen-files>=0.5",
+    "mkdocs-literate-nav>=0.6",
+]
 
 [project.urls]
 Homepage = "https://github.com/tomcounsell/popoto"
-Documentation = "https://popoto.readthedocs.io"
+Documentation = "https://tomcounsell.github.io/popoto/"
 Bug_Tracker = "https://github.com/tomcounsell/popoto/issues"
 
 [project.entry-points.pytest11]

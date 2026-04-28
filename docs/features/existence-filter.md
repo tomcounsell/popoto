@@ -192,6 +192,6 @@ Compare this to calling `might_exist()` in a loop -- each call would either requ
 
 ## See Also
 
-- [API Reference](../api-reference.md#existencefilter) — method signatures and parameters
+- [API Reference: ExistenceFilter](../reference/popoto/fields/existence_filter.md) — method signatures and parameters
 - [Agent Memory overview](agent-memory.md) — full primitives reference
 - [ContextAssembler](context-assembler.md) — uses ExistenceFilter for pull-path pre-checks

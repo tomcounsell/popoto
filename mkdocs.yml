@@ -1,7 +1,23 @@
 site_name: Popoto Documentation
+site_url: https://tomcounsell.github.io/popoto/
 repo_url: https://github.com/tomcounsell/popoto/
 edit_uri: edit/main/docs
 site_author: Tom Counsell
+
+# Plan documents and the in-tree docs requirements file are not for the public
+# site. Excluding them keeps the build deterministic and the published surface
+# focused on user-facing content.
+exclude_docs: |
+    plans/
+    requirements.txt
+    scripts/
+    hooks.py
+
+# docs/hooks.py filters griffe warnings about missing type annotations so
+# strict-mode builds don't fail on docstring polish issues. See hooks.py for
+# rationale and to remove the filter if/when type-hint coverage improves.
+hooks:
+    - docs/hooks.py
 
 nav:
     - Home: 'index.md'
@@ -42,20 +58,63 @@ nav:
         - Epistemic Flow: 'guides/epistemic-flow-cognitive-agent-architectures.md'
         - Memory Systems Research: 'guides/research-prompt-memory-systems.md'
         - Launch Announcements: 'guides/launch-announcements.md'
-    - API Reference: 'api-reference.md'
+    - Recipes: 'recipes.md'
+    - Testing: 'testing.md'
+    - API Reference: reference/SUMMARY.md
     - Contributing:
         - Style Guide: 'style-guide.md'
 
 markdown_extensions:
     - admonition
+    - pymdownx.highlight:
+          anchor_linenums: true
+    - pymdownx.superfences
+    - pymdownx.inlinehilite
+    - pymdownx.snippets
+    - toc:
+          permalink: true
 
 theme:
-    name: readthedocs
-    highlightjs: true
-    hljs_languages:
-        - markdown
-        - python
-        - bash
-        - html
-    collapse_navigation: False
-    sticky_navigation: True
+    name: material
+    features:
+        - navigation.tabs
+        - navigation.sections
+        - navigation.top
+        - content.code.copy
+        - content.code.annotate
+        - search.suggest
+        - search.highlight
+    palette:
+        - media: "(prefers-color-scheme: light)"
+          scheme: default
+          primary: indigo
+          accent: indigo
+          toggle:
+              icon: material/weather-sunny
+              name: Switch to dark mode
+        - media: "(prefers-color-scheme: dark)"
+          scheme: slate
+          primary: indigo
+          accent: indigo
+          toggle:
+              icon: material/weather-night
+              name: Switch to light mode
+
+plugins:
+    - search
+    - gen-files:
+          scripts:
+              - docs/scripts/gen_api_pages.py
+              - docs/scripts/gen_llms_full.py
+    - literate-nav:
+          nav_file: SUMMARY.md
+    - mkdocstrings:
+          handlers:
+              python:
+                  paths: [src]
+                  options:
+                      docstring_style: google
+                      show_source: true
+                      show_root_heading: true
+                      members_order: source
+                      filters: ["!^_"]
