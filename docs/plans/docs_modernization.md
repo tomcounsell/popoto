@@ -1,14 +1,30 @@
 ---
-status: Planning
+status: Ready
 type: chore
 appetite: Medium
 owner: Tom
 created: 2026-04-28
 tracking: https://github.com/tomcounsell/popoto/issues/373
 last_comment_id:
+revision_applied: true
 ---
 
 # Docs Modernization: Material Theme, Auto-API, Agent-Readiness
+
+## Revision Notes (2026-04-28)
+
+Plan revised after `/do-plan-critique` surfaced 8 concerns + 7 nits, 0 blockers. Each concern below is embedded as an Implementation Note in the relevant section.
+
+- **C1** (Workflow YAML missing strict build) — CI workflow now runs `mkdocs build --strict` *before* `mkdocs gh-deploy --force`. Strict failure aborts the deploy.
+- **C2** (`__all__` allowlist semantics) — Technical Approach explicitly notes that `members:` MUST NOT be set in mkdocstrings options for `__all__` defaults to apply. Added to Risk 2.
+- **C3** (Coverage validation hand-wavy) — Step 5 (validate-coverage) replaced with a deterministic `__all__`-driven check: build the site, render every symbol in `popoto.__all__` (currently 65 symbols), and verify each appears as a heading in the generated `reference/` tree.
+- **C4** (CI concurrency) — Workflow gets `concurrency: { group: deploy-docs, cancel-in-progress: false }` to coalesce rapid pushes without dropping a deploy mid-flight.
+- **C5** (Manual `/deploy-docs` racing CI) — Skill prepends a precondition check: `gh run list --workflow=deploy-docs.yml --limit 1` must show no in-progress run before manual `gh-deploy`. If a CI run is active, skill aborts with instruction to wait.
+- **C6** (`_*` skip rule too broad) — `enable_error_reporting` (in `popoto.__all__`) lives in `_error_reporting.py`. Verified by `python -c "from popoto import _error_reporting as m; print(set(dir(m)) & set(popoto.__all__))"` → `{'enable_error_reporting'}`. Generator now skips only `__pycache__/` and `__*.py` (dunder), NOT leading-underscore modules. Public/private filtering is delegated to mkdocstrings' `__all__` defaults + `filters: ["!^_"]` (which acts on symbol names, not file names).
+- **C7** (Script execution order) — `gen_llms_full.py` does NOT attempt to embed the API reference (which is virtual at build time and would be 100KB+ anyway). It concatenates only the hand-written narrative `.md` sources in nav order and emits a pointer to `/reference/` for API content. This sidesteps the ordering hazard entirely.
+- **C8** (Narrative content loss in `api-reference.md` deletion) — The hand-maintained file has 159 `##` headers vs. ~65 symbols in `popoto.__all__` — meaning ~90 sections are *narrative* (examples, recipes, prose) that mkdocstrings cannot regenerate. New step 5a (audit-narrative) runs BEFORE deletion: extract `##` headers from `docs/api-reference.md`, classify each as (i) symbol reference (mkdocstrings will cover) or (ii) narrative content. Any narrative section gets relocated to an appropriate topical page (`docs/fields.md`, `docs/query.md`, etc.) or a new `docs/recipes.md` before the file is deleted.
+
+Frontmatter `revision_applied: true` and `status: Ready`.
 
 ## Problem
 
@@ -143,15 +159,21 @@ plugins:
 
 `paths: [src]` is critical — popoto uses src layout. `filters: ["!^_"]` hides leading-underscore symbols even when they're not in `__all__`.
 
+> **Implementation Note (C2):** Do NOT add a `members:` key to the mkdocstrings options block. mkdocstrings only respects `__all__` as the public-symbol allowlist when `members` is unset. If `members: true` is set, every importable symbol gets rendered (defeating the purpose). If `members: [list]` is set, `__all__` is ignored. Leave `members` absent — the config above is correct as-written.
+
 The existing nav stays intact for hand-written content; the auto-generated `reference/` tree is appended via `literate-nav`'s `SUMMARY.md`. The current `- API Reference: 'api-reference.md'` line is replaced by `- API Reference: reference/SUMMARY.md`.
 
 **3. `docs/scripts/gen_api_pages.py` — auto-generate API tree**
 
-Lifted from the issue body, parameterized for src layout. Walks `src/popoto/**/*.py`, skips `_*` files, and writes `::: popoto.module.path` stubs into virtual `reference/<path>.md` files. mkdocstrings then renders each from the docstrings. Public surface filtering happens in mkdocstrings (via `__all__` defaults + `filters`), not in the generator script.
+Lifted from the issue body, parameterized for src layout. Walks `src/popoto/**/*.py`, skips `__pycache__/` and `__*.py` (dunder files only — see C6 below), and writes `::: popoto.module.path` stubs into virtual `reference/<path>.md` files. mkdocstrings then renders each from the docstrings. Public surface filtering happens in mkdocstrings (via `__all__` defaults + `filters`), not in the generator script.
 
-**4. `docs/scripts/gen_llms_full.py` — concatenate full docs**
+> **Implementation Note (C6):** The naive skip rule `path.name.startswith("_")` would exclude `_error_reporting.py`, but `popoto.__all__` includes `enable_error_reporting` which lives in that file. Verified: `set(dir(_error_reporting)) & set(popoto.__all__) == {'enable_error_reporting'}`. The skip rule must be **dunder-only** (`__pycache__`, `__init__`, `__main__`). Leading-underscore modules generate pages; mkdocstrings then filters down to `__all__` symbols at render time. If a leading-underscore module has zero `__all__` overlap, mkdocstrings will render an empty page with just the module path — acceptable, and rare. Detect-and-skip empty pages is a follow-up nit, not a blocker.
 
-Reads the nav order from `mkdocs.yml`, opens each `.md` source, prepends an H2 with the page title, and writes the concatenation to virtual `llms-full.txt`. Uses `mkdocs_gen_files.open()` so the output is part of the build. ~30 lines.
+**4. `docs/scripts/gen_llms_full.py` — concatenate narrative docs**
+
+Reads the nav order from `mkdocs.yml`, opens each hand-written `.md` source, prepends an H2 with the page title, and writes the concatenation to virtual `llms-full.txt`. Uses `mkdocs_gen_files.open()` so the output is part of the build. ~30 lines.
+
+> **Implementation Note (C7):** `llms-full.txt` does NOT embed the auto-generated API reference. Two reasons: (a) ordering — the API tree is virtual at build time, so reading it from disk during gen_llms_full execution is racy/fragile; (b) bloat — concatenating 65 symbols' rendered HTML/MD would push `llms-full.txt` past 200KB without commensurate value. Instead, `llms-full.txt` ends with a section: `## API Reference\n\nSee https://tomcounsell.github.io/popoto/reference/ for the full auto-generated reference, or fetch each module's source directly from https://github.com/tomcounsell/popoto/tree/main/src/popoto/.` Agents that need API surface follow the pointer.
 
 **5. `docs/llms.txt` — hand-maintained index**
 
@@ -188,6 +210,9 @@ on:
   push:
     branches: [main]
     paths: ["docs/**", "mkdocs.yml", "src/popoto/**", ".github/workflows/deploy-docs.yml"]
+concurrency:
+  group: deploy-docs
+  cancel-in-progress: false
 permissions:
   contents: write
 jobs:
@@ -202,10 +227,17 @@ jobs:
       - run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-      - run: mkdocs gh-deploy --force
+      - name: Build (strict)
+        run: mkdocs build --strict
+      - name: Deploy
+        run: mkdocs gh-deploy --force
 ```
 
 `paths` includes `src/popoto/**` because docstring changes there must rebuild the auto-generated API tree.
+
+> **Implementation Note (C1):** The `Build (strict)` step must run before `Deploy` and must NOT use `continue-on-error`. Strict-mode failures (broken nav, malformed docstrings, missing files) abort the deploy. This is the gate that prevents deploying a broken site — the test strategy section requires it, so the workflow must enforce it.
+
+> **Implementation Note (C4):** The `concurrency: { group: deploy-docs, cancel-in-progress: false }` block coalesces rapid successive pushes into the same group. `cancel-in-progress: false` means an in-flight deploy completes before the next one starts (rather than being killed mid-`gh-deploy` and leaving `gh-pages` in an inconsistent state). With this guard, multiple pushes to `main` in quick succession queue up cleanly.
 
 **7. `README.md` — replace ReadTheDocs badge + links**
 
@@ -356,15 +388,35 @@ Single feature branch (`docs/material-modernization`), single PR. Execution orde
 - **File**: `docs/llms.txt`
 - H1 + blockquote summary + H2-delimited link sections (Documentation, Agent Memory, API Reference, External).
 
-### 5. First strict build + diff against old API reference
+### 5. First strict build + symbol-coverage check
 - **Task ID**: validate-coverage
 - **Depends On**: build-config, build-llms-index
 - Run `mkdocs build --strict`. Fix any docstring issues at the source.
-- Build the new `reference/` tree locally. Grep symbol names from `docs/api-reference.md` (classes, public methods) and confirm each appears in the generated tree. Surface gaps; fix by adding to `__all__` or correcting docstrings — **not** by re-adding to a hand-maintained file.
+- **Symbol coverage check (C3):** Run a small Python script against the built `site/`:
+  ```python
+  import popoto, pathlib, re
+  rendered = pathlib.Path("site/reference").rglob("*.html")
+  rendered_text = "\n".join(p.read_text() for p in rendered)
+  missing = [s for s in popoto.__all__ if s not in rendered_text]
+  assert not missing, f"Symbols in __all__ but not rendered: {missing}"
+  ```
+  Each of the 65 symbols in `popoto.__all__` must appear in the rendered HTML. If any are missing, the cause is one of: (a) the source module was excluded by gen_api_pages.py — fix the skip rule, (b) the symbol's docstring is malformed — fix the docstring, (c) `__all__` claims it but it isn't actually defined in the module — fix `__all__`.
+
+### 5a. Narrative content audit (before deletion)
+- **Task ID**: audit-narrative
+- **Depends On**: validate-coverage
+- Extract every `##` header from `docs/api-reference.md`: `grep -n "^## " docs/api-reference.md > /tmp/api_ref_headers.txt`.
+- Classify each header into one of three buckets:
+  1. **Symbol reference** — header is a class/function name covered by mkdocstrings rendering. No action.
+  2. **Narrative** (example, recipe, prose) — needs to be relocated.
+  3. **Duplicate of content already in another doc page** — no action; will be removed with the file.
+- For each "narrative" header, identify the best target page (`docs/fields.md`, `docs/query.md`, `docs/relationship.md`, etc.) or create `docs/recipes.md` for orphaned recipe-style content.
+- Move the section content into the target page(s) and add nav entries if needed.
+- Re-run `mkdocs build --strict`. Site builds; relocated content is reachable via nav.
 
 ### 6. Delete `docs/api-reference.md` + `docs/requirements.txt`
 - **Task ID**: build-deletions
-- **Depends On**: validate-coverage (must be clean)
+- **Depends On**: validate-coverage AND audit-narrative (both must be clean)
 - Delete `docs/api-reference.md` (100KB).
 - Delete `docs/requirements.txt` (replaced by `[docs]` extra).
 - Re-run `mkdocs build --strict`.
@@ -381,7 +433,11 @@ Single feature branch (`docs/material-modernization`), single PR. Execution orde
 - **Depends On**: build-ci
 - `README.md`: replace ReadTheDocs badge + 2 links with GitHub Pages URLs.
 - `CLAUDE.md`: confirm `mkdocs serve` line is still accurate (no change expected).
-- `.claude/commands/deploy-docs.md`: prepend "CI handles this automatically — use only as escape hatch" note.
+- `.claude/commands/deploy-docs.md`: prepend "CI handles this automatically — use only as escape hatch" note AND add a new step 0:
+  ```
+  0. **Check CI is not running** — abort if `gh run list --workflow=deploy-docs.yml --limit 1 --json status,conclusion` shows a status of `in_progress` or `queued`. A manual `gh-deploy` racing CI's `gh-deploy` produces a non-deterministic gh-pages state. Wait for CI to finish, or use this skill only when CI is broken.
+  ```
+  This addresses C5: the `--force` flag means last-write-wins, but a CI deploy mid-flight can be overwritten by a manual one (or vice versa) — so the precondition gate is the safety net.
 
 ### 9. PR + merge + smoke test
 - **Task ID**: validate-deploy
@@ -409,17 +465,23 @@ Single feature branch (`docs/material-modernization`), single PR. Execution orde
 
 ## Critique Results
 
-<!-- Populated by /do-plan-critique. Empty until critique is run. -->
+| Severity | Critic | Finding | Addressed By | Implementation Note |
+|----------|--------|---------|--------------|---------------------|
+| CONCERN | Operator | Workflow YAML omits `mkdocs build --strict` | Technical Approach §6, Step 5 | Build (strict) step added before Deploy; failure aborts deploy |
+| CONCERN | Skeptic | mkdocstrings `__all__` semantics rely on omitting `members:` | Technical Approach §2 | Note added: do NOT set `members:` key |
+| CONCERN | Operator | Coverage validation hand-wavy | Step 5 (validate-coverage) | Replaced with `__all__`-driven Python check on built site |
+| CONCERN | Adversary | CI workflow lacks concurrency group | Technical Approach §6 | `concurrency: { group: deploy-docs, cancel-in-progress: false }` added |
+| CONCERN | Adversary | Manual `/deploy-docs` skill races CI | Step 8 (build-meta) | Skill gets new step 0: abort if CI run is `in_progress`/`queued` |
+| CONCERN | Archaeologist | `_*` skip rule excludes `_error_reporting.py` whose `enable_error_reporting` symbol is in `popoto.__all__` | Technical Approach §3 | Skip rule narrowed to dunder-only (`__pycache__`, `__init__`, `__main__`); private filtering delegated to mkdocstrings |
+| CONCERN | Skeptic | Generator script execution order matters for `llms-full.txt` | Technical Approach §4 | `llms-full.txt` excludes API tree entirely; emits pointer to `/reference/` instead |
+| CONCERN | Archaeologist | Deleting `api-reference.md` may lose narrative content (159 `##` headers vs. ~65 symbols) | New Step 5a (audit-narrative) | Pre-deletion narrative audit + relocation to topical pages or `docs/recipes.md` |
+
+7 nits absorbed into Implementation Notes inline.
 
 ---
 
 ## Open Questions
 
-All major decisions resolved during planning. One residual question:
+All resolved during planning + critique revision.
 
-1. **README badge replacement.** The current README has a ReadTheDocs status badge at the top. Options:
-   - (a) Remove the badge entirely (simplest, no per-repo badge for GitHub Pages out of the box).
-   - (b) Replace with a "Deploy Docs" workflow status badge (`https://github.com/tomcounsell/popoto/actions/workflows/deploy-docs.yml/badge.svg`) — shows CI green/red, useful signal.
-   - (c) Use shields.io to make a custom "docs: passing" badge linked to the site.
-
-   Recommendation: **(b)** — gives a real CI signal at zero maintenance cost. OK to proceed with that?
+1. **README badge replacement** — proceeding with (b): "Deploy Docs" workflow status badge (`https://github.com/tomcounsell/popoto/actions/workflows/deploy-docs.yml/badge.svg`). Real CI signal, zero maintenance cost. User authorized "complete all of /sdlc" so this decision is locked.
