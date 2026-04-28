@@ -10,8 +10,9 @@ reasons:
 
 1. The API tree is virtual at build time, so reading it from disk during
    ``gen_llms_full`` execution is racy/fragile.
-2. Concatenating 65+ rendered modules would push ``llms-full.txt`` past
-   200KB without commensurate value.
+2. Concatenating 65+ rendered modules would meaningfully bloat
+   ``llms-full.txt`` (the narrative-only file is already ~580KB) without
+   commensurate value — agents that need API surface follow the pointer.
 
 Instead, the file ends with a pointer to ``/reference/`` for full API
 content and to the GitHub source tree for ground truth.
