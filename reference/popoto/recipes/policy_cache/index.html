@@ -1,0 +1,4156 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+        <meta name="author" content="Tom Counsell">
+      
+      
+        <link rel="canonical" href="https://tomcounsell.github.io/popoto/reference/popoto/recipes/policy_cache/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>popoto.recipes.policy_cache - Popoto Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#popotorecipespolicy_cache" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../../.." title="Popoto Documentation" class="md-header__button md-logo" aria-label="Popoto Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Popoto Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              popoto.recipes.policy_cache
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/tomcounsell/popoto/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../configuration/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Configuration
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../fields/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Models and Fields
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../meta/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Model Meta Options
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../ttl/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  TTL (Time-to-Live)
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../indexed_fields/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Indexed Fields
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../query/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Making Queries
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../relationship/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Relationship Field
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../multi-tenancy/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Multi-Tenancy
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../async/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Async Operations
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../pubsub/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  PubSub
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../../features/agent-memory/" class="md-tabs__link">
+          
+  
+  
+  Features
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../../guides/agent-memory-quickstart/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../recipes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Recipes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../testing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Testing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../SUMMARY/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  API Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../../style-guide/" class="md-tabs__link">
+          
+  
+  
+  Contributing
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../../.." title="Popoto Documentation" class="md-nav__button md-logo" aria-label="Popoto Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Popoto Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/tomcounsell/popoto/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../fields/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models and Fields
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../meta/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model Meta Options
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../ttl/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TTL (Time-to-Live)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../indexed_fields/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Indexed Fields
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../query/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Making Queries
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../relationship/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relationship Field
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../multi-tenancy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multi-Tenancy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../async/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Async Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../pubsub/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PubSub
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12" >
+        
+          
+          <label class="md-nav__link" for="__nav_12" id="__nav_12_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Features
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_12_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Features
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_1" id="__nav_12_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent Memory
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Agent Memory
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/agent-memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/decaying-sorted-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DecayingSortedField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/cyclic-decay-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CyclicDecayField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/confidence-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ConfidenceField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/co-occurrence-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CoOccurrenceField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/existence-filter/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ExistenceFilter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/observation-protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ObservationProtocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/prediction-ledger/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PredictionLedger
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/composite-score-query/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Composite Score Query
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/policy-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PolicyCache
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/context-assembler/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ContextAssembler
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/hybrid-retrieval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hybrid Retrieval (BM25 + RRF)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/metacognitive-layer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metacognitive Layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/meta-class-implementation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Meta Class Implementation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/kitchen-edge-case-demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Kitchen Edge Case Demo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_13" >
+        
+          
+          <label class="md-nav__link" for="__nav_13" id="__nav_13_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_13_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_13">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/agent-memory-quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent Memory Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/tuning-magic-numbers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tuning Magic Numbers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/policy-cache-recipe/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Policy Cache Recipe
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/subconscious-memory-recipe/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subconscious Memory Recipe
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/popoto-memory-roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/programmable-memory-systems-neuroscience-design-spec/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Neuroscience Design Spec
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/epistemic-flow-cognitive-agent-architectures/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Epistemic Flow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/research-prompt-memory-systems/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory Systems Research
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/launch-announcements/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Launch Announcements
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../recipes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recipes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../SUMMARY/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_17" >
+        
+          
+          <label class="md-nav__link" for="__nav_17" id="__nav_17_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_17_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_17">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../style-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Style Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#popoto.recipes.policy_cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        policy_cache
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="policy_cache">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#popoto.recipes.policy_cache--create-a-policy-manually" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create a policy manually
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.recipes.policy_cache--or-let-crystallization-detect-patterns-automatically" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Or let crystallization detect patterns automatically
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.recipes.policy_cache.MIN_EVENTS_FOR_CRYSTALLIZATION" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MIN_EVENTS_FOR_CRYSTALLIZATION
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.recipes.policy_cache.WILSON_CI_THRESHOLD" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WILSON_CI_THRESHOLD
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.recipes.policy_cache.TD_ALPHA" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TD_ALPHA
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.recipes.policy_cache.TD_GAMMA" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TD_GAMMA
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.recipes.policy_cache.CHI_SQUARED_P_THRESHOLD" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CHI_SQUARED_P_THRESHOLD
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.recipes.policy_cache.INITIAL_CYCLE_AMPLITUDE" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        INITIAL_CYCLE_AMPLITUDE
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.recipes.policy_cache.CHI_SQUARED_CRITICAL_VALUES" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CHI_SQUARED_CRITICAL_VALUES
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.recipes.policy_cache.PolicyEntry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PolicyEntry
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.recipes.policy_cache.compute_fingerprint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        compute_fingerprint
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.recipes.policy_cache.wilson_ci_lower" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        wilson_ci_lower
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.recipes.policy_cache.chi_squared_uniform" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        chi_squared_uniform
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.recipes.policy_cache.update_q_value" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        update_q_value
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.recipes.policy_cache.initialize_q_value" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        initialize_q_value
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.recipes.policy_cache.crystallization_handler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        crystallization_handler
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.recipes.policy_cache.temporal_discovery_handler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        temporal_discovery_handler
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="popotorecipespolicy_cache"><code>popoto.recipes.policy_cache</code><a class="headerlink" href="#popotorecipespolicy_cache" title="Permanent link">&para;</a></h1>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h2 id="popoto.recipes.policy_cache" class="doc doc-heading">
+            <code>popoto.recipes.policy_cache</code>
+
+
+<a href="#popoto.recipes.policy_cache" class="headerlink" title="Permanent link">&para;</a></h2>
+
+    <div class="doc doc-contents first">
+
+        <p>PolicyCache — Learned action selection from crystallized patterns.</p>
+<p>A reference recipe composing all shipped Popoto memory primitives into an
+RL-style action selection cache. Agents accumulate state-action-outcome events;
+a StreamConsumer crystallization handler detects repeated successful patterns
+and creates PolicyEntry records. Agents query policies via CompositeScoreQuery
+for action selection. Outcomes update Q-values via temporal difference learning.</p>
+
+
+<details class="components" open>
+  <summary>Components</summary>
+  <ul>
+<li>PolicyEntry: Model composing DecayingSortedField, ConfidenceField,
+  CoOccurrenceField, ExistenceFilter, EventStreamMixin, AccessTrackerMixin,
+  and PredictionLedgerMixin.</li>
+<li>update_q_value(): Atomic Q-value TD update via Lua script.</li>
+<li>compute_fingerprint(): Stable state fingerprint from feature dicts.</li>
+<li>wilson_ci_lower(): Wilson score confidence interval lower bound.</li>
+<li>chi_squared_uniform(): Chi-squared test against uniform distribution.</li>
+<li>crystallization_handler(): StreamConsumer handler for pattern detection.</li>
+<li>temporal_discovery_handler(): StreamConsumer handler for cycle discovery.</li>
+</ul>
+</details>
+
+<details class="dependencies" open>
+  <summary>Dependencies</summary>
+  <p>All 12 shipped Popoto primitives (Steps 1-10 of the memory roadmap).
+No external dependencies beyond Popoto itself.</p>
+</details>
+
+<details class="see-also" open>
+  <summary>See Also</summary>
+  <p>docs/guides/policy-cache-recipe.md — full guide with architecture,
+tuning constants, and design decisions.</p>
+</details>
+
+<details class="example" open>
+  <summary>Example</summary>
+  <p>from popoto.recipes.policy_cache import (
+    PolicyEntry, compute_fingerprint, update_q_value,
+    crystallization_handler,
+)
+from popoto.streams import StreamConsumer</p>
+<h3 id="popoto.recipes.policy_cache--create-a-policy-manually">Create a policy manually<a class="headerlink" href="#popoto.recipes.policy_cache--create-a-policy-manually" title="Permanent link">&para;</a></h3>
+<p>policy = PolicyEntry(
+    agent_id="agent-1",
+    state_fingerprint=compute_fingerprint({"task": "deploy", "env": "staging"}),
+    state_features={"task": "deploy", "env": "staging"},
+    action_type="run_playbook",
+    action_spec={"playbook": "deploy.yml"},
+)
+policy.save()</p>
+<h3 id="popoto.recipes.policy_cache--or-let-crystallization-detect-patterns-automatically">Or let crystallization detect patterns automatically<a class="headerlink" href="#popoto.recipes.policy_cache--or-let-crystallization-detect-patterns-automatically" title="Permanent link">&para;</a></h3>
+<p>consumer = StreamConsumer(
+    stream_key="stream:policy_mutations",
+    group_name="crystallizer",
+    consumer_name="worker-1",
+    handler=crystallization_handler,
+)</p>
+</details>
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="popoto.recipes.policy_cache.MIN_EVENTS_FOR_CRYSTALLIZATION" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">MIN_EVENTS_FOR_CRYSTALLIZATION</span> <span class="o">=</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">MIN_EVENTS_FOR_CRYSTALLIZATION</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-module-attribute"><code>module-attribute</code></small>
+  </span>
+
+<a href="#popoto.recipes.policy_cache.MIN_EVENTS_FOR_CRYSTALLIZATION" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Minimum events with same (state_fingerprint, action_type) before
+considering crystallization. Can be set as low as 1 for eager mode
+in high-confidence environments.
+Optimal range: [1, 10]. Insensitive to retrieval quality in this range.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="popoto.recipes.policy_cache.WILSON_CI_THRESHOLD" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">WILSON_CI_THRESHOLD</span> <span class="o">=</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">WILSON_CI_THRESHOLD</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-module-attribute"><code>module-attribute</code></small>
+  </span>
+
+<a href="#popoto.recipes.policy_cache.WILSON_CI_THRESHOLD" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Wilson confidence interval lower bound that must be exceeded for
+crystallization to trigger. Higher values require stronger evidence.
+Optimal range: [0.3, 0.8]. Insensitive within this range.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="popoto.recipes.policy_cache.TD_ALPHA" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">TD_ALPHA</span> <span class="o">=</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">TD_ALPHA</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-module-attribute"><code>module-attribute</code></small>
+  </span>
+
+<a href="#popoto.recipes.policy_cache.TD_ALPHA" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Q-value learning rate for temporal difference updates. Controls how
+much new reward information overrides the existing Q-value estimate.
+Optimal range: [0.01, 0.5]. Insensitive to retrieval quality.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="popoto.recipes.policy_cache.TD_GAMMA" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">TD_GAMMA</span> <span class="o">=</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">TD_GAMMA</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-module-attribute"><code>module-attribute</code></small>
+  </span>
+
+<a href="#popoto.recipes.policy_cache.TD_GAMMA" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Q-value discount factor for temporal difference updates. Controls
+the importance of future expected rewards relative to immediate reward.
+Optimal range: [0.8, 0.99). Insensitive to retrieval quality.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="popoto.recipes.policy_cache.CHI_SQUARED_P_THRESHOLD" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">CHI_SQUARED_P_THRESHOLD</span> <span class="o">=</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">CHI_SQUARED_P_THRESHOLD</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-module-attribute"><code>module-attribute</code></small>
+  </span>
+
+<a href="#popoto.recipes.policy_cache.CHI_SQUARED_P_THRESHOLD" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>p-value threshold for temporal pattern discovery. Clusters must
+exceed this significance level to be recorded as cyclical patterns.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="popoto.recipes.policy_cache.INITIAL_CYCLE_AMPLITUDE" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">INITIAL_CYCLE_AMPLITUDE</span> <span class="o">=</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">INITIAL_CYCLE_AMPLITUDE</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-module-attribute"><code>module-attribute</code></small>
+  </span>
+
+<a href="#popoto.recipes.policy_cache.INITIAL_CYCLE_AMPLITUDE" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Initial amplitude for discovered temporal cycles. Cycles strengthen
+or weaken over time via CyclicDecayField entrainment.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="popoto.recipes.policy_cache.CHI_SQUARED_CRITICAL_VALUES" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">CHI_SQUARED_CRITICAL_VALUES</span> <span class="o">=</span> <span class="p">{</span><span class="mi">2</span><span class="p">:</span> <span class="mf">5.991</span><span class="p">,</span> <span class="mi">3</span><span class="p">:</span> <span class="mf">7.815</span><span class="p">,</span> <span class="mi">6</span><span class="p">:</span> <span class="mf">12.592</span><span class="p">,</span> <span class="mi">11</span><span class="p">:</span> <span class="mf">19.675</span><span class="p">,</span> <span class="mi">23</span><span class="p">:</span> <span class="mf">35.172</span><span class="p">}</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-module-attribute"><code>module-attribute</code></small>
+  </span>
+
+<a href="#popoto.recipes.policy_cache.CHI_SQUARED_CRITICAL_VALUES" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Chi-squared critical values at p=0.05 for common degrees of freedom.
+If the test statistic exceeds the critical value, the null hypothesis
+(uniform distribution) is rejected — the pattern is significant.</p>
+
+    </div>
+
+</div>
+
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="popoto.recipes.policy_cache.PolicyEntry" class="doc doc-heading">
+            <code>PolicyEntry</code>
+
+
+<a href="#popoto.recipes.policy_cache.PolicyEntry" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="EventStreamMixin (popoto.fields.event_stream.EventStreamMixin)" href="../../fields/event_stream/#popoto.fields.event_stream.EventStreamMixin">EventStreamMixin</a></code>, <code><a class="autorefs autorefs-internal" title="AccessTrackerMixin (popoto.fields.access_tracker.AccessTrackerMixin)" href="../../fields/access_tracker/#popoto.fields.access_tracker.AccessTrackerMixin">AccessTrackerMixin</a></code>, <code><a class="autorefs autorefs-internal" title="PredictionLedgerMixin (popoto.fields.prediction_ledger.PredictionLedgerMixin)" href="../../fields/prediction_ledger/#popoto.fields.prediction_ledger.PredictionLedgerMixin">PredictionLedgerMixin</a></code>, <code><a class="autorefs autorefs-internal" title="Model (popoto.models.base.Model)" href="../../models/base/#popoto.models.base.Model">Model</a></code></p>
+
+
+
+        <p>Reference model for learned action selection policies.</p>
+<p>Composes all shipped Popoto memory primitives into a single model that
+stores state -&gt; action -&gt; expected_value triples. Agents query policies
+by state_fingerprint and select actions based on expected_value (Q-value)
+weighted by confidence and co-occurrence.</p>
+
+
+<details class="fields" open>
+  <summary>Fields</summary>
+  <p>entry_id: Auto-generated unique key.
+agent_id: Partition key scoping policies per agent.
+state_fingerprint: SHA-256 hash of state features for fast lookup.
+state_features: Original state feature dict (JSON-serializable).
+action_type: Category of the action (e.g., "run_playbook").
+action_spec: Full action specification dict (JSON-serializable).
+expected_value: Q-value with temporal decay, partitioned by agent.
+confidence: Bayesian confidence growing with successful outcomes.
+related_policies: Weighted co-occurrence graph between policies.
+bloom: Bloom filter for fast state_fingerprint pre-checks.</p>
+</details>
+
+<details class="mixins" open>
+  <summary>Mixins</summary>
+  <p>EventStreamMixin: Logs all mutations to Redis Streams.
+AccessTrackerMixin: Tracks read patterns for proactive surfacing.
+PredictionLedgerMixin: Records and resolves outcome predictions.</p>
+</details>
+
+<details class="note" open>
+  <summary>Note</summary>
+  <p>WriteFilterMixin is intentionally excluded — the crystallization
+handler IS the write gate (Wilson CI &gt; threshold). Having gating
+logic in two places makes debugging harder.</p>
+</details>
+
+
+
+
+
+
+
+              <details class="mkdocstrings-source">
+                <summary>Source code in <code>src/popoto/recipes/policy_cache.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-165">165</a></span>
+<span class="normal"><a href="#__codelineno-0-166">166</a></span>
+<span class="normal"><a href="#__codelineno-0-167">167</a></span>
+<span class="normal"><a href="#__codelineno-0-168">168</a></span>
+<span class="normal"><a href="#__codelineno-0-169">169</a></span>
+<span class="normal"><a href="#__codelineno-0-170">170</a></span>
+<span class="normal"><a href="#__codelineno-0-171">171</a></span>
+<span class="normal"><a href="#__codelineno-0-172">172</a></span>
+<span class="normal"><a href="#__codelineno-0-173">173</a></span>
+<span class="normal"><a href="#__codelineno-0-174">174</a></span>
+<span class="normal"><a href="#__codelineno-0-175">175</a></span>
+<span class="normal"><a href="#__codelineno-0-176">176</a></span>
+<span class="normal"><a href="#__codelineno-0-177">177</a></span>
+<span class="normal"><a href="#__codelineno-0-178">178</a></span>
+<span class="normal"><a href="#__codelineno-0-179">179</a></span>
+<span class="normal"><a href="#__codelineno-0-180">180</a></span>
+<span class="normal"><a href="#__codelineno-0-181">181</a></span>
+<span class="normal"><a href="#__codelineno-0-182">182</a></span>
+<span class="normal"><a href="#__codelineno-0-183">183</a></span>
+<span class="normal"><a href="#__codelineno-0-184">184</a></span>
+<span class="normal"><a href="#__codelineno-0-185">185</a></span>
+<span class="normal"><a href="#__codelineno-0-186">186</a></span>
+<span class="normal"><a href="#__codelineno-0-187">187</a></span>
+<span class="normal"><a href="#__codelineno-0-188">188</a></span>
+<span class="normal"><a href="#__codelineno-0-189">189</a></span>
+<span class="normal"><a href="#__codelineno-0-190">190</a></span>
+<span class="normal"><a href="#__codelineno-0-191">191</a></span>
+<span class="normal"><a href="#__codelineno-0-192">192</a></span>
+<span class="normal"><a href="#__codelineno-0-193">193</a></span>
+<span class="normal"><a href="#__codelineno-0-194">194</a></span>
+<span class="normal"><a href="#__codelineno-0-195">195</a></span>
+<span class="normal"><a href="#__codelineno-0-196">196</a></span>
+<span class="normal"><a href="#__codelineno-0-197">197</a></span>
+<span class="normal"><a href="#__codelineno-0-198">198</a></span>
+<span class="normal"><a href="#__codelineno-0-199">199</a></span>
+<span class="normal"><a href="#__codelineno-0-200">200</a></span>
+<span class="normal"><a href="#__codelineno-0-201">201</a></span>
+<span class="normal"><a href="#__codelineno-0-202">202</a></span>
+<span class="normal"><a href="#__codelineno-0-203">203</a></span>
+<span class="normal"><a href="#__codelineno-0-204">204</a></span>
+<span class="normal"><a href="#__codelineno-0-205">205</a></span>
+<span class="normal"><a href="#__codelineno-0-206">206</a></span>
+<span class="normal"><a href="#__codelineno-0-207">207</a></span>
+<span class="normal"><a href="#__codelineno-0-208">208</a></span>
+<span class="normal"><a href="#__codelineno-0-209">209</a></span>
+<span class="normal"><a href="#__codelineno-0-210">210</a></span>
+<span class="normal"><a href="#__codelineno-0-211">211</a></span>
+<span class="normal"><a href="#__codelineno-0-212">212</a></span>
+<span class="normal"><a href="#__codelineno-0-213">213</a></span>
+<span class="normal"><a href="#__codelineno-0-214">214</a></span>
+<span class="normal"><a href="#__codelineno-0-215">215</a></span>
+<span class="normal"><a href="#__codelineno-0-216">216</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-165" name="__codelineno-0-165"></a><span class="k">class</span><span class="w"> </span><span class="nc">PolicyEntry</span><span class="p">(</span><span class="n">EventStreamMixin</span><span class="p">,</span> <span class="n">AccessTrackerMixin</span><span class="p">,</span> <span class="n">PredictionLedgerMixin</span><span class="p">,</span> <span class="n">Model</span><span class="p">):</span>
+<a id="__codelineno-0-166" name="__codelineno-0-166"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Reference model for learned action selection policies.</span>
+<a id="__codelineno-0-167" name="__codelineno-0-167"></a>
+<a id="__codelineno-0-168" name="__codelineno-0-168"></a><span class="sd">    Composes all shipped Popoto memory primitives into a single model that</span>
+<a id="__codelineno-0-169" name="__codelineno-0-169"></a><span class="sd">    stores state -&gt; action -&gt; expected_value triples. Agents query policies</span>
+<a id="__codelineno-0-170" name="__codelineno-0-170"></a><span class="sd">    by state_fingerprint and select actions based on expected_value (Q-value)</span>
+<a id="__codelineno-0-171" name="__codelineno-0-171"></a><span class="sd">    weighted by confidence and co-occurrence.</span>
+<a id="__codelineno-0-172" name="__codelineno-0-172"></a>
+<a id="__codelineno-0-173" name="__codelineno-0-173"></a><span class="sd">    Fields:</span>
+<a id="__codelineno-0-174" name="__codelineno-0-174"></a><span class="sd">        entry_id: Auto-generated unique key.</span>
+<a id="__codelineno-0-175" name="__codelineno-0-175"></a><span class="sd">        agent_id: Partition key scoping policies per agent.</span>
+<a id="__codelineno-0-176" name="__codelineno-0-176"></a><span class="sd">        state_fingerprint: SHA-256 hash of state features for fast lookup.</span>
+<a id="__codelineno-0-177" name="__codelineno-0-177"></a><span class="sd">        state_features: Original state feature dict (JSON-serializable).</span>
+<a id="__codelineno-0-178" name="__codelineno-0-178"></a><span class="sd">        action_type: Category of the action (e.g., &quot;run_playbook&quot;).</span>
+<a id="__codelineno-0-179" name="__codelineno-0-179"></a><span class="sd">        action_spec: Full action specification dict (JSON-serializable).</span>
+<a id="__codelineno-0-180" name="__codelineno-0-180"></a><span class="sd">        expected_value: Q-value with temporal decay, partitioned by agent.</span>
+<a id="__codelineno-0-181" name="__codelineno-0-181"></a><span class="sd">        confidence: Bayesian confidence growing with successful outcomes.</span>
+<a id="__codelineno-0-182" name="__codelineno-0-182"></a><span class="sd">        related_policies: Weighted co-occurrence graph between policies.</span>
+<a id="__codelineno-0-183" name="__codelineno-0-183"></a><span class="sd">        bloom: Bloom filter for fast state_fingerprint pre-checks.</span>
+<a id="__codelineno-0-184" name="__codelineno-0-184"></a>
+<a id="__codelineno-0-185" name="__codelineno-0-185"></a><span class="sd">    Mixins:</span>
+<a id="__codelineno-0-186" name="__codelineno-0-186"></a><span class="sd">        EventStreamMixin: Logs all mutations to Redis Streams.</span>
+<a id="__codelineno-0-187" name="__codelineno-0-187"></a><span class="sd">        AccessTrackerMixin: Tracks read patterns for proactive surfacing.</span>
+<a id="__codelineno-0-188" name="__codelineno-0-188"></a><span class="sd">        PredictionLedgerMixin: Records and resolves outcome predictions.</span>
+<a id="__codelineno-0-189" name="__codelineno-0-189"></a>
+<a id="__codelineno-0-190" name="__codelineno-0-190"></a><span class="sd">    Note:</span>
+<a id="__codelineno-0-191" name="__codelineno-0-191"></a><span class="sd">        WriteFilterMixin is intentionally excluded — the crystallization</span>
+<a id="__codelineno-0-192" name="__codelineno-0-192"></a><span class="sd">        handler IS the write gate (Wilson CI &gt; threshold). Having gating</span>
+<a id="__codelineno-0-193" name="__codelineno-0-193"></a><span class="sd">        logic in two places makes debugging harder.</span>
+<a id="__codelineno-0-194" name="__codelineno-0-194"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-195" name="__codelineno-0-195"></a>
+<a id="__codelineno-0-196" name="__codelineno-0-196"></a>    <span class="n">entry_id</span> <span class="o">=</span> <span class="n">AutoKeyField</span><span class="p">()</span>
+<a id="__codelineno-0-197" name="__codelineno-0-197"></a>    <span class="n">agent_id</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
+<a id="__codelineno-0-198" name="__codelineno-0-198"></a>    <span class="n">state_fingerprint</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
+<a id="__codelineno-0-199" name="__codelineno-0-199"></a>    <span class="n">state_features</span> <span class="o">=</span> <span class="n">Field</span><span class="p">()</span>  <span class="c1"># JSON dict</span>
+<a id="__codelineno-0-200" name="__codelineno-0-200"></a>    <span class="n">action_type</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
+<a id="__codelineno-0-201" name="__codelineno-0-201"></a>    <span class="n">action_spec</span> <span class="o">=</span> <span class="n">Field</span><span class="p">()</span>  <span class="c1"># JSON dict</span>
+<a id="__codelineno-0-202" name="__codelineno-0-202"></a>
+<a id="__codelineno-0-203" name="__codelineno-0-203"></a>    <span class="n">expected_value</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span>
+<a id="__codelineno-0-204" name="__codelineno-0-204"></a>        <span class="n">partition_by</span><span class="o">=</span><span class="s2">&quot;agent_id&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-205" name="__codelineno-0-205"></a>    <span class="p">)</span>
+<a id="__codelineno-0-206" name="__codelineno-0-206"></a>    <span class="n">confidence</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="p">(</span><span class="n">initial_confidence</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
+<a id="__codelineno-0-207" name="__codelineno-0-207"></a>    <span class="n">related_policies</span> <span class="o">=</span> <span class="n">CoOccurrenceField</span><span class="p">(</span><span class="n">symmetric</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">max_edges</span><span class="o">=</span><span class="mi">100</span><span class="p">)</span>
+<a id="__codelineno-0-208" name="__codelineno-0-208"></a>    <span class="n">bloom</span> <span class="o">=</span> <span class="n">ExistenceFilter</span><span class="p">(</span>
+<a id="__codelineno-0-209" name="__codelineno-0-209"></a>        <span class="n">error_rate</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span>
+<a id="__codelineno-0-210" name="__codelineno-0-210"></a>        <span class="n">capacity</span><span class="o">=</span><span class="mi">100_000</span><span class="p">,</span>
+<a id="__codelineno-0-211" name="__codelineno-0-211"></a>        <span class="n">fingerprint_fn</span><span class="o">=</span><span class="k">lambda</span> <span class="n">inst</span><span class="p">:</span> <span class="n">inst</span><span class="o">.</span><span class="n">state_fingerprint</span><span class="p">,</span>
+<a id="__codelineno-0-212" name="__codelineno-0-212"></a>    <span class="p">)</span>
+<a id="__codelineno-0-213" name="__codelineno-0-213"></a>
+<a id="__codelineno-0-214" name="__codelineno-0-214"></a>    <span class="n">_stream_name</span> <span class="o">=</span> <span class="s2">&quot;policy_mutations&quot;</span>
+<a id="__codelineno-0-215" name="__codelineno-0-215"></a>    <span class="n">_stream_partition_field</span> <span class="o">=</span> <span class="s2">&quot;agent_id&quot;</span>
+<a id="__codelineno-0-216" name="__codelineno-0-216"></a>    <span class="n">_pl_partition</span> <span class="o">=</span> <span class="s2">&quot;default&quot;</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="popoto.recipes.policy_cache.compute_fingerprint" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">compute_fingerprint</span><span class="p">(</span><span class="n">features</span><span class="p">,</span> <span class="n">include_fields</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">include_timestamp</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span></code>
+
+<a href="#popoto.recipes.policy_cache.compute_fingerprint" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Generate a stable fingerprint from state features.</p>
+<p>Creates a SHA-256 hash (truncated to 16 hex chars) from a dict of
+state features. The hash is deterministic for the same input, making
+it suitable for grouping events by state.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>features</code>
+            </td>
+            <td>
+                  <code><span title="dict">dict</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Dict of state features to fingerprint. Values must be
+JSON-serializable.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>include_fields</code>
+            </td>
+            <td>
+                  <code><span title="list">list</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Optional list of field names to include. If None,
+all fields are included. Useful for per-model customization
+of which features define "same state."</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>include_timestamp</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If True, includes current hour-bucket timestamp
+for time-unique fingerprints. The bucket is the current hour
+(Unix timestamp truncated to 3600s).</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>str</code></td>            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>SHA-256 truncated to 16 hex chars.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Examples:</span></p>
+    <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">compute_fingerprint</span><span class="p">({</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy&quot;</span><span class="p">,</span> <span class="s2">&quot;env&quot;</span><span class="p">:</span> <span class="s2">&quot;staging&quot;</span><span class="p">})</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="go">&#39;a1b2c3d4e5f6a7b8&#39;</span>
+</code></pre></div>
+    <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">compute_fingerprint</span><span class="p">({</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy&quot;</span><span class="p">,</span> <span class="s2">&quot;env&quot;</span><span class="p">:</span> <span class="s2">&quot;staging&quot;</span><span class="p">},</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="gp">... </span>                    <span class="n">include_fields</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;task&quot;</span><span class="p">])</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="go">&#39;f8e7d6c5b4a39281&#39;  # Different — only &#39;task&#39; included</span>
+</code></pre></div>
+    <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="gp">&gt;&gt;&gt; </span><span class="n">compute_fingerprint</span><span class="p">({</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy&quot;</span><span class="p">},</span> <span class="n">include_timestamp</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="go">&#39;1234567890abcdef&#39;  # Different per hour</span>
+</code></pre></div>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/popoto/recipes/policy_cache.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-224">224</a></span>
+<span class="normal"><a href="#__codelineno-0-225">225</a></span>
+<span class="normal"><a href="#__codelineno-0-226">226</a></span>
+<span class="normal"><a href="#__codelineno-0-227">227</a></span>
+<span class="normal"><a href="#__codelineno-0-228">228</a></span>
+<span class="normal"><a href="#__codelineno-0-229">229</a></span>
+<span class="normal"><a href="#__codelineno-0-230">230</a></span>
+<span class="normal"><a href="#__codelineno-0-231">231</a></span>
+<span class="normal"><a href="#__codelineno-0-232">232</a></span>
+<span class="normal"><a href="#__codelineno-0-233">233</a></span>
+<span class="normal"><a href="#__codelineno-0-234">234</a></span>
+<span class="normal"><a href="#__codelineno-0-235">235</a></span>
+<span class="normal"><a href="#__codelineno-0-236">236</a></span>
+<span class="normal"><a href="#__codelineno-0-237">237</a></span>
+<span class="normal"><a href="#__codelineno-0-238">238</a></span>
+<span class="normal"><a href="#__codelineno-0-239">239</a></span>
+<span class="normal"><a href="#__codelineno-0-240">240</a></span>
+<span class="normal"><a href="#__codelineno-0-241">241</a></span>
+<span class="normal"><a href="#__codelineno-0-242">242</a></span>
+<span class="normal"><a href="#__codelineno-0-243">243</a></span>
+<span class="normal"><a href="#__codelineno-0-244">244</a></span>
+<span class="normal"><a href="#__codelineno-0-245">245</a></span>
+<span class="normal"><a href="#__codelineno-0-246">246</a></span>
+<span class="normal"><a href="#__codelineno-0-247">247</a></span>
+<span class="normal"><a href="#__codelineno-0-248">248</a></span>
+<span class="normal"><a href="#__codelineno-0-249">249</a></span>
+<span class="normal"><a href="#__codelineno-0-250">250</a></span>
+<span class="normal"><a href="#__codelineno-0-251">251</a></span>
+<span class="normal"><a href="#__codelineno-0-252">252</a></span>
+<span class="normal"><a href="#__codelineno-0-253">253</a></span>
+<span class="normal"><a href="#__codelineno-0-254">254</a></span>
+<span class="normal"><a href="#__codelineno-0-255">255</a></span>
+<span class="normal"><a href="#__codelineno-0-256">256</a></span>
+<span class="normal"><a href="#__codelineno-0-257">257</a></span>
+<span class="normal"><a href="#__codelineno-0-258">258</a></span>
+<span class="normal"><a href="#__codelineno-0-259">259</a></span>
+<span class="normal"><a href="#__codelineno-0-260">260</a></span>
+<span class="normal"><a href="#__codelineno-0-261">261</a></span>
+<span class="normal"><a href="#__codelineno-0-262">262</a></span>
+<span class="normal"><a href="#__codelineno-0-263">263</a></span>
+<span class="normal"><a href="#__codelineno-0-264">264</a></span>
+<span class="normal"><a href="#__codelineno-0-265">265</a></span>
+<span class="normal"><a href="#__codelineno-0-266">266</a></span>
+<span class="normal"><a href="#__codelineno-0-267">267</a></span>
+<span class="normal"><a href="#__codelineno-0-268">268</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-224" name="__codelineno-0-224"></a><span class="k">def</span><span class="w"> </span><span class="nf">compute_fingerprint</span><span class="p">(</span>
+<a id="__codelineno-0-225" name="__codelineno-0-225"></a>    <span class="n">features</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
+<a id="__codelineno-0-226" name="__codelineno-0-226"></a>    <span class="n">include_fields</span><span class="p">:</span> <span class="nb">list</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-227" name="__codelineno-0-227"></a>    <span class="n">include_timestamp</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-0-228" name="__codelineno-0-228"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<a id="__codelineno-0-229" name="__codelineno-0-229"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Generate a stable fingerprint from state features.</span>
+<a id="__codelineno-0-230" name="__codelineno-0-230"></a>
+<a id="__codelineno-0-231" name="__codelineno-0-231"></a><span class="sd">    Creates a SHA-256 hash (truncated to 16 hex chars) from a dict of</span>
+<a id="__codelineno-0-232" name="__codelineno-0-232"></a><span class="sd">    state features. The hash is deterministic for the same input, making</span>
+<a id="__codelineno-0-233" name="__codelineno-0-233"></a><span class="sd">    it suitable for grouping events by state.</span>
+<a id="__codelineno-0-234" name="__codelineno-0-234"></a>
+<a id="__codelineno-0-235" name="__codelineno-0-235"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-236" name="__codelineno-0-236"></a><span class="sd">        features: Dict of state features to fingerprint. Values must be</span>
+<a id="__codelineno-0-237" name="__codelineno-0-237"></a><span class="sd">            JSON-serializable.</span>
+<a id="__codelineno-0-238" name="__codelineno-0-238"></a><span class="sd">        include_fields: Optional list of field names to include. If None,</span>
+<a id="__codelineno-0-239" name="__codelineno-0-239"></a><span class="sd">            all fields are included. Useful for per-model customization</span>
+<a id="__codelineno-0-240" name="__codelineno-0-240"></a><span class="sd">            of which features define &quot;same state.&quot;</span>
+<a id="__codelineno-0-241" name="__codelineno-0-241"></a><span class="sd">        include_timestamp: If True, includes current hour-bucket timestamp</span>
+<a id="__codelineno-0-242" name="__codelineno-0-242"></a><span class="sd">            for time-unique fingerprints. The bucket is the current hour</span>
+<a id="__codelineno-0-243" name="__codelineno-0-243"></a><span class="sd">            (Unix timestamp truncated to 3600s).</span>
+<a id="__codelineno-0-244" name="__codelineno-0-244"></a>
+<a id="__codelineno-0-245" name="__codelineno-0-245"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-246" name="__codelineno-0-246"></a><span class="sd">        str: SHA-256 truncated to 16 hex chars.</span>
+<a id="__codelineno-0-247" name="__codelineno-0-247"></a>
+<a id="__codelineno-0-248" name="__codelineno-0-248"></a><span class="sd">    Examples:</span>
+<a id="__codelineno-0-249" name="__codelineno-0-249"></a><span class="sd">        &gt;&gt;&gt; compute_fingerprint({&quot;task&quot;: &quot;deploy&quot;, &quot;env&quot;: &quot;staging&quot;})</span>
+<a id="__codelineno-0-250" name="__codelineno-0-250"></a><span class="sd">        &#39;a1b2c3d4e5f6a7b8&#39;</span>
+<a id="__codelineno-0-251" name="__codelineno-0-251"></a>
+<a id="__codelineno-0-252" name="__codelineno-0-252"></a><span class="sd">        &gt;&gt;&gt; compute_fingerprint({&quot;task&quot;: &quot;deploy&quot;, &quot;env&quot;: &quot;staging&quot;},</span>
+<a id="__codelineno-0-253" name="__codelineno-0-253"></a><span class="sd">        ...                     include_fields=[&quot;task&quot;])</span>
+<a id="__codelineno-0-254" name="__codelineno-0-254"></a><span class="sd">        &#39;f8e7d6c5b4a39281&#39;  # Different — only &#39;task&#39; included</span>
+<a id="__codelineno-0-255" name="__codelineno-0-255"></a>
+<a id="__codelineno-0-256" name="__codelineno-0-256"></a><span class="sd">        &gt;&gt;&gt; compute_fingerprint({&quot;task&quot;: &quot;deploy&quot;}, include_timestamp=True)</span>
+<a id="__codelineno-0-257" name="__codelineno-0-257"></a><span class="sd">        &#39;1234567890abcdef&#39;  # Different per hour</span>
+<a id="__codelineno-0-258" name="__codelineno-0-258"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-259" name="__codelineno-0-259"></a>    <span class="k">if</span> <span class="n">include_fields</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-260" name="__codelineno-0-260"></a>        <span class="n">features</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">features</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">include_fields</span><span class="p">}</span>
+<a id="__codelineno-0-261" name="__codelineno-0-261"></a>
+<a id="__codelineno-0-262" name="__codelineno-0-262"></a>    <span class="k">if</span> <span class="n">include_timestamp</span><span class="p">:</span>
+<a id="__codelineno-0-263" name="__codelineno-0-263"></a>        <span class="n">features</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">features</span><span class="p">)</span>
+<a id="__codelineno-0-264" name="__codelineno-0-264"></a>        <span class="n">features</span><span class="p">[</span><span class="s2">&quot;__hour_bucket__&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">())</span> <span class="o">//</span> <span class="mi">3600</span>
+<a id="__codelineno-0-265" name="__codelineno-0-265"></a>
+<a id="__codelineno-0-266" name="__codelineno-0-266"></a>    <span class="c1"># Sort keys for deterministic ordering</span>
+<a id="__codelineno-0-267" name="__codelineno-0-267"></a>    <span class="n">canonical</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">features</span><span class="p">,</span> <span class="n">sort_keys</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
+<a id="__codelineno-0-268" name="__codelineno-0-268"></a>    <span class="k">return</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">(</span><span class="n">canonical</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">))</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()[:</span><span class="mi">16</span><span class="p">]</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="popoto.recipes.policy_cache.wilson_ci_lower" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">wilson_ci_lower</span><span class="p">(</span><span class="n">successes</span><span class="p">,</span> <span class="n">total</span><span class="p">,</span> <span class="n">z</span><span class="o">=</span><span class="mf">1.96</span><span class="p">)</span></code>
+
+<a href="#popoto.recipes.policy_cache.wilson_ci_lower" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Wilson score confidence interval lower bound.</p>
+<p>Computes the lower bound of the Wilson score interval, which gives
+a conservative estimate of the true success rate. Unlike naive
+success/total, this handles small sample sizes correctly.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>successes</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Number of successful outcomes.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>total</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Total number of outcomes.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>z</code>
+            </td>
+            <td>
+                  <code><span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Z-score for confidence level. 1.96 = 95% CI (default).</p>
+              </div>
+            </td>
+            <td>
+                  <code>1.96</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>float</code></td>            <td>
+                  <code><span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Lower bound of Wilson CI (0.0 to 1.0).</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/popoto/recipes/policy_cache.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-271">271</a></span>
+<span class="normal"><a href="#__codelineno-0-272">272</a></span>
+<span class="normal"><a href="#__codelineno-0-273">273</a></span>
+<span class="normal"><a href="#__codelineno-0-274">274</a></span>
+<span class="normal"><a href="#__codelineno-0-275">275</a></span>
+<span class="normal"><a href="#__codelineno-0-276">276</a></span>
+<span class="normal"><a href="#__codelineno-0-277">277</a></span>
+<span class="normal"><a href="#__codelineno-0-278">278</a></span>
+<span class="normal"><a href="#__codelineno-0-279">279</a></span>
+<span class="normal"><a href="#__codelineno-0-280">280</a></span>
+<span class="normal"><a href="#__codelineno-0-281">281</a></span>
+<span class="normal"><a href="#__codelineno-0-282">282</a></span>
+<span class="normal"><a href="#__codelineno-0-283">283</a></span>
+<span class="normal"><a href="#__codelineno-0-284">284</a></span>
+<span class="normal"><a href="#__codelineno-0-285">285</a></span>
+<span class="normal"><a href="#__codelineno-0-286">286</a></span>
+<span class="normal"><a href="#__codelineno-0-287">287</a></span>
+<span class="normal"><a href="#__codelineno-0-288">288</a></span>
+<span class="normal"><a href="#__codelineno-0-289">289</a></span>
+<span class="normal"><a href="#__codelineno-0-290">290</a></span>
+<span class="normal"><a href="#__codelineno-0-291">291</a></span>
+<span class="normal"><a href="#__codelineno-0-292">292</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-271" name="__codelineno-0-271"></a><span class="k">def</span><span class="w"> </span><span class="nf">wilson_ci_lower</span><span class="p">(</span><span class="n">successes</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">total</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">z</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.96</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<a id="__codelineno-0-272" name="__codelineno-0-272"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Wilson score confidence interval lower bound.</span>
+<a id="__codelineno-0-273" name="__codelineno-0-273"></a>
+<a id="__codelineno-0-274" name="__codelineno-0-274"></a><span class="sd">    Computes the lower bound of the Wilson score interval, which gives</span>
+<a id="__codelineno-0-275" name="__codelineno-0-275"></a><span class="sd">    a conservative estimate of the true success rate. Unlike naive</span>
+<a id="__codelineno-0-276" name="__codelineno-0-276"></a><span class="sd">    success/total, this handles small sample sizes correctly.</span>
+<a id="__codelineno-0-277" name="__codelineno-0-277"></a>
+<a id="__codelineno-0-278" name="__codelineno-0-278"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-279" name="__codelineno-0-279"></a><span class="sd">        successes: Number of successful outcomes.</span>
+<a id="__codelineno-0-280" name="__codelineno-0-280"></a><span class="sd">        total: Total number of outcomes.</span>
+<a id="__codelineno-0-281" name="__codelineno-0-281"></a><span class="sd">        z: Z-score for confidence level. 1.96 = 95% CI (default).</span>
+<a id="__codelineno-0-282" name="__codelineno-0-282"></a>
+<a id="__codelineno-0-283" name="__codelineno-0-283"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-284" name="__codelineno-0-284"></a><span class="sd">        float: Lower bound of Wilson CI (0.0 to 1.0).</span>
+<a id="__codelineno-0-285" name="__codelineno-0-285"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-286" name="__codelineno-0-286"></a>    <span class="k">if</span> <span class="n">total</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+<a id="__codelineno-0-287" name="__codelineno-0-287"></a>        <span class="k">return</span> <span class="mf">0.0</span>
+<a id="__codelineno-0-288" name="__codelineno-0-288"></a>    <span class="n">p_hat</span> <span class="o">=</span> <span class="n">successes</span> <span class="o">/</span> <span class="n">total</span>
+<a id="__codelineno-0-289" name="__codelineno-0-289"></a>    <span class="n">denominator</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">z</span><span class="o">**</span><span class="mi">2</span> <span class="o">/</span> <span class="n">total</span>
+<a id="__codelineno-0-290" name="__codelineno-0-290"></a>    <span class="n">center</span> <span class="o">=</span> <span class="n">p_hat</span> <span class="o">+</span> <span class="n">z</span><span class="o">**</span><span class="mi">2</span> <span class="o">/</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">total</span><span class="p">)</span>
+<a id="__codelineno-0-291" name="__codelineno-0-291"></a>    <span class="n">spread</span> <span class="o">=</span> <span class="n">z</span> <span class="o">*</span> <span class="p">(</span><span class="n">p_hat</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">p_hat</span><span class="p">)</span> <span class="o">/</span> <span class="n">total</span> <span class="o">+</span> <span class="n">z</span><span class="o">**</span><span class="mi">2</span> <span class="o">/</span> <span class="p">(</span><span class="mi">4</span> <span class="o">*</span> <span class="n">total</span><span class="o">**</span><span class="mi">2</span><span class="p">))</span> <span class="o">**</span> <span class="mf">0.5</span>
+<a id="__codelineno-0-292" name="__codelineno-0-292"></a>    <span class="k">return</span> <span class="p">(</span><span class="n">center</span> <span class="o">-</span> <span class="n">spread</span><span class="p">)</span> <span class="o">/</span> <span class="n">denominator</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="popoto.recipes.policy_cache.chi_squared_uniform" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">chi_squared_uniform</span><span class="p">(</span><span class="n">observed</span><span class="p">,</span> <span class="n">expected_per_bucket</span><span class="p">)</span></code>
+
+<a href="#popoto.recipes.policy_cache.chi_squared_uniform" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Chi-squared statistic against uniform distribution.</p>
+<p>Tests whether observed counts across buckets differ significantly
+from a uniform distribution. Compare the returned statistic against
+CHI_SQUARED_CRITICAL_VALUES for the appropriate degrees of freedom.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>observed</code>
+            </td>
+            <td>
+                  <code><span title="list">list</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>List of observed counts per bucket.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>expected_per_bucket</code>
+            </td>
+            <td>
+                  <code><span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Expected count per bucket under uniform
+distribution (total_events / num_buckets).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>float</code></td>            <td>
+                  <code><span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Chi-squared test statistic. Higher values indicate
+stronger deviation from uniform.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/popoto/recipes/policy_cache.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-295">295</a></span>
+<span class="normal"><a href="#__codelineno-0-296">296</a></span>
+<span class="normal"><a href="#__codelineno-0-297">297</a></span>
+<span class="normal"><a href="#__codelineno-0-298">298</a></span>
+<span class="normal"><a href="#__codelineno-0-299">299</a></span>
+<span class="normal"><a href="#__codelineno-0-300">300</a></span>
+<span class="normal"><a href="#__codelineno-0-301">301</a></span>
+<span class="normal"><a href="#__codelineno-0-302">302</a></span>
+<span class="normal"><a href="#__codelineno-0-303">303</a></span>
+<span class="normal"><a href="#__codelineno-0-304">304</a></span>
+<span class="normal"><a href="#__codelineno-0-305">305</a></span>
+<span class="normal"><a href="#__codelineno-0-306">306</a></span>
+<span class="normal"><a href="#__codelineno-0-307">307</a></span>
+<span class="normal"><a href="#__codelineno-0-308">308</a></span>
+<span class="normal"><a href="#__codelineno-0-309">309</a></span>
+<span class="normal"><a href="#__codelineno-0-310">310</a></span>
+<span class="normal"><a href="#__codelineno-0-311">311</a></span>
+<span class="normal"><a href="#__codelineno-0-312">312</a></span>
+<span class="normal"><a href="#__codelineno-0-313">313</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-295" name="__codelineno-0-295"></a><span class="k">def</span><span class="w"> </span><span class="nf">chi_squared_uniform</span><span class="p">(</span><span class="n">observed</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span> <span class="n">expected_per_bucket</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<a id="__codelineno-0-296" name="__codelineno-0-296"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Chi-squared statistic against uniform distribution.</span>
+<a id="__codelineno-0-297" name="__codelineno-0-297"></a>
+<a id="__codelineno-0-298" name="__codelineno-0-298"></a><span class="sd">    Tests whether observed counts across buckets differ significantly</span>
+<a id="__codelineno-0-299" name="__codelineno-0-299"></a><span class="sd">    from a uniform distribution. Compare the returned statistic against</span>
+<a id="__codelineno-0-300" name="__codelineno-0-300"></a><span class="sd">    CHI_SQUARED_CRITICAL_VALUES for the appropriate degrees of freedom.</span>
+<a id="__codelineno-0-301" name="__codelineno-0-301"></a>
+<a id="__codelineno-0-302" name="__codelineno-0-302"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-303" name="__codelineno-0-303"></a><span class="sd">        observed: List of observed counts per bucket.</span>
+<a id="__codelineno-0-304" name="__codelineno-0-304"></a><span class="sd">        expected_per_bucket: Expected count per bucket under uniform</span>
+<a id="__codelineno-0-305" name="__codelineno-0-305"></a><span class="sd">            distribution (total_events / num_buckets).</span>
+<a id="__codelineno-0-306" name="__codelineno-0-306"></a>
+<a id="__codelineno-0-307" name="__codelineno-0-307"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-308" name="__codelineno-0-308"></a><span class="sd">        float: Chi-squared test statistic. Higher values indicate</span>
+<a id="__codelineno-0-309" name="__codelineno-0-309"></a><span class="sd">            stronger deviation from uniform.</span>
+<a id="__codelineno-0-310" name="__codelineno-0-310"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-311" name="__codelineno-0-311"></a>    <span class="k">if</span> <span class="n">expected_per_bucket</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+<a id="__codelineno-0-312" name="__codelineno-0-312"></a>        <span class="k">return</span> <span class="mf">0.0</span>
+<a id="__codelineno-0-313" name="__codelineno-0-313"></a>    <span class="k">return</span> <span class="nb">sum</span><span class="p">((</span><span class="n">o</span> <span class="o">-</span> <span class="n">expected_per_bucket</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">/</span> <span class="n">expected_per_bucket</span> <span class="k">for</span> <span class="n">o</span> <span class="ow">in</span> <span class="n">observed</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="popoto.recipes.policy_cache.update_q_value" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">update_q_value</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="n">reward</span><span class="p">,</span> <span class="n">max_future_q</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="n">TD_ALPHA</span><span class="p">,</span> <span class="n">gamma</span><span class="o">=</span><span class="n">TD_GAMMA</span><span class="p">)</span></code>
+
+<a href="#popoto.recipes.policy_cache.update_q_value" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Update a PolicyEntry's Q-value via temporal difference learning.</p>
+<p>Atomically updates the expected_value (Q-value) in the sorted set
+using the TD(0) update rule:</p>
+<div class="highlight"><pre><span></span><code>Q(s,a) ← Q(s,a) + α [r + γ max Q(s&#39;,a&#39;) - Q(s,a)]
+</code></pre></div>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>instance</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A saved PolicyEntry instance.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>reward</code>
+            </td>
+            <td>
+                  <code><span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Observed reward signal (float).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>max_future_q</code>
+            </td>
+            <td>
+                  <code><span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Maximum Q-value for next state's best action.
+Default 0.0 (no future state, terminal).</p>
+              </div>
+            </td>
+            <td>
+                  <code>0.0</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>alpha</code>
+            </td>
+            <td>
+                  <code><span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Learning rate. Default TD_ALPHA (0.1).</p>
+              </div>
+            </td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="TD_ALPHA = Defaults.TD_ALPHA
+
+  
+      module-attribute
+   (popoto.recipes.policy_cache.TD_ALPHA)" href="#popoto.recipes.policy_cache.TD_ALPHA">TD_ALPHA</a></code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>gamma</code>
+            </td>
+            <td>
+                  <code><span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Discount factor. Default TD_GAMMA (0.95).</p>
+              </div>
+            </td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="TD_GAMMA = Defaults.TD_GAMMA
+
+  
+      module-attribute
+   (popoto.recipes.policy_cache.TD_GAMMA)" href="#popoto.recipes.policy_cache.TD_GAMMA">TD_GAMMA</a></code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>float</code></td>            <td>
+                  <code><span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The TD error (positive = better than expected,
+negative = worse than expected).</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If the instance has no redis_key (unsaved).</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/popoto/recipes/policy_cache.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-316">316</a></span>
+<span class="normal"><a href="#__codelineno-0-317">317</a></span>
+<span class="normal"><a href="#__codelineno-0-318">318</a></span>
+<span class="normal"><a href="#__codelineno-0-319">319</a></span>
+<span class="normal"><a href="#__codelineno-0-320">320</a></span>
+<span class="normal"><a href="#__codelineno-0-321">321</a></span>
+<span class="normal"><a href="#__codelineno-0-322">322</a></span>
+<span class="normal"><a href="#__codelineno-0-323">323</a></span>
+<span class="normal"><a href="#__codelineno-0-324">324</a></span>
+<span class="normal"><a href="#__codelineno-0-325">325</a></span>
+<span class="normal"><a href="#__codelineno-0-326">326</a></span>
+<span class="normal"><a href="#__codelineno-0-327">327</a></span>
+<span class="normal"><a href="#__codelineno-0-328">328</a></span>
+<span class="normal"><a href="#__codelineno-0-329">329</a></span>
+<span class="normal"><a href="#__codelineno-0-330">330</a></span>
+<span class="normal"><a href="#__codelineno-0-331">331</a></span>
+<span class="normal"><a href="#__codelineno-0-332">332</a></span>
+<span class="normal"><a href="#__codelineno-0-333">333</a></span>
+<span class="normal"><a href="#__codelineno-0-334">334</a></span>
+<span class="normal"><a href="#__codelineno-0-335">335</a></span>
+<span class="normal"><a href="#__codelineno-0-336">336</a></span>
+<span class="normal"><a href="#__codelineno-0-337">337</a></span>
+<span class="normal"><a href="#__codelineno-0-338">338</a></span>
+<span class="normal"><a href="#__codelineno-0-339">339</a></span>
+<span class="normal"><a href="#__codelineno-0-340">340</a></span>
+<span class="normal"><a href="#__codelineno-0-341">341</a></span>
+<span class="normal"><a href="#__codelineno-0-342">342</a></span>
+<span class="normal"><a href="#__codelineno-0-343">343</a></span>
+<span class="normal"><a href="#__codelineno-0-344">344</a></span>
+<span class="normal"><a href="#__codelineno-0-345">345</a></span>
+<span class="normal"><a href="#__codelineno-0-346">346</a></span>
+<span class="normal"><a href="#__codelineno-0-347">347</a></span>
+<span class="normal"><a href="#__codelineno-0-348">348</a></span>
+<span class="normal"><a href="#__codelineno-0-349">349</a></span>
+<span class="normal"><a href="#__codelineno-0-350">350</a></span>
+<span class="normal"><a href="#__codelineno-0-351">351</a></span>
+<span class="normal"><a href="#__codelineno-0-352">352</a></span>
+<span class="normal"><a href="#__codelineno-0-353">353</a></span>
+<span class="normal"><a href="#__codelineno-0-354">354</a></span>
+<span class="normal"><a href="#__codelineno-0-355">355</a></span>
+<span class="normal"><a href="#__codelineno-0-356">356</a></span>
+<span class="normal"><a href="#__codelineno-0-357">357</a></span>
+<span class="normal"><a href="#__codelineno-0-358">358</a></span>
+<span class="normal"><a href="#__codelineno-0-359">359</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-316" name="__codelineno-0-316"></a><span class="k">def</span><span class="w"> </span><span class="nf">update_q_value</span><span class="p">(</span>
+<a id="__codelineno-0-317" name="__codelineno-0-317"></a>    <span class="n">instance</span><span class="p">,</span>
+<a id="__codelineno-0-318" name="__codelineno-0-318"></a>    <span class="n">reward</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+<a id="__codelineno-0-319" name="__codelineno-0-319"></a>    <span class="n">max_future_q</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span>
+<a id="__codelineno-0-320" name="__codelineno-0-320"></a>    <span class="n">alpha</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">TD_ALPHA</span><span class="p">,</span>
+<a id="__codelineno-0-321" name="__codelineno-0-321"></a>    <span class="n">gamma</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">TD_GAMMA</span><span class="p">,</span>
+<a id="__codelineno-0-322" name="__codelineno-0-322"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<a id="__codelineno-0-323" name="__codelineno-0-323"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Update a PolicyEntry&#39;s Q-value via temporal difference learning.</span>
+<a id="__codelineno-0-324" name="__codelineno-0-324"></a>
+<a id="__codelineno-0-325" name="__codelineno-0-325"></a><span class="sd">    Atomically updates the expected_value (Q-value) in the sorted set</span>
+<a id="__codelineno-0-326" name="__codelineno-0-326"></a><span class="sd">    using the TD(0) update rule:</span>
+<a id="__codelineno-0-327" name="__codelineno-0-327"></a>
+<a id="__codelineno-0-328" name="__codelineno-0-328"></a><span class="sd">        Q(s,a) ← Q(s,a) + α [r + γ max Q(s&#39;,a&#39;) - Q(s,a)]</span>
+<a id="__codelineno-0-329" name="__codelineno-0-329"></a>
+<a id="__codelineno-0-330" name="__codelineno-0-330"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-331" name="__codelineno-0-331"></a><span class="sd">        instance: A saved PolicyEntry instance.</span>
+<a id="__codelineno-0-332" name="__codelineno-0-332"></a><span class="sd">        reward: Observed reward signal (float).</span>
+<a id="__codelineno-0-333" name="__codelineno-0-333"></a><span class="sd">        max_future_q: Maximum Q-value for next state&#39;s best action.</span>
+<a id="__codelineno-0-334" name="__codelineno-0-334"></a><span class="sd">            Default 0.0 (no future state, terminal).</span>
+<a id="__codelineno-0-335" name="__codelineno-0-335"></a><span class="sd">        alpha: Learning rate. Default TD_ALPHA (0.1).</span>
+<a id="__codelineno-0-336" name="__codelineno-0-336"></a><span class="sd">        gamma: Discount factor. Default TD_GAMMA (0.95).</span>
+<a id="__codelineno-0-337" name="__codelineno-0-337"></a>
+<a id="__codelineno-0-338" name="__codelineno-0-338"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-339" name="__codelineno-0-339"></a><span class="sd">        float: The TD error (positive = better than expected,</span>
+<a id="__codelineno-0-340" name="__codelineno-0-340"></a><span class="sd">            negative = worse than expected).</span>
+<a id="__codelineno-0-341" name="__codelineno-0-341"></a>
+<a id="__codelineno-0-342" name="__codelineno-0-342"></a><span class="sd">    Raises:</span>
+<a id="__codelineno-0-343" name="__codelineno-0-343"></a><span class="sd">        ValueError: If the instance has no redis_key (unsaved).</span>
+<a id="__codelineno-0-344" name="__codelineno-0-344"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-345" name="__codelineno-0-345"></a>    <span class="n">redis_key</span> <span class="o">=</span> <span class="n">_get_redis_key</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
+<a id="__codelineno-0-346" name="__codelineno-0-346"></a>    <span class="n">sortedset_key</span> <span class="o">=</span> <span class="n">_get_sortedset_key</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
+<a id="__codelineno-0-347" name="__codelineno-0-347"></a>
+<a id="__codelineno-0-348" name="__codelineno-0-348"></a>    <span class="n">td_error</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span>
+<a id="__codelineno-0-349" name="__codelineno-0-349"></a>        <span class="n">TD_UPDATE_LUA</span><span class="p">,</span>
+<a id="__codelineno-0-350" name="__codelineno-0-350"></a>        <span class="mi">1</span><span class="p">,</span>  <span class="c1"># num keys</span>
+<a id="__codelineno-0-351" name="__codelineno-0-351"></a>        <span class="n">sortedset_key</span><span class="p">,</span>  <span class="c1"># KEYS[1]</span>
+<a id="__codelineno-0-352" name="__codelineno-0-352"></a>        <span class="nb">str</span><span class="p">(</span><span class="n">reward</span><span class="p">),</span>  <span class="c1"># ARGV[1]</span>
+<a id="__codelineno-0-353" name="__codelineno-0-353"></a>        <span class="nb">str</span><span class="p">(</span><span class="n">alpha</span><span class="p">),</span>  <span class="c1"># ARGV[2]</span>
+<a id="__codelineno-0-354" name="__codelineno-0-354"></a>        <span class="nb">str</span><span class="p">(</span><span class="n">gamma</span><span class="p">),</span>  <span class="c1"># ARGV[3]</span>
+<a id="__codelineno-0-355" name="__codelineno-0-355"></a>        <span class="nb">str</span><span class="p">(</span><span class="n">max_future_q</span><span class="p">),</span>  <span class="c1"># ARGV[4]</span>
+<a id="__codelineno-0-356" name="__codelineno-0-356"></a>        <span class="n">redis_key</span><span class="p">,</span>  <span class="c1"># ARGV[5]</span>
+<a id="__codelineno-0-357" name="__codelineno-0-357"></a>    <span class="p">)</span>
+<a id="__codelineno-0-358" name="__codelineno-0-358"></a>
+<a id="__codelineno-0-359" name="__codelineno-0-359"></a>    <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">td_error</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="popoto.recipes.policy_cache.initialize_q_value" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">initialize_q_value</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="n">initial_q</span><span class="o">=</span><span class="mf">0.0</span><span class="p">)</span></code>
+
+<a href="#popoto.recipes.policy_cache.initialize_q_value" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Set the initial Q-value for a PolicyEntry in the sorted set.</p>
+<p>After save(), DecayingSortedField stores the current timestamp as score.
+This function overrides that with the desired initial Q-value.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>instance</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A saved PolicyEntry instance.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>initial_q</code>
+            </td>
+            <td>
+                  <code><span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The initial Q-value to set. Default 0.0.</p>
+              </div>
+            </td>
+            <td>
+                  <code>0.0</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If the instance is unsaved.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/popoto/recipes/policy_cache.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-362">362</a></span>
+<span class="normal"><a href="#__codelineno-0-363">363</a></span>
+<span class="normal"><a href="#__codelineno-0-364">364</a></span>
+<span class="normal"><a href="#__codelineno-0-365">365</a></span>
+<span class="normal"><a href="#__codelineno-0-366">366</a></span>
+<span class="normal"><a href="#__codelineno-0-367">367</a></span>
+<span class="normal"><a href="#__codelineno-0-368">368</a></span>
+<span class="normal"><a href="#__codelineno-0-369">369</a></span>
+<span class="normal"><a href="#__codelineno-0-370">370</a></span>
+<span class="normal"><a href="#__codelineno-0-371">371</a></span>
+<span class="normal"><a href="#__codelineno-0-372">372</a></span>
+<span class="normal"><a href="#__codelineno-0-373">373</a></span>
+<span class="normal"><a href="#__codelineno-0-374">374</a></span>
+<span class="normal"><a href="#__codelineno-0-375">375</a></span>
+<span class="normal"><a href="#__codelineno-0-376">376</a></span>
+<span class="normal"><a href="#__codelineno-0-377">377</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-362" name="__codelineno-0-362"></a><span class="k">def</span><span class="w"> </span><span class="nf">initialize_q_value</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="n">initial_q</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-363" name="__codelineno-0-363"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Set the initial Q-value for a PolicyEntry in the sorted set.</span>
+<a id="__codelineno-0-364" name="__codelineno-0-364"></a>
+<a id="__codelineno-0-365" name="__codelineno-0-365"></a><span class="sd">    After save(), DecayingSortedField stores the current timestamp as score.</span>
+<a id="__codelineno-0-366" name="__codelineno-0-366"></a><span class="sd">    This function overrides that with the desired initial Q-value.</span>
+<a id="__codelineno-0-367" name="__codelineno-0-367"></a>
+<a id="__codelineno-0-368" name="__codelineno-0-368"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-369" name="__codelineno-0-369"></a><span class="sd">        instance: A saved PolicyEntry instance.</span>
+<a id="__codelineno-0-370" name="__codelineno-0-370"></a><span class="sd">        initial_q: The initial Q-value to set. Default 0.0.</span>
+<a id="__codelineno-0-371" name="__codelineno-0-371"></a>
+<a id="__codelineno-0-372" name="__codelineno-0-372"></a><span class="sd">    Raises:</span>
+<a id="__codelineno-0-373" name="__codelineno-0-373"></a><span class="sd">        ValueError: If the instance is unsaved.</span>
+<a id="__codelineno-0-374" name="__codelineno-0-374"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-375" name="__codelineno-0-375"></a>    <span class="n">redis_key</span> <span class="o">=</span> <span class="n">_get_redis_key</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
+<a id="__codelineno-0-376" name="__codelineno-0-376"></a>    <span class="n">sortedset_key</span> <span class="o">=</span> <span class="n">_get_sortedset_key</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
+<a id="__codelineno-0-377" name="__codelineno-0-377"></a>    <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">zadd</span><span class="p">(</span><span class="n">sortedset_key</span><span class="p">,</span> <span class="p">{</span><span class="n">redis_key</span><span class="p">:</span> <span class="n">initial_q</span><span class="p">})</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="popoto.recipes.policy_cache.crystallization_handler" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">crystallization_handler</span><span class="p">(</span><span class="n">entries</span><span class="p">)</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-async"><code>async</code></small>
+  </span>
+
+<a href="#popoto.recipes.policy_cache.crystallization_handler" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>StreamConsumer handler that detects repeated patterns and crystallizes PolicyEntry records.</p>
+<p>Groups events by (state_fingerprint, action_type), counts successes
+and failures, and creates a PolicyEntry when evidence threshold is met
+(min events AND Wilson CI lower bound &gt; threshold).</p>
+<p>Expected entry fields (all strings per Redis Streams spec):
+    - state_fingerprint: Hash identifying the state.
+    - action_type: Category of the action taken.
+    - outcome: "success" or "failure".
+    - state_features: JSON string of original state features (optional).
+    - action_spec: JSON string of action specification (optional).
+    - agent_id: Agent identifier (optional, defaults to "default").</p>
+<p>Entries missing state_fingerprint or action_type are skipped with a warning.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>entries</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>List of (entry_id, fields_dict) tuples from StreamConsumer.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/popoto/recipes/policy_cache.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-410">410</a></span>
+<span class="normal"><a href="#__codelineno-0-411">411</a></span>
+<span class="normal"><a href="#__codelineno-0-412">412</a></span>
+<span class="normal"><a href="#__codelineno-0-413">413</a></span>
+<span class="normal"><a href="#__codelineno-0-414">414</a></span>
+<span class="normal"><a href="#__codelineno-0-415">415</a></span>
+<span class="normal"><a href="#__codelineno-0-416">416</a></span>
+<span class="normal"><a href="#__codelineno-0-417">417</a></span>
+<span class="normal"><a href="#__codelineno-0-418">418</a></span>
+<span class="normal"><a href="#__codelineno-0-419">419</a></span>
+<span class="normal"><a href="#__codelineno-0-420">420</a></span>
+<span class="normal"><a href="#__codelineno-0-421">421</a></span>
+<span class="normal"><a href="#__codelineno-0-422">422</a></span>
+<span class="normal"><a href="#__codelineno-0-423">423</a></span>
+<span class="normal"><a href="#__codelineno-0-424">424</a></span>
+<span class="normal"><a href="#__codelineno-0-425">425</a></span>
+<span class="normal"><a href="#__codelineno-0-426">426</a></span>
+<span class="normal"><a href="#__codelineno-0-427">427</a></span>
+<span class="normal"><a href="#__codelineno-0-428">428</a></span>
+<span class="normal"><a href="#__codelineno-0-429">429</a></span>
+<span class="normal"><a href="#__codelineno-0-430">430</a></span>
+<span class="normal"><a href="#__codelineno-0-431">431</a></span>
+<span class="normal"><a href="#__codelineno-0-432">432</a></span>
+<span class="normal"><a href="#__codelineno-0-433">433</a></span>
+<span class="normal"><a href="#__codelineno-0-434">434</a></span>
+<span class="normal"><a href="#__codelineno-0-435">435</a></span>
+<span class="normal"><a href="#__codelineno-0-436">436</a></span>
+<span class="normal"><a href="#__codelineno-0-437">437</a></span>
+<span class="normal"><a href="#__codelineno-0-438">438</a></span>
+<span class="normal"><a href="#__codelineno-0-439">439</a></span>
+<span class="normal"><a href="#__codelineno-0-440">440</a></span>
+<span class="normal"><a href="#__codelineno-0-441">441</a></span>
+<span class="normal"><a href="#__codelineno-0-442">442</a></span>
+<span class="normal"><a href="#__codelineno-0-443">443</a></span>
+<span class="normal"><a href="#__codelineno-0-444">444</a></span>
+<span class="normal"><a href="#__codelineno-0-445">445</a></span>
+<span class="normal"><a href="#__codelineno-0-446">446</a></span>
+<span class="normal"><a href="#__codelineno-0-447">447</a></span>
+<span class="normal"><a href="#__codelineno-0-448">448</a></span>
+<span class="normal"><a href="#__codelineno-0-449">449</a></span>
+<span class="normal"><a href="#__codelineno-0-450">450</a></span>
+<span class="normal"><a href="#__codelineno-0-451">451</a></span>
+<span class="normal"><a href="#__codelineno-0-452">452</a></span>
+<span class="normal"><a href="#__codelineno-0-453">453</a></span>
+<span class="normal"><a href="#__codelineno-0-454">454</a></span>
+<span class="normal"><a href="#__codelineno-0-455">455</a></span>
+<span class="normal"><a href="#__codelineno-0-456">456</a></span>
+<span class="normal"><a href="#__codelineno-0-457">457</a></span>
+<span class="normal"><a href="#__codelineno-0-458">458</a></span>
+<span class="normal"><a href="#__codelineno-0-459">459</a></span>
+<span class="normal"><a href="#__codelineno-0-460">460</a></span>
+<span class="normal"><a href="#__codelineno-0-461">461</a></span>
+<span class="normal"><a href="#__codelineno-0-462">462</a></span>
+<span class="normal"><a href="#__codelineno-0-463">463</a></span>
+<span class="normal"><a href="#__codelineno-0-464">464</a></span>
+<span class="normal"><a href="#__codelineno-0-465">465</a></span>
+<span class="normal"><a href="#__codelineno-0-466">466</a></span>
+<span class="normal"><a href="#__codelineno-0-467">467</a></span>
+<span class="normal"><a href="#__codelineno-0-468">468</a></span>
+<span class="normal"><a href="#__codelineno-0-469">469</a></span>
+<span class="normal"><a href="#__codelineno-0-470">470</a></span>
+<span class="normal"><a href="#__codelineno-0-471">471</a></span>
+<span class="normal"><a href="#__codelineno-0-472">472</a></span>
+<span class="normal"><a href="#__codelineno-0-473">473</a></span>
+<span class="normal"><a href="#__codelineno-0-474">474</a></span>
+<span class="normal"><a href="#__codelineno-0-475">475</a></span>
+<span class="normal"><a href="#__codelineno-0-476">476</a></span>
+<span class="normal"><a href="#__codelineno-0-477">477</a></span>
+<span class="normal"><a href="#__codelineno-0-478">478</a></span>
+<span class="normal"><a href="#__codelineno-0-479">479</a></span>
+<span class="normal"><a href="#__codelineno-0-480">480</a></span>
+<span class="normal"><a href="#__codelineno-0-481">481</a></span>
+<span class="normal"><a href="#__codelineno-0-482">482</a></span>
+<span class="normal"><a href="#__codelineno-0-483">483</a></span>
+<span class="normal"><a href="#__codelineno-0-484">484</a></span>
+<span class="normal"><a href="#__codelineno-0-485">485</a></span>
+<span class="normal"><a href="#__codelineno-0-486">486</a></span>
+<span class="normal"><a href="#__codelineno-0-487">487</a></span>
+<span class="normal"><a href="#__codelineno-0-488">488</a></span>
+<span class="normal"><a href="#__codelineno-0-489">489</a></span>
+<span class="normal"><a href="#__codelineno-0-490">490</a></span>
+<span class="normal"><a href="#__codelineno-0-491">491</a></span>
+<span class="normal"><a href="#__codelineno-0-492">492</a></span>
+<span class="normal"><a href="#__codelineno-0-493">493</a></span>
+<span class="normal"><a href="#__codelineno-0-494">494</a></span>
+<span class="normal"><a href="#__codelineno-0-495">495</a></span>
+<span class="normal"><a href="#__codelineno-0-496">496</a></span>
+<span class="normal"><a href="#__codelineno-0-497">497</a></span>
+<span class="normal"><a href="#__codelineno-0-498">498</a></span>
+<span class="normal"><a href="#__codelineno-0-499">499</a></span>
+<span class="normal"><a href="#__codelineno-0-500">500</a></span>
+<span class="normal"><a href="#__codelineno-0-501">501</a></span>
+<span class="normal"><a href="#__codelineno-0-502">502</a></span>
+<span class="normal"><a href="#__codelineno-0-503">503</a></span>
+<span class="normal"><a href="#__codelineno-0-504">504</a></span>
+<span class="normal"><a href="#__codelineno-0-505">505</a></span>
+<span class="normal"><a href="#__codelineno-0-506">506</a></span>
+<span class="normal"><a href="#__codelineno-0-507">507</a></span>
+<span class="normal"><a href="#__codelineno-0-508">508</a></span>
+<span class="normal"><a href="#__codelineno-0-509">509</a></span>
+<span class="normal"><a href="#__codelineno-0-510">510</a></span>
+<span class="normal"><a href="#__codelineno-0-511">511</a></span>
+<span class="normal"><a href="#__codelineno-0-512">512</a></span>
+<span class="normal"><a href="#__codelineno-0-513">513</a></span>
+<span class="normal"><a href="#__codelineno-0-514">514</a></span>
+<span class="normal"><a href="#__codelineno-0-515">515</a></span>
+<span class="normal"><a href="#__codelineno-0-516">516</a></span>
+<span class="normal"><a href="#__codelineno-0-517">517</a></span>
+<span class="normal"><a href="#__codelineno-0-518">518</a></span>
+<span class="normal"><a href="#__codelineno-0-519">519</a></span>
+<span class="normal"><a href="#__codelineno-0-520">520</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-410" name="__codelineno-0-410"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">crystallization_handler</span><span class="p">(</span><span class="n">entries</span><span class="p">):</span>
+<a id="__codelineno-0-411" name="__codelineno-0-411"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;StreamConsumer handler that detects repeated patterns and crystallizes PolicyEntry records.</span>
+<a id="__codelineno-0-412" name="__codelineno-0-412"></a>
+<a id="__codelineno-0-413" name="__codelineno-0-413"></a><span class="sd">    Groups events by (state_fingerprint, action_type), counts successes</span>
+<a id="__codelineno-0-414" name="__codelineno-0-414"></a><span class="sd">    and failures, and creates a PolicyEntry when evidence threshold is met</span>
+<a id="__codelineno-0-415" name="__codelineno-0-415"></a><span class="sd">    (min events AND Wilson CI lower bound &gt; threshold).</span>
+<a id="__codelineno-0-416" name="__codelineno-0-416"></a>
+<a id="__codelineno-0-417" name="__codelineno-0-417"></a><span class="sd">    Expected entry fields (all strings per Redis Streams spec):</span>
+<a id="__codelineno-0-418" name="__codelineno-0-418"></a><span class="sd">        - state_fingerprint: Hash identifying the state.</span>
+<a id="__codelineno-0-419" name="__codelineno-0-419"></a><span class="sd">        - action_type: Category of the action taken.</span>
+<a id="__codelineno-0-420" name="__codelineno-0-420"></a><span class="sd">        - outcome: &quot;success&quot; or &quot;failure&quot;.</span>
+<a id="__codelineno-0-421" name="__codelineno-0-421"></a><span class="sd">        - state_features: JSON string of original state features (optional).</span>
+<a id="__codelineno-0-422" name="__codelineno-0-422"></a><span class="sd">        - action_spec: JSON string of action specification (optional).</span>
+<a id="__codelineno-0-423" name="__codelineno-0-423"></a><span class="sd">        - agent_id: Agent identifier (optional, defaults to &quot;default&quot;).</span>
+<a id="__codelineno-0-424" name="__codelineno-0-424"></a>
+<a id="__codelineno-0-425" name="__codelineno-0-425"></a><span class="sd">    Entries missing state_fingerprint or action_type are skipped with a warning.</span>
+<a id="__codelineno-0-426" name="__codelineno-0-426"></a>
+<a id="__codelineno-0-427" name="__codelineno-0-427"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-428" name="__codelineno-0-428"></a><span class="sd">        entries: List of (entry_id, fields_dict) tuples from StreamConsumer.</span>
+<a id="__codelineno-0-429" name="__codelineno-0-429"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-430" name="__codelineno-0-430"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">entries</span><span class="p">:</span>
+<a id="__codelineno-0-431" name="__codelineno-0-431"></a>        <span class="k">return</span>
+<a id="__codelineno-0-432" name="__codelineno-0-432"></a>
+<a id="__codelineno-0-433" name="__codelineno-0-433"></a>    <span class="c1"># Group events by (state_fingerprint, action_type)</span>
+<a id="__codelineno-0-434" name="__codelineno-0-434"></a>    <span class="n">groups</span> <span class="o">=</span> <span class="p">{}</span>
+<a id="__codelineno-0-435" name="__codelineno-0-435"></a>    <span class="k">for</span> <span class="n">entry_id</span><span class="p">,</span> <span class="n">fields</span> <span class="ow">in</span> <span class="n">entries</span><span class="p">:</span>
+<a id="__codelineno-0-436" name="__codelineno-0-436"></a>        <span class="n">fp</span> <span class="o">=</span> <span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;state_fingerprint&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-437" name="__codelineno-0-437"></a>        <span class="n">action</span> <span class="o">=</span> <span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;action_type&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-438" name="__codelineno-0-438"></a>
+<a id="__codelineno-0-439" name="__codelineno-0-439"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">fp</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">action</span><span class="p">:</span>
+<a id="__codelineno-0-440" name="__codelineno-0-440"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="__codelineno-0-441" name="__codelineno-0-441"></a>                <span class="s2">&quot;Skipping entry </span><span class="si">%s</span><span class="s2">: missing state_fingerprint or action_type&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-442" name="__codelineno-0-442"></a>                <span class="n">entry_id</span><span class="p">,</span>
+<a id="__codelineno-0-443" name="__codelineno-0-443"></a>            <span class="p">)</span>
+<a id="__codelineno-0-444" name="__codelineno-0-444"></a>            <span class="k">continue</span>
+<a id="__codelineno-0-445" name="__codelineno-0-445"></a>
+<a id="__codelineno-0-446" name="__codelineno-0-446"></a>        <span class="n">key</span> <span class="o">=</span> <span class="p">(</span><span class="n">fp</span><span class="p">,</span> <span class="n">action</span><span class="p">)</span>
+<a id="__codelineno-0-447" name="__codelineno-0-447"></a>        <span class="k">if</span> <span class="n">key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">groups</span><span class="p">:</span>
+<a id="__codelineno-0-448" name="__codelineno-0-448"></a>            <span class="n">groups</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-0-449" name="__codelineno-0-449"></a>                <span class="s2">&quot;successes&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-0-450" name="__codelineno-0-450"></a>                <span class="s2">&quot;total&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-0-451" name="__codelineno-0-451"></a>                <span class="s2">&quot;latest_fields&quot;</span><span class="p">:</span> <span class="n">fields</span><span class="p">,</span>
+<a id="__codelineno-0-452" name="__codelineno-0-452"></a>            <span class="p">}</span>
+<a id="__codelineno-0-453" name="__codelineno-0-453"></a>
+<a id="__codelineno-0-454" name="__codelineno-0-454"></a>        <span class="n">groups</span><span class="p">[</span><span class="n">key</span><span class="p">][</span><span class="s2">&quot;total&quot;</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+<a id="__codelineno-0-455" name="__codelineno-0-455"></a>        <span class="k">if</span> <span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;outcome&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;success&quot;</span><span class="p">:</span>
+<a id="__codelineno-0-456" name="__codelineno-0-456"></a>            <span class="n">groups</span><span class="p">[</span><span class="n">key</span><span class="p">][</span><span class="s2">&quot;successes&quot;</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+<a id="__codelineno-0-457" name="__codelineno-0-457"></a>
+<a id="__codelineno-0-458" name="__codelineno-0-458"></a>    <span class="c1"># Check each group for crystallization threshold</span>
+<a id="__codelineno-0-459" name="__codelineno-0-459"></a>    <span class="k">for</span> <span class="p">(</span><span class="n">fp</span><span class="p">,</span> <span class="n">action</span><span class="p">),</span> <span class="n">stats</span> <span class="ow">in</span> <span class="n">groups</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+<a id="__codelineno-0-460" name="__codelineno-0-460"></a>        <span class="n">total</span> <span class="o">=</span> <span class="n">stats</span><span class="p">[</span><span class="s2">&quot;total&quot;</span><span class="p">]</span>
+<a id="__codelineno-0-461" name="__codelineno-0-461"></a>        <span class="n">successes</span> <span class="o">=</span> <span class="n">stats</span><span class="p">[</span><span class="s2">&quot;successes&quot;</span><span class="p">]</span>
+<a id="__codelineno-0-462" name="__codelineno-0-462"></a>
+<a id="__codelineno-0-463" name="__codelineno-0-463"></a>        <span class="k">if</span> <span class="n">total</span> <span class="o">&lt;</span> <span class="n">MIN_EVENTS_FOR_CRYSTALLIZATION</span><span class="p">:</span>
+<a id="__codelineno-0-464" name="__codelineno-0-464"></a>            <span class="k">continue</span>
+<a id="__codelineno-0-465" name="__codelineno-0-465"></a>
+<a id="__codelineno-0-466" name="__codelineno-0-466"></a>        <span class="n">ci_lower</span> <span class="o">=</span> <span class="n">wilson_ci_lower</span><span class="p">(</span><span class="n">successes</span><span class="p">,</span> <span class="n">total</span><span class="p">)</span>
+<a id="__codelineno-0-467" name="__codelineno-0-467"></a>        <span class="k">if</span> <span class="n">ci_lower</span> <span class="o">&lt;=</span> <span class="n">WILSON_CI_THRESHOLD</span><span class="p">:</span>
+<a id="__codelineno-0-468" name="__codelineno-0-468"></a>            <span class="k">continue</span>
+<a id="__codelineno-0-469" name="__codelineno-0-469"></a>
+<a id="__codelineno-0-470" name="__codelineno-0-470"></a>        <span class="c1"># Pre-check via ExistenceFilter to reduce duplicate crystallization.</span>
+<a id="__codelineno-0-471" name="__codelineno-0-471"></a>        <span class="c1"># Note: Bloom filters have a false positive rate (~1% at configured</span>
+<a id="__codelineno-0-472" name="__codelineno-0-472"></a>        <span class="c1"># error_rate=0.01), so ~1% of legitimate crystallizations may be</span>
+<a id="__codelineno-0-473" name="__codelineno-0-473"></a>        <span class="c1"># silently skipped. Acceptable for a reference recipe — applications</span>
+<a id="__codelineno-0-474" name="__codelineno-0-474"></a>        <span class="c1"># requiring zero missed crystallizations should add a secondary check.</span>
+<a id="__codelineno-0-475" name="__codelineno-0-475"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">PolicyEntry</span><span class="o">.</span><span class="n">bloom</span><span class="o">.</span><span class="n">definitely_missing</span><span class="p">(</span><span class="n">PolicyEntry</span><span class="p">,</span> <span class="n">fp</span><span class="p">):</span>
+<a id="__codelineno-0-476" name="__codelineno-0-476"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+<a id="__codelineno-0-477" name="__codelineno-0-477"></a>                <span class="s2">&quot;Bloom filter says fingerprint </span><span class="si">%s</span><span class="s2"> may exist, skipping crystallization&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-478" name="__codelineno-0-478"></a>                <span class="n">fp</span><span class="p">,</span>
+<a id="__codelineno-0-479" name="__codelineno-0-479"></a>            <span class="p">)</span>
+<a id="__codelineno-0-480" name="__codelineno-0-480"></a>            <span class="k">continue</span>
+<a id="__codelineno-0-481" name="__codelineno-0-481"></a>
+<a id="__codelineno-0-482" name="__codelineno-0-482"></a>        <span class="c1"># Crystallize: create PolicyEntry</span>
+<a id="__codelineno-0-483" name="__codelineno-0-483"></a>        <span class="n">fields</span> <span class="o">=</span> <span class="n">stats</span><span class="p">[</span><span class="s2">&quot;latest_fields&quot;</span><span class="p">]</span>
+<a id="__codelineno-0-484" name="__codelineno-0-484"></a>        <span class="n">agent_id</span> <span class="o">=</span> <span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;agent_id&quot;</span><span class="p">,</span> <span class="s2">&quot;default&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-485" name="__codelineno-0-485"></a>
+<a id="__codelineno-0-486" name="__codelineno-0-486"></a>        <span class="c1"># Parse JSON fields with fallbacks</span>
+<a id="__codelineno-0-487" name="__codelineno-0-487"></a>        <span class="n">state_features</span> <span class="o">=</span> <span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;state_features&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="si">{}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-488" name="__codelineno-0-488"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-489" name="__codelineno-0-489"></a>            <span class="n">state_features</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">state_features</span><span class="p">)</span>
+<a id="__codelineno-0-490" name="__codelineno-0-490"></a>        <span class="k">except</span> <span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span><span class="p">,</span> <span class="ne">TypeError</span><span class="p">):</span>
+<a id="__codelineno-0-491" name="__codelineno-0-491"></a>            <span class="n">state_features</span> <span class="o">=</span> <span class="p">{}</span>
+<a id="__codelineno-0-492" name="__codelineno-0-492"></a>
+<a id="__codelineno-0-493" name="__codelineno-0-493"></a>        <span class="n">action_spec</span> <span class="o">=</span> <span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;action_spec&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="si">{}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-494" name="__codelineno-0-494"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-495" name="__codelineno-0-495"></a>            <span class="n">action_spec</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">action_spec</span><span class="p">)</span>
+<a id="__codelineno-0-496" name="__codelineno-0-496"></a>        <span class="k">except</span> <span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span><span class="p">,</span> <span class="ne">TypeError</span><span class="p">):</span>
+<a id="__codelineno-0-497" name="__codelineno-0-497"></a>            <span class="n">action_spec</span> <span class="o">=</span> <span class="p">{}</span>
+<a id="__codelineno-0-498" name="__codelineno-0-498"></a>
+<a id="__codelineno-0-499" name="__codelineno-0-499"></a>        <span class="n">policy</span> <span class="o">=</span> <span class="n">PolicyEntry</span><span class="p">(</span>
+<a id="__codelineno-0-500" name="__codelineno-0-500"></a>            <span class="n">agent_id</span><span class="o">=</span><span class="n">agent_id</span><span class="p">,</span>
+<a id="__codelineno-0-501" name="__codelineno-0-501"></a>            <span class="n">state_fingerprint</span><span class="o">=</span><span class="n">fp</span><span class="p">,</span>
+<a id="__codelineno-0-502" name="__codelineno-0-502"></a>            <span class="n">state_features</span><span class="o">=</span><span class="n">state_features</span><span class="p">,</span>
+<a id="__codelineno-0-503" name="__codelineno-0-503"></a>            <span class="n">action_type</span><span class="o">=</span><span class="n">action</span><span class="p">,</span>
+<a id="__codelineno-0-504" name="__codelineno-0-504"></a>            <span class="n">action_spec</span><span class="o">=</span><span class="n">action_spec</span><span class="p">,</span>
+<a id="__codelineno-0-505" name="__codelineno-0-505"></a>        <span class="p">)</span>
+<a id="__codelineno-0-506" name="__codelineno-0-506"></a>        <span class="n">policy</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<a id="__codelineno-0-507" name="__codelineno-0-507"></a>
+<a id="__codelineno-0-508" name="__codelineno-0-508"></a>        <span class="c1"># Initialize Q-value (overrides timestamp set by DecayingSortedField)</span>
+<a id="__codelineno-0-509" name="__codelineno-0-509"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-510" name="__codelineno-0-510"></a>            <span class="n">initialize_q_value</span><span class="p">(</span><span class="n">policy</span><span class="p">,</span> <span class="n">initial_q</span><span class="o">=</span><span class="n">ci_lower</span><span class="p">)</span>
+<a id="__codelineno-0-511" name="__codelineno-0-511"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+<a id="__codelineno-0-512" name="__codelineno-0-512"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Failed to set initial Q-value for </span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">fp</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+<a id="__codelineno-0-513" name="__codelineno-0-513"></a>
+<a id="__codelineno-0-514" name="__codelineno-0-514"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+<a id="__codelineno-0-515" name="__codelineno-0-515"></a>            <span class="s2">&quot;Crystallized PolicyEntry: fp=</span><span class="si">%s</span><span class="s2"> action=</span><span class="si">%s</span><span class="s2"> ci=</span><span class="si">%.3f</span><span class="s2"> (n=</span><span class="si">%d</span><span class="s2">)&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-516" name="__codelineno-0-516"></a>            <span class="n">fp</span><span class="p">,</span>
+<a id="__codelineno-0-517" name="__codelineno-0-517"></a>            <span class="n">action</span><span class="p">,</span>
+<a id="__codelineno-0-518" name="__codelineno-0-518"></a>            <span class="n">ci_lower</span><span class="p">,</span>
+<a id="__codelineno-0-519" name="__codelineno-0-519"></a>            <span class="n">total</span><span class="p">,</span>
+<a id="__codelineno-0-520" name="__codelineno-0-520"></a>        <span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="popoto.recipes.policy_cache.temporal_discovery_handler" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">temporal_discovery_handler</span><span class="p">(</span><span class="n">entries</span><span class="p">)</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-async"><code>async</code></small>
+  </span>
+
+<a href="#popoto.recipes.policy_cache.temporal_discovery_handler" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>StreamConsumer handler that discovers cyclical patterns from event timestamps.</p>
+<p>Buckets event timestamps by day-of-week (7 buckets), week-of-month
+(4 buckets), and month-of-year (12 buckets). Performs chi-squared test
+against uniform distribution. Significant clusters (p &lt; 0.05) are
+logged as discovered temporal patterns.</p>
+<p>This handler identifies WHEN events tend to occur, which can be used
+to add cycles to CyclicDecayField instances in application code.</p>
+
+
+<details class="expected-entry-fields" open>
+  <summary>Expected entry fields</summary>
+  <ul>
+<li>ts: Unix timestamp string (from EventStreamMixin).</li>
+<li>state_fingerprint: Hash identifying the state (optional).</li>
+</ul>
+</details>
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>entries</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>List of (entry_id, fields_dict) tuples from StreamConsumer.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>list</code></td>            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Discovered cycles as (period, amplitude, phase) tuples.
+Empty list if no significant patterns found.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/popoto/recipes/policy_cache.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-523">523</a></span>
+<span class="normal"><a href="#__codelineno-0-524">524</a></span>
+<span class="normal"><a href="#__codelineno-0-525">525</a></span>
+<span class="normal"><a href="#__codelineno-0-526">526</a></span>
+<span class="normal"><a href="#__codelineno-0-527">527</a></span>
+<span class="normal"><a href="#__codelineno-0-528">528</a></span>
+<span class="normal"><a href="#__codelineno-0-529">529</a></span>
+<span class="normal"><a href="#__codelineno-0-530">530</a></span>
+<span class="normal"><a href="#__codelineno-0-531">531</a></span>
+<span class="normal"><a href="#__codelineno-0-532">532</a></span>
+<span class="normal"><a href="#__codelineno-0-533">533</a></span>
+<span class="normal"><a href="#__codelineno-0-534">534</a></span>
+<span class="normal"><a href="#__codelineno-0-535">535</a></span>
+<span class="normal"><a href="#__codelineno-0-536">536</a></span>
+<span class="normal"><a href="#__codelineno-0-537">537</a></span>
+<span class="normal"><a href="#__codelineno-0-538">538</a></span>
+<span class="normal"><a href="#__codelineno-0-539">539</a></span>
+<span class="normal"><a href="#__codelineno-0-540">540</a></span>
+<span class="normal"><a href="#__codelineno-0-541">541</a></span>
+<span class="normal"><a href="#__codelineno-0-542">542</a></span>
+<span class="normal"><a href="#__codelineno-0-543">543</a></span>
+<span class="normal"><a href="#__codelineno-0-544">544</a></span>
+<span class="normal"><a href="#__codelineno-0-545">545</a></span>
+<span class="normal"><a href="#__codelineno-0-546">546</a></span>
+<span class="normal"><a href="#__codelineno-0-547">547</a></span>
+<span class="normal"><a href="#__codelineno-0-548">548</a></span>
+<span class="normal"><a href="#__codelineno-0-549">549</a></span>
+<span class="normal"><a href="#__codelineno-0-550">550</a></span>
+<span class="normal"><a href="#__codelineno-0-551">551</a></span>
+<span class="normal"><a href="#__codelineno-0-552">552</a></span>
+<span class="normal"><a href="#__codelineno-0-553">553</a></span>
+<span class="normal"><a href="#__codelineno-0-554">554</a></span>
+<span class="normal"><a href="#__codelineno-0-555">555</a></span>
+<span class="normal"><a href="#__codelineno-0-556">556</a></span>
+<span class="normal"><a href="#__codelineno-0-557">557</a></span>
+<span class="normal"><a href="#__codelineno-0-558">558</a></span>
+<span class="normal"><a href="#__codelineno-0-559">559</a></span>
+<span class="normal"><a href="#__codelineno-0-560">560</a></span>
+<span class="normal"><a href="#__codelineno-0-561">561</a></span>
+<span class="normal"><a href="#__codelineno-0-562">562</a></span>
+<span class="normal"><a href="#__codelineno-0-563">563</a></span>
+<span class="normal"><a href="#__codelineno-0-564">564</a></span>
+<span class="normal"><a href="#__codelineno-0-565">565</a></span>
+<span class="normal"><a href="#__codelineno-0-566">566</a></span>
+<span class="normal"><a href="#__codelineno-0-567">567</a></span>
+<span class="normal"><a href="#__codelineno-0-568">568</a></span>
+<span class="normal"><a href="#__codelineno-0-569">569</a></span>
+<span class="normal"><a href="#__codelineno-0-570">570</a></span>
+<span class="normal"><a href="#__codelineno-0-571">571</a></span>
+<span class="normal"><a href="#__codelineno-0-572">572</a></span>
+<span class="normal"><a href="#__codelineno-0-573">573</a></span>
+<span class="normal"><a href="#__codelineno-0-574">574</a></span>
+<span class="normal"><a href="#__codelineno-0-575">575</a></span>
+<span class="normal"><a href="#__codelineno-0-576">576</a></span>
+<span class="normal"><a href="#__codelineno-0-577">577</a></span>
+<span class="normal"><a href="#__codelineno-0-578">578</a></span>
+<span class="normal"><a href="#__codelineno-0-579">579</a></span>
+<span class="normal"><a href="#__codelineno-0-580">580</a></span>
+<span class="normal"><a href="#__codelineno-0-581">581</a></span>
+<span class="normal"><a href="#__codelineno-0-582">582</a></span>
+<span class="normal"><a href="#__codelineno-0-583">583</a></span>
+<span class="normal"><a href="#__codelineno-0-584">584</a></span>
+<span class="normal"><a href="#__codelineno-0-585">585</a></span>
+<span class="normal"><a href="#__codelineno-0-586">586</a></span>
+<span class="normal"><a href="#__codelineno-0-587">587</a></span>
+<span class="normal"><a href="#__codelineno-0-588">588</a></span>
+<span class="normal"><a href="#__codelineno-0-589">589</a></span>
+<span class="normal"><a href="#__codelineno-0-590">590</a></span>
+<span class="normal"><a href="#__codelineno-0-591">591</a></span>
+<span class="normal"><a href="#__codelineno-0-592">592</a></span>
+<span class="normal"><a href="#__codelineno-0-593">593</a></span>
+<span class="normal"><a href="#__codelineno-0-594">594</a></span>
+<span class="normal"><a href="#__codelineno-0-595">595</a></span>
+<span class="normal"><a href="#__codelineno-0-596">596</a></span>
+<span class="normal"><a href="#__codelineno-0-597">597</a></span>
+<span class="normal"><a href="#__codelineno-0-598">598</a></span>
+<span class="normal"><a href="#__codelineno-0-599">599</a></span>
+<span class="normal"><a href="#__codelineno-0-600">600</a></span>
+<span class="normal"><a href="#__codelineno-0-601">601</a></span>
+<span class="normal"><a href="#__codelineno-0-602">602</a></span>
+<span class="normal"><a href="#__codelineno-0-603">603</a></span>
+<span class="normal"><a href="#__codelineno-0-604">604</a></span>
+<span class="normal"><a href="#__codelineno-0-605">605</a></span>
+<span class="normal"><a href="#__codelineno-0-606">606</a></span>
+<span class="normal"><a href="#__codelineno-0-607">607</a></span>
+<span class="normal"><a href="#__codelineno-0-608">608</a></span>
+<span class="normal"><a href="#__codelineno-0-609">609</a></span>
+<span class="normal"><a href="#__codelineno-0-610">610</a></span>
+<span class="normal"><a href="#__codelineno-0-611">611</a></span>
+<span class="normal"><a href="#__codelineno-0-612">612</a></span>
+<span class="normal"><a href="#__codelineno-0-613">613</a></span>
+<span class="normal"><a href="#__codelineno-0-614">614</a></span>
+<span class="normal"><a href="#__codelineno-0-615">615</a></span>
+<span class="normal"><a href="#__codelineno-0-616">616</a></span>
+<span class="normal"><a href="#__codelineno-0-617">617</a></span>
+<span class="normal"><a href="#__codelineno-0-618">618</a></span>
+<span class="normal"><a href="#__codelineno-0-619">619</a></span>
+<span class="normal"><a href="#__codelineno-0-620">620</a></span>
+<span class="normal"><a href="#__codelineno-0-621">621</a></span>
+<span class="normal"><a href="#__codelineno-0-622">622</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-523" name="__codelineno-0-523"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">temporal_discovery_handler</span><span class="p">(</span><span class="n">entries</span><span class="p">):</span>
+<a id="__codelineno-0-524" name="__codelineno-0-524"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;StreamConsumer handler that discovers cyclical patterns from event timestamps.</span>
+<a id="__codelineno-0-525" name="__codelineno-0-525"></a>
+<a id="__codelineno-0-526" name="__codelineno-0-526"></a><span class="sd">    Buckets event timestamps by day-of-week (7 buckets), week-of-month</span>
+<a id="__codelineno-0-527" name="__codelineno-0-527"></a><span class="sd">    (4 buckets), and month-of-year (12 buckets). Performs chi-squared test</span>
+<a id="__codelineno-0-528" name="__codelineno-0-528"></a><span class="sd">    against uniform distribution. Significant clusters (p &lt; 0.05) are</span>
+<a id="__codelineno-0-529" name="__codelineno-0-529"></a><span class="sd">    logged as discovered temporal patterns.</span>
+<a id="__codelineno-0-530" name="__codelineno-0-530"></a>
+<a id="__codelineno-0-531" name="__codelineno-0-531"></a><span class="sd">    This handler identifies WHEN events tend to occur, which can be used</span>
+<a id="__codelineno-0-532" name="__codelineno-0-532"></a><span class="sd">    to add cycles to CyclicDecayField instances in application code.</span>
+<a id="__codelineno-0-533" name="__codelineno-0-533"></a>
+<a id="__codelineno-0-534" name="__codelineno-0-534"></a><span class="sd">    Expected entry fields:</span>
+<a id="__codelineno-0-535" name="__codelineno-0-535"></a><span class="sd">        - ts: Unix timestamp string (from EventStreamMixin).</span>
+<a id="__codelineno-0-536" name="__codelineno-0-536"></a><span class="sd">        - state_fingerprint: Hash identifying the state (optional).</span>
+<a id="__codelineno-0-537" name="__codelineno-0-537"></a>
+<a id="__codelineno-0-538" name="__codelineno-0-538"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-539" name="__codelineno-0-539"></a><span class="sd">        entries: List of (entry_id, fields_dict) tuples from StreamConsumer.</span>
+<a id="__codelineno-0-540" name="__codelineno-0-540"></a>
+<a id="__codelineno-0-541" name="__codelineno-0-541"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-542" name="__codelineno-0-542"></a><span class="sd">        list: Discovered cycles as (period, amplitude, phase) tuples.</span>
+<a id="__codelineno-0-543" name="__codelineno-0-543"></a><span class="sd">            Empty list if no significant patterns found.</span>
+<a id="__codelineno-0-544" name="__codelineno-0-544"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-545" name="__codelineno-0-545"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">entries</span><span class="p">:</span>
+<a id="__codelineno-0-546" name="__codelineno-0-546"></a>        <span class="k">return</span> <span class="p">[]</span>
+<a id="__codelineno-0-547" name="__codelineno-0-547"></a>
+<a id="__codelineno-0-548" name="__codelineno-0-548"></a>    <span class="c1"># Collect timestamps</span>
+<a id="__codelineno-0-549" name="__codelineno-0-549"></a>    <span class="n">timestamps</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-550" name="__codelineno-0-550"></a>    <span class="k">for</span> <span class="n">entry_id</span><span class="p">,</span> <span class="n">fields</span> <span class="ow">in</span> <span class="n">entries</span><span class="p">:</span>
+<a id="__codelineno-0-551" name="__codelineno-0-551"></a>        <span class="n">ts_str</span> <span class="o">=</span> <span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;ts&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-552" name="__codelineno-0-552"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">ts_str</span><span class="p">:</span>
+<a id="__codelineno-0-553" name="__codelineno-0-553"></a>            <span class="k">continue</span>
+<a id="__codelineno-0-554" name="__codelineno-0-554"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-555" name="__codelineno-0-555"></a>            <span class="n">timestamps</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">ts_str</span><span class="p">))</span>
+<a id="__codelineno-0-556" name="__codelineno-0-556"></a>        <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="ne">TypeError</span><span class="p">):</span>
+<a id="__codelineno-0-557" name="__codelineno-0-557"></a>            <span class="k">continue</span>
+<a id="__codelineno-0-558" name="__codelineno-0-558"></a>
+<a id="__codelineno-0-559" name="__codelineno-0-559"></a>    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">timestamps</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">3</span><span class="p">:</span>
+<a id="__codelineno-0-560" name="__codelineno-0-560"></a>        <span class="k">return</span> <span class="p">[]</span>
+<a id="__codelineno-0-561" name="__codelineno-0-561"></a>
+<a id="__codelineno-0-562" name="__codelineno-0-562"></a>    <span class="n">discovered_cycles</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-563" name="__codelineno-0-563"></a>
+<a id="__codelineno-0-564" name="__codelineno-0-564"></a>    <span class="c1"># Bucket definitions: (name, num_buckets, period_constant, bucket_fn)</span>
+<a id="__codelineno-0-565" name="__codelineno-0-565"></a>    <span class="n">bucket_configs</span> <span class="o">=</span> <span class="p">[</span>
+<a id="__codelineno-0-566" name="__codelineno-0-566"></a>        <span class="p">(</span>
+<a id="__codelineno-0-567" name="__codelineno-0-567"></a>            <span class="s2">&quot;day_of_week&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-568" name="__codelineno-0-568"></a>            <span class="mi">7</span><span class="p">,</span>
+<a id="__codelineno-0-569" name="__codelineno-0-569"></a>            <span class="n">TemporalPeriod</span><span class="o">.</span><span class="n">WEEKLY</span><span class="p">,</span>
+<a id="__codelineno-0-570" name="__codelineno-0-570"></a>            <span class="k">lambda</span> <span class="n">ts</span><span class="p">:</span> <span class="n">time</span><span class="o">.</span><span class="n">gmtime</span><span class="p">(</span><span class="n">ts</span><span class="p">)</span><span class="o">.</span><span class="n">tm_wday</span><span class="p">,</span>
+<a id="__codelineno-0-571" name="__codelineno-0-571"></a>        <span class="p">),</span>
+<a id="__codelineno-0-572" name="__codelineno-0-572"></a>        <span class="p">(</span>
+<a id="__codelineno-0-573" name="__codelineno-0-573"></a>            <span class="s2">&quot;week_of_month&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-574" name="__codelineno-0-574"></a>            <span class="mi">4</span><span class="p">,</span>
+<a id="__codelineno-0-575" name="__codelineno-0-575"></a>            <span class="n">TemporalPeriod</span><span class="o">.</span><span class="n">MONTHLY</span><span class="p">,</span>
+<a id="__codelineno-0-576" name="__codelineno-0-576"></a>            <span class="k">lambda</span> <span class="n">ts</span><span class="p">:</span> <span class="nb">min</span><span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">gmtime</span><span class="p">(</span><span class="n">ts</span><span class="p">)</span><span class="o">.</span><span class="n">tm_mday</span> <span class="o">//</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span>
+<a id="__codelineno-0-577" name="__codelineno-0-577"></a>        <span class="p">),</span>
+<a id="__codelineno-0-578" name="__codelineno-0-578"></a>        <span class="p">(</span>
+<a id="__codelineno-0-579" name="__codelineno-0-579"></a>            <span class="s2">&quot;month_of_year&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-580" name="__codelineno-0-580"></a>            <span class="mi">12</span><span class="p">,</span>
+<a id="__codelineno-0-581" name="__codelineno-0-581"></a>            <span class="n">TemporalPeriod</span><span class="o">.</span><span class="n">YEARLY</span><span class="p">,</span>
+<a id="__codelineno-0-582" name="__codelineno-0-582"></a>            <span class="k">lambda</span> <span class="n">ts</span><span class="p">:</span> <span class="n">time</span><span class="o">.</span><span class="n">gmtime</span><span class="p">(</span><span class="n">ts</span><span class="p">)</span><span class="o">.</span><span class="n">tm_mon</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-0-583" name="__codelineno-0-583"></a>        <span class="p">),</span>
+<a id="__codelineno-0-584" name="__codelineno-0-584"></a>    <span class="p">]</span>
+<a id="__codelineno-0-585" name="__codelineno-0-585"></a>
+<a id="__codelineno-0-586" name="__codelineno-0-586"></a>    <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">num_buckets</span><span class="p">,</span> <span class="n">period</span><span class="p">,</span> <span class="n">bucket_fn</span> <span class="ow">in</span> <span class="n">bucket_configs</span><span class="p">:</span>
+<a id="__codelineno-0-587" name="__codelineno-0-587"></a>        <span class="n">buckets</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">num_buckets</span>
+<a id="__codelineno-0-588" name="__codelineno-0-588"></a>        <span class="k">for</span> <span class="n">ts</span> <span class="ow">in</span> <span class="n">timestamps</span><span class="p">:</span>
+<a id="__codelineno-0-589" name="__codelineno-0-589"></a>            <span class="n">idx</span> <span class="o">=</span> <span class="n">bucket_fn</span><span class="p">(</span><span class="n">ts</span><span class="p">)</span>
+<a id="__codelineno-0-590" name="__codelineno-0-590"></a>            <span class="n">buckets</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+<a id="__codelineno-0-591" name="__codelineno-0-591"></a>
+<a id="__codelineno-0-592" name="__codelineno-0-592"></a>        <span class="n">expected</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">timestamps</span><span class="p">)</span> <span class="o">/</span> <span class="n">num_buckets</span>
+<a id="__codelineno-0-593" name="__codelineno-0-593"></a>        <span class="k">if</span> <span class="n">expected</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+<a id="__codelineno-0-594" name="__codelineno-0-594"></a>            <span class="k">continue</span>
+<a id="__codelineno-0-595" name="__codelineno-0-595"></a>
+<a id="__codelineno-0-596" name="__codelineno-0-596"></a>        <span class="n">chi2</span> <span class="o">=</span> <span class="n">chi_squared_uniform</span><span class="p">(</span><span class="n">buckets</span><span class="p">,</span> <span class="n">expected</span><span class="p">)</span>
+<a id="__codelineno-0-597" name="__codelineno-0-597"></a>        <span class="n">df</span> <span class="o">=</span> <span class="n">num_buckets</span> <span class="o">-</span> <span class="mi">1</span>
+<a id="__codelineno-0-598" name="__codelineno-0-598"></a>        <span class="n">critical</span> <span class="o">=</span> <span class="n">CHI_SQUARED_CRITICAL_VALUES</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+<a id="__codelineno-0-599" name="__codelineno-0-599"></a>
+<a id="__codelineno-0-600" name="__codelineno-0-600"></a>        <span class="k">if</span> <span class="n">critical</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-601" name="__codelineno-0-601"></a>            <span class="k">continue</span>
+<a id="__codelineno-0-602" name="__codelineno-0-602"></a>
+<a id="__codelineno-0-603" name="__codelineno-0-603"></a>        <span class="k">if</span> <span class="n">chi2</span> <span class="o">&gt;</span> <span class="n">critical</span><span class="p">:</span>
+<a id="__codelineno-0-604" name="__codelineno-0-604"></a>            <span class="c1"># Find the peak bucket for phase calculation</span>
+<a id="__codelineno-0-605" name="__codelineno-0-605"></a>            <span class="n">peak_bucket</span> <span class="o">=</span> <span class="n">buckets</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">buckets</span><span class="p">))</span>
+<a id="__codelineno-0-606" name="__codelineno-0-606"></a>            <span class="n">phase</span> <span class="o">=</span> <span class="p">(</span><span class="n">peak_bucket</span> <span class="o">/</span> <span class="n">num_buckets</span><span class="p">)</span> <span class="o">*</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span>
+<a id="__codelineno-0-607" name="__codelineno-0-607"></a>
+<a id="__codelineno-0-608" name="__codelineno-0-608"></a>            <span class="n">cycle</span> <span class="o">=</span> <span class="p">(</span><span class="n">period</span><span class="p">,</span> <span class="n">INITIAL_CYCLE_AMPLITUDE</span><span class="p">,</span> <span class="n">phase</span><span class="p">)</span>
+<a id="__codelineno-0-609" name="__codelineno-0-609"></a>            <span class="n">discovered_cycles</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">cycle</span><span class="p">)</span>
+<a id="__codelineno-0-610" name="__codelineno-0-610"></a>
+<a id="__codelineno-0-611" name="__codelineno-0-611"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+<a id="__codelineno-0-612" name="__codelineno-0-612"></a>                <span class="s2">&quot;Temporal pattern discovered: </span><span class="si">%s</span><span class="s2"> chi2=</span><span class="si">%.2f</span><span class="s2"> &gt; </span><span class="si">%.2f</span><span class="s2"> &quot;</span>
+<a id="__codelineno-0-613" name="__codelineno-0-613"></a>                <span class="s2">&quot;(df=</span><span class="si">%d</span><span class="s2">), peak_bucket=</span><span class="si">%d</span><span class="s2">, cycle=</span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-614" name="__codelineno-0-614"></a>                <span class="n">name</span><span class="p">,</span>
+<a id="__codelineno-0-615" name="__codelineno-0-615"></a>                <span class="n">chi2</span><span class="p">,</span>
+<a id="__codelineno-0-616" name="__codelineno-0-616"></a>                <span class="n">critical</span><span class="p">,</span>
+<a id="__codelineno-0-617" name="__codelineno-0-617"></a>                <span class="n">df</span><span class="p">,</span>
+<a id="__codelineno-0-618" name="__codelineno-0-618"></a>                <span class="n">peak_bucket</span><span class="p">,</span>
+<a id="__codelineno-0-619" name="__codelineno-0-619"></a>                <span class="n">cycle</span><span class="p">,</span>
+<a id="__codelineno-0-620" name="__codelineno-0-620"></a>            <span class="p">)</span>
+<a id="__codelineno-0-621" name="__codelineno-0-621"></a>
+<a id="__codelineno-0-622" name="__codelineno-0-622"></a>    <span class="k">return</span> <span class="n">discovered_cycles</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

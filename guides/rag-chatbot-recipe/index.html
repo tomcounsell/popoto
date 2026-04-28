@@ -1,1620 +1,2103 @@
-<!DOCTYPE html>
-<html class="writer-html5" lang="en" >
-<head>
-    <meta charset="utf-8" />
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="author" content="Tom Counsell" />
-      <link rel="shortcut icon" href="../../img/favicon.ico" />
-    <title>RAG Chatbot Recipe - Popoto Documentation</title>
-    <link rel="stylesheet" href="../../css/theme.css" />
-    <link rel="stylesheet" href="../../css/theme_extra.css" />
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
     
-      <script>
-        // Current page data
-        var mkdocs_page_name = "RAG Chatbot Recipe";
-        var mkdocs_page_input_path = "guides/rag-chatbot-recipe.md";
-        var mkdocs_page_url = null;
-      </script>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+        <meta name="author" content="Tom Counsell">
+      
+      
+        <link rel="canonical" href="https://tomcounsell.github.io/popoto/guides/rag-chatbot-recipe/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
-    <!--[if lt IE 9]>
-      <script src="../../js/html5shiv.min.js"></script>
-    <![endif]-->
-      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/markdown.min.js"></script>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/python.min.js"></script>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/bash.min.js"></script>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/html.min.js"></script>
-      <script>hljs.highlightAll();</script> 
-</head>
+    
+      
+        <title>RAG Chatbot Recipe - Popoto Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
 
-<body class="wy-body-for-nav" role="document">
 
-  <div class="wy-grid-for-nav">
-    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
-    <div class="wy-side-scroll">
-      <div class="wy-side-nav-search">
-          <a href="../.." class="icon icon-home"> Popoto Documentation
-        </a><div role="search">
-  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
-      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
-  </form>
-</div>
-      </div>
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
 
-      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
-              <ul>
-                <li class="toctree-l1"><a class="reference internal" href="../..">Home</a>
-    <ul>
-    <li class="toctree-l2"><a class="reference internal" href="../..#simple-example">Simple Example</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../..#features">Features</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../..#getting-started">Getting Started</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../..#install">Install</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../..#enable-error-reporting-optional">Enable Error Reporting (Optional)</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../..#define-a-model">Define a Model</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../..#create-instances">Create Instances</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../..#retrieve-instances">Retrieve Instances</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../..#delete-instances">Delete Instances</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../..#async-operations">Async Operations</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../..#semantic-search">Semantic Search</a>
-    </li>
-        </ul>
-    </li>
-    </ul>
-                </li>
-              </ul>
-              <ul>
-                <li class="toctree-l1"><a class="reference internal" href="../../configuration/">Configuration</a>
-    <ul>
-    <li class="toctree-l2"><a class="reference internal" href="../../configuration/#redisvalkey-connection">Redis/Valkey Connection</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../configuration/#using-redis_url-recommended">Using REDIS_URL (Recommended)</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../configuration/#default-connection">Default Connection</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../configuration/#reconfiguring-at-runtime">Reconfiguring at Runtime</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../configuration/#accessing-the-connection-directly">Accessing the Connection Directly</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../configuration/#debugging">Debugging</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../configuration/#print-redis-info">Print Redis Info</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../configuration/#redisvalkey-cli">Redis/Valkey CLI</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../configuration/#content-and-embedding-configuration">Content and Embedding Configuration</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../configuration/#embedding-providers">Embedding Providers</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="../../configuration/#voyage-ai">Voyage AI</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../configuration/#openai">OpenAI</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../configuration/#custom-providers">Custom Providers</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../configuration/#content-storage-path">Content Storage Path</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../configuration/#error-reporting-opt-in">Error Reporting (Opt-In)</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../configuration/#installation">Installation</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../configuration/#enabling">Enabling</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../configuration/#custom-dsn">Custom DSN</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../configuration/#what-gets-sent">What Gets Sent</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../configuration/#environment-variables">Environment Variables</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../configuration/#thread-safety">Thread Safety</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../configuration/#what-is-thread-safe">What IS Thread-Safe</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../configuration/#what-is-not-thread-safe">What is NOT Thread-Safe</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../configuration/#best-practices">Best Practices</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../configuration/#logging">Logging</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../configuration/#environment-variable">Environment Variable</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../configuration/#programmatic-configuration">Programmatic Configuration</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../configuration/#logger-reference">Logger Reference</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../configuration/#integration-with-frameworks">Integration with Frameworks</a>
-    </li>
-        </ul>
-    </li>
-    </ul>
-                </li>
-              </ul>
-              <ul>
-                <li class="toctree-l1"><a class="reference internal" href="../../fields/">Models and Fields</a>
-    <ul>
-    <li class="toctree-l2"><a class="reference internal" href="../../fields/#keyfield">KeyField</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../fields/#changing-a-keyfield-value">Changing a KeyField Value</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../fields/#uniqueness">Uniqueness</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../fields/#autokeyfield-id-strategies">AutoKeyField ID Strategies</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="../../fields/#uuid4-default">UUID4 (Default)</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../fields/#ulid-time-sortable">ULID (Time-Sortable)</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../fields/#ksuid-time-sortable">KSUID (Time-Sortable)</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../fields/#choosing-a-strategy">Choosing a Strategy</a>
-    </li>
-        </ul>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../fields/#composite-keys">Composite Keys</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../fields/#models-without-keyfields">Models Without KeyFields</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../fields/#field">Field</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../fields/#named-field-shortcuts">Named Field Shortcuts</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../fields/#capped-listfield-max_length">Capped ListField (max_length)</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../fields/#null-values">Null Values</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../fields/#default-values">Default Values</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../fields/#string-max-length">String Max Length</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../fields/#sortedfield">SortedField</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../fields/#sortedkeyfield">SortedKeyField</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../fields/#decayingsortedfield">DecayingSortedField</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../fields/#cyclicdecayfield">CyclicDecayField</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../fields/#cooccurrencefield">CoOccurrenceField</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../fields/#existencefilter">ExistenceFilter</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../fields/#frequencysketch">FrequencySketch</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../fields/#predictionledgermixin">PredictionLedgerMixin</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../fields/#partition_by">partition_by</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../fields/#datetimefield">DatetimeField</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../fields/#timestampable-mixin">Timestampable Mixin</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../fields/#writefiltermixin">WriteFilterMixin</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../fields/#contentfield">ContentField</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../fields/#content-addressable-storage">Content-Addressable Storage</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../fields/#custom-content-store">Custom Content Store</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../fields/#embeddingfield">EmbeddingField</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../fields/#embedding-providers">Embedding Providers</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../fields/#querying-with-semantic_search">Querying with semantic_search()</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../fields/#geofield">GeoField</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../fields/#query-with-distances">Query with Distances</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../fields/#dataframefield">DataFrameField</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../fields/#reserved-field-names">Reserved Field Names</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../fields/#model-methods">Model Methods</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../fields/#creating-and-saving">Creating and Saving</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../fields/#loading">Loading</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../fields/#updating">Updating</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../fields/#deleting">Deleting</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../fields/#validation">Validation</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../fields/#the-db_key-property">The db_key Property</a>
-    </li>
-        </ul>
-    </li>
-    </ul>
-                </li>
-              </ul>
-              <ul>
-                <li class="toctree-l1"><a class="reference internal" href="../../meta/">Model Meta Options</a>
-    <ul>
-    <li class="toctree-l2"><a class="reference internal" href="../../meta/#when-to-use-meta-options">When to Use Meta Options</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../meta/#order_by">order_by</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../meta/#override-per-query">Override per Query</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../meta/#ttl">ttl</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../meta/#instance-level-ttl">Instance-Level TTL</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../meta/#absolute-expiration">Absolute Expiration</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../meta/#indexes">indexes</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../meta/#non-unique-indexes">Non-Unique Indexes</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../meta/#null-handling">NULL Handling</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../meta/#update-and-delete-handling">Update and Delete Handling</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../meta/#complete-example">Complete Example</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../meta/#accessing-meta-at-runtime">Accessing Meta at Runtime</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../meta/#meta-validation">Meta Validation</a>
-    </li>
-    </ul>
-                </li>
-              </ul>
-              <ul>
-                <li class="toctree-l1"><a class="reference internal" href="../../query/">Making Queries</a>
-    <ul>
-    <li class="toctree-l2"><a class="reference internal" href="../../query/#get-a-single-object">Get a Single Object</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../query/#get-all-objects">Get All Objects</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../query/#filter-query-results">Filter Query Results</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../query/#chainable-query-builder">Chainable Query Builder</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../query/#chainable-vs-kwargs-syntax">Chainable vs Kwargs Syntax</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../query/#chainable-methods">Chainable Methods</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../query/#chaining-multiple-filters">Chaining Multiple Filters</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../query/#getting-the-first-result">Getting the First Result</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../query/#counting-without-loading">Counting Without Loading</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../query/#using-values-with-chainable-api">Using Values with Chainable API</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../query/#sorting-by-computed-values">Sorting by Computed Values</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../query/#backward-compatibility">Backward Compatibility</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../query/#q-objects-or-and-not">Q Objects (OR, AND, NOT)</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../query/#importing-q">Importing Q</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../query/#basic-q-object-usage">Basic Q Object Usage</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../query/#or-queries-with">OR Queries with |</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../query/#and-queries-with">AND Queries with &amp;</a>
-    </li>
-        </ul>
-    </li>
-    </ul>
-                </li>
-              </ul>
-              <ul>
-                <li class="toctree-l1"><a class="reference internal" href="../../relationship/">Relationship Field</a>
-    <ul>
-    <li class="toctree-l2"><a class="reference internal" href="../../relationship/#basic-usage">Basic Usage</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../relationship/#creating-related-instances">Creating Related Instances</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../relationship/#querying-by-relationship">Querying by Relationship</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../relationship/#nested-field-access">Nested Field Access</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../relationship/#traversing-relationships">Traversing Relationships</a>
-    </li>
-    </ul>
-                </li>
-              </ul>
-              <ul>
-                <li class="toctree-l1"><a class="reference internal" href="../../multi-tenancy/">Multi-Tenancy</a>
-    <ul>
-    <li class="toctree-l2"><a class="reference internal" href="../../multi-tenancy/#the-pattern-use-a-keyfield">The Pattern: Use a KeyField</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../multi-tenancy/#what-gets-isolated">What gets isolated</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../multi-tenancy/#combine-with-partition_by-for-sorted-queries">Combine with partition_by for sorted queries</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../multi-tenancy/#passing-the-namespace-through-your-application">Passing the namespace through your application</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../multi-tenancy/#when-to-use-separate-redis-databases-instead">When to use separate Redis databases instead</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../multi-tenancy/#summary">Summary</a>
-    </li>
-    </ul>
-                </li>
-              </ul>
-              <ul>
-                <li class="toctree-l1"><a class="reference internal" href="../../async/">Async Operations</a>
-    <ul>
-    <li class="toctree-l2"><a class="reference internal" href="../../async/#async-model-methods">Async Model Methods</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../async/#async_create">async_create()</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../async/#async_save">async_save()</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../async/#async_delete">async_delete()</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../async/#async_load">async_load()</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../async/#async-query-methods">Async Query Methods</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../async/#async_get">async_get()</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../async/#async_filter">async_filter()</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../async/#async_all">async_all()</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../async/#async_count">async_count()</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../async/#async_keys">async_keys()</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../async/#concurrent-operations">Concurrent Operations</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../async/#framework-integration-fastapi">Framework Integration: FastAPI</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../async/#framework-integration-background-workers">Framework Integration: Background Workers</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../async/#implementation-details">Implementation Details</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../async/#native-async-with-redisasyncio">Native Async with redis.asyncio</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../async/#performance-considerations">Performance Considerations</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../async/#error-handling">Error Handling</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../async/#async-bulk-operations">Async Bulk Operations</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../async/#test-coverage">Test Coverage</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../async/#see-also">See Also</a>
-    </li>
-    </ul>
-                </li>
-              </ul>
-              <ul>
-                <li class="toctree-l1"><a class="reference internal" href="../../pubsub/">PubSub</a>
-    <ul>
-    <li class="toctree-l2"><a class="reference internal" href="../../pubsub/#publisher">Publisher</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../pubsub/#custom-channel-names">Custom Channel Names</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../pubsub/#pipeline-support">Pipeline Support</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../pubsub/#subscriber">Subscriber</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../pubsub/#subscriber-lifecycle">Subscriber Lifecycle</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../pubsub/#pre_handle-hook">pre_handle Hook</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../pubsub/#multi-channel-subscription">Multi-Channel Subscription</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../pubsub/#exception-handling">Exception Handling</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../pubsub/#logging">Logging</a>
-    </li>
-    </ul>
-                </li>
-              </ul>
-              <p class="caption"><span class="caption-text">Features</span></p>
-              <ul>
-                  <li class="toctree-l1"><a class="reference internal" >Agent Memory</a>
-    <ul>
-                <li class="toctree-l2"><a class="reference internal" href="../../features/agent-memory/">Overview</a>
-    <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/agent-memory/#why-your-agent-needs-memory-primitives">Why your agent needs memory primitives</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/agent-memory/#primitives-overview">Primitives overview</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/agent-memory/#decayingsortedfield">DecayingSortedField</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#basic-usage">Basic usage</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#parameters">Parameters</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#base-score-weighting">Base score weighting</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#source-weighting-for-teamwork">Source weighting for teamwork</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#query-time-overrides">Query-time overrides</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#refreshing-timestamps">Refreshing timestamps</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#existing-sortedfield-queries">Existing SortedField queries</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/agent-memory/#cyclicdecayfield">CyclicDecayField</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#basic-usage_1">Basic usage</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#parameters_1">Parameters</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#temporalperiod-constants">TemporalPeriod constants</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/agent-memory/#accesstracker">AccessTracker</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#basic-usage_2">Basic usage</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#how-staging-works">How staging works</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#configuration">Configuration</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#suppressing-tracking-for-bulk-operations">Suppressing tracking for bulk operations</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#delete-cleanup">Delete cleanup</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#redis-key-patterns">Redis key patterns</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/agent-memory/#observationprotocol">ObservationProtocol</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#why-observation-matters">Why observation matters</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#basic-usage_3">Basic usage</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#three-hooks">Three hooks</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#four-outcomes">Four outcomes</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#graceful-degradation">Graceful degradation</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#cycle-amplitude-adjustment">Cycle amplitude adjustment</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#recallproposal">RecallProposal</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#redis-key-patterns_1">Redis key patterns</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/agent-memory/#writefilter">WriteFilter</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/agent-memory/#confidencefield">ConfidenceField</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#basic-usage_4">Basic usage</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#bayesian-update-formula">Bayesian update formula</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#entrainment-with-observationprotocol">Entrainment with ObservationProtocol</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#parameters_2">Parameters</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/agent-memory/#cooccurrencefield">CoOccurrenceField</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/agent-memory/#eventstreammixin">EventStreamMixin</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#quick-start">Quick Start</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#configuration_1">Configuration</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#stream-entry-fields">Stream Entry Fields</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#partitioned-streams">Partitioned Streams</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#custom-events-non-save-operations">Custom Events (Non-Save Operations)</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#error-handling">Error Handling</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#writefilter-interaction">WriteFilter Interaction</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#redis-key-patterns_2">Redis Key Patterns</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/agent-memory/#compositescorequery">CompositeScoreQuery</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#basic-usage_5">Basic usage</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#parameters_3">Parameters</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#supported-index-types">Supported index types</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#cooccurrence-boost">CoOccurrence boost</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#post-filter-callback">Post-filter callback</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#temp-key-management">Temp key management</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#error-handling_1">Error handling</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/agent-memory/#existencefilter">ExistenceFilter</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#basic-usage_6">Basic usage</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#parameters_4">Parameters</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#methods">Methods</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#how-it-works">How it works</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#design-decisions">Design decisions</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/agent-memory/#frequencysketch">FrequencySketch</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#basic-usage_7">Basic usage</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#parameters_5">Parameters</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#methods_1">Methods</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#design-decisions_1">Design decisions</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#combining-existencefilter-and-frequencysketch">Combining ExistenceFilter and FrequencySketch</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/agent-memory/#predictionledger">PredictionLedger</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#setup">Setup</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#recording-and-resolving-predictions">Recording and resolving predictions</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#auto-resolution-via-observationprotocol">Auto-resolution via ObservationProtocol</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#confidencefield-feedback">ConfidenceField feedback</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#querying-prediction-errors">Querying prediction errors</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#class-attributes">Class attributes</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#redis-key-patterns_3">Redis key patterns</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#key-properties">Key properties</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/agent-memory/#streamconsumer">StreamConsumer</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#basic-usage_8">Basic usage</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#parameters_6">Parameters</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#dead-letter-handling">Dead-letter handling</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#xclaim-recovery">XCLAIM recovery</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#graceful-shutdown">Graceful shutdown</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#eventstreammixin-synergy">EventStreamMixin synergy</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/agent-memory/#policycache">PolicyCache</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#basic-usage_9">Basic usage</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#policyentry-model">PolicyEntry model</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#key-functions">Key functions</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#tuning-constants">Tuning constants</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/agent-memory/#contextassembler">ContextAssembler</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#pipeline">Pipeline</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#synergy-table">Synergy Table</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#api-reference">API Reference</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#usage-examples">Usage Examples</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#tuning-constants_1">Tuning Constants</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/agent-memory/#graceful-degradation_1">Graceful Degradation</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/agent-memory/#design-principles">Design principles</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/agent-memory/#further-reading">Further reading</a>
-    </li>
-    </ul>
-                </li>
-                <li class="toctree-l2"><a class="reference internal" href="../../features/decaying-sorted-field/">DecayingSortedField</a>
-    <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/decaying-sorted-field/#overview">Overview</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/decaying-sorted-field/#parameters">Parameters</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/decaying-sorted-field/#usage">Usage</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/decaying-sorted-field/#basic-model-definition">Basic Model Definition</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/decaying-sorted-field/#base-score-weighting">Base Score Weighting</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/decaying-sorted-field/#source-weighting-with-interactionweight">Source Weighting with InteractionWeight</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/decaying-sorted-field/#refreshing-timestamps">Refreshing Timestamps</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/decaying-sorted-field/#query-time-overrides">Query-Time Overrides</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/decaying-sorted-field/#tuning">Tuning</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/decaying-sorted-field/#architecture">Architecture</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/decaying-sorted-field/#see-also">See Also</a>
-    </li>
-    </ul>
-                </li>
-                <li class="toctree-l2"><a class="reference internal" href="../../features/cyclic-decay-field/">CyclicDecayField</a>
-    <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/cyclic-decay-field/#overview">Overview</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/cyclic-decay-field/#parameters">Parameters</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/cyclic-decay-field/#cycle-tuples">Cycle Tuples</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/cyclic-decay-field/#temporalperiod-constants">TemporalPeriod Constants</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/cyclic-decay-field/#usage">Usage</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/cyclic-decay-field/#basic-model-definition">Basic Model Definition</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/cyclic-decay-field/#querying-top-results">Querying Top Results</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/cyclic-decay-field/#resolving-pressure">Resolving Pressure</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/cyclic-decay-field/#adjusting-cycle-amplitudes">Adjusting Cycle Amplitudes</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/cyclic-decay-field/#refreshing-the-decay-clock">Refreshing the Decay Clock</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/cyclic-decay-field/#redis-data-model">Redis Data Model</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/cyclic-decay-field/#scoring-formula">Scoring Formula</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/cyclic-decay-field/#error-handling">Error Handling</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/cyclic-decay-field/#integration-with-observationprotocol">Integration with ObservationProtocol</a>
-    </li>
-    </ul>
-                </li>
-                <li class="toctree-l2"><a class="reference internal" href="../../features/confidence-field/">ConfidenceField</a>
-    <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/confidence-field/#overview">Overview</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/confidence-field/#parameters">Parameters</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/confidence-field/#usage">Usage</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/confidence-field/#bayesian-update-formula">Bayesian Update Formula</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/confidence-field/#convergence-behavior">Convergence Behavior</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/confidence-field/#entrainment-with-observationprotocol">Entrainment with ObservationProtocol</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/confidence-field/#auto-discharge">Auto-discharge</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/confidence-field/#api-reference">API Reference</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/confidence-field/#confidencefieldupdate_confidenceinstance-field_name-signal">ConfidenceField.update_confidence(instance, field_name, signal)</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/confidence-field/#confidencefieldget_confidenceinstance-field_name">ConfidenceField.get_confidence(instance, field_name)</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/confidence-field/#confidencefieldget_confidence_datainstance-field_name">ConfidenceField.get_confidence_data(instance, field_name)</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/confidence-field/#redis-key-patterns">Redis Key Patterns</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/confidence-field/#companion-fields">Companion Fields</a>
-    </li>
-    </ul>
-                </li>
-                <li class="toctree-l2"><a class="reference internal" href="../../features/co-occurrence-field/">CoOccurrenceField</a>
-    <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/co-occurrence-field/#overview">Overview</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/co-occurrence-field/#parameters">Parameters</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/co-occurrence-field/#redis-key-pattern">Redis Key Pattern</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/co-occurrence-field/#usage">Usage</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/co-occurrence-field/#methods">Methods</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/co-occurrence-field/#linkmodel_class-source_pk-target_pk-initial_weight01-pipelinenone">link(model_class, source_pk, target_pk, initial_weight=0.1, pipeline=None)</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/co-occurrence-field/#strengthenmodel_class-source_pk-target_pk-delta005-pipelinenone">strengthen(model_class, source_pk, target_pk, delta=0.05, pipeline=None)</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/co-occurrence-field/#unlinkmodel_class-source_pk-target_pk-pipelinenone">unlink(model_class, source_pk, target_pk, pipeline=None)</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/co-occurrence-field/#weaken_allmodel_class-pk-factornone-pipelinenone">weaken_all(model_class, pk, factor=None, pipeline=None)</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/co-occurrence-field/#get_linkedmodel_class-pk-min_weight001-limit20">get_linked(model_class, pk, min_weight=0.01, limit=20)</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/co-occurrence-field/#propagatemodel_class-seed_pks-depth2-decay_per_hop05-threshold001">propagate(model_class, seed_pks, depth=2, decay_per_hop=0.5, threshold=0.01)</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/co-occurrence-field/#edge-pruning">Edge Pruning</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/co-occurrence-field/#cleanup-on-delete">Cleanup on Delete</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/co-occurrence-field/#synergy-with-other-fields">Synergy with Other Fields</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/co-occurrence-field/#with-decayingsortedfield">With DecayingSortedField</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/co-occurrence-field/#with-accesstrackermixin">With AccessTrackerMixin</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/co-occurrence-field/#with-confidencefield">With ConfidenceField</a>
-    </li>
-        </ul>
-    </li>
-    </ul>
-                </li>
-                <li class="toctree-l2"><a class="reference internal" href="../../features/existence-filter/">ExistenceFilter</a>
-    <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/existence-filter/#overview">Overview</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/existence-filter/#existencefilter">ExistenceFilter</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/existence-filter/#parameters">Parameters</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/existence-filter/#usage">Usage</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/existence-filter/#tokenization">Tokenization</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/existence-filter/#architecture">Architecture</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/existence-filter/#frequencysketch">FrequencySketch</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/existence-filter/#parameters_1">Parameters</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/existence-filter/#usage_1">Usage</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/existence-filter/#architecture_1">Architecture</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/existence-filter/#when-to-use-which">When to Use Which</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/existence-filter/#see-also">See Also</a>
-    </li>
-    </ul>
-                </li>
-                <li class="toctree-l2"><a class="reference internal" href="../../features/observation-protocol/">ObservationProtocol</a>
-    <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/observation-protocol/#overview">Overview</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/observation-protocol/#outcomes">Outcomes</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/observation-protocol/#usage">Usage</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/observation-protocol/#proactive-surfacing">Proactive Surfacing</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/observation-protocol/#tuning-constants">Tuning Constants</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/observation-protocol/#effects-matrix">Effects Matrix</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/observation-protocol/#recallproposal">RecallProposal</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/observation-protocol/#see-also">See Also</a>
-    </li>
-    </ul>
-                </li>
-                <li class="toctree-l2"><a class="reference internal" href="../../features/prediction-ledger/">PredictionLedger</a>
-    <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/prediction-ledger/#overview">Overview</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/prediction-ledger/#parameters-class-attributes">Parameters (Class Attributes)</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/prediction-ledger/#usage">Usage</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/prediction-ledger/#model-definition">Model Definition</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/prediction-ledger/#recording-and-resolving-predictions">Recording and Resolving Predictions</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/prediction-ledger/#auto-resolution-via-observationprotocol">Auto-Resolution via ObservationProtocol</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/prediction-ledger/#querying-prediction-errors">Querying Prediction Errors</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/prediction-ledger/#prediction-error-computation">Prediction Error Computation</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/prediction-ledger/#architecture">Architecture</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/prediction-ledger/#see-also">See Also</a>
-    </li>
-    </ul>
-                </li>
-                <li class="toctree-l2"><a class="reference internal" href="../../features/composite-score-query/">Composite Score Query</a>
-    <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/composite-score-query/#quick-start">Quick start</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/composite-score-query/#api-reference">API reference</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/composite-score-query/#querybuildercomposite_score">QueryBuilder.composite_score()</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/composite-score-query/#parameters">Parameters</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/composite-score-query/#supported-index-types">Supported index types</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/composite-score-query/#how-it-works">How it works</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/composite-score-query/#cooccurrence-boost">CoOccurrence boost</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/composite-score-query/#temperature-scaling">Temperature scaling</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/composite-score-query/#error-handling">Error handling</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/composite-score-query/#temp-key-conventions">Temp key conventions</a>
-    </li>
-    </ul>
-                </li>
-                <li class="toctree-l2"><a class="reference internal" href="../../features/policy-cache/">PolicyCache</a>
-    <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/policy-cache/#overview">Overview</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/policy-cache/#components">Components</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/policy-cache/#policyentry-model">PolicyEntry Model</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/policy-cache/#crystallization-handler">Crystallization Handler</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/policy-cache/#q-value-updates">Q-Value Updates</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/policy-cache/#temporal-discovery">Temporal Discovery</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/policy-cache/#tuning-constants">Tuning Constants</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/policy-cache/#utility-functions">Utility Functions</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/policy-cache/#see-also">See Also</a>
-    </li>
-    </ul>
-                </li>
-                <li class="toctree-l2"><a class="reference internal" href="../../features/context-assembler/">ContextAssembler</a>
-    <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/context-assembler/#overview">Overview</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/context-assembler/#primitive-synergy">Primitive Synergy</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/context-assembler/#usage">Usage</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/context-assembler/#assemblyresult">AssemblyResult</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/context-assembler/#tuning-constants">Tuning Constants</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/context-assembler/#pipeline-details">Pipeline Details</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/context-assembler/#pull-path">Pull Path</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/context-assembler/#push-path">Push Path</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../../features/context-assembler/#merge-and-budget">Merge and Budget</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/context-assembler/#llm-integration">LLM Integration</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/context-assembler/#see-also">See Also</a>
-    </li>
-    </ul>
-                </li>
-    </ul>
-                  </li>
-                  <li class="toctree-l1"><a class="reference internal" href="../../features/meta-class-implementation/">Meta Class Implementation</a>
-    <ul>
-    <li class="toctree-l2"><a class="reference internal" href="../../features/meta-class-implementation/#overview">Overview</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../features/meta-class-implementation/#completed-features">Completed Features</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/meta-class-implementation/#1-metaorder_by-pr-50">1. Meta.order_by (PR #50)</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/meta-class-implementation/#2-metattl-pr-51">2. Meta.ttl (PR #51)</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/meta-class-implementation/#3-metaindexes-pr-52">3. Meta.indexes (PR #52)</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../features/meta-class-implementation/#documentation">Documentation</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../features/meta-class-implementation/#key-design-decisions">Key Design Decisions</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/meta-class-implementation/#1-index-storage-redis-hash">1. Index Storage: Redis HASH</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/meta-class-implementation/#2-update-semantics-_saved_field_values">2. Update Semantics: _saved_field_values</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/meta-class-implementation/#3-null-handling-sql-standard">3. NULL Handling: SQL Standard</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/meta-class-implementation/#4-lifecycle-direct-in-model-methods">4. Lifecycle: Direct in Model methods</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../features/meta-class-implementation/#testing">Testing</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../features/meta-class-implementation/#future-considerations">Future Considerations</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../features/meta-class-implementation/#lessons-from-peewee-research">Lessons from Peewee Research</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../features/meta-class-implementation/#files-modified">Files Modified</a>
-    </li>
-    </ul>
-                  </li>
-                  <li class="toctree-l1"><a class="reference internal" href="../../features/kitchen-edge-case-demo/">Kitchen Edge Case Demo</a>
-    <ul>
-    <li class="toctree-l2"><a class="reference internal" href="../../features/kitchen-edge-case-demo/#background">Background</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../features/kitchen-edge-case-demo/#model-changes">Model Changes</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/kitchen-edge-case-demo/#menuitem-category-promoted-to-keyfield">MenuItem — category promoted to KeyField</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/kitchen-edge-case-demo/#orderadvance_status-partial-save">Order.advance_status() — partial save</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../features/kitchen-edge-case-demo/#new-interactive-flows">New Interactive Flows</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/kitchen-edge-case-demo/#menu-screen-move-category-pr-159">Menu Screen — "Move Category" (PR #159)</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/kitchen-edge-case-demo/#orders-screen-advance-status-pr-162">Orders Screen — "→ Advance Status" (PR #162)</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/kitchen-edge-case-demo/#orders-screen-assign-driver-pr-163">Orders Screen — "Assign Driver" (PR #163)</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../features/kitchen-edge-case-demo/#restaurants-screen-rename-pr-161">Restaurants Screen — "Rename" (PR #161)</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../features/kitchen-edge-case-demo/#running-the-demo">Running the Demo</a>
-    </li>
-    </ul>
-                  </li>
-              </ul>
-              <p class="caption"><span class="caption-text">Guides</span></p>
-              <ul>
-                  <li class="toctree-l1"><a class="reference internal" href="../agent-memory-quickstart/">Agent Memory Quickstart</a>
-    <ul>
-    <li class="toctree-l2"><a class="reference internal" href="../agent-memory-quickstart/#level-1-recall-time-weighted-retrieval">Level 1: Recall — Time-Weighted Retrieval</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../agent-memory-quickstart/#level-2-attention-filter-noise-track-reads">Level 2: Attention — Filter Noise, Track Reads</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../agent-memory-quickstart/#level-3-learning-outcomes-strengthen-or-weaken-beliefs">Level 3: Learning — Outcomes Strengthen or Weaken Beliefs</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../agent-memory-quickstart/#level-4-association-multi-factor-ranking">Level 4: Association — Multi-Factor Ranking</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../agent-memory-quickstart/#level-5-cognition-llm-ready-context-assembly">Level 5: Cognition — LLM-Ready Context Assembly</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../agent-memory-quickstart/#complete-llm-integration-example">Complete LLM Integration Example</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../agent-memory-quickstart/#level-6-semantic-search-find-memories-by-meaning">Level 6: Semantic Search — Find Memories by Meaning</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../agent-memory-quickstart/#import-cheat-sheet">Import Cheat Sheet</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../agent-memory-quickstart/#whats-next">What's Next</a>
-    </li>
-    </ul>
-                  </li>
-                  <li class="toctree-l1"><a class="reference internal" href="../tuning-magic-numbers/">Tuning Magic Numbers</a>
-    <ul>
-    <li class="toctree-l2"><a class="reference internal" href="../tuning-magic-numbers/#overview">Overview</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../tuning-magic-numbers/#constant-catalog">Constant Catalog</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../tuning-magic-numbers/#observationprotocol-constants">ObservationProtocol Constants</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../tuning-magic-numbers/#confidencefield">ConfidenceField</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../tuning-magic-numbers/#writefiltermixin">WriteFilterMixin</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../tuning-magic-numbers/#decayingsortedfield-cyclicdecayfield">DecayingSortedField / CyclicDecayField</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../tuning-magic-numbers/#cooccurrencefield">CoOccurrenceField</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../tuning-magic-numbers/#predictionledgermixin">PredictionLedgerMixin</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../tuning-magic-numbers/#policycache">PolicyCache</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../tuning-magic-numbers/#contextassembler">ContextAssembler</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../tuning-magic-numbers/#subconsciousmemory-tier-4">SubconsciousMemory (Tier 4)</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../tuning-magic-numbers/#cliff-effects">Cliff Effects</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../tuning-magic-numbers/#interaction-effects">Interaction Effects</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../tuning-magic-numbers/#methodology">Methodology</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../tuning-magic-numbers/#benchmark-harness">Benchmark Harness</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../tuning-magic-numbers/#metrics">Metrics</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../tuning-magic-numbers/#sweep-design">Sweep Design</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../tuning-magic-numbers/#running-the-benchmarks">Running the Benchmarks</a>
-    </li>
-    </ul>
-                  </li>
-                  <li class="toctree-l1"><a class="reference internal" href="../policy-cache-recipe/">Policy Cache Recipe</a>
-    <ul>
-    <li class="toctree-l2"><a class="reference internal" href="../policy-cache-recipe/#quick-start">Quick Start</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../policy-cache-recipe/#architecture">Architecture</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../policy-cache-recipe/#crystallization">Crystallization</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../policy-cache-recipe/#temporal-discovery">Temporal Discovery</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../policy-cache-recipe/#q-value-updates">Q-Value Updates</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../policy-cache-recipe/#tuning-constants">Tuning Constants</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../policy-cache-recipe/#design-decisions">Design Decisions</a>
-    </li>
-    </ul>
-                  </li>
-                  <li class="toctree-l1"><a class="reference internal" href="../subconscious-memory-recipe/">Subconscious Memory Recipe</a>
-    <ul>
-    <li class="toctree-l2"><a class="reference internal" href="../subconscious-memory-recipe/#architecture">Architecture</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../subconscious-memory-recipe/#quick-start">Quick Start</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../subconscious-memory-recipe/#openai-sdk-integration">OpenAI SDK Integration</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../subconscious-memory-recipe/#how-it-works">How It Works</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../subconscious-memory-recipe/#pre-turn-inject_contextmessages">Pre-turn: inject_context(messages)</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../subconscious-memory-recipe/#post-turn-extract_memoriesresponse_text-importance">Post-turn: extract_memories(response_text, importance)</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../subconscious-memory-recipe/#outcome-report_outcomesassembly_result-outcome">Outcome: report_outcomes(assembly_result, outcome)</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../subconscious-memory-recipe/#tuning">Tuning</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../subconscious-memory-recipe/#extensibility">Extensibility</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../subconscious-memory-recipe/#custom-fact-extraction">Custom Fact Extraction</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../subconscious-memory-recipe/#custom-query-cues">Custom Query Cues</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../subconscious-memory-recipe/#see-also">See Also</a>
-    </li>
-    </ul>
-                  </li>
-                  <li class="toctree-l1"><a class="reference internal" href="../popoto-memory-roadmap/">Memory Roadmap</a>
-    <ul>
-    <li class="toctree-l2"><a class="reference internal" href="../popoto-memory-roadmap/#executive-summary">Executive Summary</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../popoto-memory-roadmap/#three-temporal-forces">Three Temporal Forces</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../popoto-memory-roadmap/#push-based-recall">Push-Based Recall</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../popoto-memory-roadmap/#observation-protocol">Observation Protocol</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../popoto-memory-roadmap/#entrainment-self-correcting-cycles">Entrainment — Self-Correcting Cycles</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../popoto-memory-roadmap/#naming-conventions">Naming Conventions</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../popoto-memory-roadmap/#step-1-decayingsortedfield-cyclicdecayfield-time-weighted-scoring-with-temporal-rhythms-shipped">Step 1: DecayingSortedField + CyclicDecayField — Time-Weighted Scoring with Temporal Rhythms ✅ Shipped</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../popoto-memory-roadmap/#step-2-observationprotocol-accesstracker-passive-behavioral-inference-shipped">Step 2: ObservationProtocol + AccessTracker — Passive Behavioral Inference ✅ Shipped</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../popoto-memory-roadmap/#step-3-writefilter-mixin-selective-encoding-shipped">Step 3: WriteFilter Mixin — Selective Encoding ✅ Shipped</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../popoto-memory-roadmap/#step-4-confidencefield-bayesian-certainty-tracking-entrainment-shipped">Step 4: ConfidenceField — Bayesian Certainty Tracking + Entrainment ✅ Shipped</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../popoto-memory-roadmap/#step-5-cooccurrencefield-weighted-association-edges-shipped">Step 5: CoOccurrenceField — Weighted Association Edges ✅ Shipped</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../popoto-memory-roadmap/#step-6-eventstreammixin-append-only-mutation-log-shipped">Step 6: EventStreamMixin — Append-Only Mutation Log ✅ Shipped</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../popoto-memory-roadmap/#step-7-compositescorequery-multi-factor-retrieval-shipped">Step 7: CompositeScoreQuery — Multi-Factor Retrieval ✅ Shipped</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../popoto-memory-roadmap/#step-8-existencefilter-fast-pre-retrieval-check-shipped">Step 8: ExistenceFilter — Fast Pre-Retrieval Check ✅ Shipped</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../popoto-memory-roadmap/#step-9-predictionledger-mixin-outcome-tracking-auto-resolution-shipped">Step 9: PredictionLedger Mixin — Outcome Tracking + Auto-Resolution ✅ Shipped</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../popoto-memory-roadmap/#step-10-streamconsumer-background-compaction-pipeline-shipped">Step 10: StreamConsumer — Background Compaction Pipeline ✅ Shipped</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../popoto-memory-roadmap/#step-11-policycache-model-pattern-learned-action-selection-shipped">Step 11: PolicyCache Model Pattern — Learned Action Selection ✅ Shipped</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../popoto-memory-roadmap/#step-12-contextassembler-retrieval-to-injection-bridge-proactive-surfacing-shipped">Step 12: ContextAssembler — Retrieval-to-Injection Bridge + Proactive Surfacing ✅ Shipped</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../popoto-memory-roadmap/#combinatorial-test-matrix">Combinatorial Test Matrix</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../popoto-memory-roadmap/#implementation-timeline-estimate">Implementation Timeline Estimate</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../popoto-memory-roadmap/#magic-numbers-experimentally-validated">Magic Numbers — Experimentally Validated</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../popoto-memory-roadmap/#category-1-behavioral-sensitivity-high-impact-on-agent-performance">Category 1: Behavioral Sensitivity — High Impact on Agent Performance</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../popoto-memory-roadmap/#category-2-structural-capacity-application-dependent">Category 2: Structural Capacity — Application-Dependent</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../popoto-memory-roadmap/#category-3-edge-pruning-cleanup-thresholds">Category 3: Edge Pruning — Cleanup Thresholds</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../popoto-memory-roadmap/#category-4-domain-constants-fixed-by-design">Category 4: Domain Constants — Fixed by Design</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../popoto-memory-roadmap/#experiment-planning-notes">Experiment Planning Notes</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../popoto-memory-roadmap/#what-this-gives-agent-developers">What This Gives Agent Developers</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../popoto-memory-roadmap/#roadmap-complete">Roadmap Complete</a>
-    </li>
-    </ul>
-                  </li>
-                  <li class="toctree-l1"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/">Neuroscience Design Spec</a>
-    <ul>
-    <li class="toctree-l2"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#part-1-the-brains-memory-systems-what-each-actually-computes">PART 1: The brain's memory systems — what each actually computes</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#11-episodic-memory-fast-writing-into-sparse-non-interfering-traces">1.1 Episodic memory: fast writing into sparse, non-interfering traces</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#12-procedural-memory-the-brains-learned-policy-engine">1.2 Procedural memory: the brain's learned policy engine</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#13-semantic-memory-where-llms-already-excel-with-one-gap">1.3 Semantic memory: where LLMs already excel, with one gap</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#14-salience-and-emotional-tagging-what-gets-remembered">1.4 Salience and emotional tagging: what gets remembered</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#15-working-memory-the-context-window-that-must-be-actively-managed">1.5 Working memory: the context window that must be actively managed</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#part-2-computational-primitives-the-operations-a-memory-system-needs">PART 2: Computational primitives — the operations a memory system needs</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#21-encoding-binding-whatwherewhenwhohow-it-felt-into-sparse-traces">2.1 Encoding: binding what/where/when/who/how-it-felt into sparse traces</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#22-consolidation-replay-that-extracts-patterns-and-prevents-interference">2.2 Consolidation: replay that extracts patterns and prevents interference</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#23-retrieval-cue-dependent-recall-with-spreading-activation">2.3 Retrieval: cue-dependent recall with spreading activation</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#24-forgetting-an-active-essential-process">2.4 Forgetting: an active, essential process</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#25-metacognition-knowing-what-you-know">2.5 Metacognition: knowing what you know</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#part-3-design-principles-for-complementing-llms">PART 3: Design principles for complementing LLMs</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#the-division-of-labor">The division of labor</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#what-not-to-build">What NOT to build</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#what-to-build">What TO build</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#part-4-research-directions-and-their-computational-implications">PART 4: Research directions and their computational implications</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#41-numenta-reference-frames-structured-knowledge-beyond-flat-vectors">4.1 Numenta reference frames: structured knowledge beyond flat vectors</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#42-cls-dual-learning-rates-the-fastslow-architecture">4.2 CLS dual learning rates: the fast/slow architecture</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#43-basal-ganglia-reinforcement-based-action-selection-over-problem-fingerprints">4.3 Basal ganglia: reinforcement-based action selection over problem fingerprints</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#44-sleep-research-prioritized-replay-via-redis-streams">4.4 Sleep research: prioritized replay via Redis Streams</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#45-amygdala-research-the-salience-function">4.5 Amygdala research: the salience function</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#46-cerebellum-research-forward-models-for-outcome-prediction">4.6 Cerebellum research: forward models for outcome prediction</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#part-5-implementation-architecture-redis-structures-popoto-models-and-the-orm-boundary">PART 5: Implementation architecture — Redis structures, Popoto models, and the ORM boundary</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#51-memory-type-taxonomy-and-data-models">5.1 Memory type taxonomy and data models</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#episodic-memory">Episodic Memory</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#procedural-memory">Procedural Memory</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#forward-model-cerebellar">Forward Model (Cerebellar)</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#salience-tag">Salience Tag</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#consolidated-pattern-semanticextracted-knowledge">Consolidated Pattern (Semantic/Extracted Knowledge)</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#52-the-interaction-model-how-memory-types-feed-each-other">5.2 The interaction model: how memory types feed each other</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#53-orm-abstractions-what-popoto-should-provide">5.3 ORM abstractions: what Popoto should provide</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#new-field-mixins">New field mixins</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#new-query-methods">New query methods</a>
-    </li>
-    <li class="toctree-l4"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#new-hook-signatures">New hook signatures</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#54-the-orm-vs-application-layer-boundary">5.4 The ORM vs. application layer boundary</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#55-key-redis-patterns-summary">5.5 Key Redis patterns summary</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#whats-novel-in-this-design">What's novel in this design</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#1-activation-dependent-decay-rates-not-just-recency-frequency">1. Activation-dependent decay rates — not just recency × frequency</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#2-salience-gated-encoding-that-operates-below-the-llm">2. Salience-gated encoding that operates below the LLM</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#3-retrieval-induced-forgetting-as-a-memory-sharpening-mechanism">3. Retrieval-induced forgetting as a memory sharpening mechanism</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#4-true-episodic-semantic-consolidation-via-redis-streams">4. True episodic → semantic consolidation via Redis Streams</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#5-forward-models-for-outcome-prediction-before-acting">5. Forward models for outcome prediction before acting</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#6-metacognition-via-probabilistic-data-structures">6. Metacognition via probabilistic data structures</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#7-prediction-error-as-the-universal-consolidation-currency">7. Prediction error as the universal consolidation currency</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../programmable-memory-systems-neuroscience-design-spec/#conclusion-from-neuroscience-primitives-to-implementable-infrastructure">Conclusion: from neuroscience primitives to implementable infrastructure</a>
-    </li>
-    </ul>
-                  </li>
-                  <li class="toctree-l1"><a class="reference internal" href="../epistemic-flow-cognitive-agent-architectures/">Epistemic Flow</a>
-    <ul>
-    <li class="toctree-l2"><a class="reference internal" href="../epistemic-flow-cognitive-agent-architectures/#1-the-problem-with-react-style-retrieval">1. THE PROBLEM WITH REACT-STYLE RETRIEVAL</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../epistemic-flow-cognitive-agent-architectures/#the-cognitive-friction-of-react">The Cognitive Friction of ReAct</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../epistemic-flow-cognitive-agent-architectures/#impact-assessment-on-resource-efficiency">Impact Assessment on Resource Efficiency</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../epistemic-flow-cognitive-agent-architectures/#contrastive-analysis-retrieval-paradigms">Contrastive Analysis: Retrieval Paradigms</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../epistemic-flow-cognitive-agent-architectures/#2-the-four-mechanisms-of-silent-injection">2. THE FOUR MECHANISMS OF SILENT INJECTION</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../epistemic-flow-cognitive-agent-architectures/#ambient-token-monitoring">Ambient Token Monitoring</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../epistemic-flow-cognitive-agent-architectures/#push-based-semantic-triggers">Push-Based Semantic Triggers</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../epistemic-flow-cognitive-agent-architectures/#predictive-activation-pas-candidate-expansion">Predictive Activation (PAS): Candidate Expansion</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../epistemic-flow-cognitive-agent-architectures/#silent-context-injection-the-intercept">Silent Context Injection: The Intercept</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../epistemic-flow-cognitive-agent-architectures/#3-the-thalamic-gate-architectural-biomimicry">3. THE THALAMIC GATE: ARCHITECTURAL BIOMIMICRY</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../epistemic-flow-cognitive-agent-architectures/#the-biological-model-vs-muninndb">The Biological Model vs. MuninnDB</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../epistemic-flow-cognitive-agent-architectures/#the-6-phase-activate-pipeline">The 6-Phase ACTIVATE Pipeline</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../epistemic-flow-cognitive-agent-architectures/#differentiator-hebbian-associations-bayesian-smoothing">Differentiator: Hebbian Associations &amp; Bayesian Smoothing</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../epistemic-flow-cognitive-agent-architectures/#4-implementation-decisions-for-popoto">4. IMPLEMENTATION DECISIONS FOR POPOTO</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../epistemic-flow-cognitive-agent-architectures/#injection-point-latency-management">Injection Point &amp; Latency Management</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../epistemic-flow-cognitive-agent-architectures/#popoto-integration-map-streaming-graphs">Popoto Integration Map: Streaming &amp; Graphs</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../epistemic-flow-cognitive-agent-architectures/#engineering-for-scale-ulids-and-the-mol">Engineering for Scale: ULIDs and the MOL</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../epistemic-flow-cognitive-agent-architectures/#5-epistemic-flow-in-practice-the-account-manager-scenario">5. EPISTEMIC FLOW IN PRACTICE: THE ACCOUNT MANAGER SCENARIO</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../epistemic-flow-cognitive-agent-architectures/#the-narrative-sequence">The Narrative Sequence</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../epistemic-flow-cognitive-agent-architectures/#trace-comparison">Trace Comparison</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../epistemic-flow-cognitive-agent-architectures/#strategic-outcome">Strategic Outcome</a>
-    </li>
-        </ul>
-    </li>
-    </ul>
-                  </li>
-                  <li class="toctree-l1"><a class="reference internal" href="../research-prompt-memory-systems/">Memory Systems Research</a>
-    <ul>
-    <li class="toctree-l2"><a class="reference internal" href="../research-prompt-memory-systems/#context">Context</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../research-prompt-memory-systems/#part-1-the-brains-memory-systems-what-does-each-actually-compute">Part 1: The Brain's Memory Systems — What Does Each Actually Compute?</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../research-prompt-memory-systems/#11-episodic-memory-hippocampus-neocortex">1.1 Episodic Memory (Hippocampus → Neocortex)</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../research-prompt-memory-systems/#12-procedural-memory-basal-ganglia-cerebellum">1.2 Procedural Memory (Basal Ganglia + Cerebellum)</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../research-prompt-memory-systems/#13-semantic-memory-neocortex-distributed">1.3 Semantic Memory (Neocortex — Distributed)</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../research-prompt-memory-systems/#14-salience-and-emotional-tagging-amygdala-insula">1.4 Salience and Emotional Tagging (Amygdala + Insula)</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../research-prompt-memory-systems/#15-working-memory-prefrontal-cortex-thalamic-gating">1.5 Working Memory (Prefrontal Cortex + Thalamic Gating)</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../research-prompt-memory-systems/#part-2-computational-primitives-what-operations-does-a-memory-system-need">Part 2: Computational Primitives — What Operations Does a Memory System Need?</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../research-prompt-memory-systems/#21-encoding">2.1 Encoding</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../research-prompt-memory-systems/#22-consolidation">2.2 Consolidation</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../research-prompt-memory-systems/#23-retrieval">2.3 Retrieval</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../research-prompt-memory-systems/#24-forgetting-active-process">2.4 Forgetting (Active Process)</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../research-prompt-memory-systems/#25-metacognition-knowing-what-you-know">2.5 Metacognition (Knowing What You Know)</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../research-prompt-memory-systems/#part-3-design-principles-for-complementing-llms">Part 3: Design Principles for Complementing LLMs</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../research-prompt-memory-systems/#31-division-of-labor">3.1 Division of Labor</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../research-prompt-memory-systems/#32-what-not-to-build">3.2 What NOT to Build</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../research-prompt-memory-systems/#33-what-to-build">3.3 What TO Build</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../research-prompt-memory-systems/#part-4-research-directions-to-explore">Part 4: Research Directions to Explore</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../research-prompt-memory-systems/#41-from-numenta-reference-frames-for-knowledge">4.1 From Numenta: Reference Frames for Knowledge</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../research-prompt-memory-systems/#42-from-cls-theory-dual-learning-rates">4.2 From CLS Theory: Dual Learning Rates</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../research-prompt-memory-systems/#43-from-basal-ganglia-reinforcement-based-action-selection">4.3 From Basal Ganglia: Reinforcement-Based Action Selection</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../research-prompt-memory-systems/#44-from-sleep-research-prioritized-replay">4.4 From Sleep Research: Prioritized Replay</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../research-prompt-memory-systems/#45-from-amygdala-research-salience-computation">4.5 From Amygdala Research: Salience Computation</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../research-prompt-memory-systems/#46-from-cerebellum-research-forward-models">4.6 From Cerebellum Research: Forward Models</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../research-prompt-memory-systems/#part-5-constraints-and-design-considerations">Part 5: Constraints and Design Considerations</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../research-prompt-memory-systems/#51-redis-as-storage-engine">5.1 Redis as Storage Engine</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../research-prompt-memory-systems/#52-popoto-as-orm-layer">5.2 Popoto as ORM Layer</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../research-prompt-memory-systems/#53-independence-from-patented-approaches">5.3 Independence from Patented Approaches</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../research-prompt-memory-systems/#deliverable">Deliverable</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../research-prompt-memory-systems/#key-references-for-research">Key References for Research</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../research-prompt-memory-systems/#cognitive-science-neuroscience">Cognitive Science &amp; Neuroscience</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../research-prompt-memory-systems/#numenta-thousand-brains">Numenta / Thousand Brains</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../research-prompt-memory-systems/#recent-ai-memory-research">Recent AI Memory Research</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../research-prompt-memory-systems/#cognitive-architectures">Cognitive Architectures</a>
-    </li>
-        </ul>
-    </li>
-    </ul>
-                  </li>
-                  <li class="toctree-l1"><a class="reference internal" href="../launch-announcements/">Launch Announcements</a>
-    <ul>
-    <li class="toctree-l2"><a class="reference internal" href="../launch-announcements/#hacker-news-show-hn">Hacker News — Show HN</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../launch-announcements/#how-to-post">How to post</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../launch-announcements/#title">Title</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../launch-announcements/#url">URL</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../launch-announcements/#your-first-comment-post-immediately-after-submitting">Your first comment (post immediately after submitting)</a>
-    </li>
-        </ul>
-    </li>
-    </ul>
-                  </li>
-              </ul>
-              <ul>
-                <li class="toctree-l1"><a class="reference internal" href="../../api-reference/">API Reference</a>
-    <ul>
-    <li class="toctree-l2"><a class="reference internal" href="../../api-reference/#model-class">Model Class</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../api-reference/#model__init__kwargs">Model.__init__(**kwargs)</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../api-reference/#modelcreate">Model.create()</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../api-reference/#modelsave">Model.save()</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../api-reference/#modeldelete">Model.delete()</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../api-reference/#modelatomic_increment">Model.atomic_increment()</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../api-reference/#modeltouch">Model.touch()</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../api-reference/#modelresolve_pressure">Model.resolve_pressure()</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../api-reference/#modelstrengthen_cycle">Model.strengthen_cycle()</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../api-reference/#modelweaken_cycle">Model.weaken_cycle()</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../api-reference/#modelload">Model.load()</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../api-reference/#modelis_valid">Model.is_valid()</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../api-reference/#modelget_info">Model.get_info()</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../api-reference/#modeldb_key">Model.db_key</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../api-reference/#async-methods">Async Methods</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../api-reference/#bulk-operations">Bulk Operations</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../api-reference/#modelbulk_create">Model.bulk_create()</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../api-reference/#modelbulk_update">Model.bulk_update()</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../api-reference/#modelbulk_delete">Model.bulk_delete()</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../api-reference/#modeldelete_all">Model.delete_all()</a>
-    </li>
-        </ul>
-    </li>
-    </ul>
-                </li>
-              </ul>
-              <p class="caption"><span class="caption-text">Contributing</span></p>
-              <ul>
-                  <li class="toctree-l1"><a class="reference internal" href="../../style-guide/">Style Guide</a>
-    <ul>
-    <li class="toctree-l2"><a class="reference internal" href="../../style-guide/#canonical-example-models">Canonical Example Models</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../style-guide/#tone-and-voice">Tone and Voice</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../style-guide/#page-structure">Page Structure</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../style-guide/#headings">Headings</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../style-guide/#prose-between-code-blocks">Prose Between Code Blocks</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../style-guide/#code-examples">Code Examples</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="../../style-guide/#imports">Imports</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../style-guide/#expected-output">Expected Output</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../style-guide/#self-contained-examples">Self-Contained Examples</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="../../style-guide/#use-canonical-models">Use Canonical Models</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../style-guide/#admonitions">Admonitions</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../style-guide/#cross-references">Cross-References</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="../../style-guide/#general-formatting">General Formatting</a>
-    </li>
-    </ul>
-                  </li>
-              </ul>
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#rag-chatbot-recipe" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Popoto Documentation" class="md-header__button md-logo" aria-label="Popoto Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Popoto Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              RAG Chatbot Recipe
+            
+          </span>
+        </div>
       </div>
     </div>
-    </nav>
-
-    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
-      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
-          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
-          <a href="../..">Popoto Documentation</a>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
         
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
       </nav>
-      <div class="wy-nav-content">
-        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
-  <ul class="wy-breadcrumbs">
-    <li><a href="../.." class="icon icon-home" aria-label="Docs"></a></li>
-      <li class="breadcrumb-item active">RAG Chatbot Recipe</li>
-    <li class="wy-breadcrumbs-aside">
-          <a href="https://github.com/tomcounsell/popoto/edit/main/docs/guides/rag-chatbot-recipe.md" class="icon icon-github"> Edit on GitHub</a>
-    </li>
-  </ul>
-  <hr/>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
-          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
-            <div class="section" itemprop="articleBody">
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/tomcounsell/popoto/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../configuration/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Configuration
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../fields/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Models and Fields
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../meta/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Model Meta Options
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../ttl/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  TTL (Time-to-Live)
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../indexed_fields/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Indexed Fields
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../query/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Making Queries
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../relationship/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Relationship Field
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../multi-tenancy/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Multi-Tenancy
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../async/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Async Operations
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../pubsub/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  PubSub
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../features/agent-memory/" class="md-tabs__link">
+          
+  
+  
+  Features
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../agent-memory-quickstart/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../recipes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Recipes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../testing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Testing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../reference/SUMMARY/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  API Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../style-guide/" class="md-tabs__link">
+          
+  
+  
+  Contributing
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
               
-                <h1 id="rag-chatbot-recipe">RAG Chatbot Recipe</h1>
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Popoto Documentation" class="md-nav__button md-logo" aria-label="Popoto Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Popoto Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/tomcounsell/popoto/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../fields/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models and Fields
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../meta/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model Meta Options
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ttl/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TTL (Time-to-Live)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../indexed_fields/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Indexed Fields
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../query/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Making Queries
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../relationship/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relationship Field
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../multi-tenancy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multi-Tenancy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../async/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Async Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../pubsub/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PubSub
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12" >
+        
+          
+          <label class="md-nav__link" for="__nav_12" id="__nav_12_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Features
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_12_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Features
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_1" id="__nav_12_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent Memory
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Agent Memory
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/agent-memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/decaying-sorted-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DecayingSortedField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/cyclic-decay-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CyclicDecayField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/confidence-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ConfidenceField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/co-occurrence-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CoOccurrenceField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/existence-filter/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ExistenceFilter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/observation-protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ObservationProtocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/prediction-ledger/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PredictionLedger
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/composite-score-query/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Composite Score Query
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/policy-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PolicyCache
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/context-assembler/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ContextAssembler
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/hybrid-retrieval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hybrid Retrieval (BM25 + RRF)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/metacognitive-layer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metacognitive Layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/meta-class-implementation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Meta Class Implementation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/kitchen-edge-case-demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Kitchen Edge Case Demo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_13" >
+        
+          
+          <label class="md-nav__link" for="__nav_13" id="__nav_13_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_13_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_13">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agent-memory-quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent Memory Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tuning-magic-numbers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tuning Magic Numbers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../policy-cache-recipe/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Policy Cache Recipe
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../subconscious-memory-recipe/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subconscious Memory Recipe
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../popoto-memory-roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../programmable-memory-systems-neuroscience-design-spec/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Neuroscience Design Spec
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../epistemic-flow-cognitive-agent-architectures/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Epistemic Flow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../research-prompt-memory-systems/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory Systems Research
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../launch-announcements/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Launch Announcements
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recipes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/SUMMARY/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_17" >
+        
+          
+          <label class="md-nav__link" for="__nav_17" id="__nav_17_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_17_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_17">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../style-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Style Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-1-configure-popoto" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 1: Configure Popoto
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-2-define-knowledge-and-conversation-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 2: Define Knowledge and Conversation Models
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-3-ingest-knowledge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 3: Ingest Knowledge
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-4-retrieve-context-and-generate-responses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 4: Retrieve Context and Generate Responses
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-5-use-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 5: Use It
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#variations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Variations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Variations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#use-openai-embeddings-instead-of-voyage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Use OpenAI Embeddings Instead of Voyage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#add-confidence-tracking" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Add Confidence Tracking
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async-version" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Async Version
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#key-points" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key Points
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="rag-chatbot-recipe">RAG Chatbot Recipe<a class="headerlink" href="#rag-chatbot-recipe" title="Permanent link">&para;</a></h1>
 <p>Build a retrieval-augmented generation (RAG) chatbot that stores conversation
 history and knowledge in Popoto, retrieves relevant context via semantic search,
 and feeds it to an LLM for grounded responses.</p>
@@ -1627,195 +2110,195 @@ and feeds it to an LLM for grounded responses.</p>
 <li>An API key for your LLM (this recipe uses OpenAI, but any LLM works)</li>
 </ul>
 </blockquote>
-<h2 id="architecture">Architecture</h2>
-<pre><code>User question
-    |
-    v
-[Embed query] --&gt; [Semantic search Popoto] --&gt; [Top-K knowledge chunks]
-    |                                                |
-    v                                                v
-[Build prompt with retrieved context] --&gt; [LLM generates answer]
-    |
-    v
-[Store conversation turn in Popoto]
-</code></pre>
+<h2 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>User question
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    |
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    v
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>[Embed query] --&gt; [Semantic search Popoto] --&gt; [Top-K knowledge chunks]
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    |                                                |
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    v                                                v
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>[Build prompt with retrieved context] --&gt; [LLM generates answer]
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    |
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    v
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>[Store conversation turn in Popoto]
+</code></pre></div>
 <p>Popoto handles the storage and retrieval layer. The LLM call is your choice --
 OpenAI, Anthropic, a local model, or any API-compatible provider.</p>
-<h2 id="step-1-configure-popoto">Step 1: Configure Popoto</h2>
+<h2 id="step-1-configure-popoto">Step 1: Configure Popoto<a class="headerlink" href="#step-1-configure-popoto" title="Permanent link">&para;</a></h2>
 <p>Call <code>popoto.configure()</code> once at application startup. This sets the default
 embedding provider for all <code>EmbeddingField</code> instances and <code>semantic_search()</code> calls.</p>
-<pre><code class="language-python">import popoto
-from popoto.embeddings.voyage import VoyageProvider
-
-popoto.configure(
-    embedding_provider=VoyageProvider(api_key=&quot;your-voyage-key&quot;),
-    content_path=&quot;/data/chatbot-memory&quot;,
-)
-</code></pre>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">popoto</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.embeddings.voyage</span><span class="w"> </span><span class="kn">import</span> <span class="n">VoyageProvider</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="n">popoto</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">embedding_provider</span><span class="o">=</span><span class="n">VoyageProvider</span><span class="p">(</span><span class="n">api_key</span><span class="o">=</span><span class="s2">&quot;your-voyage-key&quot;</span><span class="p">),</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">content_path</span><span class="o">=</span><span class="s2">&quot;/data/chatbot-memory&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="p">)</span>
+</code></pre></div>
 <p>See <a href="../../configuration/#content-and-embedding-configuration">Configuration</a> for
 all options including OpenAI provider setup.</p>
-<h2 id="step-2-define-knowledge-and-conversation-models">Step 2: Define Knowledge and Conversation Models</h2>
-<pre><code class="language-python">from popoto import Model, AutoKeyField, KeyField, FloatField
-from popoto import ContentField, EmbeddingField, DecayingSortedField
-
-class Knowledge(Model):
-    &quot;&quot;&quot;Long-lived knowledge base entries. Ingest documents, FAQs, or any
-    reference material the chatbot should be able to cite.&quot;&quot;&quot;
-    chunk_id = AutoKeyField()
-    source = KeyField()              # e.g. &quot;faq&quot;, &quot;docs&quot;, &quot;manual&quot;
-    content = ContentField()         # full text stored on filesystem
-    embedding = EmbeddingField(source=&quot;content&quot;)  # auto-generated on save
-
-class ConversationTurn(Model):
-    &quot;&quot;&quot;Stores each user/assistant exchange. Decaying relevance ensures
-    recent conversation context surfaces first.&quot;&quot;&quot;
-    turn_id = AutoKeyField()
-    session_id = KeyField()          # groups turns by conversation
-    role = KeyField()                # &quot;user&quot; or &quot;assistant&quot;
-    content = ContentField()
-    importance = FloatField(default=1.0)
-    relevance = DecayingSortedField(
-        base_score_field=&quot;importance&quot;,
-        partition_by=&quot;session_id&quot;,
-    )
-    embedding = EmbeddingField(source=&quot;content&quot;)
-</code></pre>
-<h2 id="step-3-ingest-knowledge">Step 3: Ingest Knowledge</h2>
+<h2 id="step-2-define-knowledge-and-conversation-models">Step 2: Define Knowledge and Conversation Models<a class="headerlink" href="#step-2-define-knowledge-and-conversation-models" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">AutoKeyField</span><span class="p">,</span> <span class="n">KeyField</span><span class="p">,</span> <span class="n">FloatField</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">ContentField</span><span class="p">,</span> <span class="n">EmbeddingField</span><span class="p">,</span> <span class="n">DecayingSortedField</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">Knowledge</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Long-lived knowledge base entries. Ingest documents, FAQs, or any</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="sd">    reference material the chatbot should be able to cite.&quot;&quot;&quot;</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="n">chunk_id</span> <span class="o">=</span> <span class="n">AutoKeyField</span><span class="p">()</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    <span class="n">source</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>              <span class="c1"># e.g. &quot;faq&quot;, &quot;docs&quot;, &quot;manual&quot;</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">ContentField</span><span class="p">()</span>         <span class="c1"># full text stored on filesystem</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>    <span class="n">embedding</span> <span class="o">=</span> <span class="n">EmbeddingField</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">&quot;content&quot;</span><span class="p">)</span>  <span class="c1"># auto-generated on save</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="k">class</span><span class="w"> </span><span class="nc">ConversationTurn</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Stores each user/assistant exchange. Decaying relevance ensures</span>
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="sd">    recent conversation context surfaces first.&quot;&quot;&quot;</span>
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>    <span class="n">turn_id</span> <span class="o">=</span> <span class="n">AutoKeyField</span><span class="p">()</span>
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>    <span class="n">session_id</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>          <span class="c1"># groups turns by conversation</span>
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>    <span class="n">role</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>                <span class="c1"># &quot;user&quot; or &quot;assistant&quot;</span>
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">ContentField</span><span class="p">()</span>
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>    <span class="n">importance</span> <span class="o">=</span> <span class="n">FloatField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>    <span class="n">relevance</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span>
+<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>        <span class="n">base_score_field</span><span class="o">=</span><span class="s2">&quot;importance&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a>        <span class="n">partition_by</span><span class="o">=</span><span class="s2">&quot;session_id&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a>    <span class="p">)</span>
+<a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a>    <span class="n">embedding</span> <span class="o">=</span> <span class="n">EmbeddingField</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">&quot;content&quot;</span><span class="p">)</span>
+</code></pre></div>
+<h2 id="step-3-ingest-knowledge">Step 3: Ingest Knowledge<a class="headerlink" href="#step-3-ingest-knowledge" title="Permanent link">&para;</a></h2>
 <p>Load your knowledge base into Popoto. Each chunk gets an embedding automatically
 on save.</p>
-<pre><code class="language-python">def ingest_document(source: str, chunks: list[str]):
-    &quot;&quot;&quot;Ingest a list of text chunks from a document source.&quot;&quot;&quot;
-    for chunk_text in chunks:
-        Knowledge.create(source=source, content=chunk_text)
-
-# Example: ingest FAQ entries
-faqs = [
-    &quot;Our return policy allows returns within 30 days of purchase with receipt.&quot;,
-    &quot;Shipping is free on orders over $50. Standard shipping takes 3-5 business days.&quot;,
-    &quot;Premium members get 20% off all orders and priority customer support.&quot;,
-]
-ingest_document(source=&quot;faq&quot;, chunks=faqs)
-</code></pre>
-<h2 id="step-4-retrieve-context-and-generate-responses">Step 4: Retrieve Context and Generate Responses</h2>
-<pre><code class="language-python">import openai
-
-client = openai.OpenAI(api_key=&quot;your-openai-key&quot;)
-
-def ask(session_id: str, question: str) -&gt; str:
-    &quot;&quot;&quot;Answer a user question using RAG retrieval from Popoto.&quot;&quot;&quot;
-
-    # 1. Search knowledge base by meaning
-    knowledge_results = Knowledge.query.semantic_search(
-        question, limit=3,
-    )
-
-    # 2. Search recent conversation for continuity
-    conversation_results = ConversationTurn.query.filter(
-        session_id=session_id,
-    ).semantic_search(
-        question,
-        indexes={&quot;relevance&quot;: 0.5},
-        limit=5,
-    )
-
-    # 3. Build context block
-    context_parts = []
-    if knowledge_results:
-        context_parts.append(&quot;## Relevant Knowledge&quot;)
-        for k in knowledge_results:
-            context_parts.append(f&quot;- {k.content}&quot;)
-    if conversation_results:
-        context_parts.append(&quot;\n## Recent Conversation&quot;)
-        for turn in conversation_results:
-            context_parts.append(f&quot;[{turn.role}]: {turn.content}&quot;)
-
-    context_block = &quot;\n&quot;.join(context_parts)
-
-    # 4. Call the LLM
-    response = client.chat.completions.create(
-        model=&quot;gpt-4o&quot;,
-        messages=[
-            {
-                &quot;role&quot;: &quot;system&quot;,
-                &quot;content&quot;: (
-                    &quot;You are a helpful customer support assistant. &quot;
-                    &quot;Answer based on the provided context. &quot;
-                    &quot;If the context does not contain the answer, say so.\n\n&quot;
-                    f&quot;{context_block}&quot;
-                ),
-            },
-            {&quot;role&quot;: &quot;user&quot;, &quot;content&quot;: question},
-        ],
-    )
-    answer = response.choices[0].message.content
-
-    # 5. Store both turns for future retrieval
-    ConversationTurn.create(
-        session_id=session_id, role=&quot;user&quot;, content=question, importance=1.0,
-    )
-    ConversationTurn.create(
-        session_id=session_id, role=&quot;assistant&quot;, content=answer, importance=0.8,
-    )
-
-    return answer
-</code></pre>
-<h2 id="step-5-use-it">Step 5: Use It</h2>
-<pre><code class="language-python">session = &quot;session-abc123&quot;
-
-print(ask(session, &quot;What is your return policy?&quot;))
-# =&gt; &quot;You can return items within 30 days of purchase with a receipt...&quot;
-
-print(ask(session, &quot;Do I get free shipping?&quot;))
-# =&gt; &quot;Yes, shipping is free on orders over $50...&quot;
-
-# Follow-up that uses conversation context
-print(ask(session, &quot;What about for premium members?&quot;))
-# =&gt; &quot;Premium members get 20% off all orders and priority support...&quot;
-</code></pre>
-<h2 id="variations">Variations</h2>
-<h3 id="use-openai-embeddings-instead-of-voyage">Use OpenAI Embeddings Instead of Voyage</h3>
-<pre><code class="language-python">from popoto.embeddings.openai import OpenAIProvider
-
-popoto.configure(
-    embedding_provider=OpenAIProvider(api_key=&quot;your-openai-key&quot;),
-)
-</code></pre>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">ingest_document</span><span class="p">(</span><span class="n">source</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">chunks</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]):</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Ingest a list of text chunks from a document source.&quot;&quot;&quot;</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="k">for</span> <span class="n">chunk_text</span> <span class="ow">in</span> <span class="n">chunks</span><span class="p">:</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>        <span class="n">Knowledge</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="n">source</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="n">chunk_text</span><span class="p">)</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="c1"># Example: ingest FAQ entries</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="n">faqs</span> <span class="o">=</span> <span class="p">[</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>    <span class="s2">&quot;Our return policy allows returns within 30 days of purchase with receipt.&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>    <span class="s2">&quot;Shipping is free on orders over $50. Standard shipping takes 3-5 business days.&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>    <span class="s2">&quot;Premium members get 20</span><span class="si">% o</span><span class="s2">ff all orders and priority customer support.&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="p">]</span>
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="n">ingest_document</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">&quot;faq&quot;</span><span class="p">,</span> <span class="n">chunks</span><span class="o">=</span><span class="n">faqs</span><span class="p">)</span>
+</code></pre></div>
+<h2 id="step-4-retrieve-context-and-generate-responses">Step 4: Retrieve Context and Generate Responses<a class="headerlink" href="#step-4-retrieve-context-and-generate-responses" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">openai</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">client</span> <span class="o">=</span> <span class="n">openai</span><span class="o">.</span><span class="n">OpenAI</span><span class="p">(</span><span class="n">api_key</span><span class="o">=</span><span class="s2">&quot;your-openai-key&quot;</span><span class="p">)</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="k">def</span><span class="w"> </span><span class="nf">ask</span><span class="p">(</span><span class="n">session_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">question</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Answer a user question using RAG retrieval from Popoto.&quot;&quot;&quot;</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    <span class="c1"># 1. Search knowledge base by meaning</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>    <span class="n">knowledge_results</span> <span class="o">=</span> <span class="n">Knowledge</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">semantic_search</span><span class="p">(</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>        <span class="n">question</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>    <span class="p">)</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>    <span class="c1"># 2. Search recent conversation for continuity</span>
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>    <span class="n">conversation_results</span> <span class="o">=</span> <span class="n">ConversationTurn</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>        <span class="n">session_id</span><span class="o">=</span><span class="n">session_id</span><span class="p">,</span>
+<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>    <span class="p">)</span><span class="o">.</span><span class="n">semantic_search</span><span class="p">(</span>
+<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>        <span class="n">question</span><span class="p">,</span>
+<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a>        <span class="n">indexes</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;relevance&quot;</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">},</span>
+<a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a>        <span class="n">limit</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
+<a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a>    <span class="p">)</span>
+<a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a>
+<a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a>    <span class="c1"># 3. Build context block</span>
+<a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a>    <span class="n">context_parts</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a>    <span class="k">if</span> <span class="n">knowledge_results</span><span class="p">:</span>
+<a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a>        <span class="n">context_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;## Relevant Knowledge&quot;</span><span class="p">)</span>
+<a id="__codelineno-4-26" name="__codelineno-4-26" href="#__codelineno-4-26"></a>        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">knowledge_results</span><span class="p">:</span>
+<a id="__codelineno-4-27" name="__codelineno-4-27" href="#__codelineno-4-27"></a>            <span class="n">context_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;- </span><span class="si">{</span><span class="n">k</span><span class="o">.</span><span class="n">content</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-4-28" name="__codelineno-4-28" href="#__codelineno-4-28"></a>    <span class="k">if</span> <span class="n">conversation_results</span><span class="p">:</span>
+<a id="__codelineno-4-29" name="__codelineno-4-29" href="#__codelineno-4-29"></a>        <span class="n">context_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">## Recent Conversation&quot;</span><span class="p">)</span>
+<a id="__codelineno-4-30" name="__codelineno-4-30" href="#__codelineno-4-30"></a>        <span class="k">for</span> <span class="n">turn</span> <span class="ow">in</span> <span class="n">conversation_results</span><span class="p">:</span>
+<a id="__codelineno-4-31" name="__codelineno-4-31" href="#__codelineno-4-31"></a>            <span class="n">context_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[</span><span class="si">{</span><span class="n">turn</span><span class="o">.</span><span class="n">role</span><span class="si">}</span><span class="s2">]: </span><span class="si">{</span><span class="n">turn</span><span class="o">.</span><span class="n">content</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-4-32" name="__codelineno-4-32" href="#__codelineno-4-32"></a>
+<a id="__codelineno-4-33" name="__codelineno-4-33" href="#__codelineno-4-33"></a>    <span class="n">context_block</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">context_parts</span><span class="p">)</span>
+<a id="__codelineno-4-34" name="__codelineno-4-34" href="#__codelineno-4-34"></a>
+<a id="__codelineno-4-35" name="__codelineno-4-35" href="#__codelineno-4-35"></a>    <span class="c1"># 4. Call the LLM</span>
+<a id="__codelineno-4-36" name="__codelineno-4-36" href="#__codelineno-4-36"></a>    <span class="n">response</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">chat</span><span class="o">.</span><span class="n">completions</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
+<a id="__codelineno-4-37" name="__codelineno-4-37" href="#__codelineno-4-37"></a>        <span class="n">model</span><span class="o">=</span><span class="s2">&quot;gpt-4o&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-38" name="__codelineno-4-38" href="#__codelineno-4-38"></a>        <span class="n">messages</span><span class="o">=</span><span class="p">[</span>
+<a id="__codelineno-4-39" name="__codelineno-4-39" href="#__codelineno-4-39"></a>            <span class="p">{</span>
+<a id="__codelineno-4-40" name="__codelineno-4-40" href="#__codelineno-4-40"></a>                <span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;system&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-41" name="__codelineno-4-41" href="#__codelineno-4-41"></a>                <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="p">(</span>
+<a id="__codelineno-4-42" name="__codelineno-4-42" href="#__codelineno-4-42"></a>                    <span class="s2">&quot;You are a helpful customer support assistant. &quot;</span>
+<a id="__codelineno-4-43" name="__codelineno-4-43" href="#__codelineno-4-43"></a>                    <span class="s2">&quot;Answer based on the provided context. &quot;</span>
+<a id="__codelineno-4-44" name="__codelineno-4-44" href="#__codelineno-4-44"></a>                    <span class="s2">&quot;If the context does not contain the answer, say so.</span><span class="se">\n\n</span><span class="s2">&quot;</span>
+<a id="__codelineno-4-45" name="__codelineno-4-45" href="#__codelineno-4-45"></a>                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">context_block</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-4-46" name="__codelineno-4-46" href="#__codelineno-4-46"></a>                <span class="p">),</span>
+<a id="__codelineno-4-47" name="__codelineno-4-47" href="#__codelineno-4-47"></a>            <span class="p">},</span>
+<a id="__codelineno-4-48" name="__codelineno-4-48" href="#__codelineno-4-48"></a>            <span class="p">{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="n">question</span><span class="p">},</span>
+<a id="__codelineno-4-49" name="__codelineno-4-49" href="#__codelineno-4-49"></a>        <span class="p">],</span>
+<a id="__codelineno-4-50" name="__codelineno-4-50" href="#__codelineno-4-50"></a>    <span class="p">)</span>
+<a id="__codelineno-4-51" name="__codelineno-4-51" href="#__codelineno-4-51"></a>    <span class="n">answer</span> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">choices</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">message</span><span class="o">.</span><span class="n">content</span>
+<a id="__codelineno-4-52" name="__codelineno-4-52" href="#__codelineno-4-52"></a>
+<a id="__codelineno-4-53" name="__codelineno-4-53" href="#__codelineno-4-53"></a>    <span class="c1"># 5. Store both turns for future retrieval</span>
+<a id="__codelineno-4-54" name="__codelineno-4-54" href="#__codelineno-4-54"></a>    <span class="n">ConversationTurn</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
+<a id="__codelineno-4-55" name="__codelineno-4-55" href="#__codelineno-4-55"></a>        <span class="n">session_id</span><span class="o">=</span><span class="n">session_id</span><span class="p">,</span> <span class="n">role</span><span class="o">=</span><span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="n">question</span><span class="p">,</span> <span class="n">importance</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+<a id="__codelineno-4-56" name="__codelineno-4-56" href="#__codelineno-4-56"></a>    <span class="p">)</span>
+<a id="__codelineno-4-57" name="__codelineno-4-57" href="#__codelineno-4-57"></a>    <span class="n">ConversationTurn</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
+<a id="__codelineno-4-58" name="__codelineno-4-58" href="#__codelineno-4-58"></a>        <span class="n">session_id</span><span class="o">=</span><span class="n">session_id</span><span class="p">,</span> <span class="n">role</span><span class="o">=</span><span class="s2">&quot;assistant&quot;</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="n">answer</span><span class="p">,</span> <span class="n">importance</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span>
+<a id="__codelineno-4-59" name="__codelineno-4-59" href="#__codelineno-4-59"></a>    <span class="p">)</span>
+<a id="__codelineno-4-60" name="__codelineno-4-60" href="#__codelineno-4-60"></a>
+<a id="__codelineno-4-61" name="__codelineno-4-61" href="#__codelineno-4-61"></a>    <span class="k">return</span> <span class="n">answer</span>
+</code></pre></div>
+<h2 id="step-5-use-it">Step 5: Use It<a class="headerlink" href="#step-5-use-it" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">session</span> <span class="o">=</span> <span class="s2">&quot;session-abc123&quot;</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="nb">print</span><span class="p">(</span><span class="n">ask</span><span class="p">(</span><span class="n">session</span><span class="p">,</span> <span class="s2">&quot;What is your return policy?&quot;</span><span class="p">))</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1"># =&gt; &quot;You can return items within 30 days of purchase with a receipt...&quot;</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">ask</span><span class="p">(</span><span class="n">session</span><span class="p">,</span> <span class="s2">&quot;Do I get free shipping?&quot;</span><span class="p">))</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="c1"># =&gt; &quot;Yes, shipping is free on orders over $50...&quot;</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="c1"># Follow-up that uses conversation context</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="nb">print</span><span class="p">(</span><span class="n">ask</span><span class="p">(</span><span class="n">session</span><span class="p">,</span> <span class="s2">&quot;What about for premium members?&quot;</span><span class="p">))</span>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="c1"># =&gt; &quot;Premium members get 20% off all orders and priority support...&quot;</span>
+</code></pre></div>
+<h2 id="variations">Variations<a class="headerlink" href="#variations" title="Permanent link">&para;</a></h2>
+<h3 id="use-openai-embeddings-instead-of-voyage">Use OpenAI Embeddings Instead of Voyage<a class="headerlink" href="#use-openai-embeddings-instead-of-voyage" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.embeddings.openai</span><span class="w"> </span><span class="kn">import</span> <span class="n">OpenAIProvider</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">popoto</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">embedding_provider</span><span class="o">=</span><span class="n">OpenAIProvider</span><span class="p">(</span><span class="n">api_key</span><span class="o">=</span><span class="s2">&quot;your-openai-key&quot;</span><span class="p">),</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="p">)</span>
+</code></pre></div>
 <p>Install: <code>pip install popoto[openai]</code></p>
-<h3 id="add-confidence-tracking">Add Confidence Tracking</h3>
+<h3 id="add-confidence-tracking">Add Confidence Tracking<a class="headerlink" href="#add-confidence-tracking" title="Permanent link">&para;</a></h3>
 <p>Track which knowledge entries the chatbot actually uses and strengthen them
 over time using <code>ConfidenceField</code>:</p>
-<pre><code class="language-python">from popoto import ConfidenceField
-
-class Knowledge(Model):
-    chunk_id = AutoKeyField()
-    source = KeyField()
-    content = ContentField()
-    embedding = EmbeddingField(source=&quot;content&quot;)
-    confidence = ConfidenceField(initial_confidence=0.5)
-
-# After the LLM uses a knowledge entry successfully:
-ConfidenceField.update_confidence(entry, &quot;confidence&quot;, signal=0.9)
-
-# Blend confidence into retrieval ranking:
-results = Knowledge.query.semantic_search(
-    question,
-    indexes={&quot;confidence&quot;: 0.3},
-    limit=5,
-)
-</code></pre>
-<h3 id="async-version">Async Version</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConfidenceField</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">Knowledge</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>    <span class="n">chunk_id</span> <span class="o">=</span> <span class="n">AutoKeyField</span><span class="p">()</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    <span class="n">source</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">ContentField</span><span class="p">()</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>    <span class="n">embedding</span> <span class="o">=</span> <span class="n">EmbeddingField</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">&quot;content&quot;</span><span class="p">)</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>    <span class="n">confidence</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="p">(</span><span class="n">initial_confidence</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="c1"># After the LLM uses a knowledge entry successfully:</span>
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="n">ConfidenceField</span><span class="o">.</span><span class="n">update_confidence</span><span class="p">(</span><span class="n">entry</span><span class="p">,</span> <span class="s2">&quot;confidence&quot;</span><span class="p">,</span> <span class="n">signal</span><span class="o">=</span><span class="mf">0.9</span><span class="p">)</span>
+<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>
+<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="c1"># Blend confidence into retrieval ranking:</span>
+<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Knowledge</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">semantic_search</span><span class="p">(</span>
+<a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>    <span class="n">question</span><span class="p">,</span>
+<a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a>    <span class="n">indexes</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;confidence&quot;</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">},</span>
+<a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a>    <span class="n">limit</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
+<a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a><span class="p">)</span>
+</code></pre></div>
+<h3 id="async-version">Async Version<a class="headerlink" href="#async-version" title="Permanent link">&para;</a></h3>
 <p>Popoto model operations have async counterparts for creation and retrieval:</p>
-<pre><code class="language-python">async def async_ask(session_id: str, question: str) -&gt; str:
-    # Semantic search is synchronous — run it in a thread if needed
-    knowledge_results = Knowledge.query.semantic_search(
-        question, limit=3,
-    )
-    # ... rest of the pipeline
-    await ConversationTurn.async_create(
-        session_id=session_id, role=&quot;user&quot;, content=question,
-    )
-</code></pre>
-<h2 id="key-points">Key Points</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">async_ask</span><span class="p">(</span><span class="n">session_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">question</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>    <span class="c1"># Semantic search is synchronous — run it in a thread if needed</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>    <span class="n">knowledge_results</span> <span class="o">=</span> <span class="n">Knowledge</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">semantic_search</span><span class="p">(</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>        <span class="n">question</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>    <span class="p">)</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>    <span class="c1"># ... rest of the pipeline</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>    <span class="k">await</span> <span class="n">ConversationTurn</span><span class="o">.</span><span class="n">async_create</span><span class="p">(</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>        <span class="n">session_id</span><span class="o">=</span><span class="n">session_id</span><span class="p">,</span> <span class="n">role</span><span class="o">=</span><span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="n">question</span><span class="p">,</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>    <span class="p">)</span>
+</code></pre></div>
+<h2 id="key-points">Key Points<a class="headerlink" href="#key-points" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>ContentField</strong> stores large text on the filesystem, keeping Redis lean</li>
 <li><strong>EmbeddingField</strong> auto-generates vectors on save -- no manual embedding calls</li>
@@ -1823,54 +2306,73 @@ results = Knowledge.query.semantic_search(
 <li>Combined with <code>indexes</code>, semantic search blends meaning-based retrieval with decay, confidence, and other memory signals</li>
 <li>Conversation history with <code>DecayingSortedField</code> ensures recent context surfaces first</li>
 </ul>
-<h2 id="see-also">See Also</h2>
+<h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../agent-memory-quickstart/">Agent Memory Quickstart</a> -- progressive levels from basic recall to semantic search</li>
 <li><a href="../../features/content-and-embedding-fields/">Content and Embedding Fields</a> -- deep dive into storage, providers, and caching</li>
 <li><a href="../../configuration/#content-and-embedding-configuration">Configuration</a> -- global setup for embeddings and content storage</li>
 <li><a href="../policy-cache-recipe/">PolicyCache Recipe</a> -- RL-style action selection built on memory primitives</li>
 </ul>
-              
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
             </div>
-          </div><footer>
-
-  <hr/>
-
-  <div role="contentinfo">
-    <!-- Copyright etc -->
-  </div>
-
-  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
-</footer>
           
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
         </div>
-      </div>
-
-    </section>
-
-  </div>
-
-  <div class="rst-versions" role="note" aria-label="Versions">
-  <span class="rst-current-version" data-toggle="rst-current-version">
-    
-        <span>
-          <a href="https://github.com/tomcounsell/popoto/" class="fa fa-github" style="color: #fcfcfc"> GitHub</a>
-        </span>
-    
-    
-    
-  </span>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
 </div>
-    <script src="../../js/jquery-3.6.0.min.js"></script>
-    <script>var base_url = "../..";</script>
-    <script src="../../js/theme_extra.js"></script>
-    <script src="../../js/theme.js"></script>
-      <script src="../../search/main.js"></script>
-    <script>
-        jQuery(function () {
-            SphinxRtdTheme.Navigation.enable(true);
-        });
-    </script>
-
-</body>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
 </html>

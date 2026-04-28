@@ -1,0 +1,3139 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+        <meta name="author" content="Tom Counsell">
+      
+      
+        <link rel="canonical" href="https://tomcounsell.github.io/popoto/reference/popoto/models/migrations/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>popoto.models.migrations - Popoto Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#popotomodelsmigrations" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../../.." title="Popoto Documentation" class="md-header__button md-logo" aria-label="Popoto Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Popoto Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              popoto.models.migrations
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/tomcounsell/popoto/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../configuration/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Configuration
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../fields/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Models and Fields
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../meta/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Model Meta Options
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../ttl/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  TTL (Time-to-Live)
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../indexed_fields/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Indexed Fields
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../query/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Making Queries
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../relationship/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Relationship Field
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../multi-tenancy/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Multi-Tenancy
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../async/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Async Operations
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../pubsub/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  PubSub
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../../features/agent-memory/" class="md-tabs__link">
+          
+  
+  
+  Features
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../../guides/agent-memory-quickstart/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../recipes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Recipes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../testing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Testing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../SUMMARY/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  API Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../../style-guide/" class="md-tabs__link">
+          
+  
+  
+  Contributing
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../../.." title="Popoto Documentation" class="md-nav__button md-logo" aria-label="Popoto Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Popoto Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/tomcounsell/popoto/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../fields/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models and Fields
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../meta/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model Meta Options
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../ttl/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TTL (Time-to-Live)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../indexed_fields/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Indexed Fields
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../query/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Making Queries
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../relationship/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relationship Field
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../multi-tenancy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multi-Tenancy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../async/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Async Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../pubsub/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PubSub
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12" >
+        
+          
+          <label class="md-nav__link" for="__nav_12" id="__nav_12_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Features
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_12_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Features
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_1" id="__nav_12_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent Memory
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Agent Memory
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/agent-memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/decaying-sorted-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DecayingSortedField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/cyclic-decay-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CyclicDecayField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/confidence-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ConfidenceField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/co-occurrence-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CoOccurrenceField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/existence-filter/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ExistenceFilter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/observation-protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ObservationProtocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/prediction-ledger/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PredictionLedger
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/composite-score-query/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Composite Score Query
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/policy-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PolicyCache
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/context-assembler/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ContextAssembler
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/hybrid-retrieval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hybrid Retrieval (BM25 + RRF)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/metacognitive-layer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metacognitive Layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/meta-class-implementation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Meta Class Implementation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/kitchen-edge-case-demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Kitchen Edge Case Demo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_13" >
+        
+          
+          <label class="md-nav__link" for="__nav_13" id="__nav_13_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_13_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_13">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/agent-memory-quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent Memory Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/tuning-magic-numbers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tuning Magic Numbers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/policy-cache-recipe/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Policy Cache Recipe
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/subconscious-memory-recipe/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subconscious Memory Recipe
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/popoto-memory-roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/programmable-memory-systems-neuroscience-design-spec/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Neuroscience Design Spec
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/epistemic-flow-cognitive-agent-architectures/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Epistemic Flow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/research-prompt-memory-systems/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory Systems Research
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/launch-announcements/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Launch Announcements
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../recipes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recipes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../SUMMARY/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_17" >
+        
+          
+          <label class="md-nav__link" for="__nav_17" id="__nav_17_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_17_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_17">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../style-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Style Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#popoto.models.migrations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        migrations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="migrations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#popoto.models.migrations--migration-cookbook-for-popoto-redis-orm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Migration Cookbook for Popoto Redis ORM
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Migration Cookbook for Popoto Redis ORM">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#popoto.models.migrations--design-philosophy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design Philosophy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.models.migrations--crash-safe-pattern-expand-migrate-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Crash-Safe Pattern: Expand-Migrate-Contract
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.models.migrations--three-tier-save-pattern" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Three-Tier Save Pattern
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.models.migrations--imports-used-in-this-guide" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Imports Used in This Guide
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.models.migrations--performance-considerations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Considerations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.models.migrations--api-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API Reference
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.models.migrations--see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="popotomodelsmigrations"><code>popoto.models.migrations</code><a class="headerlink" href="#popotomodelsmigrations" title="Permanent link">&para;</a></h1>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h2 id="popoto.models.migrations" class="doc doc-heading">
+            <code>popoto.models.migrations</code>
+
+
+<a href="#popoto.models.migrations" class="headerlink" title="Permanent link">&para;</a></h2>
+
+    <div class="doc doc-contents first">
+
+        <h3 id="popoto.models.migrations--migration-cookbook-for-popoto-redis-orm">Migration Cookbook for Popoto Redis ORM<a class="headerlink" href="#popoto.models.migrations--migration-cookbook-for-popoto-redis-orm" title="Permanent link">&para;</a></h3>
+<p>A comprehensive guide to migrating data when your Popoto model schema
+changes. Covers 18 use cases organized by tier, from common field changes
+to full index rebuilds.</p>
+<p>.. contents:: Table of Contents
+   :local:
+   :depth: 2</p>
+<h4 id="popoto.models.migrations--design-philosophy">Design Philosophy<a class="headerlink" href="#popoto.models.migrations--design-philosophy" title="Permanent link">&para;</a></h4>
+<p>Popoto takes a pragmatic approach to migrations. Redis is schemaless, so
+there are no ALTER TABLE equivalents. Instead, Popoto stores each model
+instance as a msgpack-encoded Redis hash at a key like
+<code>ClassName:key1_value:key2_value</code>. Migrations therefore involve:</p>
+<ul>
+<li><strong>Field data</strong>: Adding, removing, or transforming hash fields inside
+  msgpack-encoded values.</li>
+<li><strong>Key patterns</strong>: Changing the Redis key itself when KeyFields change.</li>
+<li><strong>Secondary indexes</strong>: Rebuilding sorted sets, unique indexes, and geo
+  indexes that live alongside the primary data.</li>
+</ul>
+<p>Because Redis has no transactional DDL, all migrations in this guide
+follow the <strong>expand-migrate-contract</strong> pattern for crash safety.</p>
+<h4 id="popoto.models.migrations--crash-safe-pattern-expand-migrate-contract">Crash-Safe Pattern: Expand-Migrate-Contract<a class="headerlink" href="#popoto.models.migrations--crash-safe-pattern-expand-migrate-contract" title="Permanent link">&para;</a></h4>
+<p>Every migration should be structured in three phases so that every
+intermediate state is valid and the system can recover from a crash at
+any point:</p>
+<ol>
+<li><strong>Expand</strong> -- Add the new field or structure alongside the old one.
+   This is purely additive; nothing breaks if you stop here.</li>
+<li><strong>Migrate</strong> -- Backfill data, rebuild indexes, or transform values.
+   This step is idempotent; running it twice produces the same result.</li>
+<li><strong>Contract</strong> -- Remove the old field, index, or key pattern. This is
+   purely destructive cleanup; the old field IS the backup until you
+   reach this step.</li>
+</ol>
+<p>Example of the pattern applied to renaming a field::</p>
+<div class="highlight"><pre><span></span><code># Phase 1: EXPAND -- add new_name field to model, deploy code that
+#          reads from new_name with fallback to old_name.
+# Phase 2: MIGRATE -- copy old_name -&gt; new_name for all records.
+# Phase 3: CONTRACT -- remove old_name from model, deploy code that
+#          only reads new_name, then clean up orphaned data.
+</code></pre></div>
+<h4 id="popoto.models.migrations--three-tier-save-pattern">Three-Tier Save Pattern<a class="headerlink" href="#popoto.models.migrations--three-tier-save-pattern" title="Permanent link">&para;</a></h4>
+<p>Popoto provides three levels of persistence, similar to Django:</p>
+<ol>
+<li><strong>Full save</strong> -- <code>instance.save()</code> validates all fields, fires
+   <code>auto_now</code> hooks, and updates all secondary indexes.</li>
+<li><strong>Partial save</strong> -- <code>instance.save(update_fields=["name", "email"])</code>
+   validates and persists only the listed fields. <code>auto_now</code> fields
+   are NOT automatically included (following Django convention; you must
+   list them explicitly).</li>
+<li><strong>Raw update</strong> -- <code>Model.raw_update(redis_keys, field=value)</code>
+   writes msgpack-encoded values directly to the hash without loading
+   the model, skipping all hooks and validation.</li>
+</ol>
+<p>Each migration recipe below notes which save tier is appropriate.</p>
+<h4 id="popoto.models.migrations--imports-used-in-this-guide">Imports Used in This Guide<a class="headerlink" href="#popoto.models.migrations--imports-used-in-this-guide" title="Permanent link">&para;</a></h4>
+<p>All examples assume the following imports::</p>
+<div class="highlight"><pre><span></span><code>from popoto.redis_db import POPOTO_REDIS_DB
+from popoto.models.base import Model
+from popoto.fields.field import Field
+from popoto.fields.shortcuts import (
+    KeyField, SortedField, AutoKeyField, UniqueKeyField,
+    IntField, FloatField, StringField,
+)
+</code></pre></div>
+<p>.. _tier1:</p>
+<p>==================================
+Tier 1: Common Migrations
+==================================</p>
+<p>These are the migrations most projects will encounter. They involve
+adding, removing, or modifying fields without changing key patterns.</p>
+<ol>
+<li>Add a Field
+~~~~~~~~~~~~~~</li>
+</ol>
+<p><strong>Situation</strong>: You add a new field to your model class.</p>
+<p><strong>What happens</strong>: Nothing breaks. Existing records in Redis simply lack
+the new hash field. When Popoto deserializes an old record, the missing
+field returns <code>None</code> (or the field's <code>default</code> if set).</p>
+<p><strong>Action required</strong>: None for basic cases. If you need every record to
+have a concrete value, see recipe 2 (Add a Field with Backfill).</p>
+<p>::</p>
+<div class="highlight"><pre><span></span><code># Before
+class Product(Model):
+    sku = UniqueKeyField()
+    name = Field()
+
+# After -- just add the field
+class Product(Model):
+    sku = UniqueKeyField()
+    name = Field()
+    description = Field(default=&quot;&quot;)  # old records return &quot;&quot;
+
+# Verify: load an old record
+product = Product.query.get(sku=&quot;ABC-123&quot;)
+print(product.description)  # &quot;&quot; (the default)
+</code></pre></div>
+<ol>
+<li>Add a Field with Backfill
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~</li>
+</ol>
+<p><strong>Situation</strong>: You need every existing record to physically contain the
+new field's value in Redis -- for example, a <code>SortedField</code> that must
+appear in its sorted set index, or an <code>auto_now</code>-style timestamp.</p>
+<p><strong>Action required</strong>: Load every record and re-save it. Be aware that
+<code>auto_now</code> fields fire on every <code>save()</code>, which may overwrite
+timestamps you want to preserve.</p>
+<p>::</p>
+<div class="highlight"><pre><span></span><code>class Product(Model):
+    sku = UniqueKeyField()
+    name = Field()
+    description = Field(default=&quot;No description provided.&quot;)
+
+# Backfill all records so the field is physically present in Redis
+pipeline = POPOTO_REDIS_DB.pipeline()
+for redis_key in Product.query.keys():
+    product = Product.query.get(redis_key=redis_key)
+    if product is not None:
+        product.save(pipeline=pipeline)
+
+    # Execute in batches to control memory
+    if pipeline.command_stack_size &gt;= 500:
+        pipeline.execute()
+        pipeline = POPOTO_REDIS_DB.pipeline()
+
+pipeline.execute()
+</code></pre></div>
+<p>To preserve timestamps when backfilling, use <code>update_fields</code> to skip
+<code>auto_now</code> hooks on fields you did not list::</p>
+<div class="highlight"><pre><span></span><code>product.save(update_fields=[&quot;description&quot;])
+#   -&gt; only writes &quot;description&quot; to the hash
+#   -&gt; auto_now fields are NOT auto-included (Django convention)
+#   -&gt; explicitly list auto_now fields if you want them updated
+
+product.save(skip_auto_now=True)
+#   -&gt; saves all fields but skips auto_now hooks
+</code></pre></div>
+<ol>
+<li>Remove a Field
+~~~~~~~~~~~~~~~~~~</li>
+</ol>
+<p><strong>Situation</strong>: You remove a field from your model class.</p>
+<p><strong>What happens</strong>: The field definition is gone, but existing Redis
+hashes still contain the old field's data as an orphaned hash key.
+Additionally, any secondary indexes (sorted sets, unique keys) for that
+field become orphaned.</p>
+<p><strong>Action required</strong>: Clean up orphaned data and indexes. The orphaned
+data does not cause errors (Popoto ignores unknown hash fields on load),
+but it wastes memory.</p>
+<p>::</p>
+<div class="highlight"><pre><span></span><code># Before
+class Product(Model):
+    sku = UniqueKeyField()
+    name = Field()
+    legacy_code = Field()        # removing this
+    priority = SortedField()     # removing this too
+
+# After
+class Product(Model):
+    sku = UniqueKeyField()
+    name = Field()
+
+# --- Cleanup orphaned hash fields ---
+pipeline = POPOTO_REDIS_DB.pipeline()
+for redis_key in Product.query.keys():
+    if isinstance(redis_key, bytes):
+        redis_key = redis_key.decode(&quot;utf-8&quot;)
+    # Remove the orphaned field from the hash
+    pipeline.hdel(redis_key, &quot;legacy_code&quot;)
+    pipeline.hdel(redis_key, &quot;priority&quot;)
+
+    if pipeline.command_stack_size &gt;= 500:
+        pipeline.execute()
+        pipeline = POPOTO_REDIS_DB.pipeline()
+pipeline.execute()
+
+# --- Cleanup orphaned sorted set index ---
+# SortedField indexes follow the pattern: ClassName:_field_name
+POPOTO_REDIS_DB.delete(&quot;Product:_priority&quot;)
+
+# --- Cleanup orphaned unique indexes (if field was UniqueKeyField) ---
+# Unique indexes follow: ClassName:field_name:value
+# Use SCAN to find and delete them
+cursor = 0
+while True:
+    cursor, keys = POPOTO_REDIS_DB.scan(
+        cursor, match=&quot;Product:legacy_code:*&quot;, count=500
+    )
+    if keys:
+        POPOTO_REDIS_DB.delete(*keys)
+    if cursor == 0:
+        break
+</code></pre></div>
+<ol>
+<li>Rename a Field
+~~~~~~~~~~~~~~~~~~</li>
+</ol>
+<p><strong>Situation</strong>: You rename a field (e.g., <code>desc</code> -&gt; <code>description</code>).</p>
+<p><strong>What happens</strong>: Old records have the value stored under the old hash
+key name. The new field name returns <code>None</code> until data is migrated.</p>
+<p><strong>Action required</strong>: Copy the value from the old hash key to the new
+one, then delete the old key. If the field had secondary indexes, those
+must be rebuilt under the new name.</p>
+<p>::</p>
+<div class="highlight"><pre><span></span><code># Before
+class Product(Model):
+    sku = UniqueKeyField()
+    desc = Field()
+
+# After
+class Product(Model):
+    sku = UniqueKeyField()
+    description = Field()
+
+# --- Migrate hash field names ---
+pipeline = POPOTO_REDIS_DB.pipeline()
+for redis_key in Product.query.keys():
+    if isinstance(redis_key, bytes):
+        redis_key = redis_key.decode(&quot;utf-8&quot;)
+
+    # Read old field value, write to new field name, delete old
+    old_value = POPOTO_REDIS_DB.hget(redis_key, &quot;desc&quot;)
+    if old_value is not None:
+        pipeline.hset(redis_key, &quot;description&quot;, old_value)
+        pipeline.hdel(redis_key, &quot;desc&quot;)
+
+    if pipeline.command_stack_size &gt;= 500:
+        pipeline.execute()
+        pipeline = POPOTO_REDIS_DB.pipeline()
+pipeline.execute()
+
+# --- If the field was a SortedField, rename the sorted set ---
+if POPOTO_REDIS_DB.exists(&quot;Product:_desc&quot;):
+    POPOTO_REDIS_DB.rename(&quot;Product:_desc&quot;, &quot;Product:_description&quot;)
+</code></pre></div>
+<p>Alternative: Load-delete-recreate pattern (simpler but slower)::</p>
+<div class="highlight"><pre><span></span><code># This pattern is simpler but involves full serialization round-trips
+for redis_key in Product.query.keys():
+    raw_hash = POPOTO_REDIS_DB.hgetall(redis_key)
+    if b&quot;desc&quot; in raw_hash:
+        # Decode field names
+        data = {
+            k.decode(&quot;utf-8&quot;): v for k, v in raw_hash.items()
+        }
+        # Rename the key in the dict
+        data[&quot;description&quot;] = data.pop(&quot;desc&quot;)
+        # Delete and recreate
+        POPOTO_REDIS_DB.delete(redis_key)
+        if isinstance(redis_key, bytes):
+            redis_key = redis_key.decode(&quot;utf-8&quot;)
+        POPOTO_REDIS_DB.hset(redis_key, mapping={
+            k.encode(&quot;utf-8&quot;): v for k, v in data.items()
+        })
+</code></pre></div>
+<ol>
+<li>Add a SortedField Index
+~~~~~~~~~~~~~~~~~~~~~~~~~~~</li>
+</ol>
+<p><strong>Situation</strong>: You promote a plain <code>Field</code> to a <code>SortedField</code>, or
+add a new <code>SortedField</code>. Existing records have no entries in the
+sorted set index.</p>
+<p><strong>Action required</strong>: Rebuild the sorted set index from existing data.
+Use <code>rebuild_indexes()</code> for a one-liner, or the manual pattern below
+for finer control.</p>
+<p>::</p>
+<div class="highlight"><pre><span></span><code># Before
+class Product(Model):
+    sku = UniqueKeyField()
+    price = FloatField()
+
+# After -- price is now a SortedField for range queries
+class Product(Model):
+    sku = UniqueKeyField()
+    price = SortedField(type=float)
+
+# One-liner: rebuild all indexes (sorted sets, class set, etc.)
+Product.rebuild_indexes()
+</code></pre></div>
+<p>Manual alternative for finer control::</p>
+<div class="highlight"><pre><span></span><code># SortedField index key: ClassName:_field_name
+sorted_set_key = &quot;Product:_price&quot;
+pipeline = POPOTO_REDIS_DB.pipeline()
+
+for redis_key in Product.query.keys():
+    product = Product.query.get(redis_key=redis_key)
+    if product is not None and product.price is not None:
+        # Add to sorted set: score=price, member=redis_key
+        pipeline.zadd(sorted_set_key, {product.db_key.redis_key: product.price})
+
+    if pipeline.command_stack_size &gt;= 500:
+        pipeline.execute()
+        pipeline = POPOTO_REDIS_DB.pipeline()
+pipeline.execute()
+</code></pre></div>
+<p>For partitioned sorted fields (<code>partition_by</code>), each partition gets
+its own sorted set::</p>
+<div class="highlight"><pre><span></span><code>class Product(Model):
+    sku = UniqueKeyField()
+    category = KeyField()
+    price = SortedField(type=float, partition_by=&quot;category&quot;)
+
+# Each category gets its own sorted set:
+# Product:_price:electronics, Product:_price:clothing, etc.
+for redis_key in Product.query.keys():
+    product = Product.query.get(redis_key=redis_key)
+    if product is not None and product.price is not None:
+        partition_key = f&quot;Product:_price:{product.category}&quot;
+        POPOTO_REDIS_DB.zadd(
+            partition_key,
+            {product.db_key.redis_key: product.price},
+        )
+</code></pre></div>
+<ol>
+<li>Change partition_by
+~~~~~~~~~~~~~~~~~~~~~~~</li>
+</ol>
+<p><strong>Situation</strong>: You change the <code>partition_by</code> argument on a
+<code>SortedField</code>, which changes how sorted sets are keyed.</p>
+<p><strong>What happens</strong>: Old sorted sets are keyed by the old partition value.
+Queries using the new partition scheme will miss existing data.</p>
+<p><strong>Action required</strong>: Delete old sorted sets and rebuild with new
+partitioning.</p>
+<p>::</p>
+<div class="highlight"><pre><span></span><code># Before: price partitioned by category
+class Product(Model):
+    sku = UniqueKeyField()
+    category = KeyField()
+    region = KeyField()
+    price = SortedField(type=float, partition_by=&quot;category&quot;)
+
+# After: price partitioned by region
+class Product(Model):
+    sku = UniqueKeyField()
+    category = KeyField()
+    region = KeyField()
+    price = SortedField(type=float, partition_by=&quot;region&quot;)
+
+# --- Step 1: Delete old partitioned sorted sets ---
+cursor = 0
+while True:
+    cursor, keys = POPOTO_REDIS_DB.scan(
+        cursor, match=&quot;Product:_price:*&quot;, count=500
+    )
+    if keys:
+        POPOTO_REDIS_DB.delete(*keys)
+    if cursor == 0:
+        break
+
+# --- Step 2: Rebuild with new partition scheme ---
+for redis_key in Product.query.keys():
+    product = Product.query.get(redis_key=redis_key)
+    if product is not None and product.price is not None:
+        partition_key = f&quot;Product:_price:{product.region}&quot;
+        POPOTO_REDIS_DB.zadd(
+            partition_key,
+            {product.db_key.redis_key: product.price},
+        )
+</code></pre></div>
+<p>.. _tier2:</p>
+<p>==================================
+Tier 2: Structural Migrations
+==================================</p>
+<p>These migrations change the Redis key pattern itself, meaning every
+record must be moved to a new key. They require more care because the
+key is the record's identity in Redis.</p>
+<ol>
+<li>Add a KeyField
+~~~~~~~~~~~~~~~~~~</li>
+</ol>
+<p><strong>Situation</strong>: You add a new <code>KeyField</code> to an existing model. The
+Redis key pattern changes from <code>ClassName:old_key</code> to
+<code>ClassName:new_key:old_key</code> (keys are sorted alphabetically).</p>
+<p><strong>Action required</strong>: Rename every Redis key from the old pattern to the
+new pattern, and update all secondary index references.</p>
+<p>::</p>
+<div class="highlight"><pre><span></span><code>from popoto.redis_db import POPOTO_REDIS_DB
+from popoto.models.base import Model
+from popoto.fields.field import Field
+from popoto.fields.shortcuts import KeyField
+
+# Before
+class UserSession(Model):
+    session_id = KeyField()
+    data = Field()
+
+# After -- adding user_id as a KeyField
+class UserSession(Model):
+    session_id = KeyField()
+    user_id = KeyField()  # new key field
+    data = Field()
+
+# Redis key changes: &quot;UserSession:sess_abc&quot; -&gt; &quot;UserSession:sess_abc:user_123&quot;
+# (KeyFields are sorted alphabetically: session_id, user_id)
+
+# --- Migrate keys using pipeline.rename ---
+pipeline = POPOTO_REDIS_DB.pipeline()
+
+# Use SCAN to find old keys (they still use the old pattern)
+cursor = 0
+old_keys = []
+while True:
+    cursor, keys = POPOTO_REDIS_DB.scan(
+        cursor, match=&quot;UserSession:*&quot;, count=500
+    )
+    old_keys.extend(keys)
+    if cursor == 0:
+        break
+
+for i, old_redis_key in enumerate(old_keys):
+    if isinstance(old_redis_key, bytes):
+        old_redis_key = old_redis_key.decode(&quot;utf-8&quot;)
+
+    # Load old record to get field values
+    old_data = POPOTO_REDIS_DB.hgetall(old_redis_key)
+    if not old_data:
+        continue
+
+    # Determine the new key field value.
+    # You must decide what value the new KeyField gets for old records.
+    # Options: derive from existing data, set a default, or look up externally.
+    new_user_id = &quot;unknown&quot;  # replace with your logic
+
+    # Construct new key (fields sorted alphabetically: session_id, user_id)
+    old_session_id = old_redis_key.split(&quot;:&quot;)[-1]
+    new_redis_key = f&quot;UserSession:{old_session_id}:{new_user_id}&quot;
+
+    # Add new field to the hash data
+    import msgpack
+    pipeline.hset(old_redis_key, &quot;user_id&quot;.encode(&quot;utf-8&quot;),
+                   msgpack.packb(new_user_id))
+
+    # Rename the key atomically
+    pipeline.rename(old_redis_key, new_redis_key)
+
+    # Update the class set (tracks all instance keys)
+    pipeline.srem(&quot;$Class:UserSession&quot;, old_redis_key)
+    pipeline.sadd(&quot;$Class:UserSession&quot;, new_redis_key)
+
+    if i % 500 == 0 and i &gt; 0:
+        pipeline.execute()
+        pipeline = POPOTO_REDIS_DB.pipeline()
+
+pipeline.execute()
+
+# --- Rebuild any sorted set indexes (members reference the old key) ---
+# See recipe 15 for full index rebuild.
+</code></pre></div>
+<ol>
+<li>Remove a KeyField
+~~~~~~~~~~~~~~~~~~~~~</li>
+</ol>
+<p><strong>Situation</strong>: You remove a <code>KeyField</code> from a model. The Redis key
+pattern becomes shorter.</p>
+<p><strong>Action required</strong>: Similar to adding a KeyField -- rename every Redis
+key and update index references.</p>
+<p>.. warning::</p>
+<div class="highlight"><pre><span></span><code>Removing a KeyField may cause key collisions if multiple old records
+map to the same new key. Check for collisions before migrating.
+</code></pre></div>
+<p>::</p>
+<div class="highlight"><pre><span></span><code># Before
+class UserSession(Model):
+    session_id = KeyField()
+    user_id = KeyField()
+    data = Field()
+
+# After -- removing user_id from keys
+class UserSession(Model):
+    session_id = KeyField()
+    user_id = Field()  # demoted from KeyField to plain Field
+    data = Field()
+
+# Redis key changes: &quot;UserSession:sess_abc:user_123&quot; -&gt; &quot;UserSession:sess_abc&quot;
+
+# --- Step 1: Check for collisions ---
+seen_keys = {}
+for redis_key in POPOTO_REDIS_DB.smembers(&quot;$Class:UserSession&quot;):
+    if isinstance(redis_key, bytes):
+        redis_key = redis_key.decode(&quot;utf-8&quot;)
+    parts = redis_key.split(&quot;:&quot;)
+    # Old pattern: UserSession:session_id:user_id
+    # New pattern: UserSession:session_id
+    new_key = f&quot;{parts[0]}:{parts[1]}&quot;
+    if new_key in seen_keys:
+        print(f&quot;COLLISION: {redis_key} and {seen_keys[new_key]} &quot;
+              f&quot;both map to {new_key}&quot;)
+        # Handle collision: merge data, pick winner, or abort
+    seen_keys[new_key] = redis_key
+
+# --- Step 2: Rename keys (only if no collisions) ---
+pipeline = POPOTO_REDIS_DB.pipeline()
+for old_redis_key, new_redis_key in [
+    (v, k) for k, v in seen_keys.items()
+]:
+    pipeline.rename(old_redis_key, new_redis_key)
+    pipeline.srem(&quot;$Class:UserSession&quot;, old_redis_key)
+    pipeline.sadd(&quot;$Class:UserSession&quot;, new_redis_key)
+pipeline.execute()
+
+# Rebuild secondary indexes (see recipe 15)
+</code></pre></div>
+<ol>
+<li>Rename Model Class
+~~~~~~~~~~~~~~~~~~~~~~</li>
+</ol>
+<p><strong>Situation</strong>: You rename the model class (e.g., <code>User</code> -&gt;
+<code>Account</code>). Every Redis key, sorted set, class set, and unique index
+uses the old class name as prefix.</p>
+<p><strong>Action required</strong>: Rename all keys, sorted sets, and class set.</p>
+<p>::</p>
+<div class="highlight"><pre><span></span><code># Before: class User(Model):
+# After:  class Account(Model):
+
+OLD_NAME = &quot;User&quot;
+NEW_NAME = &quot;Account&quot;
+
+# --- Step 1: Rename instance keys ---
+pipeline = POPOTO_REDIS_DB.pipeline()
+old_class_set = f&quot;$Class:{OLD_NAME}&quot;
+new_class_set = f&quot;$Class:{NEW_NAME}&quot;
+
+members = POPOTO_REDIS_DB.smembers(old_class_set)
+for i, old_key in enumerate(members):
+    if isinstance(old_key, bytes):
+        old_key = old_key.decode(&quot;utf-8&quot;)
+
+    # Replace class name prefix
+    new_key = NEW_NAME + old_key[len(OLD_NAME):]
+
+    pipeline.rename(old_key, new_key)
+    pipeline.srem(old_class_set, old_key)
+    pipeline.sadd(new_class_set, new_key)
+
+    if i % 500 == 0 and i &gt; 0:
+        pipeline.execute()
+        pipeline = POPOTO_REDIS_DB.pipeline()
+pipeline.execute()
+
+# --- Step 2: Delete old class set ---
+POPOTO_REDIS_DB.delete(old_class_set)
+
+# --- Step 3: Rename sorted set indexes ---
+# Pattern: ClassName:_field_name
+cursor = 0
+while True:
+    cursor, keys = POPOTO_REDIS_DB.scan(
+        cursor, match=f&quot;{OLD_NAME}:_*&quot;, count=500
+    )
+    for old_key in keys:
+        if isinstance(old_key, bytes):
+            old_key = old_key.decode(&quot;utf-8&quot;)
+        new_key = NEW_NAME + old_key[len(OLD_NAME):]
+        POPOTO_REDIS_DB.rename(old_key, new_key)
+
+        # Also update the members inside the sorted set
+        # (they reference old instance keys)
+        members_with_scores = POPOTO_REDIS_DB.zrange(
+            new_key, 0, -1, withscores=True
+        )
+        pipe = POPOTO_REDIS_DB.pipeline()
+        for member, score in members_with_scores:
+            if isinstance(member, bytes):
+                member = member.decode(&quot;utf-8&quot;)
+            if member.startswith(OLD_NAME):
+                new_member = NEW_NAME + member[len(OLD_NAME):]
+                pipe.zrem(new_key, member)
+                pipe.zadd(new_key, {new_member: score})
+        pipe.execute()
+
+    if cursor == 0:
+        break
+
+# --- Step 4: Rename unique indexes ---
+# Pattern: ClassName:field_name:value
+cursor = 0
+while True:
+    cursor, keys = POPOTO_REDIS_DB.scan(
+        cursor, match=f&quot;{OLD_NAME}:*&quot;, count=500
+    )
+    for old_key in keys:
+        if isinstance(old_key, bytes):
+            old_key = old_key.decode(&quot;utf-8&quot;)
+        # Skip instance keys (already handled) and sorted sets (handled above)
+        if old_key.startswith(f&quot;{NEW_NAME}:&quot;):
+            continue
+        new_key = NEW_NAME + old_key[len(OLD_NAME):]
+        POPOTO_REDIS_DB.rename(old_key, new_key)
+    if cursor == 0:
+        break
+</code></pre></div>
+<ol>
+<li>Change Field Type (e.g., Field -&gt; SortedField)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~</li>
+</ol>
+<p><strong>Situation</strong>: You promote a plain <code>Field</code> to a <code>SortedField</code> or
+change a field's type. Two cases:</p>
+<p><strong>Case A</strong>: Same field name, just adding an index.
+Only the sorted set index needs to be built. See recipe 5.</p>
+<p><strong>Case B</strong>: Different field name (additive-first pattern).
+Use expand-migrate-contract.</p>
+<p>::</p>
+<div class="highlight"><pre><span></span><code># Case A: Same name, just promoted to SortedField
+# Before: price = FloatField()
+# After:  price = SortedField(type=float)
+# -&gt; Follow recipe 5 (Add a SortedField Index)
+
+# Case B: Different name (expand-migrate-contract)
+# Before
+class Product(Model):
+    sku = UniqueKeyField()
+    price = FloatField()
+
+# --- Phase 1: EXPAND --- add new field alongside old
+class Product(Model):
+    sku = UniqueKeyField()
+    price = FloatField()  # keep old field
+    sorted_price = SortedField(type=float)  # new indexed field
+
+# --- Phase 2: MIGRATE --- copy data from old to new
+for redis_key in Product.query.keys():
+    product = Product.query.get(redis_key=redis_key)
+    if product is not None and product.price is not None:
+        product.sorted_price = product.price
+        product.save()
+
+# --- Phase 3: CONTRACT --- remove old field
+class Product(Model):
+    sku = UniqueKeyField()
+    sorted_price = SortedField(type=float)
+
+# Clean up orphaned &quot;price&quot; hash field
+pipeline = POPOTO_REDIS_DB.pipeline()
+for redis_key in Product.query.keys():
+    if isinstance(redis_key, bytes):
+        redis_key = redis_key.decode(&quot;utf-8&quot;)
+    pipeline.hdel(redis_key, &quot;price&quot;)
+
+    if pipeline.command_stack_size &gt;= 500:
+        pipeline.execute()
+        pipeline = POPOTO_REDIS_DB.pipeline()
+pipeline.execute()
+</code></pre></div>
+<p>.. _tier3:</p>
+<p>==================================
+Tier 3: Data Transformations
+==================================</p>
+<p>These migrations change the values stored in fields rather than the
+schema structure itself.</p>
+<ol>
+<li>Transform Field Values (e.g., Normalize Emails)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~</li>
+</ol>
+<p><strong>Situation</strong>: You need to normalize or transform all values for a
+field across every record (e.g., lowercase all emails).</p>
+<p><strong>Action required</strong>: Load each record, transform the value, and re-save.
+For bulk operations that skip hooks, use <code>raw_update()</code>.</p>
+<p>::</p>
+<div class="highlight"><pre><span></span><code>class User(Model):
+    email = UniqueKeyField()
+    name = Field()
+
+# --- Normalize emails (full save, triggers all hooks) ---
+for redis_key in User.query.keys():
+    user = User.query.get(redis_key=redis_key)
+    if user is not None:
+        normalized = user.email.strip().lower()
+        if normalized != user.email:
+            # Since email is a KeyField, changing it changes the
+            # Redis key. Popoto handles the old key cleanup on save.
+            user.email = normalized
+            user.save()
+</code></pre></div>
+<p>Raw update version (skips hooks and validation, faster for bulk ops)::</p>
+<div class="highlight"><pre><span></span><code>keys = User.query.keys()
+User.raw_update(keys, email=&quot;normalized@example.com&quot;)
+
+# For per-record transforms, iterate manually:
+import msgpack
+for redis_key in User.query.keys():
+    if isinstance(redis_key, bytes):
+        redis_key = redis_key.decode(&quot;utf-8&quot;)
+    old_email = msgpack.unpackb(POPOTO_REDIS_DB.hget(redis_key, &quot;email&quot;))
+    normalized = old_email.strip().lower()
+    if normalized != old_email:
+        User.raw_update([redis_key], email=normalized)
+</code></pre></div>
+<ol>
+<li>Split a Field (e.g., name -&gt; first_name + last_name)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~</li>
+</ol>
+<p><strong>Situation</strong>: You split one field into two (or more) fields.</p>
+<p><strong>Action required</strong>: Use expand-migrate-contract. Read the old value,
+split it, write the new values, then clean up.</p>
+<p>::</p>
+<div class="highlight"><pre><span></span><code># Before
+class Contact(Model):
+    contact_id = AutoKeyField()
+    name = Field()
+
+# --- Phase 1: EXPAND --- add new fields alongside old
+class Contact(Model):
+    contact_id = AutoKeyField()
+    name = Field()            # keep until migration complete
+    first_name = Field()
+    last_name = Field()
+
+# --- Phase 2: MIGRATE --- split old value into new fields
+for redis_key in Contact.query.keys():
+    contact = Contact.query.get(redis_key=redis_key)
+    if contact is not None and contact.name:
+        parts = contact.name.split(&quot; &quot;, 1)
+        contact.first_name = parts[0]
+        contact.last_name = parts[1] if len(parts) &gt; 1 else &quot;&quot;
+        contact.save()
+
+# --- Phase 3: CONTRACT --- remove old field from model
+class Contact(Model):
+    contact_id = AutoKeyField()
+    first_name = Field()
+    last_name = Field()
+
+# Clean up orphaned &quot;name&quot; hash field
+pipeline = POPOTO_REDIS_DB.pipeline()
+for redis_key in Contact.query.keys():
+    if isinstance(redis_key, bytes):
+        redis_key = redis_key.decode(&quot;utf-8&quot;)
+    pipeline.hdel(redis_key, &quot;name&quot;)
+    if pipeline.command_stack_size &gt;= 500:
+        pipeline.execute()
+        pipeline = POPOTO_REDIS_DB.pipeline()
+pipeline.execute()
+</code></pre></div>
+<ol>
+<li>Merge Fields (e.g., first_name + last_name -&gt; display_name)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~</li>
+</ol>
+<p><strong>Situation</strong>: You merge two fields into one.</p>
+<p><strong>Action required</strong>: Same expand-migrate-contract pattern as splitting,
+but in reverse.</p>
+<p>::</p>
+<div class="highlight"><pre><span></span><code># Before
+class Contact(Model):
+    contact_id = AutoKeyField()
+    first_name = Field()
+    last_name = Field()
+
+# --- Phase 1: EXPAND --- add merged field
+class Contact(Model):
+    contact_id = AutoKeyField()
+    first_name = Field()  # keep until migration complete
+    last_name = Field()   # keep until migration complete
+    display_name = Field()
+
+# --- Phase 2: MIGRATE --- populate merged field
+for redis_key in Contact.query.keys():
+    contact = Contact.query.get(redis_key=redis_key)
+    if contact is not None:
+        first = contact.first_name or &quot;&quot;
+        last = contact.last_name or &quot;&quot;
+        contact.display_name = f&quot;{first} {last}&quot;.strip()
+        contact.save()
+
+# --- Phase 3: CONTRACT --- remove old fields
+class Contact(Model):
+    contact_id = AutoKeyField()
+    display_name = Field()
+
+# Clean up orphaned hash fields
+pipeline = POPOTO_REDIS_DB.pipeline()
+for redis_key in Contact.query.keys():
+    if isinstance(redis_key, bytes):
+        redis_key = redis_key.decode(&quot;utf-8&quot;)
+    pipeline.hdel(redis_key, &quot;first_name&quot;)
+    pipeline.hdel(redis_key, &quot;last_name&quot;)
+    if pipeline.command_stack_size &gt;= 500:
+        pipeline.execute()
+        pipeline = POPOTO_REDIS_DB.pipeline()
+pipeline.execute()
+</code></pre></div>
+<ol>
+<li>Change Field Encoding
+~~~~~~~~~~~~~~~~~~~~~~~~~~</li>
+</ol>
+<p><strong>Situation</strong>: You change how a field's data is stored -- for example,
+switching a field type from <code>str</code> to <code>int</code>, or updating serialization
+format.</p>
+<p><strong>Action required</strong>: Re-load and re-save every record. The save path
+will re-encode using the new type/format.</p>
+<p>::</p>
+<div class="highlight"><pre><span></span><code># Before: priority stored as string (&quot;1&quot;, &quot;2&quot;, &quot;3&quot;)
+class Task(Model):
+    task_id = AutoKeyField()
+    priority = Field()  # str
+
+# After: priority stored as int (1, 2, 3)
+class Task(Model):
+    task_id = AutoKeyField()
+    priority = IntField()
+
+# --- Re-encode all records ---
+for redis_key in Task.query.keys():
+    task = Task.query.get(redis_key=redis_key)
+    if task is not None:
+        # The old string value needs to be cast to int
+        if isinstance(task.priority, str):
+            task.priority = int(task.priority)
+        elif task.priority is None:
+            task.priority = 0  # or a sensible default
+        task.save()
+</code></pre></div>
+<p>.. _tier4:</p>
+<p>==================================
+Tier 4: Index Maintenance
+==================================</p>
+<p>These recipes address index rebuilds and repairs without changing the
+model schema itself.</p>
+<ol>
+<li>Rebuild All Indexes
+~~~~~~~~~~~~~~~~~~~~~~~~</li>
+</ol>
+<p><strong>Situation</strong>: Indexes have drifted from the data -- perhaps due to a
+crash during save, a manual Redis edit, or a migration that updated data
+without updating indexes.</p>
+<p><strong>Action required</strong>: Clear and rebuild all secondary indexes for a model.</p>
+<p>::</p>
+<div class="highlight"><pre><span></span><code>class Product(Model):
+    sku = UniqueKeyField()
+    category = KeyField()
+    price = SortedField(type=float)
+
+# One-liner: clears and rebuilds all indexes
+count = Product.rebuild_indexes()
+print(f&quot;Rebuilt indexes for {count} Product records&quot;)
+
+# With smaller batches for memory-constrained environments
+count = Product.rebuild_indexes(batch_size=100)
+
+# Async version
+count = await Product.async_rebuild_indexes()
+</code></pre></div>
+<p><code>rebuild_indexes()</code> handles the full process automatically:</p>
+<ol>
+<li>Deletes all secondary index keys (sorted sets, class set, geo
+   indexes, composite indexes)</li>
+<li>SCANs all instance keys matching <code>ClassName:*</code></li>
+<li>Loads each instance and re-runs <code>on_save()</code> hooks via pipeline</li>
+<li>
+<p>Re-adds each instance key to the class set</p>
+</li>
+<li>
+<p>Add Compound Index
+~~~~~~~~~~~~~~~~~~~~~~~</p>
+</li>
+</ol>
+<p><strong>Situation</strong>: You need to add a compound (multi-field) index to enable
+efficient filtering on a combination of fields.</p>
+<p><strong>Action required</strong>: Build the compound index from existing data.</p>
+<p>.. note::</p>
+<div class="highlight"><pre><span></span><code>Compound indexes use Popoto&#39;s ``Meta.indexes`` configuration.
+The rebuild follows the same pattern as recipe 15 -- re-saving
+all records triggers the ``on_save()`` hooks that maintain indexes.
+</code></pre></div>
+<p>::</p>
+<div class="highlight"><pre><span></span><code>class Product(Model):
+    sku = UniqueKeyField()
+    category = KeyField()
+    brand = KeyField()
+    price = SortedField(type=float)
+
+    class Meta:
+        indexes = [
+            ((&quot;category&quot;, &quot;brand&quot;), False),  # non-unique compound index
+        ]
+
+# After adding the Meta.indexes entry, rebuild by re-saving all records
+pipeline = POPOTO_REDIS_DB.pipeline()
+count = 0
+for redis_key in Product.query.keys():
+    product = Product.query.get(redis_key=redis_key)
+    if product is not None:
+        product.save(pipeline=pipeline)
+        count += 1
+
+    if count % 500 == 0 and count &gt; 0:
+        pipeline.execute()
+        pipeline = POPOTO_REDIS_DB.pipeline()
+pipeline.execute()
+print(f&quot;Built compound index for {count} Product records&quot;)
+</code></pre></div>
+<ol>
+<li>Remove Compound Index
+~~~~~~~~~~~~~~~~~~~~~~~~~~</li>
+</ol>
+<p><strong>Situation</strong>: You remove a compound index from <code>Meta.indexes</code>.</p>
+<p><strong>What happens</strong>: The index Redis keys become orphaned.</p>
+<p><strong>Action required</strong>: Delete the orphaned index keys.</p>
+<p>::</p>
+<div class="highlight"><pre><span></span><code># Compound index keys follow the pattern: $Index:ClassName:field1:field2
+# Delete the index set
+index_key = &quot;$Index:Product:category:brand&quot;
+POPOTO_REDIS_DB.delete(index_key)
+
+# If there are multiple compound indexes to remove, use SCAN
+cursor = 0
+while True:
+    cursor, keys = POPOTO_REDIS_DB.scan(
+        cursor, match=&quot;$Index:Product:*&quot;, count=500
+    )
+    for key in keys:
+        if isinstance(key, bytes):
+            key = key.decode(&quot;utf-8&quot;)
+        # Only delete indexes you want to remove
+        if key == &quot;$Index:Product:category:brand&quot;:
+            POPOTO_REDIS_DB.delete(key)
+    if cursor == 0:
+        break
+</code></pre></div>
+<ol>
+<li>Fix Corrupted Indexes
+~~~~~~~~~~~~~~~~~~~~~~~~~~</li>
+</ol>
+<p><strong>Situation</strong>: Indexes are out of sync with the actual data. Sorted set
+members reference keys that no longer exist, or the class set contains
+stale entries.</p>
+<p><strong>Action required</strong>: Full index rebuild (same as recipe 15). For a
+lighter check, use the <code>clean</code> parameter on <code>query.keys()</code>.</p>
+<p>::</p>
+<div class="highlight"><pre><span></span><code># --- Quick fix: use query.keys(clean=True) ---
+# This removes dangling references from the class set and field
+# indexes. It checks each referenced key and removes entries where
+# the key no longer exists in Redis.
+Product.query.keys(clean=True)
+
+# --- Full fix: complete index rebuild ---
+# Follow recipe 15 (Rebuild All Indexes) for a thorough rebuild.
+# This is the nuclear option that guarantees index consistency.
+</code></pre></div>
+<h4 id="popoto.models.migrations--performance-considerations">Performance Considerations<a class="headerlink" href="#popoto.models.migrations--performance-considerations" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Always use Redis pipelines</strong> for batch operations. Each pipeline
+  batch should contain 500-1000 commands to balance memory and round
+  trips.</li>
+<li><strong>Process in chunks</strong> using the <code>pipeline.command_stack_size</code> check
+  or a simple counter.</li>
+<li><strong>Run migrations during low-traffic periods</strong>. Migrations that call
+  <code>save()</code> on every record will trigger all hooks and index updates.</li>
+<li><strong>Use SCAN instead of KEYS</strong> for finding Redis keys. The <code>KEYS</code>
+  command blocks Redis for large databases. <code>query.keys()</code> uses the
+  class set (O(N) SMEMBERS), which is preferable when the set is
+  accurate. Use SCAN when the class set might be stale.</li>
+<li><strong>Test on a copy first</strong>. Use <code>DUMP</code> / <code>RESTORE</code> or a Redis
+  snapshot to test your migration script on a copy of production data.</li>
+</ul>
+<h4 id="popoto.models.migrations--api-reference">API Reference<a class="headerlink" href="#popoto.models.migrations--api-reference" title="Permanent link">&para;</a></h4>
+<p><code>Model.save(update_fields=[...])</code>
+    Partial save. Only writes the listed fields to the Redis hash.
+    Validates only listed fields. <code>auto_now</code> fields are NOT
+    auto-included; list them explicitly if desired.</p>
+<p><code>Model.save(skip_auto_now=True)</code>
+    Full save that skips <code>auto_now</code> field hooks. Useful for backfills
+    where you want to preserve original timestamps.</p>
+<p><code>Model.raw_update(redis_keys, batch_size=1000, **field_values)</code>
+    Write field values directly to Redis hashes without loading the
+    model. Accepts Python values and msgpack-encodes them internally.
+    Skips all hooks and validation. Returns number of keys updated.</p>
+<p><code>Model.rebuild_indexes(batch_size=1000)</code>
+    Clear and rebuild all secondary indexes (sorted sets, unique
+    indexes, class set) by re-saving every instance. Idempotent.
+    Returns number of instances processed.</p>
+<p><code>await Model.async_rebuild_indexes(batch_size=1000)</code>
+    Async wrapper using <code>asyncio.to_thread(Model.rebuild_indexes)</code>.</p>
+<h4 id="popoto.models.migrations--see-also">See Also<a class="headerlink" href="#popoto.models.migrations--see-also" title="Permanent link">&para;</a></h4>
+<ul>
+<li>:mod:<code>popoto.models.db_key</code> -- How Redis keys are generated from KeyFields</li>
+<li>:mod:<code>popoto.models.query</code> -- The <code>Query.keys()</code> method used in migrations</li>
+<li>:mod:<code>popoto.models.encoding</code> -- Msgpack serialization and custom type handling</li>
+<li>:mod:<code>popoto.redis_db</code> -- Pipeline and connection management</li>
+</ul>
+
+
+
+
+
+
+
+
+    </div>
+
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

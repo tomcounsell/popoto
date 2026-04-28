@@ -1,0 +1,3192 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+        <meta name="author" content="Tom Counsell">
+      
+      
+        <link rel="canonical" href="https://tomcounsell.github.io/popoto/reference/popoto/models/encoding/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>popoto.models.encoding - Popoto Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#popotomodelsencoding" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../../.." title="Popoto Documentation" class="md-header__button md-logo" aria-label="Popoto Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Popoto Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              popoto.models.encoding
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/tomcounsell/popoto/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../configuration/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Configuration
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../fields/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Models and Fields
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../meta/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Model Meta Options
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../ttl/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  TTL (Time-to-Live)
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../indexed_fields/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Indexed Fields
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../query/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Making Queries
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../relationship/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Relationship Field
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../multi-tenancy/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Multi-Tenancy
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../async/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Async Operations
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../pubsub/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  PubSub
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../../features/agent-memory/" class="md-tabs__link">
+          
+  
+  
+  Features
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../../guides/agent-memory-quickstart/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../recipes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Recipes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../testing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Testing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../SUMMARY/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  API Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../../style-guide/" class="md-tabs__link">
+          
+  
+  
+  Contributing
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../../.." title="Popoto Documentation" class="md-nav__button md-logo" aria-label="Popoto Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Popoto Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/tomcounsell/popoto/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../fields/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models and Fields
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../meta/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model Meta Options
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../ttl/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TTL (Time-to-Live)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../indexed_fields/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Indexed Fields
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../query/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Making Queries
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../relationship/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relationship Field
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../multi-tenancy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multi-Tenancy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../async/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Async Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../pubsub/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PubSub
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12" >
+        
+          
+          <label class="md-nav__link" for="__nav_12" id="__nav_12_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Features
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_12_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Features
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_1" id="__nav_12_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent Memory
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Agent Memory
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/agent-memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/decaying-sorted-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DecayingSortedField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/cyclic-decay-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CyclicDecayField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/confidence-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ConfidenceField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/co-occurrence-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CoOccurrenceField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/existence-filter/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ExistenceFilter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/observation-protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ObservationProtocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/prediction-ledger/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PredictionLedger
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/composite-score-query/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Composite Score Query
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/policy-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PolicyCache
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/context-assembler/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ContextAssembler
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/hybrid-retrieval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hybrid Retrieval (BM25 + RRF)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/metacognitive-layer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metacognitive Layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/meta-class-implementation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Meta Class Implementation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../features/kitchen-edge-case-demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Kitchen Edge Case Demo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_13" >
+        
+          
+          <label class="md-nav__link" for="__nav_13" id="__nav_13_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_13_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_13">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/agent-memory-quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent Memory Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/tuning-magic-numbers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tuning Magic Numbers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/policy-cache-recipe/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Policy Cache Recipe
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/subconscious-memory-recipe/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subconscious Memory Recipe
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/popoto-memory-roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/programmable-memory-systems-neuroscience-design-spec/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Neuroscience Design Spec
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/epistemic-flow-cognitive-agent-architectures/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Epistemic Flow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/research-prompt-memory-systems/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory Systems Research
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/launch-announcements/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Launch Announcements
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../recipes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recipes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../SUMMARY/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_17" >
+        
+          
+          <label class="md-nav__link" for="__nav_17" id="__nav_17_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_17_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_17">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../style-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Style Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#popoto.models.encoding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        encoding
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="encoding">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#popoto.models.encoding--automatic-during-save" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automatic during save
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.models.encoding--automatic-during-query" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automatic during query
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.models.encoding.EncoderDecoder" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EncoderDecoder
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.models.encoding.DECODERS_BY_KEYSTRING" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DECODERS_BY_KEYSTRING
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.models.encoding.decode_custom_types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        decode_custom_types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.models.encoding.encode_popoto_model_obj" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        encode_popoto_model_obj
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.models.encoding.decode_popoto_model_hashmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        decode_popoto_model_hashmap
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popoto.models.encoding.decode_lazy_field" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        decode_lazy_field
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="popotomodelsencoding"><code>popoto.models.encoding</code><a class="headerlink" href="#popotomodelsencoding" title="Permanent link">&para;</a></h1>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h2 id="popoto.models.encoding" class="doc doc-heading">
+            <code>popoto.models.encoding</code>
+
+
+<a href="#popoto.models.encoding" class="headerlink" title="Permanent link">&para;</a></h2>
+
+    <div class="doc doc-contents first">
+
+        <p>Serialization and deserialization of Popoto model instances using msgpack.</p>
+<p>Custom types (Decimal, tuple, set, datetime, date, time, DataFrame) are
+encoded with tagged dicts so they round-trip through msgpack faithfully.</p>
+<p>This module bridges Python's rich type system with Redis's binary storage using
+MessagePack as the serialization format. MessagePack was chosen over JSON for
+its compactness and speed, and over pickle for safety and cross-language
+compatibility.</p>
+
+
+<details class="design-philosophy" open>
+  <summary>Design Philosophy</summary>
+  <p>Redis stores all values as binary strings, but Popoto models use rich Python
+types (Decimal, datetime, pandas DataFrames, etc.). This module provides a
+type-preserving serialization system that encodes these types into a format
+MessagePack can handle, then decodes them back to their original Python types.</p>
+<p>The encoding strategy uses sentinel keys (e.g., "<strong>Decimal</strong>", "<strong>datetime</strong>")
+embedded in dictionaries to identify special types during decoding. This allows
+the decoder to distinguish between a regular dict and an encoded Decimal without
+requiring schema information.</p>
+</details>
+
+<details class="architecture" open>
+  <summary>Architecture</summary>
+  <ul>
+<li>TYPE_ENCODER_DECODERS: Registry mapping Python types to their encode/decode
+  functions. Extensible for new types.</li>
+<li>encode_popoto_model_obj(): Entry point for serializing a Model instance to
+  a Redis hash (dict of field_name -&gt; packed_value).</li>
+<li>decode_popoto_model_hashmap(): Entry point for deserializing a Redis hash
+  back into a Model instance.</li>
+</ul>
+</details>
+
+<details class="integration" open>
+  <summary>Integration</summary>
+  <p>Called by Model.save() to persist objects and by Query/DB_key to reconstruct
+objects from Redis. The encoding is transparent to model users.</p>
+</details>
+
+<details class="example" open>
+  <summary>Example</summary>
+  <h3 id="popoto.models.encoding--automatic-during-save">Automatic during save<a class="headerlink" href="#popoto.models.encoding--automatic-during-save" title="Permanent link">&para;</a></h3>
+<p>person = Person(name="Alice", birthday=datetime.date(1990, 1, 15))
+person.save()  # Internally calls encode_popoto_model_obj</p>
+<h3 id="popoto.models.encoding--automatic-during-query">Automatic during query<a class="headerlink" href="#popoto.models.encoding--automatic-during-query" title="Permanent link">&para;</a></h3>
+<p>person = Person.query.get(name="Alice")  # Internally calls decode_popoto_model_hashmap</p>
+</details>
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="popoto.models.encoding.EncoderDecoder" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">EncoderDecoder</span> <span class="o">=</span> <span class="n">namedtuple</span><span class="p">(</span><span class="s1">&#39;EncoderDecoder&#39;</span><span class="p">,</span> <span class="s1">&#39;key, encoder, decoder&#39;</span><span class="p">)</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-module-attribute"><code>module-attribute</code></small>
+  </span>
+
+<a href="#popoto.models.encoding.EncoderDecoder" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>A named tuple defining how to serialize and deserialize a specific Python type.</p>
+
+
+<p><span class="doc-section-title">Attributes:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td><code><span title="popoto.models.encoding.EncoderDecoder.key">key</span></code></td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A unique sentinel string (e.g., "<strong>Decimal</strong>") used to identify this
+ type in serialized data. Appears as a key in the encoded dict.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="popoto.models.encoding.EncoderDecoder.encoder">encoder</span></code></td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A callable that transforms a Python object into a dict with the
+     sentinel key and an "as_encodable" key containing the serializable form.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="popoto.models.encoding.EncoderDecoder.decoder">decoder</span></code></td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A callable that reconstructs the original Python object from the
+     encoded dict.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="popoto.models.encoding.DECODERS_BY_KEYSTRING" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">DECODERS_BY_KEYSTRING</span> <span class="o">=</span> <span class="p">{(</span><span class="n">encoder_decoder</span><span class="o">.</span><span class="n">key</span><span class="p">):</span> <span class="p">(</span><span class="n">encoder_decoder</span><span class="o">.</span><span class="n">decoder</span><span class="p">)</span> <span class="k">for</span> <span class="n">encoder_decoder</span> <span class="ow">in</span> <span class="p">(</span><span class="n">TYPE_ENCODER_DECODERS</span><span class="o">.</span><span class="n">values</span><span class="p">())}</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-module-attribute"><code>module-attribute</code></small>
+  </span>
+
+<a href="#popoto.models.encoding.DECODERS_BY_KEYSTRING" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Lookup table for fast decoder resolution during deserialization.</p>
+<p>Maps sentinel key strings (e.g., "<strong>Decimal</strong>") directly to decoder functions,
+avoiding the need to iterate through TYPE_ENCODER_DECODERS during decode.
+This is a performance optimization for the hot path of object reconstruction.</p>
+
+    </div>
+
+</div>
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="popoto.models.encoding.decode_custom_types" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">decode_custom_types</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span></code>
+
+<a href="#popoto.models.encoding.decode_custom_types" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Msgpack object-hook that restores tagged dicts to their Python types.</p>
+<p>This is the counterpart to the type-specific encoders in TYPE_ENCODER_DECODERS.
+When MessagePack deserializes data, custom types come back as plain dicts
+with sentinel keys. This function detects those sentinel keys and applies
+the appropriate decoder to reconstruct the original Python type.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>obj</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Any value returned from msgpack.unpackb(). If it's a dict with
+ "as_encodable" and a recognized sentinel key, it will be decoded.
+ Otherwise, returned unchanged.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The decoded Python object (Decimal, datetime, etc.) if obj was an</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>encoded custom type, otherwise obj unchanged.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="design-note" open>
+  <summary>Design Note</summary>
+  <p>The "as_encodable" check is a fast-path optimization. Most dicts in
+user data won't have this key, so we can skip the sentinel key scan
+for the common case.</p>
+</details>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/popoto/models/encoding.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-159">159</a></span>
+<span class="normal"><a href="#__codelineno-0-160">160</a></span>
+<span class="normal"><a href="#__codelineno-0-161">161</a></span>
+<span class="normal"><a href="#__codelineno-0-162">162</a></span>
+<span class="normal"><a href="#__codelineno-0-163">163</a></span>
+<span class="normal"><a href="#__codelineno-0-164">164</a></span>
+<span class="normal"><a href="#__codelineno-0-165">165</a></span>
+<span class="normal"><a href="#__codelineno-0-166">166</a></span>
+<span class="normal"><a href="#__codelineno-0-167">167</a></span>
+<span class="normal"><a href="#__codelineno-0-168">168</a></span>
+<span class="normal"><a href="#__codelineno-0-169">169</a></span>
+<span class="normal"><a href="#__codelineno-0-170">170</a></span>
+<span class="normal"><a href="#__codelineno-0-171">171</a></span>
+<span class="normal"><a href="#__codelineno-0-172">172</a></span>
+<span class="normal"><a href="#__codelineno-0-173">173</a></span>
+<span class="normal"><a href="#__codelineno-0-174">174</a></span>
+<span class="normal"><a href="#__codelineno-0-175">175</a></span>
+<span class="normal"><a href="#__codelineno-0-176">176</a></span>
+<span class="normal"><a href="#__codelineno-0-177">177</a></span>
+<span class="normal"><a href="#__codelineno-0-178">178</a></span>
+<span class="normal"><a href="#__codelineno-0-179">179</a></span>
+<span class="normal"><a href="#__codelineno-0-180">180</a></span>
+<span class="normal"><a href="#__codelineno-0-181">181</a></span>
+<span class="normal"><a href="#__codelineno-0-182">182</a></span>
+<span class="normal"><a href="#__codelineno-0-183">183</a></span>
+<span class="normal"><a href="#__codelineno-0-184">184</a></span>
+<span class="normal"><a href="#__codelineno-0-185">185</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-159" name="__codelineno-0-159"></a><span class="k">def</span><span class="w"> </span><span class="nf">decode_custom_types</span><span class="p">(</span><span class="n">obj</span><span class="p">):</span>
+<a id="__codelineno-0-160" name="__codelineno-0-160"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Msgpack object-hook that restores tagged dicts to their Python types.</span>
+<a id="__codelineno-0-161" name="__codelineno-0-161"></a>
+<a id="__codelineno-0-162" name="__codelineno-0-162"></a><span class="sd">    This is the counterpart to the type-specific encoders in TYPE_ENCODER_DECODERS.</span>
+<a id="__codelineno-0-163" name="__codelineno-0-163"></a><span class="sd">    When MessagePack deserializes data, custom types come back as plain dicts</span>
+<a id="__codelineno-0-164" name="__codelineno-0-164"></a><span class="sd">    with sentinel keys. This function detects those sentinel keys and applies</span>
+<a id="__codelineno-0-165" name="__codelineno-0-165"></a><span class="sd">    the appropriate decoder to reconstruct the original Python type.</span>
+<a id="__codelineno-0-166" name="__codelineno-0-166"></a>
+<a id="__codelineno-0-167" name="__codelineno-0-167"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-168" name="__codelineno-0-168"></a><span class="sd">        obj: Any value returned from msgpack.unpackb(). If it&#39;s a dict with</span>
+<a id="__codelineno-0-169" name="__codelineno-0-169"></a><span class="sd">             &quot;as_encodable&quot; and a recognized sentinel key, it will be decoded.</span>
+<a id="__codelineno-0-170" name="__codelineno-0-170"></a><span class="sd">             Otherwise, returned unchanged.</span>
+<a id="__codelineno-0-171" name="__codelineno-0-171"></a>
+<a id="__codelineno-0-172" name="__codelineno-0-172"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-173" name="__codelineno-0-173"></a><span class="sd">        The decoded Python object (Decimal, datetime, etc.) if obj was an</span>
+<a id="__codelineno-0-174" name="__codelineno-0-174"></a><span class="sd">        encoded custom type, otherwise obj unchanged.</span>
+<a id="__codelineno-0-175" name="__codelineno-0-175"></a>
+<a id="__codelineno-0-176" name="__codelineno-0-176"></a><span class="sd">    Design Note:</span>
+<a id="__codelineno-0-177" name="__codelineno-0-177"></a><span class="sd">        The &quot;as_encodable&quot; check is a fast-path optimization. Most dicts in</span>
+<a id="__codelineno-0-178" name="__codelineno-0-178"></a><span class="sd">        user data won&#39;t have this key, so we can skip the sentinel key scan</span>
+<a id="__codelineno-0-179" name="__codelineno-0-179"></a><span class="sd">        for the common case.</span>
+<a id="__codelineno-0-180" name="__codelineno-0-180"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-181" name="__codelineno-0-181"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="s2">&quot;as_encodable&quot;</span> <span class="ow">in</span> <span class="n">obj</span><span class="p">:</span>
+<a id="__codelineno-0-182" name="__codelineno-0-182"></a>        <span class="k">for</span> <span class="n">keystring</span> <span class="ow">in</span> <span class="n">DECODERS_BY_KEYSTRING</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+<a id="__codelineno-0-183" name="__codelineno-0-183"></a>            <span class="k">if</span> <span class="n">keystring</span> <span class="ow">in</span> <span class="n">obj</span><span class="p">:</span>
+<a id="__codelineno-0-184" name="__codelineno-0-184"></a>                <span class="k">return</span> <span class="n">DECODERS_BY_KEYSTRING</span><span class="p">[</span><span class="n">keystring</span><span class="p">](</span><span class="n">obj</span><span class="p">)</span>
+<a id="__codelineno-0-185" name="__codelineno-0-185"></a>    <span class="k">return</span> <span class="n">obj</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="popoto.models.encoding.encode_popoto_model_obj" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">encode_popoto_model_obj</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span></code>
+
+<a href="#popoto.models.encoding.encode_popoto_model_obj" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Encode a model instance into a dict of <code>{field_name_bytes: msgpack_bytes}</code>.</p>
+<p>Transforms all field values on a model into a dictionary suitable for
+Redis HSET operations. Each field name becomes a UTF-8 encoded key,
+and each value is MessagePack-serialized (with custom type handling).</p>
+<p>Relationship fields are stored as the related instance's <code>redis_key</code>.
+Custom types (Decimal, datetime, etc.) use tagged-dict encoding.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>obj</code>
+            </td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="Model (popoto.models.base.Model)" href="../base/#popoto.models.base.Model">Model</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A Popoto Model instance to serialize. Must have _meta.fields
+ populated by the metaclass.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="dict">dict</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A dict mapping bytes (field names) to bytes (packed values), ready</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="dict">dict</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>for direct use with Redis HSET/HMSET commands.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="ModelException (popoto.exceptions.ModelException)" href="../../exceptions/#popoto.exceptions.ModelException">ModelException</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If a Relationship field contains a value that isn't
+            an instance of the expected related model.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="encoding-strategy" open>
+  <summary>Encoding Strategy</summary>
+  <ol>
+<li>Relationship fields: Store the related object's db_key (Redis key
+   string), not the full object. This enables lazy loading and avoids
+   circular serialization.</li>
+<li>Custom types (Decimal, datetime, etc.): Use TYPE_ENCODER_DECODERS
+   to wrap the value with a sentinel key for later type reconstruction.</li>
+<li>All other types: Direct MessagePack serialization (handles None,
+   str, int, float, bool, list, dict natively).</li>
+</ol>
+</details>
+
+<details class="integration" open>
+  <summary>Integration</summary>
+  <p>Called by Model.save() as part of the persistence pipeline. The returned
+dict is passed directly to Redis via HSET.</p>
+</details>
+
+<details class="note" open>
+  <summary>Note</summary>
+  <p>NumPy array support is enabled via msgpack_numpy patching, allowing
+fields to store numpy arrays efficiently.</p>
+</details>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/popoto/models/encoding.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-188">188</a></span>
+<span class="normal"><a href="#__codelineno-0-189">189</a></span>
+<span class="normal"><a href="#__codelineno-0-190">190</a></span>
+<span class="normal"><a href="#__codelineno-0-191">191</a></span>
+<span class="normal"><a href="#__codelineno-0-192">192</a></span>
+<span class="normal"><a href="#__codelineno-0-193">193</a></span>
+<span class="normal"><a href="#__codelineno-0-194">194</a></span>
+<span class="normal"><a href="#__codelineno-0-195">195</a></span>
+<span class="normal"><a href="#__codelineno-0-196">196</a></span>
+<span class="normal"><a href="#__codelineno-0-197">197</a></span>
+<span class="normal"><a href="#__codelineno-0-198">198</a></span>
+<span class="normal"><a href="#__codelineno-0-199">199</a></span>
+<span class="normal"><a href="#__codelineno-0-200">200</a></span>
+<span class="normal"><a href="#__codelineno-0-201">201</a></span>
+<span class="normal"><a href="#__codelineno-0-202">202</a></span>
+<span class="normal"><a href="#__codelineno-0-203">203</a></span>
+<span class="normal"><a href="#__codelineno-0-204">204</a></span>
+<span class="normal"><a href="#__codelineno-0-205">205</a></span>
+<span class="normal"><a href="#__codelineno-0-206">206</a></span>
+<span class="normal"><a href="#__codelineno-0-207">207</a></span>
+<span class="normal"><a href="#__codelineno-0-208">208</a></span>
+<span class="normal"><a href="#__codelineno-0-209">209</a></span>
+<span class="normal"><a href="#__codelineno-0-210">210</a></span>
+<span class="normal"><a href="#__codelineno-0-211">211</a></span>
+<span class="normal"><a href="#__codelineno-0-212">212</a></span>
+<span class="normal"><a href="#__codelineno-0-213">213</a></span>
+<span class="normal"><a href="#__codelineno-0-214">214</a></span>
+<span class="normal"><a href="#__codelineno-0-215">215</a></span>
+<span class="normal"><a href="#__codelineno-0-216">216</a></span>
+<span class="normal"><a href="#__codelineno-0-217">217</a></span>
+<span class="normal"><a href="#__codelineno-0-218">218</a></span>
+<span class="normal"><a href="#__codelineno-0-219">219</a></span>
+<span class="normal"><a href="#__codelineno-0-220">220</a></span>
+<span class="normal"><a href="#__codelineno-0-221">221</a></span>
+<span class="normal"><a href="#__codelineno-0-222">222</a></span>
+<span class="normal"><a href="#__codelineno-0-223">223</a></span>
+<span class="normal"><a href="#__codelineno-0-224">224</a></span>
+<span class="normal"><a href="#__codelineno-0-225">225</a></span>
+<span class="normal"><a href="#__codelineno-0-226">226</a></span>
+<span class="normal"><a href="#__codelineno-0-227">227</a></span>
+<span class="normal"><a href="#__codelineno-0-228">228</a></span>
+<span class="normal"><a href="#__codelineno-0-229">229</a></span>
+<span class="normal"><a href="#__codelineno-0-230">230</a></span>
+<span class="normal"><a href="#__codelineno-0-231">231</a></span>
+<span class="normal"><a href="#__codelineno-0-232">232</a></span>
+<span class="normal"><a href="#__codelineno-0-233">233</a></span>
+<span class="normal"><a href="#__codelineno-0-234">234</a></span>
+<span class="normal"><a href="#__codelineno-0-235">235</a></span>
+<span class="normal"><a href="#__codelineno-0-236">236</a></span>
+<span class="normal"><a href="#__codelineno-0-237">237</a></span>
+<span class="normal"><a href="#__codelineno-0-238">238</a></span>
+<span class="normal"><a href="#__codelineno-0-239">239</a></span>
+<span class="normal"><a href="#__codelineno-0-240">240</a></span>
+<span class="normal"><a href="#__codelineno-0-241">241</a></span>
+<span class="normal"><a href="#__codelineno-0-242">242</a></span>
+<span class="normal"><a href="#__codelineno-0-243">243</a></span>
+<span class="normal"><a href="#__codelineno-0-244">244</a></span>
+<span class="normal"><a href="#__codelineno-0-245">245</a></span>
+<span class="normal"><a href="#__codelineno-0-246">246</a></span>
+<span class="normal"><a href="#__codelineno-0-247">247</a></span>
+<span class="normal"><a href="#__codelineno-0-248">248</a></span>
+<span class="normal"><a href="#__codelineno-0-249">249</a></span>
+<span class="normal"><a href="#__codelineno-0-250">250</a></span>
+<span class="normal"><a href="#__codelineno-0-251">251</a></span>
+<span class="normal"><a href="#__codelineno-0-252">252</a></span>
+<span class="normal"><a href="#__codelineno-0-253">253</a></span>
+<span class="normal"><a href="#__codelineno-0-254">254</a></span>
+<span class="normal"><a href="#__codelineno-0-255">255</a></span>
+<span class="normal"><a href="#__codelineno-0-256">256</a></span>
+<span class="normal"><a href="#__codelineno-0-257">257</a></span>
+<span class="normal"><a href="#__codelineno-0-258">258</a></span>
+<span class="normal"><a href="#__codelineno-0-259">259</a></span>
+<span class="normal"><a href="#__codelineno-0-260">260</a></span>
+<span class="normal"><a href="#__codelineno-0-261">261</a></span>
+<span class="normal"><a href="#__codelineno-0-262">262</a></span>
+<span class="normal"><a href="#__codelineno-0-263">263</a></span>
+<span class="normal"><a href="#__codelineno-0-264">264</a></span>
+<span class="normal"><a href="#__codelineno-0-265">265</a></span>
+<span class="normal"><a href="#__codelineno-0-266">266</a></span>
+<span class="normal"><a href="#__codelineno-0-267">267</a></span>
+<span class="normal"><a href="#__codelineno-0-268">268</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-188" name="__codelineno-0-188"></a><span class="k">def</span><span class="w"> </span><span class="nf">encode_popoto_model_obj</span><span class="p">(</span><span class="n">obj</span><span class="p">:</span> <span class="s2">&quot;Model&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<a id="__codelineno-0-189" name="__codelineno-0-189"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Encode a model instance into a dict of ``{field_name_bytes: msgpack_bytes}``.</span>
+<a id="__codelineno-0-190" name="__codelineno-0-190"></a>
+<a id="__codelineno-0-191" name="__codelineno-0-191"></a><span class="sd">    Transforms all field values on a model into a dictionary suitable for</span>
+<a id="__codelineno-0-192" name="__codelineno-0-192"></a><span class="sd">    Redis HSET operations. Each field name becomes a UTF-8 encoded key,</span>
+<a id="__codelineno-0-193" name="__codelineno-0-193"></a><span class="sd">    and each value is MessagePack-serialized (with custom type handling).</span>
+<a id="__codelineno-0-194" name="__codelineno-0-194"></a>
+<a id="__codelineno-0-195" name="__codelineno-0-195"></a><span class="sd">    Relationship fields are stored as the related instance&#39;s ``redis_key``.</span>
+<a id="__codelineno-0-196" name="__codelineno-0-196"></a><span class="sd">    Custom types (Decimal, datetime, etc.) use tagged-dict encoding.</span>
+<a id="__codelineno-0-197" name="__codelineno-0-197"></a>
+<a id="__codelineno-0-198" name="__codelineno-0-198"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-199" name="__codelineno-0-199"></a><span class="sd">        obj: A Popoto Model instance to serialize. Must have _meta.fields</span>
+<a id="__codelineno-0-200" name="__codelineno-0-200"></a><span class="sd">             populated by the metaclass.</span>
+<a id="__codelineno-0-201" name="__codelineno-0-201"></a>
+<a id="__codelineno-0-202" name="__codelineno-0-202"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-203" name="__codelineno-0-203"></a><span class="sd">        A dict mapping bytes (field names) to bytes (packed values), ready</span>
+<a id="__codelineno-0-204" name="__codelineno-0-204"></a><span class="sd">        for direct use with Redis HSET/HMSET commands.</span>
+<a id="__codelineno-0-205" name="__codelineno-0-205"></a>
+<a id="__codelineno-0-206" name="__codelineno-0-206"></a><span class="sd">    Raises:</span>
+<a id="__codelineno-0-207" name="__codelineno-0-207"></a><span class="sd">        ModelException: If a Relationship field contains a value that isn&#39;t</span>
+<a id="__codelineno-0-208" name="__codelineno-0-208"></a><span class="sd">                        an instance of the expected related model.</span>
+<a id="__codelineno-0-209" name="__codelineno-0-209"></a>
+<a id="__codelineno-0-210" name="__codelineno-0-210"></a><span class="sd">    Encoding Strategy:</span>
+<a id="__codelineno-0-211" name="__codelineno-0-211"></a><span class="sd">        1. Relationship fields: Store the related object&#39;s db_key (Redis key</span>
+<a id="__codelineno-0-212" name="__codelineno-0-212"></a><span class="sd">           string), not the full object. This enables lazy loading and avoids</span>
+<a id="__codelineno-0-213" name="__codelineno-0-213"></a><span class="sd">           circular serialization.</span>
+<a id="__codelineno-0-214" name="__codelineno-0-214"></a><span class="sd">        2. Custom types (Decimal, datetime, etc.): Use TYPE_ENCODER_DECODERS</span>
+<a id="__codelineno-0-215" name="__codelineno-0-215"></a><span class="sd">           to wrap the value with a sentinel key for later type reconstruction.</span>
+<a id="__codelineno-0-216" name="__codelineno-0-216"></a><span class="sd">        3. All other types: Direct MessagePack serialization (handles None,</span>
+<a id="__codelineno-0-217" name="__codelineno-0-217"></a><span class="sd">           str, int, float, bool, list, dict natively).</span>
+<a id="__codelineno-0-218" name="__codelineno-0-218"></a>
+<a id="__codelineno-0-219" name="__codelineno-0-219"></a><span class="sd">    Integration:</span>
+<a id="__codelineno-0-220" name="__codelineno-0-220"></a><span class="sd">        Called by Model.save() as part of the persistence pipeline. The returned</span>
+<a id="__codelineno-0-221" name="__codelineno-0-221"></a><span class="sd">        dict is passed directly to Redis via HSET.</span>
+<a id="__codelineno-0-222" name="__codelineno-0-222"></a>
+<a id="__codelineno-0-223" name="__codelineno-0-223"></a><span class="sd">    Note:</span>
+<a id="__codelineno-0-224" name="__codelineno-0-224"></a><span class="sd">        NumPy array support is enabled via msgpack_numpy patching, allowing</span>
+<a id="__codelineno-0-225" name="__codelineno-0-225"></a><span class="sd">        fields to store numpy arrays efficiently.</span>
+<a id="__codelineno-0-226" name="__codelineno-0-226"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-227" name="__codelineno-0-227"></a>    <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-228" name="__codelineno-0-228"></a>        <span class="kn">import</span><span class="w"> </span><span class="nn">msgpack_numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">m</span>
+<a id="__codelineno-0-229" name="__codelineno-0-229"></a>
+<a id="__codelineno-0-230" name="__codelineno-0-230"></a>        <span class="n">m</span><span class="o">.</span><span class="n">patch</span><span class="p">()</span>
+<a id="__codelineno-0-231" name="__codelineno-0-231"></a>    <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+<a id="__codelineno-0-232" name="__codelineno-0-232"></a>        <span class="k">pass</span>
+<a id="__codelineno-0-233" name="__codelineno-0-233"></a>
+<a id="__codelineno-0-234" name="__codelineno-0-234"></a>    <span class="n">encoded_hashmap</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+<a id="__codelineno-0-235" name="__codelineno-0-235"></a>    <span class="k">for</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">field</span> <span class="ow">in</span> <span class="n">obj</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+<a id="__codelineno-0-236" name="__codelineno-0-236"></a>        <span class="c1"># Skip capped ListField values -- they are stored in a separate Redis list key</span>
+<a id="__codelineno-0-237" name="__codelineno-0-237"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..fields.shortcuts</span><span class="w"> </span><span class="kn">import</span> <span class="n">ListField</span>
+<a id="__codelineno-0-238" name="__codelineno-0-238"></a>
+<a id="__codelineno-0-239" name="__codelineno-0-239"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">ListField</span><span class="p">)</span> <span class="ow">and</span> <span class="n">field</span><span class="o">.</span><span class="n">_capped</span><span class="p">:</span>
+<a id="__codelineno-0-240" name="__codelineno-0-240"></a>            <span class="k">continue</span>
+<a id="__codelineno-0-241" name="__codelineno-0-241"></a>
+<a id="__codelineno-0-242" name="__codelineno-0-242"></a>        <span class="n">value</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">field_name</span><span class="p">)</span>
+<a id="__codelineno-0-243" name="__codelineno-0-243"></a>
+<a id="__codelineno-0-244" name="__codelineno-0-244"></a>        <span class="c1"># use db_key string for relationships</span>
+<a id="__codelineno-0-245" name="__codelineno-0-245"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..fields.relationship</span><span class="w"> </span><span class="kn">import</span> <span class="n">Relationship</span>
+<a id="__codelineno-0-246" name="__codelineno-0-246"></a>
+<a id="__codelineno-0-247" name="__codelineno-0-247"></a>        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">Relationship</span><span class="p">):</span>
+<a id="__codelineno-0-248" name="__codelineno-0-248"></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+<a id="__codelineno-0-249" name="__codelineno-0-249"></a>                <span class="c1"># Lazy-loaded redis_key string — already in storage format</span>
+<a id="__codelineno-0-250" name="__codelineno-0-250"></a>                <span class="n">encoded_value</span> <span class="o">=</span> <span class="n">msgpack</span><span class="o">.</span><span class="n">packb</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+<a id="__codelineno-0-251" name="__codelineno-0-251"></a>            <span class="k">elif</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">field</span><span class="o">.</span><span class="n">model</span><span class="p">):</span>
+<a id="__codelineno-0-252" name="__codelineno-0-252"></a>                <span class="k">raise</span> <span class="n">ModelException</span><span class="p">(</span>
+<a id="__codelineno-0-253" name="__codelineno-0-253"></a>                    <span class="sa">f</span><span class="s2">&quot;Relationship field requires </span><span class="si">{</span><span class="n">field</span><span class="o">.</span><span class="n">model</span><span class="si">}</span><span class="s2"> model instance. got </span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2"> instead&quot;</span>
+<a id="__codelineno-0-254" name="__codelineno-0-254"></a>                <span class="p">)</span>
+<a id="__codelineno-0-255" name="__codelineno-0-255"></a>            <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-256" name="__codelineno-0-256"></a>                <span class="n">encoded_value</span> <span class="o">=</span> <span class="n">msgpack</span><span class="o">.</span><span class="n">packb</span><span class="p">(</span><span class="n">value</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">)</span>
+<a id="__codelineno-0-257" name="__codelineno-0-257"></a>                <span class="c1"># todo: refactor to store db_key list, not redis_key</span>
+<a id="__codelineno-0-258" name="__codelineno-0-258"></a>
+<a id="__codelineno-0-259" name="__codelineno-0-259"></a>        <span class="k">elif</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">field</span><span class="o">.</span><span class="n">type</span> <span class="ow">in</span> <span class="n">TYPE_ENCODER_DECODERS</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+<a id="__codelineno-0-260" name="__codelineno-0-260"></a>            <span class="n">encoded_value</span> <span class="o">=</span> <span class="n">msgpack</span><span class="o">.</span><span class="n">packb</span><span class="p">(</span>
+<a id="__codelineno-0-261" name="__codelineno-0-261"></a>                <span class="n">TYPE_ENCODER_DECODERS</span><span class="p">[</span><span class="n">field</span><span class="o">.</span><span class="n">type</span><span class="p">]</span><span class="o">.</span><span class="n">encoder</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+<a id="__codelineno-0-262" name="__codelineno-0-262"></a>            <span class="p">)</span>
+<a id="__codelineno-0-263" name="__codelineno-0-263"></a>        <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-264" name="__codelineno-0-264"></a>            <span class="n">encoded_value</span> <span class="o">=</span> <span class="n">msgpack</span><span class="o">.</span><span class="n">packb</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+<a id="__codelineno-0-265" name="__codelineno-0-265"></a>
+<a id="__codelineno-0-266" name="__codelineno-0-266"></a>        <span class="n">encoded_hashmap</span><span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="n">ENCODING</span><span class="p">)]</span> <span class="o">=</span> <span class="n">encoded_value</span>
+<a id="__codelineno-0-267" name="__codelineno-0-267"></a>
+<a id="__codelineno-0-268" name="__codelineno-0-268"></a>    <span class="k">return</span> <span class="n">encoded_hashmap</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="popoto.models.encoding.decode_popoto_model_hashmap" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">decode_popoto_model_hashmap</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">redis_hash</span><span class="p">,</span> <span class="n">fields_only</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">lazy</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span></code>
+
+<a href="#popoto.models.encoding.decode_popoto_model_hashmap" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Decode a Redis hash into a model instance (or a raw fields dict).</p>
+<p>The inverse of encode_popoto_model_obj(). Takes raw Redis hash data
+(bytes keys and MessagePack-encoded values) and reconstructs either
+a fully-instantiated Model object or a plain dictionary of field values.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>model_class</code>
+            </td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="Model (popoto.models.base.Model)" href="../base/#popoto.models.base.Model">Model</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The Model subclass to instantiate.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>redis_hash</code>
+            </td>
+            <td>
+                  <code><span title="dict">dict</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Mapping of <code>{field_name_bytes: msgpack_bytes}</code> from Redis.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>fields_only</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If <code>True</code>, return a plain dict instead of a model instance.
+         Keys remain as bytes (not decoded to strings). Useful for
+         bulk operations where Model instantiation overhead is
+         unwanted, such as Query.values() projections.</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>lazy</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If <code>True</code>, defer field deserialization until access. Fields are
+  decoded on-demand when first accessed, reducing overhead for bulk
+  queries where only a subset of fields are used.</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="Model (popoto.models.base.Model)" href="../base/#popoto.models.base.Model">Model</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A model instance, a dict (when <em>fields_only</em>), or <code>None</code> if the hash</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="Model (popoto.models.base.Model)" href="../base/#popoto.models.base.Model">Model</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>is empty.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="decoding-process" open>
+  <summary>Decoding Process</summary>
+  <ol>
+<li>Each value is unpacked via msgpack.unpackb()</li>
+<li>decode_custom_types() checks for sentinel keys and reconstructs
+   special types (Decimal, datetime, etc.)</li>
+<li>Field names are decoded from bytes to strings (unless fields_only)</li>
+<li>The resulting dict is passed to model_class() to create the instance</li>
+</ol>
+</details>
+
+<details class="integration" open>
+  <summary>Integration</summary>
+  <p>Called by:
+- DB_key.get() for single-object retrieval
+- Query iteration for bulk object loading
+- Query.values() for projection queries (with fields_only=True)</p>
+</details>
+
+<details class="note" open>
+  <summary>Note</summary>
+  <p>Relationship fields are stored as Redis key strings, not full objects.
+The Model's <strong>getattribute</strong> handles lazy loading of related objects
+when accessed.</p>
+</details>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/popoto/models/encoding.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-271">271</a></span>
+<span class="normal"><a href="#__codelineno-0-272">272</a></span>
+<span class="normal"><a href="#__codelineno-0-273">273</a></span>
+<span class="normal"><a href="#__codelineno-0-274">274</a></span>
+<span class="normal"><a href="#__codelineno-0-275">275</a></span>
+<span class="normal"><a href="#__codelineno-0-276">276</a></span>
+<span class="normal"><a href="#__codelineno-0-277">277</a></span>
+<span class="normal"><a href="#__codelineno-0-278">278</a></span>
+<span class="normal"><a href="#__codelineno-0-279">279</a></span>
+<span class="normal"><a href="#__codelineno-0-280">280</a></span>
+<span class="normal"><a href="#__codelineno-0-281">281</a></span>
+<span class="normal"><a href="#__codelineno-0-282">282</a></span>
+<span class="normal"><a href="#__codelineno-0-283">283</a></span>
+<span class="normal"><a href="#__codelineno-0-284">284</a></span>
+<span class="normal"><a href="#__codelineno-0-285">285</a></span>
+<span class="normal"><a href="#__codelineno-0-286">286</a></span>
+<span class="normal"><a href="#__codelineno-0-287">287</a></span>
+<span class="normal"><a href="#__codelineno-0-288">288</a></span>
+<span class="normal"><a href="#__codelineno-0-289">289</a></span>
+<span class="normal"><a href="#__codelineno-0-290">290</a></span>
+<span class="normal"><a href="#__codelineno-0-291">291</a></span>
+<span class="normal"><a href="#__codelineno-0-292">292</a></span>
+<span class="normal"><a href="#__codelineno-0-293">293</a></span>
+<span class="normal"><a href="#__codelineno-0-294">294</a></span>
+<span class="normal"><a href="#__codelineno-0-295">295</a></span>
+<span class="normal"><a href="#__codelineno-0-296">296</a></span>
+<span class="normal"><a href="#__codelineno-0-297">297</a></span>
+<span class="normal"><a href="#__codelineno-0-298">298</a></span>
+<span class="normal"><a href="#__codelineno-0-299">299</a></span>
+<span class="normal"><a href="#__codelineno-0-300">300</a></span>
+<span class="normal"><a href="#__codelineno-0-301">301</a></span>
+<span class="normal"><a href="#__codelineno-0-302">302</a></span>
+<span class="normal"><a href="#__codelineno-0-303">303</a></span>
+<span class="normal"><a href="#__codelineno-0-304">304</a></span>
+<span class="normal"><a href="#__codelineno-0-305">305</a></span>
+<span class="normal"><a href="#__codelineno-0-306">306</a></span>
+<span class="normal"><a href="#__codelineno-0-307">307</a></span>
+<span class="normal"><a href="#__codelineno-0-308">308</a></span>
+<span class="normal"><a href="#__codelineno-0-309">309</a></span>
+<span class="normal"><a href="#__codelineno-0-310">310</a></span>
+<span class="normal"><a href="#__codelineno-0-311">311</a></span>
+<span class="normal"><a href="#__codelineno-0-312">312</a></span>
+<span class="normal"><a href="#__codelineno-0-313">313</a></span>
+<span class="normal"><a href="#__codelineno-0-314">314</a></span>
+<span class="normal"><a href="#__codelineno-0-315">315</a></span>
+<span class="normal"><a href="#__codelineno-0-316">316</a></span>
+<span class="normal"><a href="#__codelineno-0-317">317</a></span>
+<span class="normal"><a href="#__codelineno-0-318">318</a></span>
+<span class="normal"><a href="#__codelineno-0-319">319</a></span>
+<span class="normal"><a href="#__codelineno-0-320">320</a></span>
+<span class="normal"><a href="#__codelineno-0-321">321</a></span>
+<span class="normal"><a href="#__codelineno-0-322">322</a></span>
+<span class="normal"><a href="#__codelineno-0-323">323</a></span>
+<span class="normal"><a href="#__codelineno-0-324">324</a></span>
+<span class="normal"><a href="#__codelineno-0-325">325</a></span>
+<span class="normal"><a href="#__codelineno-0-326">326</a></span>
+<span class="normal"><a href="#__codelineno-0-327">327</a></span>
+<span class="normal"><a href="#__codelineno-0-328">328</a></span>
+<span class="normal"><a href="#__codelineno-0-329">329</a></span>
+<span class="normal"><a href="#__codelineno-0-330">330</a></span>
+<span class="normal"><a href="#__codelineno-0-331">331</a></span>
+<span class="normal"><a href="#__codelineno-0-332">332</a></span>
+<span class="normal"><a href="#__codelineno-0-333">333</a></span>
+<span class="normal"><a href="#__codelineno-0-334">334</a></span>
+<span class="normal"><a href="#__codelineno-0-335">335</a></span>
+<span class="normal"><a href="#__codelineno-0-336">336</a></span>
+<span class="normal"><a href="#__codelineno-0-337">337</a></span>
+<span class="normal"><a href="#__codelineno-0-338">338</a></span>
+<span class="normal"><a href="#__codelineno-0-339">339</a></span>
+<span class="normal"><a href="#__codelineno-0-340">340</a></span>
+<span class="normal"><a href="#__codelineno-0-341">341</a></span>
+<span class="normal"><a href="#__codelineno-0-342">342</a></span>
+<span class="normal"><a href="#__codelineno-0-343">343</a></span>
+<span class="normal"><a href="#__codelineno-0-344">344</a></span>
+<span class="normal"><a href="#__codelineno-0-345">345</a></span>
+<span class="normal"><a href="#__codelineno-0-346">346</a></span>
+<span class="normal"><a href="#__codelineno-0-347">347</a></span>
+<span class="normal"><a href="#__codelineno-0-348">348</a></span>
+<span class="normal"><a href="#__codelineno-0-349">349</a></span>
+<span class="normal"><a href="#__codelineno-0-350">350</a></span>
+<span class="normal"><a href="#__codelineno-0-351">351</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-271" name="__codelineno-0-271"></a><span class="k">def</span><span class="w"> </span><span class="nf">decode_popoto_model_hashmap</span><span class="p">(</span>
+<a id="__codelineno-0-272" name="__codelineno-0-272"></a>    <span class="n">model_class</span><span class="p">:</span> <span class="s2">&quot;Model&quot;</span><span class="p">,</span> <span class="n">redis_hash</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">fields_only</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">lazy</span><span class="o">=</span><span class="kc">False</span>
+<a id="__codelineno-0-273" name="__codelineno-0-273"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Model&quot;</span><span class="p">:</span>
+<a id="__codelineno-0-274" name="__codelineno-0-274"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Decode a Redis hash into a model instance (or a raw fields dict).</span>
+<a id="__codelineno-0-275" name="__codelineno-0-275"></a>
+<a id="__codelineno-0-276" name="__codelineno-0-276"></a><span class="sd">    The inverse of encode_popoto_model_obj(). Takes raw Redis hash data</span>
+<a id="__codelineno-0-277" name="__codelineno-0-277"></a><span class="sd">    (bytes keys and MessagePack-encoded values) and reconstructs either</span>
+<a id="__codelineno-0-278" name="__codelineno-0-278"></a><span class="sd">    a fully-instantiated Model object or a plain dictionary of field values.</span>
+<a id="__codelineno-0-279" name="__codelineno-0-279"></a>
+<a id="__codelineno-0-280" name="__codelineno-0-280"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-281" name="__codelineno-0-281"></a><span class="sd">        model_class: The Model subclass to instantiate.</span>
+<a id="__codelineno-0-282" name="__codelineno-0-282"></a><span class="sd">        redis_hash: Mapping of ``{field_name_bytes: msgpack_bytes}`` from Redis.</span>
+<a id="__codelineno-0-283" name="__codelineno-0-283"></a><span class="sd">        fields_only: If ``True``, return a plain dict instead of a model instance.</span>
+<a id="__codelineno-0-284" name="__codelineno-0-284"></a><span class="sd">                     Keys remain as bytes (not decoded to strings). Useful for</span>
+<a id="__codelineno-0-285" name="__codelineno-0-285"></a><span class="sd">                     bulk operations where Model instantiation overhead is</span>
+<a id="__codelineno-0-286" name="__codelineno-0-286"></a><span class="sd">                     unwanted, such as Query.values() projections.</span>
+<a id="__codelineno-0-287" name="__codelineno-0-287"></a><span class="sd">        lazy: If ``True``, defer field deserialization until access. Fields are</span>
+<a id="__codelineno-0-288" name="__codelineno-0-288"></a><span class="sd">              decoded on-demand when first accessed, reducing overhead for bulk</span>
+<a id="__codelineno-0-289" name="__codelineno-0-289"></a><span class="sd">              queries where only a subset of fields are used.</span>
+<a id="__codelineno-0-290" name="__codelineno-0-290"></a>
+<a id="__codelineno-0-291" name="__codelineno-0-291"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-292" name="__codelineno-0-292"></a><span class="sd">        A model instance, a dict (when *fields_only*), or ``None`` if the hash</span>
+<a id="__codelineno-0-293" name="__codelineno-0-293"></a><span class="sd">        is empty.</span>
+<a id="__codelineno-0-294" name="__codelineno-0-294"></a>
+<a id="__codelineno-0-295" name="__codelineno-0-295"></a><span class="sd">    Decoding Process:</span>
+<a id="__codelineno-0-296" name="__codelineno-0-296"></a><span class="sd">        1. Each value is unpacked via msgpack.unpackb()</span>
+<a id="__codelineno-0-297" name="__codelineno-0-297"></a><span class="sd">        2. decode_custom_types() checks for sentinel keys and reconstructs</span>
+<a id="__codelineno-0-298" name="__codelineno-0-298"></a><span class="sd">           special types (Decimal, datetime, etc.)</span>
+<a id="__codelineno-0-299" name="__codelineno-0-299"></a><span class="sd">        3. Field names are decoded from bytes to strings (unless fields_only)</span>
+<a id="__codelineno-0-300" name="__codelineno-0-300"></a><span class="sd">        4. The resulting dict is passed to model_class() to create the instance</span>
+<a id="__codelineno-0-301" name="__codelineno-0-301"></a>
+<a id="__codelineno-0-302" name="__codelineno-0-302"></a><span class="sd">    Integration:</span>
+<a id="__codelineno-0-303" name="__codelineno-0-303"></a><span class="sd">        Called by:</span>
+<a id="__codelineno-0-304" name="__codelineno-0-304"></a><span class="sd">        - DB_key.get() for single-object retrieval</span>
+<a id="__codelineno-0-305" name="__codelineno-0-305"></a><span class="sd">        - Query iteration for bulk object loading</span>
+<a id="__codelineno-0-306" name="__codelineno-0-306"></a><span class="sd">        - Query.values() for projection queries (with fields_only=True)</span>
+<a id="__codelineno-0-307" name="__codelineno-0-307"></a>
+<a id="__codelineno-0-308" name="__codelineno-0-308"></a><span class="sd">    Note:</span>
+<a id="__codelineno-0-309" name="__codelineno-0-309"></a><span class="sd">        Relationship fields are stored as Redis key strings, not full objects.</span>
+<a id="__codelineno-0-310" name="__codelineno-0-310"></a><span class="sd">        The Model&#39;s __getattribute__ handles lazy loading of related objects</span>
+<a id="__codelineno-0-311" name="__codelineno-0-311"></a><span class="sd">        when accessed.</span>
+<a id="__codelineno-0-312" name="__codelineno-0-312"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-313" name="__codelineno-0-313"></a>    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">redis_hash</span><span class="p">):</span>
+<a id="__codelineno-0-314" name="__codelineno-0-314"></a>        <span class="k">if</span> <span class="n">fields_only</span><span class="p">:</span>
+<a id="__codelineno-0-315" name="__codelineno-0-315"></a>            <span class="n">model_attrs</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-0-316" name="__codelineno-0-316"></a>                <span class="n">key_b</span><span class="p">:</span> <span class="n">decode_custom_types</span><span class="p">(</span>
+<a id="__codelineno-0-317" name="__codelineno-0-317"></a>                    <span class="n">msgpack</span><span class="o">.</span><span class="n">unpackb</span><span class="p">(</span><span class="n">value_b</span><span class="p">,</span> <span class="n">strict_map_key</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<a id="__codelineno-0-318" name="__codelineno-0-318"></a>                <span class="p">)</span>
+<a id="__codelineno-0-319" name="__codelineno-0-319"></a>                <span class="k">for</span> <span class="n">key_b</span><span class="p">,</span> <span class="n">value_b</span> <span class="ow">in</span> <span class="n">redis_hash</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+<a id="__codelineno-0-320" name="__codelineno-0-320"></a>            <span class="p">}</span>
+<a id="__codelineno-0-321" name="__codelineno-0-321"></a>            <span class="k">return</span> <span class="n">model_attrs</span>
+<a id="__codelineno-0-322" name="__codelineno-0-322"></a>
+<a id="__codelineno-0-323" name="__codelineno-0-323"></a>        <span class="k">if</span> <span class="n">lazy</span><span class="p">:</span>
+<a id="__codelineno-0-324" name="__codelineno-0-324"></a>            <span class="c1"># Lazy loading: store raw bytes, decode on access</span>
+<a id="__codelineno-0-325" name="__codelineno-0-325"></a>            <span class="k">return</span> <span class="n">_create_lazy_model</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">redis_hash</span><span class="p">)</span>
+<a id="__codelineno-0-326" name="__codelineno-0-326"></a>
+<a id="__codelineno-0-327" name="__codelineno-0-327"></a>        <span class="n">model_attrs</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-0-328" name="__codelineno-0-328"></a>            <span class="n">key_b</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">ENCODING</span><span class="p">):</span> <span class="n">decode_custom_types</span><span class="p">(</span>
+<a id="__codelineno-0-329" name="__codelineno-0-329"></a>                <span class="n">msgpack</span><span class="o">.</span><span class="n">unpackb</span><span class="p">(</span><span class="n">value_b</span><span class="p">,</span> <span class="n">strict_map_key</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<a id="__codelineno-0-330" name="__codelineno-0-330"></a>            <span class="p">)</span>
+<a id="__codelineno-0-331" name="__codelineno-0-331"></a>            <span class="k">for</span> <span class="n">key_b</span><span class="p">,</span> <span class="n">value_b</span> <span class="ow">in</span> <span class="n">redis_hash</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+<a id="__codelineno-0-332" name="__codelineno-0-332"></a>        <span class="p">}</span>
+<a id="__codelineno-0-333" name="__codelineno-0-333"></a>
+<a id="__codelineno-0-334" name="__codelineno-0-334"></a>        <span class="c1"># Create the model instance</span>
+<a id="__codelineno-0-335" name="__codelineno-0-335"></a>        <span class="n">model_instance</span> <span class="o">=</span> <span class="n">model_class</span><span class="p">(</span><span class="o">**</span><span class="n">model_attrs</span><span class="p">)</span>
+<a id="__codelineno-0-336" name="__codelineno-0-336"></a>
+<a id="__codelineno-0-337" name="__codelineno-0-337"></a>        <span class="c1"># Load capped ListField data from separate Redis list keys</span>
+<a id="__codelineno-0-338" name="__codelineno-0-338"></a>        <span class="n">_load_capped_list_fields</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">)</span>
+<a id="__codelineno-0-339" name="__codelineno-0-339"></a>
+<a id="__codelineno-0-340" name="__codelineno-0-340"></a>        <span class="c1"># Store the loaded field values for proper cleanup on delete</span>
+<a id="__codelineno-0-341" name="__codelineno-0-341"></a>        <span class="c1"># This ensures that if the model is modified and then deleted,</span>
+<a id="__codelineno-0-342" name="__codelineno-0-342"></a>        <span class="c1"># the on_delete hooks use the original saved values</span>
+<a id="__codelineno-0-343" name="__codelineno-0-343"></a>        <span class="n">model_instance</span><span class="o">.</span><span class="n">_saved_field_values</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-0-344" name="__codelineno-0-344"></a>            <span class="n">field_name</span><span class="p">:</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">)</span>
+<a id="__codelineno-0-345" name="__codelineno-0-345"></a>            <span class="k">for</span> <span class="n">field_name</span> <span class="ow">in</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+<a id="__codelineno-0-346" name="__codelineno-0-346"></a>        <span class="p">}</span>
+<a id="__codelineno-0-347" name="__codelineno-0-347"></a>        <span class="n">model_instance</span><span class="o">.</span><span class="n">_is_persisted</span> <span class="o">=</span> <span class="kc">True</span>
+<a id="__codelineno-0-348" name="__codelineno-0-348"></a>
+<a id="__codelineno-0-349" name="__codelineno-0-349"></a>        <span class="k">return</span> <span class="n">model_instance</span>
+<a id="__codelineno-0-350" name="__codelineno-0-350"></a>
+<a id="__codelineno-0-351" name="__codelineno-0-351"></a>    <span class="k">return</span> <span class="kc">None</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="popoto.models.encoding.decode_lazy_field" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">decode_lazy_field</span><span class="p">(</span><span class="n">value_bytes</span><span class="p">)</span></code>
+
+<a href="#popoto.models.encoding.decode_lazy_field" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Decode a single msgpack-encoded field value.</p>
+<p>Called by Model.<strong>getattribute</strong> when accessing a lazily-loaded field
+for the first time.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>value_bytes</code>
+            </td>
+            <td>
+                  <code><span title="bytes">bytes</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Raw msgpack bytes from Redis.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The decoded Python value with custom types restored.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/popoto/models/encoding.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-444">444</a></span>
+<span class="normal"><a href="#__codelineno-0-445">445</a></span>
+<span class="normal"><a href="#__codelineno-0-446">446</a></span>
+<span class="normal"><a href="#__codelineno-0-447">447</a></span>
+<span class="normal"><a href="#__codelineno-0-448">448</a></span>
+<span class="normal"><a href="#__codelineno-0-449">449</a></span>
+<span class="normal"><a href="#__codelineno-0-450">450</a></span>
+<span class="normal"><a href="#__codelineno-0-451">451</a></span>
+<span class="normal"><a href="#__codelineno-0-452">452</a></span>
+<span class="normal"><a href="#__codelineno-0-453">453</a></span>
+<span class="normal"><a href="#__codelineno-0-454">454</a></span>
+<span class="normal"><a href="#__codelineno-0-455">455</a></span>
+<span class="normal"><a href="#__codelineno-0-456">456</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-444" name="__codelineno-0-444"></a><span class="k">def</span><span class="w"> </span><span class="nf">decode_lazy_field</span><span class="p">(</span><span class="n">value_bytes</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">):</span>
+<a id="__codelineno-0-445" name="__codelineno-0-445"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Decode a single msgpack-encoded field value.</span>
+<a id="__codelineno-0-446" name="__codelineno-0-446"></a>
+<a id="__codelineno-0-447" name="__codelineno-0-447"></a><span class="sd">    Called by Model.__getattribute__ when accessing a lazily-loaded field</span>
+<a id="__codelineno-0-448" name="__codelineno-0-448"></a><span class="sd">    for the first time.</span>
+<a id="__codelineno-0-449" name="__codelineno-0-449"></a>
+<a id="__codelineno-0-450" name="__codelineno-0-450"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-451" name="__codelineno-0-451"></a><span class="sd">        value_bytes: Raw msgpack bytes from Redis.</span>
+<a id="__codelineno-0-452" name="__codelineno-0-452"></a>
+<a id="__codelineno-0-453" name="__codelineno-0-453"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-454" name="__codelineno-0-454"></a><span class="sd">        The decoded Python value with custom types restored.</span>
+<a id="__codelineno-0-455" name="__codelineno-0-455"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-456" name="__codelineno-0-456"></a>    <span class="k">return</span> <span class="n">decode_custom_types</span><span class="p">(</span><span class="n">msgpack</span><span class="o">.</span><span class="n">unpackb</span><span class="p">(</span><span class="n">value_bytes</span><span class="p">,</span> <span class="n">strict_map_key</span><span class="o">=</span><span class="kc">False</span><span class="p">))</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
