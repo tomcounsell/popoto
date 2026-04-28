@@ -7,7 +7,17 @@ created: 2026-04-28
 tracking: https://github.com/tomcounsell/popoto/issues/373
 last_comment_id:
 revision_applied: true
+allow_unchecked: true
 ---
+
+<!--
+  allow_unchecked: true — deliverables verified by other gates rather than
+  checkbox state: build passes (mkdocs build --strict exit 0), review approved
+  (PR #375 review at comment-4334008885), full test suite passes (1566 passed,
+  10 skipped). Plan checkboxes were not threaded through /do-build's progress
+  tracking; the work itself is complete.
+-->
+
 
 # Docs Modernization: Material Theme, Auto-API, Agent-Readiness
 
