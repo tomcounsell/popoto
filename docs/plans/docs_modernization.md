@@ -24,7 +24,15 @@ Plan revised after `/do-plan-critique` surfaced 8 concerns + 7 nits, 0 blockers.
 - **C7** (Script execution order) — `gen_llms_full.py` does NOT attempt to embed the API reference (which is virtual at build time and would be 100KB+ anyway). It concatenates only the hand-written narrative `.md` sources in nav order and emits a pointer to `/reference/` for API content. This sidesteps the ordering hazard entirely.
 - **C8** (Narrative content loss in `api-reference.md` deletion) — The hand-maintained file has 159 `##` headers vs. ~65 symbols in `popoto.__all__` — meaning ~90 sections are *narrative* (examples, recipes, prose) that mkdocstrings cannot regenerate. New step 5a (audit-narrative) runs BEFORE deletion: extract `##` headers from `docs/api-reference.md`, classify each as (i) symbol reference (mkdocstrings will cover) or (ii) narrative content. Any narrative section gets relocated to an appropriate topical page (`docs/fields.md`, `docs/query.md`, etc.) or a new `docs/recipes.md` before the file is deleted.
 
-Frontmatter `revision_applied: true` and `status: Ready`.
+Round 2 of `/do-plan-critique` surfaced 5 additional concerns (C9–C13), 4 nits.
+
+- **C9** (CI extras install coverage) — `pip install -e ".[docs]"` installs ONLY the docs extras, not the package's runtime deps. mkdocstrings imports `popoto` to introspect, which transitively imports `redis` etc. CI install changed to `pip install -e ".[docs]"` which already pulls runtime deps via the base `[project]` block (verified). No change needed beyond a comment in the workflow noting the install also brings runtime deps. Confirmed `pyproject.toml` has runtime deps under `[project] dependencies`, not behind an extra.
+- **C10** (GitHub Pages source unverified) — gh-deploy assumes Pages source is set to "Deploy from a branch: gh-pages /". If Pages is configured for "GitHub Actions" source instead, `gh-deploy` will succeed but the site won't update. Verification: before merge, run `gh api /repos/tomcounsell/popoto/pages` and confirm `build_type: legacy` (branch source) or `source.branch: gh-pages`. If misconfigured, switch via repo Settings → Pages → Source: "Deploy from a branch" / `gh-pages` / `/`. Added to Prerequisites.
+- **C11** (Narrative audit grep too coarse) — Step 5a's `grep "^## "` misses H3/H4 sections, but `api-reference.md` uses `##` for top-level entries and nests `###`/`####` for class members. The intent is to audit *narrative subtrees*, so the grep widens to `grep -nE "^#{2,4} " docs/api-reference.md` and the classifier walks the resulting outline rather than flat-listing headers. Step 5a updated.
+- **C12** (ReadTheDocs not archived/redirected) — popoto.readthedocs.io is still live and search engines may rank it above the new GH Pages URL. Two-step fix: (a) log into RTD admin and archive the project (or set it to redirect-only); (b) add a banner to RTD's index page pointing at the new URL during the transition window. Added to step 8 (build-meta) AND a follow-up issue is created post-merge. NOT a blocker for this plan — fixable any time after deploy.
+- **C13** (Bookmark URL 404s) — Anchors in `api-reference.md` (e.g. `popoto.readthedocs.io/...#decayingsortedfield`) will 404 once the file is deleted. mkdocstrings generates `/reference/popoto/fields/decaying_sorted_field/#popoto.fields.decaying_sorted_field.DecayingSortedField` — different URL shape. Mitigation: ship a small `docs/redirects.md` mapping common old-URL anchors to new URLs OR add `mkdocs-redirects` plugin. **Decision:** add `mkdocs-redirects` to docs extras and configure a redirect map for the most common 20-30 anchors as a follow-up issue (not in scope of this plan — too time-intensive for marginal benefit). Mention in plan PR description so user can prioritize the follow-up.
+
+Frontmatter `revision_applied: true` and `status: Ready`. No further critique rounds — proceeding to /do-build.
 
 ## Problem
 
@@ -96,6 +104,16 @@ No spikes needed. All five components are mechanical:
 5. CI workflow is a known pattern
 
 The only uncertainty (whether `__all__` allowlist is sufficient) was resolved by Phase 0.7 research above.
+
+## Prerequisites
+
+| Requirement | Check Command | Purpose |
+|-------------|---------------|---------|
+| GitHub Pages branch source (C10) | `gh api /repos/tomcounsell/popoto/pages -q '.build_type, .source.branch'` | Confirms Pages source is `legacy` (branch deploy) with `gh-pages` branch. If `workflow`, `mkdocs gh-deploy` will succeed but the site won't update. |
+| `gh` CLI authenticated | `gh auth status` | Required for the Pages check above and post-merge smoke verification. |
+| `pip install -e ".[docs]"` succeeds locally | `pip install -e ".[docs]" && python -c "import mkdocs_material, mkdocstrings"` | Validates docs extras install before CI tries the same. |
+
+If the Pages check returns `build_type: workflow`, fix via repo Settings → Pages → Source: "Deploy from a branch" / `gh-pages` / `/` BEFORE merging the implementation PR.
 
 ## Solution
 
@@ -410,7 +428,9 @@ Single feature branch (`docs/material-modernization`), single PR. Execution orde
   1. **Symbol reference** — header is a class/function name covered by mkdocstrings rendering. No action.
   2. **Narrative** (example, recipe, prose) — needs to be relocated.
   3. **Duplicate of content already in another doc page** — no action; will be removed with the file.
-- For each "narrative" header, identify the best target page (`docs/fields.md`, `docs/query.md`, `docs/relationship.md`, etc.) or create `docs/recipes.md` for orphaned recipe-style content.
+- For each "narrative" header (incl. nested H3/H4 — see C11), identify the best target page (`docs/fields.md`, `docs/query.md`, `docs/relationship.md`, etc.) or create `docs/recipes.md` for orphaned recipe-style content.
+
+  > **Implementation Note (C11):** The grep widens to `grep -nE "^#{2,4} " docs/api-reference.md` to capture H2/H3/H4 because `api-reference.md` uses `##` for top-level entries and nests `###`/`####` for class members. Walk the resulting outline tree, not a flat list — narrative content typically lives in H3/H4 subtrees under symbol-level H2 headers.
 - Move the section content into the target page(s) and add nav entries if needed.
 - Re-run `mkdocs build --strict`. Site builds; relocated content is reachable via nav.
 
@@ -433,6 +453,7 @@ Single feature branch (`docs/material-modernization`), single PR. Execution orde
 - **Depends On**: build-ci
 - `README.md`: replace ReadTheDocs badge + 2 links with GitHub Pages URLs.
 - `CLAUDE.md`: confirm `mkdocs serve` line is still accurate (no change expected).
+- (C12) After deploy verified, archive the ReadTheDocs project: log into RTD admin → Project Settings → Advanced → "Archive" OR set the project to redirect to GH Pages URL. **Defer to a follow-up issue post-merge** — not blocking. Mention in PR description.
 - `.claude/commands/deploy-docs.md`: prepend "CI handles this automatically — use only as escape hatch" note AND add a new step 0:
   ```
   0. **Check CI is not running** — abort if `gh run list --workflow=deploy-docs.yml --limit 1 --json status,conclusion` shows a status of `in_progress` or `queued`. A manual `gh-deploy` racing CI's `gh-deploy` produces a non-deterministic gh-pages state. Wait for CI to finish, or use this skill only when CI is broken.
@@ -475,8 +496,13 @@ Single feature branch (`docs/material-modernization`), single PR. Execution orde
 | CONCERN | Archaeologist | `_*` skip rule excludes `_error_reporting.py` whose `enable_error_reporting` symbol is in `popoto.__all__` | Technical Approach §3 | Skip rule narrowed to dunder-only (`__pycache__`, `__init__`, `__main__`); private filtering delegated to mkdocstrings |
 | CONCERN | Skeptic | Generator script execution order matters for `llms-full.txt` | Technical Approach §4 | `llms-full.txt` excludes API tree entirely; emits pointer to `/reference/` instead |
 | CONCERN | Archaeologist | Deleting `api-reference.md` may lose narrative content (159 `##` headers vs. ~65 symbols) | New Step 5a (audit-narrative) | Pre-deletion narrative audit + relocation to topical pages or `docs/recipes.md` |
+| CONCERN | Operator | CI extras install coverage (round 2) | Verified: pyproject runtime deps not behind extras | No change — `[docs]` extra + base `[project] dependencies` covers everything mkdocstrings needs to introspect popoto |
+| CONCERN | Operator | GitHub Pages source unverified (round 2) | Prerequisites table | Added pre-build check: `gh api /repos/tomcounsell/popoto/pages` must show `build_type: legacy` with `gh-pages` source |
+| CONCERN | Skeptic | Narrative audit grep too coarse (round 2) | Step 5a updated | Widened to `grep -nE "^#{2,4} "` to catch nested narrative under symbol H2 sections |
+| CONCERN | Adversary | ReadTheDocs not archived/redirected (round 2) | Step 8 + follow-up issue | Archive via RTD admin post-deploy; not blocking |
+| CONCERN | Archaeologist | Bookmark URL 404s after `api-reference.md` deletion (round 2) | Follow-up issue (not in this plan) | `mkdocs-redirects` plugin + redirect map for top-30 anchors deferred to follow-up |
 
-7 nits absorbed into Implementation Notes inline.
+11 nits across 2 critique rounds absorbed into Implementation Notes inline.
 
 ---
 
