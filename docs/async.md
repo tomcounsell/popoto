@@ -509,7 +509,7 @@ All bulk methods use Redis pipelines internally to batch operations, dramaticall
 network round-trips. The `batch_size` parameter (default 1000) controls how many instances
 are processed per pipeline execution.
 
-See [Bulk Operations](api-reference.md#bulk-operations) in the API Reference for complete
+See [Bulk Operations](recipes.md#bulk-operations) in the Recipes for complete
 documentation.
 
 ## Test Coverage
@@ -545,4 +545,4 @@ pytest tests/test_async.py tests/test_connection.py tests/test_bulk_operations.p
 - [Models and Fields](fields.md) -- define your data models
 - [Making Queries](query.md) -- query patterns and filter lookups
 - [Model Meta Options](meta.md) -- configure `order_by`, `ttl`, and other model behavior
-- [Bulk Operations](api-reference.md#bulk-operations) -- efficient batch processing
+- [Bulk Operations](recipes.md#bulk-operations) -- efficient batch processing

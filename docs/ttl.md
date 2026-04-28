@@ -52,7 +52,7 @@ session.save()
 When Redis removes an expired key, subsequent `load()` or `query.get()` calls
 return `None`. Popoto handles orphaned secondary index entries gracefully
 during queries. For proactive cleanup of orphaned index entries left behind by
-expired keys, use [`Model.clean_indexes()`](api-reference.md#modelclean_indexes).
+expired keys, use [`Model.clean_indexes()`](recipes.md#index-maintenance).
 
 ## Per-Instance TTL Override
 
@@ -172,4 +172,4 @@ print(AgentSession._meta.ttl)
 ## See Also
 
 - [Model Meta Options](meta.md) -- full reference for `Meta.ttl`, `order_by`, and `indexes`
-- [API Reference](api-reference.md) -- `_ttl` and `_expire_at` instance attributes
+- [Recipes](recipes.md#instance-ttl-attributes) -- `_ttl` and `_expire_at` instance attributes

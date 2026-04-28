@@ -163,7 +163,7 @@ for model in [Order, MenuItem, Restaurant]:
 !!! warning
     Always use Popoto's delete methods instead of Redis `DEL` or `FLUSHDB`. Popoto maintains
     secondary indexes (sorted sets, geo sets, unique constraints) that must be cleaned up
-    properly. See [Bulk Operations](api-reference.md#modeldelete_all) for details.
+    properly. See [Bulk Operations](recipes.md#bulk-operations) for details.
 
 ### Async Operations
 

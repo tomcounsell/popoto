@@ -297,4 +297,4 @@ invalidate_cache()
 - [Fields > EmbeddingField](../fields.md#embeddingfield) -- field reference
 - [Making Queries > Semantic Search](../query.md#semantic-search) -- query interface
 - [Configuration](../configuration.md#content-and-embedding-configuration) -- global setup
-- [API Reference](../api-reference.md#contentfield) -- method signatures
+- [API Reference: ContentField](../reference/popoto/fields/content_field.md) -- method signatures

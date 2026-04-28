@@ -1,0 +1,54 @@
+name: Deploy Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "src/popoto/**"
+      - ".github/workflows/deploy-docs.yml"
+
+# Coalesce rapid pushes into a single deploy. cancel-in-progress: false ensures
+# an in-flight gh-deploy completes before the next one starts, so we never leave
+# the gh-pages branch in an inconsistent state.
+concurrency:
+  group: deploy-docs
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      # The [docs] extra installs mkdocs/mkdocs-material/mkdocstrings/etc.
+      # The base [project] dependencies (redis, msgpack) install transitively
+      # via the editable install -- mkdocstrings imports popoto to introspect
+      # docstrings, so the runtime deps must also be present.
+      - name: Install docs dependencies
+        run: pip install -e ".[docs]"
+
+      - name: Configure git for gh-deploy
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      # Strict build is the gate: broken nav, missing files, or fatal docstring
+      # parse errors abort here BEFORE the deploy step runs. This prevents
+      # publishing a broken site.
+      - name: Build (strict)
+        run: mkdocs build --strict
+
+      - name: Deploy to gh-pages
+        run: mkdocs gh-deploy --force

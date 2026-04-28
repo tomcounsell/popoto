@@ -197,9 +197,10 @@ class Relationship(Field):
 
         Returns:
             A set of valid query parameter strings, including:
-            - The field name itself (for direct model instance filtering)
-            - Chained parameters like `field_name__related_field` for each
-              filterable field on the related model
+
+                - The field name itself (for direct model instance filtering)
+                - Chained parameters like `field_name__related_field` for each
+                  filterable field on the related model
         """
         related_field_filter_query_params = set()
         for related_field_name, related_field in self.model._meta.fields.items():
