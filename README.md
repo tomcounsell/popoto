@@ -3,7 +3,7 @@
 [![total downloads](https://pepy.tech/badge/popoto)](https://pepy.tech/project/popoto)
 [![deploy docs](https://github.com/tomcounsell/popoto/actions/workflows/deploy-docs.yml/badge.svg)](https://github.com/tomcounsell/popoto/actions/workflows/deploy-docs.yml)
 
-### Documentation: [**tomcounsell.github.io/popoto**](https://tomcounsell.github.io/popoto/)
+### Documentation: [**popoto.io**](https://popoto.io/)
 
 
 # Popoto - A Redis/Valkey ORM (Object-Relational Mapper)
@@ -117,7 +117,7 @@ recent_orders = Order.query.filter(
 
 # Documentation
 
-Documentation is available at [**tomcounsell.github.io/popoto**](https://tomcounsell.github.io/popoto/)
+Documentation is available at [**popoto.io**](https://popoto.io/)
 
 Please create new feature and documentation related issues [github.com/tomcounsell/popoto/issues](https://github.com/tomcounsell/popoto/issues) or make a pull request with your improvements.
 

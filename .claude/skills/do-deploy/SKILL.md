@@ -112,7 +112,7 @@ If mkdocs is not installed: `uv pip install mkdocs`
 ### Step 9: Verify
 
 1. Check the GitHub Actions release workflow: `gh run list --limit 1`
-2. Report the new version, PyPI publish status, and docs URL (https://tomcounsell.github.io/popoto/)
+2. Report the new version, PyPI publish status, and docs URL (https://popoto.io/)
 
 ## Troubleshooting
 

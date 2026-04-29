@@ -29,7 +29,7 @@ import yaml
 DOCS_DIR = Path("docs")
 MKDOCS_CONFIG = Path("mkdocs.yml")
 OUTPUT = "llms-full.txt"
-SITE_URL = "https://tomcounsell.github.io/popoto/"
+SITE_URL = "https://popoto.io/"
 SOURCE_URL = "https://github.com/tomcounsell/popoto/tree/main/src/popoto/"
 
 

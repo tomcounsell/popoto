@@ -42,4 +42,4 @@ Deploy the popoto documentation site to GitHub Pages using mkdocs.
    ```
    This builds the docs and pushes them to the `gh-pages` branch.
 
-6. **Confirm** — tell the user the docs site has been deployed and should be live shortly at https://tomcounsell.github.io/popoto/
+6. **Confirm** — tell the user the docs site has been deployed and should be live shortly at https://popoto.io/
