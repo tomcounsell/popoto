@@ -60,11 +60,12 @@ docs = [
     "griffe>=0.45",
     "mkdocs-gen-files>=0.5",
     "mkdocs-literate-nav>=0.6",
+    "mkdocs-open-in-new-tab>=1.0",
 ]
 
 [project.urls]
 Homepage = "https://github.com/tomcounsell/popoto"
-Documentation = "https://tomcounsell.github.io/popoto/"
+Documentation = "https://popoto.io/"
 Bug_Tracker = "https://github.com/tomcounsell/popoto/issues"
 
 [project.entry-points.pytest11]

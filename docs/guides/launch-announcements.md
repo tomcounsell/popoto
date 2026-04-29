@@ -53,7 +53,7 @@ https://github.com/tomcounsell/popoto
 >
 > We've been using it in production for streaming financial data and sensor networks. 1.0.0 is the first stable release after two betas and significant index integrity hardening.
 >
-> Docs: https://tomcounsell.github.io/popoto
+> Docs: https://popoto.io
 > PyPI: `pip install popoto`
 >
 > Happy to answer any questions about the internals or how it compares to Redis OM.
@@ -112,7 +112,7 @@ Developer Tools, Open Source, Python, Databases
 ### Links
 ```
 GitHub: https://github.com/tomcounsell/popoto
-Docs:   https://tomcounsell.github.io/popoto
+Docs:   https://popoto.io
 PyPI:   https://pypi.org/project/popoto/
 ```
 
