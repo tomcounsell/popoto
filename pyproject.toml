@@ -60,6 +60,7 @@ docs = [
     "griffe>=0.45",
     "mkdocs-gen-files>=0.5",
     "mkdocs-literate-nav>=0.6",
+    "mkdocs-open-in-new-tab>=1.0",
 ]
 
 [project.urls]
