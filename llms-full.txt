@@ -2362,794 +2362,6 @@ outside of Popoto's query API.
 
 ---
 
-## Model Meta Options
-
-# Model Meta Options
-
-Every Popoto model can include a `Meta` inner class to configure model-level
-behavior like default ordering, automatic expiration, and composite indexes.
-The `Meta` class is processed at class definition time, and its options
-become available via `ModelClass._meta`.
-
-## When to Use Meta Options
-
-You should define a `Meta` class when you want to:
-
-- **Set default ordering** for query results without specifying `order_by`
-  every time
-- **Automatically expire data** using Redis TTL (great for temporary orders,
-  sessions, or cached data)
-- **Enforce uniqueness** across multiple fields (composite unique constraints)
-
-Without a `Meta` class, your models work fine -- you just configure behavior
-at query time instead.
-
-## order_by
-
-The `order_by` option sets a default sort order for all queries. This is
-useful when you almost always want results in the same order -- for example,
-showing the most recent orders first.
-
-```python
-from popoto import Model, AutoKeyField, Field, SortedField
-from popoto import Relationship, DatetimeField
-
-class Order(Model):
-    order_id = AutoKeyField()
-    customer = Relationship("Customer")
-    restaurant = Relationship("Restaurant")
-    driver = Relationship("Driver", null=True)
-    total = SortedField(type=float)
-    status = Field(type=str, default="pending")
-    created_at = DatetimeField(auto_now_add=True)
-    updated_at = DatetimeField(auto_now=True)
-
-    class Meta:
-        order_by = "-created_at"
-```
-
-The minus sign prefix (`-`) means descending order. Without it, results are
-ascending. In this case, the newest orders always appear first.
-
-Queries automatically respect the default ordering:
-
-```python
-orders = Order.query.all()
-print(orders[0].status)
-# => "pending"  (the most recently created order)
-```
-
-### Override per Query
-
-You can override the default at query time:
-
-```python
-orders = Order.query.all(order_by="total")
-# => Returns orders sorted by total ascending, ignoring Meta default
-
-expensive_first = Order.query.all(order_by="-total")
-# => Returns orders sorted by total descending
-```
-
-!!! note
-    The field specified in `order_by` must exist on the model. Popoto
-    validates this at class definition time and raises a `ModelException`
-    if the field does not exist.
-
-## ttl
-
-!!! tip
-    For a dedicated guide covering model-level TTL, per-instance overrides,
-    absolute expiration, and a complete session example, see the
-    [TTL documentation](ttl.md).
-
-The `ttl` (time-to-live) option tells Redis to automatically delete model
-instances after a specified number of seconds. When you save a model with a
-TTL, Popoto calls Redis's `EXPIRE` command on the key. After that many
-seconds, Redis removes it automatically -- ideal for completed orders,
-delivery tracking records, or temporary promotions.
-
-Adding `ttl` to the Order model from the previous section:
-
-```python
-    class Meta:
-        order_by = "-created_at"
-        ttl = 2592000  # 30 days (30 * 24 * 60 * 60)
-```
-
-Every order instance now expires 30 days after its most recent save:
-
-```python
-order = Order.create(customer=alice, restaurant=sakura, total=29.50)
-# => Redis will automatically delete this order after 30 days
-```
-
-The TTL resets every time you call `save()`. Updating an order 15 days in
-restarts the 30-day clock:
-
-```python
-order.status = "delivered"
-order.save()
-# => TTL resets to 30 days from now
-```
-
-When a key expires, Redis removes it silently. Any subsequent `load()` or
-`query.get()` call returns `None`. Popoto handles orphaned secondary index
-entries gracefully during queries.
-
-!!! warning
-    TTL is refreshed on every `save()` call, not just on creation. Background
-    processes that update records will extend the expiration window.
-
-## Instance-Level TTL
-
-You can override the Meta TTL for specific instances using the `_ttl`
-attribute. For example, a rush order might need a shorter retention period:
-
-```python
-rush_order = Order(
-    customer=alice, restaurant=sakura, total=49.99, status="rush"
-)
-rush_order._ttl = 604800  # 7 days instead of the default 30
-rush_order.save()
-```
-
-To make a specific instance permanent (no expiration), set `_ttl` to `None`:
-
-```python
-vip_order = Order(
-    customer=alice, restaurant=sakura, total=199.99, status="vip"
-)
-vip_order._ttl = None  # Never expires, even though Meta.ttl is set
-vip_order.save()
-```
-
-!!! note
-    The instance-level `_ttl` takes precedence over `Meta.ttl`. Setting it
-    to `None` disables expiration for that instance only.
-
-## Absolute Expiration
-
-Instead of a relative TTL, you can set an absolute expiration with
-`_expire_at`. This accepts a `datetime` and tells Redis to delete the key
-at that exact moment.
-
-```python
-from datetime import datetime, timedelta
-
-order = Order(
-    customer=alice, restaurant=sakura, total=35.00, status="scheduled"
-)
-order._expire_at = datetime(2026, 3, 1, 0, 0, 0)  # Expires March 1st
-order.save()
-```
-
-You can also compute the deadline dynamically:
-
-```python
-end_of_day = datetime.now().replace(hour=23, minute=59, second=59)
-order._expire_at = end_of_day
-order.save()
-# => Order expires at the end of the current day
-```
-
-!!! warning
-    You cannot set both `_ttl` and `_expire_at` on the same instance. Popoto
-    raises a `ModelException` if both are set. Use one or the other.
-
-## indexes
-
-The `indexes` option creates composite indexes that can enforce uniqueness
-across combinations of fields. Each index is a tuple of `(field_names,
-is_unique)` where `field_names` is a tuple of strings and `is_unique` is
-a boolean:
-
-Adding `indexes` to the Order model alongside the other Meta options:
-
-```python
-    class Meta:
-        order_by = "-created_at"
-        ttl = 2592000
-        indexes = (
-            (("restaurant", "status"), True),  # Unique composite index
-        )
-```
-
-With this index, each restaurant can only have one order per status value:
-
-```python
-order1 = Order.create(
-    customer=alice, restaurant=sakura, total=25.00, status="pending"
-)
-# => Saved successfully
-
-order2 = Order.create(
-    customer=bob, restaurant=sakura, total=18.00, status="pending"
-)
-# => ModelException: Unique index violation on ('restaurant', 'status')
-```
-
-A different status for the same restaurant works fine:
-
-```python
-order3 = Order.create(
-    customer=bob, restaurant=sakura, total=18.00, status="preparing"
-)
-# => Saved successfully
-```
-
-### Non-Unique Indexes
-
-Set the uniqueness flag to `False` to create an index for grouping without
-a uniqueness constraint:
-
-```python
-class Meta:
-    indexes = (
-        (("restaurant", "status"), False),
-    )
-```
-
-### NULL Handling
-
-Following SQL standard behavior, `NULL` values do not participate in
-uniqueness checks. Multiple instances can have `NULL` in an indexed field
-and both will save successfully.
-
-## Update and Delete Handling
-
-Popoto maintains composite indexes automatically. Updates that would violate
-a unique index are rejected before the save occurs:
-
-```python
-order1 = Order.create(
-    customer=alice, restaurant=sakura, total=25.00, status="pending"
-)
-order2 = Order.create(
-    customer=bob, restaurant=sakura, total=18.00, status="preparing"
-)
-
-order2.status = "pending"  # Would collide with order1
-order2.save()
-# => ModelException: Unique index violation on ('restaurant', 'status')
-```
-
-When you delete an instance, its index entries are cleaned up, freeing the
-slot for future records:
-
-```python
-order1.delete()
-
-order3 = Order.create(
-    customer=charlie, restaurant=sakura, total=22.00, status="pending"
-)
-# => Saved successfully -- the slot was freed by deleting order1
-```
-
-## Complete Example
-
-Here is the Order model combining all three Meta options:
-
-```python
-from popoto import Model, AutoKeyField, Field, SortedField
-from popoto import Relationship, DatetimeField
-
-class Order(Model):
-    order_id = AutoKeyField()
-    customer = Relationship("Customer")
-    restaurant = Relationship("Restaurant")
-    driver = Relationship("Driver", null=True)
-    total = SortedField(type=float)
-    status = Field(type=str, default="pending")
-    created_at = DatetimeField(auto_now_add=True)
-    updated_at = DatetimeField(auto_now=True)
-
-    class Meta:
-        order_by = "-created_at"
-        ttl = 2592000
-        indexes = (
-            (("restaurant", "status"), True),
-        )
-```
-
-This model returns orders newest-first by default, expires them after 30
-days, and prevents duplicate restaurant/status combinations.
-
-## Accessing Meta at Runtime
-
-After your model is defined, access Meta options via the `_meta` attribute:
-
-```python
-print(Order._meta.order_by)
-# => "-created_at"
-
-print(Order._meta.ttl)
-# => 2592000
-
-print(Order._meta.indexes)
-# => ((("restaurant", "status"), True),)
-```
-
-You can also inspect field metadata through `_meta`:
-
-```python
-print(Order._meta.sorted_field_names)
-# => {"total"}
-
-print(Order._meta.relationship_field_names)
-# => {"customer", "restaurant", "driver"}
-```
-
-!!! warning
-    Do not access `Order.Meta` directly. It is consumed during class creation
-    by the metaclass. Always use `Order._meta` instead.
-
-## Meta Validation
-
-All Meta options are validated at class definition time, not at runtime.
-You get immediate feedback about configuration errors when Python loads
-your model class.
-
-```python
-class BadOrder(Model):
-    order_id = AutoKeyField()
-    total = SortedField(type=float)
-
-    class Meta:
-        order_by = "nonexistent_field"
-# => ModelException: Meta.order_by references 'nonexistent_field'
-#    but this field does not exist on BadOrder
-```
-
-TTL and index definitions are also validated:
-
-```python
-class BadTTL(Model):
-    order_id = AutoKeyField()
-
-    class Meta:
-        ttl = -1
-# => ModelException: Meta.ttl must be a positive integer (seconds), got -1
-
-class BadIndex(Model):
-    order_id = AutoKeyField()
-    status = Field(type=str)
-
-    class Meta:
-        indexes = (
-            (("status", "missing_field"), True),
-        )
-# => ModelException: Unknown field 'missing_field' in Meta.indexes
-#    for BadIndex
-```
-
-!!! tip
-    Because validation happens at import time, you will catch configuration
-    errors during development rather than at runtime in production. Define
-    your Meta options early and run your test suite to verify them.
-
-See [Models and Fields](fields.md) for field type reference, or
-[Making Queries](query.md) for query filtering and ordering options.
-
----
-
-## TTL (Time-to-Live)
-
-# TTL (Time-to-Live)
-
-Popoto supports automatic data expiration through Redis TTL. You can set
-expiration at the model level (all instances expire after a fixed duration),
-override it per-instance, or set an absolute expiration timestamp.
-
-TTL is ideal for temporary data like sessions, caches, tracking records,
-or any data with a natural retention window.
-
-## Model-Level TTL
-
-Define a default TTL for all instances of a model using the `Meta` inner class:
-
-```python
-from popoto import Model, AutoKeyField, Field
-
-class AgentSession(Model):
-    session_id = AutoKeyField()
-    agent_name = Field(type=str)
-    context = Field(type=str, default="")
-    token_count = Field(type=int, default=0)
-
-    class Meta:
-        ttl = 7776000  # 90 days (90 * 24 * 60 * 60)
-```
-
-When you save an instance, Popoto calls Redis `EXPIRE` on the key with the
-configured TTL. After that many seconds, Redis removes the key automatically:
-
-```python
-session = AgentSession.create(agent_name="assistant", context="planning task")
-# Redis will delete this session after 90 days
-```
-
-### TTL Resets on Every Save
-
-The TTL clock restarts each time you call `save()`. If you update a session
-60 days in, the 90-day window starts over from that moment:
-
-```python
-session.token_count = 4500
-session.save()
-# TTL resets to 90 days from now
-```
-
-!!! warning
-    Background processes that update records will extend the expiration window.
-    If a periodic job calls `save()` on a session, that session may never expire.
-
-### What Happens When a Key Expires
-
-When Redis removes an expired key, subsequent `load()` or `query.get()` calls
-return `None`. Popoto handles orphaned secondary index entries gracefully
-during queries. For proactive cleanup of orphaned index entries left behind by
-expired keys, use [`Model.clean_indexes()`](recipes.md#index-maintenance).
-
-## Per-Instance TTL Override
-
-Override the model-level TTL for a specific instance by setting the `_ttl`
-attribute before saving:
-
-```python
-# Short-lived session: 1 day instead of 90
-ephemeral = AgentSession(agent_name="scratchpad")
-ephemeral._ttl = 86400  # 1 day
-ephemeral.save()
-```
-
-### Making an Instance Permanent
-
-Set `_ttl` to `None` to disable expiration for a specific instance, even when
-the model has a default TTL:
-
-```python
-important_session = AgentSession(agent_name="long-term-memory")
-important_session._ttl = None  # Never expires
-important_session.save()
-```
-
-!!! note
-    The instance-level `_ttl` takes precedence over `Meta.ttl`. Setting it
-    to `None` disables expiration for that instance only.
-
-## Absolute Expiration
-
-Instead of a relative duration, you can set an exact expiration time using
-`_expire_at`. This accepts a `datetime` object and calls Redis `EXPIREAT`:
-
-```python
-from datetime import datetime, timedelta
-
-session = AgentSession(agent_name="campaign-tracker")
-session._expire_at = datetime(2026, 12, 31, 23, 59, 59)  # Expires end of year
-session.save()
-```
-
-You can also compute the deadline dynamically:
-
-```python
-session._expire_at = datetime.now() + timedelta(hours=6)
-session.save()
-# Expires exactly 6 hours from now
-```
-
-## Mutual Exclusion: _ttl vs _expire_at
-
-You cannot set both `_ttl` and `_expire_at` on the same instance. Popoto
-raises a `ModelException` during validation if both are set:
-
-```python
-session = AgentSession(agent_name="conflict")
-session._ttl = 3600
-session._expire_at = datetime(2026, 6, 1)
-session.save()
-# => ModelException: Can set either ttl and expire_at. Not both.
-```
-
-Use one or the other. If the model has a `Meta.ttl` and you want to switch
-to absolute expiration, clear the TTL first:
-
-```python
-session._ttl = None
-session._expire_at = datetime(2026, 6, 1)
-session.save()
-```
-
-## Complete Example: AgentSession with 90-Day TTL
-
-```python
-from datetime import datetime, timedelta
-from popoto import Model, AutoKeyField, Field, DatetimeField
-
-class AgentSession(Model):
-    session_id = AutoKeyField()
-    agent_name = Field(type=str)
-    context = Field(type=str, default="")
-    token_count = Field(type=int, default=0)
-    created_at = DatetimeField(auto_now_add=True)
-    updated_at = DatetimeField(auto_now=True)
-
-    class Meta:
-        ttl = 7776000  # 90 days
-
-# Create a session -- expires in 90 days
-session = AgentSession.create(agent_name="assistant", context="user onboarding")
-
-# Update it -- TTL resets to 90 days from now
-session.token_count = 2500
-session.save()
-
-# Override TTL for a temporary scratch session
-scratch = AgentSession.create(agent_name="scratch")
-scratch._ttl = 3600  # 1 hour
-scratch.save()
-
-# Make a session permanent
-archival = AgentSession(agent_name="archival-memory")
-archival._ttl = None
-archival.save()
-
-# Set absolute expiration
-campaign = AgentSession(agent_name="q4-campaign")
-campaign._ttl = None  # Clear model-level TTL
-campaign._expire_at = datetime(2026, 12, 31, 23, 59, 59)
-campaign.save()
-
-# Check TTL at runtime
-print(AgentSession._meta.ttl)
-# => 7776000
-```
-
-## See Also
-
-- [Model Meta Options](meta.md) -- full reference for `Meta.ttl`, `order_by`, and `indexes`
-- [Recipes](recipes.md#instance-ttl-attributes) -- `_ttl` and `_expire_at` instance attributes
-
----
-
-## Indexed Fields
-
-# Indexed Fields
-
-Indexed fields provide secondary indexing for non-key fields, enabling efficient
-exact-match queries without making the field part of the model's Redis key (identity).
-
-## The Problem
-
-In Popoto, `KeyField` conflates two concerns:
-
-1. **Identity** -- the field's value forms part of the Redis storage key
-2. **Indexing** -- the field is queryable via `filter()`
-
-This means that to query on a field like `email` or `status`, you must make it a
-`KeyField`, which changes the model's Redis key structure. If you later rename an
-email, the entire Redis key changes, potentially orphaning references.
-
-## The Solution
-
-`IndexedField` and `UniqueField` decouple querying from identity. They maintain
-Redis Set indexes (identical to KeyField's indexing mechanism) but do not participate
-in the Redis key.
-
-```python
-from popoto import Model, AutoKeyField, IndexedField, UniqueField, Field
-
-class User(Model):
-    user_id = AutoKeyField()
-    email = UniqueField(type=str)       # indexed + unique, NOT part of key
-    status = IndexedField(type=str)     # indexed, NOT part of key
-    name = Field(type=str)              # not indexed, not part of key
-```
-
-The Redis key for this model is based solely on `user_id` (e.g.,
-`User:a1b2c3d4...`). The `email` and `status` fields are indexed separately,
-enabling queries like:
-
-```python
-User.query.filter(email="alice@example.com")
-User.query.filter(status="active")
-User.query.filter(status__in=["active", "pending"])
-```
-
-## Field(indexed=True)
-
-You can also enable indexing on a plain `Field` by passing `indexed=True`:
-
-```python
-class Product(Model):
-    sku = AutoKeyField()
-    category = Field(type=str, indexed=True)          # indexed, not unique
-    barcode = Field(type=str, indexed=True, unique=True)  # indexed + unique
-```
-
-This is functionally identical to using `IndexedField` and `UniqueField` shortcuts.
-
-## IndexedField
-
-`IndexedField` is a shortcut for `Field(indexed=True)`. It creates a non-key field
-with Set-based secondary indexing.
-
-```python
-from popoto import Model, AutoKeyField, IndexedField
-
-class Order(Model):
-    order_id = AutoKeyField()
-    status = IndexedField(type=str)
-    region = IndexedField(type=str, null=True)
-```
-
-### Supported Query Lookups
-
-IndexedField supports the same lookups as KeyField:
-
-| Lookup | Description | Redis Operation |
-|--------|-------------|-----------------|
-| `status=` | Exact match | SMEMBERS |
-| `status__in=` | Match any value in list | SUNION |
-| `status__isnull=` | Null / non-null check | SMEMBERS / SCAN |
-| `status__startswith=` | Prefix match | SCAN + SMEMBERS |
-| `status__endswith=` | Suffix match | SCAN + SMEMBERS |
-
-```python
-# Exact match
-Order.query.filter(status="shipped")
-
-# IN query -- efficient server-side SUNION
-Order.query.filter(status__in=["pending", "processing"])
-
-# Null check
-Order.query.filter(region__isnull=True)
-
-# Pattern matching (uses SCAN, slower on large datasets)
-Order.query.filter(region__startswith="US-")
-```
-
-### Combining with Other Filters
-
-Indexed field filters compose with all other filter types using AND logic:
-
-```python
-from popoto import SortedField
-
-class Product(Model):
-    product_id = AutoKeyField()
-    category = IndexedField(type=str)
-    price = SortedField(type=float)
-
-# Combine indexed field filter with sorted field range query
-affordable_electronics = Product.query.filter(
-    category="electronics",
-    price__lte=50.0,
-)
-```
-
-## UniqueField
-
-`UniqueField` is a shortcut for `Field(indexed=True, unique=True)`. It adds a
-per-value uniqueness constraint on top of the secondary index.
-
-```python
-from popoto import Model, AutoKeyField, UniqueField, Field
-
-class User(Model):
-    user_id = AutoKeyField()
-    email = UniqueField(type=str)
-    name = Field(type=str)
-
-user1 = User.create(email="alice@example.com", name="Alice")
-
-# Attempting a duplicate email raises ModelException
-try:
-    user2 = User.create(email="alice@example.com", name="Not Alice")
-except Exception as e:
-    print(e)
-    # => Uniqueness violation on User.email: value 'alice@example.com' is already taken
-```
-
-### Constraints
-
-- `UniqueField` cannot be null (`null=False` is enforced)
-- Setting `unique=False` raises `ModelException`
-- Setting `null=True` raises `ModelException`
-
-### Uniqueness Trade-offs
-
-The uniqueness check reads the index Set before writing. Under concurrent writes,
-two processes could both read an empty Set and both proceed to write, resulting in a
-duplicate. This is the same best-effort trade-off as `UniqueKeyField`.
-
-For applications requiring strict uniqueness guarantees under high concurrency,
-implement application-level locking or use Redis transactions.
-
-## How It Works
-
-### Index Key Pattern
-
-Indexed fields maintain Redis Sets following this pattern:
-
-```
-$IdxF:ModelName:field_name:value -> Set of redis_keys
-```
-
-For example, a `User` model with `status = IndexedField(type=str)`:
-
-```
-$IdxF:User:status:active    -> {User:abc123, User:def456}
-$IdxF:User:status:inactive  -> {User:ghi789}
-```
-
-This mirrors the `$KeyF` pattern used by KeyField but uses the `$IdxF` prefix.
-
-### Save Behavior
-
-When a model instance is saved:
-
-1. If the indexed value changed, the old Set entry is removed
-2. If `unique=True`, the target Set is checked for existing members
-3. The instance's Redis key is added to the Set for the current value
-
-All operations are pipelined with the main model save for zero extra round-trips.
-
-### Delete Behavior
-
-When a model instance is deleted, the instance's Redis key is removed from the
-index Set.
-
-## Comparison Table
-
-| Feature | Field | IndexedField | UniqueField | KeyField | UniqueKeyField |
-|---------|-------|-------------|-------------|----------|----------------|
-| Part of Redis key | No | No | No | Yes | Yes |
-| Queryable via filter() | No | Yes | Yes | Yes | Yes |
-| Exact match | No | Yes | Yes | Yes | Yes |
-| `__in` lookup | No | Yes | Yes | Yes | Yes |
-| `__startswith` / `__endswith` | No | Yes | Yes | Yes | Yes |
-| `__isnull` lookup | No | Yes | Yes | Yes | Yes |
-| `__contains` lookup | No | No | No | Yes | No |
-| Uniqueness enforced | No | No | Yes | No | Yes |
-| Can be null | Yes | Yes | No | Yes | No |
-
-## Immutable Keys and Key Migration
-
-KeyField values are immutable by default after the initial save. Changing a KeyField
-value and calling `save()` raises `KeyMutationError`:
-
-```python
-from popoto import KeyMutationError
-
-instance = MyModel.query.get(name="old_name")
-instance.name = "new_name"
-
-try:
-    instance.save()
-except KeyMutationError as e:
-    print(e)
-    # => KeyField 'name' changed from 'old_name' to 'new_name'. Use save(migrate_key=True).
-```
-
-To intentionally migrate a key, pass `migrate_key=True`:
-
-```python
-instance.name = "new_name"
-instance.save(migrate_key=True)  # Succeeds, old key is cleaned up
-```
-
-The `migrate_key=True` flag handles the full migration: deleting the old Redis hash,
-removing old index entries (sorted sets, geo sets, unique constraints, indexed fields),
-and creating the new key with all indexes pointing to it.
-
-!!! warning
-    Key migration changes the Redis key (identity) of the instance. Any external
-    references to the old key will break. Use this intentionally, not accidentally.
-
----
-
 ## Making Queries
 
 # Making Queries
@@ -4555,6 +3767,1347 @@ for restaurant in Restaurant.query.all():
 
 ---
 
+## Async Operations
+
+# Async Operations
+
+Food delivery apps handle many simultaneous requests: customers browsing menus, drivers
+updating locations, orders streaming in. Blocking on each Redis call wastes time your
+users do not have. Popoto provides async counterparts for every Model and Query method so
+you can serve all of these requests concurrently without blocking the event loop.
+
+## Async Model Methods
+
+Every synchronous model operation has an `async_` prefixed equivalent. These methods
+behave identically to their sync counterparts but return awaitables, letting you use
+them inside `async def` functions.
+
+### async_create()
+
+Create and persist a new model instance in a single step.
+
+```python
+import asyncio
+from popoto import (
+    Model, KeyField, AutoKeyField, UniqueKeyField,
+    Field, SortedField, GeoField, Relationship, DatetimeField,
+)
+
+class Restaurant(Model):
+    name = KeyField()
+    cuisine = Field(type=str)
+    rating = SortedField(type=float)
+    location = GeoField()
+    active = Field(type=bool, default=True)
+
+class Customer(Model):
+    username = KeyField()
+    email = UniqueKeyField()
+    name = Field(type=str)
+    address = GeoField()
+
+class Driver(Model):
+    driver_id = AutoKeyField()
+    name = Field(type=str)
+    phone = UniqueKeyField()
+    rating = SortedField(type=float)
+    location = GeoField()
+    active = Field(type=bool, default=True)
+
+class Order(Model):
+    order_id = AutoKeyField()
+    customer = Relationship(Customer)
+    restaurant = Relationship(Restaurant)
+    driver = Relationship(Driver, null=True)
+    total = SortedField(type=float)
+    status = Field(type=str, default="pending")
+    created_at = DatetimeField(auto_now_add=True)
+    updated_at = DatetimeField(auto_now=True)
+
+    class Meta:
+        order_by = "-created_at"
+        ttl = 2592000  # 30 days
+
+async def main():
+    restaurant = await Restaurant.async_create(
+        name="Siam Garden",
+        cuisine="Thai",
+        rating=4.7,
+        location=(40.748, -73.985),
+    )
+    print(restaurant.name)
+    # => "Siam Garden"
+
+asyncio.run(main())
+```
+
+### async_save()
+
+Save changes to an existing instance. This is useful when you need to update fields
+after the initial creation.
+
+```python
+async def update_restaurant():
+    restaurant = await Restaurant.async_create(
+        name="Bella Napoli",
+        cuisine="Italian",
+        rating=4.3,
+        location=(40.750, -73.990),
+    )
+
+    # Received a new review, bump the rating
+    restaurant.rating = 4.5
+    await restaurant.async_save()
+
+    print(restaurant.rating)
+    # => 4.5
+```
+
+### async_delete()
+
+Remove an instance and all of its associated indexes from Redis.
+
+```python
+async def close_restaurant():
+    restaurant = await Restaurant.query.async_get(name="Bella Napoli")
+    deleted = await restaurant.async_delete()
+    print(deleted)
+    # => True
+```
+
+### async_load()
+
+Load a single instance by its key fields. Returns `None` if the object does not exist.
+
+```python
+async def load_restaurant():
+    restaurant = await Restaurant.async_load(name="Siam Garden")
+    if restaurant:
+        print(f"{restaurant.name} serves {restaurant.cuisine}")
+        # => "Siam Garden serves Thai"
+```
+
+!!! note
+    `async_load()` performs a direct key lookup, making it the fastest way to retrieve
+    a single object when you already know the key values.
+
+## Async Query Methods
+
+The `query` manager exposes async versions of every query method. Use them exactly as
+you would the synchronous API, but with `await`.
+
+### async_get()
+
+Retrieve a single instance by key fields or filtered criteria.
+
+```python
+async def find_customer():
+    customer = await Customer.query.async_get(username="foodie42")
+    if customer:
+        print(customer.email)
+```
+
+### async_filter()
+
+Return a list of instances matching the given criteria. Supports the same lookups as
+the synchronous `filter()` -- see [Making Queries](query.md) for the full list.
+
+```python
+async def find_expensive_orders():
+    big_orders = await Order.query.async_filter(total__gte=50.0)
+    for order in big_orders:
+        print(f"Order {order.order_id}: ${order.total}")
+```
+
+### async_all()
+
+Retrieve every instance of a model.
+
+```python
+async def list_restaurants():
+    restaurants = await Restaurant.query.async_all()
+    print(f"Total restaurants: {len(restaurants)}")
+```
+
+!!! warning
+    `async_all()` loads every instance into memory. For models with many records, prefer
+    `async_filter()` with appropriate constraints.
+
+### async_count()
+
+Count instances without loading full objects. Accepts the same filter arguments as
+`async_filter()`.
+
+```python
+async def dashboard_stats():
+    total_orders = await Order.query.async_count()
+    big_orders = await Order.query.async_count(total__gte=50.0)
+    print(f"{big_orders} of {total_orders} orders are over $50")
+```
+
+### async_keys()
+
+Return a list of Redis keys matching the model, without deserializing objects.
+
+```python
+async def audit_keys():
+    keys = await Order.query.async_keys()
+    print(f"Order keys in Redis: {len(keys)}")
+```
+
+### async_get_many()
+
+Retrieve multiple instances by Redis key in a single async pipeline. This is the async
+counterpart of `query.get_many()` -- see [Making Queries](query.md#get-multiple-objects-by-key)
+for full details on ordering and `skip_none` behavior.
+
+```python
+async def bulk_lookup():
+    keys = ["Restaurant:Siam Garden", "Restaurant:Bella Napoli", "Restaurant:Gone"]
+    restaurants = await Restaurant.query.async_get_many(redis_keys=keys)
+    # => [<Restaurant>, <Restaurant>, None]
+
+    # Drop missing entries
+    restaurants = await Restaurant.query.async_get_many(redis_keys=keys, skip_none=True)
+    # => [<Restaurant>, <Restaurant>]
+```
+
+!!! tip
+    `async_get_many()` uses a native async Redis pipeline, so it does not block the event
+    loop even when hydrating hundreds of keys.
+
+## Concurrent Operations
+
+The real power of async shows up when you need to perform independent operations at the
+same time. Use `asyncio.gather()` to run them concurrently instead of sequentially.
+
+A customer opens the app and expects to see nearby restaurants and available drivers on
+the same screen. With sync code you would wait for one query, then the other. With
+async, both queries run at the same time.
+
+```python
+async def home_screen(customer_username: str):
+    customer = await Customer.async_load(username=customer_username)
+
+    nearby_restaurants, available_drivers = await asyncio.gather(
+        Restaurant.query.async_filter(
+            location=customer.address,
+            location_radius=10,
+            location_radius_unit='km',
+        ),
+        Driver.query.async_filter(
+            location=customer.address,
+            location_radius=5,
+            location_radius_unit='km',
+        ),
+    )
+
+    print(f"{len(nearby_restaurants)} restaurants nearby")
+    print(f"{len(available_drivers)} drivers available")
+```
+
+You can also create several records at once without waiting for each one individually.
+
+```python
+async def seed_restaurants():
+    restaurants = await asyncio.gather(
+        Restaurant.async_create(
+            name="Siam Garden", cuisine="Thai",
+            rating=4.7, location=(-73.985, 40.748),
+        ),
+        Restaurant.async_create(
+            name="Bella Napoli", cuisine="Italian",
+            rating=4.3, location=(-73.990, 40.750),
+        ),
+        Restaurant.async_create(
+            name="Tokyo Bowl", cuisine="Japanese",
+            rating=4.8, location=(40.752, -73.978),
+        ),
+    )
+    print(f"Created {len(restaurants)} restaurants")
+    # => "Created 3 restaurants"
+```
+
+!!! tip
+    `asyncio.gather()` is most beneficial when each individual operation involves
+    network latency. When talking to a remote Redis instance the time savings add up
+    quickly.
+
+## Framework Integration: FastAPI
+
+FastAPI is a natural fit because its route handlers are already async. Below is a
+minimal food delivery API with two endpoints.
+
+```python
+from fastapi import FastAPI, HTTPException
+
+app = FastAPI()
+
+@app.post("/orders")
+async def create_order(
+    customer_username: str,
+    restaurant_name: str,
+    total: float,
+):
+    customer, restaurant = await asyncio.gather(
+        Customer.async_load(username=customer_username),
+        Restaurant.async_load(name=restaurant_name),
+    )
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    if not restaurant:
+        raise HTTPException(status_code=404, detail="Restaurant not found")
+
+    order = await Order.async_create(
+        customer=customer,
+        restaurant=restaurant,
+        total=total,
+    )
+    return {
+        "order_id": order.order_id,
+        "status": order.status,
+        "total": order.total,
+    }
+
+@app.get("/restaurants/nearby")
+async def nearby_restaurants(lat: float, lon: float, radius_km: float = 5):
+    restaurants = await Restaurant.query.async_filter(
+        location=(lat, lon),
+        location_radius=radius_km,
+        location_radius_unit='km',
+    )
+    return [
+        {
+            "name": r.name,
+            "cuisine": r.cuisine,
+            "rating": r.rating,
+        }
+        for r in restaurants
+    ]
+```
+
+!!! note
+    Because Popoto's async methods are awaitable, FastAPI can handle many incoming
+    requests without any of them blocking on Redis I/O.
+
+## Framework Integration: Background Workers
+
+Long-running order processing tasks can run as async background workers. The pattern
+below polls for recent orders, assigns a driver, and updates the status.
+
+```python
+async def order_processing_worker():
+    """Continuously process recent orders."""
+    while True:
+        recent_orders = await Order.query.async_filter(
+            total__gte=0.0,
+            limit=10,
+        )
+
+        for order in recent_orders:
+            driver = await find_nearest_driver(order)
+            if driver:
+                order.driver = driver
+                order.status = "assigned"
+                driver.active = False
+                await asyncio.gather(
+                    order.async_save(),
+                    driver.async_save(),
+                )
+                print(f"Order {order.order_id} assigned to {driver.name}")
+
+        await asyncio.sleep(2)
+
+async def find_nearest_driver(order):
+    """Find the closest active driver to the restaurant."""
+    restaurant = order.restaurant
+    if isinstance(restaurant, str):
+        restaurant = await Restaurant.async_load(name=restaurant)
+
+    drivers = await Driver.query.async_filter(
+        location=restaurant.location,
+        location_radius=10,
+        location_radius_unit='km',
+        order_by="-rating",
+        limit=1,
+    )
+    return drivers[0] if drivers else None
+```
+
+!!! tip
+    In production you would run this worker alongside your web server using
+    `asyncio.create_task()` or a task runner like `arq` or `taskiq`.
+
+## Implementation Details
+
+### Native Async with redis.asyncio
+
+All async methods use `redis.asyncio` for true non-blocking I/O. This approach
+provides three key properties:
+
+- **No event loop blocking** -- Redis calls use native async I/O so your event
+  loop stays free to handle other coroutines.
+- **No thread pool overhead** -- Operations run directly on the event loop without
+  spawning worker threads.
+- **Identical behavior** -- Validation, serialization, error handling, and Redis
+  commands work exactly the same as the synchronous path.
+
+## Performance Considerations
+
+Async does not make individual Redis commands faster. It makes your **application**
+faster by letting other work proceed while waiting for Redis responses.
+
+When async helps the most:
+
+- **Remote Redis instances** -- network round-trips of 1-5 ms benefit significantly
+  from concurrency. Three sequential 3 ms calls take 9 ms; with `gather()` they
+  complete in roughly 3 ms.
+- **High-concurrency web servers** -- frameworks like FastAPI can serve other requests
+  while one request awaits Redis.
+- **Fan-out queries** -- searching restaurants, drivers, and orders at the same time
+  (as shown in the concurrent operations section above).
+
+When async adds little benefit:
+
+- **Local Redis, single operation** -- a sub-millisecond `GET` on localhost is already
+  fast. The thread pool overhead is negligible but the async machinery does not speed
+  it up either.
+- **CPU-bound processing** -- if most time is spent computing rather than waiting on
+  I/O, async will not help. Consider `multiprocessing` instead.
+
+!!! tip
+    Profile before optimizing. If your Redis calls are already sub-millisecond on
+    localhost, switching from sync to async will not produce a noticeable improvement
+    for single operations. Focus on `gather()` for parallel queries first.
+
+## Error Handling
+
+Async methods raise the same exceptions as their synchronous equivalents. Wrap calls in
+standard `try`/`except` blocks.
+
+```python
+from popoto.exceptions import ModelException
+from popoto.exceptions import QueryException
+
+async def safe_order_create(customer_username, restaurant_name, total):
+    try:
+        customer = await Customer.async_load(username=customer_username)
+        restaurant = await Restaurant.async_load(name=restaurant_name)
+
+        order = await Order.async_create(
+            customer=customer,
+            restaurant=restaurant,
+            total=total,
+        )
+        return order
+
+    except ModelException as e:
+        print(f"Model error: {e}")
+        return None
+    except QueryException as e:
+        print(f"Query error: {e}")
+        return None
+```
+
+You can also handle errors inside `asyncio.gather()` by passing
+`return_exceptions=True`. This prevents one failure from cancelling sibling tasks.
+
+```python
+async def resilient_lookups():
+    results = await asyncio.gather(
+        Restaurant.async_load(name="Siam Garden"),
+        Restaurant.async_load(name="Nonexistent Place"),
+        return_exceptions=True,
+    )
+
+    for result in results:
+        if isinstance(result, Exception):
+            print(f"Lookup failed: {result}")
+        elif result is None:
+            print("Restaurant not found")
+        else:
+            print(f"Found: {result.name}")
+```
+
+!!! warning
+    When using `return_exceptions=True`, remember to check each result for exceptions
+    before accessing model attributes.
+
+## Async Bulk Operations
+
+Popoto also provides async versions of all bulk operations. These methods are ideal for
+importing large datasets, batch updates, and cleanup tasks without blocking the event loop.
+
+| Sync | Async |
+|------|-------|
+| `Model.bulk_create(instances)` | `await Model.async_bulk_create(instances)` |
+| `Model.bulk_update(queryset, **updates)` | `await Model.async_bulk_update(queryset, **updates)` |
+| `Model.bulk_delete(queryset)` | `await Model.async_bulk_delete(queryset)` |
+
+```python
+async def import_restaurants(data: list[dict]):
+    """Bulk import restaurants from external data."""
+    instances = [
+        Restaurant(
+            name=item["name"],
+            cuisine=item["cuisine"],
+            rating=item["rating"],
+        )
+        for item in data
+    ]
+
+    created = await Restaurant.async_bulk_create(instances)
+    print(f"Imported {len(created)} restaurants")
+    return created
+
+async def feature_top_restaurants():
+    """Mark highly-rated restaurants as featured."""
+    count = await Restaurant.async_bulk_update(
+        Restaurant.query.filter(rating__gte=4.5),
+        is_featured=True
+    )
+    print(f"Featured {count} top restaurants")
+
+async def cleanup_inactive():
+    """Remove inactive restaurants."""
+    count = await Restaurant.async_bulk_delete(
+        Restaurant.query.filter(status="inactive")
+    )
+    print(f"Deleted {count} inactive restaurants")
+```
+
+All bulk methods use Redis pipelines internally to batch operations, dramatically reducing
+network round-trips. The `batch_size` parameter (default 1000) controls how many instances
+are processed per pipeline execution.
+
+See [Bulk Operations](recipes.md#bulk-operations) in the Recipes for complete
+documentation.
+
+## Test Coverage
+
+The async API is thoroughly tested across four test files covering all public methods
+and edge cases. Each scenario listed below has at least one dedicated test.
+
+| Category | Tested Scenarios |
+|----------|-----------------|
+| **CRUD basics** | `async_create`, `async_save`, `async_delete`, `async_load`, `async_get` |
+| **Query methods** | `async_filter`, `async_all`, `async_count`, `async_keys`, `async_get_many` |
+| **SortedField queries** | `__lte`, `__lt`, `__gt`, `__gte`, range (between), `limit`, `order_by` |
+| **GeoField queries** | Radius search via `async_filter` with coordinates and distance units |
+| **Relationship fields** | Lazy-loading related objects through async queries |
+| **Projection** | `values=` parameter with `async_filter` and `async_all` |
+| **Error paths** | `async_get` returns `None` on miss; raises `QueryException` on multiple matches |
+| **Bulk operations** | `async_bulk_create`, `async_bulk_update`, `async_bulk_delete` |
+| **Connection management** | `async_check_connection` (success, failure, timeout), `set_async_redis_db_settings` |
+| **Key scanning** | `async_scan_keys` pattern matching, `async_keys` with `catchall` and `clean` flags |
+| **Client-side filtering** | Filtering on plain `Field` (non-indexed) via `async_filter` |
+| **Meta options** | `Meta.order_by` default sorting, `Meta.ttl` automatic expiration |
+| **Atomicity** | Pipeline-based `async_save`, concurrent writes (last-write-wins) |
+| **Index maintenance** | `async_check_indexes`, `async_clean_indexes`, `async_rebuild_indexes` via `to_thread` |
+
+Run the async tests with:
+
+```bash
+pytest tests/test_async.py tests/test_connection.py tests/test_bulk_operations.py tests/test_migrations.py -v
+```
+
+## See Also
+
+- [Models and Fields](fields.md) -- define your data models
+- [Making Queries](query.md) -- query patterns and filter lookups
+- [Model Meta Options](meta.md) -- configure `order_by`, `ttl`, and other model behavior
+- [Bulk Operations](recipes.md#bulk-operations) -- efficient batch processing
+
+---
+
+## Model Meta Options
+
+# Model Meta Options
+
+Every Popoto model can include a `Meta` inner class to configure model-level
+behavior like default ordering, automatic expiration, and composite indexes.
+The `Meta` class is processed at class definition time, and its options
+become available via `ModelClass._meta`.
+
+## When to Use Meta Options
+
+You should define a `Meta` class when you want to:
+
+- **Set default ordering** for query results without specifying `order_by`
+  every time
+- **Automatically expire data** using Redis TTL (great for temporary orders,
+  sessions, or cached data)
+- **Enforce uniqueness** across multiple fields (composite unique constraints)
+
+Without a `Meta` class, your models work fine -- you just configure behavior
+at query time instead.
+
+## order_by
+
+The `order_by` option sets a default sort order for all queries. This is
+useful when you almost always want results in the same order -- for example,
+showing the most recent orders first.
+
+```python
+from popoto import Model, AutoKeyField, Field, SortedField
+from popoto import Relationship, DatetimeField
+
+class Order(Model):
+    order_id = AutoKeyField()
+    customer = Relationship("Customer")
+    restaurant = Relationship("Restaurant")
+    driver = Relationship("Driver", null=True)
+    total = SortedField(type=float)
+    status = Field(type=str, default="pending")
+    created_at = DatetimeField(auto_now_add=True)
+    updated_at = DatetimeField(auto_now=True)
+
+    class Meta:
+        order_by = "-created_at"
+```
+
+The minus sign prefix (`-`) means descending order. Without it, results are
+ascending. In this case, the newest orders always appear first.
+
+Queries automatically respect the default ordering:
+
+```python
+orders = Order.query.all()
+print(orders[0].status)
+# => "pending"  (the most recently created order)
+```
+
+### Override per Query
+
+You can override the default at query time:
+
+```python
+orders = Order.query.all(order_by="total")
+# => Returns orders sorted by total ascending, ignoring Meta default
+
+expensive_first = Order.query.all(order_by="-total")
+# => Returns orders sorted by total descending
+```
+
+!!! note
+    The field specified in `order_by` must exist on the model. Popoto
+    validates this at class definition time and raises a `ModelException`
+    if the field does not exist.
+
+## ttl
+
+!!! tip
+    For a dedicated guide covering model-level TTL, per-instance overrides,
+    absolute expiration, and a complete session example, see the
+    [TTL documentation](ttl.md).
+
+The `ttl` (time-to-live) option tells Redis to automatically delete model
+instances after a specified number of seconds. When you save a model with a
+TTL, Popoto calls Redis's `EXPIRE` command on the key. After that many
+seconds, Redis removes it automatically -- ideal for completed orders,
+delivery tracking records, or temporary promotions.
+
+Adding `ttl` to the Order model from the previous section:
+
+```python
+    class Meta:
+        order_by = "-created_at"
+        ttl = 2592000  # 30 days (30 * 24 * 60 * 60)
+```
+
+Every order instance now expires 30 days after its most recent save:
+
+```python
+order = Order.create(customer=alice, restaurant=sakura, total=29.50)
+# => Redis will automatically delete this order after 30 days
+```
+
+The TTL resets every time you call `save()`. Updating an order 15 days in
+restarts the 30-day clock:
+
+```python
+order.status = "delivered"
+order.save()
+# => TTL resets to 30 days from now
+```
+
+When a key expires, Redis removes it silently. Any subsequent `load()` or
+`query.get()` call returns `None`. Popoto handles orphaned secondary index
+entries gracefully during queries.
+
+!!! warning
+    TTL is refreshed on every `save()` call, not just on creation. Background
+    processes that update records will extend the expiration window.
+
+## Instance-Level TTL
+
+You can override the Meta TTL for specific instances using the `_ttl`
+attribute. For example, a rush order might need a shorter retention period:
+
+```python
+rush_order = Order(
+    customer=alice, restaurant=sakura, total=49.99, status="rush"
+)
+rush_order._ttl = 604800  # 7 days instead of the default 30
+rush_order.save()
+```
+
+To make a specific instance permanent (no expiration), set `_ttl` to `None`:
+
+```python
+vip_order = Order(
+    customer=alice, restaurant=sakura, total=199.99, status="vip"
+)
+vip_order._ttl = None  # Never expires, even though Meta.ttl is set
+vip_order.save()
+```
+
+!!! note
+    The instance-level `_ttl` takes precedence over `Meta.ttl`. Setting it
+    to `None` disables expiration for that instance only.
+
+## Absolute Expiration
+
+Instead of a relative TTL, you can set an absolute expiration with
+`_expire_at`. This accepts a `datetime` and tells Redis to delete the key
+at that exact moment.
+
+```python
+from datetime import datetime, timedelta
+
+order = Order(
+    customer=alice, restaurant=sakura, total=35.00, status="scheduled"
+)
+order._expire_at = datetime(2026, 3, 1, 0, 0, 0)  # Expires March 1st
+order.save()
+```
+
+You can also compute the deadline dynamically:
+
+```python
+end_of_day = datetime.now().replace(hour=23, minute=59, second=59)
+order._expire_at = end_of_day
+order.save()
+# => Order expires at the end of the current day
+```
+
+!!! warning
+    You cannot set both `_ttl` and `_expire_at` on the same instance. Popoto
+    raises a `ModelException` if both are set. Use one or the other.
+
+## indexes
+
+The `indexes` option creates composite indexes that can enforce uniqueness
+across combinations of fields. Each index is a tuple of `(field_names,
+is_unique)` where `field_names` is a tuple of strings and `is_unique` is
+a boolean:
+
+Adding `indexes` to the Order model alongside the other Meta options:
+
+```python
+    class Meta:
+        order_by = "-created_at"
+        ttl = 2592000
+        indexes = (
+            (("restaurant", "status"), True),  # Unique composite index
+        )
+```
+
+With this index, each restaurant can only have one order per status value:
+
+```python
+order1 = Order.create(
+    customer=alice, restaurant=sakura, total=25.00, status="pending"
+)
+# => Saved successfully
+
+order2 = Order.create(
+    customer=bob, restaurant=sakura, total=18.00, status="pending"
+)
+# => ModelException: Unique index violation on ('restaurant', 'status')
+```
+
+A different status for the same restaurant works fine:
+
+```python
+order3 = Order.create(
+    customer=bob, restaurant=sakura, total=18.00, status="preparing"
+)
+# => Saved successfully
+```
+
+### Non-Unique Indexes
+
+Set the uniqueness flag to `False` to create an index for grouping without
+a uniqueness constraint:
+
+```python
+class Meta:
+    indexes = (
+        (("restaurant", "status"), False),
+    )
+```
+
+### NULL Handling
+
+Following SQL standard behavior, `NULL` values do not participate in
+uniqueness checks. Multiple instances can have `NULL` in an indexed field
+and both will save successfully.
+
+## Update and Delete Handling
+
+Popoto maintains composite indexes automatically. Updates that would violate
+a unique index are rejected before the save occurs:
+
+```python
+order1 = Order.create(
+    customer=alice, restaurant=sakura, total=25.00, status="pending"
+)
+order2 = Order.create(
+    customer=bob, restaurant=sakura, total=18.00, status="preparing"
+)
+
+order2.status = "pending"  # Would collide with order1
+order2.save()
+# => ModelException: Unique index violation on ('restaurant', 'status')
+```
+
+When you delete an instance, its index entries are cleaned up, freeing the
+slot for future records:
+
+```python
+order1.delete()
+
+order3 = Order.create(
+    customer=charlie, restaurant=sakura, total=22.00, status="pending"
+)
+# => Saved successfully -- the slot was freed by deleting order1
+```
+
+## Complete Example
+
+Here is the Order model combining all three Meta options:
+
+```python
+from popoto import Model, AutoKeyField, Field, SortedField
+from popoto import Relationship, DatetimeField
+
+class Order(Model):
+    order_id = AutoKeyField()
+    customer = Relationship("Customer")
+    restaurant = Relationship("Restaurant")
+    driver = Relationship("Driver", null=True)
+    total = SortedField(type=float)
+    status = Field(type=str, default="pending")
+    created_at = DatetimeField(auto_now_add=True)
+    updated_at = DatetimeField(auto_now=True)
+
+    class Meta:
+        order_by = "-created_at"
+        ttl = 2592000
+        indexes = (
+            (("restaurant", "status"), True),
+        )
+```
+
+This model returns orders newest-first by default, expires them after 30
+days, and prevents duplicate restaurant/status combinations.
+
+## Accessing Meta at Runtime
+
+After your model is defined, access Meta options via the `_meta` attribute:
+
+```python
+print(Order._meta.order_by)
+# => "-created_at"
+
+print(Order._meta.ttl)
+# => 2592000
+
+print(Order._meta.indexes)
+# => ((("restaurant", "status"), True),)
+```
+
+You can also inspect field metadata through `_meta`:
+
+```python
+print(Order._meta.sorted_field_names)
+# => {"total"}
+
+print(Order._meta.relationship_field_names)
+# => {"customer", "restaurant", "driver"}
+```
+
+!!! warning
+    Do not access `Order.Meta` directly. It is consumed during class creation
+    by the metaclass. Always use `Order._meta` instead.
+
+## Meta Validation
+
+All Meta options are validated at class definition time, not at runtime.
+You get immediate feedback about configuration errors when Python loads
+your model class.
+
+```python
+class BadOrder(Model):
+    order_id = AutoKeyField()
+    total = SortedField(type=float)
+
+    class Meta:
+        order_by = "nonexistent_field"
+# => ModelException: Meta.order_by references 'nonexistent_field'
+#    but this field does not exist on BadOrder
+```
+
+TTL and index definitions are also validated:
+
+```python
+class BadTTL(Model):
+    order_id = AutoKeyField()
+
+    class Meta:
+        ttl = -1
+# => ModelException: Meta.ttl must be a positive integer (seconds), got -1
+
+class BadIndex(Model):
+    order_id = AutoKeyField()
+    status = Field(type=str)
+
+    class Meta:
+        indexes = (
+            (("status", "missing_field"), True),
+        )
+# => ModelException: Unknown field 'missing_field' in Meta.indexes
+#    for BadIndex
+```
+
+!!! tip
+    Because validation happens at import time, you will catch configuration
+    errors during development rather than at runtime in production. Define
+    your Meta options early and run your test suite to verify them.
+
+See [Models and Fields](fields.md) for field type reference, or
+[Making Queries](query.md) for query filtering and ordering options.
+
+---
+
+## TTL (Time-to-Live)
+
+# TTL (Time-to-Live)
+
+Popoto supports automatic data expiration through Redis TTL. You can set
+expiration at the model level (all instances expire after a fixed duration),
+override it per-instance, or set an absolute expiration timestamp.
+
+TTL is ideal for temporary data like sessions, caches, tracking records,
+or any data with a natural retention window.
+
+## Model-Level TTL
+
+Define a default TTL for all instances of a model using the `Meta` inner class:
+
+```python
+from popoto import Model, AutoKeyField, Field
+
+class AgentSession(Model):
+    session_id = AutoKeyField()
+    agent_name = Field(type=str)
+    context = Field(type=str, default="")
+    token_count = Field(type=int, default=0)
+
+    class Meta:
+        ttl = 7776000  # 90 days (90 * 24 * 60 * 60)
+```
+
+When you save an instance, Popoto calls Redis `EXPIRE` on the key with the
+configured TTL. After that many seconds, Redis removes the key automatically:
+
+```python
+session = AgentSession.create(agent_name="assistant", context="planning task")
+# Redis will delete this session after 90 days
+```
+
+### TTL Resets on Every Save
+
+The TTL clock restarts each time you call `save()`. If you update a session
+60 days in, the 90-day window starts over from that moment:
+
+```python
+session.token_count = 4500
+session.save()
+# TTL resets to 90 days from now
+```
+
+!!! warning
+    Background processes that update records will extend the expiration window.
+    If a periodic job calls `save()` on a session, that session may never expire.
+
+### What Happens When a Key Expires
+
+When Redis removes an expired key, subsequent `load()` or `query.get()` calls
+return `None`. Popoto handles orphaned secondary index entries gracefully
+during queries. For proactive cleanup of orphaned index entries left behind by
+expired keys, use [`Model.clean_indexes()`](recipes.md#index-maintenance).
+
+## Per-Instance TTL Override
+
+Override the model-level TTL for a specific instance by setting the `_ttl`
+attribute before saving:
+
+```python
+# Short-lived session: 1 day instead of 90
+ephemeral = AgentSession(agent_name="scratchpad")
+ephemeral._ttl = 86400  # 1 day
+ephemeral.save()
+```
+
+### Making an Instance Permanent
+
+Set `_ttl` to `None` to disable expiration for a specific instance, even when
+the model has a default TTL:
+
+```python
+important_session = AgentSession(agent_name="long-term-memory")
+important_session._ttl = None  # Never expires
+important_session.save()
+```
+
+!!! note
+    The instance-level `_ttl` takes precedence over `Meta.ttl`. Setting it
+    to `None` disables expiration for that instance only.
+
+## Absolute Expiration
+
+Instead of a relative duration, you can set an exact expiration time using
+`_expire_at`. This accepts a `datetime` object and calls Redis `EXPIREAT`:
+
+```python
+from datetime import datetime, timedelta
+
+session = AgentSession(agent_name="campaign-tracker")
+session._expire_at = datetime(2026, 12, 31, 23, 59, 59)  # Expires end of year
+session.save()
+```
+
+You can also compute the deadline dynamically:
+
+```python
+session._expire_at = datetime.now() + timedelta(hours=6)
+session.save()
+# Expires exactly 6 hours from now
+```
+
+## Mutual Exclusion: _ttl vs _expire_at
+
+You cannot set both `_ttl` and `_expire_at` on the same instance. Popoto
+raises a `ModelException` during validation if both are set:
+
+```python
+session = AgentSession(agent_name="conflict")
+session._ttl = 3600
+session._expire_at = datetime(2026, 6, 1)
+session.save()
+# => ModelException: Can set either ttl and expire_at. Not both.
+```
+
+Use one or the other. If the model has a `Meta.ttl` and you want to switch
+to absolute expiration, clear the TTL first:
+
+```python
+session._ttl = None
+session._expire_at = datetime(2026, 6, 1)
+session.save()
+```
+
+## Complete Example: AgentSession with 90-Day TTL
+
+```python
+from datetime import datetime, timedelta
+from popoto import Model, AutoKeyField, Field, DatetimeField
+
+class AgentSession(Model):
+    session_id = AutoKeyField()
+    agent_name = Field(type=str)
+    context = Field(type=str, default="")
+    token_count = Field(type=int, default=0)
+    created_at = DatetimeField(auto_now_add=True)
+    updated_at = DatetimeField(auto_now=True)
+
+    class Meta:
+        ttl = 7776000  # 90 days
+
+# Create a session -- expires in 90 days
+session = AgentSession.create(agent_name="assistant", context="user onboarding")
+
+# Update it -- TTL resets to 90 days from now
+session.token_count = 2500
+session.save()
+
+# Override TTL for a temporary scratch session
+scratch = AgentSession.create(agent_name="scratch")
+scratch._ttl = 3600  # 1 hour
+scratch.save()
+
+# Make a session permanent
+archival = AgentSession(agent_name="archival-memory")
+archival._ttl = None
+archival.save()
+
+# Set absolute expiration
+campaign = AgentSession(agent_name="q4-campaign")
+campaign._ttl = None  # Clear model-level TTL
+campaign._expire_at = datetime(2026, 12, 31, 23, 59, 59)
+campaign.save()
+
+# Check TTL at runtime
+print(AgentSession._meta.ttl)
+# => 7776000
+```
+
+## See Also
+
+- [Model Meta Options](meta.md) -- full reference for `Meta.ttl`, `order_by`, and `indexes`
+- [Recipes](recipes.md#instance-ttl-attributes) -- `_ttl` and `_expire_at` instance attributes
+
+---
+
+## Indexed Fields
+
+# Indexed Fields
+
+Indexed fields provide secondary indexing for non-key fields, enabling efficient
+exact-match queries without making the field part of the model's Redis key (identity).
+
+## The Problem
+
+In Popoto, `KeyField` conflates two concerns:
+
+1. **Identity** -- the field's value forms part of the Redis storage key
+2. **Indexing** -- the field is queryable via `filter()`
+
+This means that to query on a field like `email` or `status`, you must make it a
+`KeyField`, which changes the model's Redis key structure. If you later rename an
+email, the entire Redis key changes, potentially orphaning references.
+
+## The Solution
+
+`IndexedField` and `UniqueField` decouple querying from identity. They maintain
+Redis Set indexes (identical to KeyField's indexing mechanism) but do not participate
+in the Redis key.
+
+```python
+from popoto import Model, AutoKeyField, IndexedField, UniqueField, Field
+
+class User(Model):
+    user_id = AutoKeyField()
+    email = UniqueField(type=str)       # indexed + unique, NOT part of key
+    status = IndexedField(type=str)     # indexed, NOT part of key
+    name = Field(type=str)              # not indexed, not part of key
+```
+
+The Redis key for this model is based solely on `user_id` (e.g.,
+`User:a1b2c3d4...`). The `email` and `status` fields are indexed separately,
+enabling queries like:
+
+```python
+User.query.filter(email="alice@example.com")
+User.query.filter(status="active")
+User.query.filter(status__in=["active", "pending"])
+```
+
+## Field(indexed=True)
+
+You can also enable indexing on a plain `Field` by passing `indexed=True`:
+
+```python
+class Product(Model):
+    sku = AutoKeyField()
+    category = Field(type=str, indexed=True)          # indexed, not unique
+    barcode = Field(type=str, indexed=True, unique=True)  # indexed + unique
+```
+
+This is functionally identical to using `IndexedField` and `UniqueField` shortcuts.
+
+## IndexedField
+
+`IndexedField` is a shortcut for `Field(indexed=True)`. It creates a non-key field
+with Set-based secondary indexing.
+
+```python
+from popoto import Model, AutoKeyField, IndexedField
+
+class Order(Model):
+    order_id = AutoKeyField()
+    status = IndexedField(type=str)
+    region = IndexedField(type=str, null=True)
+```
+
+### Supported Query Lookups
+
+IndexedField supports the same lookups as KeyField:
+
+| Lookup | Description | Redis Operation |
+|--------|-------------|-----------------|
+| `status=` | Exact match | SMEMBERS |
+| `status__in=` | Match any value in list | SUNION |
+| `status__isnull=` | Null / non-null check | SMEMBERS / SCAN |
+| `status__startswith=` | Prefix match | SCAN + SMEMBERS |
+| `status__endswith=` | Suffix match | SCAN + SMEMBERS |
+
+```python
+# Exact match
+Order.query.filter(status="shipped")
+
+# IN query -- efficient server-side SUNION
+Order.query.filter(status__in=["pending", "processing"])
+
+# Null check
+Order.query.filter(region__isnull=True)
+
+# Pattern matching (uses SCAN, slower on large datasets)
+Order.query.filter(region__startswith="US-")
+```
+
+### Combining with Other Filters
+
+Indexed field filters compose with all other filter types using AND logic:
+
+```python
+from popoto import SortedField
+
+class Product(Model):
+    product_id = AutoKeyField()
+    category = IndexedField(type=str)
+    price = SortedField(type=float)
+
+# Combine indexed field filter with sorted field range query
+affordable_electronics = Product.query.filter(
+    category="electronics",
+    price__lte=50.0,
+)
+```
+
+## UniqueField
+
+`UniqueField` is a shortcut for `Field(indexed=True, unique=True)`. It adds a
+per-value uniqueness constraint on top of the secondary index.
+
+```python
+from popoto import Model, AutoKeyField, UniqueField, Field
+
+class User(Model):
+    user_id = AutoKeyField()
+    email = UniqueField(type=str)
+    name = Field(type=str)
+
+user1 = User.create(email="alice@example.com", name="Alice")
+
+# Attempting a duplicate email raises ModelException
+try:
+    user2 = User.create(email="alice@example.com", name="Not Alice")
+except Exception as e:
+    print(e)
+    # => Uniqueness violation on User.email: value 'alice@example.com' is already taken
+```
+
+### Constraints
+
+- `UniqueField` cannot be null (`null=False` is enforced)
+- Setting `unique=False` raises `ModelException`
+- Setting `null=True` raises `ModelException`
+
+### Uniqueness Trade-offs
+
+The uniqueness check reads the index Set before writing. Under concurrent writes,
+two processes could both read an empty Set and both proceed to write, resulting in a
+duplicate. This is the same best-effort trade-off as `UniqueKeyField`.
+
+For applications requiring strict uniqueness guarantees under high concurrency,
+implement application-level locking or use Redis transactions.
+
+## How It Works
+
+### Index Key Pattern
+
+Indexed fields maintain Redis Sets following this pattern:
+
+```
+$IdxF:ModelName:field_name:value -> Set of redis_keys
+```
+
+For example, a `User` model with `status = IndexedField(type=str)`:
+
+```
+$IdxF:User:status:active    -> {User:abc123, User:def456}
+$IdxF:User:status:inactive  -> {User:ghi789}
+```
+
+This mirrors the `$KeyF` pattern used by KeyField but uses the `$IdxF` prefix.
+
+### Save Behavior
+
+When a model instance is saved:
+
+1. If the indexed value changed, the old Set entry is removed
+2. If `unique=True`, the target Set is checked for existing members
+3. The instance's Redis key is added to the Set for the current value
+
+All operations are pipelined with the main model save for zero extra round-trips.
+
+### Delete Behavior
+
+When a model instance is deleted, the instance's Redis key is removed from the
+index Set.
+
+## Comparison Table
+
+| Feature | Field | IndexedField | UniqueField | KeyField | UniqueKeyField |
+|---------|-------|-------------|-------------|----------|----------------|
+| Part of Redis key | No | No | No | Yes | Yes |
+| Queryable via filter() | No | Yes | Yes | Yes | Yes |
+| Exact match | No | Yes | Yes | Yes | Yes |
+| `__in` lookup | No | Yes | Yes | Yes | Yes |
+| `__startswith` / `__endswith` | No | Yes | Yes | Yes | Yes |
+| `__isnull` lookup | No | Yes | Yes | Yes | Yes |
+| `__contains` lookup | No | No | No | Yes | No |
+| Uniqueness enforced | No | No | Yes | No | Yes |
+| Can be null | Yes | Yes | No | Yes | No |
+
+## Immutable Keys and Key Migration
+
+KeyField values are immutable by default after the initial save. Changing a KeyField
+value and calling `save()` raises `KeyMutationError`:
+
+```python
+from popoto import KeyMutationError
+
+instance = MyModel.query.get(name="old_name")
+instance.name = "new_name"
+
+try:
+    instance.save()
+except KeyMutationError as e:
+    print(e)
+    # => KeyField 'name' changed from 'old_name' to 'new_name'. Use save(migrate_key=True).
+```
+
+To intentionally migrate a key, pass `migrate_key=True`:
+
+```python
+instance.name = "new_name"
+instance.save(migrate_key=True)  # Succeeds, old key is cleaned up
+```
+
+The `migrate_key=True` flag handles the full migration: deleting the old Redis hash,
+removing old index entries (sorted sets, geo sets, unique constraints, indexed fields),
+and creating the new key with all indexes pointing to it.
+
+!!! warning
+    Key migration changes the Redis key (identity) of the instance. Any external
+    references to the old key will break. Use this intentionally, not accidentally.
+
+---
+
 ## Relationship Field
 
 # Relationship Field
@@ -5143,559 +5696,6 @@ This is heavier but provides complete data separation at the connection level.
 
 ---
 
-## Async Operations
-
-# Async Operations
-
-Food delivery apps handle many simultaneous requests: customers browsing menus, drivers
-updating locations, orders streaming in. Blocking on each Redis call wastes time your
-users do not have. Popoto provides async counterparts for every Model and Query method so
-you can serve all of these requests concurrently without blocking the event loop.
-
-## Async Model Methods
-
-Every synchronous model operation has an `async_` prefixed equivalent. These methods
-behave identically to their sync counterparts but return awaitables, letting you use
-them inside `async def` functions.
-
-### async_create()
-
-Create and persist a new model instance in a single step.
-
-```python
-import asyncio
-from popoto import (
-    Model, KeyField, AutoKeyField, UniqueKeyField,
-    Field, SortedField, GeoField, Relationship, DatetimeField,
-)
-
-class Restaurant(Model):
-    name = KeyField()
-    cuisine = Field(type=str)
-    rating = SortedField(type=float)
-    location = GeoField()
-    active = Field(type=bool, default=True)
-
-class Customer(Model):
-    username = KeyField()
-    email = UniqueKeyField()
-    name = Field(type=str)
-    address = GeoField()
-
-class Driver(Model):
-    driver_id = AutoKeyField()
-    name = Field(type=str)
-    phone = UniqueKeyField()
-    rating = SortedField(type=float)
-    location = GeoField()
-    active = Field(type=bool, default=True)
-
-class Order(Model):
-    order_id = AutoKeyField()
-    customer = Relationship(Customer)
-    restaurant = Relationship(Restaurant)
-    driver = Relationship(Driver, null=True)
-    total = SortedField(type=float)
-    status = Field(type=str, default="pending")
-    created_at = DatetimeField(auto_now_add=True)
-    updated_at = DatetimeField(auto_now=True)
-
-    class Meta:
-        order_by = "-created_at"
-        ttl = 2592000  # 30 days
-
-async def main():
-    restaurant = await Restaurant.async_create(
-        name="Siam Garden",
-        cuisine="Thai",
-        rating=4.7,
-        location=(40.748, -73.985),
-    )
-    print(restaurant.name)
-    # => "Siam Garden"
-
-asyncio.run(main())
-```
-
-### async_save()
-
-Save changes to an existing instance. This is useful when you need to update fields
-after the initial creation.
-
-```python
-async def update_restaurant():
-    restaurant = await Restaurant.async_create(
-        name="Bella Napoli",
-        cuisine="Italian",
-        rating=4.3,
-        location=(40.750, -73.990),
-    )
-
-    # Received a new review, bump the rating
-    restaurant.rating = 4.5
-    await restaurant.async_save()
-
-    print(restaurant.rating)
-    # => 4.5
-```
-
-### async_delete()
-
-Remove an instance and all of its associated indexes from Redis.
-
-```python
-async def close_restaurant():
-    restaurant = await Restaurant.query.async_get(name="Bella Napoli")
-    deleted = await restaurant.async_delete()
-    print(deleted)
-    # => True
-```
-
-### async_load()
-
-Load a single instance by its key fields. Returns `None` if the object does not exist.
-
-```python
-async def load_restaurant():
-    restaurant = await Restaurant.async_load(name="Siam Garden")
-    if restaurant:
-        print(f"{restaurant.name} serves {restaurant.cuisine}")
-        # => "Siam Garden serves Thai"
-```
-
-!!! note
-    `async_load()` performs a direct key lookup, making it the fastest way to retrieve
-    a single object when you already know the key values.
-
-## Async Query Methods
-
-The `query` manager exposes async versions of every query method. Use them exactly as
-you would the synchronous API, but with `await`.
-
-### async_get()
-
-Retrieve a single instance by key fields or filtered criteria.
-
-```python
-async def find_customer():
-    customer = await Customer.query.async_get(username="foodie42")
-    if customer:
-        print(customer.email)
-```
-
-### async_filter()
-
-Return a list of instances matching the given criteria. Supports the same lookups as
-the synchronous `filter()` -- see [Making Queries](query.md) for the full list.
-
-```python
-async def find_expensive_orders():
-    big_orders = await Order.query.async_filter(total__gte=50.0)
-    for order in big_orders:
-        print(f"Order {order.order_id}: ${order.total}")
-```
-
-### async_all()
-
-Retrieve every instance of a model.
-
-```python
-async def list_restaurants():
-    restaurants = await Restaurant.query.async_all()
-    print(f"Total restaurants: {len(restaurants)}")
-```
-
-!!! warning
-    `async_all()` loads every instance into memory. For models with many records, prefer
-    `async_filter()` with appropriate constraints.
-
-### async_count()
-
-Count instances without loading full objects. Accepts the same filter arguments as
-`async_filter()`.
-
-```python
-async def dashboard_stats():
-    total_orders = await Order.query.async_count()
-    big_orders = await Order.query.async_count(total__gte=50.0)
-    print(f"{big_orders} of {total_orders} orders are over $50")
-```
-
-### async_keys()
-
-Return a list of Redis keys matching the model, without deserializing objects.
-
-```python
-async def audit_keys():
-    keys = await Order.query.async_keys()
-    print(f"Order keys in Redis: {len(keys)}")
-```
-
-### async_get_many()
-
-Retrieve multiple instances by Redis key in a single async pipeline. This is the async
-counterpart of `query.get_many()` -- see [Making Queries](query.md#get-multiple-objects-by-key)
-for full details on ordering and `skip_none` behavior.
-
-```python
-async def bulk_lookup():
-    keys = ["Restaurant:Siam Garden", "Restaurant:Bella Napoli", "Restaurant:Gone"]
-    restaurants = await Restaurant.query.async_get_many(redis_keys=keys)
-    # => [<Restaurant>, <Restaurant>, None]
-
-    # Drop missing entries
-    restaurants = await Restaurant.query.async_get_many(redis_keys=keys, skip_none=True)
-    # => [<Restaurant>, <Restaurant>]
-```
-
-!!! tip
-    `async_get_many()` uses a native async Redis pipeline, so it does not block the event
-    loop even when hydrating hundreds of keys.
-
-## Concurrent Operations
-
-The real power of async shows up when you need to perform independent operations at the
-same time. Use `asyncio.gather()` to run them concurrently instead of sequentially.
-
-A customer opens the app and expects to see nearby restaurants and available drivers on
-the same screen. With sync code you would wait for one query, then the other. With
-async, both queries run at the same time.
-
-```python
-async def home_screen(customer_username: str):
-    customer = await Customer.async_load(username=customer_username)
-
-    nearby_restaurants, available_drivers = await asyncio.gather(
-        Restaurant.query.async_filter(
-            location=customer.address,
-            location_radius=10,
-            location_radius_unit='km',
-        ),
-        Driver.query.async_filter(
-            location=customer.address,
-            location_radius=5,
-            location_radius_unit='km',
-        ),
-    )
-
-    print(f"{len(nearby_restaurants)} restaurants nearby")
-    print(f"{len(available_drivers)} drivers available")
-```
-
-You can also create several records at once without waiting for each one individually.
-
-```python
-async def seed_restaurants():
-    restaurants = await asyncio.gather(
-        Restaurant.async_create(
-            name="Siam Garden", cuisine="Thai",
-            rating=4.7, location=(-73.985, 40.748),
-        ),
-        Restaurant.async_create(
-            name="Bella Napoli", cuisine="Italian",
-            rating=4.3, location=(-73.990, 40.750),
-        ),
-        Restaurant.async_create(
-            name="Tokyo Bowl", cuisine="Japanese",
-            rating=4.8, location=(40.752, -73.978),
-        ),
-    )
-    print(f"Created {len(restaurants)} restaurants")
-    # => "Created 3 restaurants"
-```
-
-!!! tip
-    `asyncio.gather()` is most beneficial when each individual operation involves
-    network latency. When talking to a remote Redis instance the time savings add up
-    quickly.
-
-## Framework Integration: FastAPI
-
-FastAPI is a natural fit because its route handlers are already async. Below is a
-minimal food delivery API with two endpoints.
-
-```python
-from fastapi import FastAPI, HTTPException
-
-app = FastAPI()
-
-@app.post("/orders")
-async def create_order(
-    customer_username: str,
-    restaurant_name: str,
-    total: float,
-):
-    customer, restaurant = await asyncio.gather(
-        Customer.async_load(username=customer_username),
-        Restaurant.async_load(name=restaurant_name),
-    )
-    if not customer:
-        raise HTTPException(status_code=404, detail="Customer not found")
-    if not restaurant:
-        raise HTTPException(status_code=404, detail="Restaurant not found")
-
-    order = await Order.async_create(
-        customer=customer,
-        restaurant=restaurant,
-        total=total,
-    )
-    return {
-        "order_id": order.order_id,
-        "status": order.status,
-        "total": order.total,
-    }
-
-@app.get("/restaurants/nearby")
-async def nearby_restaurants(lat: float, lon: float, radius_km: float = 5):
-    restaurants = await Restaurant.query.async_filter(
-        location=(lat, lon),
-        location_radius=radius_km,
-        location_radius_unit='km',
-    )
-    return [
-        {
-            "name": r.name,
-            "cuisine": r.cuisine,
-            "rating": r.rating,
-        }
-        for r in restaurants
-    ]
-```
-
-!!! note
-    Because Popoto's async methods are awaitable, FastAPI can handle many incoming
-    requests without any of them blocking on Redis I/O.
-
-## Framework Integration: Background Workers
-
-Long-running order processing tasks can run as async background workers. The pattern
-below polls for recent orders, assigns a driver, and updates the status.
-
-```python
-async def order_processing_worker():
-    """Continuously process recent orders."""
-    while True:
-        recent_orders = await Order.query.async_filter(
-            total__gte=0.0,
-            limit=10,
-        )
-
-        for order in recent_orders:
-            driver = await find_nearest_driver(order)
-            if driver:
-                order.driver = driver
-                order.status = "assigned"
-                driver.active = False
-                await asyncio.gather(
-                    order.async_save(),
-                    driver.async_save(),
-                )
-                print(f"Order {order.order_id} assigned to {driver.name}")
-
-        await asyncio.sleep(2)
-
-async def find_nearest_driver(order):
-    """Find the closest active driver to the restaurant."""
-    restaurant = order.restaurant
-    if isinstance(restaurant, str):
-        restaurant = await Restaurant.async_load(name=restaurant)
-
-    drivers = await Driver.query.async_filter(
-        location=restaurant.location,
-        location_radius=10,
-        location_radius_unit='km',
-        order_by="-rating",
-        limit=1,
-    )
-    return drivers[0] if drivers else None
-```
-
-!!! tip
-    In production you would run this worker alongside your web server using
-    `asyncio.create_task()` or a task runner like `arq` or `taskiq`.
-
-## Implementation Details
-
-### Native Async with redis.asyncio
-
-All async methods use `redis.asyncio` for true non-blocking I/O. This approach
-provides three key properties:
-
-- **No event loop blocking** -- Redis calls use native async I/O so your event
-  loop stays free to handle other coroutines.
-- **No thread pool overhead** -- Operations run directly on the event loop without
-  spawning worker threads.
-- **Identical behavior** -- Validation, serialization, error handling, and Redis
-  commands work exactly the same as the synchronous path.
-
-## Performance Considerations
-
-Async does not make individual Redis commands faster. It makes your **application**
-faster by letting other work proceed while waiting for Redis responses.
-
-When async helps the most:
-
-- **Remote Redis instances** -- network round-trips of 1-5 ms benefit significantly
-  from concurrency. Three sequential 3 ms calls take 9 ms; with `gather()` they
-  complete in roughly 3 ms.
-- **High-concurrency web servers** -- frameworks like FastAPI can serve other requests
-  while one request awaits Redis.
-- **Fan-out queries** -- searching restaurants, drivers, and orders at the same time
-  (as shown in the concurrent operations section above).
-
-When async adds little benefit:
-
-- **Local Redis, single operation** -- a sub-millisecond `GET` on localhost is already
-  fast. The thread pool overhead is negligible but the async machinery does not speed
-  it up either.
-- **CPU-bound processing** -- if most time is spent computing rather than waiting on
-  I/O, async will not help. Consider `multiprocessing` instead.
-
-!!! tip
-    Profile before optimizing. If your Redis calls are already sub-millisecond on
-    localhost, switching from sync to async will not produce a noticeable improvement
-    for single operations. Focus on `gather()` for parallel queries first.
-
-## Error Handling
-
-Async methods raise the same exceptions as their synchronous equivalents. Wrap calls in
-standard `try`/`except` blocks.
-
-```python
-from popoto.exceptions import ModelException
-from popoto.exceptions import QueryException
-
-async def safe_order_create(customer_username, restaurant_name, total):
-    try:
-        customer = await Customer.async_load(username=customer_username)
-        restaurant = await Restaurant.async_load(name=restaurant_name)
-
-        order = await Order.async_create(
-            customer=customer,
-            restaurant=restaurant,
-            total=total,
-        )
-        return order
-
-    except ModelException as e:
-        print(f"Model error: {e}")
-        return None
-    except QueryException as e:
-        print(f"Query error: {e}")
-        return None
-```
-
-You can also handle errors inside `asyncio.gather()` by passing
-`return_exceptions=True`. This prevents one failure from cancelling sibling tasks.
-
-```python
-async def resilient_lookups():
-    results = await asyncio.gather(
-        Restaurant.async_load(name="Siam Garden"),
-        Restaurant.async_load(name="Nonexistent Place"),
-        return_exceptions=True,
-    )
-
-    for result in results:
-        if isinstance(result, Exception):
-            print(f"Lookup failed: {result}")
-        elif result is None:
-            print("Restaurant not found")
-        else:
-            print(f"Found: {result.name}")
-```
-
-!!! warning
-    When using `return_exceptions=True`, remember to check each result for exceptions
-    before accessing model attributes.
-
-## Async Bulk Operations
-
-Popoto also provides async versions of all bulk operations. These methods are ideal for
-importing large datasets, batch updates, and cleanup tasks without blocking the event loop.
-
-| Sync | Async |
-|------|-------|
-| `Model.bulk_create(instances)` | `await Model.async_bulk_create(instances)` |
-| `Model.bulk_update(queryset, **updates)` | `await Model.async_bulk_update(queryset, **updates)` |
-| `Model.bulk_delete(queryset)` | `await Model.async_bulk_delete(queryset)` |
-
-```python
-async def import_restaurants(data: list[dict]):
-    """Bulk import restaurants from external data."""
-    instances = [
-        Restaurant(
-            name=item["name"],
-            cuisine=item["cuisine"],
-            rating=item["rating"],
-        )
-        for item in data
-    ]
-
-    created = await Restaurant.async_bulk_create(instances)
-    print(f"Imported {len(created)} restaurants")
-    return created
-
-async def feature_top_restaurants():
-    """Mark highly-rated restaurants as featured."""
-    count = await Restaurant.async_bulk_update(
-        Restaurant.query.filter(rating__gte=4.5),
-        is_featured=True
-    )
-    print(f"Featured {count} top restaurants")
-
-async def cleanup_inactive():
-    """Remove inactive restaurants."""
-    count = await Restaurant.async_bulk_delete(
-        Restaurant.query.filter(status="inactive")
-    )
-    print(f"Deleted {count} inactive restaurants")
-```
-
-All bulk methods use Redis pipelines internally to batch operations, dramatically reducing
-network round-trips. The `batch_size` parameter (default 1000) controls how many instances
-are processed per pipeline execution.
-
-See [Bulk Operations](recipes.md#bulk-operations) in the Recipes for complete
-documentation.
-
-## Test Coverage
-
-The async API is thoroughly tested across four test files covering all public methods
-and edge cases. Each scenario listed below has at least one dedicated test.
-
-| Category | Tested Scenarios |
-|----------|-----------------|
-| **CRUD basics** | `async_create`, `async_save`, `async_delete`, `async_load`, `async_get` |
-| **Query methods** | `async_filter`, `async_all`, `async_count`, `async_keys`, `async_get_many` |
-| **SortedField queries** | `__lte`, `__lt`, `__gt`, `__gte`, range (between), `limit`, `order_by` |
-| **GeoField queries** | Radius search via `async_filter` with coordinates and distance units |
-| **Relationship fields** | Lazy-loading related objects through async queries |
-| **Projection** | `values=` parameter with `async_filter` and `async_all` |
-| **Error paths** | `async_get` returns `None` on miss; raises `QueryException` on multiple matches |
-| **Bulk operations** | `async_bulk_create`, `async_bulk_update`, `async_bulk_delete` |
-| **Connection management** | `async_check_connection` (success, failure, timeout), `set_async_redis_db_settings` |
-| **Key scanning** | `async_scan_keys` pattern matching, `async_keys` with `catchall` and `clean` flags |
-| **Client-side filtering** | Filtering on plain `Field` (non-indexed) via `async_filter` |
-| **Meta options** | `Meta.order_by` default sorting, `Meta.ttl` automatic expiration |
-| **Atomicity** | Pipeline-based `async_save`, concurrent writes (last-write-wins) |
-| **Index maintenance** | `async_check_indexes`, `async_clean_indexes`, `async_rebuild_indexes` via `to_thread` |
-
-Run the async tests with:
-
-```bash
-pytest tests/test_async.py tests/test_connection.py tests/test_bulk_operations.py tests/test_migrations.py -v
-```
-
-## See Also
-
-- [Models and Fields](fields.md) -- define your data models
-- [Making Queries](query.md) -- query patterns and filter lookups
-- [Model Meta Options](meta.md) -- configure `order_by`, `ttl`, and other model behavior
-- [Bulk Operations](recipes.md#bulk-operations) -- efficient batch processing
-
----
-
 ## PubSub
 
 # PubSub
@@ -5928,6 +5928,311 @@ logging.getLogger("POPOTO-subscriber").setLevel(logging.DEBUG)
 
 Enable DEBUG level during development to see every message published and received. In
 production, INFO level shows subscription setup without the per-message noise.
+
+---
+
+## Content & Embeddings
+
+# Content and Embedding Fields
+
+ContentField and EmbeddingField extend Popoto's storage model beyond Redis hashes,
+routing large content and vector embeddings to the filesystem while keeping Redis
+lean and fast.
+
+## Overview
+
+| Field | Stores in Redis | Stores on Filesystem | Purpose |
+|-------|----------------|---------------------|---------|
+| ContentField | `$CF:{hash}:{path}` reference | Raw content bytes | Large text, documents, binary data |
+| EmbeddingField | Dimension count (integer) | `.npy` vector file | Vector embeddings for similarity search |
+
+Both fields are transparent to the caller -- you read and write normal Python values,
+and the storage indirection happens automatically on save/load.
+
+## ContentField
+
+### How It Works
+
+1. **On save**: Content is written to the filesystem first (atomic temp-file + rename),
+   then a compact reference string (`$CF:{sha256}:{path}`) is stored in Redis.
+2. **On access**: The descriptor detects the `$CF:` prefix and lazily loads content
+   from the filesystem, caching it on the instance.
+3. **On delete**: No-op. Content files are append-only (content-addressable storage
+   means identical content shares files). Use `garbage_collect()` to clean up.
+
+### Storage Layout
+
+```
+~/.popoto/content/
+  Document/
+    <sha256_hash>       # Content file (raw bytes)
+    <sha256_hash>.v1    # Previous version (auto-archived on overwrite)
+```
+
+The base directory defaults to `~/.popoto/content/` and can be changed via:
+- `POPOTO_CONTENT_PATH` environment variable
+- `popoto.configure(content_path="/data/content")`
+- Per-field: `ContentField(store=FilesystemStore(base_path="/data/content"))`
+
+### Custom Content Stores
+
+Implement `AbstractContentStore` to use a different backend (S3, GCS, etc.):
+
+```python
+from popoto.stores import AbstractContentStore
+
+class S3Store(AbstractContentStore):
+    def save(self, content: bytes, key: str, model_class_name: str) -> str:
+        # Upload to S3, return a $CF: reference string
+        ...
+
+    def load(self, reference: str) -> bytes:
+        # Download from S3 using the reference
+        ...
+
+    def delete(self, reference: str) -> None:
+        # Remove from S3
+        ...
+```
+
+Register it globally or per-field:
+
+```python
+popoto.configure(content_store=S3Store(bucket="my-bucket"))
+# or
+body = ContentField(store=S3Store(bucket="my-bucket"))
+```
+
+## EmbeddingField
+
+### How It Works
+
+1. **On save**: Reads the source field value, calls the embedding provider to generate
+   a vector, saves it as a `.npy` file, and stores the dimension count in Redis.
+2. **On query**: `load_embeddings()` reads all `.npy` files for a model class into a
+   pre-normalized numpy matrix. This matrix is cached in memory for fast cosine similarity.
+3. **On delete**: The `.npy` file is removed and the cache is invalidated.
+
+### Storage Layout
+
+```
+~/.popoto/content/.embeddings/
+  Memory/
+    <hex_encoded_redis_key>.npy    # numpy float32 vector
+```
+
+### Embedding Providers
+
+Providers are pluggable. Configure a default via `popoto.configure()` or pass one
+directly to `EmbeddingField(provider=...)`.
+
+#### VoyageProvider
+
+Voyage AI embeddings, optimized for retrieval tasks with asymmetric query/document
+embedding.
+
+```python
+from popoto.embeddings.voyage import VoyageProvider
+
+provider = VoyageProvider(
+    api_key="your-key",           # or VOYAGE_API_KEY env var
+    model="voyage-3-lite",        # default
+    dimensions=512,               # default
+    max_batch_size=128,           # default
+)
+```
+
+Install: `pip install popoto[voyage]`
+
+#### OpenAIProvider
+
+OpenAI text embeddings.
+
+```python
+from popoto.embeddings.openai import OpenAIProvider
+
+provider = OpenAIProvider(
+    api_key="your-key",                  # or OPENAI_API_KEY env var
+    model="text-embedding-3-small",      # default
+    dimensions=1536,                      # default
+    max_batch_size=2048,                  # default
+)
+```
+
+Install: `pip install popoto[openai]`
+
+#### OllamaProvider
+
+Local embeddings via a running [Ollama](https://ollama.com) server. No API
+key, no per-token cost, no network dependency on a paid provider.
+
+```python
+from popoto.embeddings.ollama import OllamaProvider
+
+provider = OllamaProvider(
+    base_url="http://localhost:11434",   # default
+    model="nomic-embed-text",            # default (768-dim)
+    dim=None,                            # auto-detect from first response
+)
+```
+
+**Setup:**
+
+```bash
+# Install Ollama from https://ollama.com
+ollama pull nomic-embed-text    # or mxbai-embed-large (1024-dim), all-minilm (384-dim)
+ollama serve                    # run the local server
+```
+
+**Behaviour:**
+
+- Uses the batch-capable `/api/embed` endpoint (Ollama v0.2.0+).
+- Vector dimensions are auto-detected from the first `embed()` response
+  and cached. Pass `dim=<n>` to the constructor to declare them up front.
+- `max_batch_size` defaults to 32 (conservative for local inference on
+  modest hardware). Subclass to raise it.
+- No external dependencies -- uses stdlib `urllib.request`.
+- Error messages include actionable hints: connection refused points at
+  `ollama serve`; missing models point at `ollama pull <model>`.
+
+Install: `pip install popoto` (stdlib-only; no extras needed).
+
+#### Custom Providers
+
+Implement `AbstractEmbeddingProvider`:
+
+```python
+from popoto.embeddings import AbstractEmbeddingProvider
+
+class MyProvider(AbstractEmbeddingProvider):
+    def embed(self, texts, input_type=None):
+        # Return list of float vectors, one per text
+        ...
+
+    @property
+    def dimensions(self):
+        return 768
+
+    @property
+    def max_batch_size(self):
+        return 100
+```
+
+## semantic_search()
+
+The query method `semantic_search()` ties ContentField and EmbeddingField together
+into a retrieval pipeline.
+
+### Similarity-Only Search
+
+```python
+results = Memory.query.semantic_search("revenue trends", limit=5)
+```
+
+Under the hood:
+1. Query text is embedded via the provider (with `input_type="query"`)
+2. Cosine similarity is computed against the cached embedding matrix
+3. Top-K results are hydrated from Redis and returned
+
+### Combined with Memory Signals
+
+When `indexes` is provided, similarity scores are injected into `composite_score()`
+as an additional weighted signal:
+
+```python
+results = Memory.query.semantic_search(
+    "revenue trends",
+    indexes={"relevance": 0.4, "confidence": 0.3},
+    limit=10,
+)
+```
+
+This produces a unified ranking that blends semantic relevance with recency (decay),
+confidence, and other sorted field signals.
+
+### Full Example
+
+```python
+import popoto
+from popoto.fields.content_field import ContentField
+from popoto.fields.embedding_field import EmbeddingField
+from popoto.fields.decaying_sorted_field import DecayingSortedField
+from popoto.fields.confidence_field import ConfidenceField
+from popoto.embeddings.voyage import VoyageProvider
+
+# Configure once at startup
+popoto.configure(
+    embedding_provider=VoyageProvider(api_key="your-key"),
+    content_path="/data/agent-memory",
+)
+
+class Memory(popoto.Model):
+    topic = popoto.KeyField()
+    content = ContentField()
+    relevance = DecayingSortedField()
+    certainty = ConfidenceField()
+    embedding = EmbeddingField(source="content")
+
+# Create memories
+Memory.create(topic="q4-revenue", content="Q4 revenue exceeded projections by 12%...")
+Memory.create(topic="q3-revenue", content="Q3 revenue was flat compared to Q2...")
+Memory.create(topic="hiring-plan", content="Engineering headcount target is 50 by EOY...")
+
+# Semantic search with memory signals
+results = Memory.query.semantic_search(
+    "revenue performance",
+    indexes={"relevance": 0.5, "certainty": 0.3},
+    limit=5,
+)
+
+for memory in results:
+    print(f"{memory.topic}: {memory.content[:80]}...")
+```
+
+## Cache Management
+
+EmbeddingField maintains a process-level cache of pre-normalized numpy matrices.
+The cache is automatically invalidated when embeddings are saved or deleted within
+the same process.
+
+For multi-process deployments, call `invalidate_cache()` to force a reload from disk:
+
+```python
+from popoto.fields.embedding_field import invalidate_cache
+
+# Invalidate cache for a specific model
+invalidate_cache("Memory")
+
+# Invalidate all cached embeddings
+invalidate_cache()
+```
+
+## Installation
+
+| Extra | Command | Includes |
+|-------|---------|----------|
+| Base | `pip install popoto` | ContentField (no extra deps) |
+| Embeddings | `pip install popoto[embeddings]` | numpy |
+| Ollama | `pip install popoto[embeddings]` | numpy (no extra Python deps) |
+| Voyage AI | `pip install popoto[voyage]` | numpy, voyageai |
+| OpenAI | `pip install popoto[openai]` | numpy, openai |
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `POPOTO_CONTENT_PATH` | `~/.popoto/content` | Base directory for content files and embeddings |
+| `VOYAGE_API_KEY` | *(none)* | API key for VoyageProvider (alternative to passing `api_key=`) |
+| `OPENAI_API_KEY` | *(none)* | API key for OpenAIProvider (alternative to passing `api_key=`) |
+| *(none)* | — | OllamaProvider requires no API key |
+
+## See Also
+
+- [Fields > ContentField](../fields.md#contentfield) -- field reference
+- [Fields > EmbeddingField](../fields.md#embeddingfield) -- field reference
+- [Making Queries > Semantic Search](../query.md#semantic-search) -- query interface
+- [Configuration](../configuration.md#content-and-embedding-configuration) -- global setup
+- [API Reference: ContentField](../reference/popoto/fields/content_field.md) -- method signatures
 
 ---
 
@@ -7369,6 +7674,337 @@ See [Defaults API reference](../reference/popoto/fields/constants.md) and [Tunin
 - [Programmable Memory Systems — Neuroscience Design Spec](../guides/programmable-memory-systems-neuroscience-design-spec.md) — neuroscience foundations
 - [Subconscious Memory Recipe](../guides/subconscious-memory-recipe.md) — automatic memory injection and extraction around LLM turns
 - [Behavioral Episode Memory System](https://github.com/tomcounsell/ai/issues/376) — downstream consumer in the AI project
+
+---
+
+## Quickstart
+
+# Agent Memory Quickstart
+
+Add programmable memory to your AI agent in 5 progressive levels. Each level is independently useful — adopt only what you need.
+
+> **Prerequisites:** `pip install popoto` and Redis running on `localhost:6379`.
+>
+> **Full reference:** [Agent Memory Feature Overview](../features/agent-memory.md) covers all 14 primitives in depth.
+
+## Level 1: Recall — Time-Weighted Retrieval
+
+The simplest useful memory. Records decay over time so recent, important memories surface first.
+
+```python
+from popoto import Model, AutoKeyField, KeyField, StringField, FloatField
+from popoto import DecayingSortedField
+
+class Memory(Model):
+    memory_id = AutoKeyField()
+    agent_id = KeyField()
+    content = StringField(default="")
+    importance = FloatField(default=1.0)
+    relevance = DecayingSortedField(
+        base_score_field="importance",
+        partition_by="agent_id",
+    )
+
+# Save
+Memory(agent_id="agent-1", content="Deploy uses blue-green strategy", importance=2.0).save()
+Memory(agent_id="agent-1", content="Lunch order: salad", importance=0.5).save()
+
+# Retrieve top memories ranked by recency * importance
+results = Memory.query.filter(agent_id="agent-1").top_by_decay(n=5)
+for m in results:
+    print(m.content)
+```
+
+**What you get:** Records that matter surface first. Old, low-importance records fade away naturally.
+
+## Level 2: Attention — Filter Noise, Track Reads
+
+Add `WriteFilterMixin` to discard low-value records before they hit Redis. Add `AccessTrackerMixin` to know which memories the agent actually uses.
+
+```python
+from popoto import WriteFilterMixin, AccessTrackerMixin
+
+class Memory(WriteFilterMixin, AccessTrackerMixin, Model):
+    memory_id = AutoKeyField()
+    agent_id = KeyField()
+    content = StringField(default="")
+    importance = FloatField(default=1.0)
+    relevance = DecayingSortedField(
+        base_score_field="importance",
+        partition_by="agent_id",
+    )
+
+    _wf_min_threshold = 0.1       # below this: silently discarded (default; was 0.2 before sweep 2026-04-17)
+    _wf_priority_threshold = 0.7  # above this: tagged as priority
+
+    def compute_filter_score(self):
+        return self.importance or 0.0
+
+# Low-value record is silently dropped (save returns False)
+result = Memory(agent_id="agent-1", content="noise", importance=0.05).save()
+assert result is False
+
+# High-value record persists normally
+Memory(agent_id="agent-1", content="critical finding", importance=0.9).save()
+
+# After retrieving, confirm the agent used it
+results = Memory.query.filter(agent_id="agent-1").top_by_decay(n=5)
+results[0].confirm_access()  # marks as actually used
+```
+
+**What you get:** Cleaner memory — noise never persists. Read tracking shows which memories drive agent behavior.
+
+## Level 3: Learning — Outcomes Strengthen or Weaken Beliefs
+
+Add `ConfidenceField` for Bayesian certainty tracking. Use `ObservationProtocol` to report how the agent used each memory — acted on, dismissed, or contradicted.
+
+```python
+from popoto import ConfidenceField, ObservationProtocol
+
+class Memory(WriteFilterMixin, AccessTrackerMixin, Model):
+    memory_id = AutoKeyField()
+    agent_id = KeyField()
+    content = StringField(default="")
+    importance = FloatField(default=1.0)
+    relevance = DecayingSortedField(
+        base_score_field="importance",
+        partition_by="agent_id",
+    )
+    confidence = ConfidenceField(initial_confidence=0.5)
+
+    _wf_min_threshold = 0.1  # default after sweep 2026-04-17 (was 0.2)
+    _wf_priority_threshold = 0.7
+
+    def compute_filter_score(self):
+        return self.importance or 0.0
+
+m = Memory(agent_id="agent-1", content="API key rotates monthly", importance=0.8)
+m.save()
+
+# Corroborate: evidence confirms the belief
+ConfidenceField.update_confidence(m, "confidence", signal=0.9)
+
+# Or contradict: evidence weakens the belief
+ConfidenceField.update_confidence(m, "confidence", signal=0.1)
+
+# Report agent outcomes in bulk
+outcome_map = {m.db_key.redis_key: "acted"}  # or "dismissed", "contradicted", "deferred", "used"
+ObservationProtocol.on_context_used([m], outcome_map)
+```
+
+**What you get:** Memories that the agent acts on grow stronger. Contradicted memories fade. The system learns from outcomes.
+
+## Level 4: Association — Multi-Factor Ranking
+
+Add `CoOccurrenceField` for weighted associations between memories. Use `composite_score()` to rank by multiple factors at once.
+
+```python
+from popoto import CoOccurrenceField
+
+class Memory(WriteFilterMixin, AccessTrackerMixin, Model):
+    memory_id = AutoKeyField()
+    agent_id = KeyField()
+    content = StringField(default="")
+    importance = FloatField(default=1.0)
+    relevance = DecayingSortedField(
+        base_score_field="importance",
+        partition_by="agent_id",
+    )
+    confidence = ConfidenceField(initial_confidence=0.5)
+    associations = CoOccurrenceField(symmetric=True, max_edges=50)
+
+    _wf_min_threshold = 0.1  # default after sweep 2026-04-17 (was 0.2)
+    _wf_priority_threshold = 0.7
+
+    def compute_filter_score(self):
+        return self.importance or 0.0
+
+m1 = Memory(agent_id="agent-1", content="deploy process", importance=0.8)
+m1.save()
+m2 = Memory(agent_id="agent-1", content="rollback steps", importance=0.8)
+m2.save()
+
+# Link related memories
+assoc_field = Memory._meta.fields["associations"]
+assoc_field.link(Memory, m1.db_key.redis_key, m2.db_key.redis_key, initial_weight=0.5)
+
+# Multi-factor retrieval: combine relevance with other indexes
+results = Memory.query.filter(agent_id="agent-1").composite_score(
+    indexes={"relevance": 1.0},
+    limit=10,
+)
+```
+
+**What you get:** Memories form a graph. Retrieving one can surface related memories. Multiple ranking factors combine into a single query.
+
+## Level 5: Cognition — LLM-Ready Context Assembly
+
+Use `ContextAssembler` to orchestrate all primitives into a single `assemble()` call that returns formatted, token-budgeted context ready for your LLM prompt.
+
+```python
+from popoto import ContextAssembler
+
+# Use any Memory model from Levels 1-4
+assembler = ContextAssembler(
+    model_class=Memory,
+    score_weights={"relevance": 0.6, "confidence": 0.3},
+    max_items=10,
+    max_tokens=4000,
+)
+
+result = assembler.assemble(
+    query_cues={"topic": "deployment"},
+    agent_id="agent-1",
+)
+
+# result.records   — selected model instances
+# result.formatted — LLM-ready string (JSON by default)
+# result.metadata  — scores, timing, token counts
+
+# Inject into your LLM prompt
+system_prompt = f"You are a helpful assistant.\n\nRelevant context:\n{result.formatted}"
+```
+
+### Complete LLM Integration Example
+
+Wire assembled context into an OpenAI SDK v1+ call and report outcomes:
+
+```python
+from openai import OpenAI
+from popoto import ContextAssembler, ObservationProtocol
+
+client = OpenAI()  # uses OPENAI_API_KEY env var
+
+# Assemble memory context
+result = assembler.assemble(query_cues={"topic": "deployment"}, agent_id="agent-1")
+
+# Build messages with injected memory
+messages = [
+    {"role": "system", "content": f"You are a helpful assistant.\n\nRelevant context:\n{result.formatted}"},
+    {"role": "user", "content": "What's our deployment strategy?"},
+]
+
+# Call the LLM
+response = client.chat.completions.create(
+    model="gpt-4.1-nano",
+    messages=messages,
+)
+
+answer = response.choices[0].message.content
+
+# Report outcomes — which memories did the agent actually use?
+outcome_map = {r.db_key.redis_key: "acted" for r in result.records}
+ObservationProtocol.on_context_used(result.records, outcome_map)
+```
+
+**What you get:** One call assembles the right memories, respects token budgets, and formats output for your LLM. Pull-path (query-driven) and push-path (proactive surfacing) retrieval in a single pipeline.
+
+## Level 6: Semantic Search — Find Memories by Meaning
+
+Add `ContentField` and `EmbeddingField` to store large content on the filesystem and search it by semantic similarity. Redis stays lean (only references and dimension counts), while content and vectors live on disk.
+
+```python
+import popoto
+from popoto import (
+    Model, AutoKeyField, KeyField, FloatField,
+    ContentField, EmbeddingField, DecayingSortedField, ConfidenceField,
+)
+from popoto.embeddings.voyage import VoyageProvider
+
+# Configure once at startup — sets the default embedding provider
+# and content storage path for all fields
+popoto.configure(
+    embedding_provider=VoyageProvider(api_key="your-key"),
+    content_path="/data/agent-memory",
+)
+
+# ----
+# Prefer no API keys? Run Ollama locally and swap providers.
+# Prerequisite: `ollama pull nomic-embed-text` and `ollama serve`.
+#
+# from popoto.embeddings.ollama import OllamaProvider
+# popoto.configure(
+#     embedding_provider=OllamaProvider(model="nomic-embed-text"),
+#     content_path="/data/agent-memory",
+# )
+# ----
+
+class Memory(Model):
+    memory_id = AutoKeyField()
+    agent_id = KeyField()
+    content = ContentField()                    # large text stored on filesystem
+    importance = FloatField(default=1.0)
+    relevance = DecayingSortedField(
+        base_score_field="importance",
+        partition_by="agent_id",
+    )
+    confidence = ConfidenceField(initial_confidence=0.5)
+    embedding = EmbeddingField(source="content")  # auto-generates vector on save
+
+# Save memories — embeddings are generated automatically
+Memory.create(
+    agent_id="agent-1",
+    content="Q4 revenue exceeded projections by 12%, driven by enterprise deals.",
+    importance=0.9,
+)
+Memory.create(
+    agent_id="agent-1",
+    content="Engineering headcount target is 50 by end of year.",
+    importance=0.7,
+)
+Memory.create(
+    agent_id="agent-1",
+    content="The deploy pipeline uses blue-green strategy with automatic rollback.",
+    importance=0.8,
+)
+
+# Similarity-only search — ranked by cosine similarity to the query
+results = Memory.query.semantic_search("revenue performance", limit=5)
+for m in results:
+    print(m.content[:80])
+
+# Combined search — blends similarity with decay and confidence signals
+results = Memory.query.semantic_search(
+    "revenue performance",
+    indexes={"relevance": 0.4, "confidence": 0.3},
+    limit=5,
+)
+```
+
+**What you get:** Memories are searchable by meaning, not just keywords. Combined with decay and confidence, the most relevant, recent, and trusted memories surface first.
+
+> **Install extras:** `pip install popoto[voyage]` for Voyage AI embeddings, or `pip install popoto[openai]` for OpenAI. For a no-API-key setup, run [Ollama](https://ollama.com) locally and use `OllamaProvider` (no extras needed -- stdlib only). See [Content and Embedding Fields](../features/content-and-embedding-fields.md) for all provider options.
+
+## Import Cheat Sheet
+
+All imports come from the top-level `popoto` package:
+
+```python
+# Models and fields
+from popoto import Model, AutoKeyField, KeyField, StringField, FloatField
+from popoto import DecayingSortedField, ConfidenceField, CoOccurrenceField
+from popoto import ContentField, EmbeddingField
+
+# Mixins (listed before Model in class definition)
+from popoto import WriteFilterMixin, AccessTrackerMixin
+
+# Observation and context
+from popoto import ObservationProtocol, ContextAssembler
+
+# Constants for tuning
+from popoto import InteractionWeight, TemporalPeriod, Defaults
+```
+
+**Never** use `from popoto.fields import ...` — the `popoto.fields` subpackage does not re-export field types. Always import from `popoto` directly.
+
+## What's Next
+
+- **[Agent Memory Feature Overview](../features/agent-memory.md)** — all 14 primitives with full API documentation
+- **[Content and Embedding Fields](../features/content-and-embedding-fields.md)** — deep dive into ContentField, EmbeddingField, and semantic_search
+- **[RAG Chatbot Recipe](rag-chatbot-recipe.md)** — build a retrieval-augmented chatbot with Popoto
+- **[Tuning Magic Numbers](tuning-magic-numbers.md)** — adjust decay rates, confidence signals, and thresholds
+- **[PolicyCache Recipe](policy-cache-recipe.md)** — RL-style learned action selection built on these primitives
+- **[Subconscious Memory Recipe](subconscious-memory-recipe.md)** — automatic memory injection and extraction around LLM turns
 
 ---
 
@@ -9562,719 +10198,558 @@ adaptive = AdaptiveAssembler(inner, rng=rng)
 
 ---
 
-## Meta Class Implementation
+## PolicyCache
 
-# Meta Class Implementation - Completion Summary
+# PolicyCache Recipe
 
-**GitHub Issue:** #27
-**Status:** ✅ Complete (3 of 3 features)
-**Merged PRs:** #50, #51, #52
+> **New to Agent Memory?** Start with the [Quickstart Guide](agent-memory-quickstart.md) for a progressive adoption path.
 
----
+A reference recipe composing all shipped Popoto memory primitives into an RL-style action selection cache. Agents accumulate state-action-outcome events; a crystallization handler detects repeated successful patterns and creates PolicyEntry records. Agents query policies for action selection, and outcomes update Q-values via temporal difference learning.
 
-## Overview
-
-Implemented Django/Peewee-style Meta class for model configuration. All three planned features are complete and merged to main.
-
----
-
-## Completed Features
-
-### 1. Meta.order_by (PR #50)
-
-Default query result ordering.
-
-**API:**
-```python
-class Product(Model):
-    name = KeyField()
-    price = SortedField()
-
-    class Meta:
-        order_by = "-price"  # Descending by default
-
-# All queries ordered by price descending
-products = Product.query.all()
-```
-
-**Implementation:**
-- `ModelOptions.order_by` attribute
-- Validates field exists at class definition time
-- Applied in `Query.all()`, `Query.filter()`, `Query.prepare_results()`
-- Can be overridden per-query with explicit `order_by` parameter
-
-**Files:**
-- `src/popoto/models/base.py`
-- `src/popoto/models/query.py`
-- `tests/test_meta_order_by.py` (7 tests)
-- `docs/meta.md`
-
----
-
-### 2. Meta.ttl (PR #51)
-
-Time-To-Live (automatic expiration) for Redis keys.
-
-**API:**
-```python
-class CachedData(Model):
-    key = KeyField()
-    value = Field()
-
-    class Meta:
-        ttl = 3600  # Expires after 1 hour
-
-# Instance automatically expires
-data = CachedData.create(key="session", value="data")
-```
-
-**Features:**
-- Model-level default via `Meta.ttl`
-- Instance-level override via `_ttl` attribute
-- Absolute timestamp via `_expire_at` attribute
-- Redis `EXPIRE`/`EXPIREAT` called on save
-
-**Implementation:**
-- `ModelOptions.ttl` attribute with validation (positive integer)
-- `Model.__init__` sets default `_ttl` from Meta
-- `Model.save()` applies TTL to Redis
-- TTL refreshed on every save
-
-**Files:**
-- `src/popoto/models/base.py`
-- `tests/test_meta_ttl.py` (7 tests)
-- `docs/meta.md`
-
-**Innovation:**
-This is Popoto-specific. SQL-based ORMs like Peewee can't support this because SQL databases don't have native key expiration.
-
----
-
-### 3. Meta.indexes (PR #52)
-
-Composite unique indexes (Peewee pattern).
-
-**API:**
-```python
-class Transaction(Model):
-    transaction_id = KeyField()
-    from_account = Field()
-    to_account = Field()
-    amount = Field()
-
-    class Meta:
-        indexes = (
-            # (field_names_tuple, is_unique_boolean)
-            (('from_account', 'to_account'), True),   # Unique composite
-            (('to_account',), False),                  # Non-unique index
-        )
-
-# Duplicate detection on save
-tx1 = Transaction.create(transaction_id="tx1", from_account="A", to_account="B", amount=100)
-tx2 = Transaction.create(transaction_id="tx2", from_account="A", to_account="B", amount=200)
-# ❌ ModelException: Unique index violation
-```
-
-**Features:**
-- Enforces unique constraints on field combinations
-- Supports both unique and non-unique indexes
-- NULL handling: multiple NULLs allowed (SQL standard)
-- Automatic index maintenance (create, update, delete)
-
-**Implementation:**
-- Redis HASH storage: `$Index:ClassName:field1:field2`
-- SHA256 hash of field values as key
-- `ModelOptions.compute_index_hash()` - generates hash (returns None for NULL)
-- `Model.pre_save()` - validates unique constraints
-- `Model.save()` - adds/updates index entries
-- `Model.delete()` - removes index entries
-- Uses `_saved_field_values` for proper cleanup on updates
-
-**Files:**
-- `src/popoto/models/base.py`
-- `tests/test_meta_indexes.py` (10 tests)
-- `docs/meta.md`
-
----
-
-## Documentation
-
-**`docs/meta.md`** - Complete reference documentation:
-- All three Meta options documented with examples
-- Validation rules and best practices
-- Implementation details and Redis patterns
-
----
-
-## Key Design Decisions
-
-### 1. Index Storage: Redis HASH
-
-Used Redis HASH instead of SET for O(1) lookups:
-```
-$Index:Transaction:from_account:to_account
-HASH: {hash_of_values: instance_db_key}
-```
-
-### 2. Update Semantics: _saved_field_values
-
-Reused existing `_saved_field_values` pattern for tracking old values:
-- On save: remove old index entry, add new entry
-- On delete: use saved values for cleanup
-
-### 3. NULL Handling: SQL Standard
-
-If any indexed field is NULL, skip index entry. Allows multiple NULLs in unique indexes.
-
-### 4. Lifecycle: Direct in Model methods
-
-Index management lives in `Model.pre_save()`, `Model.save()`, `Model.delete()` rather than field-based hooks.
-
----
-
-## Testing
-
-- **Meta.order_by:** 7 tests (all passing)
-- **Meta.ttl:** 7 tests (all passing)
-- **Meta.indexes:** 10 tests (all passing)
-- **Total:** 24 tests for Meta features
-
----
-
-## Future Considerations
-
-1. **Meta inheritance:** Peewee supports inheriting Meta options from parent classes. Not implemented in Popoto.
-
-2. **Custom ModelOptions:** Peewee allows custom `ModelOptions` subclasses via `model_options_base`. Could enable advanced Redis routing.
-
-3. **Additional options:**
-   - `abstract` - already exists
-   - `database` - for multi-Redis routing
-   - `table_name` equivalent - custom Redis key prefix
-
----
-
-## Lessons from Peewee Research
-
-1. **Indexes over unique_together:** Peewee's `indexes` pattern is more flexible than Django's `unique_together`
-2. **Meta validation timing:** Both ORMs validate at class definition time (metaclass)
-3. **TTL as innovation:** Popoto's TTL feature showcases Redis-native advantages over SQL ORMs
-
----
-
-## Files Modified
-
-**Source:**
-- `src/popoto/models/base.py` - ModelOptions, metaclass, Model.save/delete/pre_save
-- `src/popoto/models/query.py` - Query.all/filter with order_by
-
-**Tests:**
-- `tests/test_meta_order_by.py`
-- `tests/test_meta_ttl.py`
-- `tests/test_meta_indexes.py`
-
-**Documentation:**
-- `docs/meta.md` - Complete Meta reference
-
----
-
-**Completed:** January 2026
-**Implementation time:** ~3 days across 3 PRs
-
----
-
-## Kitchen Edge Case Demo
-
-# Kitchen Demo: Edge Case Mutation Flows
-
-The Popoto Kitchen TUI demo (`examples/popoto_kitchen/`) now exercises four
-mutation-after-save scenarios that correspond to the index-correctness fixes
-landed in PRs #159–#163. Each scenario is reachable via an interactive button
-in the demo.
-
-## Background
-
-Before this change the demo only created and deleted records. All four classes
-of index-corruption bugs fixed by the referenced PRs are triggered exclusively
-by mutation scenarios:
-
-| PR | Fix | Scenario |
-|----|-----|----------|
-| #159 | SortedField ghost entries on partition key change | Move a MenuItem to a different category |
-| #161 | save() removes obsolete key from class set on KeyField rename | Rename a Restaurant |
-| #162 | Partial save (`update_fields`) obsolete key cleanup | Advance an Order status |
-| #163 | Relationship.on_save() index cleanup on value change | Replace an Order's driver |
-
-## Model Changes
-
-### MenuItem — category promoted to KeyField
-
-`MenuItem.category` was previously a plain `Field(type=str)`. It is now a
-`KeyField()`, making category part of the Redis key:
-
-```
-Before: MenuItem:<item_id>
-After:  MenuItem:<category>:<item_id>
-```
-
-The `price` SortedField now uses `partition_by="category"`, so price index
-sorted sets are scoped per category (`MenuItem:_price:Main`,
-`MenuItem:_price:Appetizer`, etc.).
-
-**Seed data**: `seed.py` already passes an explicit `category=` argument for
-every `MenuItem` — no data-value changes were needed, only the field declaration
-changed.
-
-**Full-key lookup**: All `MenuItem` lookups in `menu.py` now use
-`MenuItem.query.get(redis_key=key.value)` (full key string) rather than
-splitting the key on `":"` to extract just the last segment.
-
-### Order.advance_status() — partial save
-
-`advance_status()` now calls:
+## Quick Start
 
 ```python
-super(Order, self).save(update_fields=["status", "updated_at"])
+from popoto.recipes.policy_cache import (
+    PolicyEntry,
+    compute_fingerprint,
+    update_q_value,
+    initialize_q_value,
+    crystallization_handler,
+    temporal_discovery_handler,
+)
+
+# Create a policy entry
+fp = compute_fingerprint({"task": "deploy", "env": "staging"})
+policy = PolicyEntry(
+    agent_id="agent-1",
+    state_fingerprint=fp,
+    state_features={"task": "deploy", "env": "staging"},
+    action_type="run_playbook",
+    action_spec={"playbook": "deploy.yml"},
+)
+policy.save()
+
+# Set initial Q-value (overrides DecayingSortedField timestamp)
+initialize_q_value(policy, initial_q=0.5)
+
+# Update Q-value after observing a reward
+td_error = update_q_value(policy, reward=1.0)
 ```
 
-Only the `status` and `updated_at` fields are written. The `total` SortedField
-index is untouched, demonstrating that partial save does not produce ghost
-index entries (PR #162 fix).
+## Architecture
 
-## New Interactive Flows
+PolicyEntry composes these primitives:
 
-### Menu Screen — "Move Category" (PR #159)
+| Primitive | Role in PolicyCache |
+|-----------|-------------------|
+| `AutoKeyField` | Unique entry ID |
+| `KeyField` | Agent partitioning, state fingerprinting, action type |
+| `DecayingSortedField` | Q-value storage with temporal decay |
+| `ConfidenceField` | Bayesian confidence from outcome history |
+| `CoOccurrenceField` | Weighted graph between related policies |
+| `ExistenceFilter` | Bloom filter for fast state lookup |
+| `EventStreamMixin` | Mutation log via Redis Streams |
+| `AccessTrackerMixin` | Read pattern tracking |
+| `PredictionLedgerMixin` | Outcome prediction and resolution |
 
-1. Select a menu item in the table.
-2. Click **Move Category**.
-3. The item cycles to the next category in `["Appetizer", "Main", "Side", "Dessert", "Drink"]`.
-4. `SortedField.on_save()` removes the item from the old price sorted set and
-   adds it to the new one.
-5. A notification shows `"Moved: {name} from {old} → {new}"`.
+## Crystallization
 
-Guard: if the computed next category is the same as the current (only one
-category exists in the list), the action is a no-op with a warning.
+The `crystallization_handler` is an async function designed for use with `StreamConsumer`. It:
 
-### Orders Screen — "→ Advance Status" (PR #162)
-
-Unchanged UI flow; the underlying implementation now uses partial save
-(`update_fields=["status", "updated_at"]`) so that only the status field and
-its timestamp are written. The total SortedField index is unaffected.
-
-### Orders Screen — "Assign Driver" (PR #163)
-
-When an order already has a driver assigned, reassigning shows:
-
-```
-Replaced driver: Alice → Bob
-```
-
-The old notification (`"Assigned driver: Bob"`) is now shown only for first
-assignment. A guard prevents reassigning the same driver twice.
-
-`Relationship.on_save()` handles the index cleanup: the order key is removed
-from the old driver's relationship index and added to the new driver's index.
-
-### Restaurants Screen — "Rename" (PR #161)
-
-1. Select a restaurant in the table.
-2. Click **Rename**.
-3. A new name is generated via `restaurant_name(restaurant.cuisine)`.
-4. `restaurant.name = new_name; restaurant.save()` — save detects the obsolete
-   Redis key, removes the old key from the `Restaurant` class set, and writes
-   the new key.
-5. `Restaurant.query.all()` returns the restaurant under the new key; the old
-   key is gone.
-
-## v1.4.4 Feature Demos (PR #346)
-
-PR #346 added a new `ReviewScore` model and an operations script that
-demonstrates four v1.4.4 features outside of the TUI. These are invoked
-via `python -m popoto_kitchen --ops` and print results to stdout.
-
-### ReviewScore Model
-
-A new model using `ConfidenceField` with `partition_by="restaurant"` to
-track review confidence per restaurant. See
-[ConfidenceField docs](confidence-field.md) for the Bayesian update formula.
+1. Groups incoming events by `(state_fingerprint, action_type)`
+2. Counts successes and failures
+3. Computes Wilson CI lower bound for conservative success rate estimation
+4. Creates a PolicyEntry when evidence exceeds thresholds:
+   - Minimum events: `MIN_EVENTS_FOR_CRYSTALLIZATION` (default: 3)
+   - Wilson CI lower bound > `WILSON_CI_THRESHOLD` (default: 0.6)
+5. Uses ExistenceFilter (Bloom filter) to skip likely-duplicate entries
 
 ```python
-class ReviewScore(Model):
-    restaurant = KeyField()
-    reviewer = KeyField()
-    score = ConfidenceField(initial_confidence=0.5, partition_by="restaurant")
-```
+from popoto.streams import StreamConsumer
 
-The seed script creates 100 review scores with varied confidence signals
-(2-6 signals per review, mix of positive and negative) to build realistic
-evidence histories.
-
-### Operations Script (`operations.py`)
-
-| Demo | Feature | Description |
-|------|---------|-------------|
-| `demo_get_many()` | `query.get_many()` | Bulk-loads Order instances by key in a single pipeline call. Shows both default mode (with `None` placeholders) and `skip_none=True` mode. |
-| `demo_check_and_clean_indexes()` | `check_indexes()` / `clean_indexes()` | Runs a read-only health check on all models, then surgically removes any orphaned index entries found. |
-| `demo_companion_hash_keys()` | `get_data_hash_key()` | Inspects the companion Redis hash keys for ReviewScore's ConfidenceField, showing how `partition_by` creates per-restaurant hashes. Also demonstrates `get_data_hash_key_from_values()` for building keys without a loaded instance. |
-
-### Entry Point Changes
-
-New CLI flags added to `__main__.py`:
-
-- `--ops` -- Run v1.4.4 operations demos and exit
-- `--seed-only --clear` -- Seed fresh data without launching the TUI
-
-## Running the Demo
-
-```bash
-# Start the TUI (interactive edge case demos)
-python -m examples.popoto_kitchen
-
-# Clear any stale seeded data first (category -> KeyField is a breaking schema change)
-# In the Dashboard screen, click "Clear All Data", then "Seed Data"
-
-# Run the v1.4.4 operations demos (non-interactive, stdout output)
-python -m popoto_kitchen --seed-only --clear
-python -m popoto_kitchen --ops
-```
-
-Navigate to each screen and use the new buttons to observe the edge case
-behaviors described above. Use `--ops` for the v1.4.4 feature demos.
-
----
-
-## Agent Memory Quickstart
-
-# Agent Memory Quickstart
-
-Add programmable memory to your AI agent in 5 progressive levels. Each level is independently useful — adopt only what you need.
-
-> **Prerequisites:** `pip install popoto` and Redis running on `localhost:6379`.
->
-> **Full reference:** [Agent Memory Feature Overview](../features/agent-memory.md) covers all 14 primitives in depth.
-
-## Level 1: Recall — Time-Weighted Retrieval
-
-The simplest useful memory. Records decay over time so recent, important memories surface first.
-
-```python
-from popoto import Model, AutoKeyField, KeyField, StringField, FloatField
-from popoto import DecayingSortedField
-
-class Memory(Model):
-    memory_id = AutoKeyField()
-    agent_id = KeyField()
-    content = StringField(default="")
-    importance = FloatField(default=1.0)
-    relevance = DecayingSortedField(
-        base_score_field="importance",
-        partition_by="agent_id",
-    )
-
-# Save
-Memory(agent_id="agent-1", content="Deploy uses blue-green strategy", importance=2.0).save()
-Memory(agent_id="agent-1", content="Lunch order: salad", importance=0.5).save()
-
-# Retrieve top memories ranked by recency * importance
-results = Memory.query.filter(agent_id="agent-1").top_by_decay(n=5)
-for m in results:
-    print(m.content)
-```
-
-**What you get:** Records that matter surface first. Old, low-importance records fade away naturally.
-
-## Level 2: Attention — Filter Noise, Track Reads
-
-Add `WriteFilterMixin` to discard low-value records before they hit Redis. Add `AccessTrackerMixin` to know which memories the agent actually uses.
-
-```python
-from popoto import WriteFilterMixin, AccessTrackerMixin
-
-class Memory(WriteFilterMixin, AccessTrackerMixin, Model):
-    memory_id = AutoKeyField()
-    agent_id = KeyField()
-    content = StringField(default="")
-    importance = FloatField(default=1.0)
-    relevance = DecayingSortedField(
-        base_score_field="importance",
-        partition_by="agent_id",
-    )
-
-    _wf_min_threshold = 0.1       # below this: silently discarded (default; was 0.2 before sweep 2026-04-17)
-    _wf_priority_threshold = 0.7  # above this: tagged as priority
-
-    def compute_filter_score(self):
-        return self.importance or 0.0
-
-# Low-value record is silently dropped (save returns False)
-result = Memory(agent_id="agent-1", content="noise", importance=0.05).save()
-assert result is False
-
-# High-value record persists normally
-Memory(agent_id="agent-1", content="critical finding", importance=0.9).save()
-
-# After retrieving, confirm the agent used it
-results = Memory.query.filter(agent_id="agent-1").top_by_decay(n=5)
-results[0].confirm_access()  # marks as actually used
-```
-
-**What you get:** Cleaner memory — noise never persists. Read tracking shows which memories drive agent behavior.
-
-## Level 3: Learning — Outcomes Strengthen or Weaken Beliefs
-
-Add `ConfidenceField` for Bayesian certainty tracking. Use `ObservationProtocol` to report how the agent used each memory — acted on, dismissed, or contradicted.
-
-```python
-from popoto import ConfidenceField, ObservationProtocol
-
-class Memory(WriteFilterMixin, AccessTrackerMixin, Model):
-    memory_id = AutoKeyField()
-    agent_id = KeyField()
-    content = StringField(default="")
-    importance = FloatField(default=1.0)
-    relevance = DecayingSortedField(
-        base_score_field="importance",
-        partition_by="agent_id",
-    )
-    confidence = ConfidenceField(initial_confidence=0.5)
-
-    _wf_min_threshold = 0.1  # default after sweep 2026-04-17 (was 0.2)
-    _wf_priority_threshold = 0.7
-
-    def compute_filter_score(self):
-        return self.importance or 0.0
-
-m = Memory(agent_id="agent-1", content="API key rotates monthly", importance=0.8)
-m.save()
-
-# Corroborate: evidence confirms the belief
-ConfidenceField.update_confidence(m, "confidence", signal=0.9)
-
-# Or contradict: evidence weakens the belief
-ConfidenceField.update_confidence(m, "confidence", signal=0.1)
-
-# Report agent outcomes in bulk
-outcome_map = {m.db_key.redis_key: "acted"}  # or "dismissed", "contradicted", "deferred", "used"
-ObservationProtocol.on_context_used([m], outcome_map)
-```
-
-**What you get:** Memories that the agent acts on grow stronger. Contradicted memories fade. The system learns from outcomes.
-
-## Level 4: Association — Multi-Factor Ranking
-
-Add `CoOccurrenceField` for weighted associations between memories. Use `composite_score()` to rank by multiple factors at once.
-
-```python
-from popoto import CoOccurrenceField
-
-class Memory(WriteFilterMixin, AccessTrackerMixin, Model):
-    memory_id = AutoKeyField()
-    agent_id = KeyField()
-    content = StringField(default="")
-    importance = FloatField(default=1.0)
-    relevance = DecayingSortedField(
-        base_score_field="importance",
-        partition_by="agent_id",
-    )
-    confidence = ConfidenceField(initial_confidence=0.5)
-    associations = CoOccurrenceField(symmetric=True, max_edges=50)
-
-    _wf_min_threshold = 0.1  # default after sweep 2026-04-17 (was 0.2)
-    _wf_priority_threshold = 0.7
-
-    def compute_filter_score(self):
-        return self.importance or 0.0
-
-m1 = Memory(agent_id="agent-1", content="deploy process", importance=0.8)
-m1.save()
-m2 = Memory(agent_id="agent-1", content="rollback steps", importance=0.8)
-m2.save()
-
-# Link related memories
-assoc_field = Memory._meta.fields["associations"]
-assoc_field.link(Memory, m1.db_key.redis_key, m2.db_key.redis_key, initial_weight=0.5)
-
-# Multi-factor retrieval: combine relevance with other indexes
-results = Memory.query.filter(agent_id="agent-1").composite_score(
-    indexes={"relevance": 1.0},
-    limit=10,
+consumer = StreamConsumer(
+    stream_key="stream:policy_mutations",
+    group_name="crystallizer",
+    consumer_name="worker-1",
+    handler=crystallization_handler,
 )
 ```
 
-**What you get:** Memories form a graph. Retrieving one can surface related memories. Multiple ranking factors combine into a single query.
+## Temporal Discovery
 
-## Level 5: Cognition — LLM-Ready Context Assembly
+The `temporal_discovery_handler` identifies cyclical patterns in event timestamps:
 
-Use `ContextAssembler` to orchestrate all primitives into a single `assemble()` call that returns formatted, token-budgeted context ready for your LLM prompt.
+- **Day of week** (7 buckets) — weekly patterns
+- **Week of month** (4 buckets) — monthly patterns
+- **Month of year** (12 buckets) — yearly patterns
+
+Uses chi-squared test against uniform distribution. Significant clusters (p < 0.05) are returned as `(period, amplitude, phase)` tuples suitable for `CyclicDecayField`.
+
+## Q-Value Updates
+
+The `update_q_value` function performs atomic TD(0) updates via Lua script:
+
+```
+Q(s,a) <- Q(s,a) + alpha * [reward + gamma * max_Q(s',a') - Q(s,a)]
+```
+
+- **alpha** (learning rate): How much new information overrides old (default: 0.1)
+- **gamma** (discount factor): Importance of future rewards (default: 0.95)
+- Returns TD error (positive = better than expected)
+
+## Tuning Constants
+
+All numeric constants have been validated via parameter sweep ([tuning guide](tuning-magic-numbers.md)):
+
+| Constant | Default | Purpose |
+|----------|---------|---------|
+| `MIN_EVENTS_FOR_CRYSTALLIZATION` | 3 | Minimum events before crystallization |
+| `WILSON_CI_THRESHOLD` | 0.6 | Required Wilson CI lower bound |
+| `TD_ALPHA` | 0.1 | Q-value learning rate |
+| `TD_GAMMA` | 0.95 | Q-value discount factor |
+| `CHI_SQUARED_P_THRESHOLD` | 0.05 | Temporal pattern significance |
+| `INITIAL_CYCLE_AMPLITUDE` | 0.5 | Starting amplitude for discovered cycles |
+
+## Design Decisions
+
+- **WriteFilterMixin excluded**: The crystallization handler IS the write gate. Dual gating makes debugging harder.
+- **Recipe, not core**: Lives in `popoto.recipes` to demonstrate composition without coupling to the ORM core.
+- **Bloom filter false positives**: ~1% of legitimate crystallizations may be skipped due to ExistenceFilter's error rate. Acceptable for reference use; production systems needing zero misses should add a secondary check.
+
+---
+
+## SubconsciousMemory
+
+# Subconscious Memory Recipe
+
+> **New to Agent Memory?** Start with the [Quickstart Guide](agent-memory-quickstart.md) for a progressive adoption path.
+
+Automatic memory injection and extraction around every LLM turn. The agent's memory works silently -- assembling relevant context before each call and saving new observations after each response -- without the application needing to manage memory explicitly.
+
+## Architecture
+
+```
+User message
+    |
+    v
+[Pre-turn: ContextAssembler.assemble() -> inject into system message]
+    |
+    v
+[LLM inference]
+    |
+    v
+[Post-turn: extract facts from response -> save as Memory records]
+    |
+    v
+[Outcome: report acted/dismissed/contradicted via ObservationProtocol]
+    |
+    v
+Agent response
+```
+
+## Quick Start
 
 ```python
-from popoto import ContextAssembler
+from popoto import (
+    Model, AutoKeyField, KeyField, StringField, FloatField,
+    DecayingSortedField, ConfidenceField,
+    WriteFilterMixin, AccessTrackerMixin,
+)
+from popoto.recipes.subconscious_memory import SubconsciousMemory
 
-# Use any Memory model from Levels 1-4
-assembler = ContextAssembler(
+# Define your Memory model (any level from the quickstart guide)
+class Memory(WriteFilterMixin, AccessTrackerMixin, Model):
+    memory_id = AutoKeyField()
+    agent_id = KeyField()
+    content = StringField(default="")
+    importance = FloatField(default=1.0)
+    relevance = DecayingSortedField(
+        base_score_field="importance",
+        partition_by="agent_id",
+    )
+    confidence = ConfidenceField(initial_confidence=0.5)
+
+    _wf_min_threshold = 0.1  # default after sweep 2026-04-17 (was 0.2)
+    _wf_priority_threshold = 0.7
+
+    def compute_filter_score(self):
+        return self.importance or 0.0
+
+# Create the subconscious memory layer
+sm = SubconsciousMemory(
     model_class=Memory,
+    agent_id="agent-1",
     score_weights={"relevance": 0.6, "confidence": 0.3},
     max_items=10,
     max_tokens=4000,
 )
-
-result = assembler.assemble(
-    query_cues={"topic": "deployment"},
-    agent_id="agent-1",
-)
-
-# result.records   — selected model instances
-# result.formatted — LLM-ready string (JSON by default)
-# result.metadata  — scores, timing, token counts
-
-# Inject into your LLM prompt
-system_prompt = f"You are a helpful assistant.\n\nRelevant context:\n{result.formatted}"
 ```
 
-### Complete LLM Integration Example
+## OpenAI SDK Integration
 
-Wire assembled context into an OpenAI SDK v1+ call and report outcomes:
+Wire subconscious memory into a standard OpenAI chat completion call:
 
 ```python
 from openai import OpenAI
-from popoto import ContextAssembler, ObservationProtocol
 
 client = OpenAI()  # uses OPENAI_API_KEY env var
 
-# Assemble memory context
-result = assembler.assemble(query_cues={"topic": "deployment"}, agent_id="agent-1")
-
-# Build messages with injected memory
 messages = [
-    {"role": "system", "content": f"You are a helpful assistant.\n\nRelevant context:\n{result.formatted}"},
+    {"role": "system", "content": "You are a helpful assistant."},
     {"role": "user", "content": "What's our deployment strategy?"},
 ]
 
-# Call the LLM
+# Pre-turn: inject relevant memories into messages
+messages, assembly_result = sm.inject_context(messages)
+
+# Call the LLM (messages now include memory context in the system message)
 response = client.chat.completions.create(
     model="gpt-4.1-nano",
     messages=messages,
 )
-
 answer = response.choices[0].message.content
 
-# Report outcomes — which memories did the agent actually use?
-outcome_map = {r.db_key.redis_key: "acted" for r in result.records}
-ObservationProtocol.on_context_used(result.records, outcome_map)
+# Post-turn: extract facts from the response and save as new memories
+new_memories = sm.extract_memories(answer, importance=0.6)
+
+# Report outcomes: memories were used successfully
+sm.report_outcomes(assembly_result, outcome="acted")
 ```
 
-**What you get:** One call assembles the right memories, respects token budgets, and formats output for your LLM. Pull-path (query-driven) and push-path (proactive surfacing) retrieval in a single pipeline.
+## How It Works
 
-## Level 6: Semantic Search — Find Memories by Meaning
+### Pre-turn: `inject_context(messages)`
 
-Add `ContentField` and `EmbeddingField` to store large content on the filesystem and search it by semantic similarity. Redis stays lean (only references and dimension counts), while content and vectors live on disk.
+1. Extracts the last user message as a query cue
+2. Calls `ContextAssembler.assemble()` with the agent's memory model
+3. Appends the formatted context to the system message (creates one if absent)
+4. Returns the modified messages and an `AssemblyResult` for later outcome reporting
+
+If no relevant memories are found, messages are returned unchanged.
+
+### Post-turn: `extract_memories(response_text, importance)`
+
+1. Splits the LLM response into sentences
+2. Filters out sentences shorter than `extraction_min_length` (default 10 chars)
+3. Saves each sentence as a new Memory record with the specified importance
+
+The built-in extraction uses a simple sentence-splitting heuristic. For more accurate extraction, override this method or extract facts using a secondary LLM call and save them directly via your model class.
+
+### Outcome: `report_outcomes(assembly_result, outcome)`
+
+Reports how the agent used the injected memories via `ObservationProtocol.on_context_used()`. Outcomes strengthen or weaken memories for future retrieval:
+
+- `"acted"` -- the agent used this memory (strengthens confidence)
+- `"dismissed"` -- the agent ignored this memory (mild weakening)
+- `"contradicted"` -- the agent found this memory incorrect (strong weakening)
+- `"deferred"` -- the agent noted but deferred action (neutral)
+- `"used"` -- the memory informed reasoning without appearing in the response (confirms access, no strength signal)
+
+## Tuning
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `max_items` | 10 | Maximum memories injected per turn |
+| `max_tokens` | 4000 | Soft token budget for injected context |
+| `extraction_min_length` | 10 | Minimum chars for a sentence to become a memory |
+| `score_weights` | (required) | Weight dict for composite scoring (e.g. `{"relevance": 0.6, "confidence": 0.3}`) |
+| `system_preamble` | "You are a helpful assistant." | Prefix for auto-created system messages |
+| `content_field` | "content" | Name of the text content field on your model |
+| `importance_field` | "importance" | Name of the importance score field |
+
+These constants can be tuned experimentally using the Tier 4 benchmark harness. See the [Tuning Magic Numbers](tuning-magic-numbers.md) guide for the full constant catalog, optimal ranges, and how to run parameter sweeps.
+
+## Extensibility
+
+### Custom Fact Extraction
+
+Subclass `SubconsciousMemory` and override `extract_memories()` for LLM-based extraction:
+
+```python
+class SmartSubconsciousMemory(SubconsciousMemory):
+    def extract_memories(self, response_text, importance=0.5):
+        # Use a secondary LLM call to extract structured facts
+        facts = my_extraction_function(response_text)
+        saved = []
+        for fact in facts:
+            m = self.model_class(
+                agent_id=self.agent_id,
+                content=fact["text"],
+                importance=fact.get("importance", importance),
+            )
+            m.save()
+            saved.append(m)
+        return saved
+```
+
+### Custom Query Cues
+
+The default implementation uses the last user message as the query cue. For more sophisticated cue extraction, subclass and override the relevant portion of `inject_context()`.
+
+## See Also
+
+- [Agent Memory Quickstart](agent-memory-quickstart.md) -- progressive adoption guide
+- [ContextAssembler](../features/context-assembler.md) -- retrieval-to-injection bridge
+- [PolicyCache Recipe](policy-cache-recipe.md) -- RL-style learned action selection
+
+---
+
+## RAG Chatbot
+
+# RAG Chatbot Recipe
+
+Build a retrieval-augmented generation (RAG) chatbot that stores conversation
+history and knowledge in Popoto, retrieves relevant context via semantic search,
+and feeds it to an LLM for grounded responses.
+
+> **Prerequisites:**
+>
+> - `pip install popoto[voyage]` (or `popoto[openai]` for OpenAI embeddings)
+> - Redis running on `localhost:6379`
+> - An API key for your embedding provider
+> - An API key for your LLM (this recipe uses OpenAI, but any LLM works)
+
+## Architecture
+
+```
+User question
+    |
+    v
+[Embed query] --> [Semantic search Popoto] --> [Top-K knowledge chunks]
+    |                                                |
+    v                                                v
+[Build prompt with retrieved context] --> [LLM generates answer]
+    |
+    v
+[Store conversation turn in Popoto]
+```
+
+Popoto handles the storage and retrieval layer. The LLM call is your choice --
+OpenAI, Anthropic, a local model, or any API-compatible provider.
+
+## Step 1: Configure Popoto
+
+Call `popoto.configure()` once at application startup. This sets the default
+embedding provider for all `EmbeddingField` instances and `semantic_search()` calls.
 
 ```python
 import popoto
-from popoto import (
-    Model, AutoKeyField, KeyField, FloatField,
-    ContentField, EmbeddingField, DecayingSortedField, ConfidenceField,
-)
 from popoto.embeddings.voyage import VoyageProvider
 
-# Configure once at startup — sets the default embedding provider
-# and content storage path for all fields
 popoto.configure(
-    embedding_provider=VoyageProvider(api_key="your-key"),
-    content_path="/data/agent-memory",
+    embedding_provider=VoyageProvider(api_key="your-voyage-key"),
+    content_path="/data/chatbot-memory",
 )
+```
 
-# ----
-# Prefer no API keys? Run Ollama locally and swap providers.
-# Prerequisite: `ollama pull nomic-embed-text` and `ollama serve`.
-#
-# from popoto.embeddings.ollama import OllamaProvider
-# popoto.configure(
-#     embedding_provider=OllamaProvider(model="nomic-embed-text"),
-#     content_path="/data/agent-memory",
-# )
-# ----
+See [Configuration](../configuration.md#content-and-embedding-configuration) for
+all options including OpenAI provider setup.
 
-class Memory(Model):
-    memory_id = AutoKeyField()
-    agent_id = KeyField()
-    content = ContentField()                    # large text stored on filesystem
+## Step 2: Define Knowledge and Conversation Models
+
+```python
+from popoto import Model, AutoKeyField, KeyField, FloatField
+from popoto import ContentField, EmbeddingField, DecayingSortedField
+
+class Knowledge(Model):
+    """Long-lived knowledge base entries. Ingest documents, FAQs, or any
+    reference material the chatbot should be able to cite."""
+    chunk_id = AutoKeyField()
+    source = KeyField()              # e.g. "faq", "docs", "manual"
+    content = ContentField()         # full text stored on filesystem
+    embedding = EmbeddingField(source="content")  # auto-generated on save
+
+class ConversationTurn(Model):
+    """Stores each user/assistant exchange. Decaying relevance ensures
+    recent conversation context surfaces first."""
+    turn_id = AutoKeyField()
+    session_id = KeyField()          # groups turns by conversation
+    role = KeyField()                # "user" or "assistant"
+    content = ContentField()
     importance = FloatField(default=1.0)
     relevance = DecayingSortedField(
         base_score_field="importance",
-        partition_by="agent_id",
+        partition_by="session_id",
     )
+    embedding = EmbeddingField(source="content")
+```
+
+## Step 3: Ingest Knowledge
+
+Load your knowledge base into Popoto. Each chunk gets an embedding automatically
+on save.
+
+```python
+def ingest_document(source: str, chunks: list[str]):
+    """Ingest a list of text chunks from a document source."""
+    for chunk_text in chunks:
+        Knowledge.create(source=source, content=chunk_text)
+
+# Example: ingest FAQ entries
+faqs = [
+    "Our return policy allows returns within 30 days of purchase with receipt.",
+    "Shipping is free on orders over $50. Standard shipping takes 3-5 business days.",
+    "Premium members get 20% off all orders and priority customer support.",
+]
+ingest_document(source="faq", chunks=faqs)
+```
+
+## Step 4: Retrieve Context and Generate Responses
+
+```python
+import openai
+
+client = openai.OpenAI(api_key="your-openai-key")
+
+def ask(session_id: str, question: str) -> str:
+    """Answer a user question using RAG retrieval from Popoto."""
+
+    # 1. Search knowledge base by meaning
+    knowledge_results = Knowledge.query.semantic_search(
+        question, limit=3,
+    )
+
+    # 2. Search recent conversation for continuity
+    conversation_results = ConversationTurn.query.filter(
+        session_id=session_id,
+    ).semantic_search(
+        question,
+        indexes={"relevance": 0.5},
+        limit=5,
+    )
+
+    # 3. Build context block
+    context_parts = []
+    if knowledge_results:
+        context_parts.append("## Relevant Knowledge")
+        for k in knowledge_results:
+            context_parts.append(f"- {k.content}")
+    if conversation_results:
+        context_parts.append("\n## Recent Conversation")
+        for turn in conversation_results:
+            context_parts.append(f"[{turn.role}]: {turn.content}")
+
+    context_block = "\n".join(context_parts)
+
+    # 4. Call the LLM
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are a helpful customer support assistant. "
+                    "Answer based on the provided context. "
+                    "If the context does not contain the answer, say so.\n\n"
+                    f"{context_block}"
+                ),
+            },
+            {"role": "user", "content": question},
+        ],
+    )
+    answer = response.choices[0].message.content
+
+    # 5. Store both turns for future retrieval
+    ConversationTurn.create(
+        session_id=session_id, role="user", content=question, importance=1.0,
+    )
+    ConversationTurn.create(
+        session_id=session_id, role="assistant", content=answer, importance=0.8,
+    )
+
+    return answer
+```
+
+## Step 5: Use It
+
+```python
+session = "session-abc123"
+
+print(ask(session, "What is your return policy?"))
+# => "You can return items within 30 days of purchase with a receipt..."
+
+print(ask(session, "Do I get free shipping?"))
+# => "Yes, shipping is free on orders over $50..."
+
+# Follow-up that uses conversation context
+print(ask(session, "What about for premium members?"))
+# => "Premium members get 20% off all orders and priority support..."
+```
+
+## Variations
+
+### Use OpenAI Embeddings Instead of Voyage
+
+```python
+from popoto.embeddings.openai import OpenAIProvider
+
+popoto.configure(
+    embedding_provider=OpenAIProvider(api_key="your-openai-key"),
+)
+```
+
+Install: `pip install popoto[openai]`
+
+### Add Confidence Tracking
+
+Track which knowledge entries the chatbot actually uses and strengthen them
+over time using `ConfidenceField`:
+
+```python
+from popoto import ConfidenceField
+
+class Knowledge(Model):
+    chunk_id = AutoKeyField()
+    source = KeyField()
+    content = ContentField()
+    embedding = EmbeddingField(source="content")
     confidence = ConfidenceField(initial_confidence=0.5)
-    embedding = EmbeddingField(source="content")  # auto-generates vector on save
 
-# Save memories — embeddings are generated automatically
-Memory.create(
-    agent_id="agent-1",
-    content="Q4 revenue exceeded projections by 12%, driven by enterprise deals.",
-    importance=0.9,
-)
-Memory.create(
-    agent_id="agent-1",
-    content="Engineering headcount target is 50 by end of year.",
-    importance=0.7,
-)
-Memory.create(
-    agent_id="agent-1",
-    content="The deploy pipeline uses blue-green strategy with automatic rollback.",
-    importance=0.8,
-)
+# After the LLM uses a knowledge entry successfully:
+ConfidenceField.update_confidence(entry, "confidence", signal=0.9)
 
-# Similarity-only search — ranked by cosine similarity to the query
-results = Memory.query.semantic_search("revenue performance", limit=5)
-for m in results:
-    print(m.content[:80])
-
-# Combined search — blends similarity with decay and confidence signals
-results = Memory.query.semantic_search(
-    "revenue performance",
-    indexes={"relevance": 0.4, "confidence": 0.3},
+# Blend confidence into retrieval ranking:
+results = Knowledge.query.semantic_search(
+    question,
+    indexes={"confidence": 0.3},
     limit=5,
 )
 ```
 
-**What you get:** Memories are searchable by meaning, not just keywords. Combined with decay and confidence, the most relevant, recent, and trusted memories surface first.
+### Async Version
 
-> **Install extras:** `pip install popoto[voyage]` for Voyage AI embeddings, or `pip install popoto[openai]` for OpenAI. For a no-API-key setup, run [Ollama](https://ollama.com) locally and use `OllamaProvider` (no extras needed -- stdlib only). See [Content and Embedding Fields](../features/content-and-embedding-fields.md) for all provider options.
-
-## Import Cheat Sheet
-
-All imports come from the top-level `popoto` package:
+Popoto model operations have async counterparts for creation and retrieval:
 
 ```python
-# Models and fields
-from popoto import Model, AutoKeyField, KeyField, StringField, FloatField
-from popoto import DecayingSortedField, ConfidenceField, CoOccurrenceField
-from popoto import ContentField, EmbeddingField
-
-# Mixins (listed before Model in class definition)
-from popoto import WriteFilterMixin, AccessTrackerMixin
-
-# Observation and context
-from popoto import ObservationProtocol, ContextAssembler
-
-# Constants for tuning
-from popoto import InteractionWeight, TemporalPeriod, Defaults
+async def async_ask(session_id: str, question: str) -> str:
+    # Semantic search is synchronous — run it in a thread if needed
+    knowledge_results = Knowledge.query.semantic_search(
+        question, limit=3,
+    )
+    # ... rest of the pipeline
+    await ConversationTurn.async_create(
+        session_id=session_id, role="user", content=question,
+    )
 ```
 
-**Never** use `from popoto.fields import ...` — the `popoto.fields` subpackage does not re-export field types. Always import from `popoto` directly.
+## Key Points
 
-## What's Next
+- **ContentField** stores large text on the filesystem, keeping Redis lean
+- **EmbeddingField** auto-generates vectors on save -- no manual embedding calls
+- **semantic_search()** handles embedding the query, computing similarity, and hydrating results
+- Combined with `indexes`, semantic search blends meaning-based retrieval with decay, confidence, and other memory signals
+- Conversation history with `DecayingSortedField` ensures recent context surfaces first
 
-- **[Agent Memory Feature Overview](../features/agent-memory.md)** — all 14 primitives with full API documentation
-- **[Content and Embedding Fields](../features/content-and-embedding-fields.md)** — deep dive into ContentField, EmbeddingField, and semantic_search
-- **[RAG Chatbot Recipe](rag-chatbot-recipe.md)** — build a retrieval-augmented chatbot with Popoto
-- **[Tuning Magic Numbers](tuning-magic-numbers.md)** — adjust decay rates, confidence signals, and thresholds
-- **[PolicyCache Recipe](policy-cache-recipe.md)** — RL-style learned action selection built on these primitives
-- **[Subconscious Memory Recipe](subconscious-memory-recipe.md)** — automatic memory injection and extraction around LLM turns
+## See Also
+
+- [Agent Memory Quickstart](agent-memory-quickstart.md) -- progressive levels from basic recall to semantic search
+- [Content and Embedding Fields](../features/content-and-embedding-fields.md) -- deep dive into storage, providers, and caching
+- [Configuration](../configuration.md#content-and-embedding-configuration) -- global setup for embeddings and content storage
+- [PolicyCache Recipe](policy-cache-recipe.md) -- RL-style action selection built on memory primitives
 
 ---
 
-## Tuning Magic Numbers
+## Magic Numbers
 
 # Tuning Magic Numbers: Agent-Memory Constants
 
@@ -10503,299 +10978,183 @@ Results are saved to `tests/benchmarks/results/sweep_YYYYMMDD_HHMMSS.json` with 
 
 ---
 
-## Policy Cache Recipe
+## Parametric Sweep
 
-# PolicyCache Recipe
+# Parametric Sweep: Generated Scenarios, Train/Validation Splits, and Ratchet Loop
 
-> **New to Agent Memory?** Start with the [Quickstart Guide](agent-memory-quickstart.md) for a progressive adoption path.
+The parametric sweep system generates diverse stress-test scenarios from parameterized seeds, splits them into train and validation sets to guard against overfitting, and provides a ratchet loop that automates keep/discard decisions for proposed constant changes.
 
-A reference recipe composing all shipped Popoto memory primitives into an RL-style action selection cache. Agents accumulate state-action-outcome events; a crystallization handler detects repeated successful patterns and creates PolicyEntry records. Agents query policies for action selection, and outcomes update Q-values via temporal difference learning.
+This extends the existing [benchmark harness](../guides/tuning-magic-numbers.md) without modifying the immutable evaluation infrastructure (metrics, `apply_overrides`, `Scenario` base class).
 
-## Quick Start
+## Motivation
 
-```python
-from popoto.recipes.policy_cache import (
-    PolicyEntry,
-    compute_fingerprint,
-    update_q_value,
-    initialize_q_value,
-    crystallization_handler,
-    temporal_discovery_handler,
-)
+The 3 hand-crafted field-layer scenarios (`factual_recall`, `multi_step_reasoning`, `temporal_scheduling`) use small record counts (8-13) and similar importance distributions, making Tier 1-3 constant sweeps uninformative -- most constants show zero sensitivity. Manually designing more scenarios risks overfitting to specific test cases.
 
-# Create a policy entry
-fp = compute_fingerprint({"task": "deploy", "env": "staging"})
-policy = PolicyEntry(
-    agent_id="agent-1",
-    state_fingerprint=fp,
-    state_features={"task": "deploy", "env": "staging"},
-    action_type="run_playbook",
-    action_spec={"playbook": "deploy.yml"},
-)
-policy.save()
+The parametric system solves both problems: `ScenarioFactory` generates 50 scenarios with varied axes that expose real constant sensitivity, while the train/validation split catches spurious "improvements" that do not generalize.
 
-# Set initial Q-value (overrides DecayingSortedField timestamp)
-initialize_q_value(policy, initial_q=0.5)
+## Components
 
-# Update Q-value after observing a reward
-td_error = update_q_value(policy, reward=1.0)
-```
+### ScenarioFactory
 
-## Architecture
+**Module**: `tests/benchmarks/scenarios/factory.py`
 
-PolicyEntry composes these primitives:
+Generates `Scenario` subclasses from `ScenarioSeed` dataclasses. Each seed deterministically produces a scenario with specific characteristics via `random.Random(seed_id)`.
 
-| Primitive | Role in PolicyCache |
-|-----------|-------------------|
-| `AutoKeyField` | Unique entry ID |
-| `KeyField` | Agent partitioning, state fingerprinting, action type |
-| `DecayingSortedField` | Q-value storage with temporal decay |
-| `ConfidenceField` | Bayesian confidence from outcome history |
-| `CoOccurrenceField` | Weighted graph between related policies |
-| `ExistenceFilter` | Bloom filter for fast state lookup |
-| `EventStreamMixin` | Mutation log via Redis Streams |
-| `AccessTrackerMixin` | Read pattern tracking |
-| `PredictionLedgerMixin` | Outcome prediction and resolution |
+**ScenarioSeed axes** (7 parameterizable dimensions):
 
-## Crystallization
+| Axis | Type | Range | Effect |
+|------|------|-------|--------|
+| `record_count` | int | 5-100 | Number of Memory records created in setup |
+| `importance_shape` | enum | uniform, clustered, bimodal, exponential, flat | Distribution shape for importance values |
+| `access_pattern` | enum | all_recent, half_stale, mostly_stale, interleaved | Which records get recent access (affects decay) |
+| `outcome_frequency` | float | 0.0-1.0 | Fraction of records that receive "acted" outcomes |
+| `noise_ratio` | float | 0.0-0.5 | Fraction of records that are pure noise (importance < 0.15) |
+| `link_density` | float | 0.0-1.0 | Fraction of record pairs with co-occurrence links |
+| `age_spread_days` | int | 1-365 | Range of record ages (affects temporal decay separation) |
 
-The `crystallization_handler` is an async function designed for use with `StreamConsumer`. It:
-
-1. Groups incoming events by `(state_fingerprint, action_type)`
-2. Counts successes and failures
-3. Computes Wilson CI lower bound for conservative success rate estimation
-4. Creates a PolicyEntry when evidence exceeds thresholds:
-   - Minimum events: `MIN_EVENTS_FOR_CRYSTALLIZATION` (default: 3)
-   - Wilson CI lower bound > `WILSON_CI_THRESHOLD` (default: 0.6)
-5. Uses ExistenceFilter (Bloom filter) to skip likely-duplicate entries
+**Key APIs**:
 
 ```python
-from popoto.streams import StreamConsumer
+from tests.benchmarks.scenarios.factory import ScenarioFactory, ScenarioSeed
 
-consumer = StreamConsumer(
-    stream_key="stream:policy_mutations",
-    group_name="crystallizer",
-    consumer_name="worker-1",
-    handler=crystallization_handler,
-)
+# Generate 50 diverse seeds (deterministic)
+seeds = ScenarioFactory.default_seeds(n=50)
+
+# Create a single scenario class from a seed
+scenario_class = ScenarioFactory.create(seeds[0])
+
+# Create all scenario classes at once
+scenario_classes = ScenarioFactory.create_all(n=50)
 ```
 
-## Temporal Discovery
+Generated scenario classes conform to the standard `Scenario` interface -- they have a `name` attribute, accept `overrides` in the constructor, and return a valid `ScenarioResult` from `execute()`.
 
-The `temporal_discovery_handler` identifies cyclical patterns in event timestamps:
+### Train/Validation Split
 
-- **Day of week** (7 buckets) — weekly patterns
-- **Week of month** (4 buckets) — monthly patterns
-- **Month of year** (12 buckets) — yearly patterns
+**Module**: `tests/benchmarks/split.py`
 
-Uses chi-squared test against uniform distribution. Significant clusters (p < 0.05) are returned as `(period, amplitude, phase)` tuples suitable for `CyclicDecayField`.
+Partitions seeds into disjoint train (70%) and validation (30%) sets by seed ID. The split is deterministic and fixed -- seed IDs 0-34 go to train, 35-49 go to validation.
 
-## Q-Value Updates
+`SplitRunner` wraps two `SweepRunner` instances and provides a `sweep_and_validate()` method that:
 
-The `update_q_value` function performs atomic TD(0) updates via Lua script:
+1. Sweeps a constant on train scenarios to find the optimal value.
+2. Evaluates the optimal value AND the current default on validation scenarios.
+3. Compares and produces an accept/reject `ValidationResult`.
+
+A proposed change is accepted only if the validation delta exceeds the improvement threshold (default 0.01). This guards against overfitting to the train set.
+
+```python
+from tests.benchmarks.split import SplitRunner, make_split
+from tests.benchmarks.scenarios.factory import ScenarioFactory
+
+seeds = ScenarioFactory.default_seeds(50)
+train_seeds, val_seeds = make_split(seeds)
+
+train_scenarios = ScenarioFactory.create_all(train_seeds)
+val_scenarios = ScenarioFactory.create_all(val_seeds)
+
+runner = SplitRunner(train_scenarios, val_scenarios)
+result = runner.sweep_and_validate("decay_rate", [0.1, 0.3, 0.5, 0.7])
+# result.recommendation is "accept" or "reject"
+# result.delta is validation_score - validation_default_score
+```
+
+### Ratchet Loop
+
+**Module**: `tests/benchmarks/ratchet.py`
+
+Automates the full keep/discard pipeline for all Tier 1-3 constants:
+
+1. Generate 50 parametric scenarios and split into train/validation.
+2. For each constant: sweep on train, validate on held-out set.
+3. Check cliff safety margins (10% buffer from detected cliff boundaries).
+4. Produce a `RatchetSummary` with accept/reject/no-sensitivity decisions.
+
+The ratchet **never writes to `constants.py`** -- it outputs a human-readable report.
+
+```python
+from tests.benchmarks.ratchet import RatchetLoop
+
+loop = RatchetLoop(n_seeds=50)
+summary = loop.run()
+print(summary.format_report())
+```
+
+**Example output**:
 
 ```
-Q(s,a) <- Q(s,a) + alpha * [reward + gamma * max_Q(s',a') - Q(s,a)]
+RATCHET SUMMARY
+======================================================================
+Total constants evaluated: 21
+Accepted: 2
+Rejected: 5
+No sensitivity: 14
+Duration: 45.3s
+
+Proposed changes (validated on held-out scenarios):
+  decay_rate                                        0.5 ->  0.3     (train +0.080, validation +0.050) ACCEPT
+  decay_factor                                     0.95 -> 0.85     (train +0.060, validation +0.040) ACCEPT
+
+Rejected (insufficient validation improvement):
+  ACTED_CONFIDENCE_SIGNAL                           0.9 ->  0.7     (train +0.030, validation -0.010) REJECT: No significant ...
 ```
 
-- **alpha** (learning rate): How much new information overrides old (default: 0.1)
-- **gamma** (discount factor): Importance of future rewards (default: 0.95)
-- Returns TD error (positive = better than expected)
+Each `RatchetDecision` includes: current value, proposed value, train/validation deltas, action (accept/reject/no_sensitivity), reason, and cliff warning details.
 
-## Tuning Constants
+## CLI Flags
 
-All numeric constants have been validated via parameter sweep ([tuning guide](tuning-magic-numbers.md)):
+Added to `tests/benchmarks/run_sweeps.py`:
 
-| Constant | Default | Purpose |
-|----------|---------|---------|
-| `MIN_EVENTS_FOR_CRYSTALLIZATION` | 3 | Minimum events before crystallization |
-| `WILSON_CI_THRESHOLD` | 0.6 | Required Wilson CI lower bound |
-| `TD_ALPHA` | 0.1 | Q-value learning rate |
-| `TD_GAMMA` | 0.95 | Q-value discount factor |
-| `CHI_SQUARED_P_THRESHOLD` | 0.05 | Temporal pattern significance |
-| `INITIAL_CYCLE_AMPLITUDE` | 0.5 | Starting amplitude for discovered cycles |
+| Flag | Effect |
+|------|--------|
+| `--parametric` | Use 50 generated scenarios instead of hand-crafted ones for Tiers 1-3. Existing `--tier` flags select which tiers to sweep. Tier 4 (recipe-layer) is unaffected. |
+| `--ratchet` | Run the full ratchet pipeline: generate scenarios, sweep all Tier 1-3 constants, validate on held-out set, print summary report. |
+
+**Backward compatibility**: The default behavior (no flags) continues to use hand-crafted scenarios. The `--tier` and `--interactions` flags work as before.
+
+```bash
+# Parametric sweep of Tier 1 constants
+python -m tests.benchmarks.run_sweeps --parametric --tier 1
+
+# Full ratchet pipeline
+python -m tests.benchmarks.run_sweeps --ratchet
+```
+
+## Data Flow
+
+```
+ScenarioFactory.default_seeds(50)
+    |
+    v
+[ScenarioSeed x 50] --split--> Train seeds (0-34)  |  Validation seeds (35-49)
+    |                               |                       |
+    v                               v                       v
+ScenarioFactory.create()     SweepRunner(train)      SweepRunner(validation)
+    |                               |                       |
+    v                               v                       v
+Type[Scenario] x 50          SweepPoint results       SweepPoint results
+                                    |                       |
+                                    v                       v
+                             ResultsAggregator -----> RatchetLoop
+                                                          |
+                                                          v
+                                                     RatchetSummary
+                                                     (human-readable report)
+```
 
 ## Design Decisions
 
-- **WriteFilterMixin excluded**: The crystallization handler IS the write gate. Dual gating makes debugging harder.
-- **Recipe, not core**: Lives in `popoto.recipes` to demonstrate composition without coupling to the ORM core.
-- **Bloom filter false positives**: ~1% of legitimate crystallizations may be skipped due to ExistenceFilter's error rate. Acceptable for reference use; production systems needing zero misses should add a secondary check.
+- **Deterministic seeds**: `ScenarioFactory.default_seeds()` uses `random.Random(42)` for reproducible seed generation. Each scenario uses `random.Random(seed_id)` internally.
+- **No parallelism**: Sequential execution avoids Redis key conflicts and is fast enough (target: under 60 seconds for a full ratchet run).
+- **Immutable harness**: The factory generates standard `Scenario` subclasses. No changes to `SweepRunner`, `ResultsAggregator`, `Scenario` base, metrics, or `apply_overrides`.
+- **No auto-writes**: The ratchet proposes changes for human review. It never modifies `constants.py`.
+- **Tier 4 excluded**: Recipe-layer scenarios use fixture-driven multi-turn simulation, which is too complex for parametric generation. Tier 4 continues to use hand-crafted scenarios exclusively.
 
----
+## Related
 
-## Subconscious Memory Recipe
-
-# Subconscious Memory Recipe
-
-> **New to Agent Memory?** Start with the [Quickstart Guide](agent-memory-quickstart.md) for a progressive adoption path.
-
-Automatic memory injection and extraction around every LLM turn. The agent's memory works silently -- assembling relevant context before each call and saving new observations after each response -- without the application needing to manage memory explicitly.
-
-## Architecture
-
-```
-User message
-    |
-    v
-[Pre-turn: ContextAssembler.assemble() -> inject into system message]
-    |
-    v
-[LLM inference]
-    |
-    v
-[Post-turn: extract facts from response -> save as Memory records]
-    |
-    v
-[Outcome: report acted/dismissed/contradicted via ObservationProtocol]
-    |
-    v
-Agent response
-```
-
-## Quick Start
-
-```python
-from popoto import (
-    Model, AutoKeyField, KeyField, StringField, FloatField,
-    DecayingSortedField, ConfidenceField,
-    WriteFilterMixin, AccessTrackerMixin,
-)
-from popoto.recipes.subconscious_memory import SubconsciousMemory
-
-# Define your Memory model (any level from the quickstart guide)
-class Memory(WriteFilterMixin, AccessTrackerMixin, Model):
-    memory_id = AutoKeyField()
-    agent_id = KeyField()
-    content = StringField(default="")
-    importance = FloatField(default=1.0)
-    relevance = DecayingSortedField(
-        base_score_field="importance",
-        partition_by="agent_id",
-    )
-    confidence = ConfidenceField(initial_confidence=0.5)
-
-    _wf_min_threshold = 0.1  # default after sweep 2026-04-17 (was 0.2)
-    _wf_priority_threshold = 0.7
-
-    def compute_filter_score(self):
-        return self.importance or 0.0
-
-# Create the subconscious memory layer
-sm = SubconsciousMemory(
-    model_class=Memory,
-    agent_id="agent-1",
-    score_weights={"relevance": 0.6, "confidence": 0.3},
-    max_items=10,
-    max_tokens=4000,
-)
-```
-
-## OpenAI SDK Integration
-
-Wire subconscious memory into a standard OpenAI chat completion call:
-
-```python
-from openai import OpenAI
-
-client = OpenAI()  # uses OPENAI_API_KEY env var
-
-messages = [
-    {"role": "system", "content": "You are a helpful assistant."},
-    {"role": "user", "content": "What's our deployment strategy?"},
-]
-
-# Pre-turn: inject relevant memories into messages
-messages, assembly_result = sm.inject_context(messages)
-
-# Call the LLM (messages now include memory context in the system message)
-response = client.chat.completions.create(
-    model="gpt-4.1-nano",
-    messages=messages,
-)
-answer = response.choices[0].message.content
-
-# Post-turn: extract facts from the response and save as new memories
-new_memories = sm.extract_memories(answer, importance=0.6)
-
-# Report outcomes: memories were used successfully
-sm.report_outcomes(assembly_result, outcome="acted")
-```
-
-## How It Works
-
-### Pre-turn: `inject_context(messages)`
-
-1. Extracts the last user message as a query cue
-2. Calls `ContextAssembler.assemble()` with the agent's memory model
-3. Appends the formatted context to the system message (creates one if absent)
-4. Returns the modified messages and an `AssemblyResult` for later outcome reporting
-
-If no relevant memories are found, messages are returned unchanged.
-
-### Post-turn: `extract_memories(response_text, importance)`
-
-1. Splits the LLM response into sentences
-2. Filters out sentences shorter than `extraction_min_length` (default 10 chars)
-3. Saves each sentence as a new Memory record with the specified importance
-
-The built-in extraction uses a simple sentence-splitting heuristic. For more accurate extraction, override this method or extract facts using a secondary LLM call and save them directly via your model class.
-
-### Outcome: `report_outcomes(assembly_result, outcome)`
-
-Reports how the agent used the injected memories via `ObservationProtocol.on_context_used()`. Outcomes strengthen or weaken memories for future retrieval:
-
-- `"acted"` -- the agent used this memory (strengthens confidence)
-- `"dismissed"` -- the agent ignored this memory (mild weakening)
-- `"contradicted"` -- the agent found this memory incorrect (strong weakening)
-- `"deferred"` -- the agent noted but deferred action (neutral)
-- `"used"` -- the memory informed reasoning without appearing in the response (confirms access, no strength signal)
-
-## Tuning
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `max_items` | 10 | Maximum memories injected per turn |
-| `max_tokens` | 4000 | Soft token budget for injected context |
-| `extraction_min_length` | 10 | Minimum chars for a sentence to become a memory |
-| `score_weights` | (required) | Weight dict for composite scoring (e.g. `{"relevance": 0.6, "confidence": 0.3}`) |
-| `system_preamble` | "You are a helpful assistant." | Prefix for auto-created system messages |
-| `content_field` | "content" | Name of the text content field on your model |
-| `importance_field` | "importance" | Name of the importance score field |
-
-These constants can be tuned experimentally using the Tier 4 benchmark harness. See the [Tuning Magic Numbers](tuning-magic-numbers.md) guide for the full constant catalog, optimal ranges, and how to run parameter sweeps.
-
-## Extensibility
-
-### Custom Fact Extraction
-
-Subclass `SubconsciousMemory` and override `extract_memories()` for LLM-based extraction:
-
-```python
-class SmartSubconsciousMemory(SubconsciousMemory):
-    def extract_memories(self, response_text, importance=0.5):
-        # Use a secondary LLM call to extract structured facts
-        facts = my_extraction_function(response_text)
-        saved = []
-        for fact in facts:
-            m = self.model_class(
-                agent_id=self.agent_id,
-                content=fact["text"],
-                importance=fact.get("importance", importance),
-            )
-            m.save()
-            saved.append(m)
-        return saved
-```
-
-### Custom Query Cues
-
-The default implementation uses the last user message as the query cue. For more sophisticated cue extraction, subclass and override the relevant portion of `inject_context()`.
-
-## See Also
-
-- [Agent Memory Quickstart](agent-memory-quickstart.md) -- progressive adoption guide
-- [ContextAssembler](../features/context-assembler.md) -- retrieval-to-injection bridge
-- [PolicyCache Recipe](policy-cache-recipe.md) -- RL-style learned action selection
+- [Tuning Magic Numbers](../guides/tuning-magic-numbers.md) -- constant catalog and benchmark methodology
+- [Plan: Parametric Sweep Redesign](../plans/parametric_sweep_redesign.md) -- design document
+- [Issue #293](https://github.com/tomcounsell/popoto/issues/293) -- tracking issue
 
 ---
 
@@ -13171,147 +13530,6 @@ After researching all the above, produce:
 
 ---
 
-## Launch Announcements
-
-# Popoto 1.0.0 Launch Announcements
-
-## Hacker News — Show HN
-
-### How to post
-1. Go to https://news.ycombinator.com/submit
-2. Use the title and URL below
-3. Post Tuesday–Thursday, 9–11am ET for best visibility
-4. Immediately add your top-level comment (below)
-5. Stay online for the first 2 hours to reply to comments — HN rewards fast engagement
-
-### Title
-```
-Show HN: Popoto – A Redis/Valkey ORM with Django-like syntax for Python
-```
-
-### URL
-```
-https://github.com/tomcounsell/popoto
-```
-
-### Your first comment (post immediately after submitting)
-
-> Hey HN, I'm Tom. I built Popoto because I wanted Django-model ergonomics for Redis without the overhead of Redis OM or hand-rolling SCAN/pipeline logic everywhere.
->
-> Popoto gives you a declarative model layer on top of Redis (or Valkey):
->
-> ```python
-> from popoto import Model, KeyField, SortedField, Q
->
-> class Restaurant(Model):
->     name = KeyField()
->     cuisine = Field()
->     rating = SortedField(type=float)
->
-> Restaurant.create(name="Burger Palace", cuisine="American", rating=4.5)
->
-> # Chainable queries, Q objects, expression syntax
-> results = Restaurant.query.filter(
->     Q(cuisine="Italian") | Q(cuisine="Japanese"),
->     rating__gte=4.0
-> ).order_by("-rating").limit(10)
-> ```
->
-> What makes it different:
->
-> - **Django-like API** — KeyField, SortedField, GeoField, Relationship, Q objects, `get_or_create()`, `bulk_create()`
-> - **Full async/await** — native `redis.asyncio`, not `asyncio.to_thread()` wrappers
-> - **Atomic saves** via internal Redis pipelines
-> - **Works with both Redis and Valkey** out of the box
-> - **Geo search, time-series, pub/sub** built in
-> - **Zero required dependencies beyond redis-py and msgpack** — pandas is optional
->
-> We've been using it in production for streaming financial data and sensor networks. 1.0.0 is the first stable release after two betas and significant index integrity hardening.
->
-> Docs: https://tomcounsell.github.io/popoto
-> PyPI: `pip install popoto`
->
-> Happy to answer any questions about the internals or how it compares to Redis OM.
-
----
-
-## Product Hunt
-
-### How to post
-1. Go to https://www.producthunt.com/posts/new
-2. You need a maker account (sign up or log in)
-3. Launch at 12:01am PT on a Tuesday, Wednesday, or Thursday
-4. Fill in the fields below
-5. Have 5–10 supporters ready to upvote and comment in the first hour
-6. Engage with every comment throughout launch day
-
-### Product name
-```
-Popoto
-```
-
-### Tagline (60 chars max)
-```
-Django-like ORM for Redis and Valkey in Python
-```
-
-### Topics/tags
-```
-Developer Tools, Open Source, Python, Databases
-```
-
-### Description
-
-> Popoto is a Python ORM that brings Django-model syntax to Redis and Valkey. Define your data models with fields, relationships, and indexes — Popoto handles serialization, querying, and persistence automatically.
->
-> **Why Popoto?**
->
-> Redis is incredibly fast, but using it as a primary data store means writing a lot of boilerplate — key naming conventions, serialization, index management, pipeline batching. Popoto eliminates all of that with a familiar, declarative API.
->
-> **Key features:**
->
-> 🔍 Chainable queries with Q objects and expression syntax
-> ⚡ Full async/await with native redis.asyncio
-> 🌍 Geographic distance search with GeoField
-> 📊 Time-series data with SortedField
-> 🔗 Model relationships with lazy loading
-> 📦 Bulk create/update/delete via Redis pipelines
-> 🔄 Works with both Redis and Valkey
->
-> **Who is it for?**
->
-> Python developers who use Redis for more than caching — real-time applications, streaming data pipelines, IoT sensor networks, or anywhere you want Redis speed with ORM convenience.
->
-> 1.0.0 is production-stable after two beta releases and extensive index integrity hardening.
-
-### Links
-```
-GitHub: https://github.com/tomcounsell/popoto
-Docs:   https://tomcounsell.github.io/popoto
-PyPI:   https://pypi.org/project/popoto/
-```
-
-### Maker comment (post on launch)
-
-> Hi Product Hunt! I'm Tom, the creator of Popoto.
->
-> I built this because every Redis project I worked on ended up with the same boilerplate — key naming, msgpack serialization, maintaining secondary indexes by hand. I wanted something that felt like Django models but ran on Redis.
->
-> Popoto started as an internal tool for processing streaming financial data, where we needed sub-millisecond reads and Django-like query ergonomics. After 3+ years in production and two beta releases, 1.0.0 is the first stable release.
->
-> I'd love to hear how you'd use it — or what's missing. Feedback welcome!
-
----
-
-## General tips
-
-- **Lead with the problem, not the product.** "Redis has no good ORM" resonates more than "here's my ORM."
-- **A demo GIF is worth 1000 words.** Consider recording a 30-second terminal session showing model definition → create → query → result. Tools: asciinema, vhs, or a simple screen recording.
-- **Don't cross-post on the same day.** Do HN first (higher risk, higher reward), then Product Hunt a few days later with learnings from HN feedback.
-- **GitHub README is your landing page.** Make sure it looks sharp before posting.
-
----
-
 ## Recipes
 
 # Recipes
@@ -13675,7 +13893,529 @@ These are not needed when using the pytest plugin, which handles both automatica
 
 ---
 
-## Style Guide
+## Kitchen Edge Case Demo
+
+# Kitchen Demo: Edge Case Mutation Flows
+
+The Popoto Kitchen TUI demo (`examples/popoto_kitchen/`) now exercises four
+mutation-after-save scenarios that correspond to the index-correctness fixes
+landed in PRs #159–#163. Each scenario is reachable via an interactive button
+in the demo.
+
+## Background
+
+Before this change the demo only created and deleted records. All four classes
+of index-corruption bugs fixed by the referenced PRs are triggered exclusively
+by mutation scenarios:
+
+| PR | Fix | Scenario |
+|----|-----|----------|
+| #159 | SortedField ghost entries on partition key change | Move a MenuItem to a different category |
+| #161 | save() removes obsolete key from class set on KeyField rename | Rename a Restaurant |
+| #162 | Partial save (`update_fields`) obsolete key cleanup | Advance an Order status |
+| #163 | Relationship.on_save() index cleanup on value change | Replace an Order's driver |
+
+## Model Changes
+
+### MenuItem — category promoted to KeyField
+
+`MenuItem.category` was previously a plain `Field(type=str)`. It is now a
+`KeyField()`, making category part of the Redis key:
+
+```
+Before: MenuItem:<item_id>
+After:  MenuItem:<category>:<item_id>
+```
+
+The `price` SortedField now uses `partition_by="category"`, so price index
+sorted sets are scoped per category (`MenuItem:_price:Main`,
+`MenuItem:_price:Appetizer`, etc.).
+
+**Seed data**: `seed.py` already passes an explicit `category=` argument for
+every `MenuItem` — no data-value changes were needed, only the field declaration
+changed.
+
+**Full-key lookup**: All `MenuItem` lookups in `menu.py` now use
+`MenuItem.query.get(redis_key=key.value)` (full key string) rather than
+splitting the key on `":"` to extract just the last segment.
+
+### Order.advance_status() — partial save
+
+`advance_status()` now calls:
+
+```python
+super(Order, self).save(update_fields=["status", "updated_at"])
+```
+
+Only the `status` and `updated_at` fields are written. The `total` SortedField
+index is untouched, demonstrating that partial save does not produce ghost
+index entries (PR #162 fix).
+
+## New Interactive Flows
+
+### Menu Screen — "Move Category" (PR #159)
+
+1. Select a menu item in the table.
+2. Click **Move Category**.
+3. The item cycles to the next category in `["Appetizer", "Main", "Side", "Dessert", "Drink"]`.
+4. `SortedField.on_save()` removes the item from the old price sorted set and
+   adds it to the new one.
+5. A notification shows `"Moved: {name} from {old} → {new}"`.
+
+Guard: if the computed next category is the same as the current (only one
+category exists in the list), the action is a no-op with a warning.
+
+### Orders Screen — "→ Advance Status" (PR #162)
+
+Unchanged UI flow; the underlying implementation now uses partial save
+(`update_fields=["status", "updated_at"]`) so that only the status field and
+its timestamp are written. The total SortedField index is unaffected.
+
+### Orders Screen — "Assign Driver" (PR #163)
+
+When an order already has a driver assigned, reassigning shows:
+
+```
+Replaced driver: Alice → Bob
+```
+
+The old notification (`"Assigned driver: Bob"`) is now shown only for first
+assignment. A guard prevents reassigning the same driver twice.
+
+`Relationship.on_save()` handles the index cleanup: the order key is removed
+from the old driver's relationship index and added to the new driver's index.
+
+### Restaurants Screen — "Rename" (PR #161)
+
+1. Select a restaurant in the table.
+2. Click **Rename**.
+3. A new name is generated via `restaurant_name(restaurant.cuisine)`.
+4. `restaurant.name = new_name; restaurant.save()` — save detects the obsolete
+   Redis key, removes the old key from the `Restaurant` class set, and writes
+   the new key.
+5. `Restaurant.query.all()` returns the restaurant under the new key; the old
+   key is gone.
+
+## v1.4.4 Feature Demos (PR #346)
+
+PR #346 added a new `ReviewScore` model and an operations script that
+demonstrates four v1.4.4 features outside of the TUI. These are invoked
+via `python -m popoto_kitchen --ops` and print results to stdout.
+
+### ReviewScore Model
+
+A new model using `ConfidenceField` with `partition_by="restaurant"` to
+track review confidence per restaurant. See
+[ConfidenceField docs](confidence-field.md) for the Bayesian update formula.
+
+```python
+class ReviewScore(Model):
+    restaurant = KeyField()
+    reviewer = KeyField()
+    score = ConfidenceField(initial_confidence=0.5, partition_by="restaurant")
+```
+
+The seed script creates 100 review scores with varied confidence signals
+(2-6 signals per review, mix of positive and negative) to build realistic
+evidence histories.
+
+### Operations Script (`operations.py`)
+
+| Demo | Feature | Description |
+|------|---------|-------------|
+| `demo_get_many()` | `query.get_many()` | Bulk-loads Order instances by key in a single pipeline call. Shows both default mode (with `None` placeholders) and `skip_none=True` mode. |
+| `demo_check_and_clean_indexes()` | `check_indexes()` / `clean_indexes()` | Runs a read-only health check on all models, then surgically removes any orphaned index entries found. |
+| `demo_companion_hash_keys()` | `get_data_hash_key()` | Inspects the companion Redis hash keys for ReviewScore's ConfidenceField, showing how `partition_by` creates per-restaurant hashes. Also demonstrates `get_data_hash_key_from_values()` for building keys without a loaded instance. |
+
+### Entry Point Changes
+
+New CLI flags added to `__main__.py`:
+
+- `--ops` -- Run v1.4.4 operations demos and exit
+- `--seed-only --clear` -- Seed fresh data without launching the TUI
+
+## Running the Demo
+
+```bash
+# Start the TUI (interactive edge case demos)
+python -m examples.popoto_kitchen
+
+# Clear any stale seeded data first (category -> KeyField is a breaking schema change)
+# In the Dashboard screen, click "Clear All Data", then "Seed Data"
+
+# Run the v1.4.4 operations demos (non-interactive, stdout output)
+python -m popoto_kitchen --seed-only --clear
+python -m popoto_kitchen --ops
+```
+
+Navigate to each screen and use the new buttons to observe the edge case
+behaviors described above. Use `--ops` for the v1.4.4 feature demos.
+
+---
+
+## Meta Class Implementation
+
+# Meta Class Implementation - Completion Summary
+
+**GitHub Issue:** #27
+**Status:** ✅ Complete (3 of 3 features)
+**Merged PRs:** #50, #51, #52
+
+---
+
+## Overview
+
+Implemented Django/Peewee-style Meta class for model configuration. All three planned features are complete and merged to main.
+
+---
+
+## Completed Features
+
+### 1. Meta.order_by (PR #50)
+
+Default query result ordering.
+
+**API:**
+```python
+class Product(Model):
+    name = KeyField()
+    price = SortedField()
+
+    class Meta:
+        order_by = "-price"  # Descending by default
+
+# All queries ordered by price descending
+products = Product.query.all()
+```
+
+**Implementation:**
+- `ModelOptions.order_by` attribute
+- Validates field exists at class definition time
+- Applied in `Query.all()`, `Query.filter()`, `Query.prepare_results()`
+- Can be overridden per-query with explicit `order_by` parameter
+
+**Files:**
+- `src/popoto/models/base.py`
+- `src/popoto/models/query.py`
+- `tests/test_meta_order_by.py` (7 tests)
+- `docs/meta.md`
+
+---
+
+### 2. Meta.ttl (PR #51)
+
+Time-To-Live (automatic expiration) for Redis keys.
+
+**API:**
+```python
+class CachedData(Model):
+    key = KeyField()
+    value = Field()
+
+    class Meta:
+        ttl = 3600  # Expires after 1 hour
+
+# Instance automatically expires
+data = CachedData.create(key="session", value="data")
+```
+
+**Features:**
+- Model-level default via `Meta.ttl`
+- Instance-level override via `_ttl` attribute
+- Absolute timestamp via `_expire_at` attribute
+- Redis `EXPIRE`/`EXPIREAT` called on save
+
+**Implementation:**
+- `ModelOptions.ttl` attribute with validation (positive integer)
+- `Model.__init__` sets default `_ttl` from Meta
+- `Model.save()` applies TTL to Redis
+- TTL refreshed on every save
+
+**Files:**
+- `src/popoto/models/base.py`
+- `tests/test_meta_ttl.py` (7 tests)
+- `docs/meta.md`
+
+**Innovation:**
+This is Popoto-specific. SQL-based ORMs like Peewee can't support this because SQL databases don't have native key expiration.
+
+---
+
+### 3. Meta.indexes (PR #52)
+
+Composite unique indexes (Peewee pattern).
+
+**API:**
+```python
+class Transaction(Model):
+    transaction_id = KeyField()
+    from_account = Field()
+    to_account = Field()
+    amount = Field()
+
+    class Meta:
+        indexes = (
+            # (field_names_tuple, is_unique_boolean)
+            (('from_account', 'to_account'), True),   # Unique composite
+            (('to_account',), False),                  # Non-unique index
+        )
+
+# Duplicate detection on save
+tx1 = Transaction.create(transaction_id="tx1", from_account="A", to_account="B", amount=100)
+tx2 = Transaction.create(transaction_id="tx2", from_account="A", to_account="B", amount=200)
+# ❌ ModelException: Unique index violation
+```
+
+**Features:**
+- Enforces unique constraints on field combinations
+- Supports both unique and non-unique indexes
+- NULL handling: multiple NULLs allowed (SQL standard)
+- Automatic index maintenance (create, update, delete)
+
+**Implementation:**
+- Redis HASH storage: `$Index:ClassName:field1:field2`
+- SHA256 hash of field values as key
+- `ModelOptions.compute_index_hash()` - generates hash (returns None for NULL)
+- `Model.pre_save()` - validates unique constraints
+- `Model.save()` - adds/updates index entries
+- `Model.delete()` - removes index entries
+- Uses `_saved_field_values` for proper cleanup on updates
+
+**Files:**
+- `src/popoto/models/base.py`
+- `tests/test_meta_indexes.py` (10 tests)
+- `docs/meta.md`
+
+---
+
+## Documentation
+
+**`docs/meta.md`** - Complete reference documentation:
+- All three Meta options documented with examples
+- Validation rules and best practices
+- Implementation details and Redis patterns
+
+---
+
+## Key Design Decisions
+
+### 1. Index Storage: Redis HASH
+
+Used Redis HASH instead of SET for O(1) lookups:
+```
+$Index:Transaction:from_account:to_account
+HASH: {hash_of_values: instance_db_key}
+```
+
+### 2. Update Semantics: _saved_field_values
+
+Reused existing `_saved_field_values` pattern for tracking old values:
+- On save: remove old index entry, add new entry
+- On delete: use saved values for cleanup
+
+### 3. NULL Handling: SQL Standard
+
+If any indexed field is NULL, skip index entry. Allows multiple NULLs in unique indexes.
+
+### 4. Lifecycle: Direct in Model methods
+
+Index management lives in `Model.pre_save()`, `Model.save()`, `Model.delete()` rather than field-based hooks.
+
+---
+
+## Testing
+
+- **Meta.order_by:** 7 tests (all passing)
+- **Meta.ttl:** 7 tests (all passing)
+- **Meta.indexes:** 10 tests (all passing)
+- **Total:** 24 tests for Meta features
+
+---
+
+## Future Considerations
+
+1. **Meta inheritance:** Peewee supports inheriting Meta options from parent classes. Not implemented in Popoto.
+
+2. **Custom ModelOptions:** Peewee allows custom `ModelOptions` subclasses via `model_options_base`. Could enable advanced Redis routing.
+
+3. **Additional options:**
+   - `abstract` - already exists
+   - `database` - for multi-Redis routing
+   - `table_name` equivalent - custom Redis key prefix
+
+---
+
+## Lessons from Peewee Research
+
+1. **Indexes over unique_together:** Peewee's `indexes` pattern is more flexible than Django's `unique_together`
+2. **Meta validation timing:** Both ORMs validate at class definition time (metaclass)
+3. **TTL as innovation:** Popoto's TTL feature showcases Redis-native advantages over SQL ORMs
+
+---
+
+## Files Modified
+
+**Source:**
+- `src/popoto/models/base.py` - ModelOptions, metaclass, Model.save/delete/pre_save
+- `src/popoto/models/query.py` - Query.all/filter with order_by
+
+**Tests:**
+- `tests/test_meta_order_by.py`
+- `tests/test_meta_ttl.py`
+- `tests/test_meta_indexes.py`
+
+**Documentation:**
+- `docs/meta.md` - Complete Meta reference
+
+---
+
+**Completed:** January 2026
+**Implementation time:** ~3 days across 3 PRs
+
+---
+
+## Launch Announcements
+
+# Popoto 1.0.0 Launch Announcements
+
+## Hacker News — Show HN
+
+### How to post
+1. Go to https://news.ycombinator.com/submit
+2. Use the title and URL below
+3. Post Tuesday–Thursday, 9–11am ET for best visibility
+4. Immediately add your top-level comment (below)
+5. Stay online for the first 2 hours to reply to comments — HN rewards fast engagement
+
+### Title
+```
+Show HN: Popoto – A Redis/Valkey ORM with Django-like syntax for Python
+```
+
+### URL
+```
+https://github.com/tomcounsell/popoto
+```
+
+### Your first comment (post immediately after submitting)
+
+> Hey HN, I'm Tom. I built Popoto because I wanted Django-model ergonomics for Redis without the overhead of Redis OM or hand-rolling SCAN/pipeline logic everywhere.
+>
+> Popoto gives you a declarative model layer on top of Redis (or Valkey):
+>
+> ```python
+> from popoto import Model, KeyField, SortedField, Q
+>
+> class Restaurant(Model):
+>     name = KeyField()
+>     cuisine = Field()
+>     rating = SortedField(type=float)
+>
+> Restaurant.create(name="Burger Palace", cuisine="American", rating=4.5)
+>
+> # Chainable queries, Q objects, expression syntax
+> results = Restaurant.query.filter(
+>     Q(cuisine="Italian") | Q(cuisine="Japanese"),
+>     rating__gte=4.0
+> ).order_by("-rating").limit(10)
+> ```
+>
+> What makes it different:
+>
+> - **Django-like API** — KeyField, SortedField, GeoField, Relationship, Q objects, `get_or_create()`, `bulk_create()`
+> - **Full async/await** — native `redis.asyncio`, not `asyncio.to_thread()` wrappers
+> - **Atomic saves** via internal Redis pipelines
+> - **Works with both Redis and Valkey** out of the box
+> - **Geo search, time-series, pub/sub** built in
+> - **Zero required dependencies beyond redis-py and msgpack** — pandas is optional
+>
+> We've been using it in production for streaming financial data and sensor networks. 1.0.0 is the first stable release after two betas and significant index integrity hardening.
+>
+> Docs: https://popoto.io
+> PyPI: `pip install popoto`
+>
+> Happy to answer any questions about the internals or how it compares to Redis OM.
+
+---
+
+## Product Hunt
+
+### How to post
+1. Go to https://www.producthunt.com/posts/new
+2. You need a maker account (sign up or log in)
+3. Launch at 12:01am PT on a Tuesday, Wednesday, or Thursday
+4. Fill in the fields below
+5. Have 5–10 supporters ready to upvote and comment in the first hour
+6. Engage with every comment throughout launch day
+
+### Product name
+```
+Popoto
+```
+
+### Tagline (60 chars max)
+```
+Django-like ORM for Redis and Valkey in Python
+```
+
+### Topics/tags
+```
+Developer Tools, Open Source, Python, Databases
+```
+
+### Description
+
+> Popoto is a Python ORM that brings Django-model syntax to Redis and Valkey. Define your data models with fields, relationships, and indexes — Popoto handles serialization, querying, and persistence automatically.
+>
+> **Why Popoto?**
+>
+> Redis is incredibly fast, but using it as a primary data store means writing a lot of boilerplate — key naming conventions, serialization, index management, pipeline batching. Popoto eliminates all of that with a familiar, declarative API.
+>
+> **Key features:**
+>
+> 🔍 Chainable queries with Q objects and expression syntax
+> ⚡ Full async/await with native redis.asyncio
+> 🌍 Geographic distance search with GeoField
+> 📊 Time-series data with SortedField
+> 🔗 Model relationships with lazy loading
+> 📦 Bulk create/update/delete via Redis pipelines
+> 🔄 Works with both Redis and Valkey
+>
+> **Who is it for?**
+>
+> Python developers who use Redis for more than caching — real-time applications, streaming data pipelines, IoT sensor networks, or anywhere you want Redis speed with ORM convenience.
+>
+> 1.0.0 is production-stable after two beta releases and extensive index integrity hardening.
+
+### Links
+```
+GitHub: https://github.com/tomcounsell/popoto
+Docs:   https://popoto.io
+PyPI:   https://pypi.org/project/popoto/
+```
+
+### Maker comment (post on launch)
+
+> Hi Product Hunt! I'm Tom, the creator of Popoto.
+>
+> I built this because every Redis project I worked on ended up with the same boilerplate — key naming, msgpack serialization, maintaining secondary indexes by hand. I wanted something that felt like Django models but ran on Redis.
+>
+> Popoto started as an internal tool for processing streaming financial data, where we needed sub-millisecond reads and Django-like query ergonomics. After 3+ years in production and two beta releases, 1.0.0 is the first stable release.
+>
+> I'd love to hear how you'd use it — or what's missing. Feedback welcome!
+
+---
+
+## General tips
+
+- **Lead with the problem, not the product.** "Redis has no good ORM" resonates more than "here's my ORM."
+- **A demo GIF is worth 1000 words.** Consider recording a 30-second terminal session showing model definition → create → query → result. Tools: asciinema, vhs, or a simple screen recording.
+- **Don't cross-post on the same day.** Do HN first (higher risk, higher reward), then Product Hunt a few days later with learnings from HN feedback.
+- **GitHub README is your landing page.** Make sure it looks sharp before posting.
+
+---
+
+## Contributing
 
 # Documentation Style Guide
 
@@ -13838,5 +14578,5 @@ Use the format `[Display Text](page.md)` for page links and `[Display Text](#anc
 
 ## API Reference
 
-See https://tomcounsell.github.io/popoto/reference/ for the full auto-generated API reference,
+See https://popoto.io/reference/ for the full auto-generated API reference,
 or fetch each module's source directly from https://github.com/tomcounsell/popoto/tree/main/src/popoto/.

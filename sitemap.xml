@@ -1,375 +1,379 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
-         <loc>https://tomcounsell.github.io/popoto/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/async/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/async/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/configuration/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/configuration/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/fields/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/fields/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/indexed_fields/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/indexed_fields/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/meta/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/meta/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/multi-tenancy/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/multi-tenancy/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/pubsub/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/pubsub/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/query/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/query/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/recipes/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/recipes/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/relationship/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/relationship/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/style-guide/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/style-guide/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/testing/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/testing/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/ttl/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/ttl/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/features/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/features/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/features/agent-memory/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/features/agent-memory/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/features/co-occurrence-field/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/features/co-occurrence-field/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/features/composite-score-query/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/features/composite-score-query/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/features/confidence-field/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/features/confidence-field/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/features/content-and-embedding-fields/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/features/content-and-embedding-fields/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/features/context-assembler/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/features/context-assembler/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/features/cyclic-decay-field/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/features/cyclic-decay-field/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/features/decaying-sorted-field/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/features/decaying-sorted-field/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/features/existence-filter/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/features/existence-filter/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/features/hybrid-retrieval/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/features/hybrid-retrieval/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/features/kitchen-edge-case-demo/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/features/kitchen-edge-case-demo/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/features/meta-class-implementation/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/features/meta-class-implementation/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/features/metacognitive-layer/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/features/metacognitive-layer/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/features/observation-protocol/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/features/observation-protocol/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/features/parametric-sweep/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/features/parametric-sweep/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/features/policy-cache/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/features/policy-cache/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/features/prediction-ledger/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/features/prediction-ledger/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/guides/agent-memory-quickstart/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/guides/agent-memory-quickstart/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/guides/epistemic-flow-cognitive-agent-architectures/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/guides/epistemic-flow-cognitive-agent-architectures/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/guides/launch-announcements/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/guides/launch-announcements/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/guides/policy-cache-recipe/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/guides/policy-cache-recipe/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/guides/popoto-memory-roadmap/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/guides/popoto-memory-roadmap/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/guides/programmable-memory-systems-neuroscience-design-spec/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/guides/programmable-memory-systems-neuroscience-design-spec/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/guides/rag-chatbot-recipe/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/guides/rag-chatbot-recipe/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/guides/research-prompt-memory-systems/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/guides/research-prompt-memory-systems/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/guides/subconscious-memory-recipe/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/guides/subconscious-memory-recipe/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/guides/tuning-magic-numbers/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/guides/tuning-magic-numbers/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/SUMMARY/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/SUMMARY/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/_error_reporting/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/exceptions/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/_error_reporting/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/redis_db/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/exceptions/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/redis_limits/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/redis_db/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/testing/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/redis_limits/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/fields/_tokenizer/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/testing/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/fields/access_tracker/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/fields/_tokenizer/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/fields/auto_field_mixin/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/fields/access_tracker/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/fields/bm25_field/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/fields/auto_field_mixin/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/fields/co_occurrence_field/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/fields/bm25_field/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/fields/confidence_field/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/fields/co_occurrence_field/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/fields/constants/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/fields/confidence_field/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/fields/content_field/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/fields/constants/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/fields/cyclic_decay_field/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/fields/content_field/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/fields/dataframe_field/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/fields/cyclic_decay_field/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/fields/datetime_field/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/fields/dataframe_field/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/fields/decaying_sorted_field/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/fields/datetime_field/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/fields/embedding_field/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/fields/decaying_sorted_field/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/fields/event_stream/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/fields/embedding_field/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/fields/existence_filter/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/fields/event_stream/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/fields/field/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/fields/existence_filter/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/fields/geo_field/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/fields/field/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/fields/indexed_field_mixin/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/fields/geo_field/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/fields/key_field_mixin/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/fields/indexed_field_mixin/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/fields/observation/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/fields/key_field_mixin/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/fields/prediction_ledger/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/fields/observation/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/fields/relationship/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/fields/prediction_ledger/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/fields/shortcuts/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/fields/relationship/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/fields/sorted_field_mixin/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/fields/shortcuts/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/fields/unique_field_mixin/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/fields/sorted_field_mixin/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/fields/write_filter/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/fields/unique_field_mixin/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/models/base/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/fields/write_filter/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/models/db_key/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/models/base/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/models/encoding/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/models/db_key/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/models/expressions/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/models/encoding/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/models/migrations/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/models/expressions/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/models/q/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/models/migrations/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/models/query/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/models/q/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/pubsub/publisher/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/models/query/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/pubsub/subscriber/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/pubsub/publisher/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/recipes/adaptive_assembler/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/pubsub/subscriber/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/recipes/context_assembler/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/recipes/adaptive_assembler/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/recipes/policy_cache/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/recipes/context_assembler/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/recipes/subconscious_memory/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/recipes/policy_cache/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/stores/filesystem/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/recipes/subconscious_memory/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/streams/consumer/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/stores/filesystem/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/utils/list_search/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/streams/consumer/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/utils/multithreading/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/utils/list_search/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
     <url>
-         <loc>https://tomcounsell.github.io/popoto/reference/popoto/utils/sigfigs/</loc>
-         <lastmod>2026-04-28</lastmod>
+         <loc>https://popoto.io/reference/popoto/utils/multithreading/</loc>
+         <lastmod>2026-04-29</lastmod>
+    </url>
+    <url>
+         <loc>https://popoto.io/reference/popoto/utils/sigfigs/</loc>
+         <lastmod>2026-04-29</lastmod>
     </url>
 </urlset>
