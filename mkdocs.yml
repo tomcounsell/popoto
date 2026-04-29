@@ -21,48 +21,55 @@ hooks:
 
 nav:
     - Home: 'index.md'
-    - Configuration: 'configuration.md'
-    - Models and Fields: 'fields.md'
-    - Model Meta Options: 'meta.md'
-    - TTL (Time-to-Live): 'ttl.md'
-    - Indexed Fields: 'indexed_fields.md'
-    - Making Queries: 'query.md'
-    - Relationship Field: 'relationship.md'
-    - Multi-Tenancy: 'multi-tenancy.md'
-    - Async Operations: 'async.md'
-    - PubSub: 'pubsub.md'
-    - Features:
-        - Agent Memory:
-            - Overview: 'features/agent-memory.md'
-            - DecayingSortedField: 'features/decaying-sorted-field.md'
-            - CyclicDecayField: 'features/cyclic-decay-field.md'
-            - ConfidenceField: 'features/confidence-field.md'
-            - CoOccurrenceField: 'features/co-occurrence-field.md'
-            - ExistenceFilter: 'features/existence-filter.md'
-            - ObservationProtocol: 'features/observation-protocol.md'
-            - PredictionLedger: 'features/prediction-ledger.md'
-            - Composite Score Query: 'features/composite-score-query.md'
-            - PolicyCache: 'features/policy-cache.md'
-            - ContextAssembler: 'features/context-assembler.md'
-            - Hybrid Retrieval (BM25 + RRF): 'features/hybrid-retrieval.md'
-            - Metacognitive Layer: 'features/metacognitive-layer.md'
-        - Meta Class Implementation: 'features/meta-class-implementation.md'
-        - Kitchen Edge Case Demo: 'features/kitchen-edge-case-demo.md'
-    - Guides:
-        - Agent Memory Quickstart: 'guides/agent-memory-quickstart.md'
-        - Tuning Magic Numbers: 'guides/tuning-magic-numbers.md'
-        - Policy Cache Recipe: 'guides/policy-cache-recipe.md'
-        - Subconscious Memory Recipe: 'guides/subconscious-memory-recipe.md'
-        - Memory Roadmap: 'guides/popoto-memory-roadmap.md'
-        - Neuroscience Design Spec: 'guides/programmable-memory-systems-neuroscience-design-spec.md'
-        - Epistemic Flow: 'guides/epistemic-flow-cognitive-agent-architectures.md'
-        - Memory Systems Research: 'guides/research-prompt-memory-systems.md'
-        - Launch Announcements: 'guides/launch-announcements.md'
-    - Recipes: 'recipes.md'
-    - Testing: 'testing.md'
-    - API Reference: reference/SUMMARY.md
-    - Contributing:
-        - Style Guide: 'style-guide.md'
+    - Getting Started:
+          - Configuration: 'configuration.md'
+          - Models and Fields: 'fields.md'
+          - Making Queries: 'query.md'
+          - Async Operations: 'async.md'
+    - Core Features:
+          - Model Meta Options: 'meta.md'
+          - TTL (Time-to-Live): 'ttl.md'
+          - Indexed Fields: 'indexed_fields.md'
+          - Relationship Field: 'relationship.md'
+          - Multi-Tenancy: 'multi-tenancy.md'
+          - PubSub: 'pubsub.md'
+          - Content & Embeddings: 'features/content-and-embedding-fields.md'
+    - Agent Memory:
+          - Overview: 'features/agent-memory.md'
+          - Quickstart: 'guides/agent-memory-quickstart.md'
+          - Primitives:
+                - DecayingSortedField: 'features/decaying-sorted-field.md'
+                - CyclicDecayField: 'features/cyclic-decay-field.md'
+                - ConfidenceField: 'features/confidence-field.md'
+                - CoOccurrenceField: 'features/co-occurrence-field.md'
+                - ExistenceFilter: 'features/existence-filter.md'
+                - ObservationProtocol: 'features/observation-protocol.md'
+                - PredictionLedger: 'features/prediction-ledger.md'
+                - Composite Score Query: 'features/composite-score-query.md'
+                - PolicyCache: 'features/policy-cache.md'
+                - ContextAssembler: 'features/context-assembler.md'
+                - Hybrid Retrieval (BM25 + RRF): 'features/hybrid-retrieval.md'
+                - Metacognitive Layer: 'features/metacognitive-layer.md'
+          - Recipes:
+                - PolicyCache: 'guides/policy-cache-recipe.md'
+                - SubconsciousMemory: 'guides/subconscious-memory-recipe.md'
+                - RAG Chatbot: 'guides/rag-chatbot-recipe.md'
+          - Tuning:
+                - Magic Numbers: 'guides/tuning-magic-numbers.md'
+                - Parametric Sweep: 'features/parametric-sweep.md'
+          - Background Reading:
+                - Memory Roadmap: 'guides/popoto-memory-roadmap.md'
+                - Neuroscience Design Spec: 'guides/programmable-memory-systems-neuroscience-design-spec.md'
+                - Epistemic Flow: 'guides/epistemic-flow-cognitive-agent-architectures.md'
+                - Memory Systems Research: 'guides/research-prompt-memory-systems.md'
+    - Cookbook:
+          - Recipes: 'recipes.md'
+          - Testing: 'testing.md'
+          - Kitchen Edge Case Demo: 'features/kitchen-edge-case-demo.md'
+          - Meta Class Implementation: 'features/meta-class-implementation.md'
+          - Launch Announcements: 'guides/launch-announcements.md'
+    - API Reference: reference/index.md
+    - Contributing: 'style-guide.md'
 
 markdown_extensions:
     - admonition

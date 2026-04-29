@@ -108,6 +108,32 @@ def write_package_index() -> Path:
     return out_path
 
 
+def write_reference_index() -> Path:
+    """Write the API reference landing page at ``reference/index.md``.
+
+    Without this, ``/reference/`` returns 404 because the literate-nav
+    SUMMARY.md and the per-module pages all live one level down. Pointing
+    the nav entry at ``reference/index.md`` gives the section a real URL
+    while ``literate-nav`` still drives the sidebar tree.
+    """
+    out_path = Path("reference") / "index.md"
+    with mkdocs_gen_files.open(out_path, "w") as fd:
+        fd.write("# API Reference\n\n")
+        fd.write(
+            "Auto-generated from the popoto source tree. Every public symbol\n"
+            "exported from `popoto.__all__` is documented here.\n\n"
+            "Browse the full module tree in the sidebar, or jump to:\n\n"
+            "- [`popoto`](popoto.md) — top-level package surface\n"
+            "- [`popoto.models`](popoto/models/base.md) — `Model` base class and metaclass\n"
+            "- [`popoto.fields`](popoto/fields/field.md) — field types and mixins\n"
+            "- [`popoto.models.query`](popoto/models/query.md) — `Query`, filtering, expressions\n"
+            "- [`popoto.pubsub`](popoto/pubsub/publisher.md) — pub/sub messaging\n\n"
+            "For narrative documentation see the [Getting Started](../configuration.md),\n"
+            "[Core Features](../meta.md), and [Agent Memory](../features/agent-memory.md) sections.\n"
+        )
+    return out_path
+
+
 def write_summary(entries: list[tuple[Path, str]]) -> None:
     """Write a literate-nav SUMMARY.md indexing every emitted page.
 
@@ -129,6 +155,7 @@ def write_summary(entries: list[tuple[Path, str]]) -> None:
 
 
 def main() -> None:
+    write_reference_index()
     write_package_index()
     entries: list[tuple[Path, str]] = []
     for relative, dotted in iter_module_paths():
