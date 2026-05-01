@@ -2398,9 +2398,9 @@ examples that don't naturally live next to a single symbol.</p>
 <h2 id="version-introspection">Version Introspection<a class="headerlink" href="#version-introspection" title="Permanent link">&para;</a></h2>
 <p><code>popoto.__version__</code> resolves to the installed distribution's version string
 via <code>importlib.metadata</code> (PEP 566). <code>pyproject.toml</code> is the single source of
-truth — the package exposes whatever release-please wrote to <code>[project]
-.version</code>. When importing from an uninstalled source tree, <code>__version__</code> falls
-back to the PEP 440-compliant sentinel <code>"0.0.0+unknown"</code>.</p>
+truth — the package exposes whatever is set in <code>[project].version</code>. When
+importing from an uninstalled source tree, <code>__version__</code> falls back to the
+PEP 440-compliant sentinel <code>"0.0.0+unknown"</code>.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">popoto</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">popoto</span><span class="o">.</span><span class="n">__version__</span><span class="p">)</span>  <span class="c1"># e.g. &quot;1.6.0&quot;</span>
 </code></pre></div>
