@@ -9,9 +9,9 @@ examples that don't naturally live next to a single symbol.
 
 `popoto.__version__` resolves to the installed distribution's version string
 via `importlib.metadata` (PEP 566). `pyproject.toml` is the single source of
-truth — the package exposes whatever release-please wrote to `[project]
-.version`. When importing from an uninstalled source tree, `__version__` falls
-back to the PEP 440-compliant sentinel `"0.0.0+unknown"`.
+truth — the package exposes whatever is set in `[project].version`. When
+importing from an uninstalled source tree, `__version__` falls back to the
+PEP 440-compliant sentinel `"0.0.0+unknown"`.
 
 ```python
 import popoto
