@@ -394,6 +394,13 @@ def _create_lazy_model(model_class: "Model", redis_hash: dict) -> "Model":
     entry instead of replacing the old one.  Only KeyField values are
     decoded eagerly; all other fields remain lazy.
 
+    Fields absent from ``redis_hash`` are initialized to their declared
+    default (or ``None``), matching ``Model.__init__``. This prevents the
+    class-level ``Field`` descriptor object from leaking through
+    ``object.__getattribute__`` for partial-hash rows (e.g., a process
+    crashed mid-write, or a field was added after the row was saved).
+    See issue #380.
+
     Args:
         model_class: The Model subclass to instantiate.
         redis_hash: Raw Redis hash with msgpack-encoded values.
@@ -428,6 +435,27 @@ def _create_lazy_model(model_class: "Model", redis_hash: dict) -> "Model":
             decoded_value = decode_lazy_field(instance._lazy_fields[key_field_name])
             instance._decoded_fields[key_field_name] = decoded_value
             instance._saved_field_values[key_field_name] = decoded_value
+
+    # Initialize defaults for fields absent from the hash.  Mirrors the
+    # defaults loop in Model.__init__ (base.py L532-536), ensuring that
+    # __getattribute__ finds the value in instance.__dict__ before falling
+    # through to the class-level Field descriptor.  Without this, partial
+    # hashes (e.g., crashed mid-write rows) would leak the descriptor
+    # object on access for any field absent from the hash.  See #380.
+    #
+    # We use object.__setattr__ to bypass Model.__setattr__'s lazy-cache
+    # branch, landing the value directly in instance.__dict__.  Fields
+    # eagerly decoded as KeyFields above are skipped via the
+    # _decoded_fields check.
+    for field_name, field in model_class._meta.fields.items():
+        if field_name in instance._lazy_fields:
+            continue
+        if field_name in instance._decoded_fields:
+            continue
+        default_value = (
+            field.default() if callable(field.default) else field.default
+        )
+        object.__setattr__(instance, field_name, default_value)
 
     # Compute _redis_key from the (now-decoded) KeyField values, matching
     # the logic in Model.__init__.  db_key reads attributes via
