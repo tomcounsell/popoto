@@ -5,6 +5,19 @@ All notable changes to Popoto will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0](https://github.com/tomcounsell/popoto/compare/v1.0.3...v1.1.0) (2026-05-01)
+
+
+### Features
+
+* **embedding:** EmbeddingField.garbage_collect + sweep_stale_tempfiles (1.6.0) ([beabbd8](https://github.com/tomcounsell/popoto/commit/beabbd8b5fbd5b92d4d6ac92de1e8931c25349b5))
+
+
+### Documentation
+
+* Material theme, auto-API, llms.txt, CI auto-deploy ([#375](https://github.com/tomcounsell/popoto/issues/375)) ([7ff01ae](https://github.com/tomcounsell/popoto/commit/7ff01aeed133be6a313b27fe1c237857ad644f35))
+* nav restructure, external links, popoto.io domain ([#377](https://github.com/tomcounsell/popoto/issues/377)) ([c527a45](https://github.com/tomcounsell/popoto/commit/c527a459c4249d033c7915e22b1b91eb0918667c))
+
 ## [1.5.0](https://github.com/tomcounsell/popoto/compare/v1.0.3...v1.5.0) (2026-04-21)
 
 ### Popoto Agent Memory — Now in Beta
