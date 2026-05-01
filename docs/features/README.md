@@ -16,7 +16,6 @@ Agent-memory primitives and recipes shipped in Popoto.
 | [Hybrid Retrieval (BM25 + RRF)](hybrid-retrieval.md) | BM25 keyword search fused with vector scores via RRF | Stable |
 | [Kitchen Edge Case Demo](kitchen-edge-case-demo.md) | Worked examples covering edge cases across primitives | Reference |
 | [Metacognitive Layer](metacognitive-layer.md) | Retrieval quality scoring, FOK, `"used"` outcome, AdaptiveAssembler | Stable |
-| [Meta Class Implementation](meta-class-implementation.md) | How Popoto's ModelBase metaclass works internally | Reference |
 | [ObservationProtocol](observation-protocol.md) | Outcome-driven memory effects: acted, dismissed, deferred, contradicted, used | Stable |
 | [ParametricSweep](parametric-sweep.md) | Automated benchmark sweeps for tuning numeric constants | Stable |
 | [PolicyCache](policy-cache.md) | Learned action selection with crystallization and TD updates | Stable |
