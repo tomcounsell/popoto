@@ -4804,6 +4804,9 @@ you only use a subset of fields.</p>
 <a id="__codelineno-72-2" name="__codelineno-72-2" href="#__codelineno-72-2"></a><span class="k">for</span> <span class="n">restaurant</span> <span class="ow">in</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">():</span>
 <a id="__codelineno-72-3" name="__codelineno-72-3" href="#__codelineno-72-3"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">restaurant</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">restaurant</span><span class="o">.</span><span class="n">rating</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 </code></pre></div>
+<p>Fields absent from the stored Redis hash (e.g., a row written before the field was added
+to the model, or a hash partially written by a crashed process) resolve to the field's
+declared <code>default</code> -- or <code>None</code> if no default is set -- matching <code>Model.__init__</code> semantics.</p>
 <h3 id="query-performance-summary">Query Performance Summary<a class="headerlink" href="#query-performance-summary" title="Permanent link">&para;</a></h3>
 <table>
 <thead>

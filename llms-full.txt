@@ -3745,6 +3745,10 @@ for restaurant in Restaurant.query.all():
     print(f"{restaurant.name}: {restaurant.rating}")
 ```
 
+Fields absent from the stored Redis hash (e.g., a row written before the field was added
+to the model, or a hash partially written by a crashed process) resolve to the field's
+declared `default` -- or `None` if no default is set -- matching `Model.__init__` semantics.
+
 ### Query Performance Summary
 
 | Operation | Redis Command | Time Complexity |
