@@ -13720,14 +13720,35 @@ assert after['total'] == 0
 
 ```python
 {
-    'class_set': int,
+    'class_set': int,         # absent-hash orphans (EXISTS == 0)
+    'partial_writes': int,    # hash exists but missing the AutoKeyField value
     'key_fields': {field_name: int, ...},
     'sorted_fields': {field_name: int, ...},
     'geo_fields': {field_name: int, ...},
     'composite_indexes': {index_key: int, ...},
-    'total': int,
+    'total': int,             # sum of all the above
 }
 ```
+
+### Partial-Write Orphans
+
+For models whose primary key is a single `AutoKeyField`, `check_indexes()`
+also detects **partial-write orphans**: hashes that exist in Redis but are
+missing the auto-key field value. These appear as ghost rows in
+`query.all()` (with `id=None`, `_redis_key=None`) and `instance.delete()`
+silently no-ops on them. Common causes are crashed saves and mid-pipeline
+process exits.
+
+When `clean_indexes()` encounters a partial-write orphan it removes the
+class-set membership AND issues `DEL` on the corrupt hash — the hash is
+unrecoverable and must not linger in Redis. Models with composite
+`KeyField`s (no single `AutoKeyField`) skip this check; their behavior is
+unchanged.
+
+> **Operational guidance:** Do not run `clean_indexes()` during active
+> migrations or HDEL-based field migrations. A brief HDEL window on the
+> auto-key field can cause healthy hashes to be misclassified as
+> partial-write orphans and deleted. Run during low-traffic periods.
 
 ### When to Use `rebuild_indexes()` vs `clean_indexes()`
 
