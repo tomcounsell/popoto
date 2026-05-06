@@ -1,11 +1,14 @@
 ---
-status: Planning
+status: Ready
 type: bug
 appetite: Small
 owner: Valor
 created: 2026-05-06
 tracking: https://github.com/tomcounsell/popoto/issues/385
 last_comment_id:
+revision_applied: true
+revision_applied_at: 2026-05-06T15:30:00Z
+critique_verdict: READY TO BUILD (with concerns)
 ---
 
 # clean_indexes() detects partial-write orphans (hash present, primary key absent)
@@ -386,15 +389,98 @@ When this plan is executed, the lead agent orchestrates work using Task tools. T
 
 ## Critique Results
 
-<!-- Populated by /do-plan-critique (war room). Leave empty until critique is run. -->
+**Verdict:** READY TO BUILD (with concerns) — recorded 2026-05-06T10:24:43Z by `/do-plan-critique`.
+
+The critique skill recorded the verdict headline but did not persist a per-finding breakdown. The notes below were derived from a self-critique re-read of the plan (Risks, Race Conditions, Edge Cases, Open Questions) during the revision pass. They capture every "with concerns" item as a load-bearing instruction that the builder MUST honor.
 
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
+| Medium | Operator (race) | A concurrent save's pipeline always orders `hset` before `sadd` (`base.py:1276-1286`). A *crashed* save mid-pipeline is the only false-positive trigger — and that is exactly what we want to clean up. | Code | Do **not** add cross-process locking. Reuse existing operator guidance (run during low-traffic windows) and surface it in the new docstring. See Race 1 in the plan. |
+| Medium | Operator (migration) | Migrations that issue `pipeline.hdel(redis_key, "id")` (e.g. `migrations.py:206-207`) leave a brief HDEL window where a healthy hash legitimately lacks the auto-key. | Docs | Add a one-liner to the docstrings of both `check_indexes` and `clean_indexes`: "Do not run during active migrations or HDEL-based field migrations." See Race 2 in the plan. |
+| Medium | Skeptic (perf) | The current sketch issues one EXISTS pipeline + one HGET pipeline per batch — two round-trips. Open Question #3 already resolved this to a **single interleaved pipeline**. | Code | Build MUST implement the interleaved variant from Open Question #3 (lines 437-454). Two-pipeline version is rejected. The 2:1 result-pairing requires an inline comment per the codebase clarity bar. |
+| Medium | Adversary (eligibility) | The eligibility gate (single AutoKeyField only) is critical: composite-KeyField models must take the original EXISTS-only path. A regression here silently widens the deletion blast radius. | Code | The gate function `_get_auto_key_field_name()` MUST return `None` when there are zero OR multiple AutoKeyFields. Build MUST add a test where a composite-KeyField model with a deliberately-corrupt hash is **not** flagged or deleted. (Already in `Step by Step Tasks` step 2 — keep it.) |
+| Medium | Skeptic (semantics) | Hash decoding empties: `redis-py` returns `b""` for empty bytes, `None` for missing fields. Either must count as "missing primary key." A whitespace-only string must NOT count as missing (out of scope per Rabbit Holes). | Code | Build MUST normalize the HGET return as: `if hget_value is None or hget_value == b"" or hget_value == "":` → orphan. Whitespace stripping is forbidden. Add an explicit unit test for both `b""` and `None` return values. |
+| Low | Archaeologist (return shape) | `check_indexes()` initializes its return dict with all keys upfront (`base.py:2928-2935`). Open Question #2 already resolved this to **always include `partial_writes`**. | Code | Build MUST add `"partial_writes": 0` to the return-dict initializer alongside `"class_set"`. Do not gate it behind the AutoKeyField check. The structure tests in `tests/test_check_indexes.py:305-323` will catch a regression. |
+| Low | Archaeologist (return total) | `total` summation logic in `check_indexes` must include `partial_writes`. Existing structure tests assert `>=` on total, so a missed addition is silent. | Code | Build MUST update the `total` summation to include `partial_writes`. Add an explicit assertion in the new `TestCheckIndexesPartialWriteOrphans` class: `assert result["total"] >= result["partial_writes"]`. |
+| Low | Simplifier (DRY) | `_collect_orphans` and `_count_orphans` will both need the same EXISTS+HGET interleaving logic. | Code | Extract the class-set scanning logic into a single private helper that returns `(absent_orphans, partial_write_orphans)` and call it from both methods. Avoid copy-pasting the pipeline interleave. |
+| Low | User (docstring) | The new behavior is operator-visible. Without docstring updates, operators will not know `clean_indexes` now also DELs hashes. | Docs | Build MUST update docstrings on **both** `check_indexes` and `clean_indexes` in the same PR. The `partial_writes` key, the DEL behavior, and the migration/low-traffic guidance must all be present. Plan task `document-partial-write` covers the broader docs/ pass. |
+| Low | Adversary (async) | Async wrappers (`async_check_indexes`, `async_clean_indexes`) delegate via `to_thread`. A new code path that doesn't reuse the same internal helper would silently bypass the fix in async callers. | Code | Build MUST verify (and the test step MUST cover) that the async wrappers return the new dict shape with `partial_writes` populated. No separate async implementation. |
+
+### Implementation Notes (from CRITIQUE) — load-bearing checklist for builder
+
+Builder MUST treat these as acceptance gates in addition to the Success Criteria:
+
+1. **Single-pipeline interleave** — implement the EXISTS+HGET pattern as shown in Open Question #3 (lines 437-454). One `pipe.execute()` per batch. Inline-comment the 2:1 results unzipping.
+2. **Eligibility gate is strict** — `_get_auto_key_field_name()` returns `None` for zero OR multiple AutoKeyFields. Composite-KeyField models take the original EXISTS-only path with no behavioral change. Add a regression test.
+3. **Normalize "missing"** — treat `None`, `b""`, and `""` as missing primary key. Do not strip whitespace; do not coerce types. Test both `b""` and `None`.
+4. **Stable dict shape** — `partial_writes: 0` initialized in the result dict alongside `class_set`, regardless of model eligibility. `total` summation includes it.
+5. **DRY the helper** — single private classmethod or inner function returns `(absent_orphans, partial_write_orphans)`; both `check_indexes` and `clean_indexes` consume it.
+6. **DEL plus SREM for partial-writes** — pipeline both. Absent orphans get SREM only (existing behavior). Order in the pipeline does not matter, but both must commit in the same `.execute()`.
+7. **Docstring discipline** — update `check_indexes` AND `clean_indexes` docstrings in the same diff. Mention: new `partial_writes` key, DEL behavior, "do not run during migrations or high-traffic windows."
+8. **Async parity** — the async wrappers are not separately implemented; they must transparently inherit the new behavior. Test classes MUST include an async variant (already required by Step 2 of the task list — do not drop it).
+9. **No new flags / no new public methods** — Open Question #1 resolved against opt-in. `clean_indexes()` signature is unchanged; deletion is unconditional. Do not introduce `dry_run`, `force`, or `purge_orphans`.
+10. **No upstream-cause investigation** — this PR fixes the cleanup side only. Surface any newly-discovered upstream partial-write code paths as a follow-up issue, not a code change in this PR.
 
 ---
 
 ## Open Questions
 
-1. **Should partial-write hash deletion be opt-in or unconditional?** The plan currently treats it as unconditional (the issue's "Gap 2" says delete the orphan hash). An alternative would be a `delete_corrupt_hashes: bool = True` parameter for operators who want to inspect the hash contents before deletion. The issue text strongly implies "delete unconditionally" — proceeding with that unless told otherwise.
-2. **Should `partial_writes` appear in the dict for non-AutoKeyField models?** Currently planned: always include the key, value is `0` for ineligible models. This keeps the dict shape stable for downstream consumers. Alternative: omit the key entirely. Stable shape is better for callers; flagging for confirmation.
-3. **Single combined EXISTS+HGET pipeline vs. two sequential pipelines?** The plan describes two sequential round-trips for clarity. A single pipeline (EXISTS+HGET interleaved per key) halves the round-trip count. The implementation should prefer the single-pipeline form if it doesn't complicate the code substantially. Flagging for the builder's judgment.
+_All three open questions were resolved by codebase research on 2026-05-06; no operator confirmation needed. Resolutions captured below._
+
+### 1. Opt-in vs. unconditional hash deletion → **Unconditional** ✅
+**Decision:** Delete the orphan hash unconditionally — no `delete_corrupt_hashes` flag.
+
+**Evidence in repo:**
+- `src/popoto/models/base.py:3004` — current `clean_indexes(cls, batch_size: int = 1000)` signature has no `dry_run` / `force` / `confirm` flag. The method's contract is already "clean all index corruption."
+- `src/popoto/models/base.py:3088-3092` — existing absent-orphan removal runs `pipe.srem(...)` unconditionally; no guard.
+- The only `dry_run` parameter in the project is on `migrate_to_partitioned()` in `confidence_field.py` (data migration, not cleanup). `delete_all()` in `base.py` is also unconditional. Adding a flag here would diverge from popoto convention.
+- `tests/test_clean_indexes.py:72-90` — every test calls `clean_indexes()` with no parameters and expects deletion to happen. No flag-based suppression precedent.
+
+If operators need to inspect first, the documented `check_indexes()` → `clean_indexes()` workflow already covers it.
+
+### 2. `partial_writes` always present in dict → **Always include** ✅
+**Decision:** Always include `partial_writes: int` in the `check_indexes()` return dict, value `0` for non-AutoKeyField models.
+
+**Evidence in repo:**
+- `src/popoto/models/base.py:2928-2935` — return dict is initialized with all keys upfront, regardless of model:
+  ```python
+  result = {
+      "class_set": 0,
+      "key_fields": {},
+      "sorted_fields": {},
+      "geo_fields": {},
+      "composite_indexes": {},
+      "total": 0,
+  }
+  ```
+- `tests/test_check_indexes.py:305-323` — `TestCheckIndexesReturnStructure::test_return_keys_present` and `test_return_types` assert each key MUST be present and have the right type, using bare `in` checks.
+- `tests/test_check_indexes.py:108-117` — `test_minimal_model_returns_zeros` confirms a model with no sorted/geo/composite indexes still gets `sorted_fields: {}`, `geo_fields: {}`, `composite_indexes: {}` (zero-shaped, not omitted).
+
+Stable dict shape is the established convention. Downstream consumers (logging, dashboards) can rely on `result["partial_writes"]` always being a valid int.
+
+### 3. Single combined EXISTS+HGET pipeline vs. two sequential → **Single combined pipeline** ✅
+**Decision:** Use a single pipeline interleaving `EXISTS` and `HGET` per key (one round-trip per batch). Refactor results-unzipping with a clear inline comment.
+
+**Evidence in repo:**
+- `src/popoto/models/base.py:1276-1286` and `1352-1363` — the on-save path already pipelines `hset` + `expire`/`expireat` + `sadd` together. Three different command types in one round-trip is the established pattern.
+- `src/popoto/models/base.py:1330-1334` — composite-index save pipelines `hdel` + `hset` together.
+- The current `_collect_orphans` (`base.py:3033-3045`) is simple and amenable to refactor:
+  ```python
+  pipe = POPOTO_REDIS_DB.pipeline()
+  for key in batch:
+      pipe.exists(key)
+      pipe.hget(key, auto_key_field_name)  # interleaved
+  results = pipe.execute()
+  # results[2*i]   == EXISTS for batch[i]
+  # results[2*i+1] == HGET   for batch[i]
+  for i, key in enumerate(batch):
+      exists, hget_value = results[2*i], results[2*i + 1]
+      if not exists:
+          absent_orphans.append(key)
+      elif not hget_value:
+          partial_write_orphans.append(key)
+  ```
+
+Halves Redis round-trips for the class-set scan with no readability penalty. The 2:1 result-pairing must be inline-commented per the codebase's general clarity bar.
+
+**Caveat:** When `auto_key_field_name is None` (composite-KeyField models, ineligible for partial-write detection), the loop must NOT issue the `hget` — fall back to the original EXISTS-only pipeline. Two code paths, gated on the eligibility flag.
