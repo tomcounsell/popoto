@@ -13,7 +13,6 @@ import popoto
 from popoto.redis_db import POPOTO_REDIS_DB
 from popoto.fields.geo_field import GeoField
 
-
 # ---------------------------------------------------------------------------
 # Test model definitions
 # ---------------------------------------------------------------------------
@@ -217,6 +216,7 @@ class TestCheckIndexesOrphanDetection:
         result = CheckUser.check_indexes()
         expected_total = (
             result["class_set"]
+            + result["partial_writes"]
             + sum(result["key_fields"].values())
             + sum(result["sorted_fields"].values())
             + sum(result["geo_fields"].values())
@@ -306,6 +306,7 @@ class TestCheckIndexesReturnStructure:
         """Return dict contains all expected keys."""
         result = CheckUser.check_indexes()
         assert "class_set" in result
+        assert "partial_writes" in result
         assert "key_fields" in result
         assert "sorted_fields" in result
         assert "geo_fields" in result
@@ -316,11 +317,23 @@ class TestCheckIndexesReturnStructure:
         """Return dict values have correct types."""
         result = CheckUser.check_indexes()
         assert isinstance(result["class_set"], int)
+        assert isinstance(result["partial_writes"], int)
         assert isinstance(result["key_fields"], dict)
         assert isinstance(result["sorted_fields"], dict)
         assert isinstance(result["geo_fields"], dict)
         assert isinstance(result["composite_indexes"], dict)
         assert isinstance(result["total"], int)
+
+    def test_partial_writes_zero_for_composite_keyfield_model(self):
+        """Models with composite KeyField (no AutoKeyField) always report 0."""
+        result = CheckComposite.check_indexes()
+        assert result["partial_writes"] == 0
+
+    def test_partial_writes_present_for_minimal_automodel(self):
+        """AutoKeyField-eligible model exposes the partial_writes key."""
+        result = CheckMinimal.check_indexes()
+        assert result["partial_writes"] == 0
+        assert isinstance(result["partial_writes"], int)
 
     def test_batch_size_parameter(self):
         """batch_size parameter is accepted and produces same results."""
@@ -357,3 +370,128 @@ class TestAsyncCheckIndexes:
         result = asyncio.run(CheckUser.async_check_indexes())
         assert result["total"] >= 1
         assert result["class_set"] >= 1
+
+
+# ---------------------------------------------------------------------------
+# Tests: Partial-write orphan detection
+# ---------------------------------------------------------------------------
+
+
+def _inject_partial_write_orphan(model_cls, missing_field_name: str) -> str:
+    """Manually create a partial-write orphan: a hash that exists in Redis
+    but is missing the given primary-key field, and is registered in the
+    class set.
+
+    Returns the orphan's redis_key (str).
+    """
+    class_set_key = model_cls._meta.db_class_set_key.redis_key
+    # Build a fake redis key with the right shape: ClassName:<auto_id_value>
+    # Use a placeholder value matching AutoKeyField's default uuid4 length (32).
+    fake_value = "deadbeef" * 4  # 32 chars
+    orphan_redis_key = f"{model_cls.__name__}:{fake_value}"
+
+    # Inject a hash with EVERY field EXCEPT the auto-key. This simulates
+    # a save that completed pipeline.hset for non-key fields but the
+    # auto-key field was either never set or was HDEL'd by a migration.
+    POPOTO_REDIS_DB.hset(orphan_redis_key, mapping={"data": "ghost"})
+    POPOTO_REDIS_DB.sadd(class_set_key, orphan_redis_key)
+    return orphan_redis_key
+
+
+def _inject_partial_write_orphan_with_value(
+    model_cls, missing_field_name: str, raw_value
+) -> str:
+    """Like _inject_partial_write_orphan but writes the auto-key field with
+    a specific raw value (e.g., empty bytes/string) to verify normalization.
+    """
+    class_set_key = model_cls._meta.db_class_set_key.redis_key
+    fake_value = "feedbeef" * 4
+    orphan_redis_key = f"{model_cls.__name__}:{fake_value}"
+    POPOTO_REDIS_DB.hset(
+        orphan_redis_key,
+        mapping={"data": "ghost", missing_field_name: raw_value},
+    )
+    POPOTO_REDIS_DB.sadd(class_set_key, orphan_redis_key)
+    return orphan_redis_key
+
+
+class TestCheckIndexesPartialWriteOrphans:
+    """Verify partial-write orphan detection in check_indexes()."""
+
+    def test_partial_write_orphan_counted(self):
+        """A class-set member whose hash lacks the auto-key is counted."""
+        # Create one healthy instance to make sure healthy rows aren't
+        # mis-counted as partial-writes.
+        CheckMinimal.create(data="healthy")
+
+        _inject_partial_write_orphan(CheckMinimal, "uuid")
+
+        result = CheckMinimal.check_indexes()
+        assert result["partial_writes"] == 1
+        # The hash exists, so the absent-orphan count should NOT include it.
+        assert result["class_set"] == 0
+
+    def test_partial_write_increments_total(self):
+        """The total field includes partial_writes."""
+        _inject_partial_write_orphan(CheckMinimal, "uuid")
+
+        result = CheckMinimal.check_indexes()
+        assert result["total"] >= result["partial_writes"]
+        assert result["total"] >= 1
+
+    def test_empty_bytes_value_counts_as_missing(self):
+        """An auto-key field set to b"" is treated as a partial-write orphan."""
+        _inject_partial_write_orphan_with_value(CheckMinimal, "uuid", b"")
+        result = CheckMinimal.check_indexes()
+        assert result["partial_writes"] == 1
+
+    def test_empty_str_value_counts_as_missing(self):
+        """An auto-key field set to "" is treated as a partial-write orphan."""
+        _inject_partial_write_orphan_with_value(CheckMinimal, "uuid", "")
+        result = CheckMinimal.check_indexes()
+        assert result["partial_writes"] == 1
+
+    def test_whitespace_value_counts_as_healthy(self):
+        """An auto-key field set to " " is NOT treated as missing.
+
+        Whitespace stripping is intentionally out of scope (see plan
+        Rabbit Holes). Only None / b"" / "" count as missing.
+        """
+        _inject_partial_write_orphan_with_value(CheckMinimal, "uuid", " ")
+        result = CheckMinimal.check_indexes()
+        assert result["partial_writes"] == 0
+
+    def test_composite_keyfield_model_skips_partial_write_check(self):
+        """Composite-KeyField models never report partial_writes > 0.
+
+        Even if we inject a hash that lacks every field, the model has no
+        single AutoKeyField so the eligibility gate must short-circuit.
+        """
+        # Inject a class-set member with a hash that exists but is empty
+        # of the composite key fields.
+        class_set_key = CheckComposite._meta.db_class_set_key.redis_key
+        fake_redis_key = "CheckComposite:item_x"
+        POPOTO_REDIS_DB.hset(fake_redis_key, mapping={"category": "tools"})
+        POPOTO_REDIS_DB.sadd(class_set_key, fake_redis_key)
+
+        result = CheckComposite.check_indexes()
+        # The composite-KeyField model must not classify this as a partial-write.
+        assert result["partial_writes"] == 0
+
+    def test_async_reports_partial_writes(self):
+        """async_check_indexes returns the new dict shape with partial_writes."""
+        _inject_partial_write_orphan(CheckMinimal, "uuid")
+
+        result = asyncio.run(CheckMinimal.async_check_indexes())
+        assert "partial_writes" in result
+        assert result["partial_writes"] == 1
+        assert result["total"] >= 1
+
+    def test_round_trip_with_clean(self):
+        """clean_indexes removes partial-writes; subsequent check returns 0."""
+        _inject_partial_write_orphan(CheckMinimal, "uuid")
+        assert CheckMinimal.check_indexes()["partial_writes"] == 1
+
+        CheckMinimal.clean_indexes()
+
+        assert CheckMinimal.check_indexes()["partial_writes"] == 0

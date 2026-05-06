@@ -2844,6 +2844,123 @@ class Model(metaclass=ModelBase):
         return count
 
     @classmethod
+    def _get_auto_key_field_name(cls) -> "str | None":
+        """Return the name of the model's single AutoKeyField, or None.
+
+        Used by check_indexes() and clean_indexes() to gate "partial-write
+        orphan" detection. Returns the field name only when the model has
+        EXACTLY ONE field with `auto=True` (i.e., a single AutoKeyField,
+        explicit or implicit). Returns None for:
+
+        - Models with zero AutoKeyFields (composite KeyField models).
+        - Models with multiple AutoKeyFields (ambiguous primary key).
+
+        For models defined without any explicit KeyField, popoto adds an
+        implicit `_auto_key` AutoKeyField at instance __init__ time
+        (see Model.__init__). That field is not registered on `_meta` until
+        the first instance is created. To make the helper robust for
+        classmethod use before any instance exists, this method instantiates
+        the class once if it sees zero key fields registered AND no auto
+        field — this triggers the implicit `_auto_key` registration.
+
+        Returns:
+            The name of the lone AutoKeyField, or None if the model is
+            ineligible for partial-write detection.
+        """
+        # Try to find an auto field already registered on the metaclass.
+        auto_names = [
+            name
+            for name, field in cls._meta.fields.items()
+            if getattr(field, "auto", False)
+        ]
+
+        # If no auto field is registered AND no explicit key fields exist,
+        # an implicit `_auto_key` would be added on instance init. Trigger
+        # that registration once so the introspection works classmethod-side.
+        if not auto_names and not cls._meta.key_field_names:
+            try:
+                cls()
+            except Exception:
+                # If instantiation fails (e.g., required fields), we cannot
+                # introspect further — treat as ineligible.
+                return None
+            auto_names = [
+                name
+                for name, field in cls._meta.fields.items()
+                if getattr(field, "auto", False)
+            ]
+
+        if len(auto_names) == 1:
+            return auto_names[0]
+        return None
+
+    @classmethod
+    def _classify_class_set_orphans(
+        cls,
+        members: list,
+        batch_size: int,
+        auto_key_field_name: "str | None",
+    ) -> "tuple[list, list]":
+        """Classify class-set members into (absent_orphans, partial_write_orphans).
+
+        Pipelines EXISTS for every member in batches. When `auto_key_field_name`
+        is provided, the same pipeline batch ALSO issues HGET on the auto-key
+        field for each member — interleaved one-EXISTS-one-HGET — so a single
+        ``pipe.execute()`` round-trip per batch handles both checks. The 2:1
+        result-pairing is unzipped via index arithmetic (see inline comment).
+
+        Categorization:
+        - ``EXISTS == 0`` -> "absent orphan" (existing behavior; SREM target).
+        - ``EXISTS == 1`` AND ``HGET in (None, b"", "")`` -> "partial-write
+          orphan" (new; SREM + DEL target).
+        - ``EXISTS == 1`` AND ``HGET == <value>`` -> healthy (no action).
+
+        When `auto_key_field_name is None` (composite-KeyField models, ineligible
+        for partial-write detection), the pipeline issues EXISTS only and the
+        partial-write list is always empty — preserves the original behavior.
+
+        Whitespace-only HGET values count as healthy (no whitespace stripping).
+
+        Args:
+            members: Class-set members (Redis keys) to classify.
+            batch_size: Pipeline batch size.
+            auto_key_field_name: Name of the model's AutoKeyField, or None.
+
+        Returns:
+            Tuple ``(absent_orphans, partial_write_orphans)`` of lists of keys.
+        """
+        absent_orphans: list = []
+        partial_write_orphans: list = []
+        eligible_for_partial = auto_key_field_name is not None
+
+        for i in range(0, len(members), batch_size):
+            batch = members[i : i + batch_size]
+            pipe = POPOTO_REDIS_DB.pipeline()
+            for key in batch:
+                pipe.exists(key)
+                if eligible_for_partial:
+                    # Interleaved with EXISTS so one round-trip handles both.
+                    pipe.hget(key, auto_key_field_name)
+            results = pipe.execute()
+
+            if eligible_for_partial:
+                # 2:1 result-pairing: results[2*i] == EXISTS for batch[i],
+                # results[2*i + 1] == HGET for batch[i].
+                for j, key in enumerate(batch):
+                    exists = results[2 * j]
+                    hget_value = results[2 * j + 1]
+                    if not exists:
+                        absent_orphans.append(key)
+                    elif hget_value is None or hget_value == b"" or hget_value == "":
+                        partial_write_orphans.append(key)
+            else:
+                for key, exists in zip(batch, results):
+                    if not exists:
+                        absent_orphans.append(key)
+
+        return absent_orphans, partial_write_orphans
+
+    @classmethod
     def check_indexes(cls, batch_size: int = 1000) -> dict:
         """Read-only health check that counts orphaned index entries.
 
@@ -2852,31 +2969,49 @@ class Model(metaclass=ModelBase):
         instance key still exists in Redis. Returns a structured dict with
         orphan counts per index type.
 
+        For models whose primary key is a single ``AutoKeyField``, the
+        class-set scan additionally detects **partial-write orphans**:
+        hashes that exist in Redis but are missing the auto-key field
+        (``id`` / ``uuid`` / ``_auto_key`` etc). These appear as ghost rows
+        in ``query.all()`` and are reported under the ``partial_writes`` key.
+        Models with composite KeyFields (no single AutoKeyField) skip this
+        check; their ``partial_writes`` count is always 0.
+
         This method makes zero writes to Redis. It is safe to call in
         production at any time. Note that counts are point-in-time snapshots;
-        concurrent writes may cause minor discrepancies.
+        concurrent writes may cause minor discrepancies. Avoid running during
+        active migrations or HDEL-based field migrations: a brief HDEL window
+        on the auto-key field can produce false-positive partial-write counts.
 
         Args:
             batch_size: Number of EXISTS commands per pipeline batch.
                 Default is 1000. Lower values use less memory but require
-                more round-trips.
+                more round-trips. For AutoKeyField-eligible models, the
+                class-set batch issues one EXISTS + one HGET per key in a
+                single pipeline (one network round-trip per batch).
 
         Returns:
             Dict with orphan counts per index type::
 
                 {
-                    'class_set': int,
+                    'class_set': int,         # absent-hash orphans
+                    'partial_writes': int,    # hash exists but missing auto-key
                     'key_fields': {field_name: int, ...},
                     'sorted_fields': {field_name: int, ...},
                     'geo_fields': {field_name: int, ...},
                     'composite_indexes': {index_key: int, ...},
-                    'total': int,
+                    'total': int,             # sum of all the above
                 }
 
         Example:
             result = User.check_indexes()
             if result['total'] > 0:
                 print(f"Found {result['total']} orphaned index entries")
+                if result['partial_writes'] > 0:
+                    print(
+                        f"Of those, {result['partial_writes']} are corrupt "
+                        f"hashes that will be DEL'd by clean_indexes()."
+                    )
                 User.rebuild_indexes()
         """
 
@@ -2927,6 +3062,7 @@ class Model(metaclass=ModelBase):
 
         result = {
             "class_set": 0,
+            "partial_writes": 0,
             "key_fields": {},
             "sorted_fields": {},
             "geo_fields": {},
@@ -2934,11 +3070,17 @@ class Model(metaclass=ModelBase):
             "total": 0,
         }
 
-        # 1. Check class set
+        # 1. Check class set (and detect partial-write orphans for
+        #    AutoKeyField-eligible models).
         class_set_key = cls._meta.db_class_set_key.redis_key
         members = _scan_set_members(class_set_key)
         if members:
-            result["class_set"] = _count_orphans(members)
+            auto_key_field_name = cls._get_auto_key_field_name()
+            absent, partial_writes = cls._classify_class_set_orphans(
+                members, batch_size, auto_key_field_name
+            )
+            result["class_set"] = len(absent)
+            result["partial_writes"] = len(partial_writes)
 
         # 2. Check key field sets
         for field_name in cls._meta.key_field_names:
@@ -2989,9 +3131,10 @@ class Model(metaclass=ModelBase):
                 index_orphans = _count_orphans(values)
             result["composite_indexes"][index_key] = index_orphans
 
-        # Compute total
+        # Compute total (includes partial-write orphans).
         result["total"] = (
             result["class_set"]
+            + result["partial_writes"]
             + sum(result["key_fields"].values())
             + sum(result["sorted_fields"].values())
             + sum(result["geo_fields"].values())
@@ -3009,18 +3152,36 @@ class Model(metaclass=ModelBase):
         instance keys which no longer exist in Redis. This is the write
         counterpart to check_indexes().
 
+        For models whose primary key is a single ``AutoKeyField``, the
+        class-set scan additionally detects **partial-write orphans**:
+        hashes that exist in Redis but are missing the auto-key field.
+        Such hashes are unrecoverable from the application's perspective
+        (``id`` is None, ``_redis_key`` cannot be computed, ``delete()``
+        silently no-ops). For these orphans, ``clean_indexes()`` removes
+        the class-set membership AND issues ``DEL`` on the corrupt hash —
+        no Redis memory is left behind. Models with composite KeyFields
+        (no single AutoKeyField) skip this check; their behavior is
+        identical to before.
+
         Uses SCAN-based iteration (SSCAN, ZSCAN, HSCAN) instead of the
         KEYS command, making it safe to run on production databases.
         For best results, run during low-traffic periods to minimize
-        the chance of race conditions with concurrent writes.
+        the chance of race conditions with concurrent writes. **Do not
+        run during active migrations or HDEL-based field migrations**: a
+        brief HDEL window on the auto-key field can cause healthy hashes
+        to be misclassified as partial-write orphans and deleted.
 
         Args:
             batch_size: Number of EXISTS/removal commands per pipeline
                 batch. Default is 1000. Lower values use less memory
-                but require more round-trips.
+                but require more round-trips. For AutoKeyField-eligible
+                models, the class-set batch issues one EXISTS + one HGET
+                per key in a single pipeline (one network round-trip per
+                batch).
 
         Returns:
-            Total number of orphaned index entries removed.
+            Total number of orphaned index entries removed (absent
+            orphans + partial-write orphans + per-field orphans).
 
         Example:
             # Check first, then clean
@@ -3079,17 +3240,28 @@ class Model(metaclass=ModelBase):
 
         removed = 0
 
-        # 1. Clean class set
+        # 1. Clean class set (and DEL partial-write orphans for
+        #    AutoKeyField-eligible models).
         class_set_key = cls._meta.db_class_set_key.redis_key
         members = _scan_set_members(class_set_key)
         if members:
-            orphans = _collect_orphans(members)
-            if orphans:
+            auto_key_field_name = cls._get_auto_key_field_name()
+            absent, partial_writes = cls._classify_class_set_orphans(
+                members, batch_size, auto_key_field_name
+            )
+            if absent or partial_writes:
                 pipe = POPOTO_REDIS_DB.pipeline()
-                for orphan in orphans:
+                # Absent orphans: SREM the stale class-set membership
+                # (hash is already gone — nothing to DEL).
+                for orphan in absent:
                     pipe.srem(class_set_key, orphan)
+                # Partial-write orphans: SREM AND DEL — the corrupt hash
+                # is unrecoverable and must not linger in Redis.
+                for orphan in partial_writes:
+                    pipe.srem(class_set_key, orphan)
+                    pipe.delete(orphan)
                 pipe.execute()
-                removed += len(orphans)
+                removed += len(absent) + len(partial_writes)
 
         # 2. Clean key field sets
         for field_name in cls._meta.key_field_names:
