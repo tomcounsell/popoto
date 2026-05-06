@@ -4,7 +4,7 @@ type: bug
 appetite: Small
 owner: Valor
 created: 2026-05-06
-tracking: https://github.com/tomcounsell/popoto/issues/385
+tracking: https://github.com/tomcounsell/popoto/issues/385  # issue #385
 last_comment_id:
 revision_applied: true
 revision_applied_at: 2026-05-06T15:30:00Z
