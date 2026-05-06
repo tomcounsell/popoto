@@ -14,7 +14,6 @@ import popoto
 from popoto.redis_db import POPOTO_REDIS_DB
 from popoto.fields.geo_field import GeoField
 
-
 # ---------------------------------------------------------------------------
 # Test model definitions (reuse same patterns as test_check_indexes.py)
 # ---------------------------------------------------------------------------
@@ -326,9 +325,9 @@ class TestDeprecationWarning:
         with caplog.at_level(logging.WARNING):
             CleanUser.query.keys(clean=True)
 
-        assert any("clean_indexes()" in record.message for record in caplog.records), (
-            f"Expected warning referencing clean_indexes(), got: {[r.message for r in caplog.records]}"
-        )
+        assert any(
+            "clean_indexes()" in record.message for record in caplog.records
+        ), f"Expected warning referencing clean_indexes(), got: {[r.message for r in caplog.records]}"
 
     def test_warning_says_deprecated(self, caplog):
         """Warning message says deprecated."""
@@ -340,3 +339,126 @@ class TestDeprecationWarning:
         assert any(
             "deprecated" in record.message.lower() for record in caplog.records
         ), f"Expected deprecation warning, got: {[r.message for r in caplog.records]}"
+
+
+# ---------------------------------------------------------------------------
+# Tests: Partial-write orphan removal (DEL + SREM)
+# ---------------------------------------------------------------------------
+
+
+def _inject_partial_write_orphan(model_cls, missing_field_name: str) -> str:
+    """Manually create a partial-write orphan: a hash that exists in Redis
+    but is missing the given primary-key field, and is registered in the
+    class set.
+
+    Returns the orphan's redis_key (str).
+    """
+    class_set_key = model_cls._meta.db_class_set_key.redis_key
+    fake_value = "deadbeef" * 4  # 32 chars (matches AutoKeyField default length)
+    orphan_redis_key = f"{model_cls.__name__}:{fake_value}"
+    POPOTO_REDIS_DB.hset(orphan_redis_key, mapping={"data": "ghost"})
+    POPOTO_REDIS_DB.sadd(class_set_key, orphan_redis_key)
+    return orphan_redis_key
+
+
+class TestCleanIndexesPartialWriteOrphans:
+    """Verify partial-write orphan removal in clean_indexes()."""
+
+    def test_partial_write_orphan_removed_from_class_set(self):
+        """The orphan's class-set membership is SREM'd."""
+        orphan_key = _inject_partial_write_orphan(CleanMinimal, "uuid")
+        class_set_key = CleanMinimal._meta.db_class_set_key.redis_key
+
+        assert POPOTO_REDIS_DB.sismember(class_set_key, orphan_key) == 1
+
+        removed = CleanMinimal.clean_indexes()
+        assert removed >= 1
+        assert POPOTO_REDIS_DB.sismember(class_set_key, orphan_key) == 0
+
+    def test_partial_write_orphan_hash_deleted(self):
+        """The orphan hash itself is DEL'd from Redis (no leftover memory)."""
+        orphan_key = _inject_partial_write_orphan(CleanMinimal, "uuid")
+
+        assert POPOTO_REDIS_DB.exists(orphan_key) == 1
+
+        CleanMinimal.clean_indexes()
+        assert POPOTO_REDIS_DB.exists(orphan_key) == 0
+
+    def test_partial_write_round_trip_with_check(self):
+        """After clean_indexes, check_indexes reports partial_writes == 0."""
+        _inject_partial_write_orphan(CleanMinimal, "uuid")
+        assert CleanMinimal.check_indexes()["partial_writes"] == 1
+
+        CleanMinimal.clean_indexes()
+
+        result_after = CleanMinimal.check_indexes()
+        assert result_after["partial_writes"] == 0
+        assert result_after["total"] == 0
+
+    def test_partial_write_count_in_return(self):
+        """clean_indexes return count includes partial-write orphans."""
+        # Healthy instance — should not be touched.
+        CleanMinimal.create(data="healthy")
+        # Two partial-write orphans.
+        _inject_partial_write_orphan(CleanMinimal, "uuid")
+        # Inject a second one with a different fake key.
+        class_set_key = CleanMinimal._meta.db_class_set_key.redis_key
+        second_key = "CleanMinimal:" + ("cafebabe" * 4)
+        POPOTO_REDIS_DB.hset(second_key, mapping={"data": "ghost2"})
+        POPOTO_REDIS_DB.sadd(class_set_key, second_key)
+
+        removed = CleanMinimal.clean_indexes()
+        assert removed >= 2
+
+    def test_composite_keyfield_partial_write_not_deleted(self):
+        """Composite-KeyField model: ineligible — hash MUST NOT be deleted.
+
+        Verifies the eligibility gate: even when a hash is missing fields,
+        composite-KeyField models take the original EXISTS-only path.
+        """
+        class_set_key = CleanComposite._meta.db_class_set_key.redis_key
+        fake_key = "CleanComposite:safehash"
+        POPOTO_REDIS_DB.hset(fake_key, mapping={"category": "tools"})
+        POPOTO_REDIS_DB.sadd(class_set_key, fake_key)
+
+        CleanComposite.clean_indexes()
+
+        # Hash exists -> EXISTS == 1 -> NOT classified as absent orphan.
+        # Composite model is ineligible -> NOT classified as partial-write either.
+        # Therefore the hash and class-set membership must remain.
+        assert POPOTO_REDIS_DB.exists(fake_key) == 1
+        assert POPOTO_REDIS_DB.sismember(class_set_key, fake_key) == 1
+
+        # Cleanup so the test-isolation flushdb won't be needed for siblings.
+        POPOTO_REDIS_DB.delete(fake_key)
+        POPOTO_REDIS_DB.srem(class_set_key, fake_key)
+
+    def test_async_removes_partial_write_orphans(self):
+        """async_clean_indexes removes partial-write orphans (sync parity)."""
+        orphan_key = _inject_partial_write_orphan(CleanMinimal, "uuid")
+
+        removed = asyncio.run(CleanMinimal.async_clean_indexes())
+        assert removed >= 1
+        assert POPOTO_REDIS_DB.exists(orphan_key) == 0
+
+        # Round-trip: nothing left to flag.
+        result_after = asyncio.run(CleanMinimal.async_check_indexes())
+        assert result_after["partial_writes"] == 0
+
+    def test_healthy_instance_not_touched(self):
+        """A healthy instance alongside an orphan must survive cleanup."""
+        healthy = CleanMinimal.create(data="keep_me")
+        healthy_key = healthy.db_key.redis_key
+        orphan_key = _inject_partial_write_orphan(CleanMinimal, "uuid")
+
+        assert POPOTO_REDIS_DB.exists(healthy_key) == 1
+        assert POPOTO_REDIS_DB.exists(orphan_key) == 1
+
+        CleanMinimal.clean_indexes()
+
+        # Orphan gone, healthy survives.
+        assert POPOTO_REDIS_DB.exists(orphan_key) == 0
+        assert POPOTO_REDIS_DB.exists(healthy_key) == 1
+        # Class-set integrity preserved for the healthy row.
+        class_set_key = CleanMinimal._meta.db_class_set_key.redis_key
+        assert POPOTO_REDIS_DB.sismember(class_set_key, healthy_key) == 1
