@@ -169,3 +169,4 @@ The default implementation uses the last user message as the query cue. For more
 - [Agent Memory Quickstart](agent-memory-quickstart.md) -- progressive adoption guide
 - [ContextAssembler](../features/context-assembler.md) -- retrieval-to-injection bridge
 - [PolicyCache Recipe](policy-cache-recipe.md) -- RL-style learned action selection
+- [Trajectory Memory Recipe](trajectory-memory-recipe.md) -- fingerprint-keyed procedural memory: cluster completed task trajectories and recall "what worked last time"

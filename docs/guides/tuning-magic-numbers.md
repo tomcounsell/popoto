@@ -93,6 +93,16 @@ Source: `src/popoto/recipes/context_assembler.py`
 | `COMPETITIVE_SUPPRESSION_SIGNAL` | 0.3 | [0.1, 0.7] | **Medium** (variance 0.053, sweep 2026-04-20 via `ContextAssemblerFamilyScenario`) |
 | `DEFAULT_SURFACING_THRESHOLD` | 0.5 | [0.1, 0.9] | Low |
 
+### TrajectoryMemory
+
+Source: `src/popoto/recipes/trajectory_memory.py` and `src/popoto/fields/constants.py`
+
+| Constant | Default | Optimal Range | Sensitivity |
+|----------|---------|--------------|-------------|
+| `TRAJECTORY_CLUSTER_THRESHOLD` | 3 | [2, 10] | Not swept (structural) |
+
+`TRAJECTORY_CLUSTER_THRESHOLD` is the minimum number of episodes in a fingerprint group before `crystallize()` will upsert a `pattern_model` record. Lower values produce patterns earlier but with less evidence; higher values require more data before a pattern is trusted. This constant participates in project-wide tuning sweeps via `tests/benchmarks/test_defaults_sync.py`.
+
 ### SubconsciousMemory (Tier 4)
 
 Source: `src/popoto/recipes/subconscious_memory.py`
