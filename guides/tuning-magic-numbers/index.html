@@ -1780,6 +1780,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#trajectorymemory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TrajectoryMemory
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#subconsciousmemory-tier-4" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2490,6 +2501,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#trajectorymemory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TrajectoryMemory
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#subconsciousmemory-tier-4" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2901,6 +2923,27 @@
 </tr>
 </tbody>
 </table>
+<h3 id="trajectorymemory">TrajectoryMemory<a class="headerlink" href="#trajectorymemory" title="Permanent link">&para;</a></h3>
+<p>Source: <code>src/popoto/recipes/trajectory_memory.py</code> and <code>src/popoto/fields/constants.py</code></p>
+<table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Default</th>
+<th>Optimal Range</th>
+<th>Sensitivity</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>TRAJECTORY_CLUSTER_THRESHOLD</code></td>
+<td>3</td>
+<td>[2, 10]</td>
+<td>Not swept (structural)</td>
+</tr>
+</tbody>
+</table>
+<p><code>TRAJECTORY_CLUSTER_THRESHOLD</code> is the minimum number of episodes in a fingerprint group before <code>crystallize()</code> will upsert a <code>pattern_model</code> record. Lower values produce patterns earlier but with less evidence; higher values require more data before a pattern is trusted. This constant participates in project-wide tuning sweeps via <code>tests/benchmarks/test_defaults_sync.py</code>.</p>
 <h3 id="subconsciousmemory-tier-4">SubconsciousMemory (Tier 4)<a class="headerlink" href="#subconsciousmemory-tier-4" title="Permanent link">&para;</a></h3>
 <p>Source: <code>src/popoto/recipes/subconscious_memory.py</code></p>
 <p>These recipe-layer constants control the SubconsciousMemory pipeline (extraction, injection, scoring). They are evaluated through Tier 4 experiments that run multi-turn simulations across three agent scenarios (support agent, coding assistant, research agent).</p>

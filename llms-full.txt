@@ -7678,6 +7678,7 @@ See [Defaults API reference](../reference/popoto/fields/constants.md) and [Tunin
 - [Epistemic Flow in Cognitive Agent Architectures](../guides/epistemic-flow-cognitive-agent-architectures.md) — research background
 - [Programmable Memory Systems — Neuroscience Design Spec](../guides/programmable-memory-systems-neuroscience-design-spec.md) — neuroscience foundations
 - [Subconscious Memory Recipe](../guides/subconscious-memory-recipe.md) — automatic memory injection and extraction around LLM turns
+- [Trajectory Memory Recipe](../guides/trajectory-memory-recipe.md) — fingerprint-keyed procedural memory: cluster completed task trajectories and recall "what worked last time"
 - [Behavioral Episode Memory System](https://github.com/tomcounsell/ai/issues/376) — downstream consumer in the AI project
 
 ---
@@ -10497,6 +10498,7 @@ The default implementation uses the last user message as the query cue. For more
 - [Agent Memory Quickstart](agent-memory-quickstart.md) -- progressive adoption guide
 - [ContextAssembler](../features/context-assembler.md) -- retrieval-to-injection bridge
 - [PolicyCache Recipe](policy-cache-recipe.md) -- RL-style learned action selection
+- [Trajectory Memory Recipe](trajectory-memory-recipe.md) -- fingerprint-keyed procedural memory: cluster completed task trajectories and recall "what worked last time"
 
 ---
 
@@ -11059,6 +11061,16 @@ Source: `src/popoto/recipes/context_assembler.py`
 |----------|---------|--------------|-------------|
 | `COMPETITIVE_SUPPRESSION_SIGNAL` | 0.3 | [0.1, 0.7] | **Medium** (variance 0.053, sweep 2026-04-20 via `ContextAssemblerFamilyScenario`) |
 | `DEFAULT_SURFACING_THRESHOLD` | 0.5 | [0.1, 0.9] | Low |
+
+### TrajectoryMemory
+
+Source: `src/popoto/recipes/trajectory_memory.py` and `src/popoto/fields/constants.py`
+
+| Constant | Default | Optimal Range | Sensitivity |
+|----------|---------|--------------|-------------|
+| `TRAJECTORY_CLUSTER_THRESHOLD` | 3 | [2, 10] | Not swept (structural) |
+
+`TRAJECTORY_CLUSTER_THRESHOLD` is the minimum number of episodes in a fingerprint group before `crystallize()` will upsert a `pattern_model` record. Lower values produce patterns earlier but with less evidence; higher values require more data before a pattern is trusted. This constant participates in project-wide tuning sweeps via `tests/benchmarks/test_defaults_sync.py`.
 
 ### SubconsciousMemory (Tier 4)
 
