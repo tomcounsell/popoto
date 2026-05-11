@@ -1,9 +1,10 @@
 ---
-status: Planning
+status: Ready
 type: feature
 appetite: Medium
 owner: Valor
 created: 2026-05-10
+revision_applied: true
 tracking: https://github.com/tomcounsell/popoto/issues/389
 ---
 
@@ -207,6 +208,7 @@ Optional: `AccessTrackerMixin` for read-tracking. Recipe checks for it and calls
 | Trajectory | `ListField` | `trajectory` | Action sequence |
 | Outcome | `JSONField` (or any dict-serialisable field) | `outcome` | Result payload |
 | Partition | `KeyField` | from `partition_field` | Cluster scope |
+| Episode recency | `DecayingSortedField` (or any sortable timestamp field) | `recorded_at` | Crystallization filter (newer than `pattern.last_reinforced`) |
 
 ### Flow
 
@@ -254,6 +256,9 @@ fingerprint tuple → for each group ≥ threshold: upsert pattern via
 
 ```python
 DEFAULT_CLUSTER_THRESHOLD = 3            # episodes-per-cluster to crystallize
+                                         # (also exposed as
+                                         # Defaults.TRAJECTORY_CLUSTER_THRESHOLD in
+                                         # magic_numbers.py for tuning sweeps)
 DEFAULT_RECALL_LIMIT = 5
 DEFAULT_SCORE_WEIGHTS = {"confidence": 0.6, "last_reinforced": 0.4}
 DEFAULT_CONFIDENCE_FIELD = "confidence"
@@ -262,7 +267,15 @@ DEFAULT_TRAJECTORY_FIELD = "trajectory"
 DEFAULT_OUTCOME_FIELD = "outcome"
 DEFAULT_CANONICAL_SEQUENCE_FIELD = "canonical_sequence"
 DEFAULT_PARTITION_FIELD = "partition"
+DEFAULT_EPISODE_RECENCY_FIELD = "recorded_at"
 ```
+
+**`pattern.observe` ergonomics**: the recipe owns the observation call site. Consumers
+never call `observe` directly; they call `record_episode` and `crystallize`. Inside
+`crystallize`, the recipe calls `ConfidenceField.update_confidence(pattern,
+confidence_field, signal=...)` on the consumer's behalf. The issue's API sketch
+notation `pattern.observe(success=...)` is realised through this path; the guide
+documents the mapping.
 
 ## Failure Path Test Strategy
 
@@ -497,10 +510,14 @@ No agent integration — Popoto is a library; consumers wire it in.
   `subconscious_memory.py` module structure (module docstring with flow diagram,
   defaults block, single class).
 - Constructor signature: `__init__(self, episode_model, pattern_model,
-  fingerprint_fields, cluster_threshold=3, score_weights=None,
+  fingerprint_fields, cluster_threshold=None, score_weights=None,
   partition_field="partition", confidence_field="confidence",
   recency_field="last_reinforced", trajectory_field="trajectory",
-  outcome_field="outcome", canonical_sequence_field="canonical_sequence")`.
+  outcome_field="outcome", canonical_sequence_field="canonical_sequence",
+  episode_recency_field="recorded_at")`. When `cluster_threshold is None`, default
+  to `Defaults.TRAJECTORY_CLUSTER_THRESHOLD` from
+  `src/popoto/magic_numbers.py` so the constant participates in project-wide tuning
+  sweeps (see `docs/features/experimental_tuning_magic_numbers.md`).
 - Field introspection in `__init__` via `pattern_model._meta.fields` and
   `episode_model._meta.fields` — raise `TypeError` listing missing fields.
 - `record_episode(self, fingerprint, trajectory, outcome, partition)` — instantiate
@@ -514,8 +531,8 @@ No agent integration — Popoto is a library; consumers wire it in.
           KeyFields, so the combo is unique under partition).
         - If 0: instantiate a new pattern with canonical sequence + initial
           confidence observation, save.
-        - If 1: filter episodes to those with timestamp newer than
-          `pattern.last_reinforced`; observe each via
+        - If 1: filter episodes to those with `episode_recency_field` value newer
+          than `pattern.last_reinforced`; observe each via
           `ConfidenceField.update_confidence(pattern, confidence_field,
           signal=success_rate_for_episode)`; recompute canonical sequence; save.
     4. Return list of (created or reinforced) patterns.
@@ -525,6 +542,9 @@ No agent integration — Popoto is a library; consumers wire it in.
        **fingerprint).composite_score(weights, limit=limit)`.
     3. Return list.
 - Re-export `compute_fingerprint` from `popoto.recipes.policy_cache` at module top.
+- Add `TRAJECTORY_CLUSTER_THRESHOLD = 3` to `Defaults` in
+  `src/popoto/magic_numbers.py` (or whichever module is the canonical defaults
+  registry referenced by `docs/features/experimental_tuning_magic_numbers.md`).
 - Update `popoto/recipes/__init__.py` to export `TrajectoryMemory`. Append to
   `__all__` in alphabetical order.
 - **No update to `popoto.__init__`** — recipes are namespaced under `popoto.recipes`,
@@ -586,29 +606,17 @@ No agent integration — Popoto is a library; consumers wire it in.
 
 ---
 
-## Open Questions
+## Revision Notes (2026-05-11)
 
-1. **`pattern.observe` ergonomics.** Issue's API sketch shows
-   `pattern.observe(success=True)` as the conceptual call shape, but Popoto's actual
-   API is `ConfidenceField.update_confidence(pattern, "confidence", signal=...)`.
-   Three options: (a) keep the recipe internal-only (consumers never see `observe`,
-   they call `record_episode` / `crystallize`); (b) add a thin
-   `TrajectoryMemory.observe_pattern(pattern, success=True)` convenience method;
-   (c) add a project-wide `pattern.observe(...)` shortcut on `ConfidenceField`
-   itself (out of scope here, but worth flagging). **Recommendation: (a) — the
-   recipe owns the observation call site; consumers never need `observe`.**
+Critique returned **READY TO BUILD (with concerns)**. The three concerns surfaced
+in the original Open Questions section have been resolved into the plan body and
+the section removed:
 
-2. **Episode timestamp source.** Crystallization uses an episode's timestamp to
-   filter "newer than last_reinforced" (Risk 2 mitigation). Should the recipe
-   require a `recorded_at: DecayingSortedField` (or similar) on `episode_model`, or
-   should it use the model's `_auto_key` ordering as a proxy? Latter is simpler;
-   former is more explicit. **Recommendation: require an explicit
-   `episode_recency_field` (default `recorded_at`); document it in the field
-   requirements table.** This question changes the field-requirements section if
-   answered differently.
-
-3. **Cluster threshold tuning.** Default `cluster_threshold=3` matches the issue's
-   sketch. Should it be tunable via a `magic_numbers.py` constant (so it participates
-   in the project-wide tuning sweeps catalogued in
-   `docs/features/experimental_tuning_magic_numbers.md`)? **Recommendation: yes —
-   add `Defaults.TRAJECTORY_CLUSTER_THRESHOLD` and reference it from the recipe.**
+1. **`pattern.observe` ergonomics** — recipe owns the observation call site; see
+   the note immediately below the Defaults block under Solution.
+2. **Episode recency source** — `episode_recency_field` is now a required
+   constructor kwarg (default `"recorded_at"`); added to the episode-model field
+   table and to the implementation task.
+3. **Cluster threshold tuning** — `Defaults.TRAJECTORY_CLUSTER_THRESHOLD` is added
+   to `magic_numbers.py`; constructor defaults to it when `cluster_threshold` is
+   `None`. New task bullet added under "Implement `TrajectoryMemory` class."
