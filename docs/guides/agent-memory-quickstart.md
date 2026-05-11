@@ -324,3 +324,4 @@ from popoto import InteractionWeight, TemporalPeriod, Defaults
 - **[Tuning Magic Numbers](tuning-magic-numbers.md)** — adjust decay rates, confidence signals, and thresholds
 - **[PolicyCache Recipe](policy-cache-recipe.md)** — RL-style learned action selection built on these primitives
 - **[Subconscious Memory Recipe](subconscious-memory-recipe.md)** — automatic memory injection and extraction around LLM turns
+- **[Trajectory Memory Recipe](trajectory-memory-recipe.md)** — fingerprint-keyed procedural patterns ("what worked last time")

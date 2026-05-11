@@ -1088,3 +1088,5 @@ All of this composes from generic ORM primitives. None of it requires the agent 
 ## Roadmap Complete
 
 All 12 steps and 14 primitives are shipped. Tuning constants have been centralized in `popoto.fields.constants.Defaults` for experimental sweep readiness. Standalone feature documentation is available for each complex primitive under `docs/features/`. The experimental tuning benchmark harness (`tests/benchmarks/`) covers field-level constants (Tiers 1-3) and recipe-layer constants (Tier 4). Tier 4 adds SubconsciousMemory experiments with multi-turn simulations across three agent scenarios (support agent, coding assistant, research agent), new metrics (extraction F1, token utilization ratio, importance distribution health), and fixture-based deterministic benchmarks.
+
+Named recipes layered over the primitives now cover the three classical memory types: `ContextAssembler` and `SubconsciousMemory` for **semantic/declarative** memory, and [`TrajectoryMemory`](trajectory-memory-recipe.md) for **procedural** memory (fingerprint-keyed canonical action sequences with `composite_score` ranking and idempotent crystallization).
