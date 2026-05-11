@@ -9,6 +9,7 @@ from .adaptive_assembler import AdaptiveAssembler
 from .context_assembler import AssemblyResult, ContextAssembler, RetrievalQuality
 from .policy_cache import PolicyEntry, compute_fingerprint, update_q_value
 from .subconscious_memory import SubconsciousMemory
+from .trajectory_memory import TrajectoryMemory
 
 __all__ = [
     "AdaptiveAssembler",
@@ -17,6 +18,7 @@ __all__ = [
     "PolicyEntry",
     "RetrievalQuality",
     "SubconsciousMemory",
+    "TrajectoryMemory",
     "compute_fingerprint",
     "update_q_value",
 ]

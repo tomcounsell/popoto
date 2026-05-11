@@ -124,6 +124,15 @@ class Defaults:
     CHI_SQUARED_P_THRESHOLD = 0.05  # empirically inert (sweep 2026-04-20, variance=0.0)
     INITIAL_CYCLE_AMPLITUDE = 0.5  # empirically inert (sweep 2026-04-20, variance=0.0)
 
+    # -- TrajectoryMemory (recipes/trajectory_memory.py) ----------------------
+    # Cluster threshold for crystallizing trajectory patterns. Episodes
+    # sharing a fingerprint must reach this count before being promoted to a
+    # canonical pattern. Higher values delay crystallization in favor of
+    # stronger evidence; lower values produce patterns sooner from sparser
+    # data. Not yet swept — initial value mirrors PolicyCache's
+    # MIN_EVENTS_FOR_CRYSTALLIZATION (3) which is the closest analogue.
+    TRAJECTORY_CLUSTER_THRESHOLD = 3
+
     # -- ContextAssembler (recipes/context_assembler.py) ----------------------
     # Issue #362 added ContextAssemblerFamilyScenario.
     # COMPETITIVE_SUPPRESSION_SIGNAL is now sensitive (variance 0.053) —

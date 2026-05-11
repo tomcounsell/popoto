@@ -55,6 +55,7 @@ Popoto provides a fast, familiar interface for working with Redis and Valkey.
  - [Content and Embedding Fields](features/content-and-embedding-fields.md) — large content storage, vector embeddings, and semantic search
  - [PolicyCache Recipe](guides/policy-cache-recipe.md) — reference recipe composing all memory primitives into an RL-style action selection cache
  - [SubconsciousMemory Recipe](guides/subconscious-memory-recipe.md) — automatic memory injection and extraction around LLM turns
+ - [TrajectoryMemory Recipe](guides/trajectory-memory-recipe.md) — fingerprint-keyed procedural memory: cluster completed task trajectories and recall "what worked last time"
  - [RAG Chatbot Recipe](guides/rag-chatbot-recipe.md) — build a retrieval-augmented chatbot using ContentField, EmbeddingField, and semantic_search
 
 **Popoto** is ideal for streaming data. The pub/sub module allows you to trigger state updates in real time.
