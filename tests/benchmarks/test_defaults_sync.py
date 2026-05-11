@@ -63,6 +63,7 @@ class TestDefaultsSync:
             "PL_AUTO_RESOLVE_CONTRADICTED",
             "PL_AUTO_RESOLVE_USED",
             "ADAPTIVE_QUALITY_WINDOW_SIZE",
+            "TRAJECTORY_CLUSTER_THRESHOLD",
         }
 
         expected_in_module = defaults_attrs - field_kwargs_and_class_attrs
