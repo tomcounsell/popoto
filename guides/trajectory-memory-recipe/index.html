@@ -10,13 +10,13 @@
         <meta name="author" content="Tom Counsell">
       
       
-        <link rel="canonical" href="https://popoto.io/guides/subconscious-memory-recipe/">
+        <link rel="canonical" href="https://popoto.io/guides/trajectory-memory-recipe/">
       
       
-        <link rel="prev" href="../policy-cache-recipe/">
+        <link rel="prev" href="../subconscious-memory-recipe/">
       
       
-        <link rel="next" href="../trajectory-memory-recipe/">
+        <link rel="next" href="../rag-chatbot-recipe/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>SubconsciousMemory - Popoto Documentation</title>
+        <title>TrajectoryMemory - Popoto Documentation</title>
       
     
     
@@ -80,7 +80,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#subconscious-memory-recipe" class="md-skip">
+        <a href="#trajectorymemory-recipe" class="md-skip">
           Skip to content
         </a>
       
@@ -114,7 +114,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              SubconsciousMemory
+              TrajectoryMemory
             
           </span>
         </div>
@@ -1459,6 +1459,34 @@
                 
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../subconscious-memory-recipe/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SubconsciousMemory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
     
   
   
@@ -1478,7 +1506,7 @@
   <span class="md-ellipsis">
     
   
-    SubconsciousMemory
+    TrajectoryMemory
   
 
     
@@ -1496,7 +1524,7 @@
   <span class="md-ellipsis">
     
   
-    SubconsciousMemory
+    TrajectoryMemory
   
 
     
@@ -1544,17 +1572,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#openai-sdk-integration" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        OpenAI SDK Integration
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#how-it-works" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1567,10 +1584,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#pre-turn-inject_contextmessages" class="md-nav__link">
+  <a href="#record_episodefingerprint-trajectory-outcome-partition" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Pre-turn: inject_context(messages)
+        record_episode(fingerprint, trajectory, outcome, partition)
       
     </span>
   </a>
@@ -1578,10 +1595,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#post-turn-extract_memoriesresponse_text-importance" class="md-nav__link">
+  <a href="#crystallizepartition" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Post-turn: extract_memories(response_text, importance)
+        crystallize(partition)
       
     </span>
   </a>
@@ -1589,10 +1606,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#outcome-report_outcomesassembly_result-outcome" class="md-nav__link">
+  <a href="#recallfingerprint-partition-limit5" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Outcome: report_outcomes(assembly_result, outcome)
+        recall(fingerprint, partition, limit=5)
       
     </span>
   </a>
@@ -1605,10 +1622,60 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#tuning" class="md-nav__link">
+  <a href="#required-fields" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Tuning
+        Required Fields
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Required Fields">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pattern_model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        pattern_model
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#episode_model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        episode_model
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#defaults-tuning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Defaults &amp; Tuning
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-patternobservesuccess-ergonomics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The pattern.observe(success=...) Ergonomics
       
     </span>
   </a>
@@ -1624,33 +1691,16 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Extensibility">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#custom-fact-extraction" class="md-nav__link">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#compute-fingerprint-helper" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Custom Fact Extraction
+        Compute Fingerprint Helper
       
     </span>
   </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#custom-query-cues" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Custom Query Cues
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
@@ -1669,34 +1719,6 @@
   
 </nav>
       
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../trajectory-memory-recipe/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    TrajectoryMemory
-  
-
-    
-  </span>
-  
-  
-
-      </a>
     </li>
   
 
@@ -2313,17 +2335,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#openai-sdk-integration" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        OpenAI SDK Integration
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#how-it-works" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2336,10 +2347,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#pre-turn-inject_contextmessages" class="md-nav__link">
+  <a href="#record_episodefingerprint-trajectory-outcome-partition" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Pre-turn: inject_context(messages)
+        record_episode(fingerprint, trajectory, outcome, partition)
       
     </span>
   </a>
@@ -2347,10 +2358,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#post-turn-extract_memoriesresponse_text-importance" class="md-nav__link">
+  <a href="#crystallizepartition" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Post-turn: extract_memories(response_text, importance)
+        crystallize(partition)
       
     </span>
   </a>
@@ -2358,10 +2369,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#outcome-report_outcomesassembly_result-outcome" class="md-nav__link">
+  <a href="#recallfingerprint-partition-limit5" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Outcome: report_outcomes(assembly_result, outcome)
+        recall(fingerprint, partition, limit=5)
       
     </span>
   </a>
@@ -2374,10 +2385,60 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#tuning" class="md-nav__link">
+  <a href="#required-fields" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Tuning
+        Required Fields
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Required Fields">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pattern_model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        pattern_model
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#episode_model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        episode_model
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#defaults-tuning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Defaults &amp; Tuning
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-patternobservesuccess-ergonomics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The pattern.observe(success=...) Ergonomics
       
     </span>
   </a>
@@ -2393,33 +2454,16 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Extensibility">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#custom-fact-extraction" class="md-nav__link">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#compute-fingerprint-helper" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Custom Fact Extraction
+        Compute Fingerprint Helper
       
     </span>
   </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#custom-query-cues" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Custom Query Cues
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
@@ -2454,189 +2498,227 @@
   
 
 
-<h1 id="subconscious-memory-recipe">Subconscious Memory Recipe<a class="headerlink" href="#subconscious-memory-recipe" title="Permanent link">&para;</a></h1>
+<h1 id="trajectorymemory-recipe">TrajectoryMemory Recipe<a class="headerlink" href="#trajectorymemory-recipe" title="Permanent link">&para;</a></h1>
 <blockquote>
 <p><strong>New to Agent Memory?</strong> Start with the <a href="../agent-memory-quickstart/">Quickstart Guide</a> for a progressive adoption path.</p>
 </blockquote>
-<p>Automatic memory injection and extraction around every LLM turn. The agent's memory works silently -- assembling relevant context before each call and saving new observations after each response -- without the application needing to manage memory explicitly.</p>
+<p>Procedural memory: store completed task <strong>trajectories</strong>, cluster them by structural fingerprint, and recall the canonical "what worked last time" sequence by fingerprint.</p>
+<p><code>TrajectoryMemory</code> is the third named recipe in <code>popoto.recipes</code>, alongside <a href="../../features/context-assembler/"><code>ContextAssembler</code></a> (semantic retrieval) and <a href="../subconscious-memory-recipe/"><code>SubconsciousMemory</code></a> (auto inject/extract around LLM turns). Where those two model <strong>facts</strong>, <code>TrajectoryMemory</code> models <strong>sequences of actions plus an outcome</strong> — the cognitive analogue of procedural memory.</p>
 <h2 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>User message
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>record_episode(fingerprint, trajectory, outcome, partition)
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    |
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    v
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>[Pre-turn: ContextAssembler.assemble() -&gt; inject into system message]
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>[episode_model.save() -- append-only]
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    |
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    v
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>[LLM inference]
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>crystallize(partition)   (periodic, e.g. daily reflection)
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    |
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    v
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>[Post-turn: extract facts from response -&gt; save as Memory records]
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    |
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    v
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>[Outcome: report acted/dismissed/contradicted via ObservationProtocol]
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    |
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    v
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>Agent response
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    +-- group episodes by fingerprint tuple
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    +-- for each group with len &gt;= cluster_threshold:
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    |       upsert pattern_model record
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    |       update_confidence(signal=success_rate)
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    |       write canonical (modal) trajectory
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    v
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>recall(fingerprint, partition, limit)
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    |
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    +-- pattern_model.query.filter(**fingerprint, partition=partition)
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>    +-- composite_score({confidence, last_reinforced})
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>    v
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>list[pattern_model], ranked
 </code></pre></div>
 <h2 id="quick-start">Quick Start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
+<p>Define an <code>episode_model</code> (raw trajectories, append-only) and a <code>pattern_model</code> (crystallized canonical sequences keyed by fingerprint). The recipe introspects both — it does not define them.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="n">Model</span><span class="p">,</span> <span class="n">AutoKeyField</span><span class="p">,</span> <span class="n">KeyField</span><span class="p">,</span> <span class="n">StringField</span><span class="p">,</span> <span class="n">FloatField</span><span class="p">,</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="n">DecayingSortedField</span><span class="p">,</span> <span class="n">ConfidenceField</span><span class="p">,</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">WriteFilterMixin</span><span class="p">,</span> <span class="n">AccessTrackerMixin</span><span class="p">,</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="p">)</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes.subconscious_memory</span><span class="w"> </span><span class="kn">import</span> <span class="n">SubconsciousMemory</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="n">AutoKeyField</span><span class="p">,</span> <span class="n">ConfidenceField</span><span class="p">,</span> <span class="n">DecayingSortedField</span><span class="p">,</span> <span class="n">DictField</span><span class="p">,</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="n">KeyField</span><span class="p">,</span> <span class="n">ListField</span><span class="p">,</span> <span class="n">Model</span><span class="p">,</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="p">)</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes</span><span class="w"> </span><span class="kn">import</span> <span class="n">TrajectoryMemory</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
 <a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="c1"># Define your Memory model (any level from the quickstart guide)</span>
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="k">class</span><span class="w"> </span><span class="nc">Memory</span><span class="p">(</span><span class="n">WriteFilterMixin</span><span class="p">,</span> <span class="n">AccessTrackerMixin</span><span class="p">,</span> <span class="n">Model</span><span class="p">):</span>
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>    <span class="n">memory_id</span> <span class="o">=</span> <span class="n">AutoKeyField</span><span class="p">()</span>
-<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>    <span class="n">agent_id</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
-<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">)</span>
-<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>    <span class="n">importance</span> <span class="o">=</span> <span class="n">FloatField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
-<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>    <span class="n">relevance</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span>
-<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>        <span class="n">base_score_field</span><span class="o">=</span><span class="s2">&quot;importance&quot;</span><span class="p">,</span>
-<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>        <span class="n">partition_by</span><span class="o">=</span><span class="s2">&quot;agent_id&quot;</span><span class="p">,</span>
-<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>    <span class="p">)</span>
-<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>    <span class="n">confidence</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="p">(</span><span class="n">initial_confidence</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
-<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>
-<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>    <span class="n">_wf_min_threshold</span> <span class="o">=</span> <span class="mf">0.1</span>  <span class="c1"># default after sweep 2026-04-17 (was 0.2)</span>
-<a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>    <span class="n">_wf_priority_threshold</span> <span class="o">=</span> <span class="mf">0.7</span>
-<a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>
-<a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">compute_filter_score</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">importance</span> <span class="ow">or</span> <span class="mf">0.0</span>
-<a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a>
-<a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a><span class="c1"># Create the subconscious memory layer</span>
-<a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a><span class="n">sm</span> <span class="o">=</span> <span class="n">SubconsciousMemory</span><span class="p">(</span>
-<a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a>    <span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span>
-<a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">,</span>
-<a id="__codelineno-1-30" name="__codelineno-1-30" href="#__codelineno-1-30"></a>    <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;relevance&quot;</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">,</span> <span class="s2">&quot;confidence&quot;</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">},</span>
-<a id="__codelineno-1-31" name="__codelineno-1-31" href="#__codelineno-1-31"></a>    <span class="n">max_items</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
-<a id="__codelineno-1-32" name="__codelineno-1-32" href="#__codelineno-1-32"></a>    <span class="n">max_tokens</span><span class="o">=</span><span class="mi">4000</span><span class="p">,</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="k">class</span><span class="w"> </span><span class="nc">CyclicEpisode</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    <span class="n">episode_id</span> <span class="o">=</span> <span class="n">AutoKeyField</span><span class="p">()</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>    <span class="n">partition</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>                       <span class="c1"># tenant / agent / team scope</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>    <span class="n">problem_topology</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>                <span class="c1"># part of the fingerprint</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>    <span class="n">affected_layer</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>                  <span class="c1"># part of the fingerprint</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>    <span class="n">trajectory</span> <span class="o">=</span> <span class="n">ListField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="p">[])</span>           <span class="c1"># ordered actions taken</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>    <span class="n">outcome</span> <span class="o">=</span> <span class="n">DictField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="p">{})</span>              <span class="c1"># {&quot;success&quot;: True, ...}</span>
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>    <span class="n">recorded_at</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span><span class="n">partition_by</span><span class="o">=</span><span class="s2">&quot;partition&quot;</span><span class="p">)</span>
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a><span class="k">class</span><span class="w"> </span><span class="nc">ProceduralPattern</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>    <span class="n">pattern_id</span> <span class="o">=</span> <span class="n">AutoKeyField</span><span class="p">()</span>
+<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>    <span class="n">partition</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
+<a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>    <span class="n">problem_topology</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
+<a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>    <span class="n">affected_layer</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
+<a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>    <span class="n">canonical_sequence</span> <span class="o">=</span> <span class="n">ListField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="p">[])</span>   <span class="c1"># the &quot;what worked&quot; sequence</span>
+<a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>    <span class="n">confidence</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="p">(</span><span class="n">initial_confidence</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
+<a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a>    <span class="n">last_reinforced</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span><span class="n">partition_by</span><span class="o">=</span><span class="s2">&quot;partition&quot;</span><span class="p">)</span>
+<a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a>
+<a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a>
+<a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a><span class="n">tm</span> <span class="o">=</span> <span class="n">TrajectoryMemory</span><span class="p">(</span>
+<a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a>    <span class="n">episode_model</span><span class="o">=</span><span class="n">CyclicEpisode</span><span class="p">,</span>
+<a id="__codelineno-1-30" name="__codelineno-1-30" href="#__codelineno-1-30"></a>    <span class="n">pattern_model</span><span class="o">=</span><span class="n">ProceduralPattern</span><span class="p">,</span>
+<a id="__codelineno-1-31" name="__codelineno-1-31" href="#__codelineno-1-31"></a>    <span class="n">fingerprint_fields</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;problem_topology&quot;</span><span class="p">,</span> <span class="s2">&quot;affected_layer&quot;</span><span class="p">],</span>
+<a id="__codelineno-1-32" name="__codelineno-1-32" href="#__codelineno-1-32"></a>    <span class="n">cluster_threshold</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
 <a id="__codelineno-1-33" name="__codelineno-1-33" href="#__codelineno-1-33"></a><span class="p">)</span>
 </code></pre></div>
-<h2 id="openai-sdk-integration">OpenAI SDK Integration<a class="headerlink" href="#openai-sdk-integration" title="Permanent link">&para;</a></h2>
-<p>Wire subconscious memory into a standard OpenAI chat completion call:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">openai</span><span class="w"> </span><span class="kn">import</span> <span class="n">OpenAI</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">client</span> <span class="o">=</span> <span class="n">OpenAI</span><span class="p">()</span>  <span class="c1"># uses OPENAI_API_KEY env var</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="n">messages</span> <span class="o">=</span> <span class="p">[</span>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="p">{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;system&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;You are a helpful assistant.&quot;</span><span class="p">},</span>
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="p">{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;What&#39;s our deployment strategy?&quot;</span><span class="p">},</span>
-<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="p">]</span>
-<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>
-<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="c1"># Pre-turn: inject relevant memories into messages</span>
-<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="n">messages</span><span class="p">,</span> <span class="n">assembly_result</span> <span class="o">=</span> <span class="n">sm</span><span class="o">.</span><span class="n">inject_context</span><span class="p">(</span><span class="n">messages</span><span class="p">)</span>
-<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>
-<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="c1"># Call the LLM (messages now include memory context in the system message)</span>
-<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="n">response</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">chat</span><span class="o">.</span><span class="n">completions</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
-<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;gpt-4.1-nano&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>    <span class="n">messages</span><span class="o">=</span><span class="n">messages</span><span class="p">,</span>
-<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="p">)</span>
-<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="n">answer</span> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">choices</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">message</span><span class="o">.</span><span class="n">content</span>
-<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>
-<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a><span class="c1"># Post-turn: extract facts from the response and save as new memories</span>
-<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a><span class="n">new_memories</span> <span class="o">=</span> <span class="n">sm</span><span class="o">.</span><span class="n">extract_memories</span><span class="p">(</span><span class="n">answer</span><span class="p">,</span> <span class="n">importance</span><span class="o">=</span><span class="mf">0.6</span><span class="p">)</span>
-<a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a>
-<a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a><span class="c1"># Report outcomes: memories were used successfully</span>
-<a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a><span class="n">sm</span><span class="o">.</span><span class="n">report_outcomes</span><span class="p">(</span><span class="n">assembly_result</span><span class="p">,</span> <span class="n">outcome</span><span class="o">=</span><span class="s2">&quot;acted&quot;</span><span class="p">)</span>
-</code></pre></div>
 <h2 id="how-it-works">How It Works<a class="headerlink" href="#how-it-works" title="Permanent link">&para;</a></h2>
-<h3 id="pre-turn-inject_contextmessages">Pre-turn: <code>inject_context(messages)</code><a class="headerlink" href="#pre-turn-inject_contextmessages" title="Permanent link">&para;</a></h3>
-<ol>
-<li>Extracts the last user message as a query cue</li>
-<li>Calls <code>ContextAssembler.assemble()</code> with the agent's memory model</li>
-<li>Appends the formatted context to the system message (creates one if absent)</li>
-<li>Returns the modified messages and an <code>AssemblyResult</code> for later outcome reporting</li>
-</ol>
-<p>If no relevant memories are found, messages are returned unchanged.</p>
-<h3 id="post-turn-extract_memoriesresponse_text-importance">Post-turn: <code>extract_memories(response_text, importance)</code><a class="headerlink" href="#post-turn-extract_memoriesresponse_text-importance" title="Permanent link">&para;</a></h3>
-<ol>
-<li>Splits the LLM response into sentences</li>
-<li>Filters out sentences shorter than <code>extraction_min_length</code> (default 10 chars)</li>
-<li>Saves each sentence as a new Memory record with the specified importance</li>
-</ol>
-<p>The built-in extraction uses a simple sentence-splitting heuristic. For more accurate extraction, override this method or extract facts using a secondary LLM call and save them directly via your model class.</p>
-<h3 id="outcome-report_outcomesassembly_result-outcome">Outcome: <code>report_outcomes(assembly_result, outcome)</code><a class="headerlink" href="#outcome-report_outcomesassembly_result-outcome" title="Permanent link">&para;</a></h3>
-<p>Reports how the agent used the injected memories via <code>ObservationProtocol.on_context_used()</code>. Outcomes strengthen or weaken memories for future retrieval:</p>
-<ul>
-<li><code>"acted"</code> -- the agent used this memory (strengthens confidence)</li>
-<li><code>"dismissed"</code> -- the agent ignored this memory (mild weakening)</li>
-<li><code>"contradicted"</code> -- the agent found this memory incorrect (strong weakening)</li>
-<li><code>"deferred"</code> -- the agent noted but deferred action (neutral)</li>
-<li><code>"used"</code> -- the memory informed reasoning without appearing in the response (confirms access, no strength signal)</li>
-</ul>
-<h2 id="tuning">Tuning<a class="headerlink" href="#tuning" title="Permanent link">&para;</a></h2>
+<h3 id="record_episodefingerprint-trajectory-outcome-partition"><code>record_episode(fingerprint, trajectory, outcome, partition)</code><a class="headerlink" href="#record_episodefingerprint-trajectory-outcome-partition" title="Permanent link">&para;</a></h3>
+<p>Persist a single completed trajectory. The write path is intentionally cheap — no clustering happens here.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">tm</span><span class="o">.</span><span class="n">record_episode</span><span class="p">(</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="n">fingerprint</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;problem_topology&quot;</span><span class="p">:</span> <span class="s2">&quot;bug_fix&quot;</span><span class="p">,</span> <span class="s2">&quot;affected_layer&quot;</span><span class="p">:</span> <span class="s2">&quot;agent&quot;</span><span class="p">},</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="n">trajectory</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;read_logs&quot;</span><span class="p">,</span> <span class="s2">&quot;edit_file&quot;</span><span class="p">,</span> <span class="s2">&quot;run_tests&quot;</span><span class="p">],</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">outcome</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;success&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">},</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="n">partition</span><span class="o">=</span><span class="s2">&quot;team-a&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="p">)</span>
+</code></pre></div>
+<p>The recipe validates that <code>fingerprint</code> contains every name in <code>fingerprint_fields</code>. Missing fields raise <code>ValueError</code>.</p>
+<h3 id="crystallizepartition"><code>crystallize(partition)</code><a class="headerlink" href="#crystallizepartition" title="Permanent link">&para;</a></h3>
+<p>Periodic (e.g. nightly reflection): cluster recent episodes by their fingerprint tuple, then upsert one <code>pattern_model</code> per cluster that exceeds <code>cluster_threshold</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Triggered by a cron or reflection step, not on every write.</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">new_or_reinforced</span> <span class="o">=</span> <span class="n">tm</span><span class="o">.</span><span class="n">crystallize</span><span class="p">(</span><span class="n">partition</span><span class="o">=</span><span class="s2">&quot;team-a&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p>Crystallization is <strong>idempotent</strong>: re-running on an unchanged episode set produces no drift in confidence or <code>last_reinforced</code>. The recipe achieves this by observing only episodes newer than each pattern's <code>last_reinforced</code> timestamp (Risk 2 in the plan). Bayesian confidence updates are commutative — concurrent crystallizations converge.</p>
+<p>The canonical sequence is the <strong>modal trajectory</strong> across the group, with ties broken by the most recent episode. Anything fancier (edit-distance, n-gram similarity, custom aggregators) is intentionally out of scope.</p>
+<h3 id="recallfingerprint-partition-limit5"><code>recall(fingerprint, partition, limit=5)</code><a class="headerlink" href="#recallfingerprint-partition-limit5" title="Permanent link">&para;</a></h3>
+<p>Keyed exact-match retrieval. Returns at most <code>limit</code> patterns matching the supplied fingerprint dimensions, ranked by composite score.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">patterns</span> <span class="o">=</span> <span class="n">tm</span><span class="o">.</span><span class="n">recall</span><span class="p">(</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="n">fingerprint</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;problem_topology&quot;</span><span class="p">:</span> <span class="s2">&quot;bug_fix&quot;</span><span class="p">,</span> <span class="s2">&quot;affected_layer&quot;</span><span class="p">:</span> <span class="s2">&quot;agent&quot;</span><span class="p">},</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="n">partition</span><span class="o">=</span><span class="s2">&quot;team-a&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="p">)</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">patterns</span><span class="p">:</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">canonical_sequence</span><span class="p">,</span> <span class="s2">&quot;conf=&quot;</span><span class="p">,</span> <span class="n">p</span><span class="o">.</span><span class="n">confidence</span><span class="p">)</span>
+</code></pre></div>
+<p>A <strong>partial fingerprint</strong> is allowed (a subset of <code>fingerprint_fields</code>) — useful when an agent only knows part of the context. Empty <code>fingerprint</code> returns <code>[]</code> deliberately, so callers commit to at least one dimension rather than scanning the partition.</p>
+<h2 id="required-fields">Required Fields<a class="headerlink" href="#required-fields" title="Permanent link">&para;</a></h2>
+<p>The recipe introspects field names via <code>model_class._meta.fields</code>. Field names below are configurable via constructor kwargs (mirroring <a href="../subconscious-memory-recipe/"><code>SubconsciousMemory</code></a>'s convention).</p>
+<h3 id="pattern_model"><code>pattern_model</code><a class="headerlink" href="#pattern_model" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
-<th>Parameter</th>
-<th>Default</th>
-<th>Description</th>
+<th>Required field</th>
+<th>Type</th>
+<th>Default name</th>
+<th>Purpose</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>max_items</code></td>
-<td>10</td>
-<td>Maximum memories injected per turn</td>
+<td>Each fingerprint field</td>
+<td><code>KeyField</code></td>
+<td>from <code>fingerprint_fields</code> ctor arg</td>
+<td>Exact-match recall</td>
 </tr>
 <tr>
-<td><code>max_tokens</code></td>
-<td>4000</td>
-<td>Soft token budget for injected context</td>
+<td>Partition</td>
+<td><code>KeyField</code></td>
+<td><code>partition</code></td>
+<td>Multi-tenant isolation</td>
 </tr>
 <tr>
-<td><code>extraction_min_length</code></td>
-<td>10</td>
-<td>Minimum chars for a sentence to become a memory</td>
+<td>Confidence</td>
+<td><code>ConfidenceField</code></td>
+<td><code>confidence</code></td>
+<td>Bayesian success tracking</td>
 </tr>
 <tr>
-<td><code>score_weights</code></td>
-<td>(required)</td>
-<td>Weight dict for composite scoring (e.g. <code>{"relevance": 0.6, "confidence": 0.3}</code>)</td>
+<td>Last reinforced</td>
+<td><code>DecayingSortedField</code></td>
+<td><code>last_reinforced</code></td>
+<td>Recency-weighted ranking</td>
 </tr>
 <tr>
-<td><code>system_preamble</code></td>
-<td>"You are a helpful assistant."</td>
-<td>Prefix for auto-created system messages</td>
-</tr>
-<tr>
-<td><code>content_field</code></td>
-<td>"content"</td>
-<td>Name of the text content field on your model</td>
-</tr>
-<tr>
-<td><code>importance_field</code></td>
-<td>"importance"</td>
-<td>Name of the importance score field</td>
+<td>Canonical sequence</td>
+<td><code>ListField</code></td>
+<td><code>canonical_sequence</code></td>
+<td>Modal trajectory</td>
 </tr>
 </tbody>
 </table>
-<p>These constants can be tuned experimentally using the Tier 4 benchmark harness. See the <a href="../tuning-magic-numbers/">Tuning Magic Numbers</a> guide for the full constant catalog, optimal ranges, and how to run parameter sweeps.</p>
-<h2 id="extensibility">Extensibility<a class="headerlink" href="#extensibility" title="Permanent link">&para;</a></h2>
-<h3 id="custom-fact-extraction">Custom Fact Extraction<a class="headerlink" href="#custom-fact-extraction" title="Permanent link">&para;</a></h3>
-<p>Subclass <code>SubconsciousMemory</code> and override <code>extract_memories()</code> for LLM-based extraction:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">SmartSubconsciousMemory</span><span class="p">(</span><span class="n">SubconsciousMemory</span><span class="p">):</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">extract_memories</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">response_text</span><span class="p">,</span> <span class="n">importance</span><span class="o">=</span><span class="mf">0.5</span><span class="p">):</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>        <span class="c1"># Use a secondary LLM call to extract structured facts</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>        <span class="n">facts</span> <span class="o">=</span> <span class="n">my_extraction_function</span><span class="p">(</span><span class="n">response_text</span><span class="p">)</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>        <span class="n">saved</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>        <span class="k">for</span> <span class="n">fact</span> <span class="ow">in</span> <span class="n">facts</span><span class="p">:</span>
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>            <span class="n">m</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">(</span>
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>                <span class="n">agent_id</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">agent_id</span><span class="p">,</span>
-<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>                <span class="n">content</span><span class="o">=</span><span class="n">fact</span><span class="p">[</span><span class="s2">&quot;text&quot;</span><span class="p">],</span>
-<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>                <span class="n">importance</span><span class="o">=</span><span class="n">fact</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;importance&quot;</span><span class="p">,</span> <span class="n">importance</span><span class="p">),</span>
-<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>            <span class="p">)</span>
-<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>            <span class="n">m</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
-<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>            <span class="n">saved</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">m</span><span class="p">)</span>
-<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>        <span class="k">return</span> <span class="n">saved</span>
+<h3 id="episode_model"><code>episode_model</code><a class="headerlink" href="#episode_model" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Required field</th>
+<th>Type</th>
+<th>Default name</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Each fingerprint field</td>
+<td><code>KeyField</code></td>
+<td>from <code>fingerprint_fields</code></td>
+<td>Cluster key</td>
+</tr>
+<tr>
+<td>Partition</td>
+<td><code>KeyField</code></td>
+<td><code>partition</code></td>
+<td>Cluster scope</td>
+</tr>
+<tr>
+<td>Trajectory</td>
+<td><code>ListField</code></td>
+<td><code>trajectory</code></td>
+<td>Action sequence</td>
+</tr>
+<tr>
+<td>Outcome</td>
+<td>dict-serialisable field</td>
+<td><code>outcome</code></td>
+<td>Result payload</td>
+</tr>
+<tr>
+<td>Episode recency</td>
+<td><code>DecayingSortedField</code></td>
+<td><code>recorded_at</code></td>
+<td>Crystallization filter (newer than <code>pattern.last_reinforced</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>Missing or wrong-typed fields raise a single <code>TypeError</code> at <code>__init__</code> listing every problem — you do not discover them one at a time inside <code>crystallize()</code>.</p>
+<h2 id="defaults-tuning">Defaults &amp; Tuning<a class="headerlink" href="#defaults-tuning" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">DEFAULT_RECALL_LIMIT</span> <span class="o">=</span> <span class="mi">5</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">DEFAULT_SCORE_WEIGHTS</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;confidence&quot;</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">,</span> <span class="s2">&quot;last_reinforced&quot;</span><span class="p">:</span> <span class="mf">0.4</span><span class="p">}</span>
 </code></pre></div>
-<h3 id="custom-query-cues">Custom Query Cues<a class="headerlink" href="#custom-query-cues" title="Permanent link">&para;</a></h3>
-<p>The default implementation uses the last user message as the query cue. For more sophisticated cue extraction, subclass and override the relevant portion of <code>inject_context()</code>.</p>
+<p>Confidence dominates; freshness breaks ties between equally-confident patterns. Override per-call via <code>recall(..., score_weights={"confidence": 1.0, "last_reinforced": 0.0})</code>.</p>
+<p><code>cluster_threshold</code> defaults to <code>Defaults.TRAJECTORY_CLUSTER_THRESHOLD</code> (currently <code>3</code>) when omitted. The constant participates in the project-wide tuning sweeps described in <a href="../tuning-magic-numbers/">Magic Numbers Tuning</a>. Override before model definition or at runtime:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">Defaults</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">Defaults</span><span class="o">.</span><span class="n">TRAJECTORY_CLUSTER_THRESHOLD</span> <span class="o">=</span> <span class="mi">5</span>  <span class="c1"># require more evidence</span>
+</code></pre></div>
+<h2 id="the-patternobservesuccess-ergonomics">The <code>pattern.observe(success=...)</code> Ergonomics<a class="headerlink" href="#the-patternobservesuccess-ergonomics" title="Permanent link">&para;</a></h2>
+<p>If you have read the <a href="https://github.com/tomcounsell/popoto/issues/389">tracking issue</a> you may have noticed an API sketch with <code>pattern.observe(success=...)</code>. The recipe <strong>owns</strong> the observation call site — consumers never call <code>observe</code> directly. Inside <code>crystallize</code>, the recipe calls <code>ConfidenceField.update_confidence(pattern, confidence_field, signal=...)</code> on your behalf, deriving <code>signal</code> from each episode's <code>outcome</code> (default: <code>{"success": True}</code> → <code>0.9</code>, <code>{"success": False}</code> → <code>0.1</code>).</p>
+<p>Subclass to plug a different outcome-to-signal mapping:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">CustomTM</span><span class="p">(</span><span class="n">TrajectoryMemory</span><span class="p">):</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_episode_signal</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">episode</span><span class="p">):</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>        <span class="c1"># Map a richer outcome schema to a [0, 1] confidence signal</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>        <span class="n">outcome</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">episode</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">outcome_field</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{}</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>        <span class="n">score</span> <span class="o">=</span> <span class="n">outcome</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;user_rating&quot;</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span> <span class="o">/</span> <span class="mf">5.0</span>  <span class="c1"># rating out of 5</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>        <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="nb">min</span><span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">score</span><span class="p">))</span>
+</code></pre></div>
+<h2 id="extensibility">Extensibility<a class="headerlink" href="#extensibility" title="Permanent link">&para;</a></h2>
+<p>Subclass <code>TrajectoryMemory</code> to override:</p>
+<ul>
+<li><code>_canonical_sequence(episodes)</code> — replace modal-with-recency-tiebreak with your own aggregator (edit-distance, longest-common-subsequence, etc.).</li>
+<li><code>_episode_signal(episode)</code> — map your outcome schema to a <code>[0, 1]</code> confidence signal.</li>
+</ul>
+<p>The recipe deliberately keeps these as the only extension points. If you need fuzzy fingerprint recall, custom retention, push-path surfacing, or async crystallization — those belong in your application layer, not in the recipe (see the plan's <strong>Rabbit Holes</strong> section).</p>
+<h2 id="compute-fingerprint-helper">Compute Fingerprint Helper<a class="headerlink" href="#compute-fingerprint-helper" title="Permanent link">&para;</a></h2>
+<p>For consumers that need a stable fingerprint from a dict of features (rather than passing fingerprint fields directly), the recipe re-exports <code>compute_fingerprint</code> from <code>popoto.recipes.policy_cache</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes.trajectory_memory</span><span class="w"> </span><span class="kn">import</span> <span class="n">compute_fingerprint</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="n">fp</span> <span class="o">=</span> <span class="n">compute_fingerprint</span><span class="p">({</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy&quot;</span><span class="p">,</span> <span class="s2">&quot;env&quot;</span><span class="p">:</span> <span class="s2">&quot;staging&quot;</span><span class="p">})</span>  <span class="c1"># SHA-256, 16 hex chars</span>
+</code></pre></div>
+<p>This produces deterministic 16-hex-char fingerprints suitable for use as a <code>KeyField</code> value.</p>
 <h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
-<li><a href="../agent-memory-quickstart/">Agent Memory Quickstart</a> -- progressive adoption guide</li>
-<li><a href="../../features/context-assembler/">ContextAssembler</a> -- retrieval-to-injection bridge</li>
-<li><a href="../policy-cache-recipe/">PolicyCache Recipe</a> -- RL-style learned action selection</li>
+<li><a href="../../features/context-assembler/">ContextAssembler</a> — retrieval-to-injection bridge for <strong>semantic</strong> memory</li>
+<li><a href="../subconscious-memory-recipe/">SubconsciousMemory</a> — automatic inject/extract around LLM turns</li>
+<li><a href="../policy-cache-recipe/">PolicyCache</a> — RL-style action selection by state fingerprint (the closest analogue: also clusters by fingerprint, also uses <code>ConfidenceField</code>)</li>
+<li><a href="../../features/confidence-field/"><code>ConfidenceField</code></a> — Bayesian confidence primitive used for pattern reinforcement</li>
+<li><a href="../../features/decaying-sorted-field/"><code>DecayingSortedField</code></a> — time-decaying score used for <code>last_reinforced</code> ranking</li>
 </ul>
 
 
