@@ -115,3 +115,21 @@ Uses `REDIS_URL` environment variable or defaults to `localhost:6379`. Connectio
 - Never push code changes directly to main - always create a feature branch and open a PR
 - Documentation-only changes (docs/, CLAUDE.md, .claude/commands/) may be pushed directly to main
 - Use descriptive branch names like `feature/query-performance` or `fix/scan-keys`
+
+## Knowledge Base (KB)
+
+This project's knowledge has two sources. Pull from both before answering substantive questions.
+
+**1. Vault (curated docs, iCloud-synced)**
+- Location: `~/work-vault/Popoto/`
+- Index: see that directory's `README.md` for the file index
+- Source of truth for business context, project notes, decisions, and assets
+
+**2. Memory system (Redis, agent-learned observations)**
+- Project key: `popoto` (declared in `~/src/ai/config/projects.json`)
+- Search: `python -m tools.memory_search search "<query>" --project popoto` (run from `~/src/ai`)
+- Save: `python -m tools.memory_search save "<content>" --project popoto` (run from `~/src/ai`)
+
+Curated vault = what humans wrote. Memory = what the agent learned (corrections, decisions, patterns, surprises). Both partition by project — don't leak cross-project context.
+
+Convention reference: `~/src/ai/docs/conventions/knowledge-base-section.md`
