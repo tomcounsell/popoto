@@ -355,3 +355,176 @@ python -m tests.benchmarks.run_external \
 Results are committed to `tests/benchmarks/results/external/` as Markdown and
 JSON files, providing a baseline for future retrieval improvements.
 
+## MemoryLifecycle
+
+`MemoryLifecycle` is a policy layer that orchestrates memory tier transitions
+and auto-forget. It composes existing Popoto primitives
+(`DecayingSortedField`, `ConfidenceField`, `AccessTrackerMixin`) into a
+working → episodic → semantic lifecycle — without replacing any of them.
+
+### Two tiers
+
+| Tier | Description |
+|------|-------------|
+| `"episodic"` | Default for new memories. Specific events with temporal context. Subject to promotion and auto-forget. |
+| `"semantic"` | Consolidated facts. Decontextualized. Protected from auto-forget by default. |
+
+### Quickstart
+
+```python
+import popoto
+from popoto.fields.access_tracker import AccessTrackerMixin
+from popoto.fields.shortcuts import KeyField
+from popoto.fields.decaying_sorted_field import DecayingSortedField
+from popoto.fields.confidence_field import ConfidenceField
+from popoto.recipes import MemoryLifecycle
+
+# 1. Define your model with a tier field and the primitives MemoryLifecycle reads
+class Memory(AccessTrackerMixin, popoto.Model):
+    key = popoto.AutoKeyField()
+    tier = KeyField(type=str, default="episodic")   # KeyField = filter-queryable partition
+    content = popoto.StringField(default="")
+    relevance = DecayingSortedField(decay_rate=0.5)
+    certainty = ConfidenceField(initial_confidence=0.5)
+
+# 2. Instantiate once (usually at application start)
+lifecycle = MemoryLifecycle(
+    model_class=Memory,
+    importance_field="relevance",   # name of a DecayingSortedField (required)
+    tier_field="tier",              # default — name of the tier partition field
+)
+
+# 3. Tag new memories after saving them
+record = Memory(content="Alice prefers dark mode")
+record.save()
+lifecycle.tag_new(record)           # sets tier = "episodic" and saves
+
+# 4. Run a lifecycle pass periodically (e.g. after each conversation turn,
+#    or on a background schedule)
+summary = lifecycle.tick()
+# {"promoted": 0, "forgotten": 0, "duration_ms": 1.4}
+
+# 5. Inspect a record's lifecycle state
+state = lifecycle.assess(record)
+print(state.tier)               # "episodic"
+print(state.access_count)       # 0 (no confirmed reads yet)
+print(state.promotion_eligible) # False (below access threshold)
+print(state.forget_eligible)    # False (not idle enough)
+```
+
+### Promotion criteria
+
+A record is promoted from `"episodic"` to `"semantic"` when **all** of these
+hold simultaneously:
+
+| Criterion | Default |
+|-----------|---------|
+| `access_count >= PROMOTION_ACCESS_COUNT` | 3 |
+| `confidence >= PROMOTION_CONFIDENCE_THRESHOLD` | 0.6 |
+| `age_seconds >= PROMOTION_MIN_AGE_SECONDS` | 300 (5 min) |
+
+Promotion is non-reversible in v1 (no demotion from semantic).
+
+### Auto-forget criteria
+
+A non-semantic record is deleted when **both** hold:
+
+| Criterion | Default |
+|-----------|---------|
+| `importance_score < FORGET_IMPORTANCE_FLOOR` | 0.1 |
+| `idle_seconds > FORGET_IDLE_SECONDS` | 86 400 (24 h) |
+
+Semantic records are **never** deleted by the default policy.
+
+### Custom policies
+
+Override the default promotion or forget logic at construction time:
+
+```python
+def my_should_promote(record, lifecycle):
+    """Promote immediately if content contains a confirmed fact."""
+    if "confirmed:" in record.content:
+        return "semantic"
+    return None  # defer to normal criteria
+
+def my_should_forget(record, lifecycle):
+    """Never forget anything tagged 'keep'."""
+    if getattr(record, "content", "").startswith("[keep]"):
+        return False
+    # Fall through to default behavior
+    from popoto.recipes.memory_lifecycle import _default_should_forget
+    return _default_should_forget(record, lifecycle)
+
+lifecycle = MemoryLifecycle(
+    model_class=Memory,
+    importance_field="relevance",
+    should_promote=my_should_promote,
+    should_forget=my_should_forget,
+)
+```
+
+### Composing with SubconsciousMemory
+
+`MemoryLifecycle` is an independent policy layer — it composes *alongside*
+`SubconsciousMemory`, not as a replacement:
+
+```python
+from popoto.recipes import MemoryLifecycle, SubconsciousMemory
+
+sm = SubconsciousMemory(model_class=Memory, agent_id="agent-1", ...)
+lifecycle = MemoryLifecycle(model_class=Memory, importance_field="relevance")
+
+# Pre-turn: inject context from all tiers
+messages, result = sm.inject_context(messages)
+
+# ... LLM inference ...
+
+# Post-turn: extract new memories into episodic tier
+new_memories = sm.extract_memories(response_text)
+for record in new_memories:
+    lifecycle.tag_new(record)  # assigns tier = "episodic"
+
+# Periodically: consolidate and prune
+summary = lifecycle.tick()
+```
+
+### Partition filtering
+
+In multi-agent deployments, scope each lifecycle instance to one agent:
+
+```python
+lifecycle = MemoryLifecycle(
+    model_class=Memory,
+    importance_field="relevance",
+    partition_filters={"agent_id": "agent-1"},
+)
+lifecycle.tick()  # only touches agent-1's records
+```
+
+### Tuning the thresholds
+
+The six magic-number constants are class attributes:
+
+```python
+# Inspect defaults
+print(MemoryLifecycle.PROMOTION_ACCESS_COUNT)          # 3
+print(MemoryLifecycle.PROMOTION_CONFIDENCE_THRESHOLD)  # 0.6
+print(MemoryLifecycle.PROMOTION_MIN_AGE_SECONDS)       # 300.0
+print(MemoryLifecycle.FORGET_IMPORTANCE_FLOOR)         # 0.1
+print(MemoryLifecycle.FORGET_IDLE_SECONDS)             # 86400.0
+print(MemoryLifecycle.TICK_BATCH_SIZE)                 # 100
+
+# Override for a specific instance
+lifecycle.PROMOTION_ACCESS_COUNT = 5
+lifecycle.FORGET_IDLE_SECONDS = 43200.0  # 12 hours
+```
+
+Systematic tuning is done via the Tier 5 benchmark sweep:
+
+```bash
+python -m tests.benchmarks.run_sweeps --tier 5
+```
+
+See `docs/benchmarks/memory_lifecycle_baseline.md` for the sweep grid and
+pre-lifecycle retrieval baselines.
+

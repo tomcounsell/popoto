@@ -144,6 +144,17 @@ class Defaults:
     COMPETITIVE_SUPPRESSION_SIGNAL = 0.3  # best-plateau from sweep 2026-04-20, variance=0.053, prior=0.3 (on plateau [0.1..0.5]; kept at 0.3 for "mild contradiction" semantics)
     DEFAULT_SURFACING_THRESHOLD = 0.5  # empirically inert (sweep 2026-04-20, variance=0.0) — scenario's pull path never crosses the surfacing threshold
 
+    # -- MemoryLifecycle (recipes/memory_lifecycle.py) -----------------------
+    # Tier-transition thresholds for the episodic→semantic promotion policy.
+    # These are tuning constants fed into the benchmarks/run_sweeps.py
+    # TIER5_SWEEPS grid and tuned against the LoCoMo + LongMemEval-S harness
+    # established in issue #394. Not yet swept; initial values set by design.
+    LIFECYCLE_PROMOTION_ACCESS_COUNT = 3       # accesses before episodic→semantic eligible
+    LIFECYCLE_PROMOTION_CONFIDENCE_THRESHOLD = 0.6  # confidence floor for promotion
+    LIFECYCLE_PROMOTION_MIN_AGE_SECONDS = 300.0  # 5 min — prevents burst-access promotion
+    LIFECYCLE_FORGET_IMPORTANCE_FLOOR = 0.1    # importance below this → eligible for forget
+    LIFECYCLE_FORGET_IDLE_SECONDS = 86400.0    # 24 h idle → eligible for forget
+
 
 class TemporalPeriod:
     """Named constants for common temporal cycle periods in seconds.

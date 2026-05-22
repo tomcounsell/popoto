@@ -208,6 +208,20 @@ TIER4_SCORE_WEIGHTS = [
     {"relevance": 0.4, "certainty": 0.6},
 ]
 
+# ---------------------------------------------------------------------------
+# Tier 5: MemoryLifecycle policy constants
+# ---------------------------------------------------------------------------
+
+TIER5_SWEEPS = {
+    # Promotion policy thresholds (episodic → semantic)
+    "LIFECYCLE_PROMOTION_ACCESS_COUNT": [1, 2, 3, 5, 10],
+    "LIFECYCLE_PROMOTION_CONFIDENCE_THRESHOLD": [0.3, 0.5, 0.6, 0.7, 0.9],
+    "LIFECYCLE_PROMOTION_MIN_AGE_SECONDS": [0.0, 60.0, 300.0, 1800.0, 7200.0],
+    # Forget policy thresholds
+    "LIFECYCLE_FORGET_IMPORTANCE_FLOOR": [0.01, 0.05, 0.1, 0.2, 0.5],
+    "LIFECYCLE_FORGET_IDLE_SECONDS": [3600.0, 21600.0, 86400.0, 259200.0, 604800.0],
+}
+
 # Experiment 8: Interaction effects at recipe layer
 TIER4_INTERACTION_PAIRS = [
     # Expanded to 5×5 grids

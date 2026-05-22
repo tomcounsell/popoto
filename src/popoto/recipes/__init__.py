@@ -7,6 +7,7 @@ are importable and usable, but designed primarily as reference implementations.
 
 from .adaptive_assembler import AdaptiveAssembler
 from .context_assembler import AssemblyResult, ContextAssembler, RetrievalQuality
+from .memory_lifecycle import LifecycleState, MemoryLifecycle
 from .policy_cache import PolicyEntry, compute_fingerprint, update_q_value
 from .subconscious_memory import SubconsciousMemory
 from .trajectory_memory import TrajectoryMemory
@@ -15,6 +16,8 @@ __all__ = [
     "AdaptiveAssembler",
     "AssemblyResult",
     "ContextAssembler",
+    "LifecycleState",
+    "MemoryLifecycle",
     "PolicyEntry",
     "RetrievalQuality",
     "SubconsciousMemory",

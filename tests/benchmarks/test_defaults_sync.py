@@ -64,6 +64,13 @@ class TestDefaultsSync:
             "PL_AUTO_RESOLVE_USED",
             "ADAPTIVE_QUALITY_WINDOW_SIZE",
             "TRAJECTORY_CLUSTER_THRESHOLD",
+            # MemoryLifecycle class-level constants (recipes/memory_lifecycle.py)
+            # Not module-level aliases — patched via CLASS_ATTR_CONSTANTS in overrides.py.
+            "LIFECYCLE_PROMOTION_ACCESS_COUNT",
+            "LIFECYCLE_PROMOTION_CONFIDENCE_THRESHOLD",
+            "LIFECYCLE_PROMOTION_MIN_AGE_SECONDS",
+            "LIFECYCLE_FORGET_IMPORTANCE_FLOOR",
+            "LIFECYCLE_FORGET_IDLE_SECONDS",
         }
 
         expected_in_module = defaults_attrs - field_kwargs_and_class_attrs

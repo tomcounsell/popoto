@@ -121,6 +121,17 @@ CLASS_ATTR_CONSTANTS = {
     # as a no-op (None) marker so sweeps that reference it don't hit the
     # unknown-name path.
     "delta": None,
+    # MemoryLifecycle (recipes/memory_lifecycle.py)
+    # Patching Defaults.LIFECYCLE_* propagates to MemoryLifecycle class
+    # attributes, which are initialized from Defaults at class-body time.
+    # Runtime reads via lifecycle instance attributes also pick up the patch
+    # because MemoryLifecycle reads Defaults at class-body time (same as
+    # WriteFilterMixin's pre-2026-04-17 pattern).
+    "LIFECYCLE_PROMOTION_ACCESS_COUNT": "LIFECYCLE_PROMOTION_ACCESS_COUNT",
+    "LIFECYCLE_PROMOTION_CONFIDENCE_THRESHOLD": "LIFECYCLE_PROMOTION_CONFIDENCE_THRESHOLD",
+    "LIFECYCLE_PROMOTION_MIN_AGE_SECONDS": "LIFECYCLE_PROMOTION_MIN_AGE_SECONDS",
+    "LIFECYCLE_FORGET_IMPORTANCE_FLOOR": "LIFECYCLE_FORGET_IMPORTANCE_FLOOR",
+    "LIFECYCLE_FORGET_IDLE_SECONDS": "LIFECYCLE_FORGET_IDLE_SECONDS",
 }
 
 # Valid ranges for boundary checking
