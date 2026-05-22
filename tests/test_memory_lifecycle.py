@@ -37,7 +37,6 @@ from src.popoto.recipes.memory_lifecycle import (
     _default_should_promote,
 )
 
-
 # ---------------------------------------------------------------------------
 # Test models
 # ---------------------------------------------------------------------------
@@ -270,8 +269,10 @@ def test_tick_forgets_low_importance_idle():
     # Set thresholds so record qualifies for forget immediately.
     # FORGET_IDLE_SECONDS = -1.0 ensures any idle time (including 0) qualifies
     # because the condition is idle_seconds > FORGET_IDLE_SECONDS.
-    lifecycle.FORGET_IMPORTANCE_FLOOR = 1.1  # Impossibly high floor (no record can score >= 1.1)
-    lifecycle.FORGET_IDLE_SECONDS = -1.0     # Any idle time satisfies idle > -1.0
+    lifecycle.FORGET_IMPORTANCE_FLOOR = (
+        1.1  # Impossibly high floor (no record can score >= 1.1)
+    )
+    lifecycle.FORGET_IDLE_SECONDS = -1.0  # Any idle time satisfies idle > -1.0
 
     record = _make_record(tier="episodic", confirm_accesses=0)
     record_key = record.key
@@ -386,6 +387,7 @@ def test_tick_batch_pagination():
 
 def test_custom_should_promote():
     """Custom should_promote callable overrides default logic."""
+
     def always_promote(record, lifecycle):
         return "semantic"
 
@@ -406,6 +408,7 @@ def test_custom_should_promote():
 
 def test_custom_should_forget():
     """Custom should_forget callable overrides default logic."""
+
     def never_forget(record, lifecycle):
         return False
 
@@ -429,6 +432,7 @@ def test_custom_should_forget():
 
 def test_custom_should_promote_returns_none():
     """Custom should_promote returning None never promotes."""
+
     def never_promote(record, lifecycle):
         return None
 

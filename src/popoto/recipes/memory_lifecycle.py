@@ -243,7 +243,10 @@ def _default_should_forget(record, lifecycle: "MemoryLifecycle") -> bool:
         return False
     importance = _get_importance_score(record, lifecycle.importance_field)
     idle = _get_idle_seconds(record)
-    return importance < lifecycle.FORGET_IMPORTANCE_FLOOR and idle > lifecycle.FORGET_IDLE_SECONDS
+    return (
+        importance < lifecycle.FORGET_IMPORTANCE_FLOOR
+        and idle > lifecycle.FORGET_IDLE_SECONDS
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -295,23 +298,33 @@ class MemoryLifecycle:
     """
 
     # --- Magic-number tuning constants (benchmark sweep grid parameters) ---
-    PROMOTION_ACCESS_COUNT: int = 3
+    # These read from Defaults so that the benchmark override injection
+    # (apply_overrides in tests/benchmarks/overrides.py) can patch them
+    # via Defaults.LIFECYCLE_* without needing to patch MemoryLifecycle directly.
+    # Tests that need custom values should set them as instance attributes.
+    from ..fields.constants import Defaults as _Defaults
+
+    PROMOTION_ACCESS_COUNT: int = _Defaults.LIFECYCLE_PROMOTION_ACCESS_COUNT
     """Minimum confirmed access count before episodic→semantic promotion."""
 
-    PROMOTION_CONFIDENCE_THRESHOLD: float = 0.6
+    PROMOTION_CONFIDENCE_THRESHOLD: float = (
+        _Defaults.LIFECYCLE_PROMOTION_CONFIDENCE_THRESHOLD
+    )
     """Minimum confidence score before episodic→semantic promotion."""
 
-    PROMOTION_MIN_AGE_SECONDS: float = 300.0
+    PROMOTION_MIN_AGE_SECONDS: float = _Defaults.LIFECYCLE_PROMOTION_MIN_AGE_SECONDS
     """Minimum age in seconds before promotion (prevents burst-access promotion)."""
 
-    FORGET_IMPORTANCE_FLOOR: float = 0.1
+    FORGET_IMPORTANCE_FLOOR: float = _Defaults.LIFECYCLE_FORGET_IMPORTANCE_FLOOR
     """Importance score below which a record is eligible for auto-forget."""
 
-    FORGET_IDLE_SECONDS: float = 86400.0
+    FORGET_IDLE_SECONDS: float = _Defaults.LIFECYCLE_FORGET_IDLE_SECONDS
     """Idle seconds (no confirmed access) before a record is eligible for auto-forget."""
 
     TICK_BATCH_SIZE: int = 100
     """Records per tick scan page (paginated iteration)."""
+
+    del _Defaults  # Clean up class namespace
 
     # -------------------------------------------------------------------
 
@@ -415,7 +428,9 @@ class MemoryLifecycle:
         is_key_field = isinstance(field, KeyFieldMixin)
 
         saved_values = getattr(record, "_saved_field_values", {})
-        tier_changed = is_key_field and saved_values and saved_values.get(self.tier_field) != tier
+        tier_changed = (
+            is_key_field and saved_values and saved_values.get(self.tier_field) != tier
+        )
 
         if tier_changed:
             record.save(migrate_key=True)
@@ -490,13 +505,17 @@ class MemoryLifecycle:
         try:
             promotion_eligible = self._should_promote(record, self) is not None
         except Exception as exc:
-            logger.warning("assess(): should_promote raised %s — defaulting to False", exc)
+            logger.warning(
+                "assess(): should_promote raised %s — defaulting to False", exc
+            )
             promotion_eligible = False
 
         try:
             forget_eligible = self._should_forget(record, self)
         except Exception as exc:
-            logger.warning("assess(): should_forget raised %s — defaulting to False", exc)
+            logger.warning(
+                "assess(): should_forget raised %s — defaulting to False", exc
+            )
             forget_eligible = False
 
         return LifecycleState(
@@ -532,7 +551,11 @@ class MemoryLifecycle:
         Enumerates all records for the model class and filters out semantics.
         """
         filters = {**self.partition_filters}
-        all_records = self.model_class.query.filter(**filters).all() if filters else self.model_class.query.all()
+        all_records = (
+            self.model_class.query.filter(**filters).all()
+            if filters
+            else self.model_class.query.all()
+        )
 
         for i in range(0, len(all_records), self.TICK_BATCH_SIZE):
             batch = all_records[i : i + self.TICK_BATCH_SIZE]
