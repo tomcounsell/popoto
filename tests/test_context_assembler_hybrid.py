@@ -39,6 +39,12 @@ from src.popoto.recipes.context_assembler import (  # noqa: E402
 )
 from src.popoto.redis_db import POPOTO_REDIS_DB  # noqa: E402
 
+# Skip the entire module when numpy is not installed (e.g. CI jobs that install
+# only the base package without the [embeddings] extra).  EmbeddingField raises
+# ImportError at class-definition time when numpy is absent, which would cause
+# collection to fail rather than skip.
+numpy = pytest.importorskip("numpy")
+
 # ---------------------------------------------------------------------------
 # Test models
 # ---------------------------------------------------------------------------
