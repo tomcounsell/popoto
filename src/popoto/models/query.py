@@ -988,6 +988,80 @@ class QueryBuilder:
 
         return instances
 
+    def _get_vector_scores(self, query_text: str, limit: int = 10) -> list:
+        """Return (redis_key, cosine_similarity) tuples for hybrid RRF fusion.
+
+        Mirrors the internals of semantic_search() but returns raw scored
+        pairs instead of hydrated model instances. Used by
+        ContextAssembler._pull_path_hybrid() to supply the vector signal to
+        fuse().
+
+        Returns:
+            list[(redis_key, float)] sorted by similarity score descending.
+            Empty list if:
+            - ``query_text`` is empty or whitespace
+            - no EmbeddingField found on the model
+            - embedding provider is not configured
+            - no stored embeddings exist for this model class
+            - embedding call raises an exception (logs warning)
+        """
+        if not query_text or not query_text.strip():
+            return []
+
+        model_class = self._query.model_class
+
+        from ..fields.embedding_field import EmbeddingField
+
+        embedding_field = None
+        for fname, field in model_class._meta.fields.items():
+            if isinstance(field, EmbeddingField):
+                embedding_field = field
+                break
+
+        if embedding_field is None:
+            return []
+
+        provider = embedding_field.provider
+        if provider is None:
+            return []
+
+        try:
+            query_vectors = provider.embed([query_text], input_type="query")
+            if not query_vectors or not query_vectors[0]:
+                return []
+        except Exception as e:
+            logger.warning("_get_vector_scores embedding failed: %s", e)
+            return []
+
+        try:
+            import numpy as np
+        except ImportError:
+            logger.warning(
+                "_get_vector_scores: numpy not available; skipping vector signal"
+            )
+            return []
+
+        matrix, keys = EmbeddingField.load_embeddings(model_class)
+        if matrix is None or len(keys) == 0:
+            return []
+
+        query_vec = np.array(query_vectors[0], dtype=np.float32)
+        query_norm = np.linalg.norm(query_vec)
+        if query_norm == 0:
+            return []
+        query_vec = query_vec / query_norm
+
+        similarities = matrix @ query_vec
+
+        # Build sorted (redis_key, score) pairs, positive similarities only
+        scored_pairs = [
+            (keys[i], float(similarities[i]))
+            for i in range(len(keys))
+            if similarities[i] > 0
+        ]
+        scored_pairs.sort(key=lambda x: x[1], reverse=True)
+        return scored_pairs[:limit]
+
     def _resolve_index(self, model_class, field_name, weight, uid, temp_keys):
         """Resolve a field name to a Redis sorted set key for composite scoring.
 
@@ -1209,9 +1283,7 @@ class QueryBuilder:
             )
         else:
             # Unpartitioned: single global hash
-            data_hash_key = field.get_data_hash_key_from_values(
-                model_class, field_name
-            )
+            data_hash_key = field.get_data_hash_key_from_values(model_class, field_name)
 
         # Read all entries from companion hash
         all_data = POPOTO_REDIS_DB.hgetall(data_hash_key)

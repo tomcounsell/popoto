@@ -67,11 +67,13 @@ import statistics
 import time
 from dataclasses import dataclass, field
 
+from ..fields.bm25_field import BM25Field
 from ..fields.co_occurrence_field import CoOccurrenceField
 from ..fields.confidence_field import ConfidenceField
 from ..fields.constants import Defaults
 from ..fields.cyclic_decay_field import CyclicDecayField
 from ..fields.decaying_sorted_field import DecayingSortedField
+from ..fields.embedding_field import EmbeddingField
 from ..fields.existence_filter import ExistenceFilter
 from ..fields.observation import ObservationProtocol
 from ..fields.sorted_field_mixin import SortedFieldMixin
@@ -120,6 +122,14 @@ DEFAULT_MAX_ITEMS = 10
 
 DEFAULT_PROPAGATION_DEPTH = 2
 """Default BFS depth for CoOccurrence propagation."""
+
+RRF_K = 60
+"""RRF rank-fusion constant (Cormack et al. 2009). Do not expose as user config;
+tuning experiments belong in a separate follow-up."""
+
+HYBRID_CANDIDATE_MULTIPLIER = 5
+"""candidate_limit = max_items * HYBRID_CANDIDATE_MULTIPLIER for per-signal
+retrieval in the hybrid pull path before RRF fusion."""
 
 
 # ---------------------------------------------------------------------------
@@ -672,20 +682,41 @@ def format_natural(records) -> str:
 class ContextAssembler:
     """Orchestrates memory retrieval into a single assemble() call.
 
-    Combines pull-path (query-driven via CompositeScoreQuery) and push-path
-    (proactive via CyclicDecayField) retrieval, applies token budgets, and
-    formats output for LLM context injection.
+    Combines pull-path (query-driven) and push-path (proactive via
+    CyclicDecayField) retrieval, applies token budgets, and formats output
+    for LLM context injection.
+
+    The pull path supports two modes selected by ``retrieval_mode``:
+
+    * ``"hybrid"`` — BM25 (lexical) + vector (semantic) signals fused via
+      Reciprocal Rank Fusion (RRF, k=60) followed by optional CoOccurrence
+      graph propagation. Requires ``BM25Field`` and ``EmbeddingField`` on the
+      model.
+    * ``"composite"`` — original CompositeScoreQuery weighted-sum (unchanged
+      from pre-v1.7 behaviour). Requires ``score_weights``.
+    * ``"auto"`` *(default)* — selects ``"hybrid"`` when both ``BM25Field``
+      and ``EmbeddingField`` are detected on the model, otherwise falls back
+      to ``"composite"``.
 
     Args:
         model_class: Popoto Model class to query.
-        score_weights: Dict mapping field names to weights for
-            CompositeScoreQuery (e.g., {"relevance": 0.6, "confidence": 0.3}).
+        score_weights: Dict mapping field names to weights for the composite
+            pull path (e.g., ``{"relevance": 0.6, "confidence": 0.3}``).
+            Ignored when the effective retrieval mode is ``"hybrid"``.
         max_items: Maximum records to return. Default 10.
         max_tokens: Optional soft token budget. Records are dropped to fit.
         surfacing_threshold: Minimum score for push-path records. Default 0.5.
         propagation_depth: BFS depth for CoOccurrence. Default 2.
-        output_format: "structured" (JSON), "xml", or "natural". Default "structured".
-        token_counter: Optional callable(record) -> int. Default: len(str(r)) // 4.
+        output_format: ``"structured"`` (JSON), ``"xml"``, or ``"natural"``.
+            Default ``"structured"``.
+        token_counter: Optional callable(record) -> int.
+            Default: ``len(str(r)) // 4``.
+        retrieval_mode: ``"auto"`` (default), ``"hybrid"``, or
+            ``"composite"``. See class docstring for semantics.
+
+    Raises:
+        QueryException: If ``retrieval_mode="hybrid"`` is requested but the
+            model lacks ``BM25Field`` or ``EmbeddingField``.
     """
 
     def __init__(
@@ -698,6 +729,8 @@ class ContextAssembler:
         propagation_depth=DEFAULT_PROPAGATION_DEPTH,
         output_format="structured",
         token_counter=None,
+        *,
+        retrieval_mode: str = "auto",
     ):
         self.model_class = model_class
         self.score_weights = score_weights
@@ -715,6 +748,10 @@ class ContextAssembler:
         self._cyclic_decay_field_name = None
         self._confidence_field_name = None
         self._decaying_sorted_field_name = None
+        self._bm25_field = None
+        self._bm25_field_name = None
+        self._embedding_field = None
+        self._embedding_field_name = None
 
         for name, f in model_class._meta.fields.items():
             if isinstance(f, ExistenceFilter) and self._existence_filter is None:
@@ -734,6 +771,42 @@ class ContextAssembler:
                 and self._decaying_sorted_field_name is None
             ):
                 self._decaying_sorted_field_name = name
+            if isinstance(f, BM25Field) and self._bm25_field is None:
+                self._bm25_field = f
+                self._bm25_field_name = name
+            if isinstance(f, EmbeddingField) and self._embedding_field is None:
+                self._embedding_field = f
+                self._embedding_field_name = name
+
+        # Resolve effective retrieval mode
+        if retrieval_mode == "auto":
+            self._effective_mode = (
+                "hybrid"
+                if (self._bm25_field is not None and self._embedding_field is not None)
+                else "composite"
+            )
+        elif retrieval_mode == "hybrid":
+            if self._bm25_field is None or self._embedding_field is None:
+                from ..exceptions import QueryException
+
+                missing = []
+                if self._bm25_field is None:
+                    missing.append("BM25Field")
+                if self._embedding_field is None:
+                    missing.append("EmbeddingField")
+                raise QueryException(
+                    f"retrieval_mode='hybrid' requires {' and '.join(missing)} "
+                    f"on {model_class.__name__}"
+                )
+            self._effective_mode = "hybrid"
+        else:
+            self._effective_mode = "composite"
+
+        if self._effective_mode == "hybrid" and score_weights:
+            logger.debug(
+                "ContextAssembler: retrieval_mode resolved to 'hybrid'; "
+                "score_weights are ignored for the pull path"
+            )
 
     def assemble(
         self,
@@ -875,7 +948,17 @@ class ContextAssembler:
         )
 
     def _pull_path(self, query_cues, filters):
-        """Execute pull-path retrieval.
+        """Dispatch pull-path retrieval based on ``self._effective_mode``.
+
+        Returns:
+            Tuple of (selected_records, all_candidates).
+        """
+        if self._effective_mode == "hybrid":
+            return self._pull_path_hybrid(query_cues, filters)
+        return self._pull_path_composite(query_cues, filters)
+
+    def _pull_path_composite(self, query_cues, filters):
+        """Execute pull-path retrieval via CompositeScoreQuery (original path).
 
         Returns:
             Tuple of (selected_records, all_candidates) where all_candidates
@@ -940,6 +1023,107 @@ class ContextAssembler:
                     )
             except Exception as e:
                 logger.warning("CoOccurrence propagation failed: %s", e)
+
+        all_candidates = list(candidates)
+        return candidates, all_candidates
+
+    def _pull_path_hybrid(self, query_cues, filters):
+        """Hybrid pull path: BM25 (lexical) + vector (semantic) + graph via RRF.
+
+        Collects up to three ranked signals then fuses them with
+        ``QueryBuilder.fuse()`` (RRF, k=RRF_K). Falls back to the composite
+        path when both lexical and vector signals are empty.
+
+        Returns:
+            Tuple of (selected_records, all_candidates).
+        """
+        query_text = " ".join(str(v) for v in query_cues.values())
+
+        # ExistenceFilter pre-check (same short-circuit as composite path)
+        if self._existence_filter is not None:
+            all_missing = all(
+                self._existence_filter.definitely_missing(self.model_class, str(v))
+                for v in query_cues.values()
+            )
+            if all_missing:
+                logger.debug(
+                    "ExistenceFilter: all cues definitely missing, skipping hybrid pull"
+                )
+                return [], []
+
+        candidate_limit = self.max_items * HYBRID_CANDIDATE_MULTIPLIER
+
+        keyword_results: list = []
+        vector_results: list = []
+        graph_results: list = []
+
+        # --- BM25 lexical retrieval ---
+        try:
+            keyword_results = BM25Field.search(
+                self.model_class,
+                self._bm25_field_name,
+                query_text,
+                limit=candidate_limit,
+            )
+        except Exception as e:
+            logger.warning("BM25 search failed in hybrid path: %s", e)
+
+        # --- Vector semantic retrieval (raw scored tuples, not hydrated) ---
+        try:
+            from ..models.query import QueryBuilder as _QueryBuilder
+
+            _q = self.model_class.query
+            if filters:
+                _qb = _q.filter(**filters)
+            else:
+                _qb = _QueryBuilder(_q)
+            vector_results = _qb._get_vector_scores(query_text, limit=candidate_limit)
+        except Exception as e:
+            logger.warning("Vector search failed in hybrid path: %s", e)
+
+        if not keyword_results and not vector_results:
+            logger.debug(
+                "Hybrid path: no BM25 or vector signal collected, "
+                "falling back to composite"
+            )
+            return self._pull_path_composite(query_cues, filters)
+
+        # --- Graph propagation (seeds from BM25 top results) ---
+        if self._co_occurrence_field is not None and keyword_results:
+            seed_pks = [k for k, _ in keyword_results[:5]]
+            try:
+                propagated = self._co_occurrence_field.propagate(
+                    self.model_class,
+                    seed_pks,
+                    depth=self.propagation_depth,
+                    decay_per_hop=0.5,
+                    threshold=0.01,
+                )
+                graph_results = list(propagated.items())
+            except Exception as e:
+                logger.warning("Graph propagation failed in hybrid path: %s", e)
+
+        # --- RRF fusion ---
+        fuse_kwargs: dict = {}
+        if keyword_results:
+            fuse_kwargs["keyword"] = keyword_results
+        if vector_results:
+            fuse_kwargs["vector"] = vector_results
+        if graph_results:
+            fuse_kwargs["graph"] = graph_results
+
+        try:
+            query = self.model_class.query
+            if filters:
+                query = query.filter(**filters)
+            candidates = query.fuse(
+                k=RRF_K,
+                limit=self.max_items * 2,
+                **fuse_kwargs,
+            )
+        except Exception as e:
+            logger.warning("RRF fusion failed, falling back to composite: %s", e)
+            return self._pull_path_composite(query_cues, filters)
 
         all_candidates = list(candidates)
         return candidates, all_candidates
