@@ -58,7 +58,7 @@ import logging
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, Optional, Tuple
 
 from ..exceptions import ModelException
 from ..redis_db import POPOTO_REDIS_DB
@@ -298,33 +298,48 @@ class MemoryLifecycle:
     """
 
     # --- Magic-number tuning constants (benchmark sweep grid parameters) ---
-    # These read from Defaults so that the benchmark override injection
-    # (apply_overrides in tests/benchmarks/overrides.py) can patch them
-    # via Defaults.LIFECYCLE_* without needing to patch MemoryLifecycle directly.
-    # Tests that need custom values should set them as instance attributes.
-    from ..fields.constants import Defaults as _Defaults
+    # These are resolved via __getattr__ at runtime so that:
+    # (a) apply_overrides() in tests/benchmarks/overrides.py can patch
+    #     Defaults.LIFECYCLE_* and have those patches observed by instances
+    #     during the sweep (the bug fixed here — class-body assignment
+    #     froze values at import time).
+    # (b) Tests that need custom per-instance values can set instance
+    #     attributes directly (e.g. ``lifecycle.PROMOTION_ACCESS_COUNT = 1``);
+    #     __getattr__ is only called when the attribute is NOT found in the
+    #     instance __dict__, so instance-dict assignments take priority.
+    #
+    # Attribute names and their Defaults.LIFECYCLE_* counterparts:
+    _LIFECYCLE_ATTRS = {
+        "PROMOTION_ACCESS_COUNT": "LIFECYCLE_PROMOTION_ACCESS_COUNT",
+        "PROMOTION_CONFIDENCE_THRESHOLD": "LIFECYCLE_PROMOTION_CONFIDENCE_THRESHOLD",
+        "PROMOTION_MIN_AGE_SECONDS": "LIFECYCLE_PROMOTION_MIN_AGE_SECONDS",
+        "FORGET_IMPORTANCE_FLOOR": "LIFECYCLE_FORGET_IMPORTANCE_FLOOR",
+        "FORGET_IDLE_SECONDS": "LIFECYCLE_FORGET_IDLE_SECONDS",
+    }
 
-    PROMOTION_ACCESS_COUNT: int = _Defaults.LIFECYCLE_PROMOTION_ACCESS_COUNT
-    """Minimum confirmed access count before episodic→semantic promotion."""
+    def __getattr__(self, name: str):
+        """Resolve LIFECYCLE_* threshold attributes from Defaults at access time.
 
-    PROMOTION_CONFIDENCE_THRESHOLD: float = (
-        _Defaults.LIFECYCLE_PROMOTION_CONFIDENCE_THRESHOLD
-    )
-    """Minimum confidence score before episodic→semantic promotion."""
+        Called only when ``name`` is not found in the instance __dict__ or
+        the class __dict__ (i.e. not set as an instance attribute and not a
+        regular class attribute). This ensures:
 
-    PROMOTION_MIN_AGE_SECONDS: float = _Defaults.LIFECYCLE_PROMOTION_MIN_AGE_SECONDS
-    """Minimum age in seconds before promotion (prevents burst-access promotion)."""
+        - apply_overrides(Defaults.LIFECYCLE_*) is observed by all lifecycle
+          instances that have not set a local override.
+        - Per-instance overrides (``lifecycle.PROMOTION_ACCESS_COUNT = N``)
+          still work because instance-dict lookup precedes __getattr__.
+        """
+        defaults_key = self._LIFECYCLE_ATTRS.get(name)
+        if defaults_key is not None:
+            from ..fields.constants import Defaults
 
-    FORGET_IMPORTANCE_FLOOR: float = _Defaults.LIFECYCLE_FORGET_IMPORTANCE_FLOOR
-    """Importance score below which a record is eligible for auto-forget."""
-
-    FORGET_IDLE_SECONDS: float = _Defaults.LIFECYCLE_FORGET_IDLE_SECONDS
-    """Idle seconds (no confirmed access) before a record is eligible for auto-forget."""
+            return getattr(Defaults, defaults_key)
+        raise AttributeError(
+            f"'{type(self).__name__}' object has no attribute '{name}'"
+        )
 
     TICK_BATCH_SIZE: int = 100
     """Records per tick scan page (paginated iteration)."""
-
-    del _Defaults  # Clean up class namespace
 
     # -------------------------------------------------------------------
 
@@ -420,7 +435,6 @@ class MemoryLifecycle:
         """
         from ..fields.key_field_mixin import KeyFieldMixin
 
-        current_tier = getattr(record, self.tier_field, None)
         setattr(record, self.tier_field, tier)
 
         # Determine if tier_field is a KeyField (requires migrate_key=True when changing)
