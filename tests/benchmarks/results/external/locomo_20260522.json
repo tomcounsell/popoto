@@ -1,7 +1,7 @@
 {
   "dataset": "locomo",
   "run_date": "2026-05-22",
-  "run_timestamp": "2026-05-22T08:45:06.015933+00:00",
+  "run_timestamp": "2026-05-22T09:13:02.575274+00:00",
   "machine": {
     "python_version": "3.12.13",
     "platform": "macOS-26.3.1-arm64-arm-64bit",
@@ -12,12 +12,12 @@
     "n_ok": 6,
     "n_errors": 0,
     "n_skipped": 0,
-    "recall_at_1": 0.0,
-    "recall_at_5": 0.0,
-    "recall_at_10": 0.0,
-    "mrr": 0.0,
-    "p50_ms": 0.61,
-    "p95_ms": 1.25
+    "recall_at_1": 0.1667,
+    "recall_at_5": 0.6667,
+    "recall_at_10": 0.6667,
+    "mrr": 0.3472,
+    "p50_ms": 0.14,
+    "p95_ms": 2.34
   },
   "notes": [
     "Baseline run: relevance-only scoring (DecayingSortedField).",
@@ -27,11 +27,11 @@
   "questions": [
     {
       "item_id": "locomo_001::qa0",
-      "recall_at_1": 0.0,
-      "recall_at_5": 0.0,
-      "recall_at_10": 0.0,
-      "mrr": 0.0,
-      "retrieval_ms": 1.25,
+      "recall_at_1": 1.0,
+      "recall_at_5": 1.0,
+      "recall_at_10": 1.0,
+      "mrr": 1.0,
+      "retrieval_ms": 0.14,
       "status": "ok",
       "error": "",
       "metadata": {
@@ -40,19 +40,18 @@
         "n_history_turns": 9,
         "n_saved_records": 9,
         "n_retrieved": 1,
-        "retrieval_ms": 1.25,
+        "retrieval_ms": 0.14,
         "dataset": "locomo",
-        "pull_count": 1,
-        "push_count": 0
+        "retrieval_method": "bm25"
       }
     },
     {
       "item_id": "locomo_001::qa1",
       "recall_at_1": 0.0,
-      "recall_at_5": 0.0,
-      "recall_at_10": 0.0,
-      "mrr": 0.0,
-      "retrieval_ms": 0.64,
+      "recall_at_5": 1.0,
+      "recall_at_10": 1.0,
+      "mrr": 0.25,
+      "retrieval_ms": 2.34,
       "status": "ok",
       "error": "",
       "metadata": {
@@ -60,20 +59,19 @@
         "query": "What is speaker1's profession?",
         "n_history_turns": 9,
         "n_saved_records": 9,
-        "n_retrieved": 1,
-        "retrieval_ms": 0.64,
+        "n_retrieved": 4,
+        "retrieval_ms": 2.34,
         "dataset": "locomo",
-        "pull_count": 1,
-        "push_count": 0
+        "retrieval_method": "composite_fallback"
       }
     },
     {
       "item_id": "locomo_001::qa2",
       "recall_at_1": 0.0,
-      "recall_at_5": 0.0,
-      "recall_at_10": 0.0,
-      "mrr": 0.0,
-      "retrieval_ms": 0.61,
+      "recall_at_5": 1.0,
+      "recall_at_10": 1.0,
+      "mrr": 0.5,
+      "retrieval_ms": 0.13,
       "status": "ok",
       "error": "",
       "metadata": {
@@ -81,11 +79,10 @@
         "query": "What does speaker1's daughter study?",
         "n_history_turns": 9,
         "n_saved_records": 9,
-        "n_retrieved": 1,
-        "retrieval_ms": 0.61,
+        "n_retrieved": 2,
+        "retrieval_ms": 0.13,
         "dataset": "locomo",
-        "pull_count": 1,
-        "push_count": 0
+        "retrieval_method": "bm25"
       }
     },
     {
@@ -94,7 +91,7 @@
       "recall_at_5": 0.0,
       "recall_at_10": 0.0,
       "mrr": 0.0,
-      "retrieval_ms": 0.48,
+      "retrieval_ms": 0.12,
       "status": "ok",
       "error": "",
       "metadata": {
@@ -103,10 +100,9 @@
         "n_history_turns": 6,
         "n_saved_records": 6,
         "n_retrieved": 1,
-        "retrieval_ms": 0.48,
+        "retrieval_ms": 0.12,
         "dataset": "locomo",
-        "pull_count": 1,
-        "push_count": 0
+        "retrieval_method": "bm25"
       }
     },
     {
@@ -115,7 +111,7 @@
       "recall_at_5": 0.0,
       "recall_at_10": 0.0,
       "mrr": 0.0,
-      "retrieval_ms": 0.48,
+      "retrieval_ms": 0.11,
       "status": "ok",
       "error": "",
       "metadata": {
@@ -124,19 +120,18 @@
         "n_history_turns": 6,
         "n_saved_records": 6,
         "n_retrieved": 1,
-        "retrieval_ms": 0.48,
+        "retrieval_ms": 0.11,
         "dataset": "locomo",
-        "pull_count": 1,
-        "push_count": 0
+        "retrieval_method": "bm25"
       }
     },
     {
       "item_id": "locomo_002::qa2",
       "recall_at_1": 0.0,
-      "recall_at_5": 0.0,
-      "recall_at_10": 0.0,
-      "mrr": 0.0,
-      "retrieval_ms": 0.5,
+      "recall_at_5": 1.0,
+      "recall_at_10": 1.0,
+      "mrr": 0.3333333333333333,
+      "retrieval_ms": 1.43,
       "status": "ok",
       "error": "",
       "metadata": {
@@ -144,11 +139,10 @@
         "query": "What is speaker1's diet?",
         "n_history_turns": 6,
         "n_saved_records": 6,
-        "n_retrieved": 1,
-        "retrieval_ms": 0.5,
+        "n_retrieved": 3,
+        "retrieval_ms": 1.43,
         "dataset": "locomo",
-        "pull_count": 1,
-        "push_count": 0
+        "retrieval_method": "composite_fallback"
       }
     }
   ]

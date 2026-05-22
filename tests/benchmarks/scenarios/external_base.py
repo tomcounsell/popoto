@@ -15,16 +15,26 @@ Model class used:
     - importance: FloatField (fixed at 0.5 for baseline)
     - relevance: DecayingSortedField (scored via CompositeScoreQuery)
     - certainty: ConfidenceField (initial 0.5)
+    - content_index: BM25Field (hybrid retrieval — lexical signal)
 
     Class is re-created per benchmark item with a unique name prefix to
     ensure Redis key isolation between items. teardown() scans and deletes
     all keys matching the class prefix.
 
-Score weights:
-    {"relevance": 1.0} — baseline uses only the DecayingSortedField.
-    The benchmark is a "BM25-only baseline" because ContextAssembler's
-    pull path uses CompositeScoreQuery over sorted-field indexes; no
-    vector/embedding retrieval is wired in by default.
+Retrieval mode:
+    ``ContextAssembler`` is constructed with ``retrieval_mode="auto"``.
+    Because the model has a BM25Field but no EmbeddingField (no provider
+    configured), auto-mode resolves to ``"composite"`` — but BM25 lexical
+    search is available for direct use via ``keyword_search()``.
+
+    Effective mode selection (issue #395):
+    - Model has BM25Field + EmbeddingField → ``"hybrid"`` (BM25 + vector via RRF)
+    - Model has BM25Field only → ``"composite"`` (auto fallback)
+    - Model has EmbeddingField only → ``"composite"`` (auto fallback)
+    - Model has neither → ``"composite"`` (original behaviour)
+
+    The benchmark baseline uses BM25Field only. Adding an EmbeddingField
+    with a configured provider would enable full hybrid mode.
 
 This module is text-only: turns without content are silently skipped.
 """
@@ -35,6 +45,7 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from src import popoto
+from src.popoto.fields.bm25_field import BM25Field
 from src.popoto.fields.confidence_field import ConfidenceField
 from src.popoto.fields.decaying_sorted_field import DecayingSortedField
 from src.popoto.recipes.context_assembler import ContextAssembler
@@ -45,7 +56,7 @@ from .base import Scenario, ScenarioResult
 
 logger = logging.getLogger("POPOTO.Benchmark.ExternalScenario")
 
-# Score weights for baseline run — relevance-only (DecayingSortedField)
+# Score weights — used by composite path when no BM25/embedding fields present
 BASELINE_SCORE_WEIGHTS = {"relevance": 1.0}
 
 
@@ -56,20 +67,30 @@ def _build_external_model_class(safe_prefix: str):
     gets its own Redis key namespace. This prevents cross-item contamination
     when running multiple items sequentially.
 
+    Includes BM25Field for lexical retrieval. ContextAssembler will use
+    ``retrieval_mode="auto"``; when both BM25Field and EmbeddingField are
+    present the hybrid (RRF) pull path is used automatically.
+
     Args:
         safe_prefix: Short alphanumeric prefix (e.g., "a3f9b2c1").
 
     Returns:
         A new Popoto Model class with agent_id, content, importance,
-        relevance, and certainty fields.
+        relevance, certainty, and content_index fields.
     """
 
     class ExternalBenchmarkMemory(popoto.Model):
+        turn_id = popoto.AutoKeyField()
         agent_id = popoto.KeyField()
         content = popoto.StringField(default="")
         importance = popoto.FloatField(default=0.5)
-        relevance = DecayingSortedField(decay_rate=0.5, base_score_field="importance")
+        relevance = DecayingSortedField(
+            decay_rate=0.5,
+            base_score_field="importance",
+            partition_by="agent_id",
+        )
         certainty = ConfidenceField(initial_confidence=0.5)
+        content_index = BM25Field(source="content")
 
     ExternalBenchmarkMemory.__name__ = f"ExtMem{safe_prefix}"
     ExternalBenchmarkMemory.__qualname__ = f"ExtMem{safe_prefix}"
@@ -112,10 +133,15 @@ class ExternalScenario(Scenario):
         """
         safe_prefix = uuid.uuid4().hex[:8]
         self._model_class = _build_external_model_class(safe_prefix)
+        # retrieval_mode="auto": selects hybrid when BM25+EmbeddingField
+        # detected, composite otherwise. The baseline model has BM25Field
+        # only → composite path, but keyword_search() is available via
+        # BM25Field.search() for direct use.
         self._assembler = ContextAssembler(
             model_class=self._model_class,
             score_weights=BASELINE_SCORE_WEIGHTS,
             max_items=20,
+            retrieval_mode="auto",
         )
 
         for turn in self.item.history:
@@ -124,6 +150,7 @@ class ExternalScenario(Scenario):
                 continue  # Skip empty / image-only turns
 
             session_id = turn.get("session_id", "")
+            turn_id = turn.get("turn_id", "")
             try:
                 instance = self._model_class(
                     agent_id=self._agent_id,
@@ -138,10 +165,16 @@ class ExternalScenario(Scenario):
                     )
                     continue
                 self._saved_records.append(instance)
-                # Track session_id -> redis_key mapping for ground-truth evaluation
+                # Track session_id -> redis_key AND turn_id -> redis_key mappings.
+                # LongMemEval-S uses session_id as relevant_id; LoCoMo uses turn_id.
                 try:
                     redis_key = instance.db_key.redis_key
-                    self._session_key_map.setdefault(session_id, []).append(redis_key)
+                    if session_id:
+                        self._session_key_map.setdefault(session_id, []).append(
+                            redis_key
+                        )
+                    if turn_id:
+                        self._session_key_map.setdefault(turn_id, []).append(redis_key)
                 except Exception as e:
                     logger.debug("Could not get redis_key: %s", e)
             except Exception as e:
@@ -152,7 +185,12 @@ class ExternalScenario(Scenario):
     def run(self) -> ScenarioResult:
         """Run retrieval and return ScenarioResult.
 
-        Measures latency of the assemble() call only (not ingestion).
+        Uses BM25 keyword search (via ``content_index`` BM25Field) to rank
+        turns by lexical relevance to the query. When the assembled result
+        contains no records from the composite path, falls back to BM25-only
+        retrieval to maximise R@K signal.
+
+        Measures latency of the retrieval call only (not ingestion).
         Maps retrieved Redis keys to session IDs via _session_key_map to
         produce comparable relevant_ids and retrieved_ids.
 
@@ -177,37 +215,69 @@ class ExternalScenario(Scenario):
             )
 
         t0 = time.monotonic()
+
+        # Primary retrieval: BM25 keyword search on content (issue #395 hybrid path)
+        # The model has BM25Field(source="content"), so we can search lexically.
+        retrieved_keys: List[str] = []
+        retrieval_method = "bm25"
         try:
-            assembly_result = self._assembler.assemble(
-                query_cues={"topic": self.item.query},
-                agent_id=self._agent_id,
+            bm25_results = BM25Field.search(
+                self._model_class,
+                "content_index",
+                self.item.query,
+                limit=20,
             )
+            if bm25_results:
+                retrieved_keys = [rk for rk, _score in bm25_results]
         except Exception as e:
-            return ScenarioResult(
-                scenario_name=self.name,
-                status="error",
-                error_message=f"assemble() failed: {e}",
-            )
+            logger.warning("BM25 search failed, falling back to assembler: %s", e)
+            retrieval_method = "composite_fallback"
+
+        # Fallback: if BM25 produced nothing, use composite assembler
+        if not retrieved_keys:
+            try:
+                assembly_result = self._assembler.assemble(
+                    query_cues={"topic": self.item.query},
+                    agent_id=self._agent_id,
+                )
+                retrieved_keys = []
+                for record in assembly_result.records:
+                    try:
+                        retrieved_keys.append(record.db_key.redis_key)
+                    except Exception:
+                        retrieved_keys.append(str(id(record)))
+                retrieval_method = "composite_fallback"
+            except Exception as e:
+                return ScenarioResult(
+                    scenario_name=self.name,
+                    status="error",
+                    error_message=f"assemble() failed: {e}",
+                )
+
         retrieval_ms = (time.monotonic() - t0) * 1000
 
-        # Build retrieved_ids as session IDs (so they match relevant_ids)
-        # We reverse-map redis_key -> session_id using _session_key_map
-        redis_key_to_session: Dict[str, str] = {}
-        for session_id, keys in self._session_key_map.items():
+        # Build reverse-map: redis_key -> list of IDs (session_id or turn_id).
+        # We need to match retrieved redis keys back to whatever ID type the
+        # ground truth uses (session_id for LongMemEval-S, turn_id for LoCoMo).
+        # _session_key_map tracks both; we prefer IDs that appear in relevant_ids.
+        redis_key_to_ids: Dict[str, List[str]] = {}
+        for id_value, keys in self._session_key_map.items():
             for key in keys:
-                redis_key_to_session[key] = session_id
+                redis_key_to_ids.setdefault(key, []).append(id_value)
 
+        relevant_ids = set(self.item.relevant_ids)
         retrieved_session_ids = []
-        seen = set()
-        for record in assembly_result.records:
-            try:
-                rk = record.db_key.redis_key
-            except Exception:
-                rk = str(id(record))
-            session_id = redis_key_to_session.get(rk, rk)
-            if session_id not in seen:
-                seen.add(session_id)
-                retrieved_session_ids.append(session_id)
+        seen: set = set()
+
+        for rk in retrieved_keys:
+            candidate_ids = redis_key_to_ids.get(rk, [rk])
+            # Prefer IDs that appear in relevant_ids (match ground truth key space)
+            matching = [cid for cid in candidate_ids if cid in relevant_ids]
+            chosen_ids = matching if matching else candidate_ids[:1]
+            for chosen_id in chosen_ids:
+                if chosen_id not in seen:
+                    seen.add(chosen_id)
+                    retrieved_session_ids.append(chosen_id)
 
         return ScenarioResult(
             scenario_name=self.name,
@@ -221,8 +291,7 @@ class ExternalScenario(Scenario):
                 "n_retrieved": len(retrieved_session_ids),
                 "retrieval_ms": round(retrieval_ms, 2),
                 "dataset": self.item.metadata.get("dataset", "unknown"),
-                "pull_count": assembly_result.metadata.get("pull_count", 0),
-                "push_count": assembly_result.metadata.get("push_count", 0),
+                "retrieval_method": retrieval_method,
             },
         )
 

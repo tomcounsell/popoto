@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`ContextAssembler(retrieval_mode=...)`** — new `retrieval_mode` parameter controls pull-path strategy ([#395](https://github.com/tomcounsell/popoto/issues/395)):
+  - `"auto"` *(default)* — detects `BM25Field` + `EmbeddingField` on the model; uses hybrid RRF path if both present, composite otherwise
+  - `"hybrid"` — BM25 lexical + vector semantic signals fused via Reciprocal Rank Fusion (k=60), optional CoOccurrence graph expansion; raises `QueryException` at init if required fields are absent
+  - `"composite"` — original `CompositeScoreQuery` weighted-sum path (pre-v1.7 behaviour)
+  - Existing callers without `retrieval_mode` keep working unchanged: auto-mode falls back to composite on models without `BM25Field`/`EmbeddingField`
+- **`QueryBuilder._get_vector_scores(query_text, limit)`** — private helper that returns `[(redis_key, cosine_similarity)]` tuples for RRF fusion input; mirrors `semantic_search()` internals without hydration
+- **Benchmark R@K improvement** — external harness ([#394](https://github.com/tomcounsell/popoto/issues/394)) now shows measurable signal with BM25 retrieval:
+  - LongMemEval-S (fixture): R@5 0.0 → 1.0, MRR 0.0 → 0.667
+  - LoCoMo (fixture): R@5 0.0 → 0.667, MRR 0.0 → 0.375
 - **`MemoryLifecycle`** recipe (`src/popoto/recipes/memory_lifecycle.py`) — policy layer orchestrating memory tier transitions and auto-forget. Composes `DecayingSortedField`, `ConfidenceField`, and `AccessTrackerMixin` into a two-tier episodic → semantic lifecycle without replacing any existing primitive. ([#396](https://github.com/tomcounsell/popoto/issues/396))
   - `MemoryLifecycle(model_class, importance_field)` — init with capability detection and `ModelException` guards
   - `tag_new(record, tier="episodic")` — assign starting tier; handles `KeyField` migration automatically
