@@ -16,7 +16,7 @@
         <link rel="prev" href="../guides/research-prompt-memory-systems/">
       
       
-        <link rel="next" href="../testing/">
+        <link rel="next" href="../benchmarks/">
       
       
         
@@ -2096,10 +2096,49 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#benchmarking" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Benchmarking
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../benchmarks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmarking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -2414,6 +2453,17 @@
     <span class="md-ellipsis">
       
         Exceptions: When Each Is Raised
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#benchmarking" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Benchmarking
       
     </span>
   </a>
@@ -2768,6 +2818,28 @@ documentation and examples.</p>
 <a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="k">except</span> <span class="n">KeyMutationError</span><span class="p">:</span>
 <a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>    <span class="n">instance</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">migrate_key</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>  <span class="c1"># Intentional migration succeeds</span>
 </code></pre></div>
+<h2 id="benchmarking">Benchmarking<a class="headerlink" href="#benchmarking" title="Permanent link">&para;</a></h2>
+<p>Popoto includes an external benchmark harness for evaluating memory retrieval
+quality against published datasets. See <strong><a href="../benchmarks/">docs/benchmarks.md</a></strong>
+for full documentation.</p>
+<p>Quick reference:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="c1"># Install benchmark dependencies</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[benchmark]&quot;</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="c1"># Run LongMemEval-S benchmark (downloads ~264 MB on first run)</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>longmemeval-s
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="c1"># Run LoCoMo benchmark</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>locomo
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="c1"># Quick smoke test (fixture-based, no download)</span>
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a><span class="w">    </span>--dataset<span class="w"> </span>longmemeval-s<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a><span class="w">    </span>--fixture<span class="w"> </span>tests/benchmarks/datasets/fixtures/longmemeval_s_sample.json<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a><span class="w">    </span>--limit<span class="w"> </span><span class="m">3</span><span class="w"> </span>--dry-run
+</code></pre></div>
+<p>Results are committed to <code>tests/benchmarks/results/external/</code> as Markdown and
+JSON files, providing a baseline for future retrieval improvements.</p>
 
 
 
