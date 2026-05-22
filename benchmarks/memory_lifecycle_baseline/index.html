@@ -10,7 +10,7 @@
         <meta name="author" content="Tom Counsell">
       
       
-        <link rel="canonical" href="https://popoto.io/reference/SUMMARY/">
+        <link rel="canonical" href="https://popoto.io/benchmarks/memory_lifecycle_baseline/">
       
       
       
@@ -23,7 +23,7 @@
     
     
       
-        <title>SUMMARY - Popoto Documentation</title>
+        <title>MemoryLifecycle Benchmark Baseline - Popoto Documentation</title>
       
     
     
@@ -75,6 +75,11 @@
     <label class="md-overlay" for="__drawer"></label>
     <div data-md-component="skip">
       
+        
+        <a href="#memorylifecycle-benchmark-baseline" class="md-skip">
+          Skip to content
+        </a>
+      
     </div>
     <div data-md-component="announce">
       
@@ -105,7 +110,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              SUMMARY
+              MemoryLifecycle Benchmark Baseline
             
           </span>
         </div>
@@ -317,7 +322,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="../" class="md-tabs__link">
+      <a href="../../reference/" class="md-tabs__link">
         
   
   
@@ -1905,7 +1910,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../benchmarks/" class="md-nav__link">
+      <a href="../" class="md-nav__link">
         
   
   
@@ -2024,7 +2029,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../" class="md-nav__link">
+      <a href="../../reference/" class="md-nav__link">
         
   
   
@@ -2088,6 +2093,71 @@
   
   
   
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pre-lifecycle-baseline-from-main-branch-2026-05-22" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pre-Lifecycle Baseline (from main branch, 2026-05-22)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sweep-grid-parameters-added-tier-5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sweep Grid Parameters Added (Tier 5)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-to-run-a-sweep" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How to Run a Sweep
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next Steps
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
   
 </nav>
                   </div>
@@ -2103,63 +2173,145 @@
                   
 
 
+  
+  
 
-  <h1>SUMMARY</h1>
 
-<ul>
-<li><a href="../popoto/">popoto</a></li>
-<li><a href="../popoto/_error_reporting/">popoto._error_reporting</a></li>
-<li><a href="../popoto/exceptions/">popoto.exceptions</a></li>
-<li><a href="../popoto/fields/_tokenizer/">popoto.fields._tokenizer</a></li>
-<li><a href="../popoto/fields/access_tracker/">popoto.fields.access_tracker</a></li>
-<li><a href="../popoto/fields/auto_field_mixin/">popoto.fields.auto_field_mixin</a></li>
-<li><a href="../popoto/fields/bm25_field/">popoto.fields.bm25_field</a></li>
-<li><a href="../popoto/fields/co_occurrence_field/">popoto.fields.co_occurrence_field</a></li>
-<li><a href="../popoto/fields/confidence_field/">popoto.fields.confidence_field</a></li>
-<li><a href="../popoto/fields/constants/">popoto.fields.constants</a></li>
-<li><a href="../popoto/fields/content_field/">popoto.fields.content_field</a></li>
-<li><a href="../popoto/fields/cyclic_decay_field/">popoto.fields.cyclic_decay_field</a></li>
-<li><a href="../popoto/fields/dataframe_field/">popoto.fields.dataframe_field</a></li>
-<li><a href="../popoto/fields/datetime_field/">popoto.fields.datetime_field</a></li>
-<li><a href="../popoto/fields/decaying_sorted_field/">popoto.fields.decaying_sorted_field</a></li>
-<li><a href="../popoto/fields/embedding_field/">popoto.fields.embedding_field</a></li>
-<li><a href="../popoto/fields/event_stream/">popoto.fields.event_stream</a></li>
-<li><a href="../popoto/fields/existence_filter/">popoto.fields.existence_filter</a></li>
-<li><a href="../popoto/fields/field/">popoto.fields.field</a></li>
-<li><a href="../popoto/fields/geo_field/">popoto.fields.geo_field</a></li>
-<li><a href="../popoto/fields/indexed_field_mixin/">popoto.fields.indexed_field_mixin</a></li>
-<li><a href="../popoto/fields/key_field_mixin/">popoto.fields.key_field_mixin</a></li>
-<li><a href="../popoto/fields/observation/">popoto.fields.observation</a></li>
-<li><a href="../popoto/fields/prediction_ledger/">popoto.fields.prediction_ledger</a></li>
-<li><a href="../popoto/fields/relationship/">popoto.fields.relationship</a></li>
-<li><a href="../popoto/fields/shortcuts/">popoto.fields.shortcuts</a></li>
-<li><a href="../popoto/fields/sorted_field_mixin/">popoto.fields.sorted_field_mixin</a></li>
-<li><a href="../popoto/fields/unique_field_mixin/">popoto.fields.unique_field_mixin</a></li>
-<li><a href="../popoto/fields/write_filter/">popoto.fields.write_filter</a></li>
-<li><a href="../popoto/models/base/">popoto.models.base</a></li>
-<li><a href="../popoto/models/db_key/">popoto.models.db_key</a></li>
-<li><a href="../popoto/models/encoding/">popoto.models.encoding</a></li>
-<li><a href="../popoto/models/expressions/">popoto.models.expressions</a></li>
-<li><a href="../popoto/models/migrations/">popoto.models.migrations</a></li>
-<li><a href="../popoto/models/q/">popoto.models.q</a></li>
-<li><a href="../popoto/models/query/">popoto.models.query</a></li>
-<li><a href="../popoto/pubsub/publisher/">popoto.pubsub.publisher</a></li>
-<li><a href="../popoto/pubsub/subscriber/">popoto.pubsub.subscriber</a></li>
-<li><a href="../popoto/recipes/adaptive_assembler/">popoto.recipes.adaptive_assembler</a></li>
-<li><a href="../popoto/recipes/context_assembler/">popoto.recipes.context_assembler</a></li>
-<li><a href="../popoto/recipes/memory_lifecycle/">popoto.recipes.memory_lifecycle</a></li>
-<li><a href="../popoto/recipes/policy_cache/">popoto.recipes.policy_cache</a></li>
-<li><a href="../popoto/recipes/subconscious_memory/">popoto.recipes.subconscious_memory</a></li>
-<li><a href="../popoto/recipes/trajectory_memory/">popoto.recipes.trajectory_memory</a></li>
-<li><a href="../popoto/redis_db/">popoto.redis_db</a></li>
-<li><a href="../popoto/redis_limits/">popoto.redis_limits</a></li>
-<li><a href="../popoto/stores/filesystem/">popoto.stores.filesystem</a></li>
-<li><a href="../popoto/streams/consumer/">popoto.streams.consumer</a></li>
-<li><a href="../popoto/testing/">popoto.testing</a></li>
-<li><a href="../popoto/utils/list_search/">popoto.utils.list_search</a></li>
-<li><a href="../popoto/utils/multithreading/">popoto.utils.multithreading</a></li>
-<li><a href="../popoto/utils/sigfigs/">popoto.utils.sigfigs</a></li>
-</ul>
+<h1 id="memorylifecycle-benchmark-baseline">MemoryLifecycle Benchmark Baseline<a class="headerlink" href="#memorylifecycle-benchmark-baseline" title="Permanent link">&para;</a></h1>
+<p><strong>Generated:</strong> 2026-05-22
+<strong>Branch:</strong> session/memory_lifecycle
+<strong>Issue:</strong> #396</p>
+<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<p>This document establishes the pre-lifecycle baseline for the MemoryLifecycle feature
+(issue #396) and records the sweep grid parameters added to <code>tests/benchmarks/run_sweeps.py</code>.</p>
+<p>The external benchmark harness (LoCoMo + LongMemEval-S) was established in issue #394.
+Baseline retrieval metrics (without lifecycle) are from the existing harness runs on <code>main</code>.</p>
+<h2 id="pre-lifecycle-baseline-from-main-branch-2026-05-22">Pre-Lifecycle Baseline (from main branch, 2026-05-22)<a class="headerlink" href="#pre-lifecycle-baseline-from-main-branch-2026-05-22" title="Permanent link">&para;</a></h2>
+<p>Source: <code>tests/benchmarks/results/external/locomo_latest.md</code></p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Baseline (no lifecycle)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Recall@1</td>
+<td>0.0000</td>
+</tr>
+<tr>
+<td>Recall@5</td>
+<td>0.0000</td>
+</tr>
+<tr>
+<td>Recall@10</td>
+<td>0.0000</td>
+</tr>
+<tr>
+<td>MRR</td>
+<td>0.0000</td>
+</tr>
+<tr>
+<td>Questions evaluated</td>
+<td>6 / 6</td>
+</tr>
+</tbody>
+</table>
+<p>Source: <code>tests/benchmarks/results/external/longmemeval_s_latest.md</code></p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Baseline (no lifecycle)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Recall@1</td>
+<td>0.0000</td>
+</tr>
+<tr>
+<td>Recall@5</td>
+<td>0.0000</td>
+</tr>
+<tr>
+<td>Recall@10</td>
+<td>0.0000</td>
+</tr>
+<tr>
+<td>MRR</td>
+<td>0.0000</td>
+</tr>
+<tr>
+<td>Questions evaluated</td>
+<td>10 / 10</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Note:</strong> Baseline scores are 0 because the current harness uses score-only retrieval
+(no embedding/BM25). Issue #395 will add hybrid retrieval. The lifecycle layer is
+designed to improve signal quality by filtering low-value memories; its impact will
+be measurable once #395 closes the retrieval gap.</p>
+<p><strong>Reference target:</strong> agentmemory BM25+Vector achieves 95.2% R@5 on LoCoMo with lifecycle.</p>
+<h2 id="sweep-grid-parameters-added-tier-5">Sweep Grid Parameters Added (Tier 5)<a class="headerlink" href="#sweep-grid-parameters-added-tier-5" title="Permanent link">&para;</a></h2>
+<p>Added to <code>TIER5_SWEEPS</code> in <code>tests/benchmarks/run_sweeps.py</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Sweep Values</th>
+<th>Default</th>
+<th>Rationale</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>LIFECYCLE_PROMOTION_ACCESS_COUNT</code></td>
+<td>[1, 2, 3, 5, 10]</td>
+<td>3</td>
+<td>Access threshold for episodic→semantic</td>
+</tr>
+<tr>
+<td><code>LIFECYCLE_PROMOTION_CONFIDENCE_THRESHOLD</code></td>
+<td>[0.3, 0.5, 0.6, 0.7, 0.9]</td>
+<td>0.6</td>
+<td>Confidence floor for promotion</td>
+</tr>
+<tr>
+<td><code>LIFECYCLE_PROMOTION_MIN_AGE_SECONDS</code></td>
+<td>[0.0, 60.0, 300.0, 1800.0, 7200.0]</td>
+<td>300.0</td>
+<td>Age guard against burst promotion</td>
+</tr>
+<tr>
+<td><code>LIFECYCLE_FORGET_IMPORTANCE_FLOOR</code></td>
+<td>[0.01, 0.05, 0.1, 0.2, 0.5]</td>
+<td>0.1</td>
+<td>Importance threshold for auto-forget</td>
+</tr>
+<tr>
+<td><code>LIFECYCLE_FORGET_IDLE_SECONDS</code></td>
+<td>[3600.0, 21600.0, 86400.0, 259200.0, 604800.0]</td>
+<td>86400.0</td>
+<td>Idle time threshold for auto-forget</td>
+</tr>
+</tbody>
+</table>
+<h2 id="how-to-run-a-sweep">How to Run a Sweep<a class="headerlink" href="#how-to-run-a-sweep" title="Permanent link">&para;</a></h2>
+<p>Once issue #395 (hybrid retrieval) is merged and the LoCoMo harness produces
+non-zero retrieval scores, run the Tier 5 sweep with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_sweeps<span class="w"> </span>--tier<span class="w"> </span><span class="m">5</span>
+</code></pre></div>
+<p>This will produce results in <code>tests/benchmarks/results/sweep_YYYYMMDD_HHMMSS.json</code>.
+Compare pre/post lifecycle Recall@5 on LoCoMo against the agentmemory 95.2% target.</p>
+<h2 id="next-steps">Next Steps<a class="headerlink" href="#next-steps" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Merge issue #395 (hybrid retrieval) to enable non-zero LoCoMo scores</li>
+<li>Run <code>python -m tests.benchmarks.run_sweeps --tier 5</code> on a corpus with lifecycle active</li>
+<li>Update this document with sweep results and calibrate the Tier 5 constants</li>
+<li>If LoCoMo Recall@5 improves, update <code>Defaults.LIFECYCLE_*</code> with optimal values</li>
+</ol>
 
 
 

@@ -2194,6 +2194,45 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#memorylifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MemoryLifecycle
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="MemoryLifecycle">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#two-tiers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two tiers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#further-reading" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4608,6 +4647,45 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#memorylifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MemoryLifecycle
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="MemoryLifecycle">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#two-tiers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two tiers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#further-reading" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4749,6 +4827,11 @@
 <td><a href="#contextassembler">ContextAssembler</a></td>
 <td>Retrieval-to-injection bridge — assemble LLM-ready context within token budgets</td>
 <td>Shipped</td>
+</tr>
+<tr>
+<td><a href="#memorylifecycle">MemoryLifecycle</a></td>
+<td>Policy layer orchestrating episodic→semantic promotion and auto-forget</td>
+<td>Shipped (<a href="https://github.com/tomcounsell/popoto/pull/396">PR #396</a>)</td>
 </tr>
 </tbody>
 </table>
@@ -6645,6 +6728,39 @@
 <a id="__codelineno-50-7" name="__codelineno-50-7" href="#__codelineno-50-7"></a><span class="n">relevance</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span><span class="n">decay_rate</span><span class="o">=</span><span class="mf">0.3</span><span class="p">)</span>  <span class="c1"># uses 0.3, not 0.7</span>
 </code></pre></div>
 <p>See <a href="../../reference/popoto/fields/constants/">Defaults API reference</a> and <a href="../../guides/tuning-magic-numbers/">Tuning Magic Numbers</a> for the full constant table and benchmark-validated guidance.</p>
+<h2 id="memorylifecycle">MemoryLifecycle<a class="headerlink" href="#memorylifecycle" title="Permanent link">&para;</a></h2>
+<p><code>MemoryLifecycle</code> is the policy layer that ties all the primitives together into
+a coherent memory lifecycle: episodic → semantic consolidation, continuous decay
+(via existing primitives), and auto-forget for low-value idle records.</p>
+<p>It composes on top of <code>DecayingSortedField</code>, <code>ConfidenceField</code>, and
+<code>AccessTrackerMixin</code> — it does not replace any of them.</p>
+<h3 id="two-tiers">Two tiers<a class="headerlink" href="#two-tiers" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>episodic</strong> — default for new memories; specific events; subject to promotion and forget</li>
+<li><strong>semantic</strong> — consolidated facts; decontextualized; protected from auto-forget</li>
+</ul>
+<h3 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-51-1" name="__codelineno-51-1" href="#__codelineno-51-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes</span><span class="w"> </span><span class="kn">import</span> <span class="n">MemoryLifecycle</span>
+<a id="__codelineno-51-2" name="__codelineno-51-2" href="#__codelineno-51-2"></a>
+<a id="__codelineno-51-3" name="__codelineno-51-3" href="#__codelineno-51-3"></a><span class="n">lifecycle</span> <span class="o">=</span> <span class="n">MemoryLifecycle</span><span class="p">(</span>
+<a id="__codelineno-51-4" name="__codelineno-51-4" href="#__codelineno-51-4"></a>    <span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span>
+<a id="__codelineno-51-5" name="__codelineno-51-5" href="#__codelineno-51-5"></a>    <span class="n">importance_field</span><span class="o">=</span><span class="s2">&quot;relevance&quot;</span><span class="p">,</span>   <span class="c1"># name of a DecayingSortedField</span>
+<a id="__codelineno-51-6" name="__codelineno-51-6" href="#__codelineno-51-6"></a><span class="p">)</span>
+<a id="__codelineno-51-7" name="__codelineno-51-7" href="#__codelineno-51-7"></a>
+<a id="__codelineno-51-8" name="__codelineno-51-8" href="#__codelineno-51-8"></a><span class="c1"># Tag new memories</span>
+<a id="__codelineno-51-9" name="__codelineno-51-9" href="#__codelineno-51-9"></a><span class="n">lifecycle</span><span class="o">.</span><span class="n">tag_new</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>  <span class="c1"># assigns tier = &quot;episodic&quot;</span>
+<a id="__codelineno-51-10" name="__codelineno-51-10" href="#__codelineno-51-10"></a>
+<a id="__codelineno-51-11" name="__codelineno-51-11" href="#__codelineno-51-11"></a><span class="c1"># Periodic consolidation pass</span>
+<a id="__codelineno-51-12" name="__codelineno-51-12" href="#__codelineno-51-12"></a><span class="n">summary</span> <span class="o">=</span> <span class="n">lifecycle</span><span class="o">.</span><span class="n">tick</span><span class="p">()</span>
+<a id="__codelineno-51-13" name="__codelineno-51-13" href="#__codelineno-51-13"></a><span class="c1"># {&quot;promoted&quot;: 2, &quot;forgotten&quot;: 5, &quot;duration_ms&quot;: 8.3}</span>
+<a id="__codelineno-51-14" name="__codelineno-51-14" href="#__codelineno-51-14"></a>
+<a id="__codelineno-51-15" name="__codelineno-51-15" href="#__codelineno-51-15"></a><span class="c1"># Inspect lifecycle state</span>
+<a id="__codelineno-51-16" name="__codelineno-51-16" href="#__codelineno-51-16"></a><span class="n">state</span> <span class="o">=</span> <span class="n">lifecycle</span><span class="o">.</span><span class="n">assess</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>
+<a id="__codelineno-51-17" name="__codelineno-51-17" href="#__codelineno-51-17"></a><span class="nb">print</span><span class="p">(</span><span class="n">state</span><span class="o">.</span><span class="n">tier</span><span class="p">,</span> <span class="n">state</span><span class="o">.</span><span class="n">promotion_eligible</span><span class="p">,</span> <span class="n">state</span><span class="o">.</span><span class="n">forget_eligible</span><span class="p">)</span>
+</code></pre></div>
+<p>See <a href="../../recipes/#memorylifecycle"><code>docs/recipes.md#memorylifecycle</code></a> for the
+full API reference, custom policy examples, multi-agent partitioning, and
+benchmark tuning instructions.</p>
 <h2 id="further-reading">Further reading<a class="headerlink" href="#further-reading" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../metacognitive-layer/">Metacognitive Layer</a> — quality assessment (<code>RetrievalQuality</code>, <code>assess()</code>), grouped error analysis (<code>error_summary</code>), and <code>AdaptiveAssembler</code></li>
@@ -6653,6 +6769,7 @@
 <li><a href="../../guides/programmable-memory-systems-neuroscience-design-spec/">Programmable Memory Systems — Neuroscience Design Spec</a> — neuroscience foundations</li>
 <li><a href="../../guides/subconscious-memory-recipe/">Subconscious Memory Recipe</a> — automatic memory injection and extraction around LLM turns</li>
 <li><a href="../../guides/trajectory-memory-recipe/">Trajectory Memory Recipe</a> — fingerprint-keyed procedural memory: cluster completed task trajectories and recall "what worked last time"</li>
+<li><a href="../../recipes/#memorylifecycle">MemoryLifecycle Recipe</a> — episodic→semantic consolidation, auto-forget, and tier-scoped queries</li>
 <li><a href="https://github.com/tomcounsell/ai/issues/376">Behavioral Episode Memory System</a> — downstream consumer in the AI project</li>
 </ul>
 

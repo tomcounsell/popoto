@@ -61,6 +61,10 @@
          <lastmod>2026-05-22</lastmod>
     </url>
     <url>
+         <loc>https://popoto.io/benchmarks/memory_lifecycle_baseline/</loc>
+         <lastmod>2026-05-22</lastmod>
+    </url>
+    <url>
          <loc>https://popoto.io/features/</loc>
          <lastmod>2026-05-22</lastmod>
     </url>
@@ -350,6 +354,10 @@
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/recipes/context_assembler/</loc>
+         <lastmod>2026-05-22</lastmod>
+    </url>
+    <url>
+         <loc>https://popoto.io/reference/popoto/recipes/memory_lifecycle/</loc>
          <lastmod>2026-05-22</lastmod>
     </url>
     <url>
