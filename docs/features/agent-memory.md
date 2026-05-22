@@ -41,6 +41,7 @@ The primitives ship incrementally. Each builds on the ones before it.
 | [StreamConsumer](#streamconsumer) | Background processing framework for Redis Streams | Shipped ([PR #238](https://github.com/tomcounsell/popoto/pull/238)) |
 | [PolicyCache](#policycache) | Learned action selection — crystallized state-action-outcome patterns | Shipped ([PR #239](https://github.com/tomcounsell/popoto/pull/239)) |
 | [ContextAssembler](#contextassembler) | Retrieval-to-injection bridge — assemble LLM-ready context within token budgets | Shipped |
+| [MemoryLifecycle](#memorylifecycle) | Policy layer orchestrating episodic→semantic promotion and auto-forget | Shipped ([PR #396](https://github.com/tomcounsell/popoto/pull/396)) |
 
 ## DecayingSortedField
 
@@ -1426,6 +1427,46 @@ relevance = DecayingSortedField(decay_rate=0.3)  # uses 0.3, not 0.7
 
 See [Defaults API reference](../reference/popoto/fields/constants.md) and [Tuning Magic Numbers](../guides/tuning-magic-numbers.md) for the full constant table and benchmark-validated guidance.
 
+## MemoryLifecycle
+
+`MemoryLifecycle` is the policy layer that ties all the primitives together into
+a coherent memory lifecycle: episodic → semantic consolidation, continuous decay
+(via existing primitives), and auto-forget for low-value idle records.
+
+It composes on top of `DecayingSortedField`, `ConfidenceField`, and
+`AccessTrackerMixin` — it does not replace any of them.
+
+### Two tiers
+
+- **episodic** — default for new memories; specific events; subject to promotion and forget
+- **semantic** — consolidated facts; decontextualized; protected from auto-forget
+
+### Usage
+
+```python
+from popoto.recipes import MemoryLifecycle
+
+lifecycle = MemoryLifecycle(
+    model_class=Memory,
+    importance_field="relevance",   # name of a DecayingSortedField
+)
+
+# Tag new memories
+lifecycle.tag_new(record)  # assigns tier = "episodic"
+
+# Periodic consolidation pass
+summary = lifecycle.tick()
+# {"promoted": 2, "forgotten": 5, "duration_ms": 8.3}
+
+# Inspect lifecycle state
+state = lifecycle.assess(record)
+print(state.tier, state.promotion_eligible, state.forget_eligible)
+```
+
+See [`docs/recipes.md#memorylifecycle`](../recipes.md#memorylifecycle) for the
+full API reference, custom policy examples, multi-agent partitioning, and
+benchmark tuning instructions.
+
 ## Further reading
 
 - [Metacognitive Layer](metacognitive-layer.md) — quality assessment (`RetrievalQuality`, `assess()`), grouped error analysis (`error_summary`), and `AdaptiveAssembler`
@@ -1434,4 +1475,5 @@ See [Defaults API reference](../reference/popoto/fields/constants.md) and [Tunin
 - [Programmable Memory Systems — Neuroscience Design Spec](../guides/programmable-memory-systems-neuroscience-design-spec.md) — neuroscience foundations
 - [Subconscious Memory Recipe](../guides/subconscious-memory-recipe.md) — automatic memory injection and extraction around LLM turns
 - [Trajectory Memory Recipe](../guides/trajectory-memory-recipe.md) — fingerprint-keyed procedural memory: cluster completed task trajectories and recall "what worked last time"
+- [MemoryLifecycle Recipe](../recipes.md#memorylifecycle) — episodic→semantic consolidation, auto-forget, and tier-scoped queries
 - [Behavioral Episode Memory System](https://github.com/tomcounsell/ai/issues/376) — downstream consumer in the AI project

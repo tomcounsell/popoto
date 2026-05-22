@@ -5,6 +5,23 @@ All notable changes to Popoto will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`MemoryLifecycle`** recipe (`src/popoto/recipes/memory_lifecycle.py`) — policy layer orchestrating memory tier transitions and auto-forget. Composes `DecayingSortedField`, `ConfidenceField`, and `AccessTrackerMixin` into a two-tier episodic → semantic lifecycle without replacing any existing primitive. ([#396](https://github.com/tomcounsell/popoto/issues/396))
+  - `MemoryLifecycle(model_class, importance_field)` — init with capability detection and `ModelException` guards
+  - `tag_new(record, tier="episodic")` — assign starting tier; handles `KeyField` migration automatically
+  - `tick()` → `{"promoted": N, "forgotten": N, "duration_ms": F}` — idempotent periodic lifecycle pass with paginated batch scanning
+  - `assess(record)` → `LifecycleState` — snapshot of tier, access count, importance score, and promotion/forget eligibility
+  - `LifecycleState` dataclass — return type for `assess()`
+  - Custom `should_promote` and `should_forget` callables — injectable for application-specific policies
+  - `partition_filters` — scope each lifecycle instance to a sub-partition (e.g. per-agent)
+  - Six tuning constants (`PROMOTION_ACCESS_COUNT`, `PROMOTION_CONFIDENCE_THRESHOLD`, `PROMOTION_MIN_AGE_SECONDS`, `FORGET_IMPORTANCE_FLOOR`, `FORGET_IDLE_SECONDS`, `TICK_BATCH_SIZE`) registered in `Defaults` and the Tier 5 benchmark sweep grid
+- **`LifecycleState`** exported from `popoto.recipes`
+- **Tier 5 benchmark sweep grid** (`TIER5_SWEEPS` in `tests/benchmarks/run_sweeps.py`) — five lifecycle constants with sweep ranges for tuning against LoCoMo + LongMemEval-S
+- **`docs/benchmarks/memory_lifecycle_baseline.md`** — pre-lifecycle retrieval baseline and sweep grid documentation
+
 ## [1.5.0](https://github.com/tomcounsell/popoto/compare/v1.0.3...v1.5.0) (2026-04-21)
 
 ### Popoto Agent Memory — Now in Beta
