@@ -326,3 +326,32 @@ try:
 except KeyMutationError:
     instance.save(migrate_key=True)  # Intentional migration succeeds
 ```
+
+## Benchmarking
+
+Popoto includes an external benchmark harness for evaluating memory retrieval
+quality against published datasets. See **[docs/benchmarks.md](benchmarks.md)**
+for full documentation.
+
+Quick reference:
+
+```bash
+# Install benchmark dependencies
+pip install -e ".[benchmark]"
+
+# Run LongMemEval-S benchmark (downloads ~264 MB on first run)
+python -m tests.benchmarks.run_external --dataset longmemeval-s
+
+# Run LoCoMo benchmark
+python -m tests.benchmarks.run_external --dataset locomo
+
+# Quick smoke test (fixture-based, no download)
+python -m tests.benchmarks.run_external \
+    --dataset longmemeval-s \
+    --fixture tests/benchmarks/datasets/fixtures/longmemeval_s_sample.json \
+    --limit 3 --dry-run
+```
+
+Results are committed to `tests/benchmarks/results/external/` as Markdown and
+JSON files, providing a baseline for future retrieval improvements.
+

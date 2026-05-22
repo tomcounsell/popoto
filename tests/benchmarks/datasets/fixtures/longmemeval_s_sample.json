@@ -1,0 +1,91 @@
+[
+  {
+    "question_id": "lme_001",
+    "question": "What did the user say about their vacation plans in session alpha?",
+    "answer": "The user mentioned they plan to visit Paris in the summer.",
+    "question_type": "episodic",
+    "evidence_session_id": "session_alpha",
+    "conversation_history": [
+      {
+        "session_id": "session_alpha",
+        "turns": [
+          {"role": "user", "content": "I'm planning to visit Paris this summer."},
+          {"role": "assistant", "content": "That sounds wonderful! Paris is beautiful in summer."},
+          {"role": "user", "content": "I've always wanted to see the Eiffel Tower."},
+          {"role": "assistant", "content": "You'll love it. The views from the top are incredible."}
+        ]
+      },
+      {
+        "session_id": "session_beta",
+        "turns": [
+          {"role": "user", "content": "Can you recommend a good recipe for pasta?"},
+          {"role": "assistant", "content": "Sure! Here's a simple carbonara recipe."}
+        ]
+      },
+      {
+        "session_id": "session_gamma",
+        "turns": [
+          {"role": "user", "content": "How do I fix a leaky faucet?"},
+          {"role": "assistant", "content": "First, turn off the water supply valve under the sink."}
+        ]
+      }
+    ]
+  },
+  {
+    "question_id": "lme_002",
+    "question": "Which programming language did the user say they were learning?",
+    "answer": "The user mentioned they were learning Python.",
+    "question_type": "factual",
+    "evidence_session_id": "session_coding",
+    "conversation_history": [
+      {
+        "session_id": "session_intro",
+        "turns": [
+          {"role": "user", "content": "Hello, nice to meet you."},
+          {"role": "assistant", "content": "Hello! Nice to meet you too. How can I help?"}
+        ]
+      },
+      {
+        "session_id": "session_coding",
+        "turns": [
+          {"role": "user", "content": "I've been learning Python for the past month."},
+          {"role": "assistant", "content": "Python is a great language for beginners!"},
+          {"role": "user", "content": "I'm working through a machine learning tutorial."},
+          {"role": "assistant", "content": "That's excellent. Which library are you using?"}
+        ]
+      },
+      {
+        "session_id": "session_other",
+        "turns": [
+          {"role": "user", "content": "What's the weather like today?"},
+          {"role": "assistant", "content": "I don't have real-time weather data, but I can help you find it."}
+        ]
+      }
+    ]
+  },
+  {
+    "question_id": "lme_003",
+    "question": "What medical condition did the user mention in session health?",
+    "answer": "The user mentioned they have a mild allergy to pollen.",
+    "question_type": "personal",
+    "evidence_session_id": "session_health",
+    "conversation_history": [
+      {
+        "session_id": "session_health",
+        "turns": [
+          {"role": "user", "content": "I have a mild allergy to pollen that flares up in spring."},
+          {"role": "assistant", "content": "That's quite common. Antihistamines can help with seasonal allergies."},
+          {"role": "user", "content": "Yes, I take cetirizine during allergy season."},
+          {"role": "assistant", "content": "That's an effective option. Make sure to take it consistently."}
+        ]
+      },
+      {
+        "session_id": "session_unrelated",
+        "turns": [
+          {"role": "user", "content": "Tell me about the history of jazz music."},
+          {"role": "assistant", "content": "Jazz originated in New Orleans in the early 20th century."}
+        ]
+      }
+    ]
+  }
+]

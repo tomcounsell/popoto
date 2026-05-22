@@ -107,6 +107,32 @@ def calibration_error(
     return ece
 
 
+def recall_at_k(retrieved: List[str], relevant: set, k: int) -> float:
+    """Compute recall@k — fraction of relevant items found in top-k results.
+
+    For queries with a single relevant item (e.g. LongMemEval-S, LoCoMo),
+    this is equivalent to a hit-rate: 1.0 if the relevant item appears in
+    top-k, 0.0 otherwise.
+
+    For queries with multiple relevant items, this is the fraction of
+    relevant items that appear in top-k (capped at 1.0 when |relevant| > k).
+
+    Args:
+        retrieved: Ordered list of retrieved item IDs.
+        relevant: Set of relevant item IDs (ground truth).
+        k: Number of top results to evaluate.
+
+    Returns:
+        Float in [0, 1]. Returns 0.0 if k <= 0, retrieved is empty, or
+        relevant is empty.
+    """
+    if k <= 0 or not retrieved or not relevant:
+        return 0.0
+    top_k = retrieved[:k]
+    hits = sum(1 for item in top_k if item in relevant)
+    return min(1.0, hits / len(relevant))
+
+
 def mean_reciprocal_rank(retrieved: List[str], relevant: set) -> float:
     """Compute mean reciprocal rank (MRR).
 

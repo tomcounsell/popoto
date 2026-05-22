@@ -65,6 +65,7 @@ nav:
                 - Memory Systems Research: 'guides/research-prompt-memory-systems.md'
     - Cookbook:
           - Recipes: 'recipes.md'
+          - Benchmarking: 'benchmarks.md'
           - Testing: 'testing.md'
           - Kitchen Edge Case Demo: 'features/kitchen-edge-case-demo.md'
           - Launch Announcements: 'guides/launch-announcements.md'

@@ -1,0 +1,155 @@
+{
+  "dataset": "locomo",
+  "run_date": "2026-05-22",
+  "run_timestamp": "2026-05-22T08:45:06.015933+00:00",
+  "machine": {
+    "python_version": "3.12.13",
+    "platform": "macOS-26.3.1-arm64-arm-64bit",
+    "cpu_count": 10
+  },
+  "summary": {
+    "n_total": 6,
+    "n_ok": 6,
+    "n_errors": 0,
+    "n_skipped": 0,
+    "recall_at_1": 0.0,
+    "recall_at_5": 0.0,
+    "recall_at_10": 0.0,
+    "mrr": 0.0,
+    "p50_ms": 0.61,
+    "p95_ms": 1.25
+  },
+  "notes": [
+    "Baseline run: relevance-only scoring (DecayingSortedField).",
+    "No vector/embedding retrieval wired in (BM25-style baseline).",
+    "LoCoMo: image-only turns skipped (text-only evaluation)."
+  ],
+  "questions": [
+    {
+      "item_id": "locomo_001::qa0",
+      "recall_at_1": 0.0,
+      "recall_at_5": 0.0,
+      "recall_at_10": 0.0,
+      "mrr": 0.0,
+      "retrieval_ms": 1.25,
+      "status": "ok",
+      "error": "",
+      "metadata": {
+        "item_id": "locomo_001::qa0",
+        "query": "Where did speaker1 go on their hiking trip?",
+        "n_history_turns": 9,
+        "n_saved_records": 9,
+        "n_retrieved": 1,
+        "retrieval_ms": 1.25,
+        "dataset": "locomo",
+        "pull_count": 1,
+        "push_count": 0
+      }
+    },
+    {
+      "item_id": "locomo_001::qa1",
+      "recall_at_1": 0.0,
+      "recall_at_5": 0.0,
+      "recall_at_10": 0.0,
+      "mrr": 0.0,
+      "retrieval_ms": 0.64,
+      "status": "ok",
+      "error": "",
+      "metadata": {
+        "item_id": "locomo_001::qa1",
+        "query": "What is speaker1's profession?",
+        "n_history_turns": 9,
+        "n_saved_records": 9,
+        "n_retrieved": 1,
+        "retrieval_ms": 0.64,
+        "dataset": "locomo",
+        "pull_count": 1,
+        "push_count": 0
+      }
+    },
+    {
+      "item_id": "locomo_001::qa2",
+      "recall_at_1": 0.0,
+      "recall_at_5": 0.0,
+      "recall_at_10": 0.0,
+      "mrr": 0.0,
+      "retrieval_ms": 0.61,
+      "status": "ok",
+      "error": "",
+      "metadata": {
+        "item_id": "locomo_001::qa2",
+        "query": "What does speaker1's daughter study?",
+        "n_history_turns": 9,
+        "n_saved_records": 9,
+        "n_retrieved": 1,
+        "retrieval_ms": 0.61,
+        "dataset": "locomo",
+        "pull_count": 1,
+        "push_count": 0
+      }
+    },
+    {
+      "item_id": "locomo_002::qa0",
+      "recall_at_1": 0.0,
+      "recall_at_5": 0.0,
+      "recall_at_10": 0.0,
+      "mrr": 0.0,
+      "retrieval_ms": 0.48,
+      "status": "ok",
+      "error": "",
+      "metadata": {
+        "item_id": "locomo_002::qa0",
+        "query": "What musical instrument does speaker1 play?",
+        "n_history_turns": 6,
+        "n_saved_records": 6,
+        "n_retrieved": 1,
+        "retrieval_ms": 0.48,
+        "dataset": "locomo",
+        "pull_count": 1,
+        "push_count": 0
+      }
+    },
+    {
+      "item_id": "locomo_002::qa1",
+      "recall_at_1": 0.0,
+      "recall_at_5": 0.0,
+      "recall_at_10": 0.0,
+      "mrr": 0.0,
+      "retrieval_ms": 0.48,
+      "status": "ok",
+      "error": "",
+      "metadata": {
+        "item_id": "locomo_002::qa1",
+        "query": "What composer's pieces has speaker1 learned?",
+        "n_history_turns": 6,
+        "n_saved_records": 6,
+        "n_retrieved": 1,
+        "retrieval_ms": 0.48,
+        "dataset": "locomo",
+        "pull_count": 1,
+        "push_count": 0
+      }
+    },
+    {
+      "item_id": "locomo_002::qa2",
+      "recall_at_1": 0.0,
+      "recall_at_5": 0.0,
+      "recall_at_10": 0.0,
+      "mrr": 0.0,
+      "retrieval_ms": 0.5,
+      "status": "ok",
+      "error": "",
+      "metadata": {
+        "item_id": "locomo_002::qa2",
+        "query": "What is speaker1's diet?",
+        "n_history_turns": 6,
+        "n_saved_records": 6,
+        "n_retrieved": 1,
+        "retrieval_ms": 0.5,
+        "dataset": "locomo",
+        "pull_count": 1,
+        "push_count": 0
+      }
+    }
+  ]
+}
