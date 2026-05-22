@@ -1,7 +1,7 @@
 {
   "dataset": "longmemeval-s",
   "run_date": "2026-05-22",
-  "run_timestamp": "2026-05-22T08:45:02.714805+00:00",
+  "run_timestamp": "2026-05-22T09:13:02.375955+00:00",
   "machine": {
     "python_version": "3.12.13",
     "platform": "macOS-26.3.1-arm64-arm-64bit",
@@ -12,12 +12,12 @@
     "n_ok": 3,
     "n_errors": 0,
     "n_skipped": 0,
-    "recall_at_1": 0.0,
-    "recall_at_5": 0.0,
-    "recall_at_10": 0.0,
-    "mrr": 0.0,
-    "p50_ms": 0.5,
-    "p95_ms": 1.29
+    "recall_at_1": 0.6667,
+    "recall_at_5": 1.0,
+    "recall_at_10": 1.0,
+    "mrr": 0.8333,
+    "p50_ms": 1.79,
+    "p95_ms": 2.19
   },
   "notes": [
     "Baseline run: relevance-only scoring (DecayingSortedField).",
@@ -28,10 +28,10 @@
     {
       "item_id": "lme_001",
       "recall_at_1": 0.0,
-      "recall_at_5": 0.0,
-      "recall_at_10": 0.0,
-      "mrr": 0.0,
-      "retrieval_ms": 1.29,
+      "recall_at_5": 1.0,
+      "recall_at_10": 1.0,
+      "mrr": 0.5,
+      "retrieval_ms": 2.19,
       "status": "ok",
       "error": "",
       "metadata": {
@@ -39,20 +39,19 @@
         "query": "What did the user say about their vacation plans in session alpha?",
         "n_history_turns": 8,
         "n_saved_records": 8,
-        "n_retrieved": 1,
-        "retrieval_ms": 1.29,
+        "n_retrieved": 3,
+        "retrieval_ms": 2.19,
         "dataset": "longmemeval-s",
-        "pull_count": 1,
-        "push_count": 0
+        "retrieval_method": "composite_fallback"
       }
     },
     {
       "item_id": "lme_002",
-      "recall_at_1": 0.0,
-      "recall_at_5": 0.0,
-      "recall_at_10": 0.0,
-      "mrr": 0.0,
-      "retrieval_ms": 0.5,
+      "recall_at_1": 1.0,
+      "recall_at_5": 1.0,
+      "recall_at_10": 1.0,
+      "mrr": 1.0,
+      "retrieval_ms": 0.24,
       "status": "ok",
       "error": "",
       "metadata": {
@@ -61,19 +60,18 @@
         "n_history_turns": 8,
         "n_saved_records": 8,
         "n_retrieved": 1,
-        "retrieval_ms": 0.5,
+        "retrieval_ms": 0.24,
         "dataset": "longmemeval-s",
-        "pull_count": 1,
-        "push_count": 0
+        "retrieval_method": "bm25"
       }
     },
     {
       "item_id": "lme_003",
-      "recall_at_1": 0.0,
-      "recall_at_5": 0.0,
-      "recall_at_10": 0.0,
-      "mrr": 0.0,
-      "retrieval_ms": 0.48,
+      "recall_at_1": 1.0,
+      "recall_at_5": 1.0,
+      "recall_at_10": 1.0,
+      "mrr": 1.0,
+      "retrieval_ms": 1.79,
       "status": "ok",
       "error": "",
       "metadata": {
@@ -81,11 +79,10 @@
         "query": "What medical condition did the user mention in session health?",
         "n_history_turns": 6,
         "n_saved_records": 6,
-        "n_retrieved": 1,
-        "retrieval_ms": 0.48,
+        "n_retrieved": 2,
+        "retrieval_ms": 1.79,
         "dataset": "longmemeval-s",
-        "pull_count": 1,
-        "push_count": 0
+        "retrieval_method": "composite_fallback"
       }
     }
   ]

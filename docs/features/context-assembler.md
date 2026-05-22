@@ -6,9 +6,45 @@ Retrieval-to-injection bridge — assembles LLM-ready context within token budge
 
 `ContextAssembler` provides a single `assemble()` call that:
 
-1. **Pull path**: ExistenceFilter pre-check -> CompositeScoreQuery -> CoOccurrence propagation
+1. **Pull path**: ExistenceFilter pre-check → retrieval → CoOccurrence propagation
 2. **Push path**: CyclicDecayField temporal scan above surfacing threshold
 3. **Merge**: Deduplicate, re-rank, budget-select, post-effects, format
+
+### Pull Path Modes (`retrieval_mode`)
+
+The pull path supports three modes controlled by the `retrieval_mode` constructor parameter:
+
+| Mode | Behaviour | When to use |
+|------|-----------|-------------|
+| `"auto"` *(default)* | Detects `BM25Field` + `EmbeddingField` on the model; uses `"hybrid"` if both present, `"composite"` otherwise | Most callers — no configuration needed |
+| `"hybrid"` | BM25 (lexical) + vector (semantic) fused via RRF (k=60), optional CoOccurrence graph expansion | Models with both `BM25Field` and `EmbeddingField` configured |
+| `"composite"` | Original `CompositeScoreQuery` weighted-sum path (pre-v1.7 behaviour) | Backwards-compatible override; when `score_weights` drive all ranking |
+
+`retrieval_mode="hybrid"` raises `QueryException` at init if `BM25Field` or `EmbeddingField` is absent from the model.
+
+```python
+# Hybrid mode — auto-detected when BM25Field + EmbeddingField are on the model
+assembler = ContextAssembler(
+    model_class=Memory,
+    score_weights={"relevance": 0.6},  # ignored in hybrid pull path
+    max_items=10,
+)
+# retrieval_mode defaults to "auto"; resolves to "hybrid" if both fields present
+
+# Force composite path (pre-v1.7 behaviour)
+assembler = ContextAssembler(
+    model_class=Memory,
+    score_weights={"relevance": 0.6, "confidence": 0.3},
+    retrieval_mode="composite",
+)
+
+# Force hybrid explicitly (raises QueryException if fields absent)
+assembler = ContextAssembler(
+    model_class=Memory,
+    score_weights={},
+    retrieval_mode="hybrid",
+)
+```
 
 ## Primitive Synergy
 
@@ -17,15 +53,17 @@ Retrieval-to-injection bridge — assembles LLM-ready context within token budge
 | DecayingSortedField | Score index for CompositeScoreQuery |
 | CyclicDecayField | Push-path proactive surfacing |
 | ConfidenceField | Score index + competitive suppression |
-| CoOccurrenceField | Pull-path candidate expansion |
+| CoOccurrenceField | Pull-path graph expansion (both paths) |
 | ExistenceFilter | Pull-path pre-check (skip if absent) |
+| BM25Field | Hybrid pull-path: lexical signal for RRF |
+| EmbeddingField | Hybrid pull-path: vector signal for RRF |
 | AccessTrackerMixin | on_read post-effect tracking |
 | ObservationProtocol | on_read / on_surfaced dispatch |
 | RecallProposal | Created for push-path records |
 | WriteFilterMixin | Priority score in composite |
 | EventStreamMixin | Mutation logging (via model save) |
 | PredictionLedgerMixin | Outcome tracking (via model save) |
-| CompositeScoreQuery | Multi-factor ranked retrieval |
+| CompositeScoreQuery | Multi-factor ranked retrieval (composite mode) |
 
 ## Usage
 
@@ -81,11 +119,21 @@ Additional non-tunable defaults:
 
 ## Pipeline Details
 
-### Pull Path
+### Pull Path — Composite mode
 
 1. **ExistenceFilter pre-check**: Skip query entirely if no matching topics exist (O(1)).
 2. **CompositeScoreQuery**: Multi-factor ranked retrieval combining decay scores, confidence, and priority weights.
 3. **CoOccurrence propagation**: BFS expansion from seed records to find associatively related memories.
+
+### Pull Path — Hybrid mode (`"hybrid"` or auto-detected)
+
+1. **ExistenceFilter pre-check**: Same short-circuit as composite path.
+2. **BM25 lexical retrieval**: `BM25Field.search(query_text, limit=max_items×5)` — scored keyword matches.
+3. **Vector retrieval**: `QueryBuilder._get_vector_scores(query_text, limit=max_items×5)` — cosine similarity via configured embedding provider.
+4. **CoOccurrence graph expansion**: BFS from BM25 top-5 seeds (optional, requires `CoOccurrenceField`).
+5. **RRF fusion**: `query.fuse(keyword=..., vector=..., graph=..., k=60, limit=max_items×2)` — rank-based fusion.
+
+If both BM25 and vector signals return empty results, the path falls back to the composite path automatically.
 
 ### Push Path
 
@@ -163,7 +211,8 @@ See [Metacognitive Layer](metacognitive-layer.md) for full documentation of `Ret
 
 - [Metacognitive Layer](metacognitive-layer.md) — retrieval quality scoring, FOK, and adaptive weight tuning
 - [PolicyCache](policy-cache.md) — learned action selection (uses ContextAssembler for retrieval)
-- [CompositeScoreQuery](composite-score-query.md) — multi-factor retrieval
+- [Hybrid Retrieval](hybrid-retrieval.md) — BM25Field, EmbeddingField, and RRF fusion primitives
+- [CompositeScoreQuery](composite-score-query.md) — multi-factor retrieval (composite mode)
 - [CoOccurrenceField](co-occurrence-field.md) — associative expansion
 - [Agent Memory overview](agent-memory.md) — full primitives reference
 - [Subconscious Memory Recipe](../guides/subconscious-memory-recipe.md) — automatic memory injection and extraction around LLM turns
