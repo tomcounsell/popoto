@@ -6,6 +6,7 @@ owner: valorengels
 created: 2026-05-28
 tracking: https://github.com/tomcounsell/popoto/issues/403
 last_comment_id:
+revision_applied: true
 ---
 
 # EmbeddingField: Cross-Process Cache Invalidation
@@ -73,9 +74,11 @@ No prior attempt has been made to add cross-process cache invalidation to `Embed
 
 - **Redis pub/sub invalidation bus pattern** ([Redis docs](https://redis.io/docs/latest/develop/use-cases/pub-sub/redis-py/), [oneuptime cache coherence](https://oneuptime.com/blog/post/2026-03-31-redis-cache-coherence-multi-node/)): The standard multi-node pattern publishes to a channel like `cache:invalidate:{ClassName}` on write; each worker subscribes in a background thread and drops its local cache entry on receipt. Two-tier (local + Redis) provides low-latency reads while keeping data eventually consistent after writes.
 
-- **`run_in_thread(daemon=True)` is the right primitive** ([redis-py issue #816](https://github.com/andymccurdy/redis-py/issues/816), [redis-py docs](https://redis.io/docs/latest/develop/use-cases/pub-sub/redis-py/)): redis-py's `pubsub.run_in_thread(sleep_time=0.1, daemon=True, exception_handler=...)` creates a background daemon thread that polls and calls registered message handlers. The `exception_handler` parameter (added in recent redis-py) handles reconnect failures gracefully without killing the thread silently.
+- **`run_in_thread(daemon=True)` is the right primitive** ([redis-py issue #816](https://github.com/andymccurdy/redis-py/issues/816), [redis-py docs](https://redis.io/docs/latest/develop/use-cases/pub-sub/redis-py/)): redis-py's `pubsub.run_in_thread(sleep_time=0.1, daemon=True, exception_handler=...)` creates a background `PubSubWorkerThread` that loops calling `get_message()` and dispatches to registered handlers.
 
-- **`run_in_thread` reconnect caveat** ([redis-py issue #816](https://github.com/andymccurdy/redis-py/issues/816)): If a single reconnect attempt fails and no `exception_handler` is provided, the thread dies silently. Supplying `exception_handler` that logs the error and returns (without re-raising) keeps the thread alive and lets it retry on the next poll cycle.
+- **CORRECTION (was wrong in the first draft): `exception_handler` does NOT keep the thread alive.** In redis-py the `PubSubWorkerThread.run()` loop catches an exception, calls `exception_handler(e, pubsub, thread)`, and then **stops the thread** (sets `_running = False` and breaks the loop). The handler is a notification/cleanup hook, not a retry mechanism. The thread terminates on the first unhandled connection error. **Implication for the plan:** we MUST add our own reconnect supervision. The `exception_handler` records the failure and clears the model entry from `_listener_threads` so the next `load_embeddings()` call re-runs `_start_invalidation_listener()` and spawns a fresh thread (lazy self-healing). This is the corrected design — the earlier "stays alive and retries on next poll" claim was false.
+
+- **`socket_timeout` interaction** (verified against `redis_db.py:113,122`): `POPOTO_REDIS_DB` is constructed with `socket_timeout=5`. `run_in_thread(sleep_time=0.1)` uses the **non-blocking** `get_message(timeout=...)` path with a short poll, so the 5s socket timeout does not fire on an idle subscription the way a blocking `listen()` would. However, a dropped TCP connection still surfaces as a `ConnectionError`/`TimeoutError` inside the worker loop — which (per the correction above) stops the thread. The lazy-respawn-on-next-load behavior handles this; no separate keepalive is needed.
 
 - **mtime sentinel performance** ([apenwarr mtime blog](https://apenwarr.ca/log/20181113), [GeeksforGeeks os.stat](https://www.geeksforgeeks.org/python/python-os-stat-method/)): `os.stat()` adds ~0.3–0.4 µs on a warm local filesystem (1000 iterations ≈ 0.4 ms). For a `semantic_search()` call that already does numpy matrix multiplication over N embeddings, one extra `os.stat()` on `_index.json` is negligible. The caveat is 1-second mtime granularity on some HFS+ volumes (macOS); ext4/APFS/XFS have nanosecond resolution. For a version counter in `_index.json` this is fine because the counter is an integer, not a timestamp.
 
@@ -110,10 +113,10 @@ No prior attempt has been made to add cross-process cache invalidation to `Embed
 
 1. **Entry**: `model_instance.save()` or `model_instance.delete()` is called on worker A.
 2. **on_save / on_delete hook**: `EmbeddingField.on_save()` / `on_delete()` writes/removes the `.npy` file and updates `_index.json`, then calls `invalidate_cache(model_class_name)` (clears worker A's cache — existing behavior unchanged).
-3. **Publish**: After `invalidate_cache()`, the hook publishes a lightweight JSON payload `{"model": "ClassName", "action": "invalidate"}` to the Valkey channel `popoto:embedding:invalidate:ClassName`.
+3. **Publish**: After `invalidate_cache()`, the hook publishes the bare model class name as the message body to the per-class Valkey channel `popoto:embedding:invalidate:ClassName`. The channel name fully identifies the target model, so the message body is informational only — the handler is bound per-channel and does not parse the body. (Payload is the bare `model_class_name` string, NOT a JSON object — the earlier draft's `{"model":...,"action":...}` was dropped to keep publish/handler trivially consistent.)
 4. **Background subscriber thread** (each worker): On first `load_embeddings()` call for a model class, a daemon thread is started (if not already running) via `pubsub.run_in_thread(daemon=True, exception_handler=...)`. The thread subscribes to `popoto:embedding:invalidate:ClassName`.
-5. **Invalidation receipt**: When workers B, C receive the message, the handler calls `invalidate_cache(model_class_name)`. Next `semantic_search()` call on those workers reloads from disk.
-6. **Output**: All workers serve fresh matrix within one Valkey round-trip (typically < 10 ms).
+5. **Invalidation receipt**: When workers B, C receive the message, the handler calls `invalidate_cache(model_class_name)`. Next `load_embeddings()` (driven by `query.semantic_search()` at `query.py:719` / `query.py:1044`) on those workers reloads from disk.
+6. **Output**: All workers serve fresh matrix within one Valkey round-trip plus the worker's `sleep_time` poll interval (≤ 100 ms + RTT). The publishing worker also receives its own message (loopback) and re-invalidates an already-cleared entry — a harmless no-op.
 
 **Path B — File-mtime / version sentinel (secondary, batch/offline/NFS):**
 
@@ -189,7 +192,15 @@ def _start_invalidation_listener(model_class_name: str) -> None:
         ps.subscribe(**{channel: lambda msg: invalidate_cache(model_class_name)})
 
         def _exception_handler(ex, ps_obj, worker):
+            # redis-py STOPS the worker thread after this handler returns.
+            # Drop the registry entry so the next load_embeddings() call
+            # lazily respawns a fresh listener (self-healing reconnect).
             logger.warning(f"EmbeddingField invalidation listener error: {ex}")
+            _listener_threads.pop(model_class_name, None)
+            try:
+                ps_obj.close()
+            except Exception:
+                pass
 
         thread = ps.run_in_thread(
             sleep_time=0.1, daemon=True, exception_handler=_exception_handler
@@ -197,41 +208,82 @@ def _start_invalidation_listener(model_class_name: str) -> None:
         _listener_threads[model_class_name] = thread
     except Exception as e:
         logger.warning(f"EmbeddingField: failed to start invalidation listener: {e}")
+        _listener_threads.pop(model_class_name, None)
 ```
 
-The thread is a daemon thread — it will not prevent process shutdown.
+The thread is a daemon thread — it will not prevent process shutdown. Because
+redis-py terminates the worker on any connection error, reconnect is handled by
+the lazy-respawn pattern: the `exception_handler` removes the registry entry, and
+the next `load_embeddings()` call starts a new listener. There is a bounded
+staleness window equal to the time between the connection drop and the next
+`semantic_search()` call on that worker — documented below.
 
-### Path B — mtime sentinel
+**Teardown for tests and graceful shutdown:** add a module-level
+`stop_invalidation_listeners()` that iterates `_listener_threads`, calls
+`thread.stop()` on each `PubSubWorkerThread`, and clears the registry. The pytest
+isolation fixture (DB 15 flush) must call this in teardown so listener threads do
+not accumulate across tests or hold subscriptions against a flushed DB.
 
-The cache entry is extended to store the `_index.json` mtime at load time:
+### Path B — version-counter sentinel (mtime as cheap pre-check)
+
+`_write_index()` is extended to bump a monotonic integer `_version` key on every
+write. Because spike-2 confirmed `_read_index()` returns the dict as-is and
+`load_embeddings()` only iterates `.npy`-suffixed keys, a top-level `_version`
+integer is schema-safe (old readers ignore it).
 
 ```python
+def _write_index(model_class_name, index_dict):
+    # ... existing atomic write, plus:
+    index_dict["_version"] = index_dict.get("_version", 0) + 1
+    # (write as before)
+```
+
+The cache entry stores both the `_index.json` mtime (cheap change pre-check) and
+the `_version` integer (authoritative, granularity-proof) at load time:
+
+```python
+_st = os.stat(_index_path(model_name))
 _embedding_cache[model_name] = {
     "matrix": matrix,
     "keys": keys,
-    "index_mtime": os.stat(_index_path(model_name)).st_mtime,  # NEW
+    "index_mtime": _st.st_mtime,                 # cheap pre-check
+    "index_version": _read_index(model_name).get("_version", 0),  # authoritative
 }
 ```
 
-At the top of `load_embeddings()`, before returning cached values:
+At the top of `load_embeddings()`, before returning cached values (only when
+`_INVALIDATION_MODE == "mtime"`):
 
 ```python
 if model_name in _embedding_cache and _INVALIDATION_MODE == "mtime":
+    entry = _embedding_cache[model_name]
     try:
         current_mtime = os.stat(_index_path(model_name)).st_mtime
-        if current_mtime != _embedding_cache[model_name].get("index_mtime"):
-            _embedding_cache.pop(model_name, None)  # force reload
+        if current_mtime != entry.get("index_mtime"):
+            # mtime moved — confirm via the authoritative version counter
+            if _read_index(model_name).get("_version", 0) != entry.get("index_version"):
+                _embedding_cache.pop(model_name, None)  # force reload
     except OSError:
         _embedding_cache.pop(model_name, None)  # index gone, reload
 ```
+
+Note `_publish_invalidation()` is a no-op in `mtime` mode and the listener is not
+started — `mtime` mode does no pub/sub and needs no live Valkey connection.
 
 ### Staleness window
 
 | Mode | Staleness window | Notes |
 |------|-----------------|-------|
-| `pubsub` | < Valkey round-trip (typically < 10 ms) | Requires live Valkey connection |
-| `mtime` | Next `semantic_search()` call after write | One `os.stat()` per search call (~0.4 µs); NFS mtime granularity caveat noted in docs |
-| `none` | Never invalidated across processes | Pre-v1.8 behavior |
+| `pubsub` | Valkey RTT + worker poll interval (`sleep_time=0.1`), i.e. ≤ ~100 ms in practice | Requires live Valkey connection. After a connection drop, the window extends to the next `semantic_search()` call on that worker (lazy respawn). |
+| `mtime` | Next `semantic_search()` call after the write lands on disk | One `os.stat()` per search call (~0.4 µs). **mtime-granularity hazard applies to ALL filesystems, not just NFS:** if a peer write and the cached read fall within the same mtime tick (1 s on HFS+/older macOS; ~1 ns on APFS/ext4/XFS), the staleness can be masked. Use a monotonic integer `_version` counter inside `_index.json` instead of raw mtime to eliminate the same-tick hazard (see below). |
+| `none` | Never invalidated across processes | Pre-fix single-process behavior. Zero pub/sub overhead, zero extra threads, zero `os.stat()`. |
+
+**mtime vs. version counter:** because mtime resolution can mask a same-tick write,
+the `mtime` mode compares a monotonic integer `_version` stored in `_index.json`
+(incremented on every `_write_index`) rather than the raw filesystem mtime. `os.stat()`
+is still used as a cheap "did the file change at all" pre-check; on a hit it reads
+the `_version` integer. This sidesteps the granularity hazard on every filesystem
+while keeping the cost to one `os.stat()` (+ a small JSON read only when mtime moved).
 
 ## No-Gos
 
@@ -250,7 +302,9 @@ if model_name in _embedding_cache and _INVALIDATION_MODE == "mtime":
 
 ## Update System
 
-No update system changes required. This is a library-internal change; the env var `POPOTO_EMBEDDING_INVALIDATION` defaults to `pubsub` with no user action required. Existing single-process deployments will observe no behavior change in practice (the pub/sub message loops back to the same process and re-invalidates the cache that was just cleared — net effect: same as before, plus one Valkey round-trip per save).
+No update system changes required. This is a library-internal change; the env var `POPOTO_EMBEDDING_INVALIDATION` defaults to `pubsub` with no user action required.
+
+**Honest accounting of the default's cost for single-process apps** (the first draft understated this): with the default `pubsub` mode, a single-process deployment will now (a) start one daemon `PubSubWorkerThread` per model class on first search, (b) hold one extra Valkey connection per such class, and (c) issue one `PUBLISH` per save/delete that loops back and re-invalidates an already-cleared cache (a harmless no-op, but a real Valkey round-trip). This is NOT byte-for-byte "same as before." Apps that genuinely run single-process and want zero overhead should set `POPOTO_EMBEDDING_INVALIDATION=none`. The functional *results* are identical to pre-fix in all three modes for a single process; only the resource profile differs. This trade-off is documented in `docs/fields.md` so operators can choose `none` deliberately.
 
 ## Agent Integration
 
@@ -273,14 +327,15 @@ No agent integration required. This is a library-internal correctness fix with n
 
 ## Success Criteria
 
-- [ ] A write to `EmbeddingField` on worker A causes all other live workers sharing the same corpus to invalidate their matrix within a documented staleness window (< Valkey round-trip for `pubsub` mode)
-- [ ] Single-process deployments are unaffected — behavior and performance identical to pre-fix for a single worker
-- [ ] `POPOTO_EMBEDDING_INVALIDATION=none` restores pre-fix single-process behavior exactly
-- [ ] `POPOTO_EMBEDDING_INVALIDATION=mtime` invalidates cache on next `semantic_search()` after a peer write (verified by checking `os.stat` mtime change)
-- [ ] The staleness mechanism is documented in the `EmbeddingField` docstring and `docs/fields.md`
-- [ ] Tests pass: `pytest tests/test_embedding_field.py tests/test_embedding_field_gc.py tests/test_semantic_search.py -x -q`
+- [ ] A write to `EmbeddingField` on worker A causes all other live workers sharing the same corpus to invalidate their matrix within the documented staleness window (Valkey RTT + ~100 ms poll interval for `pubsub` mode) — verified by the two-cache simulation test in task 1b
+- [ ] Single-process **results** are unaffected in all three modes; the resource profile of the default `pubsub` mode (one daemon thread + one connection per model class + one PUBLISH per write) is documented, and `none` mode is offered for zero-overhead single-process use
+- [ ] `POPOTO_EMBEDDING_INVALIDATION=none` starts no listener thread and issues no PUBLISH (verified by test)
+- [ ] `POPOTO_EMBEDDING_INVALIDATION=mtime` invalidates cache on next `load_embeddings()` after a peer write, using the `_version` counter (granularity-proof; verified including the same-mtime-tick case)
+- [ ] Listener threads self-heal after a connection drop (exception_handler clears the registry; next load respawns) and are stopped by `stop_invalidation_listeners()` — no thread leak across the test suite
+- [ ] The staleness mechanism and the default-mode cost trade-off are documented in the `EmbeddingField` docstring and `docs/fields.md`
+- [ ] Tests pass: `pytest tests/test_embedding_field.py tests/test_embedding_field_gc.py tests/test_semantic_search.py tests/test_embedding_invalidation.py -x -q`
 - [ ] No new required dependencies introduced
-- [ ] Daemon thread does not block process shutdown (verified by confirm thread has `daemon=True`)
+- [ ] Daemon thread does not block process shutdown (verified by confirming thread has `daemon=True`)
 
 ## Team Orchestration
 
@@ -322,9 +377,25 @@ No agent integration required. This is a library-internal correctness fix with n
 - Call `_publish_invalidation()` in `on_delete()` after `invalidate_cache()` (line ~406)
 - In `load_embeddings()`: call `_start_invalidation_listener(model_name)` before the cache check
 - Extend `_embedding_cache` entries to include `index_mtime` key (set from `os.stat(_index_path()).st_mtime` after loading from disk)
-- Add mtime staleness check at top of `load_embeddings()` cache-hit path (only active when `_INVALIDATION_MODE == "mtime"`)
+- Add version-counter staleness check at top of `load_embeddings()` cache-hit path (mtime pre-check + `_version` confirm; only active when `_INVALIDATION_MODE == "mtime"`)
+- Extend `_write_index()` to bump a monotonic integer `_version` key on every write
+- Add module-level `stop_invalidation_listeners()` that stops every `PubSubWorkerThread` in `_listener_threads` and clears the registry (for test teardown + graceful shutdown)
+- Ensure `exception_handler` removes the model entry from `_listener_threads` so the next `load_embeddings()` lazily respawns the listener (self-healing reconnect — redis-py STOPS the worker on connection error)
 - Update `EmbeddingField` class docstring with staleness window table and env var docs
 - Update module-level `_embedding_cache` comment
+
+#### 1b. Add cross-process invalidation tests
+- **Task ID**: test-embedding-invalidation
+- **Depends On**: build-embedding-invalidation
+- **Assigned To**: embedding-builder
+- **Agent Type**: builder
+- **Parallel**: false
+- Create `tests/test_embedding_invalidation.py`
+- **Two-cache simulation test (pubsub mode):** Populate a model, call `load_embeddings()` to warm `_embedding_cache`. Simulate a peer write by writing a new `.npy` + `_index.json` entry directly AND publishing to `popoto:embedding:invalidate:{Name}` via `POPOTO_REDIS_DB.publish()`. Assert that after a bounded wait (poll up to ~1 s) `_embedding_cache` no longer contains the stale entry, and the next `load_embeddings()` returns the new matrix shape. This exercises the real subscriber thread against DB 15.
+- **mtime/version mode test:** Set `POPOTO_EMBEDDING_INVALIDATION=mtime`, warm the cache, bump `_version` in `_index.json` via `_write_index()`, and assert the next `load_embeddings()` reloads (entry dropped). Cover the same-tick case by forcing `_version` to differ while leaving mtime potentially equal — assert the version comparison still triggers reload.
+- **none mode test:** Set `POPOTO_EMBEDDING_INVALIDATION=none`; assert no listener thread is started (`_listener_threads` empty after `load_embeddings()`) and `_publish_invalidation()` issues no PUBLISH (monkeypatch/count).
+- **Teardown test:** Assert `stop_invalidation_listeners()` empties `_listener_threads` and the threads report not-alive.
+- Register `stop_invalidation_listeners()` in the test isolation teardown (or add an autouse fixture in this file) so listener threads do not leak across the suite.
 
 #### 2. Validate implementation
 - **Task ID**: validate-embedding-invalidation
@@ -332,11 +403,14 @@ No agent integration required. This is a library-internal correctness fix with n
 - **Assigned To**: embedding-validator
 - **Agent Type**: validator
 - **Parallel**: false
-- Run `pytest tests/test_embedding_field.py tests/test_embedding_field_gc.py tests/test_semantic_search.py -x -q` and confirm all pass
+- Run `pytest tests/test_embedding_field.py tests/test_embedding_field_gc.py tests/test_semantic_search.py tests/test_embedding_invalidation.py -x -q` and confirm all pass
+- Confirm the new cross-process invalidation test (1b) actually drives a real subscriber thread and observes cache drop (not just attribute checks)
 - Confirm `_listener_threads` threads have `daemon=True` attribute
 - Confirm `_publish_invalidation` is called from both `on_save` and `on_delete`
 - Confirm `POPOTO_EMBEDDING_INVALIDATION=none` skips publish and listener start
-- Confirm `POPOTO_EMBEDDING_INVALIDATION=mtime` skips publish but adds mtime check
+- Confirm `POPOTO_EMBEDDING_INVALIDATION=mtime` skips publish but adds version-counter check
+- Confirm `exception_handler` clears the `_listener_threads` entry (self-healing path)
+- Confirm `stop_invalidation_listeners()` exists and is wired into test teardown (no thread leak across the suite)
 - Confirm no new top-level imports outside the try/except guard
 
 #### 3. Update docs/fields.md
@@ -349,7 +423,7 @@ No agent integration required. This is a library-internal correctness fix with n
 
 #### 4. Final validation
 - **Task ID**: validate-all
-- **Depends On**: validate-embedding-invalidation, document-embedding-invalidation
+- **Depends On**: validate-embedding-invalidation, document-embedding-invalidation, test-embedding-invalidation
 - **Assigned To**: embedding-validator
 - **Agent Type**: validator
 - **Parallel**: false
@@ -362,7 +436,10 @@ No agent integration required. This is a library-internal correctness fix with n
 
 | Check | Command | Expected |
 |-------|---------|----------|
-| Embedding tests pass | `pytest tests/test_embedding_field.py tests/test_embedding_field_gc.py tests/test_semantic_search.py -x -q` | exit code 0 |
+| Embedding tests pass | `pytest tests/test_embedding_field.py tests/test_embedding_field_gc.py tests/test_semantic_search.py tests/test_embedding_invalidation.py -x -q` | exit code 0 |
+| Cross-process invalidation tested | `grep -n "run_in_thread\|publish" tests/test_embedding_invalidation.py` | test drives a real subscriber thread |
+| Version counter present | `grep -n "_version" src/popoto/fields/embedding_field.py` | output contains _version |
+| Teardown helper present | `grep -n "stop_invalidation_listeners" src/popoto/fields/embedding_field.py` | output > 0 |
 | Full test suite passes | `pytest tests/ -x -q` | exit code 0 |
 | Invalidation mode env var present | `grep -n "POPOTO_EMBEDDING_INVALIDATION" src/popoto/fields/embedding_field.py` | output contains POPOTO_EMBEDDING_INVALIDATION |
 | Listener threads are daemon | `grep -n "daemon=True" src/popoto/fields/embedding_field.py` | output contains daemon=True |
@@ -371,12 +448,18 @@ No agent integration required. This is a library-internal correctness fix with n
 
 ## Critique Results
 
-<!-- Populated by /do-plan-critique (war room). Leave empty until critique is run. -->
+Critique verdict: **NEEDS REVISION** (recorded 2026-06-01). Detailed findings were not
+persisted by the critique tool; the revision below was driven by a fresh adversarial
+re-read of the plan against the live source (`embedding_field.py`, `redis_db.py`,
+`pubsub/`, `models/query.py`). Findings addressed:
+
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
+| High | Archaeologist | Research claimed `run_in_thread` `exception_handler` keeps the thread alive and retries — false; redis-py STOPS the worker after the handler returns | Research correction + lazy-respawn design | `exception_handler` clears `_listener_threads`; next `load_embeddings()` respawns |
+| High | Skeptic | No test actually verified cross-process invalidation; validator only checked `daemon=True` and call-site presence | New task 1b (`test_embedding_invalidation.py`) | Two-cache simulation drives a real subscriber thread against DB 15 |
+| Med | Adversary | mtime granularity hazard framed as NFS-only; same-tick writes on HFS+ (and any 1s-resolution FS) can mask a local write too | Version-counter sentinel in `_index.json` | mtime used as cheap pre-check; integer `_version` is authoritative |
+| Med | Operator | Daemon listener threads leak across the test suite / no graceful shutdown | `stop_invalidation_listeners()` + teardown wiring | Stops every `PubSubWorkerThread`; wired into isolation teardown |
+| Med | User | "Update System" claimed default is byte-for-byte same as before for single-process | Honest cost accounting + `none` mode guidance | Default adds a thread, a connection, and a loopback PUBLISH per write |
+| Low | Simplifier | Data Flow said publish sends JSON `{model,action}` but code publishes a bare string — self-contradiction | Standardized on bare `model_class_name` body | Handler is per-channel; body is informational only |
+| Low | Operator | `<10 ms` staleness claim ignored the `sleep_time=0.1` poll interval | Window restated as RTT + ≤100 ms poll | Matches `run_in_thread(sleep_time=0.1)` |
 
----
-
-## Open Questions
-
-None — all assumptions validated via spikes, all design choices confirmed against codebase.
