@@ -153,6 +153,22 @@ global configuration.
 See [ContentField](fields.md#contentfield) and [EmbeddingField](fields.md#embeddingfield)
 for field-level configuration.
 
+### Multi-Worker Cache Invalidation
+
+`EmbeddingField` keeps a per-process embedding matrix cache. In multi-worker
+deployments (gunicorn, multiple containers/pods), the `POPOTO_EMBEDDING_INVALIDATION`
+environment variable controls how peer processes are notified when a write
+invalidates that cache:
+
+| Value | Behavior |
+|-------|----------|
+| `pubsub` *(default)* | Valkey pub/sub notifies all workers within ~100 ms; falls back to an on-disk version check if the subscriber can't start. |
+| `mtime` | No pub/sub; each worker reloads on the next `semantic_search()` after a peer write, using an on-disk `_version` counter. For batch/offline deployments without a live Valkey connection. |
+| `none` | Pre-fix single-process behavior — zero overhead, no cross-process invalidation. |
+
+See [EmbeddingField → Multi-Worker Deployments](fields.md#embeddingfield) for the
+full staleness-window table and the cost of the default mode.
+
 ### Embedding Providers
 
 Popoto ships with three built-in embedding providers. All implement the

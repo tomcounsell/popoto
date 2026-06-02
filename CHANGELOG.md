@@ -31,6 +31,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Tier 5 benchmark sweep grid** (`TIER5_SWEEPS` in `tests/benchmarks/run_sweeps.py`) — five lifecycle constants with sweep ranges for tuning against LoCoMo + LongMemEval-S
 - **`docs/benchmarks/memory_lifecycle_baseline.md`** — pre-lifecycle retrieval baseline and sweep grid documentation
 
+### Fixed
+
+- **`EmbeddingField` cross-process cache invalidation** — in multi-worker deployments (gunicorn, multiple containers/pods) a write on one worker no longer leaves peers serving a stale embedding matrix ([#403](https://github.com/tomcounsell/popoto/issues/403)):
+  - New `POPOTO_EMBEDDING_INVALIDATION` environment variable selects the strategy: `pubsub` *(default)* uses a Valkey pub/sub bus to notify peers within ~100 ms; `mtime` uses an on-disk `_version` counter checked on the next `semantic_search()`; `none` restores the original zero-overhead single-process behavior.
+  - The default `pubsub` mode degrades to the on-disk `_version` check (never back to the stale-cache bug) if the subscriber thread cannot start, and the listener self-heals via lazy respawn after a connection drop.
+  - Single-process **results** are unchanged in all modes; the default adds one daemon listener thread, one Valkey connection, and one loopback `PUBLISH` per write per model class. Set `POPOTO_EMBEDDING_INVALIDATION=none` for zero overhead. See [EmbeddingField → Multi-Worker Deployments](https://popoto.io/fields/#embeddingfield).
+
 ## [1.5.0](https://github.com/tomcounsell/popoto/compare/v1.0.3...v1.5.0) (2026-04-21)
 
 ### Popoto Agent Memory — Now in Beta
