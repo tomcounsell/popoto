@@ -11,6 +11,8 @@ revision_applied: true
 
 # EmbeddingField: Cross-Process Cache Invalidation
 
+Tracking issue: #403
+
 ## Problem
 
 `EmbeddingField` maintains a module-level dict `_embedding_cache` (keyed by model class name)
