@@ -126,10 +126,10 @@ No prior attempt has been made to add cross-process cache invalidation to `Embed
 
 1. **Entry**: `model_instance.save()` or `model_instance.delete()` is called on worker A.
 2. **on_save / on_delete hook**: `EmbeddingField.on_save()` / `on_delete()` writes/removes the `.npy` file and updates `_index.json`, then calls `invalidate_cache(model_class_name)` (clears worker A's cache — existing behavior unchanged).
-3. **Publish**: After `invalidate_cache()`, the hook publishes the message body `f"{model_class_name}:{os.getpid()}"` to the per-class Valkey channel `popoto:embedding:invalidate:ClassName`. The channel name fully identifies the target model; the **pid suffix** lets a receiving worker recognize and skip its own loopback message (see item 6). (Body is a bare `name:pid` string, NOT a JSON object — the earlier draft's `{"model":...,"action":...}` was dropped to keep publish/handler trivially consistent.)
+3. **Publish**: After `invalidate_cache()`, the hook publishes the message body `f"{model_class_name}:{_WORKER_ID}"` to the per-class Valkey channel `popoto:embedding:invalidate:ClassName`, where `_WORKER_ID` is a per-process UUID generated at import. The channel name fully identifies the target model; the **worker-id suffix** lets a receiving worker recognize and skip its own loopback message (see item 6). (Body is a bare `name:worker_id` string, NOT a JSON object — the earlier draft's `{"model":...,"action":...}` was dropped to keep publish/handler trivially consistent. A UUID is used rather than `os.getpid()` because pids collide across containers/pods.)
 4. **Background subscriber thread** (each worker): On first `load_embeddings()` call for a model class, a daemon thread is started (if not already running) via `pubsub.run_in_thread(daemon=True, exception_handler=...)`. The thread subscribes to `popoto:embedding:invalidate:ClassName`. On any connection error the handler calls `worker.stop()` to terminate the thread (redis-py does NOT auto-stop it — see Research correction) and pops the registry entry; the next `load_embeddings()` respawns a fresh listener (self-healing reconnect).
-5. **Invalidation receipt**: When workers B, C receive the message, the handler parses the pid suffix; if it is *not* this worker's own pid, it calls `invalidate_cache(model_class_name)`. Next `load_embeddings()` (driven by `query.semantic_search()` at `query.py:719` / `query.py:1044`) on those workers reloads from disk.
-6. **Output**: All workers serve fresh matrix within one Valkey round-trip plus the worker's `sleep_time` poll interval (≤ 100 ms + RTT). The publishing worker also receives its own message (loopback) but the handler **skips it** because the message's pid matches `os.getpid()` — avoiding a redundant second disk reload on a write-then-immediately-search hot path (the agent-memory workload).
+5. **Invalidation receipt**: When workers B, C receive the message, the handler parses the worker-id suffix; if it is *not* this worker's own `_WORKER_ID`, it calls `invalidate_cache(model_class_name)`. Next `load_embeddings()` (driven by `query.semantic_search()` at `query.py:719` / `query.py:1044`) on those workers reloads from disk.
+6. **Output**: All workers serve fresh matrix within one Valkey round-trip plus the worker's `sleep_time` poll interval (≤ 100 ms + RTT). The publishing worker also receives its own message (loopback) but the handler **skips it** because the message's worker-id matches the local `_WORKER_ID` — avoiding a redundant second disk reload on a write-then-immediately-search hot path (the agent-memory workload).
 
 **Path B — File-mtime / version sentinel (secondary, batch/offline/NFS):**
 
@@ -175,7 +175,14 @@ Default is `pubsub`. Setting to `mtime` is for batch/offline deployments without
 **Publish side** (in `on_save` and `on_delete`, after `invalidate_cache()`):
 
 ```python
+import uuid
+
 _INVALIDATION_MODE = os.environ.get("POPOTO_EMBEDDING_INVALIDATION", "pubsub")
+# Process-global unique identity. os.getpid() is NOT unique across containers/
+# pods (the issue's multi-container target) — two remote workers routinely share
+# a pid, which would cause a real peer write to be silently skipped as "our own"
+# loopback, re-exposing the stale-cache bug. A per-process UUID is collision-free.
+_WORKER_ID = uuid.uuid4().hex
 
 def _publish_invalidation(model_class_name: str) -> None:
     if _INVALIDATION_MODE != "pubsub":
@@ -183,8 +190,8 @@ def _publish_invalidation(model_class_name: str) -> None:
     try:
         from ..redis_db import POPOTO_REDIS_DB
         channel = f"popoto:embedding:invalidate:{model_class_name}"
-        # body carries our pid so receivers can skip their own loopback message
-        POPOTO_REDIS_DB.publish(channel, f"{model_class_name}:{os.getpid()}")
+        # body carries our worker id so receivers skip only their own loopback
+        POPOTO_REDIS_DB.publish(channel, f"{model_class_name}:{_WORKER_ID}")
     except Exception as e:
         logger.warning(f"EmbeddingField: publish invalidation failed: {e}")
 ```
@@ -202,15 +209,15 @@ def _start_invalidation_listener(model_class_name: str) -> None:
     try:
         from ..redis_db import POPOTO_REDIS_DB
         channel = f"popoto:embedding:invalidate:{model_class_name}"
-        my_pid = os.getpid()
 
         def _on_message(msg):
-            # body is "ClassName:pid"; skip our own loopback to avoid a
-            # redundant reload on a write-then-search hot path.
+            # body is "ClassName:worker_id"; skip our own loopback to avoid a
+            # redundant reload on a write-then-search hot path. The id is a
+            # per-process UUID (NOT pid) so it never collides across containers.
             data = msg.get("data")
             if isinstance(data, bytes):
                 data = data.decode()
-            if isinstance(data, str) and data.rsplit(":", 1)[-1] == str(my_pid):
+            if isinstance(data, str) and data.rsplit(":", 1)[-1] == _WORKER_ID:
                 return
             invalidate_cache(model_class_name)
 
@@ -263,19 +270,44 @@ mode, *any* existing embedding test that reaches `load_embeddings()` (e.g.
 thread — so the conftest fixture is **mandatory, not optional**, to keep those
 pre-existing suites from leaking threads against the flushed DB 15.
 
+**`tests/conftest.py` is currently comment-only** (no `import pytest`, no
+fixtures — it just documents the `popoto.pytest_plugin` entry-point fixtures). The
+teardown fixture is therefore **net-new**, not an edit to an existing fixture: the
+task must add `import pytest` plus a module-level
+`@pytest.fixture(autouse=True)` that `yield`s then calls
+`stop_invalidation_listeners()`. Omitting `import pytest` turns the decorator into
+a `NameError` that pytest surfaces as a *collection* error — so verify the fixture
+is actually collected (e.g. a test asserting `_listener_threads` is empty at
+start), not merely that the file contains the string.
+
 ### Path B — version-counter sentinel (mtime as cheap pre-check)
 
-`_write_index()` is extended to bump a monotonic integer `_version` key on every
-write. Because spike-2 confirmed `_read_index()` returns the dict as-is and
-`load_embeddings()` only iterates `.npy`-suffixed keys, a top-level `_version`
-integer is schema-safe (old readers ignore it).
+`_write_index()` is extended to bump a monotonic integer `_version` key — but
+**only on genuine corpus mutations**, NOT on every call. Because spike-2 confirmed
+`_read_index()` returns the dict as-is and `load_embeddings()` only iterates
+`.npy`-suffixed keys, a top-level `_version` integer is schema-safe (old readers
+ignore it).
+
+**Critical: `_write_index()` is also called on the read path.** It is invoked from
+five sites (`embedding_field.py:342`, `:353`, `:404`, `:485`, `:630`); the call at
+**`:485` is the legacy-fallback READ path** inside `load_embeddings()` (it
+reconciles an orphan hex-named `.npy` into the index during a pure read). If
+`_version` bumped on every `_write_index`, a read on worker A would bump the disk
+version, which workers B/C would see as a phantom "peer write" and reload — and
+worker A could self-invalidate on its next search. On a corpus with persistent
+un-reconcilable orphans this becomes a reload storm. The bump must therefore be
+gated to mutation calls only:
 
 ```python
-def _write_index(model_class_name, index_dict):
-    # ... existing atomic write, plus:
-    index_dict["_version"] = index_dict.get("_version", 0) + 1
-    # (write as before)
+def _write_index(model_class_name, index_dict, bump_version: bool = True):
+    if bump_version:
+        index_dict["_version"] = index_dict.get("_version", 0) + 1
+    # ... existing atomic write (unchanged)
 ```
+
+The save/delete/GC sites (`:342`, `:353`, `:404`, `:630`) call `_write_index(...)`
+as before (default `bump_version=True`). The **read-path call at `:485` MUST pass
+`bump_version=False`** so a read never advances the version counter.
 
 The cache entry stores both the `_index.json` mtime (cheap change pre-check) and
 the `_version` integer (authoritative, granularity-proof) at load time:
@@ -363,7 +395,7 @@ while keeping the cost to one `os.stat()` (+ a small JSON read only when mtime m
 
 No update system changes required. This is a library-internal change; the env var `POPOTO_EMBEDDING_INVALIDATION` defaults to `pubsub` with no user action required.
 
-**Honest accounting of the default's cost for single-process apps** (the first draft understated this): with the default `pubsub` mode, a single-process deployment will now (a) start one daemon `PubSubWorkerThread` per model class on first search, (b) hold one extra Valkey connection per such class, and (c) issue one `PUBLISH` per save/delete that loops back to itself — but the handler recognizes its own pid in the message body and skips it, so no redundant reload occurs (still a real Valkey round-trip for the PUBLISH). This is NOT byte-for-byte "same as before." Apps that genuinely run single-process and want zero overhead should set `POPOTO_EMBEDDING_INVALIDATION=none`. The functional *results* are identical to pre-fix in all three modes for a single process; only the resource profile differs. This trade-off is documented in `docs/fields.md` so operators can choose `none` deliberately.
+**Honest accounting of the default's cost for single-process apps** (the first draft understated this): with the default `pubsub` mode, a single-process deployment will now (a) start one daemon `PubSubWorkerThread` per model class on first search, (b) hold one extra Valkey connection per such class, and (c) issue one `PUBLISH` per save/delete that loops back to itself — but the handler recognizes its own per-process `_WORKER_ID` in the message body and skips it, so no redundant reload occurs (still a real Valkey round-trip for the PUBLISH). This is NOT byte-for-byte "same as before." Apps that genuinely run single-process and want zero overhead should set `POPOTO_EMBEDDING_INVALIDATION=none`. The functional *results* are identical to pre-fix in all three modes for a single process; only the resource profile differs. This trade-off is documented in `docs/fields.md` so operators can choose `none` deliberately.
 
 ## Agent Integration
 
@@ -392,7 +424,7 @@ No agent integration required. This is a library-internal correctness fix with n
 - [ ] `POPOTO_EMBEDDING_INVALIDATION=mtime` invalidates cache on next `load_embeddings()` after a peer write, using the `_version` counter (granularity-proof; verified including the same-mtime-tick case)
 - [ ] Listener threads self-heal after a connection drop: the `exception_handler` calls `worker.stop()` (terminating the run loop — redis-py does NOT auto-stop it) then clears the registry so the next load respawns; threads are stopped by `stop_invalidation_listeners()` — no thread leak or busy-loop across the test suite
 - [ ] In `pubsub` mode, if the listener fails to start (no entry in `_listener_threads`), `load_embeddings()` falls back to the on-disk `_version` staleness check — a Valkey outage degrades to mtime-style correctness, never to the original stale-cache bug (verified by test)
-- [ ] The publishing worker skips its own loopback message (pid match) — a write-then-search on the same worker does not trigger a redundant second disk reload (verified by test)
+- [ ] The publishing worker skips its own loopback message (per-process `_WORKER_ID` match, not pid) — a write-then-search on the same worker does not trigger a redundant second disk reload, and a remote peer write is never mistaken for loopback (verified by test)
 - [ ] The staleness mechanism and the default-mode cost trade-off are documented in the `EmbeddingField` docstring and `docs/fields.md`
 - [ ] Tests pass: `pytest tests/test_embedding_field.py tests/test_embedding_field_gc.py tests/test_semantic_search.py tests/test_embedding_invalidation.py -x -q`
 - [ ] No new required dependencies introduced
@@ -431,16 +463,17 @@ No agent integration required. This is a library-internal correctness fix with n
 - **Agent Type**: builder
 - **Parallel**: true
 - Add `_INVALIDATION_MODE` module-level constant reading `POPOTO_EMBEDDING_INVALIDATION` env var (default `"pubsub"`)
+- Add `_WORKER_ID = uuid.uuid4().hex` module-level constant (per-process identity for loopback skip; NOT `os.getpid()`, which collides across containers/pods)
 - Add `_listener_threads: dict` module-level dict for tracking per-class daemon threads
-- Implement `_publish_invalidation(model_class_name)`: publishes body `f"{model_class_name}:{os.getpid()}"` to `popoto:embedding:invalidate:{name}` via `POPOTO_REDIS_DB.publish()`, wrapped in try/except with WARNING log
-- Implement `_start_invalidation_listener(model_class_name)`: lazy-start daemon thread via `pubsub.run_in_thread(sleep_time=0.1, daemon=True, exception_handler=...)`; the message handler decodes the `name:pid` body and **skips messages whose pid matches `os.getpid()`** (loopback self-skip) before calling `invalidate_cache()`; guarded by idempotency check and try/except
+- Implement `_publish_invalidation(model_class_name)`: publishes body `f"{model_class_name}:{_WORKER_ID}"` to `popoto:embedding:invalidate:{name}` via `POPOTO_REDIS_DB.publish()`, wrapped in try/except with WARNING log
+- Implement `_start_invalidation_listener(model_class_name)`: lazy-start daemon thread via `pubsub.run_in_thread(sleep_time=0.1, daemon=True, exception_handler=...)`; the message handler decodes the `name:worker_id` body and **skips messages whose worker-id matches the local `_WORKER_ID`** (loopback self-skip) before calling `invalidate_cache()`; guarded by idempotency check and try/except
 - In the `exception_handler`: **call `worker.stop()` FIRST** (redis-py does NOT auto-stop the run loop — without this it busy-loops), THEN `_listener_threads.pop(model_class_name, None)` so the next `load_embeddings()` lazily respawns a fresh listener (self-healing reconnect)
 - Call `_publish_invalidation()` in `on_save()` after `invalidate_cache()` (line ~374)
 - Call `_publish_invalidation()` in `on_delete()` after `invalidate_cache()` (line ~406)
 - In `load_embeddings()`: call `_start_invalidation_listener(model_name)` before the cache check
 - Extend `_embedding_cache` entries to include `index_mtime` AND `index_version` keys (set from `os.stat(_index_path()).st_mtime` and `_read_index().get("_version", 0)` after loading from disk) — populated in all modes except `none` so the pubsub backstop can use them
 - Add version-counter staleness check at top of `load_embeddings()` cache-hit path (mtime pre-check + `_version` confirm) gated by `_should_version_check()`: active when `_INVALIDATION_MODE == "mtime"` OR (`pubsub` AND `model_name not in _listener_threads`) — the silent-degradation backstop
-- Extend `_write_index()` to bump a monotonic integer `_version` key on every write
+- Extend `_write_index()` with a `bump_version: bool = True` param that increments a monotonic integer `_version` key. Mutation sites (`:342`, `:353`, `:404`, `:630`) use the default; the **read-path call at `:485` MUST pass `bump_version=False`** so a pure read never advances the version counter (prevents a reload storm on corpora with legacy orphan files)
 - Add module-level `stop_invalidation_listeners()` that stops every `PubSubWorkerThread` in `_listener_threads` and clears the registry (for test teardown + graceful shutdown)
 - Update `EmbeddingField` class docstring with staleness window table and env var docs
 - Update module-level `_embedding_cache` comment at `embedding_field.py:48`: drop the phantom `"dirty": False` field (never written) and document the real `index_mtime` / `index_version` keys (NIT)
@@ -457,9 +490,10 @@ No agent integration required. This is a library-internal correctness fix with n
 - **mtime/version mode test:** Set `POPOTO_EMBEDDING_INVALIDATION=mtime`, warm the cache, bump `_version` in `_index.json` via `_write_index()`, and assert the next `load_embeddings()` reloads (entry dropped). Cover the same-tick case by forcing `_version` to differ while leaving mtime potentially equal — assert the version comparison still triggers reload.
 - **none mode test:** Set `POPOTO_EMBEDDING_INVALIDATION=none`; assert no listener thread is started (`_listener_threads` empty after `load_embeddings()`) and `_publish_invalidation()` issues no PUBLISH (monkeypatch/count).
 - **pubsub backstop test:** Set `pubsub` mode but simulate a failed listener (e.g. ensure `model_name not in _listener_threads`, or monkeypatch `_start_invalidation_listener` to no-op); warm the cache, bump `_version` on disk, and assert the next `load_embeddings()` still reloads via the version-check backstop (proves a Valkey-down deployment degrades to mtime correctness, not the stale-cache bug).
-- **loopback self-skip test:** In `pubsub` mode, publish a message whose pid suffix equals `os.getpid()` and assert the cache entry is NOT dropped; publish one with a different pid and assert it IS dropped.
+- **loopback self-skip test:** In `pubsub` mode, publish a message whose worker-id suffix equals the local `_WORKER_ID` and assert the cache entry is NOT dropped; publish one with a different worker-id and assert it IS dropped. (Guards against the pid-collision regression — the skip token must be the per-process UUID, not pid.)
+- **read-path no-bump test:** Confirm that a `load_embeddings()` call which triggers the legacy-fallback `_write_index(..., bump_version=False)` at `:485` does NOT advance `_version` (so reads never look like peer writes).
 - **Teardown test:** Assert `stop_invalidation_listeners()` empties `_listener_threads` and the threads report not-alive.
-- Add the `stop_invalidation_listeners()` teardown as an **autouse fixture in `tests/conftest.py`** (function-scoped, yield → stop), NOT in `src/popoto/pytest_plugin.py` (which ships to consumers). This covers the whole suite — mandatory because default `pubsub` mode means existing embedding tests also spawn listener threads.
+- Add the `stop_invalidation_listeners()` teardown as an **autouse fixture in `tests/conftest.py`** (function-scoped, yield → stop), NOT in `src/popoto/pytest_plugin.py` (which ships to consumers). The file is comment-only today, so this is net-new: add `import pytest` + a module-level `@pytest.fixture(autouse=True)`. This covers the whole suite — mandatory because default `pubsub` mode means existing embedding tests also spawn listener threads. Verify the fixture is actually collected (assert `_listener_threads` empty at test start), not just present as text.
 
 #### 2. Validate implementation
 - **Task ID**: validate-embedding-invalidation
@@ -474,7 +508,9 @@ No agent integration required. This is a library-internal correctness fix with n
 - Confirm `POPOTO_EMBEDDING_INVALIDATION=none` skips publish and listener start
 - Confirm `POPOTO_EMBEDDING_INVALIDATION=mtime` skips publish but adds version-counter check
 - Confirm `exception_handler` calls `worker.stop()` BEFORE popping `_listener_threads` (self-healing path; no busy-loop)
-- Confirm the message handler skips loopback messages whose pid matches `os.getpid()`
+- Confirm the message handler skips loopback messages whose worker-id matches the local `_WORKER_ID` (per-process UUID, NOT pid)
+- Confirm `_version` is bumped only on mutation calls — the read-path `_write_index` at `:485` passes `bump_version=False`
+- Confirm `tests/conftest.py` adds `import pytest` and a collected autouse fixture (not just the string)
 - Confirm the pubsub backstop fires: when `model_name not in _listener_threads` in `pubsub` mode, `load_embeddings()` runs the `_version` staleness check
 - Confirm `stop_invalidation_listeners()` exists and is wired into `tests/conftest.py` (NOT `pytest_plugin.py`) — no thread leak across the suite
 - Confirm the phantom `"dirty"` field is gone from the `_embedding_cache` comment and the dead `return 0` at the end of `sweep_stale_tempfiles` is removed
@@ -509,7 +545,9 @@ No agent integration required. This is a library-internal correctness fix with n
 | Teardown helper present | `grep -n "stop_invalidation_listeners" src/popoto/fields/embedding_field.py` | output > 0 |
 | Self-heal calls worker.stop | `grep -n "worker.stop\|\.stop()" src/popoto/fields/embedding_field.py` | exception_handler stops the worker |
 | Teardown wired in conftest (not plugin) | `grep -n "stop_invalidation_listeners" tests/conftest.py; grep -c "stop_invalidation_listeners" src/popoto/pytest_plugin.py` | present in conftest.py, absent (0) in pytest_plugin.py |
-| Loopback pid skip present | `grep -n "getpid" src/popoto/fields/embedding_field.py` | publish + handler both reference os.getpid() |
+| Loopback skip uses worker UUID (not pid) | `grep -n "_WORKER_ID\|uuid" src/popoto/fields/embedding_field.py` | publish + handler reference `_WORKER_ID`; no `getpid` used for skip |
+| Read-path skips version bump | `grep -n "bump_version" src/popoto/fields/embedding_field.py` | `_write_index` has `bump_version` param; `:485` passes `False` |
+| conftest fixture collectable | `grep -n "import pytest\|autouse" tests/conftest.py` | `import pytest` + `@pytest.fixture(autouse=True)` present |
 | Full test suite passes | `pytest tests/ -x -q` | exit code 0 |
 | Invalidation mode env var present | `grep -n "POPOTO_EMBEDDING_INVALIDATION" src/popoto/fields/embedding_field.py` | output contains POPOTO_EMBEDDING_INVALIDATION |
 | Listener threads are daemon | `grep -n "daemon=True" src/popoto/fields/embedding_field.py` | output contains daemon=True |
@@ -545,4 +583,17 @@ Re-critique of the revised plan. Verdict **NEEDS REVISION** — the cycle-1 revi
 | Concern | Adversary / Simplifier | Loopback PUBLISH re-invalidates the just-warmed cache on the writing worker → redundant reload on write-then-search (the agent-memory hot path) | Publish body carries `os.getpid()`; handler skips messages whose pid matches its own | Keeps the bare-string design (now `name:pid`); no JSON reintroduced |
 | Nit | Simplifier | Dead `return 0` after `return removed_count` in `sweep_stale_tempfiles` (`embedding_field.py:703–704`) | Opportunistic deletion added to task 1 | Pre-existing; builder touches this file anyway |
 | Nit | Consistency Auditor | `_embedding_cache` comment (`embedding_field.py:48`) documents a `"dirty": False` field that is never written | task 1 now drops `dirty`, documents `index_mtime`/`index_version` | Cache writes store only `matrix`/`keys` today |
+
+### Critique cycle 3 (recorded 2026-06-02)
+
+Re-critique of the cycle-2 revision. Verdict **READY TO BUILD (with concerns)** — 0 blockers. The three concerns below were folded into the plan before build (the nits were already addressed in cycle 2). All verified against HEAD source.
+
+| Severity | Critic | Finding | Addressed By | Implementation Note |
+|----------|--------|---------|--------------|---------------------|
+| Concern | Adversary / Skeptic | `_version` bumped on every `_write_index`, but `:485` is the legacy-fallback READ path → a read bumps the version, peers see a phantom write and reload (reload storm on orphan corpora) | `_write_index(..., bump_version=True)`; read-path `:485` passes `False` | Bump gated to mutation sites `:342`/`:353`/`:404`/`:630` only |
+| Concern | Adversary / Operator | Loopback self-skip used `os.getpid()` — pids collide across containers/pods (the issue's explicit target), so a remote peer write sharing the local pid is silently skipped → stale-cache bug returns | Per-process `_WORKER_ID = uuid.uuid4().hex` skip token | Correctness fix, not just an optimization; pid was insufficient. (This was a flaw introduced by the cycle-2 pid suffix.) |
+| Concern | Operator | `tests/conftest.py` is comment-only today; the autouse teardown fixture is net-new and needs `import pytest` or it fails collection | Plan now states conftest is comment-only; task adds `import pytest` + collected autouse fixture; verify collection | Autouse fixture is the only form that runs unnamed; a missing import is a collection error, not a silent skip |
+| Nit | Consistency Auditor / Simplifier | Phantom `"dirty"` field + dead `return 0` | Already in cycle-2 task 1 | Confirmed still accurate |
+
+**Structural note (cycle 3):** the critique flagged the absence of a literal `## Test Impact` header. Test coverage is fully specified across Tasks 1b/2/4 and the Verification table, so this is cosmetic; not adding a redundant header.
 
