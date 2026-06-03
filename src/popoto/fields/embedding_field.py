@@ -151,17 +151,46 @@ def _start_invalidation_listener(model_class_name: str) -> None:
         _listener_threads.pop(model_class_name, None)
 
 
+def _stop_listener_thread(thread) -> None:
+    """Stop a PubSubWorkerThread and release its pooled connection.
+
+    ``PubSubWorkerThread.stop()`` only clears the run flag; the run loop closes
+    the pubsub connection on its next wake (up to ``sleep_time`` later) and
+    returns the socket to the pool. We ``join()`` so that close completes
+    before the registry entry is dropped — otherwise a long-lived process (or a
+    full test suite spawning one listener per model class) accumulates sockets
+    that linger until GC and can exhaust the server's ``maxclients``. A bounded
+    join timeout keeps shutdown responsive; an explicit ``close()`` is the
+    fallback if the worker did not finish in time.
+    """
+    try:
+        thread.stop()
+    except Exception:
+        pass
+    try:
+        thread.join(timeout=1.0)
+    except Exception:
+        pass
+    if thread.is_alive():
+        # Worker did not release the connection in time — force-close so the
+        # socket is not leaked.
+        pubsub = getattr(thread, "pubsub", None)
+        if pubsub is not None:
+            try:
+                pubsub.close()
+            except Exception:
+                pass
+
+
 def stop_invalidation_listeners() -> None:
     """Stop every registered PubSubWorkerThread and clear the registry.
 
     Used for test teardown and graceful shutdown. Safe to call when no
-    listeners are running.
+    listeners are running. Each thread's pubsub connection is closed so it is
+    returned to the connection pool rather than leaked.
     """
     for thread in list(_listener_threads.values()):
-        try:
-            thread.stop()
-        except Exception:
-            pass
+        _stop_listener_thread(thread)
     _listener_threads.clear()
 
 

@@ -97,6 +97,35 @@ ENCODING = "utf-8"
 _POPOTO_ASYNC_REDIS_DB = None
 _async_redis_lock = asyncio.Lock()
 
+# Upper bound on simultaneously-open async connections. redis.asyncio defaults
+# to an effectively unbounded pool (max_connections == 2**31), so a burst of
+# concurrent coroutines (e.g. asyncio.gather over hundreds of async_save calls)
+# opens one socket per in-flight op and can exceed the server's ``maxclients``,
+# surfacing as ``redis.exceptions.MaxConnectionsError: Too many connections``.
+# Using a BlockingConnectionPool with this cap makes excess coroutines wait for
+# a free connection instead of erroring. Override via POPOTO_ASYNC_MAX_CONNECTIONS.
+try:
+    _ASYNC_MAX_CONNECTIONS = int(
+        os.environ.get("POPOTO_ASYNC_MAX_CONNECTIONS", "128")
+    )
+except ValueError:
+    _ASYNC_MAX_CONNECTIONS = 128
+
+# Upper bound on simultaneously-open sync connections. async_save/async_delete
+# run the synchronous save()/delete() in a thread pool (see Model.async_save),
+# so a burst of concurrent async coroutines funnels into the SYNC pool — one
+# checked-out connection per in-flight thread. With the redis-py default
+# (effectively unbounded) pool this opens a socket per op and can overrun the
+# server's ``maxclients`` (surfacing as MaxConnectionsError / "Too many
+# connections"). A BlockingConnectionPool makes excess threads wait for a free
+# connection instead. Override via POPOTO_SYNC_MAX_CONNECTIONS.
+try:
+    _SYNC_MAX_CONNECTIONS = int(
+        os.environ.get("POPOTO_SYNC_MAX_CONNECTIONS", "128")
+    )
+except ValueError:
+    _SYNC_MAX_CONNECTIONS = 128
+
 try:
     BEGINNING_OF_TIME = int(os.environ.get("BEGINNING_OF_TIME", 0))
 except ValueError:
@@ -109,18 +138,23 @@ except Exception as e:
 try:
     REDIS_URL = os.environ.get("REDIS_URL", "")
     if REDIS_URL:
-        POPOTO_REDIS_DB = redis.from_url(
-            REDIS_URL, socket_timeout=5, socket_connect_timeout=5
+        pool = redis.BlockingConnectionPool.from_url(
+            REDIS_URL,
+            socket_timeout=5,
+            socket_connect_timeout=5,
+            max_connections=_SYNC_MAX_CONNECTIONS,
         )
+        POPOTO_REDIS_DB = redis.Redis(connection_pool=pool)
         logger.debug("Redis connection established.")
     else:
         REDIS_HOST, REDIS_PORT = "127.0.0.1:6379".split(":")
-        pool = redis.ConnectionPool(
+        pool = redis.BlockingConnectionPool(
             host=REDIS_HOST,
             port=int(REDIS_PORT),
             db=0,
             socket_timeout=5,
             socket_connect_timeout=5,
+            max_connections=_SYNC_MAX_CONNECTIONS,
         )
         POPOTO_REDIS_DB = redis.Redis(connection_pool=pool)
         # REDIS_GRAPH = Graph('social', POPOTO_REDIS_DB)
@@ -222,17 +256,23 @@ async def get_async_redis_db():
 
         REDIS_URL = os.environ.get("REDIS_URL", "")
         if REDIS_URL:
-            _POPOTO_ASYNC_REDIS_DB = aioredis.from_url(
-                REDIS_URL, socket_timeout=5, socket_connect_timeout=5
+            pool = aioredis.BlockingConnectionPool.from_url(
+                REDIS_URL,
+                socket_timeout=5,
+                socket_connect_timeout=5,
+                max_connections=_ASYNC_MAX_CONNECTIONS,
             )
+            _POPOTO_ASYNC_REDIS_DB = aioredis.Redis(connection_pool=pool)
         else:
-            _POPOTO_ASYNC_REDIS_DB = aioredis.Redis(
+            pool = aioredis.BlockingConnectionPool(
                 host="127.0.0.1",
                 port=6379,
                 db=0,
                 socket_timeout=5,
                 socket_connect_timeout=5,
+                max_connections=_ASYNC_MAX_CONNECTIONS,
             )
+            _POPOTO_ASYNC_REDIS_DB = aioredis.Redis(connection_pool=pool)
         logger.debug("Async Redis connection established.")
         return _POPOTO_ASYNC_REDIS_DB
 
