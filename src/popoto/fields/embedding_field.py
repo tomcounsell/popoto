@@ -10,7 +10,9 @@ Design:
       generate an embedding, and writes it as a .npy file.
     - The embedding cache is a class-level dict mapping model class names
       to pre-normalized numpy matrices for fast cosine similarity.
-    - Cache is invalidated on save/delete within the same process.
+    - Cache is invalidated on save/delete within the same process, and
+      across worker processes via the POPOTO_EMBEDDING_INVALIDATION
+      mechanism (see EmbeddingField docstring: pubsub / mtime / none).
     - numpy is optional -- follows the DataFrameField pattern.
 
 Example:
@@ -30,6 +32,8 @@ import os
 import re
 import tempfile
 import time
+import uuid
+from typing import Any
 
 from .field import Field
 
@@ -45,8 +49,164 @@ except ImportError:
 # Global default provider, set via popoto.configure()
 _default_embedding_provider = None
 
-# Global embedding cache: {model_class_name: {"matrix": np.ndarray, "keys": [redis_key, ...], "dirty": False}}
+# Global embedding cache. Each entry is a dict with keys:
+#   "matrix":        pre-normalized np.ndarray of shape (N, dimensions)
+#   "keys":          list[redis_key] aligned row-for-row with matrix
+#   "index_mtime":   _index.json st_mtime at load time (cheap "did it change"
+#                    pre-check for the version-counter staleness path)
+#   "index_version": authoritative monotonic _version integer from _index.json
+#                    at load time (granularity-proof staleness check)
+# index_mtime/index_version are populated in all modes except "none" so the
+# pubsub backstop (disk version check when no live listener exists) can fire.
+# {model_class_name: {"matrix": ..., "keys": [...], "index_mtime": ..., "index_version": ...}}
 _embedding_cache = {}
+
+# Cross-process cache invalidation (see EmbeddingField docstring and
+# docs/fields.md "Multi-Worker Deployments"). Mode is selected via the
+# POPOTO_EMBEDDING_INVALIDATION env var: "pubsub" (default), "mtime", "none".
+_INVALIDATION_MODE = os.environ.get("POPOTO_EMBEDDING_INVALIDATION", "pubsub")
+
+# Process-global unique identity used to skip our own loopback PUBLISH. A
+# per-process UUID is used rather than os.getpid() because pids collide across
+# containers/pods (the multi-container target of issue #403) — a colliding pid
+# would cause a real peer write to be silently skipped as "our own" loopback,
+# re-exposing the stale-cache bug.
+_WORKER_ID = uuid.uuid4().hex
+
+# Per-model-class background subscriber threads (PubSubWorkerThread).
+_listener_threads: dict[str, Any] = {}
+
+
+def _publish_invalidation(model_class_name: str) -> None:
+    """Publish a cache-invalidation signal for a model class (pubsub mode only).
+
+    Body is the bare string ``f"{model_class_name}:{_WORKER_ID}"``; the
+    worker-id suffix lets a receiving worker skip its own loopback message.
+    Best-effort: a publish failure logs a WARNING and is swallowed (the
+    on-disk _version backstop still guarantees eventual correctness).
+    """
+    if _INVALIDATION_MODE != "pubsub":
+        return
+    try:
+        from ..redis_db import POPOTO_REDIS_DB
+
+        channel = f"popoto:embedding:invalidate:{model_class_name}"
+        POPOTO_REDIS_DB.publish(channel, f"{model_class_name}:{_WORKER_ID}")
+    except Exception as e:
+        logger.warning(f"EmbeddingField: publish invalidation failed: {e}")
+
+
+def _start_invalidation_listener(model_class_name: str) -> None:
+    """Lazily start a daemon subscriber thread for a model class (pubsub mode).
+
+    Idempotent: a no-op if a listener is already registered or if the mode is
+    not ``pubsub``. On a connection error the exception handler calls
+    ``worker.stop()`` (redis-py does NOT auto-stop the run loop — it would
+    otherwise busy-loop) and drops the registry entry, so the next
+    ``load_embeddings()`` respawns a fresh listener (self-healing reconnect).
+    """
+    if _INVALIDATION_MODE != "pubsub":
+        return
+    if model_class_name in _listener_threads:
+        return
+    try:
+        from ..redis_db import POPOTO_REDIS_DB
+
+        channel = f"popoto:embedding:invalidate:{model_class_name}"
+
+        def _on_message(msg):
+            # body is "ClassName:worker_id"; skip our own loopback to avoid a
+            # redundant disk reload on a write-then-search hot path. The id is a
+            # per-process UUID (NOT pid) so it never collides across containers.
+            data = msg.get("data")
+            if isinstance(data, bytes):
+                data = data.decode()
+            if isinstance(data, str) and data.rsplit(":", 1)[-1] == _WORKER_ID:
+                return
+            invalidate_cache(model_class_name)
+
+        ps = POPOTO_REDIS_DB.pubsub()
+        ps.subscribe(**{channel: _on_message})
+
+        def _exception_handler(ex, ps_obj, worker):
+            # redis-py does NOT stop the worker after this handler returns — the
+            # run loop re-enters get_message() and busy-loops. We MUST call
+            # worker.stop() (clears _running) to terminate it, THEN drop the
+            # registry entry so the next load_embeddings() lazily respawns a
+            # fresh listener. Order matters: stop before pop, else a respawn
+            # races a still-running thread.
+            logger.warning(f"EmbeddingField invalidation listener error: {ex}")
+            try:
+                worker.stop()
+            except Exception:
+                pass
+            _listener_threads.pop(model_class_name, None)
+
+        thread = ps.run_in_thread(
+            sleep_time=0.1, daemon=True, exception_handler=_exception_handler
+        )
+        _listener_threads[model_class_name] = thread
+    except Exception as e:
+        logger.warning(f"EmbeddingField: failed to start invalidation listener: {e}")
+        _listener_threads.pop(model_class_name, None)
+
+
+def _stop_listener_thread(thread) -> None:
+    """Stop a PubSubWorkerThread and release its pooled connection.
+
+    ``PubSubWorkerThread.stop()`` only clears the run flag; the run loop closes
+    the pubsub connection on its next wake (up to ``sleep_time`` later) and
+    returns the socket to the pool. We ``join()`` so that close completes
+    before the registry entry is dropped — otherwise a long-lived process (or a
+    full test suite spawning one listener per model class) accumulates sockets
+    that linger until GC and can exhaust the server's ``maxclients``. A bounded
+    join timeout keeps shutdown responsive; an explicit ``close()`` is the
+    fallback if the worker did not finish in time.
+    """
+    try:
+        thread.stop()
+    except Exception:
+        pass
+    try:
+        thread.join(timeout=1.0)
+    except Exception:
+        pass
+    if thread.is_alive():
+        # Worker did not release the connection in time — force-close so the
+        # socket is not leaked.
+        pubsub = getattr(thread, "pubsub", None)
+        if pubsub is not None:
+            try:
+                pubsub.close()
+            except Exception:
+                pass
+
+
+def stop_invalidation_listeners() -> None:
+    """Stop every registered PubSubWorkerThread and clear the registry.
+
+    Used for test teardown and graceful shutdown. Safe to call when no
+    listeners are running. Each thread's pubsub connection is closed so it is
+    returned to the connection pool rather than leaked.
+    """
+    for thread in list(_listener_threads.values()):
+        _stop_listener_thread(thread)
+    _listener_threads.clear()
+
+
+def _should_version_check(model_name: str) -> bool:
+    """Whether load_embeddings() should run the on-disk _version staleness check.
+
+    Active in ``mtime`` mode, and in ``pubsub`` mode when no live listener
+    thread exists for the model (the silent-degradation backstop: if the
+    listener never started — Valkey down / ACL / pool exhaustion — fall back to
+    the on-disk version check rather than re-exposing the stale-cache bug).
+    """
+    if _INVALIDATION_MODE == "mtime":
+        return True
+    if _INVALIDATION_MODE == "pubsub" and model_name not in _listener_threads:
+        return True
+    return False
 
 
 def get_default_provider():
@@ -94,8 +254,20 @@ def _read_index(model_class_name: str) -> dict:
         return {}
 
 
-def _write_index(model_class_name: str, index_dict: dict) -> None:
-    """Atomically write the _index.json sidecar (temp file + rename)."""
+def _write_index(
+    model_class_name: str, index_dict: dict, bump_version: bool = True
+) -> None:
+    """Atomically write the _index.json sidecar (temp file + rename).
+
+    When ``bump_version`` is True (the default, for genuine corpus mutations)
+    a monotonic integer ``_version`` key is incremented. The read-path call in
+    ``load_embeddings()`` (legacy-orphan reconciliation) MUST pass
+    ``bump_version=False`` so a pure read never advances the counter — else
+    peers would see a phantom "write" and reload (a reload storm on corpora
+    with un-reconcilable orphan files).
+    """
+    if bump_version:
+        index_dict["_version"] = index_dict.get("_version", 0) + 1
     path = _index_path(model_class_name)
     directory = os.path.dirname(path)
     os.makedirs(directory, exist_ok=True)
@@ -175,6 +347,38 @@ class EmbeddingField(Field):
         **kwargs: Standard Field keyword arguments.
 
     Requires numpy: pip install popoto[embeddings]
+
+    Multi-worker cache invalidation:
+        The embedding matrix is cached in a process-local dict. In a
+        multi-worker deployment (gunicorn, multiple containers/pods) a write
+        on one worker must invalidate peers' caches, or they serve stale
+        semantic-search results. The ``POPOTO_EMBEDDING_INVALIDATION`` env var
+        selects the mechanism:
+
+        ===========  =================================================  ==========================================
+        Mode         Staleness window                                   Notes
+        ===========  =================================================  ==========================================
+        ``pubsub``   Valkey RTT + poll interval (~100 ms)               Default. One daemon PubSubWorkerThread +
+        (default)                                                       one Valkey connection per model class, plus
+                                                                        one PUBLISH per save/delete. If the listener
+                                                                        cannot start (Valkey down / ACL / pool
+                                                                        exhaustion) it degrades to the on-disk
+                                                                        ``_version`` check (never to the stale bug).
+        ``mtime``    Next ``semantic_search()`` after the disk write    No Valkey connection needed. Compares a
+                                                                        monotonic integer ``_version`` in
+                                                                        ``_index.json`` (mtime is only a cheap
+                                                                        pre-check), so it is granularity-proof
+                                                                        against same-tick writes on any filesystem.
+        ``none``     Never invalidated across processes                 Pre-fix single-process behavior. Zero extra
+                                                                        threads, connections, or os.stat() calls.
+        ===========  =================================================  ==========================================
+
+        The default ``pubsub`` mode is NOT byte-for-byte free for single-process
+        apps (it starts a daemon thread, holds a connection, and PUBLISHes a
+        self-loopback per write — the handler skips its own message via a
+        per-process worker id). Single-process deployments wanting zero overhead
+        should set ``POPOTO_EMBEDDING_INVALIDATION=none``. Functional results are
+        identical across all three modes for a single process.
 
     Example:
         class Doc(popoto.Model):
@@ -372,6 +576,8 @@ class EmbeddingField(Field):
 
         # Invalidate the in-memory cache for this model class
         invalidate_cache(model_instance.__class__.__name__)
+        # Signal peer processes to invalidate their caches (pubsub mode).
+        _publish_invalidation(model_instance.__class__.__name__)
 
         return pipeline if pipeline else None
 
@@ -404,6 +610,8 @@ class EmbeddingField(Field):
             _write_index(model_class_name, index)
 
         invalidate_cache(model_class_name)
+        # Signal peer processes to invalidate their caches (pubsub mode).
+        _publish_invalidation(model_class_name)
         return pipeline if pipeline else None
 
     @classmethod
@@ -425,6 +633,26 @@ class EmbeddingField(Field):
             return None, []
 
         model_name = model_class.__name__
+
+        # Ensure a cross-process invalidation listener is running (pubsub mode;
+        # no-op in mtime/none mode or if already started).
+        _start_invalidation_listener(model_name)
+
+        # Cross-process staleness backstop: in mtime mode, or in pubsub mode
+        # when no live listener exists (Valkey down / ACL / pool exhaustion),
+        # confirm the cached entry against the on-disk _version counter. mtime
+        # is a cheap "did anything change at all" pre-check; the integer
+        # _version is authoritative (granularity-proof against same-tick writes).
+        if model_name in _embedding_cache and _should_version_check(model_name):
+            entry = _embedding_cache[model_name]
+            try:
+                current_mtime = os.stat(_index_path(model_name)).st_mtime
+                if current_mtime != entry.get("index_mtime"):
+                    disk_version = _read_index(model_name).get("_version", 0)
+                    if disk_version != entry.get("index_version"):
+                        _embedding_cache.pop(model_name, None)  # force reload
+            except OSError:
+                _embedding_cache.pop(model_name, None)  # index gone, reload
 
         # Check cache first
         if model_name in _embedding_cache:
@@ -479,10 +707,12 @@ class EmbeddingField(Field):
                 logger.warning(f"Failed to load embedding {filepath}: {e}")
                 continue
 
-        # Persist any index updates from legacy fallback
+        # Persist any index updates from legacy fallback. This is a READ path —
+        # pass bump_version=False so a pure read never advances _version (else
+        # peers see a phantom write and reload; reload storm on orphan corpora).
         if index_updated:
             try:
-                _write_index(model_name, index)
+                _write_index(model_name, index, bump_version=False)
             except Exception:
                 logger.warning(f"Failed to update index for {model_name}")
 
@@ -496,8 +726,16 @@ class EmbeddingField(Field):
         norms = np.where(norms == 0, 1, norms)  # Avoid division by zero
         matrix = matrix / norms
 
-        # Cache the result
-        _embedding_cache[model_name] = {"matrix": matrix, "keys": keys}
+        # Cache the result. Populate the staleness-check fields in all modes
+        # except "none" so the pubsub backstop / mtime path can use them.
+        entry = {"matrix": matrix, "keys": keys}
+        if _INVALIDATION_MODE != "none":
+            try:
+                entry["index_mtime"] = os.stat(_index_path(model_name)).st_mtime
+            except OSError:
+                entry["index_mtime"] = None
+            entry["index_version"] = _read_index(model_name).get("_version", 0)
+        _embedding_cache[model_name] = entry
 
         return matrix, keys
 
@@ -701,4 +939,3 @@ class EmbeddingField(Field):
                 removed_count,
             )
         return removed_count
-        return 0
