@@ -668,6 +668,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#multi-worker-cache-invalidation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-Worker Cache Invalidation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#embedding-providers" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2645,6 +2656,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#multi-worker-cache-invalidation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-Worker Cache Invalidation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#embedding-providers" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3059,6 +3081,35 @@ these field types.</p>
 global configuration.</p>
 <p>See <a href="../fields/#contentfield">ContentField</a> and <a href="../fields/#embeddingfield">EmbeddingField</a>
 for field-level configuration.</p>
+<h3 id="multi-worker-cache-invalidation">Multi-Worker Cache Invalidation<a class="headerlink" href="#multi-worker-cache-invalidation" title="Permanent link">&para;</a></h3>
+<p><code>EmbeddingField</code> keeps a per-process embedding matrix cache. In multi-worker
+deployments (gunicorn, multiple containers/pods), the <code>POPOTO_EMBEDDING_INVALIDATION</code>
+environment variable controls how peer processes are notified when a write
+invalidates that cache:</p>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pubsub</code> <em>(default)</em></td>
+<td>Valkey pub/sub notifies all workers within ~100 ms; falls back to an on-disk version check if the subscriber can't start.</td>
+</tr>
+<tr>
+<td><code>mtime</code></td>
+<td>No pub/sub; each worker reloads on the next <code>semantic_search()</code> after a peer write, using an on-disk <code>_version</code> counter. For batch/offline deployments without a live Valkey connection.</td>
+</tr>
+<tr>
+<td><code>none</code></td>
+<td>Pre-fix single-process behavior — zero overhead, no cross-process invalidation.</td>
+</tr>
+</tbody>
+</table>
+<p>See <a href="../fields/#embeddingfield">EmbeddingField → Multi-Worker Deployments</a> for the
+full staleness-window table and the cost of the default mode.</p>
 <h3 id="embedding-providers">Embedding Providers<a class="headerlink" href="#embedding-providers" title="Permanent link">&para;</a></h3>
 <p>Popoto ships with three built-in embedding providers. All implement the
 <code>AbstractEmbeddingProvider</code> interface from <code>popoto.embeddings</code>.</p>

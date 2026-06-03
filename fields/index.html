@@ -1015,6 +1015,45 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#multi-worker-deployments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-Worker Deployments
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Multi-Worker Deployments">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#staleness-window" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Staleness window
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cost-of-the-default-for-single-process-apps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cost of the default for single-process apps
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -3156,6 +3195,45 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#multi-worker-deployments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-Worker Deployments
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Multi-Worker Deployments">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#staleness-window" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Staleness window
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cost-of-the-default-for-single-process-apps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cost of the default for single-process apps
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -4825,6 +4903,70 @@ full query interface.</p>
 </table>
 <p>See <a href="../features/content-and-embedding-fields/">Content and Embedding Fields</a> for the
 full feature reference including storage layout, cache management, and provider API.</p>
+<h3 id="multi-worker-deployments">Multi-Worker Deployments<a class="headerlink" href="#multi-worker-deployments" title="Permanent link">&para;</a></h3>
+<p><code>EmbeddingField</code> caches a pre-normalized embedding matrix in a <strong>process-local</strong>
+dict for fast similarity search. In a multi-worker deployment (gunicorn with
+several workers, multiple containers, multiple pods) a write on one worker must
+invalidate the caches held by its peers — otherwise the peers keep serving
+semantic-search results that omit newly written records or include deleted ones,
+with no error signal.</p>
+<p>The mechanism is selected via the <code>POPOTO_EMBEDDING_INVALIDATION</code> environment
+variable:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-64-1" name="__codelineno-64-1" href="#__codelineno-64-1"></a><span class="nv">POPOTO_EMBEDDING_INVALIDATION</span><span class="o">=</span>pubsub<span class="w">   </span><span class="c1"># default</span>
+<a id="__codelineno-64-2" name="__codelineno-64-2" href="#__codelineno-64-2"></a><span class="nv">POPOTO_EMBEDDING_INVALIDATION</span><span class="o">=</span>mtime<span class="w">    </span><span class="c1"># batch/offline, no live Valkey needed</span>
+<a id="__codelineno-64-3" name="__codelineno-64-3" href="#__codelineno-64-3"></a><span class="nv">POPOTO_EMBEDDING_INVALIDATION</span><span class="o">=</span>none<span class="w">     </span><span class="c1"># single-process, zero overhead</span>
+</code></pre></div>
+<p><strong><code>pubsub</code> (default)</strong> — On every save/delete, the writing worker publishes to a
+per-class Valkey channel <code>popoto:embedding:invalidate:{ModelName}</code>. Each worker
+runs a daemon subscriber thread (lazily started on its first <code>semantic_search()</code>)
+that drops the local cache when a peer publishes. Uses only core Valkey/Redis
+<code>PUBLISH</code>/<code>SUBSCRIBE</code> (no Redis modules), so it works on both Redis and Valkey.</p>
+<p><strong><code>mtime</code></strong> — No Valkey connection required. Before returning a cached matrix,
+the worker checks a monotonic integer <code>_version</code> counter stored in the
+<code>_index.json</code> sidecar (an <code>os.stat()</code> mtime check is used only as a cheap "did
+anything change at all" pre-check). The integer counter is <strong>granularity-proof</strong>:
+it detects a peer write even when both writes fall within the same filesystem
+mtime tick (a hazard on 1-second-resolution filesystems such as older HFS+ or
+some NFS mounts — not just NFS).</p>
+<p><strong><code>none</code></strong> — Restores the original single-process behavior: no subscriber thread,
+no extra Valkey connection, no <code>PUBLISH</code>, no <code>os.stat()</code>. Cross-process writes are
+never observed.</p>
+<h4 id="staleness-window">Staleness window<a class="headerlink" href="#staleness-window" title="Permanent link">&para;</a></h4>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Staleness window</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pubsub</code> (default)</td>
+<td>Valkey RTT + worker poll interval (<code>sleep_time=0.1</code>), i.e. ≤ ~100 ms</td>
+<td>Requires a live Valkey connection. If the subscriber thread cannot start (Valkey down, ACL restriction, pool exhaustion), it <strong>degrades to the on-disk <code>_version</code> check</strong> — never back to the stale-cache bug. After a connection drop, the window extends to the next <code>semantic_search()</code> on that worker (the listener self-heals via lazy respawn).</td>
+</tr>
+<tr>
+<td><code>mtime</code></td>
+<td>Next <code>semantic_search()</code> after the write lands on disk</td>
+<td>One <code>os.stat()</code> per search (~0.4 µs). The integer <code>_version</code> counter eliminates the same-mtime-tick hazard on every filesystem.</td>
+</tr>
+<tr>
+<td><code>none</code></td>
+<td>Never invalidated across processes</td>
+<td>Pre-fix single-process behavior. Zero pub/sub overhead, zero extra threads.</td>
+</tr>
+</tbody>
+</table>
+<h4 id="cost-of-the-default-for-single-process-apps">Cost of the default for single-process apps<a class="headerlink" href="#cost-of-the-default-for-single-process-apps" title="Permanent link">&para;</a></h4>
+<p>The default <code>pubsub</code> mode is <strong>not</strong> byte-for-byte free for a single-process
+deployment: it starts one daemon thread per model class, holds one extra Valkey
+connection per such class, and issues one <code>PUBLISH</code> per save/delete that loops
+back to itself (the handler recognizes its own per-process worker id and skips the
+message, so no redundant reload occurs). The functional <em>results</em> are identical to
+the pre-fix behavior in all three modes for a single process; only the resource
+profile differs. Single-process apps that want zero overhead should set
+<code>POPOTO_EMBEDDING_INVALIDATION=none</code>.</p>
 <h2 id="geofield">GeoField<a class="headerlink" href="#geofield" title="Permanent link">&para;</a></h2>
 <p><code>GeoField</code> uses Redis geospatial indexes for location-based queries. This is perfect
 for finding nearby restaurants, tracking driver positions, or searching by delivery
@@ -4833,36 +4975,36 @@ address.</p>
 <code>(latitude, longitude)</code> tuples also work.</p>
 <p>Using the <code>Restaurant</code> model (which has <code>location = GeoField()</code>), create restaurants
 with locations and search by radius:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-64-1" name="__codelineno-64-1" href="#__codelineno-64-1"></a><span class="n">siam</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
-<a id="__codelineno-64-2" name="__codelineno-64-2" href="#__codelineno-64-2"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Siam Garden&quot;</span><span class="p">,</span>
-<a id="__codelineno-64-3" name="__codelineno-64-3" href="#__codelineno-64-3"></a>    <span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Thai&quot;</span><span class="p">,</span>
-<a id="__codelineno-64-4" name="__codelineno-64-4" href="#__codelineno-64-4"></a>    <span class="n">rating</span><span class="o">=</span><span class="mf">4.5</span><span class="p">,</span>
-<a id="__codelineno-64-5" name="__codelineno-64-5" href="#__codelineno-64-5"></a>    <span class="n">location</span><span class="o">=</span><span class="n">GeoField</span><span class="o">.</span><span class="n">Coordinates</span><span class="p">(</span><span class="n">latitude</span><span class="o">=</span><span class="mf">40.7484</span><span class="p">,</span> <span class="n">longitude</span><span class="o">=-</span><span class="mf">73.9857</span><span class="p">),</span>
-<a id="__codelineno-64-6" name="__codelineno-64-6" href="#__codelineno-64-6"></a><span class="p">)</span>
-<a id="__codelineno-64-7" name="__codelineno-64-7" href="#__codelineno-64-7"></a>
-<a id="__codelineno-64-8" name="__codelineno-64-8" href="#__codelineno-64-8"></a><span class="n">bella</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
-<a id="__codelineno-64-9" name="__codelineno-64-9" href="#__codelineno-64-9"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Bella Napoli&quot;</span><span class="p">,</span>
-<a id="__codelineno-64-10" name="__codelineno-64-10" href="#__codelineno-64-10"></a>    <span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Italian&quot;</span><span class="p">,</span>
-<a id="__codelineno-64-11" name="__codelineno-64-11" href="#__codelineno-64-11"></a>    <span class="n">rating</span><span class="o">=</span><span class="mf">4.2</span><span class="p">,</span>
-<a id="__codelineno-64-12" name="__codelineno-64-12" href="#__codelineno-64-12"></a>    <span class="n">location</span><span class="o">=</span><span class="n">GeoField</span><span class="o">.</span><span class="n">Coordinates</span><span class="p">(</span><span class="n">latitude</span><span class="o">=</span><span class="mf">40.7527</span><span class="p">,</span> <span class="n">longitude</span><span class="o">=-</span><span class="mf">73.9772</span><span class="p">),</span>
-<a id="__codelineno-64-13" name="__codelineno-64-13" href="#__codelineno-64-13"></a><span class="p">)</span>
-<a id="__codelineno-64-14" name="__codelineno-64-14" href="#__codelineno-64-14"></a>
-<a id="__codelineno-64-15" name="__codelineno-64-15" href="#__codelineno-64-15"></a><span class="n">taco</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
-<a id="__codelineno-64-16" name="__codelineno-64-16" href="#__codelineno-64-16"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Taco Loco&quot;</span><span class="p">,</span>
-<a id="__codelineno-64-17" name="__codelineno-64-17" href="#__codelineno-64-17"></a>    <span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Mexican&quot;</span><span class="p">,</span>
-<a id="__codelineno-64-18" name="__codelineno-64-18" href="#__codelineno-64-18"></a>    <span class="n">rating</span><span class="o">=</span><span class="mf">4.0</span><span class="p">,</span>
-<a id="__codelineno-64-19" name="__codelineno-64-19" href="#__codelineno-64-19"></a>    <span class="n">location</span><span class="o">=</span><span class="n">GeoField</span><span class="o">.</span><span class="n">Coordinates</span><span class="p">(</span><span class="n">latitude</span><span class="o">=</span><span class="mf">40.7589</span><span class="p">,</span> <span class="n">longitude</span><span class="o">=-</span><span class="mf">73.9851</span><span class="p">),</span>
-<a id="__codelineno-64-20" name="__codelineno-64-20" href="#__codelineno-64-20"></a><span class="p">)</span>
-<a id="__codelineno-64-21" name="__codelineno-64-21" href="#__codelineno-64-21"></a>
-<a id="__codelineno-64-22" name="__codelineno-64-22" href="#__codelineno-64-22"></a><span class="c1"># Find restaurants within 2km of Midtown Manhattan</span>
-<a id="__codelineno-64-23" name="__codelineno-64-23" href="#__codelineno-64-23"></a><span class="n">nearby</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
-<a id="__codelineno-64-24" name="__codelineno-64-24" href="#__codelineno-64-24"></a>    <span class="n">location</span><span class="o">=</span><span class="p">(</span><span class="mf">40.7505</span><span class="p">,</span> <span class="o">-</span><span class="mf">73.9834</span><span class="p">),</span>
-<a id="__codelineno-64-25" name="__codelineno-64-25" href="#__codelineno-64-25"></a>    <span class="n">location_radius</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
-<a id="__codelineno-64-26" name="__codelineno-64-26" href="#__codelineno-64-26"></a>    <span class="n">location_radius_unit</span><span class="o">=</span><span class="s1">&#39;km&#39;</span><span class="p">,</span>
-<a id="__codelineno-64-27" name="__codelineno-64-27" href="#__codelineno-64-27"></a><span class="p">)</span>
-<a id="__codelineno-64-28" name="__codelineno-64-28" href="#__codelineno-64-28"></a>
-<a id="__codelineno-64-29" name="__codelineno-64-29" href="#__codelineno-64-29"></a><span class="nb">print</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">nearby</span><span class="p">))</span>
-<a id="__codelineno-64-30" name="__codelineno-64-30" href="#__codelineno-64-30"></a><span class="c1"># =&gt; 3</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-65-1" name="__codelineno-65-1" href="#__codelineno-65-1"></a><span class="n">siam</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
+<a id="__codelineno-65-2" name="__codelineno-65-2" href="#__codelineno-65-2"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Siam Garden&quot;</span><span class="p">,</span>
+<a id="__codelineno-65-3" name="__codelineno-65-3" href="#__codelineno-65-3"></a>    <span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Thai&quot;</span><span class="p">,</span>
+<a id="__codelineno-65-4" name="__codelineno-65-4" href="#__codelineno-65-4"></a>    <span class="n">rating</span><span class="o">=</span><span class="mf">4.5</span><span class="p">,</span>
+<a id="__codelineno-65-5" name="__codelineno-65-5" href="#__codelineno-65-5"></a>    <span class="n">location</span><span class="o">=</span><span class="n">GeoField</span><span class="o">.</span><span class="n">Coordinates</span><span class="p">(</span><span class="n">latitude</span><span class="o">=</span><span class="mf">40.7484</span><span class="p">,</span> <span class="n">longitude</span><span class="o">=-</span><span class="mf">73.9857</span><span class="p">),</span>
+<a id="__codelineno-65-6" name="__codelineno-65-6" href="#__codelineno-65-6"></a><span class="p">)</span>
+<a id="__codelineno-65-7" name="__codelineno-65-7" href="#__codelineno-65-7"></a>
+<a id="__codelineno-65-8" name="__codelineno-65-8" href="#__codelineno-65-8"></a><span class="n">bella</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
+<a id="__codelineno-65-9" name="__codelineno-65-9" href="#__codelineno-65-9"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Bella Napoli&quot;</span><span class="p">,</span>
+<a id="__codelineno-65-10" name="__codelineno-65-10" href="#__codelineno-65-10"></a>    <span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Italian&quot;</span><span class="p">,</span>
+<a id="__codelineno-65-11" name="__codelineno-65-11" href="#__codelineno-65-11"></a>    <span class="n">rating</span><span class="o">=</span><span class="mf">4.2</span><span class="p">,</span>
+<a id="__codelineno-65-12" name="__codelineno-65-12" href="#__codelineno-65-12"></a>    <span class="n">location</span><span class="o">=</span><span class="n">GeoField</span><span class="o">.</span><span class="n">Coordinates</span><span class="p">(</span><span class="n">latitude</span><span class="o">=</span><span class="mf">40.7527</span><span class="p">,</span> <span class="n">longitude</span><span class="o">=-</span><span class="mf">73.9772</span><span class="p">),</span>
+<a id="__codelineno-65-13" name="__codelineno-65-13" href="#__codelineno-65-13"></a><span class="p">)</span>
+<a id="__codelineno-65-14" name="__codelineno-65-14" href="#__codelineno-65-14"></a>
+<a id="__codelineno-65-15" name="__codelineno-65-15" href="#__codelineno-65-15"></a><span class="n">taco</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
+<a id="__codelineno-65-16" name="__codelineno-65-16" href="#__codelineno-65-16"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Taco Loco&quot;</span><span class="p">,</span>
+<a id="__codelineno-65-17" name="__codelineno-65-17" href="#__codelineno-65-17"></a>    <span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Mexican&quot;</span><span class="p">,</span>
+<a id="__codelineno-65-18" name="__codelineno-65-18" href="#__codelineno-65-18"></a>    <span class="n">rating</span><span class="o">=</span><span class="mf">4.0</span><span class="p">,</span>
+<a id="__codelineno-65-19" name="__codelineno-65-19" href="#__codelineno-65-19"></a>    <span class="n">location</span><span class="o">=</span><span class="n">GeoField</span><span class="o">.</span><span class="n">Coordinates</span><span class="p">(</span><span class="n">latitude</span><span class="o">=</span><span class="mf">40.7589</span><span class="p">,</span> <span class="n">longitude</span><span class="o">=-</span><span class="mf">73.9851</span><span class="p">),</span>
+<a id="__codelineno-65-20" name="__codelineno-65-20" href="#__codelineno-65-20"></a><span class="p">)</span>
+<a id="__codelineno-65-21" name="__codelineno-65-21" href="#__codelineno-65-21"></a>
+<a id="__codelineno-65-22" name="__codelineno-65-22" href="#__codelineno-65-22"></a><span class="c1"># Find restaurants within 2km of Midtown Manhattan</span>
+<a id="__codelineno-65-23" name="__codelineno-65-23" href="#__codelineno-65-23"></a><span class="n">nearby</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+<a id="__codelineno-65-24" name="__codelineno-65-24" href="#__codelineno-65-24"></a>    <span class="n">location</span><span class="o">=</span><span class="p">(</span><span class="mf">40.7505</span><span class="p">,</span> <span class="o">-</span><span class="mf">73.9834</span><span class="p">),</span>
+<a id="__codelineno-65-25" name="__codelineno-65-25" href="#__codelineno-65-25"></a>    <span class="n">location_radius</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+<a id="__codelineno-65-26" name="__codelineno-65-26" href="#__codelineno-65-26"></a>    <span class="n">location_radius_unit</span><span class="o">=</span><span class="s1">&#39;km&#39;</span><span class="p">,</span>
+<a id="__codelineno-65-27" name="__codelineno-65-27" href="#__codelineno-65-27"></a><span class="p">)</span>
+<a id="__codelineno-65-28" name="__codelineno-65-28" href="#__codelineno-65-28"></a>
+<a id="__codelineno-65-29" name="__codelineno-65-29" href="#__codelineno-65-29"></a><span class="nb">print</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">nearby</span><span class="p">))</span>
+<a id="__codelineno-65-30" name="__codelineno-65-30" href="#__codelineno-65-30"></a><span class="c1"># =&gt; 3</span>
 </code></pre></div>
 <p>Supported radius units are <code>"m"</code> (meters), <code>"km"</code> (kilometers), <code>"ft"</code> (feet), and
 <code>"mi"</code> (miles).</p>
@@ -4870,32 +5012,32 @@ with locations and search by radius:</p>
 <p>Add <code>{field_name}_with_distances=True</code> to include distance information in results.
 Each returned object gets <code>_geo_distance</code> and <code>_geo_distance_unit</code> attributes, and
 results are sorted closest first.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-65-1" name="__codelineno-65-1" href="#__codelineno-65-1"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
-<a id="__codelineno-65-2" name="__codelineno-65-2" href="#__codelineno-65-2"></a>    <span class="n">location</span><span class="o">=</span><span class="p">(</span><span class="mf">40.7505</span><span class="p">,</span> <span class="o">-</span><span class="mf">73.9834</span><span class="p">),</span>
-<a id="__codelineno-65-3" name="__codelineno-65-3" href="#__codelineno-65-3"></a>    <span class="n">location_radius</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
-<a id="__codelineno-65-4" name="__codelineno-65-4" href="#__codelineno-65-4"></a>    <span class="n">location_radius_unit</span><span class="o">=</span><span class="s1">&#39;km&#39;</span><span class="p">,</span>
-<a id="__codelineno-65-5" name="__codelineno-65-5" href="#__codelineno-65-5"></a>    <span class="n">location_with_distances</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-<a id="__codelineno-65-6" name="__codelineno-65-6" href="#__codelineno-65-6"></a><span class="p">)</span>
-<a id="__codelineno-65-7" name="__codelineno-65-7" href="#__codelineno-65-7"></a>
-<a id="__codelineno-65-8" name="__codelineno-65-8" href="#__codelineno-65-8"></a><span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">results</span><span class="p">:</span>
-<a id="__codelineno-65-9" name="__codelineno-65-9" href="#__codelineno-65-9"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">r</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">r</span><span class="o">.</span><span class="n">_geo_distance</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">r</span><span class="o">.</span><span class="n">_geo_distance_unit</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-<a id="__codelineno-65-10" name="__codelineno-65-10" href="#__codelineno-65-10"></a><span class="c1"># =&gt; Siam Garden: 0.3 km</span>
-<a id="__codelineno-65-11" name="__codelineno-65-11" href="#__codelineno-65-11"></a><span class="c1"># =&gt; Bella Napoli: 0.7 km</span>
-<a id="__codelineno-65-12" name="__codelineno-65-12" href="#__codelineno-65-12"></a><span class="c1"># =&gt; Taco Loco: 0.9 km</span>
-</code></pre></div>
-<p>You can also use a model instance as the center point with <code>_member</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-66-1" name="__codelineno-66-1" href="#__codelineno-66-1"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
-<a id="__codelineno-66-2" name="__codelineno-66-2" href="#__codelineno-66-2"></a>    <span class="n">location_member</span><span class="o">=</span><span class="n">siam</span><span class="p">,</span>
-<a id="__codelineno-66-3" name="__codelineno-66-3" href="#__codelineno-66-3"></a>    <span class="n">location_radius</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+<a id="__codelineno-66-2" name="__codelineno-66-2" href="#__codelineno-66-2"></a>    <span class="n">location</span><span class="o">=</span><span class="p">(</span><span class="mf">40.7505</span><span class="p">,</span> <span class="o">-</span><span class="mf">73.9834</span><span class="p">),</span>
+<a id="__codelineno-66-3" name="__codelineno-66-3" href="#__codelineno-66-3"></a>    <span class="n">location_radius</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
 <a id="__codelineno-66-4" name="__codelineno-66-4" href="#__codelineno-66-4"></a>    <span class="n">location_radius_unit</span><span class="o">=</span><span class="s1">&#39;km&#39;</span><span class="p">,</span>
 <a id="__codelineno-66-5" name="__codelineno-66-5" href="#__codelineno-66-5"></a>    <span class="n">location_with_distances</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
 <a id="__codelineno-66-6" name="__codelineno-66-6" href="#__codelineno-66-6"></a><span class="p">)</span>
 <a id="__codelineno-66-7" name="__codelineno-66-7" href="#__codelineno-66-7"></a>
 <a id="__codelineno-66-8" name="__codelineno-66-8" href="#__codelineno-66-8"></a><span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">results</span><span class="p">:</span>
-<a id="__codelineno-66-9" name="__codelineno-66-9" href="#__codelineno-66-9"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">r</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">r</span><span class="o">.</span><span class="n">_geo_distance</span><span class="si">}</span><span class="s2"> km&quot;</span><span class="p">)</span>
-<a id="__codelineno-66-10" name="__codelineno-66-10" href="#__codelineno-66-10"></a><span class="c1"># =&gt; Siam Garden: 0.0 km</span>
-<a id="__codelineno-66-11" name="__codelineno-66-11" href="#__codelineno-66-11"></a><span class="c1"># =&gt; Bella Napoli: 0.8 km</span>
-<a id="__codelineno-66-12" name="__codelineno-66-12" href="#__codelineno-66-12"></a><span class="c1"># =&gt; Taco Loco: 1.2 km</span>
+<a id="__codelineno-66-9" name="__codelineno-66-9" href="#__codelineno-66-9"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">r</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">r</span><span class="o">.</span><span class="n">_geo_distance</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">r</span><span class="o">.</span><span class="n">_geo_distance_unit</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-66-10" name="__codelineno-66-10" href="#__codelineno-66-10"></a><span class="c1"># =&gt; Siam Garden: 0.3 km</span>
+<a id="__codelineno-66-11" name="__codelineno-66-11" href="#__codelineno-66-11"></a><span class="c1"># =&gt; Bella Napoli: 0.7 km</span>
+<a id="__codelineno-66-12" name="__codelineno-66-12" href="#__codelineno-66-12"></a><span class="c1"># =&gt; Taco Loco: 0.9 km</span>
+</code></pre></div>
+<p>You can also use a model instance as the center point with <code>_member</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-67-1" name="__codelineno-67-1" href="#__codelineno-67-1"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+<a id="__codelineno-67-2" name="__codelineno-67-2" href="#__codelineno-67-2"></a>    <span class="n">location_member</span><span class="o">=</span><span class="n">siam</span><span class="p">,</span>
+<a id="__codelineno-67-3" name="__codelineno-67-3" href="#__codelineno-67-3"></a>    <span class="n">location_radius</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+<a id="__codelineno-67-4" name="__codelineno-67-4" href="#__codelineno-67-4"></a>    <span class="n">location_radius_unit</span><span class="o">=</span><span class="s1">&#39;km&#39;</span><span class="p">,</span>
+<a id="__codelineno-67-5" name="__codelineno-67-5" href="#__codelineno-67-5"></a>    <span class="n">location_with_distances</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-67-6" name="__codelineno-67-6" href="#__codelineno-67-6"></a><span class="p">)</span>
+<a id="__codelineno-67-7" name="__codelineno-67-7" href="#__codelineno-67-7"></a>
+<a id="__codelineno-67-8" name="__codelineno-67-8" href="#__codelineno-67-8"></a><span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">results</span><span class="p">:</span>
+<a id="__codelineno-67-9" name="__codelineno-67-9" href="#__codelineno-67-9"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">r</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">r</span><span class="o">.</span><span class="n">_geo_distance</span><span class="si">}</span><span class="s2"> km&quot;</span><span class="p">)</span>
+<a id="__codelineno-67-10" name="__codelineno-67-10" href="#__codelineno-67-10"></a><span class="c1"># =&gt; Siam Garden: 0.0 km</span>
+<a id="__codelineno-67-11" name="__codelineno-67-11" href="#__codelineno-67-11"></a><span class="c1"># =&gt; Bella Napoli: 0.8 km</span>
+<a id="__codelineno-67-12" name="__codelineno-67-12" href="#__codelineno-67-12"></a><span class="c1"># =&gt; Taco Loco: 1.2 km</span>
 </code></pre></div>
 <div class="admonition tip">
 <p class="admonition-title">Tip</p>
@@ -4906,28 +5048,28 @@ time. This is very fast even with millions of locations.</p>
 <p><code>DataFrameField</code> stores <a href="https://pandas.pydata.org/docs/reference/frame.html">Pandas DataFrame</a>
 objects directly in Redis. This is useful for analytics or caching computed datasets.
 Because it depends on Pandas, it uses a separate model outside the canonical set.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-67-1" name="__codelineno-67-1" href="#__codelineno-67-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
-<a id="__codelineno-67-2" name="__codelineno-67-2" href="#__codelineno-67-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">KeyField</span>
-<a id="__codelineno-67-3" name="__codelineno-67-3" href="#__codelineno-67-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.dataframe_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">DataFrameField</span>
-<a id="__codelineno-67-4" name="__codelineno-67-4" href="#__codelineno-67-4"></a>
-<a id="__codelineno-67-5" name="__codelineno-67-5" href="#__codelineno-67-5"></a><span class="k">class</span><span class="w"> </span><span class="nc">SalesReport</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
-<a id="__codelineno-67-6" name="__codelineno-67-6" href="#__codelineno-67-6"></a>    <span class="n">name</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
-<a id="__codelineno-67-7" name="__codelineno-67-7" href="#__codelineno-67-7"></a>    <span class="n">data</span> <span class="o">=</span> <span class="n">DataFrameField</span><span class="p">()</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-68-1" name="__codelineno-68-1" href="#__codelineno-68-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<a id="__codelineno-68-2" name="__codelineno-68-2" href="#__codelineno-68-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">KeyField</span>
+<a id="__codelineno-68-3" name="__codelineno-68-3" href="#__codelineno-68-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.dataframe_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">DataFrameField</span>
+<a id="__codelineno-68-4" name="__codelineno-68-4" href="#__codelineno-68-4"></a>
+<a id="__codelineno-68-5" name="__codelineno-68-5" href="#__codelineno-68-5"></a><span class="k">class</span><span class="w"> </span><span class="nc">SalesReport</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
+<a id="__codelineno-68-6" name="__codelineno-68-6" href="#__codelineno-68-6"></a>    <span class="n">name</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
+<a id="__codelineno-68-7" name="__codelineno-68-7" href="#__codelineno-68-7"></a>    <span class="n">data</span> <span class="o">=</span> <span class="n">DataFrameField</span><span class="p">()</span>
 </code></pre></div>
 <p>Store and retrieve a sales report:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-68-1" name="__codelineno-68-1" href="#__codelineno-68-1"></a><span class="n">sales_data</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
-<a id="__codelineno-68-2" name="__codelineno-68-2" href="#__codelineno-68-2"></a>    <span class="s1">&#39;restaurant&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;Siam Garden&#39;</span><span class="p">,</span> <span class="s1">&#39;Bella Napoli&#39;</span><span class="p">,</span> <span class="s1">&#39;Taco Loco&#39;</span><span class="p">],</span>
-<a id="__codelineno-68-3" name="__codelineno-68-3" href="#__codelineno-68-3"></a>    <span class="s1">&#39;orders&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">142</span><span class="p">,</span> <span class="mi">98</span><span class="p">,</span> <span class="mi">215</span><span class="p">],</span>
-<a id="__codelineno-68-4" name="__codelineno-68-4" href="#__codelineno-68-4"></a>    <span class="s1">&#39;revenue&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mf">3408.58</span><span class="p">,</span> <span class="mf">2156.02</span><span class="p">,</span> <span class="mf">3225.85</span><span class="p">],</span>
-<a id="__codelineno-68-5" name="__codelineno-68-5" href="#__codelineno-68-5"></a><span class="p">})</span>
-<a id="__codelineno-68-6" name="__codelineno-68-6" href="#__codelineno-68-6"></a>
-<a id="__codelineno-68-7" name="__codelineno-68-7" href="#__codelineno-68-7"></a><span class="n">report</span> <span class="o">=</span> <span class="n">SalesReport</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;weekly_summary&quot;</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="n">sales_data</span><span class="p">)</span>
-<a id="__codelineno-68-8" name="__codelineno-68-8" href="#__codelineno-68-8"></a>
-<a id="__codelineno-68-9" name="__codelineno-68-9" href="#__codelineno-68-9"></a><span class="n">loaded</span> <span class="o">=</span> <span class="n">SalesReport</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;weekly_summary&quot;</span><span class="p">)</span>
-<a id="__codelineno-68-10" name="__codelineno-68-10" href="#__codelineno-68-10"></a><span class="nb">print</span><span class="p">(</span><span class="n">loaded</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s1">&#39;revenue&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
-<a id="__codelineno-68-11" name="__codelineno-68-11" href="#__codelineno-68-11"></a><span class="c1"># =&gt; 8790.45</span>
-<a id="__codelineno-68-12" name="__codelineno-68-12" href="#__codelineno-68-12"></a>
-<a id="__codelineno-68-13" name="__codelineno-68-13" href="#__codelineno-68-13"></a><span class="n">report</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-69-1" name="__codelineno-69-1" href="#__codelineno-69-1"></a><span class="n">sales_data</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+<a id="__codelineno-69-2" name="__codelineno-69-2" href="#__codelineno-69-2"></a>    <span class="s1">&#39;restaurant&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;Siam Garden&#39;</span><span class="p">,</span> <span class="s1">&#39;Bella Napoli&#39;</span><span class="p">,</span> <span class="s1">&#39;Taco Loco&#39;</span><span class="p">],</span>
+<a id="__codelineno-69-3" name="__codelineno-69-3" href="#__codelineno-69-3"></a>    <span class="s1">&#39;orders&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">142</span><span class="p">,</span> <span class="mi">98</span><span class="p">,</span> <span class="mi">215</span><span class="p">],</span>
+<a id="__codelineno-69-4" name="__codelineno-69-4" href="#__codelineno-69-4"></a>    <span class="s1">&#39;revenue&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mf">3408.58</span><span class="p">,</span> <span class="mf">2156.02</span><span class="p">,</span> <span class="mf">3225.85</span><span class="p">],</span>
+<a id="__codelineno-69-5" name="__codelineno-69-5" href="#__codelineno-69-5"></a><span class="p">})</span>
+<a id="__codelineno-69-6" name="__codelineno-69-6" href="#__codelineno-69-6"></a>
+<a id="__codelineno-69-7" name="__codelineno-69-7" href="#__codelineno-69-7"></a><span class="n">report</span> <span class="o">=</span> <span class="n">SalesReport</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;weekly_summary&quot;</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="n">sales_data</span><span class="p">)</span>
+<a id="__codelineno-69-8" name="__codelineno-69-8" href="#__codelineno-69-8"></a>
+<a id="__codelineno-69-9" name="__codelineno-69-9" href="#__codelineno-69-9"></a><span class="n">loaded</span> <span class="o">=</span> <span class="n">SalesReport</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;weekly_summary&quot;</span><span class="p">)</span>
+<a id="__codelineno-69-10" name="__codelineno-69-10" href="#__codelineno-69-10"></a><span class="nb">print</span><span class="p">(</span><span class="n">loaded</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s1">&#39;revenue&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
+<a id="__codelineno-69-11" name="__codelineno-69-11" href="#__codelineno-69-11"></a><span class="c1"># =&gt; 8790.45</span>
+<a id="__codelineno-69-12" name="__codelineno-69-12" href="#__codelineno-69-12"></a>
+<a id="__codelineno-69-13" name="__codelineno-69-13" href="#__codelineno-69-13"></a><span class="n">report</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
 </code></pre></div>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
@@ -4945,70 +5087,70 @@ not already in your environment.</p>
 <p>This section summarizes the core methods available on every Popoto model.</p>
 <h3 id="creating-and-saving">Creating and Saving<a class="headerlink" href="#creating-and-saving" title="Permanent link">&para;</a></h3>
 <p>Create and save in one step with <code>create()</code>, or instantiate and call <code>save()</code> later:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-69-1" name="__codelineno-69-1" href="#__codelineno-69-1"></a><span class="c1"># One-step creation</span>
-<a id="__codelineno-69-2" name="__codelineno-69-2" href="#__codelineno-69-2"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
-<a id="__codelineno-69-3" name="__codelineno-69-3" href="#__codelineno-69-3"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Siam Garden&quot;</span><span class="p">,</span>
-<a id="__codelineno-69-4" name="__codelineno-69-4" href="#__codelineno-69-4"></a>    <span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Thai&quot;</span><span class="p">,</span>
-<a id="__codelineno-69-5" name="__codelineno-69-5" href="#__codelineno-69-5"></a>    <span class="n">rating</span><span class="o">=</span><span class="mf">4.5</span><span class="p">,</span>
-<a id="__codelineno-69-6" name="__codelineno-69-6" href="#__codelineno-69-6"></a>    <span class="n">location</span><span class="o">=</span><span class="n">GeoField</span><span class="o">.</span><span class="n">Coordinates</span><span class="p">(</span><span class="n">latitude</span><span class="o">=</span><span class="mf">40.7484</span><span class="p">,</span> <span class="n">longitude</span><span class="o">=-</span><span class="mf">73.9857</span><span class="p">),</span>
-<a id="__codelineno-69-7" name="__codelineno-69-7" href="#__codelineno-69-7"></a><span class="p">)</span>
-<a id="__codelineno-69-8" name="__codelineno-69-8" href="#__codelineno-69-8"></a>
-<a id="__codelineno-69-9" name="__codelineno-69-9" href="#__codelineno-69-9"></a><span class="c1"># Two-step creation</span>
-<a id="__codelineno-69-10" name="__codelineno-69-10" href="#__codelineno-69-10"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Bella Napoli&quot;</span><span class="p">)</span>
-<a id="__codelineno-69-11" name="__codelineno-69-11" href="#__codelineno-69-11"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">cuisine</span> <span class="o">=</span> <span class="s2">&quot;Italian&quot;</span>
-<a id="__codelineno-69-12" name="__codelineno-69-12" href="#__codelineno-69-12"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">rating</span> <span class="o">=</span> <span class="mf">4.2</span>
-<a id="__codelineno-69-13" name="__codelineno-69-13" href="#__codelineno-69-13"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-70-1" name="__codelineno-70-1" href="#__codelineno-70-1"></a><span class="c1"># One-step creation</span>
+<a id="__codelineno-70-2" name="__codelineno-70-2" href="#__codelineno-70-2"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
+<a id="__codelineno-70-3" name="__codelineno-70-3" href="#__codelineno-70-3"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Siam Garden&quot;</span><span class="p">,</span>
+<a id="__codelineno-70-4" name="__codelineno-70-4" href="#__codelineno-70-4"></a>    <span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Thai&quot;</span><span class="p">,</span>
+<a id="__codelineno-70-5" name="__codelineno-70-5" href="#__codelineno-70-5"></a>    <span class="n">rating</span><span class="o">=</span><span class="mf">4.5</span><span class="p">,</span>
+<a id="__codelineno-70-6" name="__codelineno-70-6" href="#__codelineno-70-6"></a>    <span class="n">location</span><span class="o">=</span><span class="n">GeoField</span><span class="o">.</span><span class="n">Coordinates</span><span class="p">(</span><span class="n">latitude</span><span class="o">=</span><span class="mf">40.7484</span><span class="p">,</span> <span class="n">longitude</span><span class="o">=-</span><span class="mf">73.9857</span><span class="p">),</span>
+<a id="__codelineno-70-7" name="__codelineno-70-7" href="#__codelineno-70-7"></a><span class="p">)</span>
+<a id="__codelineno-70-8" name="__codelineno-70-8" href="#__codelineno-70-8"></a>
+<a id="__codelineno-70-9" name="__codelineno-70-9" href="#__codelineno-70-9"></a><span class="c1"># Two-step creation</span>
+<a id="__codelineno-70-10" name="__codelineno-70-10" href="#__codelineno-70-10"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Bella Napoli&quot;</span><span class="p">)</span>
+<a id="__codelineno-70-11" name="__codelineno-70-11" href="#__codelineno-70-11"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">cuisine</span> <span class="o">=</span> <span class="s2">&quot;Italian&quot;</span>
+<a id="__codelineno-70-12" name="__codelineno-70-12" href="#__codelineno-70-12"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">rating</span> <span class="o">=</span> <span class="mf">4.2</span>
+<a id="__codelineno-70-13" name="__codelineno-70-13" href="#__codelineno-70-13"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
 </code></pre></div>
 <h3 id="loading">Loading<a class="headerlink" href="#loading" title="Permanent link">&para;</a></h3>
 <p>Load an instance by its KeyField values. For <code>AutoKeyField</code> models, load by the
 generated key:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-70-1" name="__codelineno-70-1" href="#__codelineno-70-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Siam Garden&quot;</span><span class="p">)</span>
-<a id="__codelineno-70-2" name="__codelineno-70-2" href="#__codelineno-70-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">restaurant</span><span class="o">.</span><span class="n">cuisine</span><span class="p">)</span>
-<a id="__codelineno-70-3" name="__codelineno-70-3" href="#__codelineno-70-3"></a><span class="c1"># =&gt; &quot;Thai&quot;</span>
-<a id="__codelineno-70-4" name="__codelineno-70-4" href="#__codelineno-70-4"></a>
-<a id="__codelineno-70-5" name="__codelineno-70-5" href="#__codelineno-70-5"></a><span class="n">order</span> <span class="o">=</span> <span class="n">Order</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">order_id</span><span class="o">=</span><span class="n">order</span><span class="o">.</span><span class="n">order_id</span><span class="p">)</span>
-<a id="__codelineno-70-6" name="__codelineno-70-6" href="#__codelineno-70-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">order</span><span class="o">.</span><span class="n">status</span><span class="p">)</span>
-<a id="__codelineno-70-7" name="__codelineno-70-7" href="#__codelineno-70-7"></a><span class="c1"># =&gt; &quot;pending&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-71-1" name="__codelineno-71-1" href="#__codelineno-71-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Siam Garden&quot;</span><span class="p">)</span>
+<a id="__codelineno-71-2" name="__codelineno-71-2" href="#__codelineno-71-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">restaurant</span><span class="o">.</span><span class="n">cuisine</span><span class="p">)</span>
+<a id="__codelineno-71-3" name="__codelineno-71-3" href="#__codelineno-71-3"></a><span class="c1"># =&gt; &quot;Thai&quot;</span>
+<a id="__codelineno-71-4" name="__codelineno-71-4" href="#__codelineno-71-4"></a>
+<a id="__codelineno-71-5" name="__codelineno-71-5" href="#__codelineno-71-5"></a><span class="n">order</span> <span class="o">=</span> <span class="n">Order</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">order_id</span><span class="o">=</span><span class="n">order</span><span class="o">.</span><span class="n">order_id</span><span class="p">)</span>
+<a id="__codelineno-71-6" name="__codelineno-71-6" href="#__codelineno-71-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">order</span><span class="o">.</span><span class="n">status</span><span class="p">)</span>
+<a id="__codelineno-71-7" name="__codelineno-71-7" href="#__codelineno-71-7"></a><span class="c1"># =&gt; &quot;pending&quot;</span>
 </code></pre></div>
 <h3 id="updating">Updating<a class="headerlink" href="#updating" title="Permanent link">&para;</a></h3>
 <p>Modify fields and call <code>save()</code> to persist changes. For models with
 <code>DatetimeField(auto_now=True)</code>, the timestamp is refreshed automatically:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-71-1" name="__codelineno-71-1" href="#__codelineno-71-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Siam Garden&quot;</span><span class="p">)</span>
-<a id="__codelineno-71-2" name="__codelineno-71-2" href="#__codelineno-71-2"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">rating</span> <span class="o">=</span> <span class="mf">4.7</span>
-<a id="__codelineno-71-3" name="__codelineno-71-3" href="#__codelineno-71-3"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
-<a id="__codelineno-71-4" name="__codelineno-71-4" href="#__codelineno-71-4"></a>
-<a id="__codelineno-71-5" name="__codelineno-71-5" href="#__codelineno-71-5"></a><span class="n">order</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="s2">&quot;delivered&quot;</span>
-<a id="__codelineno-71-6" name="__codelineno-71-6" href="#__codelineno-71-6"></a><span class="n">order</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
-<a id="__codelineno-71-7" name="__codelineno-71-7" href="#__codelineno-71-7"></a><span class="c1"># order.updated_at is automatically refreshed</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-72-1" name="__codelineno-72-1" href="#__codelineno-72-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Siam Garden&quot;</span><span class="p">)</span>
+<a id="__codelineno-72-2" name="__codelineno-72-2" href="#__codelineno-72-2"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">rating</span> <span class="o">=</span> <span class="mf">4.7</span>
+<a id="__codelineno-72-3" name="__codelineno-72-3" href="#__codelineno-72-3"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<a id="__codelineno-72-4" name="__codelineno-72-4" href="#__codelineno-72-4"></a>
+<a id="__codelineno-72-5" name="__codelineno-72-5" href="#__codelineno-72-5"></a><span class="n">order</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="s2">&quot;delivered&quot;</span>
+<a id="__codelineno-72-6" name="__codelineno-72-6" href="#__codelineno-72-6"></a><span class="n">order</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<a id="__codelineno-72-7" name="__codelineno-72-7" href="#__codelineno-72-7"></a><span class="c1"># order.updated_at is automatically refreshed</span>
 </code></pre></div>
 <h3 id="deleting">Deleting<a class="headerlink" href="#deleting" title="Permanent link">&para;</a></h3>
 <p>Call <code>delete()</code> to remove an instance and clean up all associated indexes (sorted
 set entries, geo set entries, unique field indexes, and relationship indexes):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-72-1" name="__codelineno-72-1" href="#__codelineno-72-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Siam Garden&quot;</span><span class="p">)</span>
-<a id="__codelineno-72-2" name="__codelineno-72-2" href="#__codelineno-72-2"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-73-1" name="__codelineno-73-1" href="#__codelineno-73-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Siam Garden&quot;</span><span class="p">)</span>
+<a id="__codelineno-73-2" name="__codelineno-73-2" href="#__codelineno-73-2"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
 </code></pre></div>
 <h3 id="validation">Validation<a class="headerlink" href="#validation" title="Permanent link">&para;</a></h3>
 <p>Use <code>is_valid()</code> to check whether a model instance passes all field validations
 before saving:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-73-1" name="__codelineno-73-1" href="#__codelineno-73-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Thai&quot;</span><span class="p">,</span> <span class="n">rating</span><span class="o">=</span><span class="mf">4.5</span><span class="p">)</span>
-<a id="__codelineno-73-2" name="__codelineno-73-2" href="#__codelineno-73-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">restaurant</span><span class="o">.</span><span class="n">is_valid</span><span class="p">())</span>
-<a id="__codelineno-73-3" name="__codelineno-73-3" href="#__codelineno-73-3"></a><span class="c1"># =&gt; False  (name is a required KeyField)</span>
-<a id="__codelineno-73-4" name="__codelineno-73-4" href="#__codelineno-73-4"></a>
-<a id="__codelineno-73-5" name="__codelineno-73-5" href="#__codelineno-73-5"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;Siam Garden&quot;</span>
-<a id="__codelineno-73-6" name="__codelineno-73-6" href="#__codelineno-73-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">restaurant</span><span class="o">.</span><span class="n">is_valid</span><span class="p">())</span>
-<a id="__codelineno-73-7" name="__codelineno-73-7" href="#__codelineno-73-7"></a><span class="c1"># =&gt; True</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-74-1" name="__codelineno-74-1" href="#__codelineno-74-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Thai&quot;</span><span class="p">,</span> <span class="n">rating</span><span class="o">=</span><span class="mf">4.5</span><span class="p">)</span>
+<a id="__codelineno-74-2" name="__codelineno-74-2" href="#__codelineno-74-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">restaurant</span><span class="o">.</span><span class="n">is_valid</span><span class="p">())</span>
+<a id="__codelineno-74-3" name="__codelineno-74-3" href="#__codelineno-74-3"></a><span class="c1"># =&gt; False  (name is a required KeyField)</span>
+<a id="__codelineno-74-4" name="__codelineno-74-4" href="#__codelineno-74-4"></a>
+<a id="__codelineno-74-5" name="__codelineno-74-5" href="#__codelineno-74-5"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;Siam Garden&quot;</span>
+<a id="__codelineno-74-6" name="__codelineno-74-6" href="#__codelineno-74-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">restaurant</span><span class="o">.</span><span class="n">is_valid</span><span class="p">())</span>
+<a id="__codelineno-74-7" name="__codelineno-74-7" href="#__codelineno-74-7"></a><span class="c1"># =&gt; True</span>
 </code></pre></div>
 <h3 id="the-db_key-property">The db_key Property<a class="headerlink" href="#the-db_key-property" title="Permanent link">&para;</a></h3>
 <p>Every saved instance has a <code>db_key</code> property that exposes its Redis key:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-74-1" name="__codelineno-74-1" href="#__codelineno-74-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Siam Garden&quot;</span><span class="p">,</span> <span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Thai&quot;</span><span class="p">,</span> <span class="n">rating</span><span class="o">=</span><span class="mf">4.5</span><span class="p">)</span>
-<a id="__codelineno-74-2" name="__codelineno-74-2" href="#__codelineno-74-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">restaurant</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">)</span>
-<a id="__codelineno-74-3" name="__codelineno-74-3" href="#__codelineno-74-3"></a><span class="c1"># =&gt; &quot;Restaurant:Siam Garden&quot;</span>
-<a id="__codelineno-74-4" name="__codelineno-74-4" href="#__codelineno-74-4"></a>
-<a id="__codelineno-74-5" name="__codelineno-74-5" href="#__codelineno-74-5"></a><span class="n">reservation</span> <span class="o">=</span> <span class="n">Reservation</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
-<a id="__codelineno-74-6" name="__codelineno-74-6" href="#__codelineno-74-6"></a>    <span class="n">restaurant</span><span class="o">=</span><span class="s2">&quot;Siam Garden&quot;</span><span class="p">,</span> <span class="n">customer</span><span class="o">=</span><span class="s2">&quot;foodie42&quot;</span><span class="p">,</span> <span class="n">party_size</span><span class="o">=</span><span class="mi">4</span>
-<a id="__codelineno-74-7" name="__codelineno-74-7" href="#__codelineno-74-7"></a><span class="p">)</span>
-<a id="__codelineno-74-8" name="__codelineno-74-8" href="#__codelineno-74-8"></a><span class="nb">print</span><span class="p">(</span><span class="n">reservation</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">)</span>
-<a id="__codelineno-74-9" name="__codelineno-74-9" href="#__codelineno-74-9"></a><span class="c1"># =&gt; &quot;Reservation:Siam Garden:foodie42&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-75-1" name="__codelineno-75-1" href="#__codelineno-75-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Siam Garden&quot;</span><span class="p">,</span> <span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Thai&quot;</span><span class="p">,</span> <span class="n">rating</span><span class="o">=</span><span class="mf">4.5</span><span class="p">)</span>
+<a id="__codelineno-75-2" name="__codelineno-75-2" href="#__codelineno-75-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">restaurant</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">)</span>
+<a id="__codelineno-75-3" name="__codelineno-75-3" href="#__codelineno-75-3"></a><span class="c1"># =&gt; &quot;Restaurant:Siam Garden&quot;</span>
+<a id="__codelineno-75-4" name="__codelineno-75-4" href="#__codelineno-75-4"></a>
+<a id="__codelineno-75-5" name="__codelineno-75-5" href="#__codelineno-75-5"></a><span class="n">reservation</span> <span class="o">=</span> <span class="n">Reservation</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
+<a id="__codelineno-75-6" name="__codelineno-75-6" href="#__codelineno-75-6"></a>    <span class="n">restaurant</span><span class="o">=</span><span class="s2">&quot;Siam Garden&quot;</span><span class="p">,</span> <span class="n">customer</span><span class="o">=</span><span class="s2">&quot;foodie42&quot;</span><span class="p">,</span> <span class="n">party_size</span><span class="o">=</span><span class="mi">4</span>
+<a id="__codelineno-75-7" name="__codelineno-75-7" href="#__codelineno-75-7"></a><span class="p">)</span>
+<a id="__codelineno-75-8" name="__codelineno-75-8" href="#__codelineno-75-8"></a><span class="nb">print</span><span class="p">(</span><span class="n">reservation</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">)</span>
+<a id="__codelineno-75-9" name="__codelineno-75-9" href="#__codelineno-75-9"></a><span class="c1"># =&gt; &quot;Reservation:Siam Garden:foodie42&quot;</span>
 </code></pre></div>
 <p>The <code>db_key</code> is useful for debugging, logging, or performing custom Redis operations
 outside of Popoto's query API.</p>

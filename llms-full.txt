@@ -389,6 +389,22 @@ global configuration.
 See [ContentField](fields.md#contentfield) and [EmbeddingField](fields.md#embeddingfield)
 for field-level configuration.
 
+### Multi-Worker Cache Invalidation
+
+`EmbeddingField` keeps a per-process embedding matrix cache. In multi-worker
+deployments (gunicorn, multiple containers/pods), the `POPOTO_EMBEDDING_INVALIDATION`
+environment variable controls how peer processes are notified when a write
+invalidates that cache:
+
+| Value | Behavior |
+|-------|----------|
+| `pubsub` *(default)* | Valkey pub/sub notifies all workers within ~100 ms; falls back to an on-disk version check if the subscriber can't start. |
+| `mtime` | No pub/sub; each worker reloads on the next `semantic_search()` after a peer write, using an on-disk `_version` counter. For batch/offline deployments without a live Valkey connection. |
+| `none` | Pre-fix single-process behavior — zero overhead, no cross-process invalidation. |
+
+See [EmbeddingField → Multi-Worker Deployments](fields.md#embeddingfield) for the
+full staleness-window table and the cost of the default mode.
+
 ### Embedding Providers
 
 Popoto ships with three built-in embedding providers. All implement the
@@ -2126,6 +2142,61 @@ results = Memory.query.semantic_search("revenue trends", limit=5)
 
 See [Content and Embedding Fields](features/content-and-embedding-fields.md) for the
 full feature reference including storage layout, cache management, and provider API.
+
+### Multi-Worker Deployments
+
+`EmbeddingField` caches a pre-normalized embedding matrix in a **process-local**
+dict for fast similarity search. In a multi-worker deployment (gunicorn with
+several workers, multiple containers, multiple pods) a write on one worker must
+invalidate the caches held by its peers — otherwise the peers keep serving
+semantic-search results that omit newly written records or include deleted ones,
+with no error signal.
+
+The mechanism is selected via the `POPOTO_EMBEDDING_INVALIDATION` environment
+variable:
+
+```bash
+POPOTO_EMBEDDING_INVALIDATION=pubsub   # default
+POPOTO_EMBEDDING_INVALIDATION=mtime    # batch/offline, no live Valkey needed
+POPOTO_EMBEDDING_INVALIDATION=none     # single-process, zero overhead
+```
+
+**`pubsub` (default)** — On every save/delete, the writing worker publishes to a
+per-class Valkey channel `popoto:embedding:invalidate:{ModelName}`. Each worker
+runs a daemon subscriber thread (lazily started on its first `semantic_search()`)
+that drops the local cache when a peer publishes. Uses only core Valkey/Redis
+`PUBLISH`/`SUBSCRIBE` (no Redis modules), so it works on both Redis and Valkey.
+
+**`mtime`** — No Valkey connection required. Before returning a cached matrix,
+the worker checks a monotonic integer `_version` counter stored in the
+`_index.json` sidecar (an `os.stat()` mtime check is used only as a cheap "did
+anything change at all" pre-check). The integer counter is **granularity-proof**:
+it detects a peer write even when both writes fall within the same filesystem
+mtime tick (a hazard on 1-second-resolution filesystems such as older HFS+ or
+some NFS mounts — not just NFS).
+
+**`none`** — Restores the original single-process behavior: no subscriber thread,
+no extra Valkey connection, no `PUBLISH`, no `os.stat()`. Cross-process writes are
+never observed.
+
+#### Staleness window
+
+| Mode | Staleness window | Notes |
+|------|------------------|-------|
+| `pubsub` (default) | Valkey RTT + worker poll interval (`sleep_time=0.1`), i.e. ≤ ~100 ms | Requires a live Valkey connection. If the subscriber thread cannot start (Valkey down, ACL restriction, pool exhaustion), it **degrades to the on-disk `_version` check** — never back to the stale-cache bug. After a connection drop, the window extends to the next `semantic_search()` on that worker (the listener self-heals via lazy respawn). |
+| `mtime` | Next `semantic_search()` after the write lands on disk | One `os.stat()` per search (~0.4 µs). The integer `_version` counter eliminates the same-mtime-tick hazard on every filesystem. |
+| `none` | Never invalidated across processes | Pre-fix single-process behavior. Zero pub/sub overhead, zero extra threads. |
+
+#### Cost of the default for single-process apps
+
+The default `pubsub` mode is **not** byte-for-byte free for a single-process
+deployment: it starts one daemon thread per model class, holds one extra Valkey
+connection per such class, and issues one `PUBLISH` per save/delete that loops
+back to itself (the handler recognizes its own per-process worker id and skips the
+message, so no redundant reload occurs). The functional *results* are identical to
+the pre-fix behavior in all three modes for a single process; only the resource
+profile differs. Single-process apps that want zero overhead should set
+`POPOTO_EMBEDDING_INVALIDATION=none`.
 
 ## GeoField
 
