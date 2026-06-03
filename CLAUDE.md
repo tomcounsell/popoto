@@ -34,6 +34,19 @@ mkdocs serve                    # Serve docs locally
 
 Tests automatically use Redis DB 15 for isolation (via the `popoto.pytest_plugin` entry point). Each test gets a clean DB via `flushdb()`. Override with `POPOTO_TEST_DB=<n>` env var or `popoto_test_db` in `pyproject.toml` `[tool.pytest.ini_options]`. DB 0 is rejected to prevent accidental production data loss.
 
+### Local CI (`scripts/ci-local.sh`)
+
+Run the meaningful CI gates locally before pushing, to catch failures without burning GitHub Actions minutes (or waiting on GitHub being up):
+
+```bash
+scripts/ci-local.sh              # default: tests + stress + docs
+scripts/ci-local.sh --all        # everything, incl. build + guard
+scripts/ci-local.sh --fast       # tests only
+scripts/ci-local.sh docs build   # only the named gates
+```
+
+Gates mirror the workflows: `tests` → `test-valkey.yml` (full suite vs local Redis), `stress` → `stress-tests.yml`, `docs` → `deploy-docs.yml` (`mkdocs build --strict`), `build` → `release.yml` (`uv build`), `guard` → `guard-main-push.yml`. Valkey is intentionally skipped — redis-py treats both identically and the project never uses Redis modules, so the local-Redis suite covers it; GitHub still runs the real Valkey job on PR/merge as the final word. The runner auto-refreshes the editable install if `popoto.__version__` (read from package metadata) drifts from `pyproject.toml`, which otherwise causes a false `test_version` failure locally.
+
 ## Debugging with Redis/Valkey CLI
 
 Use `redis-cli` (or `valkey-cli` for Valkey) to inspect database state when debugging Popoto models. Both CLIs use identical commands.
