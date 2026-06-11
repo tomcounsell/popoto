@@ -230,8 +230,17 @@ class TestContextAssemblerInit:
             model_class=SimpleMemory,
             score_weights={"relevance": 1.0},
         )
-        # Default: len(str(record)) // 4
-        assert assembler._token_counter("hello world") == len("hello world") // 4
+        # Default is the module-private stdlib estimator over serialized text
+        from src.popoto.recipes.context_assembler import _estimate_tokens
+
+        assert assembler._token_counter is _estimate_tokens
+        # The estimator measures content scale: 2,000 chars of prose-like
+        # content must count hundreds of tokens, not the ~12 the old
+        # key-length heuristic produced.
+        text = "the quick brown fox jumps over the lazy dog " * 45  # ~2,000 chars
+        assert assembler._token_counter(text) > 100
+        # Empty input counts zero
+        assert _estimate_tokens("") == 0
 
 
 # ---------------------------------------------------------------------------

@@ -63,8 +63,10 @@ Example:
 import json
 import logging
 import math
+import re
 import statistics
 import time
+import warnings
 from dataclasses import dataclass, field
 
 from ..fields.bm25_field import BM25Field
@@ -619,6 +621,65 @@ def _staleness_ratio(
 
 
 # ---------------------------------------------------------------------------
+# Token Estimation (spike-1, plan: context_assembler_token_budget, issue #408)
+# ---------------------------------------------------------------------------
+
+# Experimental tuning constants for the default token estimator — NOT user
+# config. Measured against tiktoken cl100k_base over the audit PoC corpus
+# wrapped in the actual formatter envelope (spike-1, 2026-06-11). Resulting
+# error per content type: english +20.3%, code +20.6%, cjk +4.5%,
+# urls -15.0%, emoji -1.1% (overestimates are the safe direction for budget
+# enforcement).
+# Prose-like ASCII chars ([a-z] and whitespace) run ~5 chars per token.
+LOW_CHARS_PER_TOKEN_WEIGHT = 0.2
+# Digits/symbols/uppercase ASCII tokenize densely, ~1.2 chars per token.
+OTHER_CHARS_PER_TOKEN_WEIGHT = 0.85
+# Each \uXXXX escape (json.dumps ensure_ascii=True output) measures ~3.7
+# cl100k tokens per 6-char escape sequence.
+UESC_TOKEN_WEIGHT = 3.7
+# Raw non-ASCII content (xml/natural formats do not escape) tokenizes at
+# roughly 0.75 tokens per UTF-8 byte (BPE splits near byte boundaries).
+NON_ASCII_BYTE_TOKEN_WEIGHT = 0.75
+
+_UESC = re.compile(r"\\u[0-9a-fA-F]{4}")
+_LOW = re.compile(r"[a-z\s]")
+
+
+def _estimate_tokens(s: str) -> int:
+    """Estimate the LLM token count of serialized record text (stdlib-only).
+
+    Escape-aware character-class heuristic (spike-1): ``\\uXXXX`` escape
+    sequences are counted as whole-escape units, remaining ASCII chars are
+    split into prose-like vs dense classes, and raw non-ASCII chars are
+    counted per UTF-8 byte. Each character contributes to exactly one term —
+    non-ASCII chars counted in the byte term are excluded from the
+    ``low``/``other`` ASCII counts.
+
+    This is the default ``token_counter`` for :class:`ContextAssembler`. It
+    receives the serialized per-record string (the exact slice the formatter
+    emits), never the record object.
+    """
+    escapes = len(_UESC.findall(s))
+    rest = _UESC.sub("", s)
+    non_ascii_bytes = 0
+    ascii_chars = []
+    for c in rest:
+        if ord(c) > 127:
+            non_ascii_bytes += len(c.encode("utf-8"))
+        else:
+            ascii_chars.append(c)
+    ascii_rest = "".join(ascii_chars)
+    low = len(_LOW.findall(ascii_rest))
+    other = len(ascii_rest) - low
+    return round(
+        LOW_CHARS_PER_TOKEN_WEIGHT * low
+        + OTHER_CHARS_PER_TOKEN_WEIGHT * other
+        + UESC_TOKEN_WEIGHT * escapes
+        + NON_ASCII_BYTE_TOKEN_WEIGHT * non_ascii_bytes
+    )
+
+
+# ---------------------------------------------------------------------------
 # Output Formatters
 # ---------------------------------------------------------------------------
 
@@ -640,38 +701,83 @@ def _record_to_dict(record) -> dict:
     return result
 
 
-def format_structured(records) -> str:
-    """Format records as JSON array."""
-    dicts = [_record_to_dict(r) for r in records]
-    return json.dumps(dicts, default=str, indent=2)
+def _serialize_record(record, output_format) -> str:
+    """Serialize one record to the exact per-record slice the formatter emits.
 
+    The compositional identity holds byte-for-byte per format::
 
-def format_xml(records) -> str:
-    """Format records as XML tags."""
-    lines = ["<records>"]
-    for record in records:
-        d = _record_to_dict(record)
-        lines.append("  <record>")
+        formatter(records) == wrapper_prefix
+                              + sep.join(_serialize_record(r) for r in records)
+                              + wrapper_suffix
+
+    * ``"structured"`` (default): ``json.dumps(_record_to_dict(r),
+      default=str, indent=2)`` re-indented to the JSON array's nesting level
+      (two extra leading spaces per line).
+    * ``"xml"``: the ``  <record>...</record>`` block including its two-space
+      prefix.
+    * ``"natural"``: the per-record ``key: value`` line WITHOUT the ``"N. "``
+      enumeration prefix — numbering depends on final position after
+      skip-not-break budget selection, so it is composition framing (applied
+      by :func:`_compose_natural`), analogous to the wrapper framing of the
+      other formats.
+
+    Wrapper framing (array brackets, ``<records>`` envelope, enumeration
+    prefixes) is the only residual excluded from per-record token counting;
+    it is a fixed handful of tokens per assembly, independent of record count
+    or size.
+    """
+    d = _record_to_dict(record)
+    if output_format == "xml":
+        lines = ["  <record>"]
         for key, val in d.items():
             escaped = (
                 str(val).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             )
             lines.append(f"    <{key}>{escaped}</{key}>")
         lines.append("  </record>")
-    lines.append("</records>")
-    return "\n".join(lines)
+        return "\n".join(lines)
+    if output_format == "natural":
+        return ", ".join(f"{k}: {v}" for k, v in d.items() if v is not None)
+    # structured (default, and the fallback for unknown formats — must stay
+    # consistent with the composition fallback in assemble())
+    dumped = json.dumps(d, default=str, indent=2)
+    return "\n".join("  " + line for line in dumped.split("\n"))
+
+
+def _compose_structured(serialized) -> str:
+    """Wrap pre-serialized structured record slices in the JSON array framing."""
+    if not serialized:
+        return "[]"
+    return "[\n" + ",\n".join(serialized) + "\n]"
+
+
+def _compose_xml(serialized) -> str:
+    """Wrap pre-serialized xml record blocks in the ``<records>`` envelope."""
+    if not serialized:
+        return "<records>\n</records>"
+    return "<records>\n" + "\n".join(serialized) + "\n</records>"
+
+
+def _compose_natural(serialized) -> str:
+    """Join pre-serialized natural lines, applying enumeration framing."""
+    if not serialized:
+        return ""
+    return "\n".join(f"{i}. {s}" for i, s in enumerate(serialized, 1))
+
+
+def format_structured(records) -> str:
+    """Format records as JSON array."""
+    return _compose_structured([_serialize_record(r, "structured") for r in records])
+
+
+def format_xml(records) -> str:
+    """Format records as XML tags."""
+    return _compose_xml([_serialize_record(r, "xml") for r in records])
 
 
 def format_natural(records) -> str:
     """Format records as natural language summary."""
-    if not records:
-        return ""
-    parts = []
-    for i, record in enumerate(records, 1):
-        d = _record_to_dict(record)
-        fields_str = ", ".join(f"{k}: {v}" for k, v in d.items() if v is not None)
-        parts.append(f"{i}. {fields_str}")
-    return "\n".join(parts)
+    return _compose_natural([_serialize_record(r, "natural") for r in records])
 
 
 # ---------------------------------------------------------------------------
@@ -704,13 +810,31 @@ class ContextAssembler:
             pull path (e.g., ``{"relevance": 0.6, "confidence": 0.3}``).
             Ignored when the effective retrieval mode is ``"hybrid"``.
         max_items: Maximum records to return. Default 10.
-        max_tokens: Optional soft token budget. Records are dropped to fit.
+        max_tokens: Optional soft token budget over the serialized
+            per-record output. Packing is greedy first-fit in rank order:
+            a record that does not fit is skipped (not a packing
+            terminator) and later smaller records may still be admitted.
+            The first record is always admitted, so ``assemble()`` never
+            returns zero records when candidates exist — a single
+            oversized record can therefore overshoot the budget, and that
+            overshoot is visible in ``metadata["token_count"]``. Wrapper
+            framing (JSON array brackets, ``<records>`` envelope,
+            enumeration prefixes) is excluded from counting; it is a fixed
+            handful of tokens per assembly.
         surfacing_threshold: Minimum score for push-path records. Default 0.5.
         propagation_depth: BFS depth for CoOccurrence. Default 2.
         output_format: ``"structured"`` (JSON), ``"xml"``, or ``"natural"``.
             Default ``"structured"``.
-        token_counter: Optional callable(record) -> int.
-            Default: ``len(str(r)) // 4``.
+        token_counter: Optional ``callable(serialized_text: str) -> int``.
+            Receives the exact serialized per-record string the formatter
+            emits for the active ``output_format`` (never the record
+            object) and must return a non-negative ``int``. Counters that
+            raise, or return anything else, fall back to the stdlib
+            estimator for that record (with a diagnostic warning).
+            Old-contract ``callable(record)`` counters trigger a
+            ``DeprecationWarning`` at construction. Default: a stdlib
+            character-class heuristic over the serialized text
+            (``_estimate_tokens``).
         retrieval_mode: ``"auto"`` (default), ``"hybrid"``, or
             ``"composite"``. See class docstring for semantics.
 
@@ -739,7 +863,28 @@ class ContextAssembler:
         self.surfacing_threshold = surfacing_threshold
         self.propagation_depth = propagation_depth
         self.output_format = output_format
-        self._token_counter = token_counter or (lambda r: len(str(r)) // 4)
+        if token_counter is None:
+            self._token_counter = _estimate_tokens
+        else:
+            # Construction-time contract probe: token_counter receives the
+            # serialized record STRING, not the record object. Old-contract
+            # callable(record) counters typically raise TypeError or
+            # AttributeError when handed a str — surface that loudly here
+            # instead of silently degrading per-call in production.
+            try:
+                token_counter("popoto token_counter contract probe")
+            except (TypeError, AttributeError):
+                warnings.warn(
+                    "token_counter now receives the serialized record string "
+                    "(str), not the record object — update your counter",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+            except Exception:
+                # Other probe failures are not contract signals; per-call
+                # validation in _count_record_tokens handles them.
+                pass
+            self._token_counter = token_counter
 
         # Detect field capabilities on model
         self._existence_filter = None
@@ -878,27 +1023,31 @@ class ContextAssembler:
         # max_items cap
         selected = merged[: self.max_items]
 
-        # max_tokens cap
+        # max_tokens cap — greedy first-fit in rank order (skip, not break):
+        # a record that does not fit is skipped and the loop continues, so
+        # later smaller records may still be admitted. The first record is
+        # always admitted (never-zero-records guarantee); a single oversized
+        # record can overshoot the budget, visibly in metadata["token_count"].
+        # The serialized strings captured here at count time are the exact
+        # strings the formatter composes below — counting can never diverge
+        # from emission, even if _post_effects mutates record state.
         total_tokens = 0
+        selected_serialized = []
         if self.max_tokens is not None:
             budget_selected = []
             for record in selected:
-                try:
-                    tokens = self._token_counter(record)
-                except Exception:
-                    tokens = len(str(record)) // 4
-                    logger.warning("Token counter failed, falling back to heuristic")
-                if total_tokens + tokens > self.max_tokens and budget_selected:
-                    break
+                tokens, serialized = self._count_record_tokens(record)
+                if budget_selected and total_tokens + tokens > self.max_tokens:
+                    continue
                 total_tokens += tokens
                 budget_selected.append(record)
+                selected_serialized.append(serialized)
             selected = budget_selected
         else:
             for record in selected:
-                try:
-                    total_tokens += self._token_counter(record)
-                except Exception:
-                    total_tokens += len(str(record)) // 4
+                tokens, serialized = self._count_record_tokens(record)
+                total_tokens += tokens
+                selected_serialized.append(serialized)
 
         # Identify proactive records in final selection
         proactive = [r for r in selected if _get_key(r) in push_keys]
@@ -909,13 +1058,16 @@ class ContextAssembler:
         )
 
         # --- Format ---
-        formatter = {
-            "structured": format_structured,
-            "xml": format_xml,
-            "natural": format_natural,
-        }.get(self.output_format, format_structured)
+        # Compose from the count-time serialized strings (NOT a re-serialize
+        # after _post_effects): what was counted is byte-for-byte what is
+        # emitted, plus fixed wrapper framing.
+        compose = {
+            "structured": _compose_structured,
+            "xml": _compose_xml,
+            "natural": _compose_natural,
+        }.get(self.output_format, _compose_structured)
 
-        formatted = formatter(selected)
+        formatted = compose(selected_serialized)
 
         timing_ms = round((time.time() - t0) * 1000, 2)
 
@@ -946,6 +1098,38 @@ class ContextAssembler:
             formatted=formatted,
             metadata=metadata,
         )
+
+    def _count_record_tokens(self, record):
+        """Serialize ``record`` for the active output format and count tokens.
+
+        Single counting path used by both the budgeted and unbudgeted
+        branches of budget selection. The configured ``token_counter``
+        receives the serialized string; its return value is validated (a
+        non-negative ``int``, not a ``bool``). Any exception or invalid
+        return falls back to :func:`_estimate_tokens` over the same string,
+        with a diagnostic warning.
+
+        Returns:
+            Tuple ``(tokens, serialized)`` — the token count and the exact
+            per-record string the formatter will emit for this record.
+        """
+        serialized = _serialize_record(record, self.output_format)
+        try:
+            tokens = self._token_counter(serialized)
+            if not isinstance(tokens, int) or isinstance(tokens, bool) or tokens < 0:
+                raise TypeError(
+                    f"token_counter returned {tokens!r}; " "expected a non-negative int"
+                )
+        except Exception as e:
+            logger.warning(
+                "token_counter raised %s on serialized text (first 80 chars: "
+                "%r); falling back to _estimate_tokens. Contract: "
+                "callable(str) -> int.",
+                type(e).__name__,
+                serialized[:80],
+            )
+            tokens = _estimate_tokens(serialized)
+        return tokens, serialized
 
     def _pull_path(self, query_cues, filters):
         """Dispatch pull-path retrieval based on ``self._effective_mode``.
