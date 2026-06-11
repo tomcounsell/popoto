@@ -1097,3 +1097,129 @@ class TestFeatureDocAndDocstrings:
         assert (
             "echoed" in section
         ), "Expected 'echoed' migration guidance in v1.5.0 CHANGELOG entry"
+
+
+# =========================================================================
+# Auto-discharge epsilon boundary (issue #407)
+# =========================================================================
+
+
+class EpsilonBoundaryMemory(popoto.Model):
+    """Model with ConfidenceField + pressured CyclicDecayField for the
+    auto-discharge epsilon-boundary tests."""
+
+    name = popoto.UniqueKeyField()
+    certainty = ConfidenceField(initial_confidence=0.5)
+    relevance = CyclicDecayField(
+        decay_rate=0.5,
+        cycles=[(TemporalPeriod.YEARLY, 5.0, 0)],
+        pressure_rate=0.1,
+    )
+
+
+class TestAutoDischargeEpsilonBoundary:
+    """Auto-discharge fires only for conf < threshold - CONFIDENCE_EPSILON.
+
+    Values within float epsilon of the 0.1 threshold (e.g. the IEEE-754
+    predecessor 0.09999999999999998) are NOT below it — fixes the float
+    artifact that auto-discharged on the first contradiction.
+    """
+
+    def _cleanup(self):
+        EpsilonBoundaryMemory.delete_all()
+        for pattern in (
+            "$ConfidencF:EpsilonBoundaryMemory:*",
+            "$CyclicDecayF:EpsilonBoundaryMemory:*",
+        ):
+            for key in POPOTO_REDIS_DB.keys(pattern):
+                POPOTO_REDIS_DB.delete(key)
+
+    def _seed(self, m, confidence, last_resolved):
+        """Seed companion-hash confidence and pressure state directly.
+
+        Companion hashes are field metadata (not Popoto model hashes), so
+        direct writes are the established seeding pattern in these tests.
+        """
+        member_key = m.db_key.redis_key
+
+        conf_field = m._meta.fields["certainty"]
+        data_hash_key = conf_field.get_data_hash_key(m, "certainty")
+        POPOTO_REDIS_DB.hset(
+            data_hash_key,
+            member_key,
+            msgpack.packb(
+                {
+                    "confidence": confidence,
+                    "evidence_count": 20,
+                    "corroborations": 0,
+                    "contradictions": 20,
+                }
+            ),
+        )
+
+        rel_field = m._meta.fields["relevance"]
+        pressure_hash_key = rel_field.get_pressure_hash_key(m, "relevance")
+        POPOTO_REDIS_DB.hset(
+            pressure_hash_key,
+            member_key,
+            msgpack.packb({"rate": 0.1, "last_resolved": last_resolved}),
+        )
+        return pressure_hash_key, member_key
+
+    def test_float_predecessor_of_threshold_does_not_discharge(self):
+        """conf seeded at the float predecessor of 0.1 must NOT discharge.
+
+        After the contradicted update (signal 0.1, at the evidence cap):
+        c' = c + (0.1 - c)/21, which keeps c within CONFIDENCE_EPSILON
+        (1e-9) of the 0.1 threshold — so pressure stays unresolved.
+        """
+        self._cleanup()
+        try:
+            m = EpsilonBoundaryMemory(name="eps-predecessor")
+            m.save()
+            thirty_days_ago = time.time() - 86400 * 30
+            pressure_hash_key, member_key = self._seed(
+                m, confidence=0.09999999999999998, last_resolved=thirty_days_ago
+            )
+
+            ObservationProtocol.on_context_used(
+                [m], {m.db_key.redis_key: "contradicted"}
+            )
+
+            raw = POPOTO_REDIS_DB.hget(pressure_hash_key, member_key)
+            assert raw is not None
+            pdata = msgpack.unpackb(raw, raw=False)
+            assert abs(pdata["last_resolved"] - thirty_days_ago) < 1.0, (
+                "pressure was resolved — a value within float epsilon of "
+                "the threshold must NOT auto-discharge"
+            )
+        finally:
+            self._cleanup()
+
+    def test_clearly_below_threshold_discharges(self):
+        """conf clearly below threshold - epsilon DOES auto-discharge.
+
+        Seeded at 0.05; the contradicted update gives
+        c' = 0.05 + (0.1 - 0.05)/21 = 0.0524 < 0.1 - 1e-9 -> discharge.
+        """
+        self._cleanup()
+        try:
+            m = EpsilonBoundaryMemory(name="eps-below")
+            m.save()
+            thirty_days_ago = time.time() - 86400 * 30
+            pressure_hash_key, member_key = self._seed(
+                m, confidence=0.05, last_resolved=thirty_days_ago
+            )
+
+            ObservationProtocol.on_context_used(
+                [m], {m.db_key.redis_key: "contradicted"}
+            )
+
+            raw = POPOTO_REDIS_DB.hget(pressure_hash_key, member_key)
+            assert raw is not None
+            pdata = msgpack.unpackb(raw, raw=False)
+            assert (
+                time.time() - pdata["last_resolved"] < 60
+            ), "pressure should have been auto-discharged"
+        finally:
+            self._cleanup()
