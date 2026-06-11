@@ -34,6 +34,10 @@ Source: `src/popoto/fields/confidence_field.py`
 | Constant | Default | Optimal Range | Sensitivity |
 |----------|---------|--------------|-------------|
 | `initial_confidence` | 0.5 | [0.1, 0.9] | Low |
+| `evidence_cap` | 20 | — | Not swept — user-facing config, not a tuning constant |
+| `CONFIDENCE_EPSILON` | 1e-9 | — | Not swept — internal float-boundary guard |
+
+`evidence_cap` (default `Defaults.CONFIDENCE_EVIDENCE_CAP = 20`) is the capped-evidence Bayesian rule's memory-window length — an epistemics knob deliberately exposed as per-field user config per the [issue #407](https://github.com/tomcounsell/popoto/issues/407) decision, so it is excluded from experimental sweeps. `CONFIDENCE_EPSILON` is the float tolerance applied to the `AUTO_DISCHARGE_CONFIDENCE_THRESHOLD` comparison in `observation.py` (values within epsilon of the threshold do not discharge); it guards a boundary condition and is not user config. See [ConfidenceField](../features/confidence-field.md) for the update-rule semantics.
 
 ### WriteFilterMixin
 

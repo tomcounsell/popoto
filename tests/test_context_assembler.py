@@ -683,7 +683,9 @@ class TestRetrievalQualityAssembler:
 
         Fixture:
             * 3 FixtureMemory instances (topics: alpha, beta, gamma),
-              confidences post-update: 0.9 signal, 0.5 signal, 0.3 signal
+              one update each from initial 0.5 at signals 0.9, 0.5, 0.3;
+              capped Bayesian oracle (c0 + s) / 2 gives post-update
+              confidences 0.7, 0.5, 0.4
             * score_weights={"relevance": 1.0}, max_items=5,
               surfacing_threshold=0.5
             * query_cues={"topic": "alpha", "other": "beta"}
@@ -716,7 +718,10 @@ class TestRetrievalQualityAssembler:
         # Hardcoded expected scalars captured against the pre-refactor
         # implementation. DO NOT tweak these to paper over a refactor —
         # any divergence means the refactor changed numeric behavior.
-        assert self._isclose(quality.avg_confidence, 0.5666666666666667)
+        # avg_confidence recomputed for the capped Bayesian rule (#407):
+        # ((0.5+0.9)/2 + (0.5+0.5)/2 + (0.5+0.3)/2) / 3
+        #   = (0.7 + 0.5 + 0.4) / 3 = 1.6 / 3 = 0.5333...
+        assert self._isclose(quality.avg_confidence, 1.6 / 3)
         assert self._isclose(quality.score_spread, 0.0)
         assert self._isclose(quality.fok_score, 0.64)
         assert self._isclose(quality.staleness_ratio, 1.0)

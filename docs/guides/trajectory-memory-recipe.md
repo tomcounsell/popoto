@@ -97,7 +97,15 @@ Periodic (e.g. nightly reflection): cluster recent episodes by their fingerprint
 new_or_reinforced = tm.crystallize(partition="team-a")
 ```
 
-Crystallization is **idempotent**: re-running on an unchanged episode set produces no drift in confidence or `last_reinforced`. The recipe achieves this by observing only episodes newer than each pattern's `last_reinforced` timestamp (Risk 2 in the plan). Bayesian confidence updates are commutative — concurrent crystallizations converge.
+Crystallization is **idempotent via watermark**: re-running on an unchanged episode set produces zero drift in confidence or `last_reinforced`. After each run, `last_reinforced` is set to the maximum `recorded_at` timestamp across all observed episodes (the watermark). Subsequent runs observe only episodes strictly newer than that watermark, so the same episodes are never double-counted.
+
+**Operational constraints for idempotence:**
+
+- **One crystallizer per partition.** Concurrent crystallization of the same partition is not coordinated — two processes reading the same episode set and both calling `_observe_episodes` will double-observe episodes, inflating confidence counts. Run a single crystallizer per partition.
+- **NTP-synced writers.** The watermark guarantee assumes episode writers and the crystallizer are within ordinary NTP clock synchronization. A writer whose clock lags behind the current watermark will record episodes with `recorded_at` timestamps below the watermark; the strict `>` filter skips those episodes permanently on all subsequent runs.
+- **`last_reinforced` stores episode time, not crystallize time.** The stored score for `last_reinforced` equals the maximum observed episode `recorded_at` — which may predate the wall-clock time the crystallize call ran. An operator running `ZSCORE` on the recency index reads "newest episode processed", not "when crystallize last ran". Under batched or nightly crystallization, patterns will rank correspondingly older in recency-weighted recall (`DEFAULT_SCORE_WEIGHTS` weights `last_reinforced` at 0.4) than they would under wall-clock semantics.
+
+Note: within the evidence window, the capped-evidence update rule is order-invariant (to ~1e-12), which bounds — but does not eliminate — confidence drift if the single-crystallizer constraint is violated. Do not rely on commutativity as a substitute for the operational constraint.
 
 The canonical sequence is the **modal trajectory** across the group, with ties broken by the most recent episode. Anything fancier (edit-distance, n-gram similarity, custom aggregators) is intentionally out of scope.
 
@@ -126,7 +134,7 @@ The recipe introspects field names via `model_class._meta.fields`. Field names b
 | ---------------------- | --------------------- | ---------------------- | ----------------------------- |
 | Each fingerprint field | `KeyField`            | from `fingerprint_fields` ctor arg | Exact-match recall |
 | Partition              | `KeyField`            | `partition`            | Multi-tenant isolation        |
-| Confidence             | `ConfidenceField`     | `confidence`           | Bayesian success tracking     |
+| Confidence             | `ConfidenceField`     | `confidence`           | Capped-evidence success tracking |
 | Last reinforced        | `DecayingSortedField` | `last_reinforced`      | Recency-weighted ranking      |
 | Canonical sequence     | `ListField`           | `canonical_sequence`   | Modal trajectory              |
 
@@ -199,5 +207,5 @@ This produces deterministic 16-hex-char fingerprints suitable for use as a `KeyF
 * [ContextAssembler](../features/context-assembler.md) — retrieval-to-injection bridge for **semantic** memory
 * [SubconsciousMemory](subconscious-memory-recipe.md) — automatic inject/extract around LLM turns
 * [PolicyCache](policy-cache-recipe.md) — RL-style action selection by state fingerprint (the closest analogue: also clusters by fingerprint, also uses `ConfidenceField`)
-* [`ConfidenceField`](../features/confidence-field.md) — Bayesian confidence primitive used for pattern reinforcement
+* [`ConfidenceField`](../features/confidence-field.md) — capped-evidence confidence primitive used for pattern reinforcement
 * [`DecayingSortedField`](../features/decaying-sorted-field.md) — time-decaying score used for `last_reinforced` ranking

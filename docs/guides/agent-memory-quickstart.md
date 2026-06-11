@@ -75,7 +75,7 @@ results[0].confirm_access()  # marks as actually used
 
 ## Level 3: Learning — Outcomes Strengthen or Weaken Beliefs
 
-Add `ConfidenceField` for Bayesian certainty tracking. Use `ObservationProtocol` to report how the agent used each memory — acted on, dismissed, or contradicted.
+Add `ConfidenceField` for certainty tracking. Use `ObservationProtocol` to report how the agent used each memory — acted on, dismissed, or contradicted.
 
 ```python
 from popoto import ConfidenceField, ObservationProtocol

@@ -43,7 +43,7 @@ PolicyEntry composes these primitives:
 | `AutoKeyField` | Unique entry ID |
 | `KeyField` | Agent partitioning, state fingerprinting, action type |
 | `DecayingSortedField` | Q-value storage with temporal decay |
-| `ConfidenceField` | Bayesian confidence from outcome history |
+| `ConfidenceField` | Capped-evidence confidence from outcome history |
 | `CoOccurrenceField` | Weighted graph between related policies |
 | `ExistenceFilter` | Bloom filter for fast state lookup |
 | `EventStreamMixin` | Mutation log via Redis Streams |

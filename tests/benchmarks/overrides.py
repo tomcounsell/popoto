@@ -57,6 +57,10 @@ MODULE_CONSTANTS = {
         observation_mod,
         "AUTO_DISCHARGE_CONFIDENCE_THRESHOLD",
     ),
+    # Float-boundary tolerance for the auto-discharge comparison (#407).
+    # Internal constant, but it has a module-level alias in observation.py,
+    # so it is registered here for sync-test coverage and restore symmetry.
+    "CONFIDENCE_EPSILON": (observation_mod, "CONFIDENCE_EPSILON"),
     # PolicyCache (policy_cache.py)
     "MIN_EVENTS_FOR_CRYSTALLIZATION": (
         policy_cache_mod,

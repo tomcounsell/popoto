@@ -53,6 +53,8 @@ class Defaults:
 
     # -- ConfidenceField ------------------------------------------------------
     INITIAL_CONFIDENCE = 0.5  # empirically inert (sweep 2026-04-20, variance=0.0011)
+    CONFIDENCE_EVIDENCE_CAP = 20  # deliberate user-facing config exception per issue #407 decision — a memory-window length / epistemics knob (how much history a belief retains), not an experimental tuning constant
+    CONFIDENCE_EPSILON = 1e-9  # internal float-boundary tolerance for threshold comparisons, not user config
 
     # -- ObservationProtocol (fields/observation.py) --------------------------
     ACTED_CONFIDENCE_SIGNAL = 0.9  # sweep 2026-04-20 variance=0.030 (borderline); best in-range was 0.1 but 0.9 better reflects the "strong positive" semantics and per-scenario effect is small

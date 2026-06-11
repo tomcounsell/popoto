@@ -26,7 +26,6 @@ from src.popoto.exceptions import ModelException
 from src.popoto.models.query import QueryException
 from src.popoto.redis_db import POPOTO_REDIS_DB
 
-
 # --- Test Models ---
 
 
@@ -171,16 +170,17 @@ class TestPartitionChange:
         ConfidenceField.update_confidence(item, "certainty", signal=0.9)
 
         # Verify data is in atlas partition
+        # Capped Bayesian oracle: (0.5 + 0.9) / 2 = 0.7
         conf_before = ConfidenceField.get_confidence(item, "certainty")
-        assert abs(conf_before - 0.9) < 1e-6
+        assert abs(conf_before - 0.7) < 1e-12
 
         # Change partition key (KeyField requires migrate_key=True)
         item.project = "bravo"
         item.save(migrate_key=True)
 
-        # Data should be in bravo partition now
+        # Data should be in bravo partition now (same value, moved hash)
         conf_after = ConfidenceField.get_confidence(item, "certainty")
-        assert abs(conf_after - 0.9) < 1e-6
+        assert abs(conf_after - 0.7) < 1e-12
 
         # Old partition hash should not have the entry
         field = item._meta.fields["certainty"]
@@ -212,7 +212,8 @@ class TestPartitionedConfidenceOps:
         ConfidenceField.update_confidence(item, "certainty", signal=0.7)
 
         conf = ConfidenceField.get_confidence(item, "certainty")
-        assert abs(conf - 0.7) < 1e-6
+        # Capped Bayesian oracle: (0.5 + 0.7) / 2 = 0.6
+        assert abs(conf - 0.6) < 1e-12
 
     def test_get_confidence_data_from_partition(self):
         """get_confidence_data reads full metadata from partition."""
@@ -248,10 +249,11 @@ class TestBackwardCompatibility:
         assert data["confidence"] == 0.5
 
         new_conf = ConfidenceField.update_confidence(item, "certainty", signal=0.9)
-        assert abs(new_conf - 0.9) < 1e-6
+        # Capped Bayesian oracle: (0.5 + 0.9) / 2 = 0.7
+        assert abs(new_conf - 0.7) < 1e-12
 
         conf = ConfidenceField.get_confidence(item, "certainty")
-        assert abs(conf - 0.9) < 1e-6
+        assert abs(conf - 0.7) < 1e-12
 
     def test_unpartitioned_hash_key_unchanged(self):
         """Unpartitioned hash key has no partition suffix."""

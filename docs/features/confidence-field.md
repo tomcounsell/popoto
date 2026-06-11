@@ -1,10 +1,10 @@
 # ConfidenceField
 
-A `Field` subclass that tracks Bayesian confidence metadata per member, updated atomically via Lua script.
+A `Field` subclass that tracks confidence metadata per member, updated atomically via Lua script using a capped-evidence Bayesian rule.
 
 ## Overview
 
-`ConfidenceField` maintains a confidence score for each record, allowing the system to track how certain it should be about a given piece of information. Precision grows with `sqrt(n)`, so early evidence has outsized effect while established beliefs resist change.
+`ConfidenceField` maintains a confidence score for each record, allowing the system to track how certain it should be about a given piece of information. The update rule is a **capped-evidence Bayesian** (also called "forgetful Bayesian"): within an evidence window it is an exact running mean — order-invariant and prior-weighted; beyond the cap it is bounded exponential forgetting at a constant rate.
 
 The field stores its metadata in a companion Redis hash:
 
@@ -14,8 +14,11 @@ The field stores its metadata in a companion Redis hash:
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `initial_confidence` | float | 0.5 | Starting confidence for new members (0-1) |
+| `initial_confidence` | float | 0.5 | Starting confidence for new members (0-1). Acts as one prior pseudo-observation in the running mean. |
+| `evidence_cap` | int | 20 | Maximum effective evidence count. Within this window updates are a running mean; beyond it updates apply a fixed gain of `1/(cap+1)`, producing bounded exponential forgetting. Must be an integer ≥ 1. |
 | `partition_by` | str or tuple | `()` | Field name(s) to partition the companion hash by. Splits the single Redis hash into per-partition hashes for efficient reads. |
+
+> **Warning — same cap across processes**: The `evidence_cap` is passed per-call and is NOT stored in the companion hash. All processes updating the same companion hash entry must be configured with identical `evidence_cap` values. Divergent caps produce silently inconsistent gain schedules with no runtime detection.
 
 ## Usage
 
@@ -45,24 +48,47 @@ data = ConfidenceField.get_confidence_data(memory, "certainty")
 # Returns: {confidence: 0.5, evidence_count: 2, corroborations: 1, contradictions: 1}
 ```
 
-## Bayesian Update Formula
+## Update Formula
+
+The update rule uses a capped effective-evidence count:
 
 ```
-new_confidence = prior + (signal - prior) / sqrt(evidence_count + 1)
+n_eff = min(evidence_count + 1, cap)
+new_confidence = confidence + (signal - confidence) / (n_eff + 1)
 ```
 
-- **Early updates** have large effect (small evidence_count, small denominator)
-- **Later updates** have diminishing effect (large evidence_count, large denominator)
-- Results are clamped to `[0, 1]`
+The `+1` in `evidence_count + 1` is an inlined prior pseudo-count — `initial_confidence` behaves as one real observation. Results are clamped to `[0, 1]`.
 
-### Convergence Behavior
+### Running-Mean Regime (evidence_count < cap)
 
-| Updates | Denominator | Movement per update |
-|---------|-------------|---------------------|
-| 1st | sqrt(1) = 1.0 | Full step |
-| 4th | sqrt(4) = 2.0 | Half step |
-| 9th | sqrt(9) = 3.0 | Third step |
-| 100th | sqrt(100) = 10.0 | Tenth step |
+While the real evidence count is below the cap, the formula is an exact running mean over `{prior, s1, s2, …, sn}`:
+
+```
+confidence after n updates = (initial_confidence + s1 + s2 + … + sn) / (n + 1)
+```
+
+This is order-invariant up to ~1e-12 (IEEE-754 intermediate rounding; the closed form is the oracle, not bit-identical output). The first update from `initial_confidence=0.5` with `signal=0.9` yields **0.7**, not 0.9 — the prior is never erased.
+
+### Forgetting Regime (evidence_count >= cap)
+
+Once the evidence count reaches the cap, the effective gain is fixed at `1/(cap+1)`. With `cap=20` (default), each update multiplies `(confidence - signal)` by `20/21 ≈ 0.952`.
+
+**Worked example**: a belief with `confidence=0.9` and `evidence_count=20` (at the cap) subjected to 15 consecutive contradictions at `signal=0.1`:
+
+```
+After k contradictions: confidence = 0.1 + 0.8 × (20/21)^k
+Crossing 0.5 requires:  0.8 × (20/21)^k < 0.4
+                        k > ln(0.4/0.8) / ln(20/21) ≈ 14.2 → 15 contradictions
+```
+
+This is bounded exponential forgetting — well-established beliefs take ~15 systematic contradictions to cross the midpoint at the default cap, compared to ~5 under the previous decaying-step rule.
+
+### Update Behavior Summary
+
+| Regime | Condition | Behavior |
+|--------|-----------|----------|
+| Running mean | evidence_count < cap (20) | Exact mean of {prior, all signals}; order-invariant to ~1e-12 |
+| Fixed forgetting | evidence_count >= cap | Constant gain `1/(cap+1)`; ~15 contradictions cross 0.5 from 0.9 |
 
 ## Entrainment with ObservationProtocol
 
@@ -77,17 +103,21 @@ When used with `ObservationProtocol`, confidence is automatically updated based 
 
 ### Auto-discharge
 
-When confidence drops below 0.1 due to a `contradicted` outcome, homeostatic pressure on any `CyclicDecayField` is automatically resolved (discharged). This prevents low-confidence memories from building urgency.
+When confidence drops strictly below `AUTO_DISCHARGE_CONFIDENCE_THRESHOLD` (0.1), homeostatic pressure on any `CyclicDecayField` is automatically resolved (discharged). This prevents low-confidence memories from building urgency.
+
+The comparison uses an epsilon guard: discharge fires only when `conf < 0.1 - 1e-9`. A confidence value that rounds to exactly 0.1 in display but is stored as `0.09999999999999998` (a common IEEE-754 artifact on the first contradiction from a default prior) does **not** trigger discharge. A genuine drop — one clearly below the threshold by more than epsilon — still does.
 
 ## API Reference
 
 ### `ConfidenceField.update_confidence(instance, field_name, signal)`
 
-Atomically update confidence using the Bayesian formula.
+Atomically update confidence using the capped-evidence Bayesian formula.
 
 - **signal**: Float 0-1. Values >= 0.5 corroborate, < 0.5 contradict.
 - **Returns**: The new confidence value.
 - **Raises**: `TypeError` if unsaved or wrong field type; `ValueError` if signal out of range.
+
+> **Warning**: All processes calling `update_confidence` on the same companion hash entry must use identical `evidence_cap` values. The cap is not stored in Redis and divergent values produce silently inconsistent update trajectories.
 
 ### `ConfidenceField.get_confidence(instance, field_name)`
 
@@ -101,9 +131,11 @@ Read all confidence metadata.
 
 - **Returns**: Dict with keys `confidence`, `evidence_count`, `corroborations`, `contradictions`.
 
+Note: `evidence_count` reflects real observations only — the prior pseudo-count is internal to the Lua update and does not inflate this counter.
+
 ### Inspecting Companion Hash Keys
 
-Each `ConfidenceField` stores its Bayesian metadata in a companion Redis hash alongside
+Each `ConfidenceField` stores its confidence metadata in a companion Redis hash alongside
 the main model hash. The public companion key methods let you build these Redis keys
 for debugging, monitoring, or direct Redis inspection without reverse-engineering
 suffix conventions.
@@ -199,7 +231,7 @@ report = ConfidenceField.migrate_to_partitioned(Memory, "certainty")
 
 The [Popoto Kitchen example app](https://github.com/tomcounsell/popoto/tree/main/examples)
 includes a `ReviewScore` model that demonstrates `ConfidenceField` with
-`partition_by="restaurant"`. Run the operations demo to see Bayesian updates,
+`partition_by="restaurant"`. Run the operations demo to see capped-evidence updates,
 companion hash key inspection, and partitioned confidence in action:
 
 ```bash

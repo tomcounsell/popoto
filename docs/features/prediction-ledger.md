@@ -124,6 +124,6 @@ Missing keys contribute `1.0` error per key.
 ## See Also
 
 - [Metacognitive Layer](metacognitive-layer.md) — `error_summary` full documentation and `"used"` outcome
-- [ConfidenceField](confidence-field.md) — Bayesian certainty tracking (receives error feedback)
+- [ConfidenceField](confidence-field.md) — capped-evidence certainty tracking (receives error feedback)
 - [ObservationProtocol](observation-protocol.md) — auto-resolution via outcome hooks
 - [Agent Memory overview](agent-memory.md) — full primitives reference
