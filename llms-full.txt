@@ -6784,7 +6784,7 @@ See [fields.md](../fields.md#writefiltermixin) for the full field reference.
 
 ## ConfidenceField
 
-A `Field` subclass that tracks Bayesian confidence metadata per member, updated atomically via Lua script. Precision grows with `sqrt(n)` — early evidence has outsized effect while established beliefs resist change.
+A `Field` subclass that tracks confidence metadata per member, updated atomically via Lua script using a capped-evidence Bayesian rule. Within the evidence window (default cap: 20) updates form an exact running mean — order-invariant and prior-weighted. Beyond the cap, a fixed gain produces bounded exponential forgetting.
 
 Shipped in [PR #215](https://github.com/tomcounsell/popoto/pull/215).
 
@@ -6814,13 +6814,14 @@ data = ConfidenceField.get_confidence_data(knowledge, "certainty")
 # Returns: {confidence: 0.5, evidence_count: 2, corroborations: 1, contradictions: 1}
 ```
 
-### Bayesian update formula
+### Capped-evidence update formula
 
 ```
-new_confidence = prior + (signal - prior) / sqrt(evidence_count + 1)
+n_eff = min(evidence_count + 1, cap)   # cap default: 20
+new_confidence = confidence + (signal - confidence) / (n_eff + 1)
 ```
 
-Early updates move confidence significantly; later updates have diminishing effect as evidence accumulates. Results are clamped to `[0, 1]`.
+Within the evidence window (`evidence_count < cap`), this is an exact running mean over `{initial_confidence, s1, …, sn}` — order-invariant to ~1e-12. Beyond the cap, the gain is fixed at `1/(cap+1)`, producing bounded exponential forgetting (~15 consecutive contradictions to cross 0.5 from 0.9 at cap 20). Results are clamped to `[0, 1]`.
 
 ### Entrainment with ObservationProtocol
 
@@ -7875,7 +7876,7 @@ results[0].confirm_access()  # marks as actually used
 
 ## Level 3: Learning — Outcomes Strengthen or Weaken Beliefs
 
-Add `ConfidenceField` for Bayesian certainty tracking. Use `ObservationProtocol` to report how the agent used each memory — acted on, dismissed, or contradicted.
+Add `ConfidenceField` for certainty tracking. Use `ObservationProtocol` to report how the agent used each memory — acted on, dismissed, or contradicted.
 
 ```python
 from popoto import ConfidenceField, ObservationProtocol
@@ -8406,11 +8407,11 @@ When used with [ObservationProtocol](agent-memory.md#observationprotocol), cycle
 
 # ConfidenceField
 
-A `Field` subclass that tracks Bayesian confidence metadata per member, updated atomically via Lua script.
+A `Field` subclass that tracks confidence metadata per member, updated atomically via Lua script using a capped-evidence Bayesian rule.
 
 ## Overview
 
-`ConfidenceField` maintains a confidence score for each record, allowing the system to track how certain it should be about a given piece of information. Precision grows with `sqrt(n)`, so early evidence has outsized effect while established beliefs resist change.
+`ConfidenceField` maintains a confidence score for each record, allowing the system to track how certain it should be about a given piece of information. The update rule is a **capped-evidence Bayesian** (also called "forgetful Bayesian"): within an evidence window it is an exact running mean — order-invariant and prior-weighted; beyond the cap it is bounded exponential forgetting at a constant rate.
 
 The field stores its metadata in a companion Redis hash:
 
@@ -8420,8 +8421,11 @@ The field stores its metadata in a companion Redis hash:
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `initial_confidence` | float | 0.5 | Starting confidence for new members (0-1) |
+| `initial_confidence` | float | 0.5 | Starting confidence for new members (0-1). Acts as one prior pseudo-observation in the running mean. |
+| `evidence_cap` | int | 20 | Maximum effective evidence count. Within this window updates are a running mean; beyond it updates apply a fixed gain of `1/(cap+1)`, producing bounded exponential forgetting. Must be an integer ≥ 1. |
 | `partition_by` | str or tuple | `()` | Field name(s) to partition the companion hash by. Splits the single Redis hash into per-partition hashes for efficient reads. |
+
+> **Warning — same cap across processes**: The `evidence_cap` is passed per-call and is NOT stored in the companion hash. All processes updating the same companion hash entry must be configured with identical `evidence_cap` values. Divergent caps produce silently inconsistent gain schedules with no runtime detection.
 
 ## Usage
 
@@ -8451,24 +8455,47 @@ data = ConfidenceField.get_confidence_data(memory, "certainty")
 # Returns: {confidence: 0.5, evidence_count: 2, corroborations: 1, contradictions: 1}
 ```
 
-## Bayesian Update Formula
+## Update Formula
+
+The update rule uses a capped effective-evidence count:
 
 ```
-new_confidence = prior + (signal - prior) / sqrt(evidence_count + 1)
+n_eff = min(evidence_count + 1, cap)
+new_confidence = confidence + (signal - confidence) / (n_eff + 1)
 ```
 
-- **Early updates** have large effect (small evidence_count, small denominator)
-- **Later updates** have diminishing effect (large evidence_count, large denominator)
-- Results are clamped to `[0, 1]`
+The `+1` in `evidence_count + 1` is an inlined prior pseudo-count — `initial_confidence` behaves as one real observation. Results are clamped to `[0, 1]`.
 
-### Convergence Behavior
+### Running-Mean Regime (evidence_count < cap)
 
-| Updates | Denominator | Movement per update |
-|---------|-------------|---------------------|
-| 1st | sqrt(1) = 1.0 | Full step |
-| 4th | sqrt(4) = 2.0 | Half step |
-| 9th | sqrt(9) = 3.0 | Third step |
-| 100th | sqrt(100) = 10.0 | Tenth step |
+While the real evidence count is below the cap, the formula is an exact running mean over `{prior, s1, s2, …, sn}`:
+
+```
+confidence after n updates = (initial_confidence + s1 + s2 + … + sn) / (n + 1)
+```
+
+This is order-invariant up to ~1e-12 (IEEE-754 intermediate rounding; the closed form is the oracle, not bit-identical output). The first update from `initial_confidence=0.5` with `signal=0.9` yields **0.7**, not 0.9 — the prior is never erased.
+
+### Forgetting Regime (evidence_count >= cap)
+
+Once the evidence count reaches the cap, the effective gain is fixed at `1/(cap+1)`. With `cap=20` (default), each update multiplies `(confidence - signal)` by `20/21 ≈ 0.952`.
+
+**Worked example**: a belief with `confidence=0.9` and `evidence_count=20` (at the cap) subjected to 15 consecutive contradictions at `signal=0.1`:
+
+```
+After k contradictions: confidence = 0.1 + 0.8 × (20/21)^k
+Crossing 0.5 requires:  0.8 × (20/21)^k < 0.4
+                        k > ln(0.4/0.8) / ln(20/21) ≈ 14.2 → 15 contradictions
+```
+
+This is bounded exponential forgetting — well-established beliefs take ~15 systematic contradictions to cross the midpoint at the default cap, compared to ~5 under the previous decaying-step rule.
+
+### Update Behavior Summary
+
+| Regime | Condition | Behavior |
+|--------|-----------|----------|
+| Running mean | evidence_count < cap (20) | Exact mean of {prior, all signals}; order-invariant to ~1e-12 |
+| Fixed forgetting | evidence_count >= cap | Constant gain `1/(cap+1)`; ~15 contradictions cross 0.5 from 0.9 |
 
 ## Entrainment with ObservationProtocol
 
@@ -8483,17 +8510,21 @@ When used with `ObservationProtocol`, confidence is automatically updated based 
 
 ### Auto-discharge
 
-When confidence drops below 0.1 due to a `contradicted` outcome, homeostatic pressure on any `CyclicDecayField` is automatically resolved (discharged). This prevents low-confidence memories from building urgency.
+When confidence drops strictly below `AUTO_DISCHARGE_CONFIDENCE_THRESHOLD` (0.1), homeostatic pressure on any `CyclicDecayField` is automatically resolved (discharged). This prevents low-confidence memories from building urgency.
+
+The comparison uses an epsilon guard: discharge fires only when `conf < 0.1 - 1e-9`. A confidence value that rounds to exactly 0.1 in display but is stored as `0.09999999999999998` (a common IEEE-754 artifact on the first contradiction from a default prior) does **not** trigger discharge. A genuine drop — one clearly below the threshold by more than epsilon — still does.
 
 ## API Reference
 
 ### `ConfidenceField.update_confidence(instance, field_name, signal)`
 
-Atomically update confidence using the Bayesian formula.
+Atomically update confidence using the capped-evidence Bayesian formula.
 
 - **signal**: Float 0-1. Values >= 0.5 corroborate, < 0.5 contradict.
 - **Returns**: The new confidence value.
 - **Raises**: `TypeError` if unsaved or wrong field type; `ValueError` if signal out of range.
+
+> **Warning**: All processes calling `update_confidence` on the same companion hash entry must use identical `evidence_cap` values. The cap is not stored in Redis and divergent values produce silently inconsistent update trajectories.
 
 ### `ConfidenceField.get_confidence(instance, field_name)`
 
@@ -8507,9 +8538,11 @@ Read all confidence metadata.
 
 - **Returns**: Dict with keys `confidence`, `evidence_count`, `corroborations`, `contradictions`.
 
+Note: `evidence_count` reflects real observations only — the prior pseudo-count is internal to the Lua update and does not inflate this counter.
+
 ### Inspecting Companion Hash Keys
 
-Each `ConfidenceField` stores its Bayesian metadata in a companion Redis hash alongside
+Each `ConfidenceField` stores its confidence metadata in a companion Redis hash alongside
 the main model hash. The public companion key methods let you build these Redis keys
 for debugging, monitoring, or direct Redis inspection without reverse-engineering
 suffix conventions.
@@ -8605,7 +8638,7 @@ report = ConfidenceField.migrate_to_partitioned(Memory, "certainty")
 
 The [Popoto Kitchen example app](https://github.com/tomcounsell/popoto/tree/main/examples)
 includes a `ReviewScore` model that demonstrates `ConfidenceField` with
-`partition_by="restaurant"`. Run the operations demo to see Bayesian updates,
+`partition_by="restaurant"`. Run the operations demo to see capped-evidence updates,
 companion hash key inspection, and partitioned confidence in action:
 
 ```bash
@@ -9141,7 +9174,7 @@ expired = RecallProposal.expire_stale(Memory, ttl=3600)
 ## See Also
 
 - [Metacognitive Layer](metacognitive-layer.md) — full `"used"` outcome documentation, `error_summary`, and `AdaptiveAssembler`
-- [ConfidenceField](confidence-field.md) — Bayesian certainty tracking
+- [ConfidenceField](confidence-field.md) — capped-evidence certainty tracking
 - [CyclicDecayField](cyclic-decay-field.md) — cyclical resonance and pressure
 - [PredictionLedger](prediction-ledger.md) — outcome tracking
 - [Agent Memory overview](agent-memory.md) — full primitives reference
@@ -9276,7 +9309,7 @@ Missing keys contribute `1.0` error per key.
 ## See Also
 
 - [Metacognitive Layer](metacognitive-layer.md) — `error_summary` full documentation and `"used"` outcome
-- [ConfidenceField](confidence-field.md) — Bayesian certainty tracking (receives error feedback)
+- [ConfidenceField](confidence-field.md) — capped-evidence certainty tracking (receives error feedback)
 - [ObservationProtocol](observation-protocol.md) — auto-resolution via outcome hooks
 - [Agent Memory overview](agent-memory.md) — full primitives reference
 
@@ -10414,7 +10447,7 @@ PolicyEntry composes these primitives:
 | `AutoKeyField` | Unique entry ID |
 | `KeyField` | Agent partitioning, state fingerprinting, action type |
 | `DecayingSortedField` | Q-value storage with temporal decay |
-| `ConfidenceField` | Bayesian confidence from outcome history |
+| `ConfidenceField` | Capped-evidence confidence from outcome history |
 | `CoOccurrenceField` | Weighted graph between related policies |
 | `ExistenceFilter` | Bloom filter for fast state lookup |
 | `EventStreamMixin` | Mutation log via Redis Streams |
@@ -10765,7 +10798,15 @@ Periodic (e.g. nightly reflection): cluster recent episodes by their fingerprint
 new_or_reinforced = tm.crystallize(partition="team-a")
 ```
 
-Crystallization is **idempotent**: re-running on an unchanged episode set produces no drift in confidence or `last_reinforced`. The recipe achieves this by observing only episodes newer than each pattern's `last_reinforced` timestamp (Risk 2 in the plan). Bayesian confidence updates are commutative — concurrent crystallizations converge.
+Crystallization is **idempotent via watermark**: re-running on an unchanged episode set produces zero drift in confidence or `last_reinforced`. After each run, `last_reinforced` is set to the maximum `recorded_at` timestamp across all observed episodes (the watermark). Subsequent runs observe only episodes strictly newer than that watermark, so the same episodes are never double-counted.
+
+**Operational constraints for idempotence:**
+
+- **One crystallizer per partition.** Concurrent crystallization of the same partition is not coordinated — two processes reading the same episode set and both calling `_observe_episodes` will double-observe episodes, inflating confidence counts. Run a single crystallizer per partition.
+- **NTP-synced writers.** The watermark guarantee assumes episode writers and the crystallizer are within ordinary NTP clock synchronization. A writer whose clock lags behind the current watermark will record episodes with `recorded_at` timestamps below the watermark; the strict `>` filter skips those episodes permanently on all subsequent runs.
+- **`last_reinforced` stores episode time, not crystallize time.** The stored score for `last_reinforced` equals the maximum observed episode `recorded_at` — which may predate the wall-clock time the crystallize call ran. An operator running `ZSCORE` on the recency index reads "newest episode processed", not "when crystallize last ran". Under batched or nightly crystallization, patterns will rank correspondingly older in recency-weighted recall (`DEFAULT_SCORE_WEIGHTS` weights `last_reinforced` at 0.4) than they would under wall-clock semantics.
+
+Note: within the evidence window, the capped-evidence update rule is order-invariant (to ~1e-12), which bounds — but does not eliminate — confidence drift if the single-crystallizer constraint is violated. Do not rely on commutativity as a substitute for the operational constraint.
 
 The canonical sequence is the **modal trajectory** across the group, with ties broken by the most recent episode. Anything fancier (edit-distance, n-gram similarity, custom aggregators) is intentionally out of scope.
 
@@ -10794,7 +10835,7 @@ The recipe introspects field names via `model_class._meta.fields`. Field names b
 | ---------------------- | --------------------- | ---------------------- | ----------------------------- |
 | Each fingerprint field | `KeyField`            | from `fingerprint_fields` ctor arg | Exact-match recall |
 | Partition              | `KeyField`            | `partition`            | Multi-tenant isolation        |
-| Confidence             | `ConfidenceField`     | `confidence`           | Bayesian success tracking     |
+| Confidence             | `ConfidenceField`     | `confidence`           | Capped-evidence success tracking |
 | Last reinforced        | `DecayingSortedField` | `last_reinforced`      | Recency-weighted ranking      |
 | Canonical sequence     | `ListField`           | `canonical_sequence`   | Modal trajectory              |
 
@@ -10867,7 +10908,7 @@ This produces deterministic 16-hex-char fingerprints suitable for use as a `KeyF
 * [ContextAssembler](../features/context-assembler.md) — retrieval-to-injection bridge for **semantic** memory
 * [SubconsciousMemory](subconscious-memory-recipe.md) — automatic inject/extract around LLM turns
 * [PolicyCache](policy-cache-recipe.md) — RL-style action selection by state fingerprint (the closest analogue: also clusters by fingerprint, also uses `ConfidenceField`)
-* [`ConfidenceField`](../features/confidence-field.md) — Bayesian confidence primitive used for pattern reinforcement
+* [`ConfidenceField`](../features/confidence-field.md) — capped-evidence confidence primitive used for pattern reinforcement
 * [`DecayingSortedField`](../features/decaying-sorted-field.md) — time-decaying score used for `last_reinforced` ranking
 
 ---
@@ -11165,6 +11206,10 @@ Source: `src/popoto/fields/confidence_field.py`
 | Constant | Default | Optimal Range | Sensitivity |
 |----------|---------|--------------|-------------|
 | `initial_confidence` | 0.5 | [0.1, 0.9] | Low |
+| `evidence_cap` | 20 | — | Not swept — user-facing config, not a tuning constant |
+| `CONFIDENCE_EPSILON` | 1e-9 | — | Not swept — internal float-boundary guard |
+
+`evidence_cap` (default `Defaults.CONFIDENCE_EVIDENCE_CAP = 20`) is the capped-evidence Bayesian rule's memory-window length — an epistemics knob deliberately exposed as per-field user config per the [issue #407](https://github.com/tomcounsell/popoto/issues/407) decision, so it is excluded from experimental sweeps. `CONFIDENCE_EPSILON` is the float tolerance applied to the `AUTO_DISCHARGE_CONFIDENCE_THRESHOLD` comparison in `observation.py` (values within epsilon of the threshold do not discharge); it guards a boundary condition and is not user config. See [ConfidenceField](../features/confidence-field.md) for the update-rule semantics.
 
 ### WriteFilterMixin
 
@@ -11895,7 +11940,7 @@ The scoring function itself is **application layer** — Popoto provides the gat
 
 ## Step 4: ConfidenceField — Bayesian Certainty Tracking + Entrainment ✅ Shipped
 
-**What it is:** A field type that maintains a Bayesian confidence score updated atomically via Lua script. Each update provides a binary signal (corroborate/contradict) with a weight. The prior becomes harder to shift as evidence accumulates (precision grows with √n).
+**What it is:** A field type that maintains a confidence score updated atomically via Lua script using a capped-evidence Bayesian rule. Each update provides a binary signal (corroborate/contradict). Within the evidence window (default cap: 20) updates are an exact running mean — order-invariant and prior-weighted. Beyond the cap, a fixed gain produces bounded exponential forgetting.
 
 ConfidenceField also serves as the **entrainment mechanism** for CyclicDecayField (Step 1). Cyclical parameters (amplitude, phase) are hypotheses about temporal relevance. The observation protocol (Step 2) generates corroborate/contradict signals for these hypotheses, and ConfidenceField applies them. When a cycle's confidence drops below a threshold, the cycle auto-disables — this is how stale recurring memories ("send that client an update") die when the underlying context has changed ("that client contract ended").
 
@@ -11906,7 +11951,7 @@ ConfidenceField also serves as the **entrainment mechanism** for CyclicDecayFiel
 ```python
 class ConfidenceField(Field):
     """
-    Bayesian confidence score with precision-weighted updates.
+    Capped-evidence confidence score (forgetful Bayesian).
 
     Stored as: {confidence: float, evidence_count: int,
                 corroborations: int, contradictions: int}
@@ -13098,10 +13143,13 @@ class ConsolidatedPattern(popoto.Model):
     corroborations = popoto.Field(type=int, default=0)
 ```
 
-**Bayesian confidence update** (Lua script):
+**Confidence update** (conceptual design sketch — see note):
+
+> **Note:** The shipped Popoto `ConfidenceField` uses a **capped-evidence Bayesian** rule, not the precision-weighted sqrt sketch below. The sketch is retained as a design exploration of the sqrt-precision approach; the actual implementation uses `n_eff = min(evidence_count + 1, cap)` with a fixed cap (default 20), giving an exact running mean within the window and bounded exponential forgetting beyond it. See [ConfidenceField docs](../features/confidence-field.md).
 
 ```lua
--- Precision-weighted Bayesian update for pattern confidence
+-- Conceptual sketch: precision-weighted Bayesian update
+-- NOTE: not the actual Popoto implementation (see ConfidenceField docs)
 -- KEYS[1] = pattern hash key
 -- ARGV[1] = new_evidence (0 or 1 for contradiction/corroboration), ARGV[2] = evidence_weight
 local key = KEYS[1]
@@ -13111,11 +13159,10 @@ local weight = tonumber(ARGV[2])    -- evidence strength [0, 1]
 local prior = tonumber(redis.call('HGET', key, 'confidence') or '0.5')
 local n = tonumber(redis.call('HGET', key, 'evidence_count') or '1')
 
--- Precision increases with evidence count (prior becomes harder to move)
-local prior_precision = math.sqrt(n)  -- Precision grows with sqrt(evidence)
+-- Precision-weighted update (design exploration)
+local prior_precision = math.sqrt(n)
 local likelihood_precision = weight
 
--- Precision-weighted update
 local posterior = (prior_precision * prior + likelihood_precision * evidence) 
                   / (prior_precision + likelihood_precision)
 posterior = math.max(0.01, math.min(0.99, posterior))
@@ -14815,7 +14862,7 @@ via `python -m popoto_kitchen --ops` and print results to stdout.
 
 A new model using `ConfidenceField` with `partition_by="restaurant"` to
 track review confidence per restaurant. See
-[ConfidenceField docs](confidence-field.md) for the Bayesian update formula.
+[ConfidenceField docs](confidence-field.md) for the capped-evidence update formula.
 
 ```python
 class ReviewScore(Model):

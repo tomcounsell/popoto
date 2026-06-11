@@ -1370,10 +1370,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#bayesian-update-formula" class="md-nav__link">
+  <a href="#capped-evidence-update-formula" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Bayesian update formula
+        Capped-evidence update formula
       
     </span>
   </a>
@@ -3823,10 +3823,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#bayesian-update-formula" class="md-nav__link">
+  <a href="#capped-evidence-update-formula" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Bayesian update formula
+        Capped-evidence update formula
       
     </span>
   </a>
@@ -5399,7 +5399,7 @@
 <p>Priority-tagged records are stored in a Redis sorted set keyed <code>$WF:{ClassName}:priority</code>, scored by the filter score. On <code>delete()</code>, cleanup removes the record from the priority set automatically.</p>
 <p>See <a href="../../fields/#writefiltermixin">fields.md</a> for the full field reference.</p>
 <h2 id="confidencefield">ConfidenceField<a class="headerlink" href="#confidencefield" title="Permanent link">&para;</a></h2>
-<p>A <code>Field</code> subclass that tracks Bayesian confidence metadata per member, updated atomically via Lua script. Precision grows with <code>sqrt(n)</code> — early evidence has outsized effect while established beliefs resist change.</p>
+<p>A <code>Field</code> subclass that tracks confidence metadata per member, updated atomically via Lua script using a capped-evidence Bayesian rule. Within the evidence window (default cap: 20) updates form an exact running mean — order-invariant and prior-weighted. Beyond the cap, a fixed gain produces bounded exponential forgetting.</p>
 <p>Shipped in <a href="https://github.com/tomcounsell/popoto/pull/215">PR #215</a>.</p>
 <h3 id="basic-usage_4">Basic usage<a class="headerlink" href="#basic-usage_4" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">UniqueKeyField</span><span class="p">,</span> <span class="n">StringField</span><span class="p">,</span> <span class="n">ConfidenceField</span>
@@ -5424,10 +5424,11 @@
 <a id="__codelineno-18-20" name="__codelineno-18-20" href="#__codelineno-18-20"></a><span class="n">data</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">get_confidence_data</span><span class="p">(</span><span class="n">knowledge</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">)</span>
 <a id="__codelineno-18-21" name="__codelineno-18-21" href="#__codelineno-18-21"></a><span class="c1"># Returns: {confidence: 0.5, evidence_count: 2, corroborations: 1, contradictions: 1}</span>
 </code></pre></div>
-<h3 id="bayesian-update-formula">Bayesian update formula<a class="headerlink" href="#bayesian-update-formula" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>new_confidence = prior + (signal - prior) / sqrt(evidence_count + 1)
+<h3 id="capped-evidence-update-formula">Capped-evidence update formula<a class="headerlink" href="#capped-evidence-update-formula" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>n_eff = min(evidence_count + 1, cap)   # cap default: 20
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>new_confidence = confidence + (signal - confidence) / (n_eff + 1)
 </code></pre></div>
-<p>Early updates move confidence significantly; later updates have diminishing effect as evidence accumulates. Results are clamped to <code>[0, 1]</code>.</p>
+<p>Within the evidence window (<code>evidence_count &lt; cap</code>), this is an exact running mean over <code>{initial_confidence, s1, …, sn}</code> — order-invariant to ~1e-12. Beyond the cap, the gain is fixed at <code>1/(cap+1)</code>, producing bounded exponential forgetting (~15 consecutive contradictions to cross 0.5 from 0.9 at cap 20). Results are clamped to <code>[0, 1]</code>.</p>
 <h3 id="entrainment-with-observationprotocol">Entrainment with ObservationProtocol<a class="headerlink" href="#entrainment-with-observationprotocol" title="Permanent link">&para;</a></h3>
 <p>When used with <code>ObservationProtocol.on_context_used()</code>, confidence is automatically updated based on how the agent uses retrieved memories:</p>
 <table>

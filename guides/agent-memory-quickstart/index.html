@@ -2466,7 +2466,7 @@
 </code></pre></div>
 <p><strong>What you get:</strong> Cleaner memory — noise never persists. Read tracking shows which memories drive agent behavior.</p>
 <h2 id="level-3-learning-outcomes-strengthen-or-weaken-beliefs">Level 3: Learning — Outcomes Strengthen or Weaken Beliefs<a class="headerlink" href="#level-3-learning-outcomes-strengthen-or-weaken-beliefs" title="Permanent link">&para;</a></h2>
-<p>Add <code>ConfidenceField</code> for Bayesian certainty tracking. Use <code>ObservationProtocol</code> to report how the agent used each memory — acted on, dismissed, or contradicted.</p>
+<p>Add <code>ConfidenceField</code> for certainty tracking. Use <code>ObservationProtocol</code> to report how the agent used each memory — acted on, dismissed, or contradicted.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConfidenceField</span><span class="p">,</span> <span class="n">ObservationProtocol</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">Memory</span><span class="p">(</span><span class="n">WriteFilterMixin</span><span class="p">,</span> <span class="n">AccessTrackerMixin</span><span class="p">,</span> <span class="n">Model</span><span class="p">):</span>

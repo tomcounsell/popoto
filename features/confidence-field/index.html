@@ -1184,22 +1184,44 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#bayesian-update-formula" class="md-nav__link">
+  <a href="#update-formula" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Bayesian Update Formula
+        Update Formula
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Bayesian Update Formula">
+    <nav class="md-nav" aria-label="Update Formula">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#convergence-behavior" class="md-nav__link">
+  <a href="#running-mean-regime-evidence_count-cap" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Convergence Behavior
+        Running-Mean Regime (evidence_count &lt; cap)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#forgetting-regime-evidence_count-cap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Forgetting Regime (evidence_count &gt;= cap)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#update-behavior-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Update Behavior Summary
       
     </span>
   </a>
@@ -2430,22 +2452,44 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#bayesian-update-formula" class="md-nav__link">
+  <a href="#update-formula" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Bayesian Update Formula
+        Update Formula
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Bayesian Update Formula">
+    <nav class="md-nav" aria-label="Update Formula">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#convergence-behavior" class="md-nav__link">
+  <a href="#running-mean-regime-evidence_count-cap" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Convergence Behavior
+        Running-Mean Regime (evidence_count &lt; cap)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#forgetting-regime-evidence_count-cap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Forgetting Regime (evidence_count &gt;= cap)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#update-behavior-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Update Behavior Summary
       
     </span>
   </a>
@@ -2639,9 +2683,9 @@
 
 
 <h1 id="confidencefield">ConfidenceField<a class="headerlink" href="#confidencefield" title="Permanent link">&para;</a></h1>
-<p>A <code>Field</code> subclass that tracks Bayesian confidence metadata per member, updated atomically via Lua script.</p>
+<p>A <code>Field</code> subclass that tracks confidence metadata per member, updated atomically via Lua script using a capped-evidence Bayesian rule.</p>
 <h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
-<p><code>ConfidenceField</code> maintains a confidence score for each record, allowing the system to track how certain it should be about a given piece of information. Precision grows with <code>sqrt(n)</code>, so early evidence has outsized effect while established beliefs resist change.</p>
+<p><code>ConfidenceField</code> maintains a confidence score for each record, allowing the system to track how certain it should be about a given piece of information. The update rule is a <strong>capped-evidence Bayesian</strong> (also called "forgetful Bayesian"): within an evidence window it is an exact running mean — order-invariant and prior-weighted; beyond the cap it is bounded exponential forgetting at a constant rate.</p>
 <p>The field stores its metadata in a companion Redis hash:</p>
 <ul>
 <li><code>{confidence, evidence_count, corroborations, contradictions}</code></li>
@@ -2661,7 +2705,13 @@
 <td><code>initial_confidence</code></td>
 <td>float</td>
 <td>0.5</td>
-<td>Starting confidence for new members (0-1)</td>
+<td>Starting confidence for new members (0-1). Acts as one prior pseudo-observation in the running mean.</td>
+</tr>
+<tr>
+<td><code>evidence_cap</code></td>
+<td>int</td>
+<td>20</td>
+<td>Maximum effective evidence count. Within this window updates are a running mean; beyond it updates apply a fixed gain of <code>1/(cap+1)</code>, producing bounded exponential forgetting. Must be an integer ≥ 1.</td>
 </tr>
 <tr>
 <td><code>partition_by</code></td>
@@ -2671,6 +2721,9 @@
 </tr>
 </tbody>
 </table>
+<blockquote>
+<p><strong>Warning — same cap across processes</strong>: The <code>evidence_cap</code> is passed per-call and is NOT stored in the companion hash. All processes updating the same companion hash entry must be configured with identical <code>evidence_cap</code> values. Divergent caps produce silently inconsistent gain schedules with no runtime detection.</p>
+</blockquote>
 <h2 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">UniqueKeyField</span><span class="p">,</span> <span class="n">StringField</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.confidence_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConfidenceField</span>
@@ -2696,43 +2749,44 @@
 <a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="n">data</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">get_confidence_data</span><span class="p">(</span><span class="n">memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">)</span>
 <a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="c1"># Returns: {confidence: 0.5, evidence_count: 2, corroborations: 1, contradictions: 1}</span>
 </code></pre></div>
-<h2 id="bayesian-update-formula">Bayesian Update Formula<a class="headerlink" href="#bayesian-update-formula" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>new_confidence = prior + (signal - prior) / sqrt(evidence_count + 1)
+<h2 id="update-formula">Update Formula<a class="headerlink" href="#update-formula" title="Permanent link">&para;</a></h2>
+<p>The update rule uses a capped effective-evidence count:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>n_eff = min(evidence_count + 1, cap)
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>new_confidence = confidence + (signal - confidence) / (n_eff + 1)
 </code></pre></div>
-<ul>
-<li><strong>Early updates</strong> have large effect (small evidence_count, small denominator)</li>
-<li><strong>Later updates</strong> have diminishing effect (large evidence_count, large denominator)</li>
-<li>Results are clamped to <code>[0, 1]</code></li>
-</ul>
-<h3 id="convergence-behavior">Convergence Behavior<a class="headerlink" href="#convergence-behavior" title="Permanent link">&para;</a></h3>
+<p>The <code>+1</code> in <code>evidence_count + 1</code> is an inlined prior pseudo-count — <code>initial_confidence</code> behaves as one real observation. Results are clamped to <code>[0, 1]</code>.</p>
+<h3 id="running-mean-regime-evidence_count-cap">Running-Mean Regime (evidence_count &lt; cap)<a class="headerlink" href="#running-mean-regime-evidence_count-cap" title="Permanent link">&para;</a></h3>
+<p>While the real evidence count is below the cap, the formula is an exact running mean over <code>{prior, s1, s2, …, sn}</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>confidence after n updates = (initial_confidence + s1 + s2 + … + sn) / (n + 1)
+</code></pre></div>
+<p>This is order-invariant up to ~1e-12 (IEEE-754 intermediate rounding; the closed form is the oracle, not bit-identical output). The first update from <code>initial_confidence=0.5</code> with <code>signal=0.9</code> yields <strong>0.7</strong>, not 0.9 — the prior is never erased.</p>
+<h3 id="forgetting-regime-evidence_count-cap">Forgetting Regime (evidence_count &gt;= cap)<a class="headerlink" href="#forgetting-regime-evidence_count-cap" title="Permanent link">&para;</a></h3>
+<p>Once the evidence count reaches the cap, the effective gain is fixed at <code>1/(cap+1)</code>. With <code>cap=20</code> (default), each update multiplies <code>(confidence - signal)</code> by <code>20/21 ≈ 0.952</code>.</p>
+<p><strong>Worked example</strong>: a belief with <code>confidence=0.9</code> and <code>evidence_count=20</code> (at the cap) subjected to 15 consecutive contradictions at <code>signal=0.1</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>After k contradictions: confidence = 0.1 + 0.8 × (20/21)^k
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>Crossing 0.5 requires:  0.8 × (20/21)^k &lt; 0.4
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>                        k &gt; ln(0.4/0.8) / ln(20/21) ≈ 14.2 → 15 contradictions
+</code></pre></div>
+<p>This is bounded exponential forgetting — well-established beliefs take ~15 systematic contradictions to cross the midpoint at the default cap, compared to ~5 under the previous decaying-step rule.</p>
+<h3 id="update-behavior-summary">Update Behavior Summary<a class="headerlink" href="#update-behavior-summary" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
-<th>Updates</th>
-<th>Denominator</th>
-<th>Movement per update</th>
+<th>Regime</th>
+<th>Condition</th>
+<th>Behavior</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>1st</td>
-<td>sqrt(1) = 1.0</td>
-<td>Full step</td>
+<td>Running mean</td>
+<td>evidence_count &lt; cap (20)</td>
+<td>Exact mean of {prior, all signals}; order-invariant to ~1e-12</td>
 </tr>
 <tr>
-<td>4th</td>
-<td>sqrt(4) = 2.0</td>
-<td>Half step</td>
-</tr>
-<tr>
-<td>9th</td>
-<td>sqrt(9) = 3.0</td>
-<td>Third step</td>
-</tr>
-<tr>
-<td>100th</td>
-<td>sqrt(100) = 10.0</td>
-<td>Tenth step</td>
+<td>Fixed forgetting</td>
+<td>evidence_count &gt;= cap</td>
+<td>Constant gain <code>1/(cap+1)</code>; ~15 contradictions cross 0.5 from 0.9</td>
 </tr>
 </tbody>
 </table>
@@ -2765,15 +2819,19 @@
 </tbody>
 </table>
 <h3 id="auto-discharge">Auto-discharge<a class="headerlink" href="#auto-discharge" title="Permanent link">&para;</a></h3>
-<p>When confidence drops below 0.1 due to a <code>contradicted</code> outcome, homeostatic pressure on any <code>CyclicDecayField</code> is automatically resolved (discharged). This prevents low-confidence memories from building urgency.</p>
+<p>When confidence drops strictly below <code>AUTO_DISCHARGE_CONFIDENCE_THRESHOLD</code> (0.1), homeostatic pressure on any <code>CyclicDecayField</code> is automatically resolved (discharged). This prevents low-confidence memories from building urgency.</p>
+<p>The comparison uses an epsilon guard: discharge fires only when <code>conf &lt; 0.1 - 1e-9</code>. A confidence value that rounds to exactly 0.1 in display but is stored as <code>0.09999999999999998</code> (a common IEEE-754 artifact on the first contradiction from a default prior) does <strong>not</strong> trigger discharge. A genuine drop — one clearly below the threshold by more than epsilon — still does.</p>
 <h2 id="api-reference">API Reference<a class="headerlink" href="#api-reference" title="Permanent link">&para;</a></h2>
 <h3 id="confidencefieldupdate_confidenceinstance-field_name-signal"><code>ConfidenceField.update_confidence(instance, field_name, signal)</code><a class="headerlink" href="#confidencefieldupdate_confidenceinstance-field_name-signal" title="Permanent link">&para;</a></h3>
-<p>Atomically update confidence using the Bayesian formula.</p>
+<p>Atomically update confidence using the capped-evidence Bayesian formula.</p>
 <ul>
 <li><strong>signal</strong>: Float 0-1. Values &gt;= 0.5 corroborate, &lt; 0.5 contradict.</li>
 <li><strong>Returns</strong>: The new confidence value.</li>
 <li><strong>Raises</strong>: <code>TypeError</code> if unsaved or wrong field type; <code>ValueError</code> if signal out of range.</li>
 </ul>
+<blockquote>
+<p><strong>Warning</strong>: All processes calling <code>update_confidence</code> on the same companion hash entry must use identical <code>evidence_cap</code> values. The cap is not stored in Redis and divergent values produce silently inconsistent update trajectories.</p>
+</blockquote>
 <h3 id="confidencefieldget_confidenceinstance-field_name"><code>ConfidenceField.get_confidence(instance, field_name)</code><a class="headerlink" href="#confidencefieldget_confidenceinstance-field_name" title="Permanent link">&para;</a></h3>
 <p>Read the current confidence value.</p>
 <ul>
@@ -2784,54 +2842,55 @@
 <ul>
 <li><strong>Returns</strong>: Dict with keys <code>confidence</code>, <code>evidence_count</code>, <code>corroborations</code>, <code>contradictions</code>.</li>
 </ul>
+<p>Note: <code>evidence_count</code> reflects real observations only — the prior pseudo-count is internal to the Lua update and does not inflate this counter.</p>
 <h3 id="inspecting-companion-hash-keys">Inspecting Companion Hash Keys<a class="headerlink" href="#inspecting-companion-hash-keys" title="Permanent link">&para;</a></h3>
-<p>Each <code>ConfidenceField</code> stores its Bayesian metadata in a companion Redis hash alongside
+<p>Each <code>ConfidenceField</code> stores its confidence metadata in a companion Redis hash alongside
 the main model hash. The public companion key methods let you build these Redis keys
 for debugging, monitoring, or direct Redis inspection without reverse-engineering
 suffix conventions.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">redis</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">UniqueKeyField</span><span class="p">,</span> <span class="n">StringField</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.confidence_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConfidenceField</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="k">class</span><span class="w"> </span><span class="nc">Memory</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="n">key</span> <span class="o">=</span> <span class="n">UniqueKeyField</span><span class="p">()</span>
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">()</span>
-<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    <span class="n">certainty</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="p">(</span><span class="n">initial_confidence</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
-<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>
-<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="c1"># Create and update a memory</span>
-<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="n">memory</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="s2">&quot;fact1&quot;</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="s2">&quot;The sky is blue&quot;</span><span class="p">)</span>
-<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="n">ConfidenceField</span><span class="o">.</span><span class="n">update_confidence</span><span class="p">(</span><span class="n">memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">,</span> <span class="n">signal</span><span class="o">=</span><span class="mf">0.9</span><span class="p">)</span>
-<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>
-<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="c1"># Get the companion hash key for direct Redis inspection</span>
-<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="n">field</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">_options</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="s2">&quot;certainty&quot;</span><span class="p">]</span>
-<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="n">hash_key</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_data_hash_key</span><span class="p">(</span><span class="n">memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">)</span>
-<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="nb">print</span><span class="p">(</span><span class="n">hash_key</span><span class="p">)</span>
-<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="c1"># =&gt; &quot;$ConfidencF:Memory:certainty:data&quot;</span>
-<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>
-<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a><span class="c1"># Inspect the raw companion hash in Redis</span>
-<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a><span class="n">r</span> <span class="o">=</span> <span class="n">redis</span><span class="o">.</span><span class="n">from_url</span><span class="p">(</span><span class="s2">&quot;redis://localhost:6379&quot;</span><span class="p">)</span>
-<a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a><span class="n">raw_data</span> <span class="o">=</span> <span class="n">r</span><span class="o">.</span><span class="n">hgetall</span><span class="p">(</span><span class="n">hash_key</span><span class="p">)</span>
-<a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a><span class="nb">print</span><span class="p">(</span><span class="n">raw_data</span><span class="p">)</span>
-<a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a><span class="c1"># Shows all members and their msgpack-encoded confidence metadata</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">redis</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">UniqueKeyField</span><span class="p">,</span> <span class="n">StringField</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.confidence_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConfidenceField</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="k">class</span><span class="w"> </span><span class="nc">Memory</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="n">key</span> <span class="o">=</span> <span class="n">UniqueKeyField</span><span class="p">()</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">()</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    <span class="n">certainty</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="p">(</span><span class="n">initial_confidence</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="c1"># Create and update a memory</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="n">memory</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="s2">&quot;fact1&quot;</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="s2">&quot;The sky is blue&quot;</span><span class="p">)</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="n">ConfidenceField</span><span class="o">.</span><span class="n">update_confidence</span><span class="p">(</span><span class="n">memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">,</span> <span class="n">signal</span><span class="o">=</span><span class="mf">0.9</span><span class="p">)</span>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="c1"># Get the companion hash key for direct Redis inspection</span>
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="n">field</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">_options</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="s2">&quot;certainty&quot;</span><span class="p">]</span>
+<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="n">hash_key</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_data_hash_key</span><span class="p">(</span><span class="n">memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">)</span>
+<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a><span class="nb">print</span><span class="p">(</span><span class="n">hash_key</span><span class="p">)</span>
+<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="c1"># =&gt; &quot;$ConfidencF:Memory:certainty:data&quot;</span>
+<a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a>
+<a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a><span class="c1"># Inspect the raw companion hash in Redis</span>
+<a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a><span class="n">r</span> <span class="o">=</span> <span class="n">redis</span><span class="o">.</span><span class="n">from_url</span><span class="p">(</span><span class="s2">&quot;redis://localhost:6379&quot;</span><span class="p">)</span>
+<a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a><span class="n">raw_data</span> <span class="o">=</span> <span class="n">r</span><span class="o">.</span><span class="n">hgetall</span><span class="p">(</span><span class="n">hash_key</span><span class="p">)</span>
+<a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a><span class="nb">print</span><span class="p">(</span><span class="n">raw_data</span><span class="p">)</span>
+<a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a><span class="c1"># Shows all members and their msgpack-encoded confidence metadata</span>
 </code></pre></div>
 <p>When you do not have an instance loaded, use <code>get_data_hash_key_from_values</code> to build
 the key from explicit values:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Build the key without loading a model instance</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">key</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_data_hash_key_from_values</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">)</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="c1"># =&gt; &quot;$ConfidencF:Memory:certainty:data&quot;</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="c1"># For partitioned fields, pass the partition values as keyword arguments</span>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="c1"># key = field.get_data_hash_key_from_values(Memory, &quot;certainty&quot;, project=&quot;atlas&quot;)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># Build the key without loading a model instance</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">key</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_data_hash_key_from_values</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">)</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="c1"># =&gt; &quot;$ConfidencF:Memory:certainty:data&quot;</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="c1"># For partitioned fields, pass the partition values as keyword arguments</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="c1"># key = field.get_data_hash_key_from_values(Memory, &quot;certainty&quot;, project=&quot;atlas&quot;)</span>
 </code></pre></div>
 <h2 id="partitioned-reads">Partitioned Reads<a class="headerlink" href="#partitioned-reads" title="Permanent link">&para;</a></h2>
 <p>When the companion hash grows large (thousands of members), reads become expensive because
 <code>HGETALL</code> loads every entry. The <code>partition_by</code> parameter splits the hash by one or more
 field values, so each read only touches the relevant partition.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">Memory</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="n">project</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="n">key</span> <span class="o">=</span> <span class="n">UniqueKeyField</span><span class="p">()</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">()</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">certainty</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="p">(</span><span class="n">initial_confidence</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">partition_by</span><span class="o">=</span><span class="s1">&#39;project&#39;</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">Memory</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>    <span class="n">project</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="n">key</span> <span class="o">=</span> <span class="n">UniqueKeyField</span><span class="p">()</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">()</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">certainty</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="p">(</span><span class="n">initial_confidence</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">partition_by</span><span class="o">=</span><span class="s1">&#39;project&#39;</span><span class="p">)</span>
 </code></pre></div>
 <p>All read and write operations automatically resolve the correct partition hash from the
 model instance. Queries on partitioned ConfidenceFields must include the partition field
@@ -2841,15 +2900,15 @@ for the full pattern including migration from unpartitioned data.</p>
 <h3 id="hscan-filtered-reads">HSCAN Filtered Reads<a class="headerlink" href="#hscan-filtered-reads" title="Permanent link">&para;</a></h3>
 <p>For unpartitioned hashes, <code>get_confidence_filtered()</code> uses HSCAN with MATCH to iterate
 without loading all entries into memory:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">results</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">get_confidence_filtered</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">,</span> <span class="n">pattern</span><span class="o">=</span><span class="s2">&quot;Memory:atlas:*&quot;</span><span class="p">)</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="c1"># Returns: {member_key: {confidence, evidence_count, ...}}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">results</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">get_confidence_filtered</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">,</span> <span class="n">pattern</span><span class="o">=</span><span class="s2">&quot;Memory:atlas:*&quot;</span><span class="p">)</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="c1"># Returns: {member_key: {confidence, evidence_count, ...}}</span>
 </code></pre></div>
 <h3 id="migration-helper">Migration Helper<a class="headerlink" href="#migration-helper" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># Dry run — see what would happen</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">report</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">migrate_to_partitioned</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">,</span> <span class="n">dry_run</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="c1"># Execute migration</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="n">report</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">migrate_to_partitioned</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Dry run — see what would happen</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="n">report</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">migrate_to_partitioned</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">,</span> <span class="n">dry_run</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="c1"># Execute migration</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="n">report</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">migrate_to_partitioned</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">)</span>
 </code></pre></div>
 <h2 id="redis-key-patterns">Redis Key Patterns<a class="headerlink" href="#redis-key-patterns" title="Permanent link">&para;</a></h2>
 <table>
@@ -2876,11 +2935,11 @@ without loading all entries into memory:</p>
 <h2 id="working-example-popoto-kitchen">Working Example: Popoto Kitchen<a class="headerlink" href="#working-example-popoto-kitchen" title="Permanent link">&para;</a></h2>
 <p>The <a href="https://github.com/tomcounsell/popoto/tree/main/examples">Popoto Kitchen example app</a>
 includes a <code>ReviewScore</code> model that demonstrates <code>ConfidenceField</code> with
-<code>partition_by="restaurant"</code>. Run the operations demo to see Bayesian updates,
+<code>partition_by="restaurant"</code>. Run the operations demo to see capped-evidence updates,
 companion hash key inspection, and partitioned confidence in action:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nb">cd</span><span class="w"> </span>examples
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>uv<span class="w"> </span>run<span class="w"> </span>popoto-kitchen<span class="w"> </span>--seed-only<span class="w"> </span>--clear
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>uv<span class="w"> </span>run<span class="w"> </span>popoto-kitchen<span class="w"> </span>--ops
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nb">cd</span><span class="w"> </span>examples
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>uv<span class="w"> </span>run<span class="w"> </span>popoto-kitchen<span class="w"> </span>--seed-only<span class="w"> </span>--clear
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>uv<span class="w"> </span>run<span class="w"> </span>popoto-kitchen<span class="w"> </span>--ops
 </code></pre></div>
 <p>See <a href="https://github.com/tomcounsell/popoto/blob/main/examples/popoto_kitchen/operations.py"><code>examples/popoto_kitchen/operations.py</code></a>
 for the full source, and the

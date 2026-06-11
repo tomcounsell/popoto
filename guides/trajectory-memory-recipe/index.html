@@ -2606,7 +2606,14 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Triggered by a cron or reflection step, not on every write.</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">new_or_reinforced</span> <span class="o">=</span> <span class="n">tm</span><span class="o">.</span><span class="n">crystallize</span><span class="p">(</span><span class="n">partition</span><span class="o">=</span><span class="s2">&quot;team-a&quot;</span><span class="p">)</span>
 </code></pre></div>
-<p>Crystallization is <strong>idempotent</strong>: re-running on an unchanged episode set produces no drift in confidence or <code>last_reinforced</code>. The recipe achieves this by observing only episodes newer than each pattern's <code>last_reinforced</code> timestamp (Risk 2 in the plan). Bayesian confidence updates are commutative — concurrent crystallizations converge.</p>
+<p>Crystallization is <strong>idempotent via watermark</strong>: re-running on an unchanged episode set produces zero drift in confidence or <code>last_reinforced</code>. After each run, <code>last_reinforced</code> is set to the maximum <code>recorded_at</code> timestamp across all observed episodes (the watermark). Subsequent runs observe only episodes strictly newer than that watermark, so the same episodes are never double-counted.</p>
+<p><strong>Operational constraints for idempotence:</strong></p>
+<ul>
+<li><strong>One crystallizer per partition.</strong> Concurrent crystallization of the same partition is not coordinated — two processes reading the same episode set and both calling <code>_observe_episodes</code> will double-observe episodes, inflating confidence counts. Run a single crystallizer per partition.</li>
+<li><strong>NTP-synced writers.</strong> The watermark guarantee assumes episode writers and the crystallizer are within ordinary NTP clock synchronization. A writer whose clock lags behind the current watermark will record episodes with <code>recorded_at</code> timestamps below the watermark; the strict <code>&gt;</code> filter skips those episodes permanently on all subsequent runs.</li>
+<li><strong><code>last_reinforced</code> stores episode time, not crystallize time.</strong> The stored score for <code>last_reinforced</code> equals the maximum observed episode <code>recorded_at</code> — which may predate the wall-clock time the crystallize call ran. An operator running <code>ZSCORE</code> on the recency index reads "newest episode processed", not "when crystallize last ran". Under batched or nightly crystallization, patterns will rank correspondingly older in recency-weighted recall (<code>DEFAULT_SCORE_WEIGHTS</code> weights <code>last_reinforced</code> at 0.4) than they would under wall-clock semantics.</li>
+</ul>
+<p>Note: within the evidence window, the capped-evidence update rule is order-invariant (to ~1e-12), which bounds — but does not eliminate — confidence drift if the single-crystallizer constraint is violated. Do not rely on commutativity as a substitute for the operational constraint.</p>
 <p>The canonical sequence is the <strong>modal trajectory</strong> across the group, with ties broken by the most recent episode. Anything fancier (edit-distance, n-gram similarity, custom aggregators) is intentionally out of scope.</p>
 <h3 id="recallfingerprint-partition-limit5"><code>recall(fingerprint, partition, limit=5)</code><a class="headerlink" href="#recallfingerprint-partition-limit5" title="Permanent link">&para;</a></h3>
 <p>Keyed exact-match retrieval. Returns at most <code>limit</code> patterns matching the supplied fingerprint dimensions, ranked by composite score.</p>
@@ -2647,7 +2654,7 @@
 <td>Confidence</td>
 <td><code>ConfidenceField</code></td>
 <td><code>confidence</code></td>
-<td>Bayesian success tracking</td>
+<td>Capped-evidence success tracking</td>
 </tr>
 <tr>
 <td>Last reinforced</td>
@@ -2745,7 +2752,7 @@
 <li><a href="../../features/context-assembler/">ContextAssembler</a> — retrieval-to-injection bridge for <strong>semantic</strong> memory</li>
 <li><a href="../subconscious-memory-recipe/">SubconsciousMemory</a> — automatic inject/extract around LLM turns</li>
 <li><a href="../policy-cache-recipe/">PolicyCache</a> — RL-style action selection by state fingerprint (the closest analogue: also clusters by fingerprint, also uses <code>ConfidenceField</code>)</li>
-<li><a href="../../features/confidence-field/"><code>ConfidenceField</code></a> — Bayesian confidence primitive used for pattern reinforcement</li>
+<li><a href="../../features/confidence-field/"><code>ConfidenceField</code></a> — capped-evidence confidence primitive used for pattern reinforcement</li>
 <li><a href="../../features/decaying-sorted-field/"><code>DecayingSortedField</code></a> — time-decaying score used for <code>last_reinforced</code> ranking</li>
 </ul>
 

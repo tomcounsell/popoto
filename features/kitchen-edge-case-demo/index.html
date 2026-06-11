@@ -2629,7 +2629,7 @@ via <code>python -m popoto_kitchen --ops</code> and print results to stdout.</p>
 <h3 id="reviewscore-model">ReviewScore Model<a class="headerlink" href="#reviewscore-model" title="Permanent link">&para;</a></h3>
 <p>A new model using <code>ConfidenceField</code> with <code>partition_by="restaurant"</code> to
 track review confidence per restaurant. See
-<a href="../confidence-field/">ConfidenceField docs</a> for the Bayesian update formula.</p>
+<a href="../confidence-field/">ConfidenceField docs</a> for the capped-evidence update formula.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">ReviewScore</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="n">restaurant</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="n">reviewer</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>

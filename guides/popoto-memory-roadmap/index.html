@@ -3208,13 +3208,13 @@
 <p><strong>Issues:</strong> ~2 (mixin with SkipSaveException, threshold config, tests)</p>
 <hr />
 <h2 id="step-4-confidencefield-bayesian-certainty-tracking-entrainment-shipped">Step 4: ConfidenceField — Bayesian Certainty Tracking + Entrainment ✅ Shipped<a class="headerlink" href="#step-4-confidencefield-bayesian-certainty-tracking-entrainment-shipped" title="Permanent link">&para;</a></h2>
-<p><strong>What it is:</strong> A field type that maintains a Bayesian confidence score updated atomically via Lua script. Each update provides a binary signal (corroborate/contradict) with a weight. The prior becomes harder to shift as evidence accumulates (precision grows with √n).</p>
+<p><strong>What it is:</strong> A field type that maintains a confidence score updated atomically via Lua script using a capped-evidence Bayesian rule. Each update provides a binary signal (corroborate/contradict). Within the evidence window (default cap: 20) updates are an exact running mean — order-invariant and prior-weighted. Beyond the cap, a fixed gain produces bounded exponential forgetting.</p>
 <p>ConfidenceField also serves as the <strong>entrainment mechanism</strong> for CyclicDecayField (Step 1). Cyclical parameters (amplitude, phase) are hypotheses about temporal relevance. The observation protocol (Step 2) generates corroborate/contradict signals for these hypotheses, and ConfidenceField applies them. When a cycle's confidence drops below a threshold, the cycle auto-disables — this is how stale recurring memories ("send that client an update") die when the underlying context has changed ("that client contract ended").</p>
 <p><strong>Implementation:</strong> Shipped in <a href="https://github.com/tomcounsell/popoto/pull/215">PR #215</a>.</p>
 <p><strong>ORM addition:</strong></p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">ConfidenceField</span><span class="p">(</span><span class="n">Field</span><span class="p">):</span>
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="sd">    Bayesian confidence score with precision-weighted updates.</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="sd">    Capped-evidence confidence score (forgetful Bayesian).</span>
 <a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>
 <a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="sd">    Stored as: {confidence: float, evidence_count: int,</span>
 <a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="sd">                corroborations: int, contradictions: int}</span>

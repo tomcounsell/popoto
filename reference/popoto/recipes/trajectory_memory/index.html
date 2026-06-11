@@ -3188,7 +3188,69 @@ field of the wrong type.</p>
 <span class="normal"><a href="#__codelineno-0-647">647</a></span>
 <span class="normal"><a href="#__codelineno-0-648">648</a></span>
 <span class="normal"><a href="#__codelineno-0-649">649</a></span>
-<span class="normal"><a href="#__codelineno-0-650">650</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-132" name="__codelineno-0-132"></a><span class="k">class</span><span class="w"> </span><span class="nc">TrajectoryMemory</span><span class="p">:</span>
+<span class="normal"><a href="#__codelineno-0-650">650</a></span>
+<span class="normal"><a href="#__codelineno-0-651">651</a></span>
+<span class="normal"><a href="#__codelineno-0-652">652</a></span>
+<span class="normal"><a href="#__codelineno-0-653">653</a></span>
+<span class="normal"><a href="#__codelineno-0-654">654</a></span>
+<span class="normal"><a href="#__codelineno-0-655">655</a></span>
+<span class="normal"><a href="#__codelineno-0-656">656</a></span>
+<span class="normal"><a href="#__codelineno-0-657">657</a></span>
+<span class="normal"><a href="#__codelineno-0-658">658</a></span>
+<span class="normal"><a href="#__codelineno-0-659">659</a></span>
+<span class="normal"><a href="#__codelineno-0-660">660</a></span>
+<span class="normal"><a href="#__codelineno-0-661">661</a></span>
+<span class="normal"><a href="#__codelineno-0-662">662</a></span>
+<span class="normal"><a href="#__codelineno-0-663">663</a></span>
+<span class="normal"><a href="#__codelineno-0-664">664</a></span>
+<span class="normal"><a href="#__codelineno-0-665">665</a></span>
+<span class="normal"><a href="#__codelineno-0-666">666</a></span>
+<span class="normal"><a href="#__codelineno-0-667">667</a></span>
+<span class="normal"><a href="#__codelineno-0-668">668</a></span>
+<span class="normal"><a href="#__codelineno-0-669">669</a></span>
+<span class="normal"><a href="#__codelineno-0-670">670</a></span>
+<span class="normal"><a href="#__codelineno-0-671">671</a></span>
+<span class="normal"><a href="#__codelineno-0-672">672</a></span>
+<span class="normal"><a href="#__codelineno-0-673">673</a></span>
+<span class="normal"><a href="#__codelineno-0-674">674</a></span>
+<span class="normal"><a href="#__codelineno-0-675">675</a></span>
+<span class="normal"><a href="#__codelineno-0-676">676</a></span>
+<span class="normal"><a href="#__codelineno-0-677">677</a></span>
+<span class="normal"><a href="#__codelineno-0-678">678</a></span>
+<span class="normal"><a href="#__codelineno-0-679">679</a></span>
+<span class="normal"><a href="#__codelineno-0-680">680</a></span>
+<span class="normal"><a href="#__codelineno-0-681">681</a></span>
+<span class="normal"><a href="#__codelineno-0-682">682</a></span>
+<span class="normal"><a href="#__codelineno-0-683">683</a></span>
+<span class="normal"><a href="#__codelineno-0-684">684</a></span>
+<span class="normal"><a href="#__codelineno-0-685">685</a></span>
+<span class="normal"><a href="#__codelineno-0-686">686</a></span>
+<span class="normal"><a href="#__codelineno-0-687">687</a></span>
+<span class="normal"><a href="#__codelineno-0-688">688</a></span>
+<span class="normal"><a href="#__codelineno-0-689">689</a></span>
+<span class="normal"><a href="#__codelineno-0-690">690</a></span>
+<span class="normal"><a href="#__codelineno-0-691">691</a></span>
+<span class="normal"><a href="#__codelineno-0-692">692</a></span>
+<span class="normal"><a href="#__codelineno-0-693">693</a></span>
+<span class="normal"><a href="#__codelineno-0-694">694</a></span>
+<span class="normal"><a href="#__codelineno-0-695">695</a></span>
+<span class="normal"><a href="#__codelineno-0-696">696</a></span>
+<span class="normal"><a href="#__codelineno-0-697">697</a></span>
+<span class="normal"><a href="#__codelineno-0-698">698</a></span>
+<span class="normal"><a href="#__codelineno-0-699">699</a></span>
+<span class="normal"><a href="#__codelineno-0-700">700</a></span>
+<span class="normal"><a href="#__codelineno-0-701">701</a></span>
+<span class="normal"><a href="#__codelineno-0-702">702</a></span>
+<span class="normal"><a href="#__codelineno-0-703">703</a></span>
+<span class="normal"><a href="#__codelineno-0-704">704</a></span>
+<span class="normal"><a href="#__codelineno-0-705">705</a></span>
+<span class="normal"><a href="#__codelineno-0-706">706</a></span>
+<span class="normal"><a href="#__codelineno-0-707">707</a></span>
+<span class="normal"><a href="#__codelineno-0-708">708</a></span>
+<span class="normal"><a href="#__codelineno-0-709">709</a></span>
+<span class="normal"><a href="#__codelineno-0-710">710</a></span>
+<span class="normal"><a href="#__codelineno-0-711">711</a></span>
+<span class="normal"><a href="#__codelineno-0-712">712</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-132" name="__codelineno-0-132"></a><span class="k">class</span><span class="w"> </span><span class="nc">TrajectoryMemory</span><span class="p">:</span>
 <a id="__codelineno-0-133" name="__codelineno-0-133"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Fingerprint-keyed procedural-pattern recipe.</span>
 <a id="__codelineno-0-134" name="__codelineno-0-134"></a>
 <a id="__codelineno-0-135" name="__codelineno-0-135"></a><span class="sd">    Generic over ``episode_model`` and ``pattern_model``. The recipe</span>
@@ -3447,7 +3509,7 @@ field of the wrong type.</p>
 <a id="__codelineno-0-388" name="__codelineno-0-388"></a>        <span class="k">return</span> <span class="n">episode</span>
 <a id="__codelineno-0-389" name="__codelineno-0-389"></a>
 <a id="__codelineno-0-390" name="__codelineno-0-390"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">crystallize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">partition</span><span class="p">):</span>
-<a id="__codelineno-0-391" name="__codelineno-0-391"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Cluster recent episodes into canonical patterns (idempotent).</span>
+<a id="__codelineno-0-391" name="__codelineno-0-391"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Cluster recent episodes into canonical patterns.</span>
 <a id="__codelineno-0-392" name="__codelineno-0-392"></a>
 <a id="__codelineno-0-393" name="__codelineno-0-393"></a><span class="sd">        Loads every episode in ``partition``, groups them by their</span>
 <a id="__codelineno-0-394" name="__codelineno-0-394"></a><span class="sd">        fingerprint tuple, and for each group at least</span>
@@ -3455,258 +3517,320 @@ field of the wrong type.</p>
 <a id="__codelineno-0-396" name="__codelineno-0-396"></a>
 <a id="__codelineno-0-397" name="__codelineno-0-397"></a><span class="sd">        * Upserts a ``pattern_model`` record keyed by ``(partition,</span>
 <a id="__codelineno-0-398" name="__codelineno-0-398"></a><span class="sd">          *fingerprint_values)``.</span>
-<a id="__codelineno-0-399" name="__codelineno-0-399"></a><span class="sd">        * On existing patterns, observes only episodes newer than</span>
-<a id="__codelineno-0-400" name="__codelineno-0-400"></a><span class="sd">          ``pattern.last_reinforced`` (so re-running on an unchanged</span>
-<a id="__codelineno-0-401" name="__codelineno-0-401"></a><span class="sd">          episode set does not drift confidence — see plan Risk 2).</span>
-<a id="__codelineno-0-402" name="__codelineno-0-402"></a><span class="sd">        * Recomputes the canonical sequence as the modal trajectory</span>
-<a id="__codelineno-0-403" name="__codelineno-0-403"></a><span class="sd">          across the group, ties broken by the most recent episode.</span>
-<a id="__codelineno-0-404" name="__codelineno-0-404"></a>
-<a id="__codelineno-0-405" name="__codelineno-0-405"></a><span class="sd">        Args:</span>
-<a id="__codelineno-0-406" name="__codelineno-0-406"></a><span class="sd">            partition: Partition value to crystallize. Crystallization is</span>
-<a id="__codelineno-0-407" name="__codelineno-0-407"></a><span class="sd">                scoped per partition.</span>
-<a id="__codelineno-0-408" name="__codelineno-0-408"></a>
-<a id="__codelineno-0-409" name="__codelineno-0-409"></a><span class="sd">        Returns:</span>
-<a id="__codelineno-0-410" name="__codelineno-0-410"></a><span class="sd">            List of ``pattern_model`` instances that were created or</span>
-<a id="__codelineno-0-411" name="__codelineno-0-411"></a><span class="sd">            reinforced by this call.</span>
-<a id="__codelineno-0-412" name="__codelineno-0-412"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-413" name="__codelineno-0-413"></a>        <span class="n">episodes</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span>
-<a id="__codelineno-0-414" name="__codelineno-0-414"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">episode_model</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">**</span><span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">partition_field</span><span class="p">:</span> <span class="n">partition</span><span class="p">})</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
-<a id="__codelineno-0-415" name="__codelineno-0-415"></a>        <span class="p">)</span>
-<a id="__codelineno-0-416" name="__codelineno-0-416"></a>
-<a id="__codelineno-0-417" name="__codelineno-0-417"></a>        <span class="c1"># Group by fingerprint tuple</span>
-<a id="__codelineno-0-418" name="__codelineno-0-418"></a>        <span class="n">groups</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">list</span><span class="p">)</span>
-<a id="__codelineno-0-419" name="__codelineno-0-419"></a>        <span class="k">for</span> <span class="n">episode</span> <span class="ow">in</span> <span class="n">episodes</span><span class="p">:</span>
-<a id="__codelineno-0-420" name="__codelineno-0-420"></a>            <span class="n">key</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">episode</span><span class="p">,</span> <span class="n">f</span><span class="p">)</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">fingerprint_fields</span><span class="p">)</span>
-<a id="__codelineno-0-421" name="__codelineno-0-421"></a>            <span class="n">groups</span><span class="p">[</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">episode</span><span class="p">)</span>
-<a id="__codelineno-0-422" name="__codelineno-0-422"></a>
-<a id="__codelineno-0-423" name="__codelineno-0-423"></a>        <span class="n">affected</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-0-424" name="__codelineno-0-424"></a>        <span class="k">for</span> <span class="n">fingerprint_tuple</span><span class="p">,</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">groups</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-<a id="__codelineno-0-425" name="__codelineno-0-425"></a>            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">group</span><span class="p">)</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">cluster_threshold</span><span class="p">:</span>
-<a id="__codelineno-0-426" name="__codelineno-0-426"></a>                <span class="k">continue</span>
-<a id="__codelineno-0-427" name="__codelineno-0-427"></a>
-<a id="__codelineno-0-428" name="__codelineno-0-428"></a>            <span class="n">fingerprint</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fingerprint_fields</span><span class="p">,</span> <span class="n">fingerprint_tuple</span><span class="p">))</span>
-<a id="__codelineno-0-429" name="__codelineno-0-429"></a>
-<a id="__codelineno-0-430" name="__codelineno-0-430"></a>            <span class="c1"># Look up existing pattern (unique under partition, by KeyFields)</span>
-<a id="__codelineno-0-431" name="__codelineno-0-431"></a>            <span class="n">existing</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span>
-<a id="__codelineno-0-432" name="__codelineno-0-432"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">pattern_model</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
-<a id="__codelineno-0-433" name="__codelineno-0-433"></a>                    <span class="o">**</span><span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">partition_field</span><span class="p">:</span> <span class="n">partition</span><span class="p">,</span> <span class="o">**</span><span class="n">fingerprint</span><span class="p">}</span>
-<a id="__codelineno-0-434" name="__codelineno-0-434"></a>                <span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
-<a id="__codelineno-0-435" name="__codelineno-0-435"></a>            <span class="p">)</span>
-<a id="__codelineno-0-436" name="__codelineno-0-436"></a>
-<a id="__codelineno-0-437" name="__codelineno-0-437"></a>            <span class="n">canonical</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_canonical_sequence</span><span class="p">(</span><span class="n">group</span><span class="p">)</span>
-<a id="__codelineno-0-438" name="__codelineno-0-438"></a>
-<a id="__codelineno-0-439" name="__codelineno-0-439"></a>            <span class="k">if</span> <span class="ow">not</span> <span class="n">existing</span><span class="p">:</span>
-<a id="__codelineno-0-440" name="__codelineno-0-440"></a>                <span class="c1"># New pattern: observe every episode in the group</span>
-<a id="__codelineno-0-441" name="__codelineno-0-441"></a>                <span class="n">pattern</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_create_pattern</span><span class="p">(</span>
-<a id="__codelineno-0-442" name="__codelineno-0-442"></a>                    <span class="n">partition</span><span class="o">=</span><span class="n">partition</span><span class="p">,</span>
-<a id="__codelineno-0-443" name="__codelineno-0-443"></a>                    <span class="n">fingerprint</span><span class="o">=</span><span class="n">fingerprint</span><span class="p">,</span>
-<a id="__codelineno-0-444" name="__codelineno-0-444"></a>                    <span class="n">canonical</span><span class="o">=</span><span class="n">canonical</span><span class="p">,</span>
-<a id="__codelineno-0-445" name="__codelineno-0-445"></a>                <span class="p">)</span>
-<a id="__codelineno-0-446" name="__codelineno-0-446"></a>                <span class="n">observed_episodes</span> <span class="o">=</span> <span class="n">group</span>
-<a id="__codelineno-0-447" name="__codelineno-0-447"></a>            <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-448" name="__codelineno-0-448"></a>                <span class="n">pattern</span> <span class="o">=</span> <span class="n">existing</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-<a id="__codelineno-0-449" name="__codelineno-0-449"></a>                <span class="c1"># Re-running idempotence: only observe episodes newer than</span>
-<a id="__codelineno-0-450" name="__codelineno-0-450"></a>                <span class="c1"># the pattern&#39;s last_reinforced timestamp.</span>
-<a id="__codelineno-0-451" name="__codelineno-0-451"></a>                <span class="n">last_reinforced</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_episode_score</span><span class="p">(</span><span class="n">pattern</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">recency_field</span><span class="p">)</span>
-<a id="__codelineno-0-452" name="__codelineno-0-452"></a>                <span class="n">observed_episodes</span> <span class="o">=</span> <span class="p">[</span>
-<a id="__codelineno-0-453" name="__codelineno-0-453"></a>                    <span class="n">e</span>
-<a id="__codelineno-0-454" name="__codelineno-0-454"></a>                    <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">group</span>
-<a id="__codelineno-0-455" name="__codelineno-0-455"></a>                    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_episode_score</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">episode_recency_field</span><span class="p">)</span>
-<a id="__codelineno-0-456" name="__codelineno-0-456"></a>                    <span class="o">&gt;</span> <span class="n">last_reinforced</span>
-<a id="__codelineno-0-457" name="__codelineno-0-457"></a>                <span class="p">]</span>
-<a id="__codelineno-0-458" name="__codelineno-0-458"></a>                <span class="k">if</span> <span class="ow">not</span> <span class="n">observed_episodes</span><span class="p">:</span>
-<a id="__codelineno-0-459" name="__codelineno-0-459"></a>                    <span class="c1"># No new evidence — nothing to do.</span>
-<a id="__codelineno-0-460" name="__codelineno-0-460"></a>                    <span class="k">continue</span>
-<a id="__codelineno-0-461" name="__codelineno-0-461"></a>
-<a id="__codelineno-0-462" name="__codelineno-0-462"></a>                <span class="c1"># Recompute canonical sequence on the full group (deterministic).</span>
-<a id="__codelineno-0-463" name="__codelineno-0-463"></a>                <span class="nb">setattr</span><span class="p">(</span><span class="n">pattern</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">canonical_sequence_field</span><span class="p">,</span> <span class="n">canonical</span><span class="p">)</span>
+<a id="__codelineno-0-399" name="__codelineno-0-399"></a><span class="sd">        * On existing patterns, observes only episodes strictly newer</span>
+<a id="__codelineno-0-400" name="__codelineno-0-400"></a><span class="sd">          than the pattern&#39;s recency score (the watermark filter below).</span>
+<a id="__codelineno-0-401" name="__codelineno-0-401"></a><span class="sd">        * Recomputes the canonical sequence as the modal trajectory</span>
+<a id="__codelineno-0-402" name="__codelineno-0-402"></a><span class="sd">          across the group, ties broken by the most recent episode.</span>
+<a id="__codelineno-0-403" name="__codelineno-0-403"></a><span class="sd">        * Advances the pattern&#39;s recency field (``last_reinforced``) to</span>
+<a id="__codelineno-0-404" name="__codelineno-0-404"></a><span class="sd">          the **max observed episode timestamp** (the watermark), saved</span>
+<a id="__codelineno-0-405" name="__codelineno-0-405"></a><span class="sd">          with ``skip_auto_now=True`` — never to the wall-clock time of</span>
+<a id="__codelineno-0-406" name="__codelineno-0-406"></a><span class="sd">          the save.</span>
+<a id="__codelineno-0-407" name="__codelineno-0-407"></a>
+<a id="__codelineno-0-408" name="__codelineno-0-408"></a><span class="sd">        Idempotence guarantee (and its limits):</span>
+<a id="__codelineno-0-409" name="__codelineno-0-409"></a>
+<a id="__codelineno-0-410" name="__codelineno-0-410"></a><span class="sd">        * **Sequential re-run idempotence** via watermark filtering:</span>
+<a id="__codelineno-0-411" name="__codelineno-0-411"></a><span class="sd">          because the stored watermark equals the max *observed* episode</span>
+<a id="__codelineno-0-412" name="__codelineno-0-412"></a><span class="sd">          timestamp and the filter is strict ``&gt;``, re-running</span>
+<a id="__codelineno-0-413" name="__codelineno-0-413"></a><span class="sd">          crystallize on an unchanged episode set observes nothing and</span>
+<a id="__codelineno-0-414" name="__codelineno-0-414"></a><span class="sd">          produces zero confidence drift. An episode recorded between</span>
+<a id="__codelineno-0-415" name="__codelineno-0-415"></a><span class="sd">          the episode query and the save (i.e. with a timestamp above</span>
+<a id="__codelineno-0-416" name="__codelineno-0-416"></a><span class="sd">          the watermark but below wall-clock save time) is picked up by</span>
+<a id="__codelineno-0-417" name="__codelineno-0-417"></a><span class="sd">          the *next* run rather than lost. No commutativity of the</span>
+<a id="__codelineno-0-418" name="__codelineno-0-418"></a><span class="sd">          underlying confidence update is assumed or claimed.</span>
+<a id="__codelineno-0-419" name="__codelineno-0-419"></a><span class="sd">        * **Concurrent crystallization of the same partition is NOT</span>
+<a id="__codelineno-0-420" name="__codelineno-0-420"></a><span class="sd">          coordinated.** The recipe performs a read-modify-write with no</span>
+<a id="__codelineno-0-421" name="__codelineno-0-421"></a><span class="sd">          locking, so two crystallizers racing on one partition can</span>
+<a id="__codelineno-0-422" name="__codelineno-0-422"></a><span class="sd">          double-observe the same episodes. Run one crystallizer per</span>
+<a id="__codelineno-0-423" name="__codelineno-0-423"></a><span class="sd">          partition.</span>
+<a id="__codelineno-0-424" name="__codelineno-0-424"></a>
+<a id="__codelineno-0-425" name="__codelineno-0-425"></a><span class="sd">        Watermark semantics to be aware of:</span>
+<a id="__codelineno-0-426" name="__codelineno-0-426"></a>
+<a id="__codelineno-0-427" name="__codelineno-0-427"></a><span class="sd">        * The recency field&#39;s stored score equals the max **observed</span>
+<a id="__codelineno-0-428" name="__codelineno-0-428"></a><span class="sd">          episode** ``recorded_at``, which may predate the wall-clock</span>
+<a id="__codelineno-0-429" name="__codelineno-0-429"></a><span class="sd">          crystallize call. A ZSCORE read of the recency index therefore</span>
+<a id="__codelineno-0-430" name="__codelineno-0-430"></a><span class="sd">          means &quot;newest episode processed&quot;, not &quot;when crystallize last</span>
+<a id="__codelineno-0-431" name="__codelineno-0-431"></a><span class="sd">          ran&quot;, and recency-weighted recall ranks patterns by *episode*</span>
+<a id="__codelineno-0-432" name="__codelineno-0-432"></a><span class="sd">          time — batched/nightly crystallization makes patterns appear</span>
+<a id="__codelineno-0-433" name="__codelineno-0-433"></a><span class="sd">          correspondingly older.</span>
+<a id="__codelineno-0-434" name="__codelineno-0-434"></a><span class="sd">        * **Clock-sync assumption:** episode writers and the</span>
+<a id="__codelineno-0-435" name="__codelineno-0-435"></a><span class="sd">          crystallizer are assumed to be within ordinary NTP sync. A</span>
+<a id="__codelineno-0-436" name="__codelineno-0-436"></a><span class="sd">          writer whose clock lags the watermark can record an episode</span>
+<a id="__codelineno-0-437" name="__codelineno-0-437"></a><span class="sd">          *below* it, which the strict ``&gt;`` filter then skips forever.</span>
+<a id="__codelineno-0-438" name="__codelineno-0-438"></a><span class="sd">        * Crystallize-triggered saves use ``skip_auto_now=True``, so any</span>
+<a id="__codelineno-0-439" name="__codelineno-0-439"></a><span class="sd">          **other** ``auto_now`` field on ``pattern_model`` is frozen by</span>
+<a id="__codelineno-0-440" name="__codelineno-0-440"></a><span class="sd">          (and never populated by) crystallize-triggered saves.</span>
+<a id="__codelineno-0-441" name="__codelineno-0-441"></a>
+<a id="__codelineno-0-442" name="__codelineno-0-442"></a><span class="sd">        Args:</span>
+<a id="__codelineno-0-443" name="__codelineno-0-443"></a><span class="sd">            partition: Partition value to crystallize. Crystallization is</span>
+<a id="__codelineno-0-444" name="__codelineno-0-444"></a><span class="sd">                scoped per partition.</span>
+<a id="__codelineno-0-445" name="__codelineno-0-445"></a>
+<a id="__codelineno-0-446" name="__codelineno-0-446"></a><span class="sd">        Returns:</span>
+<a id="__codelineno-0-447" name="__codelineno-0-447"></a><span class="sd">            List of ``pattern_model`` instances that were created or</span>
+<a id="__codelineno-0-448" name="__codelineno-0-448"></a><span class="sd">            reinforced by this call.</span>
+<a id="__codelineno-0-449" name="__codelineno-0-449"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-450" name="__codelineno-0-450"></a>        <span class="n">episodes</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span>
+<a id="__codelineno-0-451" name="__codelineno-0-451"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">episode_model</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">**</span><span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">partition_field</span><span class="p">:</span> <span class="n">partition</span><span class="p">})</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
+<a id="__codelineno-0-452" name="__codelineno-0-452"></a>        <span class="p">)</span>
+<a id="__codelineno-0-453" name="__codelineno-0-453"></a>
+<a id="__codelineno-0-454" name="__codelineno-0-454"></a>        <span class="c1"># Group by fingerprint tuple</span>
+<a id="__codelineno-0-455" name="__codelineno-0-455"></a>        <span class="n">groups</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">list</span><span class="p">)</span>
+<a id="__codelineno-0-456" name="__codelineno-0-456"></a>        <span class="k">for</span> <span class="n">episode</span> <span class="ow">in</span> <span class="n">episodes</span><span class="p">:</span>
+<a id="__codelineno-0-457" name="__codelineno-0-457"></a>            <span class="n">key</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">episode</span><span class="p">,</span> <span class="n">f</span><span class="p">)</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">fingerprint_fields</span><span class="p">)</span>
+<a id="__codelineno-0-458" name="__codelineno-0-458"></a>            <span class="n">groups</span><span class="p">[</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">episode</span><span class="p">)</span>
+<a id="__codelineno-0-459" name="__codelineno-0-459"></a>
+<a id="__codelineno-0-460" name="__codelineno-0-460"></a>        <span class="n">affected</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-461" name="__codelineno-0-461"></a>        <span class="k">for</span> <span class="n">fingerprint_tuple</span><span class="p">,</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">groups</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+<a id="__codelineno-0-462" name="__codelineno-0-462"></a>            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">group</span><span class="p">)</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">cluster_threshold</span><span class="p">:</span>
+<a id="__codelineno-0-463" name="__codelineno-0-463"></a>                <span class="k">continue</span>
 <a id="__codelineno-0-464" name="__codelineno-0-464"></a>
-<a id="__codelineno-0-465" name="__codelineno-0-465"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_observe_episodes</span><span class="p">(</span><span class="n">pattern</span><span class="p">,</span> <span class="n">observed_episodes</span><span class="p">)</span>
-<a id="__codelineno-0-466" name="__codelineno-0-466"></a>            <span class="c1"># Save advances DecayingSortedField (auto_now=True) and writes</span>
-<a id="__codelineno-0-467" name="__codelineno-0-467"></a>            <span class="c1"># the canonical_sequence update.</span>
-<a id="__codelineno-0-468" name="__codelineno-0-468"></a>            <span class="n">pattern</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
-<a id="__codelineno-0-469" name="__codelineno-0-469"></a>
-<a id="__codelineno-0-470" name="__codelineno-0-470"></a>            <span class="n">affected</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">pattern</span><span class="p">)</span>
-<a id="__codelineno-0-471" name="__codelineno-0-471"></a>
-<a id="__codelineno-0-472" name="__codelineno-0-472"></a>        <span class="k">return</span> <span class="n">affected</span>
+<a id="__codelineno-0-465" name="__codelineno-0-465"></a>            <span class="n">fingerprint</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fingerprint_fields</span><span class="p">,</span> <span class="n">fingerprint_tuple</span><span class="p">))</span>
+<a id="__codelineno-0-466" name="__codelineno-0-466"></a>
+<a id="__codelineno-0-467" name="__codelineno-0-467"></a>            <span class="c1"># Look up existing pattern (unique under partition, by KeyFields)</span>
+<a id="__codelineno-0-468" name="__codelineno-0-468"></a>            <span class="n">existing</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span>
+<a id="__codelineno-0-469" name="__codelineno-0-469"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">pattern_model</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+<a id="__codelineno-0-470" name="__codelineno-0-470"></a>                    <span class="o">**</span><span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">partition_field</span><span class="p">:</span> <span class="n">partition</span><span class="p">,</span> <span class="o">**</span><span class="n">fingerprint</span><span class="p">}</span>
+<a id="__codelineno-0-471" name="__codelineno-0-471"></a>                <span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
+<a id="__codelineno-0-472" name="__codelineno-0-472"></a>            <span class="p">)</span>
 <a id="__codelineno-0-473" name="__codelineno-0-473"></a>
-<a id="__codelineno-0-474" name="__codelineno-0-474"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">recall</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fingerprint</span><span class="p">,</span> <span class="n">partition</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">score_weights</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<a id="__codelineno-0-475" name="__codelineno-0-475"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Recall ranked patterns for the given fingerprint (read path).</span>
-<a id="__codelineno-0-476" name="__codelineno-0-476"></a>
-<a id="__codelineno-0-477" name="__codelineno-0-477"></a><span class="sd">        Recall is keyed exact-match by fingerprint plus partition. Because</span>
-<a id="__codelineno-0-478" name="__codelineno-0-478"></a><span class="sd">        fingerprint fields are ``KeyField`` s and the (partition,</span>
-<a id="__codelineno-0-479" name="__codelineno-0-479"></a><span class="sd">        fingerprint) combination is unique under a partition, this is a</span>
-<a id="__codelineno-0-480" name="__codelineno-0-480"></a><span class="sd">        small, bounded query. The composite-score ranking matters when the</span>
-<a id="__codelineno-0-481" name="__codelineno-0-481"></a><span class="sd">        caller supplies a *partial* fingerprint (a subset of</span>
-<a id="__codelineno-0-482" name="__codelineno-0-482"></a><span class="sd">        ``fingerprint_fields``) — in that case multiple patterns may</span>
-<a id="__codelineno-0-483" name="__codelineno-0-483"></a><span class="sd">        match and are ranked by ``score_weights``.</span>
-<a id="__codelineno-0-484" name="__codelineno-0-484"></a>
-<a id="__codelineno-0-485" name="__codelineno-0-485"></a><span class="sd">        Args:</span>
-<a id="__codelineno-0-486" name="__codelineno-0-486"></a><span class="sd">            fingerprint: Dict of fingerprint-field values. May be a subset</span>
-<a id="__codelineno-0-487" name="__codelineno-0-487"></a><span class="sd">                of ``fingerprint_fields`` (partial-fingerprint recall).</span>
-<a id="__codelineno-0-488" name="__codelineno-0-488"></a><span class="sd">                Empty dicts return ``[]`` — caller must commit to at least</span>
-<a id="__codelineno-0-489" name="__codelineno-0-489"></a><span class="sd">                one fingerprint dimension to keep recall keyed rather than</span>
-<a id="__codelineno-0-490" name="__codelineno-0-490"></a><span class="sd">                an unfiltered scan.</span>
-<a id="__codelineno-0-491" name="__codelineno-0-491"></a><span class="sd">            partition: Partition value (exact-match filter).</span>
-<a id="__codelineno-0-492" name="__codelineno-0-492"></a><span class="sd">            limit: Maximum patterns to return. Defaults to</span>
-<a id="__codelineno-0-493" name="__codelineno-0-493"></a><span class="sd">                ``DEFAULT_RECALL_LIMIT`` (5). ``0`` or negative returns</span>
-<a id="__codelineno-0-494" name="__codelineno-0-494"></a><span class="sd">                ``[]``.</span>
-<a id="__codelineno-0-495" name="__codelineno-0-495"></a><span class="sd">            score_weights: Override the default composite-score weights for</span>
-<a id="__codelineno-0-496" name="__codelineno-0-496"></a><span class="sd">                this call.</span>
-<a id="__codelineno-0-497" name="__codelineno-0-497"></a>
-<a id="__codelineno-0-498" name="__codelineno-0-498"></a><span class="sd">        Returns:</span>
-<a id="__codelineno-0-499" name="__codelineno-0-499"></a><span class="sd">            List of ``pattern_model`` instances ranked by composite score</span>
-<a id="__codelineno-0-500" name="__codelineno-0-500"></a><span class="sd">            (descending).</span>
-<a id="__codelineno-0-501" name="__codelineno-0-501"></a>
-<a id="__codelineno-0-502" name="__codelineno-0-502"></a><span class="sd">        Raises:</span>
-<a id="__codelineno-0-503" name="__codelineno-0-503"></a><span class="sd">            ValueError: If ``fingerprint`` contains a key not in</span>
-<a id="__codelineno-0-504" name="__codelineno-0-504"></a><span class="sd">                ``fingerprint_fields``.</span>
-<a id="__codelineno-0-505" name="__codelineno-0-505"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-506" name="__codelineno-0-506"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">fingerprint</span><span class="p">:</span>
-<a id="__codelineno-0-507" name="__codelineno-0-507"></a>            <span class="k">return</span> <span class="p">[]</span>
-<a id="__codelineno-0-508" name="__codelineno-0-508"></a>        <span class="k">if</span> <span class="n">limit</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-509" name="__codelineno-0-509"></a>            <span class="n">limit</span> <span class="o">=</span> <span class="n">DEFAULT_RECALL_LIMIT</span>
-<a id="__codelineno-0-510" name="__codelineno-0-510"></a>        <span class="k">if</span> <span class="n">limit</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
-<a id="__codelineno-0-511" name="__codelineno-0-511"></a>            <span class="k">return</span> <span class="p">[]</span>
+<a id="__codelineno-0-474" name="__codelineno-0-474"></a>            <span class="n">canonical</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_canonical_sequence</span><span class="p">(</span><span class="n">group</span><span class="p">)</span>
+<a id="__codelineno-0-475" name="__codelineno-0-475"></a>
+<a id="__codelineno-0-476" name="__codelineno-0-476"></a>            <span class="k">if</span> <span class="ow">not</span> <span class="n">existing</span><span class="p">:</span>
+<a id="__codelineno-0-477" name="__codelineno-0-477"></a>                <span class="c1"># New pattern (unsaved): observe every episode in the group</span>
+<a id="__codelineno-0-478" name="__codelineno-0-478"></a>                <span class="n">pattern</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_create_pattern</span><span class="p">(</span>
+<a id="__codelineno-0-479" name="__codelineno-0-479"></a>                    <span class="n">partition</span><span class="o">=</span><span class="n">partition</span><span class="p">,</span>
+<a id="__codelineno-0-480" name="__codelineno-0-480"></a>                    <span class="n">fingerprint</span><span class="o">=</span><span class="n">fingerprint</span><span class="p">,</span>
+<a id="__codelineno-0-481" name="__codelineno-0-481"></a>                    <span class="n">canonical</span><span class="o">=</span><span class="n">canonical</span><span class="p">,</span>
+<a id="__codelineno-0-482" name="__codelineno-0-482"></a>                <span class="p">)</span>
+<a id="__codelineno-0-483" name="__codelineno-0-483"></a>                <span class="n">observed_episodes</span> <span class="o">=</span> <span class="n">group</span>
+<a id="__codelineno-0-484" name="__codelineno-0-484"></a>            <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-485" name="__codelineno-0-485"></a>                <span class="n">pattern</span> <span class="o">=</span> <span class="n">existing</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<a id="__codelineno-0-486" name="__codelineno-0-486"></a>                <span class="c1"># Re-running idempotence: only observe episodes strictly</span>
+<a id="__codelineno-0-487" name="__codelineno-0-487"></a>                <span class="c1"># newer than the stored watermark (max observed episode</span>
+<a id="__codelineno-0-488" name="__codelineno-0-488"></a>                <span class="c1"># timestamp from the previous run).</span>
+<a id="__codelineno-0-489" name="__codelineno-0-489"></a>                <span class="n">last_reinforced</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_episode_score</span><span class="p">(</span><span class="n">pattern</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">recency_field</span><span class="p">)</span>
+<a id="__codelineno-0-490" name="__codelineno-0-490"></a>                <span class="n">observed_episodes</span> <span class="o">=</span> <span class="p">[</span>
+<a id="__codelineno-0-491" name="__codelineno-0-491"></a>                    <span class="n">e</span>
+<a id="__codelineno-0-492" name="__codelineno-0-492"></a>                    <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">group</span>
+<a id="__codelineno-0-493" name="__codelineno-0-493"></a>                    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_episode_score</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">episode_recency_field</span><span class="p">)</span>
+<a id="__codelineno-0-494" name="__codelineno-0-494"></a>                    <span class="o">&gt;</span> <span class="n">last_reinforced</span>
+<a id="__codelineno-0-495" name="__codelineno-0-495"></a>                <span class="p">]</span>
+<a id="__codelineno-0-496" name="__codelineno-0-496"></a>                <span class="k">if</span> <span class="ow">not</span> <span class="n">observed_episodes</span><span class="p">:</span>
+<a id="__codelineno-0-497" name="__codelineno-0-497"></a>                    <span class="c1"># No new evidence — nothing to do.</span>
+<a id="__codelineno-0-498" name="__codelineno-0-498"></a>                    <span class="k">continue</span>
+<a id="__codelineno-0-499" name="__codelineno-0-499"></a>
+<a id="__codelineno-0-500" name="__codelineno-0-500"></a>                <span class="c1"># Recompute canonical sequence on the full group (deterministic).</span>
+<a id="__codelineno-0-501" name="__codelineno-0-501"></a>                <span class="nb">setattr</span><span class="p">(</span><span class="n">pattern</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">canonical_sequence_field</span><span class="p">,</span> <span class="n">canonical</span><span class="p">)</span>
+<a id="__codelineno-0-502" name="__codelineno-0-502"></a>
+<a id="__codelineno-0-503" name="__codelineno-0-503"></a>            <span class="c1"># Watermark: the max OBSERVED episode timestamp, not the</span>
+<a id="__codelineno-0-504" name="__codelineno-0-504"></a>            <span class="c1"># wall-clock save time. Saving the wall clock would let an</span>
+<a id="__codelineno-0-505" name="__codelineno-0-505"></a>            <span class="c1"># episode recorded between the query above and the save fall</span>
+<a id="__codelineno-0-506" name="__codelineno-0-506"></a>            <span class="c1"># below the stored score and be filtered out forever.</span>
+<a id="__codelineno-0-507" name="__codelineno-0-507"></a>            <span class="n">watermark</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span>
+<a id="__codelineno-0-508" name="__codelineno-0-508"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">_episode_score</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">episode_recency_field</span><span class="p">)</span>
+<a id="__codelineno-0-509" name="__codelineno-0-509"></a>                <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">observed_episodes</span>
+<a id="__codelineno-0-510" name="__codelineno-0-510"></a>            <span class="p">)</span>
+<a id="__codelineno-0-511" name="__codelineno-0-511"></a>            <span class="nb">setattr</span><span class="p">(</span><span class="n">pattern</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">recency_field</span><span class="p">,</span> <span class="n">watermark</span><span class="p">)</span>
 <a id="__codelineno-0-512" name="__codelineno-0-512"></a>
-<a id="__codelineno-0-513" name="__codelineno-0-513"></a>        <span class="c1"># Validate fingerprint keys belong to fingerprint_fields</span>
-<a id="__codelineno-0-514" name="__codelineno-0-514"></a>        <span class="n">unknown</span> <span class="o">=</span> <span class="p">[</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">fingerprint</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">fingerprint_fields</span><span class="p">]</span>
-<a id="__codelineno-0-515" name="__codelineno-0-515"></a>        <span class="k">if</span> <span class="n">unknown</span><span class="p">:</span>
-<a id="__codelineno-0-516" name="__codelineno-0-516"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-517" name="__codelineno-0-517"></a>                <span class="sa">f</span><span class="s2">&quot;recall fingerprint has unknown field(s): </span><span class="si">{</span><span class="n">unknown</span><span class="si">}</span><span class="s2">; &quot;</span>
-<a id="__codelineno-0-518" name="__codelineno-0-518"></a>                <span class="sa">f</span><span class="s2">&quot;expected subset of </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">fingerprint_fields</span><span class="si">}</span><span class="s2">&quot;</span>
-<a id="__codelineno-0-519" name="__codelineno-0-519"></a>            <span class="p">)</span>
+<a id="__codelineno-0-513" name="__codelineno-0-513"></a>            <span class="k">if</span> <span class="ow">not</span> <span class="n">existing</span><span class="p">:</span>
+<a id="__codelineno-0-514" name="__codelineno-0-514"></a>                <span class="c1"># Bootstrap save: ConfidenceField.update_confidence is an</span>
+<a id="__codelineno-0-515" name="__codelineno-0-515"></a>                <span class="c1"># atomic Lua read-modify-write keyed on the member&#39;s redis</span>
+<a id="__codelineno-0-516" name="__codelineno-0-516"></a>                <span class="c1"># key, and requires the instance to already exist in Redis.</span>
+<a id="__codelineno-0-517" name="__codelineno-0-517"></a>                <span class="c1"># skip_auto_now keeps the explicit watermark here too, so</span>
+<a id="__codelineno-0-518" name="__codelineno-0-518"></a>                <span class="c1"># the new-pattern path never carries wall-clock semantics.</span>
+<a id="__codelineno-0-519" name="__codelineno-0-519"></a>                <span class="n">pattern</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">skip_auto_now</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <a id="__codelineno-0-520" name="__codelineno-0-520"></a>
-<a id="__codelineno-0-521" name="__codelineno-0-521"></a>        <span class="n">weights</span> <span class="o">=</span> <span class="n">score_weights</span> <span class="k">if</span> <span class="n">score_weights</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">score_weights</span>
-<a id="__codelineno-0-522" name="__codelineno-0-522"></a>
-<a id="__codelineno-0-523" name="__codelineno-0-523"></a>        <span class="c1"># Drop any non-positive weight entries. At least one positive</span>
-<a id="__codelineno-0-524" name="__codelineno-0-524"></a>        <span class="c1"># weight is required for composite_score to run.</span>
-<a id="__codelineno-0-525" name="__codelineno-0-525"></a>        <span class="n">positive_weights</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">weights</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">v</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">}</span>
-<a id="__codelineno-0-526" name="__codelineno-0-526"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">positive_weights</span><span class="p">:</span>
-<a id="__codelineno-0-527" name="__codelineno-0-527"></a>            <span class="k">return</span> <span class="p">[]</span>
+<a id="__codelineno-0-521" name="__codelineno-0-521"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_observe_episodes</span><span class="p">(</span><span class="n">pattern</span><span class="p">,</span> <span class="n">observed_episodes</span><span class="p">)</span>
+<a id="__codelineno-0-522" name="__codelineno-0-522"></a>            <span class="c1"># Single authoritative save for both branches: persists the</span>
+<a id="__codelineno-0-523" name="__codelineno-0-523"></a>            <span class="c1"># watermark (skip_auto_now suppresses the DecayingSortedField&#39;s</span>
+<a id="__codelineno-0-524" name="__codelineno-0-524"></a>            <span class="c1"># auto_now wall-clock overwrite) and the canonical_sequence</span>
+<a id="__codelineno-0-525" name="__codelineno-0-525"></a>            <span class="c1"># update. Note: skip_auto_now also freezes any OTHER auto_now</span>
+<a id="__codelineno-0-526" name="__codelineno-0-526"></a>            <span class="c1"># field on pattern_model for crystallize-triggered saves.</span>
+<a id="__codelineno-0-527" name="__codelineno-0-527"></a>            <span class="n">pattern</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">skip_auto_now</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <a id="__codelineno-0-528" name="__codelineno-0-528"></a>
-<a id="__codelineno-0-529" name="__codelineno-0-529"></a>        <span class="c1"># Resolve allowed redis_keys via the filter step. ``filter()`` walks</span>
-<a id="__codelineno-0-530" name="__codelineno-0-530"></a>        <span class="c1"># KeyField indexes and is cheap; we then restrict composite_score</span>
-<a id="__codelineno-0-531" name="__codelineno-0-531"></a>        <span class="c1"># to that allowed set via ``post_filter``. (composite_score itself</span>
-<a id="__codelineno-0-532" name="__codelineno-0-532"></a>        <span class="c1"># ranks via partition-scoped sorted sets and is unaware of</span>
-<a id="__codelineno-0-533" name="__codelineno-0-533"></a>        <span class="c1"># non-partition KeyField filters.)</span>
-<a id="__codelineno-0-534" name="__codelineno-0-534"></a>        <span class="n">filters</span> <span class="o">=</span> <span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">partition_field</span><span class="p">:</span> <span class="n">partition</span><span class="p">,</span> <span class="o">**</span><span class="n">fingerprint</span><span class="p">}</span>
-<a id="__codelineno-0-535" name="__codelineno-0-535"></a>        <span class="n">allowed_keys</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-536" name="__codelineno-0-536"></a>            <span class="n">inst</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span>
-<a id="__codelineno-0-537" name="__codelineno-0-537"></a>            <span class="k">for</span> <span class="n">inst</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">pattern_model</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">**</span><span class="n">filters</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
-<a id="__codelineno-0-538" name="__codelineno-0-538"></a>        <span class="p">}</span>
-<a id="__codelineno-0-539" name="__codelineno-0-539"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">allowed_keys</span><span class="p">:</span>
-<a id="__codelineno-0-540" name="__codelineno-0-540"></a>            <span class="k">return</span> <span class="p">[]</span>
-<a id="__codelineno-0-541" name="__codelineno-0-541"></a>
-<a id="__codelineno-0-542" name="__codelineno-0-542"></a>        <span class="k">def</span><span class="w"> </span><span class="nf">_post_filter</span><span class="p">(</span><span class="n">member</span><span class="p">,</span> <span class="n">_score</span><span class="p">,</span> <span class="n">_allowed</span><span class="o">=</span><span class="n">allowed_keys</span><span class="p">):</span>
-<a id="__codelineno-0-543" name="__codelineno-0-543"></a>            <span class="k">return</span> <span class="n">member</span> <span class="ow">in</span> <span class="n">_allowed</span>
-<a id="__codelineno-0-544" name="__codelineno-0-544"></a>
-<a id="__codelineno-0-545" name="__codelineno-0-545"></a>        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">pattern_model</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
-<a id="__codelineno-0-546" name="__codelineno-0-546"></a>            <span class="o">**</span><span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">partition_field</span><span class="p">:</span> <span class="n">partition</span><span class="p">}</span>
-<a id="__codelineno-0-547" name="__codelineno-0-547"></a>        <span class="p">)</span><span class="o">.</span><span class="n">composite_score</span><span class="p">(</span>
-<a id="__codelineno-0-548" name="__codelineno-0-548"></a>            <span class="n">indexes</span><span class="o">=</span><span class="n">positive_weights</span><span class="p">,</span>
-<a id="__codelineno-0-549" name="__codelineno-0-549"></a>            <span class="n">limit</span><span class="o">=</span><span class="n">limit</span><span class="p">,</span>
-<a id="__codelineno-0-550" name="__codelineno-0-550"></a>            <span class="n">post_filter</span><span class="o">=</span><span class="n">_post_filter</span><span class="p">,</span>
-<a id="__codelineno-0-551" name="__codelineno-0-551"></a>        <span class="p">)</span>
-<a id="__codelineno-0-552" name="__codelineno-0-552"></a>
-<a id="__codelineno-0-553" name="__codelineno-0-553"></a>    <span class="c1"># ------------------------------------------------------------------</span>
-<a id="__codelineno-0-554" name="__codelineno-0-554"></a>    <span class="c1"># Internal helpers</span>
-<a id="__codelineno-0-555" name="__codelineno-0-555"></a>    <span class="c1"># ------------------------------------------------------------------</span>
+<a id="__codelineno-0-529" name="__codelineno-0-529"></a>            <span class="n">affected</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">pattern</span><span class="p">)</span>
+<a id="__codelineno-0-530" name="__codelineno-0-530"></a>
+<a id="__codelineno-0-531" name="__codelineno-0-531"></a>        <span class="k">return</span> <span class="n">affected</span>
+<a id="__codelineno-0-532" name="__codelineno-0-532"></a>
+<a id="__codelineno-0-533" name="__codelineno-0-533"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">recall</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fingerprint</span><span class="p">,</span> <span class="n">partition</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">score_weights</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<a id="__codelineno-0-534" name="__codelineno-0-534"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Recall ranked patterns for the given fingerprint (read path).</span>
+<a id="__codelineno-0-535" name="__codelineno-0-535"></a>
+<a id="__codelineno-0-536" name="__codelineno-0-536"></a><span class="sd">        Recall is keyed exact-match by fingerprint plus partition. Because</span>
+<a id="__codelineno-0-537" name="__codelineno-0-537"></a><span class="sd">        fingerprint fields are ``KeyField`` s and the (partition,</span>
+<a id="__codelineno-0-538" name="__codelineno-0-538"></a><span class="sd">        fingerprint) combination is unique under a partition, this is a</span>
+<a id="__codelineno-0-539" name="__codelineno-0-539"></a><span class="sd">        small, bounded query. The composite-score ranking matters when the</span>
+<a id="__codelineno-0-540" name="__codelineno-0-540"></a><span class="sd">        caller supplies a *partial* fingerprint (a subset of</span>
+<a id="__codelineno-0-541" name="__codelineno-0-541"></a><span class="sd">        ``fingerprint_fields``) — in that case multiple patterns may</span>
+<a id="__codelineno-0-542" name="__codelineno-0-542"></a><span class="sd">        match and are ranked by ``score_weights``.</span>
+<a id="__codelineno-0-543" name="__codelineno-0-543"></a>
+<a id="__codelineno-0-544" name="__codelineno-0-544"></a><span class="sd">        Args:</span>
+<a id="__codelineno-0-545" name="__codelineno-0-545"></a><span class="sd">            fingerprint: Dict of fingerprint-field values. May be a subset</span>
+<a id="__codelineno-0-546" name="__codelineno-0-546"></a><span class="sd">                of ``fingerprint_fields`` (partial-fingerprint recall).</span>
+<a id="__codelineno-0-547" name="__codelineno-0-547"></a><span class="sd">                Empty dicts return ``[]`` — caller must commit to at least</span>
+<a id="__codelineno-0-548" name="__codelineno-0-548"></a><span class="sd">                one fingerprint dimension to keep recall keyed rather than</span>
+<a id="__codelineno-0-549" name="__codelineno-0-549"></a><span class="sd">                an unfiltered scan.</span>
+<a id="__codelineno-0-550" name="__codelineno-0-550"></a><span class="sd">            partition: Partition value (exact-match filter).</span>
+<a id="__codelineno-0-551" name="__codelineno-0-551"></a><span class="sd">            limit: Maximum patterns to return. Defaults to</span>
+<a id="__codelineno-0-552" name="__codelineno-0-552"></a><span class="sd">                ``DEFAULT_RECALL_LIMIT`` (5). ``0`` or negative returns</span>
+<a id="__codelineno-0-553" name="__codelineno-0-553"></a><span class="sd">                ``[]``.</span>
+<a id="__codelineno-0-554" name="__codelineno-0-554"></a><span class="sd">            score_weights: Override the default composite-score weights for</span>
+<a id="__codelineno-0-555" name="__codelineno-0-555"></a><span class="sd">                this call.</span>
 <a id="__codelineno-0-556" name="__codelineno-0-556"></a>
-<a id="__codelineno-0-557" name="__codelineno-0-557"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_canonical_sequence</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">episodes</span><span class="p">):</span>
-<a id="__codelineno-0-558" name="__codelineno-0-558"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Modal trajectory across the group, ties broken by recency.</span>
-<a id="__codelineno-0-559" name="__codelineno-0-559"></a>
-<a id="__codelineno-0-560" name="__codelineno-0-560"></a><span class="sd">        The trajectory is rendered as a tuple for hashability, then</span>
-<a id="__codelineno-0-561" name="__codelineno-0-561"></a><span class="sd">        returned as a list. If multiple trajectories share the top</span>
-<a id="__codelineno-0-562" name="__codelineno-0-562"></a><span class="sd">        frequency, the most-recent episode&#39;s trajectory wins (deterministic</span>
-<a id="__codelineno-0-563" name="__codelineno-0-563"></a><span class="sd">        as long as episode timestamps are stable).</span>
+<a id="__codelineno-0-557" name="__codelineno-0-557"></a><span class="sd">        Returns:</span>
+<a id="__codelineno-0-558" name="__codelineno-0-558"></a><span class="sd">            List of ``pattern_model`` instances ranked by composite score</span>
+<a id="__codelineno-0-559" name="__codelineno-0-559"></a><span class="sd">            (descending).</span>
+<a id="__codelineno-0-560" name="__codelineno-0-560"></a>
+<a id="__codelineno-0-561" name="__codelineno-0-561"></a><span class="sd">        Raises:</span>
+<a id="__codelineno-0-562" name="__codelineno-0-562"></a><span class="sd">            ValueError: If ``fingerprint`` contains a key not in</span>
+<a id="__codelineno-0-563" name="__codelineno-0-563"></a><span class="sd">                ``fingerprint_fields``.</span>
 <a id="__codelineno-0-564" name="__codelineno-0-564"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-565" name="__codelineno-0-565"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">episodes</span><span class="p">:</span>
+<a id="__codelineno-0-565" name="__codelineno-0-565"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">fingerprint</span><span class="p">:</span>
 <a id="__codelineno-0-566" name="__codelineno-0-566"></a>            <span class="k">return</span> <span class="p">[]</span>
-<a id="__codelineno-0-567" name="__codelineno-0-567"></a>
-<a id="__codelineno-0-568" name="__codelineno-0-568"></a>        <span class="n">counts</span> <span class="o">=</span> <span class="n">Counter</span><span class="p">()</span>
-<a id="__codelineno-0-569" name="__codelineno-0-569"></a>        <span class="c1"># Track the most recent episode score per trajectory for tie-break.</span>
-<a id="__codelineno-0-570" name="__codelineno-0-570"></a>        <span class="n">latest_score</span> <span class="o">=</span> <span class="p">{}</span>
-<a id="__codelineno-0-571" name="__codelineno-0-571"></a>        <span class="k">for</span> <span class="n">ep</span> <span class="ow">in</span> <span class="n">episodes</span><span class="p">:</span>
-<a id="__codelineno-0-572" name="__codelineno-0-572"></a>            <span class="n">traj</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">ep</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">trajectory_field</span><span class="p">)</span> <span class="ow">or</span> <span class="p">[])</span>
-<a id="__codelineno-0-573" name="__codelineno-0-573"></a>            <span class="n">counts</span><span class="p">[</span><span class="n">traj</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
-<a id="__codelineno-0-574" name="__codelineno-0-574"></a>            <span class="n">score</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_episode_score</span><span class="p">(</span><span class="n">ep</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">episode_recency_field</span><span class="p">)</span> <span class="ow">or</span> <span class="mf">0.0</span>
-<a id="__codelineno-0-575" name="__codelineno-0-575"></a>            <span class="k">if</span> <span class="n">traj</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">latest_score</span> <span class="ow">or</span> <span class="n">score</span> <span class="o">&gt;</span> <span class="n">latest_score</span><span class="p">[</span><span class="n">traj</span><span class="p">]:</span>
-<a id="__codelineno-0-576" name="__codelineno-0-576"></a>                <span class="n">latest_score</span><span class="p">[</span><span class="n">traj</span><span class="p">]</span> <span class="o">=</span> <span class="n">score</span>
-<a id="__codelineno-0-577" name="__codelineno-0-577"></a>
-<a id="__codelineno-0-578" name="__codelineno-0-578"></a>        <span class="n">top_count</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">counts</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
-<a id="__codelineno-0-579" name="__codelineno-0-579"></a>        <span class="n">contenders</span> <span class="o">=</span> <span class="p">[</span><span class="n">traj</span> <span class="k">for</span> <span class="n">traj</span><span class="p">,</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">counts</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">c</span> <span class="o">==</span> <span class="n">top_count</span><span class="p">]</span>
-<a id="__codelineno-0-580" name="__codelineno-0-580"></a>        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">contenders</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
-<a id="__codelineno-0-581" name="__codelineno-0-581"></a>            <span class="n">winner</span> <span class="o">=</span> <span class="n">contenders</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-<a id="__codelineno-0-582" name="__codelineno-0-582"></a>        <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-583" name="__codelineno-0-583"></a>            <span class="c1"># Tie-break: most recent trajectory wins.</span>
-<a id="__codelineno-0-584" name="__codelineno-0-584"></a>            <span class="n">winner</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">contenders</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="n">latest_score</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">))</span>
-<a id="__codelineno-0-585" name="__codelineno-0-585"></a>
-<a id="__codelineno-0-586" name="__codelineno-0-586"></a>        <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="n">winner</span><span class="p">)</span>
+<a id="__codelineno-0-567" name="__codelineno-0-567"></a>        <span class="k">if</span> <span class="n">limit</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-568" name="__codelineno-0-568"></a>            <span class="n">limit</span> <span class="o">=</span> <span class="n">DEFAULT_RECALL_LIMIT</span>
+<a id="__codelineno-0-569" name="__codelineno-0-569"></a>        <span class="k">if</span> <span class="n">limit</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+<a id="__codelineno-0-570" name="__codelineno-0-570"></a>            <span class="k">return</span> <span class="p">[]</span>
+<a id="__codelineno-0-571" name="__codelineno-0-571"></a>
+<a id="__codelineno-0-572" name="__codelineno-0-572"></a>        <span class="c1"># Validate fingerprint keys belong to fingerprint_fields</span>
+<a id="__codelineno-0-573" name="__codelineno-0-573"></a>        <span class="n">unknown</span> <span class="o">=</span> <span class="p">[</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">fingerprint</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">fingerprint_fields</span><span class="p">]</span>
+<a id="__codelineno-0-574" name="__codelineno-0-574"></a>        <span class="k">if</span> <span class="n">unknown</span><span class="p">:</span>
+<a id="__codelineno-0-575" name="__codelineno-0-575"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-576" name="__codelineno-0-576"></a>                <span class="sa">f</span><span class="s2">&quot;recall fingerprint has unknown field(s): </span><span class="si">{</span><span class="n">unknown</span><span class="si">}</span><span class="s2">; &quot;</span>
+<a id="__codelineno-0-577" name="__codelineno-0-577"></a>                <span class="sa">f</span><span class="s2">&quot;expected subset of </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">fingerprint_fields</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-578" name="__codelineno-0-578"></a>            <span class="p">)</span>
+<a id="__codelineno-0-579" name="__codelineno-0-579"></a>
+<a id="__codelineno-0-580" name="__codelineno-0-580"></a>        <span class="n">weights</span> <span class="o">=</span> <span class="n">score_weights</span> <span class="k">if</span> <span class="n">score_weights</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">score_weights</span>
+<a id="__codelineno-0-581" name="__codelineno-0-581"></a>
+<a id="__codelineno-0-582" name="__codelineno-0-582"></a>        <span class="c1"># Drop any non-positive weight entries. At least one positive</span>
+<a id="__codelineno-0-583" name="__codelineno-0-583"></a>        <span class="c1"># weight is required for composite_score to run.</span>
+<a id="__codelineno-0-584" name="__codelineno-0-584"></a>        <span class="n">positive_weights</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">weights</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">v</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">}</span>
+<a id="__codelineno-0-585" name="__codelineno-0-585"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">positive_weights</span><span class="p">:</span>
+<a id="__codelineno-0-586" name="__codelineno-0-586"></a>            <span class="k">return</span> <span class="p">[]</span>
 <a id="__codelineno-0-587" name="__codelineno-0-587"></a>
-<a id="__codelineno-0-588" name="__codelineno-0-588"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_create_pattern</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">partition</span><span class="p">,</span> <span class="n">fingerprint</span><span class="p">,</span> <span class="n">canonical</span><span class="p">):</span>
-<a id="__codelineno-0-589" name="__codelineno-0-589"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Instantiate and save a new pattern record.&quot;&quot;&quot;</span>
-<a id="__codelineno-0-590" name="__codelineno-0-590"></a>        <span class="n">kwargs</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-591" name="__codelineno-0-591"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">partition_field</span><span class="p">:</span> <span class="n">partition</span><span class="p">,</span>
-<a id="__codelineno-0-592" name="__codelineno-0-592"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">canonical_sequence_field</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">canonical</span><span class="p">),</span>
-<a id="__codelineno-0-593" name="__codelineno-0-593"></a>        <span class="p">}</span>
-<a id="__codelineno-0-594" name="__codelineno-0-594"></a>        <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">fingerprint</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-<a id="__codelineno-0-595" name="__codelineno-0-595"></a>            <span class="n">kwargs</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span>
-<a id="__codelineno-0-596" name="__codelineno-0-596"></a>        <span class="n">pattern</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">pattern_model</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
-<a id="__codelineno-0-597" name="__codelineno-0-597"></a>        <span class="n">pattern</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
-<a id="__codelineno-0-598" name="__codelineno-0-598"></a>        <span class="k">return</span> <span class="n">pattern</span>
-<a id="__codelineno-0-599" name="__codelineno-0-599"></a>
-<a id="__codelineno-0-600" name="__codelineno-0-600"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_observe_episodes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pattern</span><span class="p">,</span> <span class="n">episodes</span><span class="p">):</span>
-<a id="__codelineno-0-601" name="__codelineno-0-601"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Bayesian-update the pattern&#39;s confidence using each episode&#39;s</span>
-<a id="__codelineno-0-602" name="__codelineno-0-602"></a><span class="sd">        outcome signal.&quot;&quot;&quot;</span>
-<a id="__codelineno-0-603" name="__codelineno-0-603"></a>        <span class="k">for</span> <span class="n">ep</span> <span class="ow">in</span> <span class="n">episodes</span><span class="p">:</span>
-<a id="__codelineno-0-604" name="__codelineno-0-604"></a>            <span class="n">signal</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_episode_signal</span><span class="p">(</span><span class="n">ep</span><span class="p">)</span>
-<a id="__codelineno-0-605" name="__codelineno-0-605"></a>            <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">update_confidence</span><span class="p">(</span>
-<a id="__codelineno-0-606" name="__codelineno-0-606"></a>                <span class="n">pattern</span><span class="p">,</span>
-<a id="__codelineno-0-607" name="__codelineno-0-607"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">confidence_field</span><span class="p">,</span>
-<a id="__codelineno-0-608" name="__codelineno-0-608"></a>                <span class="n">signal</span><span class="o">=</span><span class="n">signal</span><span class="p">,</span>
-<a id="__codelineno-0-609" name="__codelineno-0-609"></a>            <span class="p">)</span>
-<a id="__codelineno-0-610" name="__codelineno-0-610"></a>
-<a id="__codelineno-0-611" name="__codelineno-0-611"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_episode_signal</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">episode</span><span class="p">):</span>
-<a id="__codelineno-0-612" name="__codelineno-0-612"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Derive a 0..1 confidence signal from an episode&#39;s outcome.</span>
-<a id="__codelineno-0-613" name="__codelineno-0-613"></a>
-<a id="__codelineno-0-614" name="__codelineno-0-614"></a><span class="sd">        Default heuristic:</span>
-<a id="__codelineno-0-615" name="__codelineno-0-615"></a><span class="sd">          * If outcome is a dict with a ``&quot;success&quot;`` key: True -&gt; 0.9,</span>
-<a id="__codelineno-0-616" name="__codelineno-0-616"></a><span class="sd">            False -&gt; 0.1, float -&gt; clamped to [0, 1].</span>
-<a id="__codelineno-0-617" name="__codelineno-0-617"></a><span class="sd">          * If outcome is a numeric value: clamped to [0, 1].</span>
-<a id="__codelineno-0-618" name="__codelineno-0-618"></a><span class="sd">          * Otherwise: 0.5 (neutral).</span>
-<a id="__codelineno-0-619" name="__codelineno-0-619"></a>
-<a id="__codelineno-0-620" name="__codelineno-0-620"></a><span class="sd">        Subclass to plug in a different mapping.</span>
-<a id="__codelineno-0-621" name="__codelineno-0-621"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-622" name="__codelineno-0-622"></a>        <span class="n">outcome</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">episode</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">outcome_field</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
-<a id="__codelineno-0-623" name="__codelineno-0-623"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">outcome</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="s2">&quot;success&quot;</span> <span class="ow">in</span> <span class="n">outcome</span><span class="p">:</span>
-<a id="__codelineno-0-624" name="__codelineno-0-624"></a>            <span class="n">val</span> <span class="o">=</span> <span class="n">outcome</span><span class="p">[</span><span class="s2">&quot;success&quot;</span><span class="p">]</span>
-<a id="__codelineno-0-625" name="__codelineno-0-625"></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="nb">bool</span><span class="p">):</span>
-<a id="__codelineno-0-626" name="__codelineno-0-626"></a>                <span class="k">return</span> <span class="mf">0.9</span> <span class="k">if</span> <span class="n">val</span> <span class="k">else</span> <span class="mf">0.1</span>
-<a id="__codelineno-0-627" name="__codelineno-0-627"></a>            <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-628" name="__codelineno-0-628"></a>                <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="nb">min</span><span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="nb">float</span><span class="p">(</span><span class="n">val</span><span class="p">)))</span>
-<a id="__codelineno-0-629" name="__codelineno-0-629"></a>            <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>
-<a id="__codelineno-0-630" name="__codelineno-0-630"></a>                <span class="k">return</span> <span class="mf">0.5</span>
-<a id="__codelineno-0-631" name="__codelineno-0-631"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">outcome</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">))</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">outcome</span><span class="p">,</span> <span class="nb">bool</span><span class="p">):</span>
-<a id="__codelineno-0-632" name="__codelineno-0-632"></a>            <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="nb">min</span><span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="nb">float</span><span class="p">(</span><span class="n">outcome</span><span class="p">)))</span>
-<a id="__codelineno-0-633" name="__codelineno-0-633"></a>        <span class="k">return</span> <span class="mf">0.5</span>
-<a id="__codelineno-0-634" name="__codelineno-0-634"></a>
-<a id="__codelineno-0-635" name="__codelineno-0-635"></a>    <span class="nd">@staticmethod</span>
-<a id="__codelineno-0-636" name="__codelineno-0-636"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_episode_score</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">):</span>
-<a id="__codelineno-0-637" name="__codelineno-0-637"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the raw stored score for a DecayingSortedField on an</span>
-<a id="__codelineno-0-638" name="__codelineno-0-638"></a><span class="sd">        instance, or 0 if it cannot be read.</span>
-<a id="__codelineno-0-639" name="__codelineno-0-639"></a>
-<a id="__codelineno-0-640" name="__codelineno-0-640"></a><span class="sd">        DecayingSortedField stores its score as the field attribute on a</span>
-<a id="__codelineno-0-641" name="__codelineno-0-641"></a><span class="sd">        saved instance (set via ``auto_now``). This method is tolerant of</span>
-<a id="__codelineno-0-642" name="__codelineno-0-642"></a><span class="sd">        missing values during testing or unsaved instances.</span>
-<a id="__codelineno-0-643" name="__codelineno-0-643"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-644" name="__codelineno-0-644"></a>        <span class="n">val</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
-<a id="__codelineno-0-645" name="__codelineno-0-645"></a>        <span class="k">if</span> <span class="n">val</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-646" name="__codelineno-0-646"></a>            <span class="k">return</span> <span class="mf">0.0</span>
-<a id="__codelineno-0-647" name="__codelineno-0-647"></a>        <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-648" name="__codelineno-0-648"></a>            <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">val</span><span class="p">)</span>
-<a id="__codelineno-0-649" name="__codelineno-0-649"></a>        <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>
-<a id="__codelineno-0-650" name="__codelineno-0-650"></a>            <span class="k">return</span> <span class="mf">0.0</span>
+<a id="__codelineno-0-588" name="__codelineno-0-588"></a>        <span class="c1"># Resolve allowed redis_keys via the filter step. ``filter()`` walks</span>
+<a id="__codelineno-0-589" name="__codelineno-0-589"></a>        <span class="c1"># KeyField indexes and is cheap; we then restrict composite_score</span>
+<a id="__codelineno-0-590" name="__codelineno-0-590"></a>        <span class="c1"># to that allowed set via ``post_filter``. (composite_score itself</span>
+<a id="__codelineno-0-591" name="__codelineno-0-591"></a>        <span class="c1"># ranks via partition-scoped sorted sets and is unaware of</span>
+<a id="__codelineno-0-592" name="__codelineno-0-592"></a>        <span class="c1"># non-partition KeyField filters.)</span>
+<a id="__codelineno-0-593" name="__codelineno-0-593"></a>        <span class="n">filters</span> <span class="o">=</span> <span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">partition_field</span><span class="p">:</span> <span class="n">partition</span><span class="p">,</span> <span class="o">**</span><span class="n">fingerprint</span><span class="p">}</span>
+<a id="__codelineno-0-594" name="__codelineno-0-594"></a>        <span class="n">allowed_keys</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-0-595" name="__codelineno-0-595"></a>            <span class="n">inst</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span>
+<a id="__codelineno-0-596" name="__codelineno-0-596"></a>            <span class="k">for</span> <span class="n">inst</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">pattern_model</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">**</span><span class="n">filters</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
+<a id="__codelineno-0-597" name="__codelineno-0-597"></a>        <span class="p">}</span>
+<a id="__codelineno-0-598" name="__codelineno-0-598"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">allowed_keys</span><span class="p">:</span>
+<a id="__codelineno-0-599" name="__codelineno-0-599"></a>            <span class="k">return</span> <span class="p">[]</span>
+<a id="__codelineno-0-600" name="__codelineno-0-600"></a>
+<a id="__codelineno-0-601" name="__codelineno-0-601"></a>        <span class="k">def</span><span class="w"> </span><span class="nf">_post_filter</span><span class="p">(</span><span class="n">member</span><span class="p">,</span> <span class="n">_score</span><span class="p">,</span> <span class="n">_allowed</span><span class="o">=</span><span class="n">allowed_keys</span><span class="p">):</span>
+<a id="__codelineno-0-602" name="__codelineno-0-602"></a>            <span class="k">return</span> <span class="n">member</span> <span class="ow">in</span> <span class="n">_allowed</span>
+<a id="__codelineno-0-603" name="__codelineno-0-603"></a>
+<a id="__codelineno-0-604" name="__codelineno-0-604"></a>        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">pattern_model</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+<a id="__codelineno-0-605" name="__codelineno-0-605"></a>            <span class="o">**</span><span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">partition_field</span><span class="p">:</span> <span class="n">partition</span><span class="p">}</span>
+<a id="__codelineno-0-606" name="__codelineno-0-606"></a>        <span class="p">)</span><span class="o">.</span><span class="n">composite_score</span><span class="p">(</span>
+<a id="__codelineno-0-607" name="__codelineno-0-607"></a>            <span class="n">indexes</span><span class="o">=</span><span class="n">positive_weights</span><span class="p">,</span>
+<a id="__codelineno-0-608" name="__codelineno-0-608"></a>            <span class="n">limit</span><span class="o">=</span><span class="n">limit</span><span class="p">,</span>
+<a id="__codelineno-0-609" name="__codelineno-0-609"></a>            <span class="n">post_filter</span><span class="o">=</span><span class="n">_post_filter</span><span class="p">,</span>
+<a id="__codelineno-0-610" name="__codelineno-0-610"></a>        <span class="p">)</span>
+<a id="__codelineno-0-611" name="__codelineno-0-611"></a>
+<a id="__codelineno-0-612" name="__codelineno-0-612"></a>    <span class="c1"># ------------------------------------------------------------------</span>
+<a id="__codelineno-0-613" name="__codelineno-0-613"></a>    <span class="c1"># Internal helpers</span>
+<a id="__codelineno-0-614" name="__codelineno-0-614"></a>    <span class="c1"># ------------------------------------------------------------------</span>
+<a id="__codelineno-0-615" name="__codelineno-0-615"></a>
+<a id="__codelineno-0-616" name="__codelineno-0-616"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_canonical_sequence</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">episodes</span><span class="p">):</span>
+<a id="__codelineno-0-617" name="__codelineno-0-617"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Modal trajectory across the group, ties broken by recency.</span>
+<a id="__codelineno-0-618" name="__codelineno-0-618"></a>
+<a id="__codelineno-0-619" name="__codelineno-0-619"></a><span class="sd">        The trajectory is rendered as a tuple for hashability, then</span>
+<a id="__codelineno-0-620" name="__codelineno-0-620"></a><span class="sd">        returned as a list. If multiple trajectories share the top</span>
+<a id="__codelineno-0-621" name="__codelineno-0-621"></a><span class="sd">        frequency, the most-recent episode&#39;s trajectory wins (deterministic</span>
+<a id="__codelineno-0-622" name="__codelineno-0-622"></a><span class="sd">        as long as episode timestamps are stable).</span>
+<a id="__codelineno-0-623" name="__codelineno-0-623"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-624" name="__codelineno-0-624"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">episodes</span><span class="p">:</span>
+<a id="__codelineno-0-625" name="__codelineno-0-625"></a>            <span class="k">return</span> <span class="p">[]</span>
+<a id="__codelineno-0-626" name="__codelineno-0-626"></a>
+<a id="__codelineno-0-627" name="__codelineno-0-627"></a>        <span class="n">counts</span> <span class="o">=</span> <span class="n">Counter</span><span class="p">()</span>
+<a id="__codelineno-0-628" name="__codelineno-0-628"></a>        <span class="c1"># Track the most recent episode score per trajectory for tie-break.</span>
+<a id="__codelineno-0-629" name="__codelineno-0-629"></a>        <span class="n">latest_score</span> <span class="o">=</span> <span class="p">{}</span>
+<a id="__codelineno-0-630" name="__codelineno-0-630"></a>        <span class="k">for</span> <span class="n">ep</span> <span class="ow">in</span> <span class="n">episodes</span><span class="p">:</span>
+<a id="__codelineno-0-631" name="__codelineno-0-631"></a>            <span class="n">traj</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">ep</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">trajectory_field</span><span class="p">)</span> <span class="ow">or</span> <span class="p">[])</span>
+<a id="__codelineno-0-632" name="__codelineno-0-632"></a>            <span class="n">counts</span><span class="p">[</span><span class="n">traj</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+<a id="__codelineno-0-633" name="__codelineno-0-633"></a>            <span class="n">score</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_episode_score</span><span class="p">(</span><span class="n">ep</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">episode_recency_field</span><span class="p">)</span> <span class="ow">or</span> <span class="mf">0.0</span>
+<a id="__codelineno-0-634" name="__codelineno-0-634"></a>            <span class="k">if</span> <span class="n">traj</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">latest_score</span> <span class="ow">or</span> <span class="n">score</span> <span class="o">&gt;</span> <span class="n">latest_score</span><span class="p">[</span><span class="n">traj</span><span class="p">]:</span>
+<a id="__codelineno-0-635" name="__codelineno-0-635"></a>                <span class="n">latest_score</span><span class="p">[</span><span class="n">traj</span><span class="p">]</span> <span class="o">=</span> <span class="n">score</span>
+<a id="__codelineno-0-636" name="__codelineno-0-636"></a>
+<a id="__codelineno-0-637" name="__codelineno-0-637"></a>        <span class="n">top_count</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">counts</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+<a id="__codelineno-0-638" name="__codelineno-0-638"></a>        <span class="n">contenders</span> <span class="o">=</span> <span class="p">[</span><span class="n">traj</span> <span class="k">for</span> <span class="n">traj</span><span class="p">,</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">counts</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">c</span> <span class="o">==</span> <span class="n">top_count</span><span class="p">]</span>
+<a id="__codelineno-0-639" name="__codelineno-0-639"></a>        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">contenders</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+<a id="__codelineno-0-640" name="__codelineno-0-640"></a>            <span class="n">winner</span> <span class="o">=</span> <span class="n">contenders</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<a id="__codelineno-0-641" name="__codelineno-0-641"></a>        <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-642" name="__codelineno-0-642"></a>            <span class="c1"># Tie-break: most recent trajectory wins.</span>
+<a id="__codelineno-0-643" name="__codelineno-0-643"></a>            <span class="n">winner</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">contenders</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="n">latest_score</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">))</span>
+<a id="__codelineno-0-644" name="__codelineno-0-644"></a>
+<a id="__codelineno-0-645" name="__codelineno-0-645"></a>        <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="n">winner</span><span class="p">)</span>
+<a id="__codelineno-0-646" name="__codelineno-0-646"></a>
+<a id="__codelineno-0-647" name="__codelineno-0-647"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_create_pattern</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">partition</span><span class="p">,</span> <span class="n">fingerprint</span><span class="p">,</span> <span class="n">canonical</span><span class="p">):</span>
+<a id="__codelineno-0-648" name="__codelineno-0-648"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Instantiate a new pattern record WITHOUT saving it.</span>
+<a id="__codelineno-0-649" name="__codelineno-0-649"></a>
+<a id="__codelineno-0-650" name="__codelineno-0-650"></a><span class="sd">        :meth:`crystallize` owns the save: it sets the recency watermark</span>
+<a id="__codelineno-0-651" name="__codelineno-0-651"></a><span class="sd">        first and persists with ``save(skip_auto_now=True)``, so no</span>
+<a id="__codelineno-0-652" name="__codelineno-0-652"></a><span class="sd">        auto_now wall-clock score is ever written for a new pattern.</span>
+<a id="__codelineno-0-653" name="__codelineno-0-653"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-654" name="__codelineno-0-654"></a>        <span class="n">kwargs</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-0-655" name="__codelineno-0-655"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">partition_field</span><span class="p">:</span> <span class="n">partition</span><span class="p">,</span>
+<a id="__codelineno-0-656" name="__codelineno-0-656"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">canonical_sequence_field</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">canonical</span><span class="p">),</span>
+<a id="__codelineno-0-657" name="__codelineno-0-657"></a>        <span class="p">}</span>
+<a id="__codelineno-0-658" name="__codelineno-0-658"></a>        <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">fingerprint</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+<a id="__codelineno-0-659" name="__codelineno-0-659"></a>            <span class="n">kwargs</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span>
+<a id="__codelineno-0-660" name="__codelineno-0-660"></a>        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">pattern_model</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+<a id="__codelineno-0-661" name="__codelineno-0-661"></a>
+<a id="__codelineno-0-662" name="__codelineno-0-662"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_observe_episodes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pattern</span><span class="p">,</span> <span class="n">episodes</span><span class="p">):</span>
+<a id="__codelineno-0-663" name="__codelineno-0-663"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Bayesian-update the pattern&#39;s confidence using each episode&#39;s</span>
+<a id="__codelineno-0-664" name="__codelineno-0-664"></a><span class="sd">        outcome signal.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-665" name="__codelineno-0-665"></a>        <span class="k">for</span> <span class="n">ep</span> <span class="ow">in</span> <span class="n">episodes</span><span class="p">:</span>
+<a id="__codelineno-0-666" name="__codelineno-0-666"></a>            <span class="n">signal</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_episode_signal</span><span class="p">(</span><span class="n">ep</span><span class="p">)</span>
+<a id="__codelineno-0-667" name="__codelineno-0-667"></a>            <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">update_confidence</span><span class="p">(</span>
+<a id="__codelineno-0-668" name="__codelineno-0-668"></a>                <span class="n">pattern</span><span class="p">,</span>
+<a id="__codelineno-0-669" name="__codelineno-0-669"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">confidence_field</span><span class="p">,</span>
+<a id="__codelineno-0-670" name="__codelineno-0-670"></a>                <span class="n">signal</span><span class="o">=</span><span class="n">signal</span><span class="p">,</span>
+<a id="__codelineno-0-671" name="__codelineno-0-671"></a>            <span class="p">)</span>
+<a id="__codelineno-0-672" name="__codelineno-0-672"></a>
+<a id="__codelineno-0-673" name="__codelineno-0-673"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_episode_signal</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">episode</span><span class="p">):</span>
+<a id="__codelineno-0-674" name="__codelineno-0-674"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Derive a 0..1 confidence signal from an episode&#39;s outcome.</span>
+<a id="__codelineno-0-675" name="__codelineno-0-675"></a>
+<a id="__codelineno-0-676" name="__codelineno-0-676"></a><span class="sd">        Default heuristic:</span>
+<a id="__codelineno-0-677" name="__codelineno-0-677"></a><span class="sd">          * If outcome is a dict with a ``&quot;success&quot;`` key: True -&gt; 0.9,</span>
+<a id="__codelineno-0-678" name="__codelineno-0-678"></a><span class="sd">            False -&gt; 0.1, float -&gt; clamped to [0, 1].</span>
+<a id="__codelineno-0-679" name="__codelineno-0-679"></a><span class="sd">          * If outcome is a numeric value: clamped to [0, 1].</span>
+<a id="__codelineno-0-680" name="__codelineno-0-680"></a><span class="sd">          * Otherwise: 0.5 (neutral).</span>
+<a id="__codelineno-0-681" name="__codelineno-0-681"></a>
+<a id="__codelineno-0-682" name="__codelineno-0-682"></a><span class="sd">        Subclass to plug in a different mapping.</span>
+<a id="__codelineno-0-683" name="__codelineno-0-683"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-684" name="__codelineno-0-684"></a>        <span class="n">outcome</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">episode</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">outcome_field</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-0-685" name="__codelineno-0-685"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">outcome</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="s2">&quot;success&quot;</span> <span class="ow">in</span> <span class="n">outcome</span><span class="p">:</span>
+<a id="__codelineno-0-686" name="__codelineno-0-686"></a>            <span class="n">val</span> <span class="o">=</span> <span class="n">outcome</span><span class="p">[</span><span class="s2">&quot;success&quot;</span><span class="p">]</span>
+<a id="__codelineno-0-687" name="__codelineno-0-687"></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="nb">bool</span><span class="p">):</span>
+<a id="__codelineno-0-688" name="__codelineno-0-688"></a>                <span class="k">return</span> <span class="mf">0.9</span> <span class="k">if</span> <span class="n">val</span> <span class="k">else</span> <span class="mf">0.1</span>
+<a id="__codelineno-0-689" name="__codelineno-0-689"></a>            <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-690" name="__codelineno-0-690"></a>                <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="nb">min</span><span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="nb">float</span><span class="p">(</span><span class="n">val</span><span class="p">)))</span>
+<a id="__codelineno-0-691" name="__codelineno-0-691"></a>            <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>
+<a id="__codelineno-0-692" name="__codelineno-0-692"></a>                <span class="k">return</span> <span class="mf">0.5</span>
+<a id="__codelineno-0-693" name="__codelineno-0-693"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">outcome</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">))</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">outcome</span><span class="p">,</span> <span class="nb">bool</span><span class="p">):</span>
+<a id="__codelineno-0-694" name="__codelineno-0-694"></a>            <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="nb">min</span><span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="nb">float</span><span class="p">(</span><span class="n">outcome</span><span class="p">)))</span>
+<a id="__codelineno-0-695" name="__codelineno-0-695"></a>        <span class="k">return</span> <span class="mf">0.5</span>
+<a id="__codelineno-0-696" name="__codelineno-0-696"></a>
+<a id="__codelineno-0-697" name="__codelineno-0-697"></a>    <span class="nd">@staticmethod</span>
+<a id="__codelineno-0-698" name="__codelineno-0-698"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_episode_score</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">):</span>
+<a id="__codelineno-0-699" name="__codelineno-0-699"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the raw stored score for a DecayingSortedField on an</span>
+<a id="__codelineno-0-700" name="__codelineno-0-700"></a><span class="sd">        instance, or 0 if it cannot be read.</span>
+<a id="__codelineno-0-701" name="__codelineno-0-701"></a>
+<a id="__codelineno-0-702" name="__codelineno-0-702"></a><span class="sd">        DecayingSortedField stores its score as the field attribute on a</span>
+<a id="__codelineno-0-703" name="__codelineno-0-703"></a><span class="sd">        saved instance (set via ``auto_now``). This method is tolerant of</span>
+<a id="__codelineno-0-704" name="__codelineno-0-704"></a><span class="sd">        missing values during testing or unsaved instances.</span>
+<a id="__codelineno-0-705" name="__codelineno-0-705"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-706" name="__codelineno-0-706"></a>        <span class="n">val</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-0-707" name="__codelineno-0-707"></a>        <span class="k">if</span> <span class="n">val</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-708" name="__codelineno-0-708"></a>            <span class="k">return</span> <span class="mf">0.0</span>
+<a id="__codelineno-0-709" name="__codelineno-0-709"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-710" name="__codelineno-0-710"></a>            <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">val</span><span class="p">)</span>
+<a id="__codelineno-0-711" name="__codelineno-0-711"></a>        <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>
+<a id="__codelineno-0-712" name="__codelineno-0-712"></a>            <span class="k">return</span> <span class="mf">0.0</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -3945,18 +4069,55 @@ in the trajectory <code>ListField</code>).</p>
 
     <div class="doc doc-contents ">
 
-        <p>Cluster recent episodes into canonical patterns (idempotent).</p>
+        <p>Cluster recent episodes into canonical patterns.</p>
 <p>Loads every episode in <code>partition</code>, groups them by their
 fingerprint tuple, and for each group at least
 <code>cluster_threshold</code> episodes large:</p>
 <ul>
 <li>Upserts a <code>pattern_model</code> record keyed by <code>(partition,
   *fingerprint_values)</code>.</li>
-<li>On existing patterns, observes only episodes newer than
-  <code>pattern.last_reinforced</code> (so re-running on an unchanged
-  episode set does not drift confidence — see plan Risk 2).</li>
+<li>On existing patterns, observes only episodes strictly newer
+  than the pattern's recency score (the watermark filter below).</li>
 <li>Recomputes the canonical sequence as the modal trajectory
   across the group, ties broken by the most recent episode.</li>
+<li>Advances the pattern's recency field (<code>last_reinforced</code>) to
+  the <strong>max observed episode timestamp</strong> (the watermark), saved
+  with <code>skip_auto_now=True</code> — never to the wall-clock time of
+  the save.</li>
+</ul>
+<p>Idempotence guarantee (and its limits):</p>
+<ul>
+<li><strong>Sequential re-run idempotence</strong> via watermark filtering:
+  because the stored watermark equals the max <em>observed</em> episode
+  timestamp and the filter is strict <code>&gt;</code>, re-running
+  crystallize on an unchanged episode set observes nothing and
+  produces zero confidence drift. An episode recorded between
+  the episode query and the save (i.e. with a timestamp above
+  the watermark but below wall-clock save time) is picked up by
+  the <em>next</em> run rather than lost. No commutativity of the
+  underlying confidence update is assumed or claimed.</li>
+<li><strong>Concurrent crystallization of the same partition is NOT
+  coordinated.</strong> The recipe performs a read-modify-write with no
+  locking, so two crystallizers racing on one partition can
+  double-observe the same episodes. Run one crystallizer per
+  partition.</li>
+</ul>
+<p>Watermark semantics to be aware of:</p>
+<ul>
+<li>The recency field's stored score equals the max <strong>observed
+  episode</strong> <code>recorded_at</code>, which may predate the wall-clock
+  crystallize call. A ZSCORE read of the recency index therefore
+  means "newest episode processed", not "when crystallize last
+  ran", and recency-weighted recall ranks patterns by <em>episode</em>
+  time — batched/nightly crystallization makes patterns appear
+  correspondingly older.</li>
+<li><strong>Clock-sync assumption:</strong> episode writers and the
+  crystallizer are assumed to be within ordinary NTP sync. A
+  writer whose clock lags the watermark can record an episode
+  <em>below</em> it, which the strict <code>&gt;</code> filter then skips forever.</li>
+<li>Crystallize-triggered saves use <code>skip_auto_now=True</code>, so any
+  <strong>other</strong> <code>auto_now</code> field on <code>pattern_model</code> is frozen by
+  (and never populated by) crystallize-triggered saves.</li>
 </ul>
 
 
@@ -4106,8 +4267,67 @@ scoped per partition.</p>
 <span class="normal"><a href="#__codelineno-0-469">469</a></span>
 <span class="normal"><a href="#__codelineno-0-470">470</a></span>
 <span class="normal"><a href="#__codelineno-0-471">471</a></span>
-<span class="normal"><a href="#__codelineno-0-472">472</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-390" name="__codelineno-0-390"></a><span class="k">def</span><span class="w"> </span><span class="nf">crystallize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">partition</span><span class="p">):</span>
-<a id="__codelineno-0-391" name="__codelineno-0-391"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Cluster recent episodes into canonical patterns (idempotent).</span>
+<span class="normal"><a href="#__codelineno-0-472">472</a></span>
+<span class="normal"><a href="#__codelineno-0-473">473</a></span>
+<span class="normal"><a href="#__codelineno-0-474">474</a></span>
+<span class="normal"><a href="#__codelineno-0-475">475</a></span>
+<span class="normal"><a href="#__codelineno-0-476">476</a></span>
+<span class="normal"><a href="#__codelineno-0-477">477</a></span>
+<span class="normal"><a href="#__codelineno-0-478">478</a></span>
+<span class="normal"><a href="#__codelineno-0-479">479</a></span>
+<span class="normal"><a href="#__codelineno-0-480">480</a></span>
+<span class="normal"><a href="#__codelineno-0-481">481</a></span>
+<span class="normal"><a href="#__codelineno-0-482">482</a></span>
+<span class="normal"><a href="#__codelineno-0-483">483</a></span>
+<span class="normal"><a href="#__codelineno-0-484">484</a></span>
+<span class="normal"><a href="#__codelineno-0-485">485</a></span>
+<span class="normal"><a href="#__codelineno-0-486">486</a></span>
+<span class="normal"><a href="#__codelineno-0-487">487</a></span>
+<span class="normal"><a href="#__codelineno-0-488">488</a></span>
+<span class="normal"><a href="#__codelineno-0-489">489</a></span>
+<span class="normal"><a href="#__codelineno-0-490">490</a></span>
+<span class="normal"><a href="#__codelineno-0-491">491</a></span>
+<span class="normal"><a href="#__codelineno-0-492">492</a></span>
+<span class="normal"><a href="#__codelineno-0-493">493</a></span>
+<span class="normal"><a href="#__codelineno-0-494">494</a></span>
+<span class="normal"><a href="#__codelineno-0-495">495</a></span>
+<span class="normal"><a href="#__codelineno-0-496">496</a></span>
+<span class="normal"><a href="#__codelineno-0-497">497</a></span>
+<span class="normal"><a href="#__codelineno-0-498">498</a></span>
+<span class="normal"><a href="#__codelineno-0-499">499</a></span>
+<span class="normal"><a href="#__codelineno-0-500">500</a></span>
+<span class="normal"><a href="#__codelineno-0-501">501</a></span>
+<span class="normal"><a href="#__codelineno-0-502">502</a></span>
+<span class="normal"><a href="#__codelineno-0-503">503</a></span>
+<span class="normal"><a href="#__codelineno-0-504">504</a></span>
+<span class="normal"><a href="#__codelineno-0-505">505</a></span>
+<span class="normal"><a href="#__codelineno-0-506">506</a></span>
+<span class="normal"><a href="#__codelineno-0-507">507</a></span>
+<span class="normal"><a href="#__codelineno-0-508">508</a></span>
+<span class="normal"><a href="#__codelineno-0-509">509</a></span>
+<span class="normal"><a href="#__codelineno-0-510">510</a></span>
+<span class="normal"><a href="#__codelineno-0-511">511</a></span>
+<span class="normal"><a href="#__codelineno-0-512">512</a></span>
+<span class="normal"><a href="#__codelineno-0-513">513</a></span>
+<span class="normal"><a href="#__codelineno-0-514">514</a></span>
+<span class="normal"><a href="#__codelineno-0-515">515</a></span>
+<span class="normal"><a href="#__codelineno-0-516">516</a></span>
+<span class="normal"><a href="#__codelineno-0-517">517</a></span>
+<span class="normal"><a href="#__codelineno-0-518">518</a></span>
+<span class="normal"><a href="#__codelineno-0-519">519</a></span>
+<span class="normal"><a href="#__codelineno-0-520">520</a></span>
+<span class="normal"><a href="#__codelineno-0-521">521</a></span>
+<span class="normal"><a href="#__codelineno-0-522">522</a></span>
+<span class="normal"><a href="#__codelineno-0-523">523</a></span>
+<span class="normal"><a href="#__codelineno-0-524">524</a></span>
+<span class="normal"><a href="#__codelineno-0-525">525</a></span>
+<span class="normal"><a href="#__codelineno-0-526">526</a></span>
+<span class="normal"><a href="#__codelineno-0-527">527</a></span>
+<span class="normal"><a href="#__codelineno-0-528">528</a></span>
+<span class="normal"><a href="#__codelineno-0-529">529</a></span>
+<span class="normal"><a href="#__codelineno-0-530">530</a></span>
+<span class="normal"><a href="#__codelineno-0-531">531</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-390" name="__codelineno-0-390"></a><span class="k">def</span><span class="w"> </span><span class="nf">crystallize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">partition</span><span class="p">):</span>
+<a id="__codelineno-0-391" name="__codelineno-0-391"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Cluster recent episodes into canonical patterns.</span>
 <a id="__codelineno-0-392" name="__codelineno-0-392"></a>
 <a id="__codelineno-0-393" name="__codelineno-0-393"></a><span class="sd">    Loads every episode in ``partition``, groups them by their</span>
 <a id="__codelineno-0-394" name="__codelineno-0-394"></a><span class="sd">    fingerprint tuple, and for each group at least</span>
@@ -4115,80 +4335,139 @@ scoped per partition.</p>
 <a id="__codelineno-0-396" name="__codelineno-0-396"></a>
 <a id="__codelineno-0-397" name="__codelineno-0-397"></a><span class="sd">    * Upserts a ``pattern_model`` record keyed by ``(partition,</span>
 <a id="__codelineno-0-398" name="__codelineno-0-398"></a><span class="sd">      *fingerprint_values)``.</span>
-<a id="__codelineno-0-399" name="__codelineno-0-399"></a><span class="sd">    * On existing patterns, observes only episodes newer than</span>
-<a id="__codelineno-0-400" name="__codelineno-0-400"></a><span class="sd">      ``pattern.last_reinforced`` (so re-running on an unchanged</span>
-<a id="__codelineno-0-401" name="__codelineno-0-401"></a><span class="sd">      episode set does not drift confidence — see plan Risk 2).</span>
-<a id="__codelineno-0-402" name="__codelineno-0-402"></a><span class="sd">    * Recomputes the canonical sequence as the modal trajectory</span>
-<a id="__codelineno-0-403" name="__codelineno-0-403"></a><span class="sd">      across the group, ties broken by the most recent episode.</span>
-<a id="__codelineno-0-404" name="__codelineno-0-404"></a>
-<a id="__codelineno-0-405" name="__codelineno-0-405"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-406" name="__codelineno-0-406"></a><span class="sd">        partition: Partition value to crystallize. Crystallization is</span>
-<a id="__codelineno-0-407" name="__codelineno-0-407"></a><span class="sd">            scoped per partition.</span>
-<a id="__codelineno-0-408" name="__codelineno-0-408"></a>
-<a id="__codelineno-0-409" name="__codelineno-0-409"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-410" name="__codelineno-0-410"></a><span class="sd">        List of ``pattern_model`` instances that were created or</span>
-<a id="__codelineno-0-411" name="__codelineno-0-411"></a><span class="sd">        reinforced by this call.</span>
-<a id="__codelineno-0-412" name="__codelineno-0-412"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-413" name="__codelineno-0-413"></a>    <span class="n">episodes</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span>
-<a id="__codelineno-0-414" name="__codelineno-0-414"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">episode_model</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">**</span><span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">partition_field</span><span class="p">:</span> <span class="n">partition</span><span class="p">})</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
-<a id="__codelineno-0-415" name="__codelineno-0-415"></a>    <span class="p">)</span>
-<a id="__codelineno-0-416" name="__codelineno-0-416"></a>
-<a id="__codelineno-0-417" name="__codelineno-0-417"></a>    <span class="c1"># Group by fingerprint tuple</span>
-<a id="__codelineno-0-418" name="__codelineno-0-418"></a>    <span class="n">groups</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">list</span><span class="p">)</span>
-<a id="__codelineno-0-419" name="__codelineno-0-419"></a>    <span class="k">for</span> <span class="n">episode</span> <span class="ow">in</span> <span class="n">episodes</span><span class="p">:</span>
-<a id="__codelineno-0-420" name="__codelineno-0-420"></a>        <span class="n">key</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">episode</span><span class="p">,</span> <span class="n">f</span><span class="p">)</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">fingerprint_fields</span><span class="p">)</span>
-<a id="__codelineno-0-421" name="__codelineno-0-421"></a>        <span class="n">groups</span><span class="p">[</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">episode</span><span class="p">)</span>
-<a id="__codelineno-0-422" name="__codelineno-0-422"></a>
-<a id="__codelineno-0-423" name="__codelineno-0-423"></a>    <span class="n">affected</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-0-424" name="__codelineno-0-424"></a>    <span class="k">for</span> <span class="n">fingerprint_tuple</span><span class="p">,</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">groups</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-<a id="__codelineno-0-425" name="__codelineno-0-425"></a>        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">group</span><span class="p">)</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">cluster_threshold</span><span class="p">:</span>
-<a id="__codelineno-0-426" name="__codelineno-0-426"></a>            <span class="k">continue</span>
-<a id="__codelineno-0-427" name="__codelineno-0-427"></a>
-<a id="__codelineno-0-428" name="__codelineno-0-428"></a>        <span class="n">fingerprint</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fingerprint_fields</span><span class="p">,</span> <span class="n">fingerprint_tuple</span><span class="p">))</span>
-<a id="__codelineno-0-429" name="__codelineno-0-429"></a>
-<a id="__codelineno-0-430" name="__codelineno-0-430"></a>        <span class="c1"># Look up existing pattern (unique under partition, by KeyFields)</span>
-<a id="__codelineno-0-431" name="__codelineno-0-431"></a>        <span class="n">existing</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span>
-<a id="__codelineno-0-432" name="__codelineno-0-432"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">pattern_model</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
-<a id="__codelineno-0-433" name="__codelineno-0-433"></a>                <span class="o">**</span><span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">partition_field</span><span class="p">:</span> <span class="n">partition</span><span class="p">,</span> <span class="o">**</span><span class="n">fingerprint</span><span class="p">}</span>
-<a id="__codelineno-0-434" name="__codelineno-0-434"></a>            <span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
-<a id="__codelineno-0-435" name="__codelineno-0-435"></a>        <span class="p">)</span>
-<a id="__codelineno-0-436" name="__codelineno-0-436"></a>
-<a id="__codelineno-0-437" name="__codelineno-0-437"></a>        <span class="n">canonical</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_canonical_sequence</span><span class="p">(</span><span class="n">group</span><span class="p">)</span>
-<a id="__codelineno-0-438" name="__codelineno-0-438"></a>
-<a id="__codelineno-0-439" name="__codelineno-0-439"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">existing</span><span class="p">:</span>
-<a id="__codelineno-0-440" name="__codelineno-0-440"></a>            <span class="c1"># New pattern: observe every episode in the group</span>
-<a id="__codelineno-0-441" name="__codelineno-0-441"></a>            <span class="n">pattern</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_create_pattern</span><span class="p">(</span>
-<a id="__codelineno-0-442" name="__codelineno-0-442"></a>                <span class="n">partition</span><span class="o">=</span><span class="n">partition</span><span class="p">,</span>
-<a id="__codelineno-0-443" name="__codelineno-0-443"></a>                <span class="n">fingerprint</span><span class="o">=</span><span class="n">fingerprint</span><span class="p">,</span>
-<a id="__codelineno-0-444" name="__codelineno-0-444"></a>                <span class="n">canonical</span><span class="o">=</span><span class="n">canonical</span><span class="p">,</span>
-<a id="__codelineno-0-445" name="__codelineno-0-445"></a>            <span class="p">)</span>
-<a id="__codelineno-0-446" name="__codelineno-0-446"></a>            <span class="n">observed_episodes</span> <span class="o">=</span> <span class="n">group</span>
-<a id="__codelineno-0-447" name="__codelineno-0-447"></a>        <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-448" name="__codelineno-0-448"></a>            <span class="n">pattern</span> <span class="o">=</span> <span class="n">existing</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-<a id="__codelineno-0-449" name="__codelineno-0-449"></a>            <span class="c1"># Re-running idempotence: only observe episodes newer than</span>
-<a id="__codelineno-0-450" name="__codelineno-0-450"></a>            <span class="c1"># the pattern&#39;s last_reinforced timestamp.</span>
-<a id="__codelineno-0-451" name="__codelineno-0-451"></a>            <span class="n">last_reinforced</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_episode_score</span><span class="p">(</span><span class="n">pattern</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">recency_field</span><span class="p">)</span>
-<a id="__codelineno-0-452" name="__codelineno-0-452"></a>            <span class="n">observed_episodes</span> <span class="o">=</span> <span class="p">[</span>
-<a id="__codelineno-0-453" name="__codelineno-0-453"></a>                <span class="n">e</span>
-<a id="__codelineno-0-454" name="__codelineno-0-454"></a>                <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">group</span>
-<a id="__codelineno-0-455" name="__codelineno-0-455"></a>                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_episode_score</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">episode_recency_field</span><span class="p">)</span>
-<a id="__codelineno-0-456" name="__codelineno-0-456"></a>                <span class="o">&gt;</span> <span class="n">last_reinforced</span>
-<a id="__codelineno-0-457" name="__codelineno-0-457"></a>            <span class="p">]</span>
-<a id="__codelineno-0-458" name="__codelineno-0-458"></a>            <span class="k">if</span> <span class="ow">not</span> <span class="n">observed_episodes</span><span class="p">:</span>
-<a id="__codelineno-0-459" name="__codelineno-0-459"></a>                <span class="c1"># No new evidence — nothing to do.</span>
-<a id="__codelineno-0-460" name="__codelineno-0-460"></a>                <span class="k">continue</span>
-<a id="__codelineno-0-461" name="__codelineno-0-461"></a>
-<a id="__codelineno-0-462" name="__codelineno-0-462"></a>            <span class="c1"># Recompute canonical sequence on the full group (deterministic).</span>
-<a id="__codelineno-0-463" name="__codelineno-0-463"></a>            <span class="nb">setattr</span><span class="p">(</span><span class="n">pattern</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">canonical_sequence_field</span><span class="p">,</span> <span class="n">canonical</span><span class="p">)</span>
+<a id="__codelineno-0-399" name="__codelineno-0-399"></a><span class="sd">    * On existing patterns, observes only episodes strictly newer</span>
+<a id="__codelineno-0-400" name="__codelineno-0-400"></a><span class="sd">      than the pattern&#39;s recency score (the watermark filter below).</span>
+<a id="__codelineno-0-401" name="__codelineno-0-401"></a><span class="sd">    * Recomputes the canonical sequence as the modal trajectory</span>
+<a id="__codelineno-0-402" name="__codelineno-0-402"></a><span class="sd">      across the group, ties broken by the most recent episode.</span>
+<a id="__codelineno-0-403" name="__codelineno-0-403"></a><span class="sd">    * Advances the pattern&#39;s recency field (``last_reinforced``) to</span>
+<a id="__codelineno-0-404" name="__codelineno-0-404"></a><span class="sd">      the **max observed episode timestamp** (the watermark), saved</span>
+<a id="__codelineno-0-405" name="__codelineno-0-405"></a><span class="sd">      with ``skip_auto_now=True`` — never to the wall-clock time of</span>
+<a id="__codelineno-0-406" name="__codelineno-0-406"></a><span class="sd">      the save.</span>
+<a id="__codelineno-0-407" name="__codelineno-0-407"></a>
+<a id="__codelineno-0-408" name="__codelineno-0-408"></a><span class="sd">    Idempotence guarantee (and its limits):</span>
+<a id="__codelineno-0-409" name="__codelineno-0-409"></a>
+<a id="__codelineno-0-410" name="__codelineno-0-410"></a><span class="sd">    * **Sequential re-run idempotence** via watermark filtering:</span>
+<a id="__codelineno-0-411" name="__codelineno-0-411"></a><span class="sd">      because the stored watermark equals the max *observed* episode</span>
+<a id="__codelineno-0-412" name="__codelineno-0-412"></a><span class="sd">      timestamp and the filter is strict ``&gt;``, re-running</span>
+<a id="__codelineno-0-413" name="__codelineno-0-413"></a><span class="sd">      crystallize on an unchanged episode set observes nothing and</span>
+<a id="__codelineno-0-414" name="__codelineno-0-414"></a><span class="sd">      produces zero confidence drift. An episode recorded between</span>
+<a id="__codelineno-0-415" name="__codelineno-0-415"></a><span class="sd">      the episode query and the save (i.e. with a timestamp above</span>
+<a id="__codelineno-0-416" name="__codelineno-0-416"></a><span class="sd">      the watermark but below wall-clock save time) is picked up by</span>
+<a id="__codelineno-0-417" name="__codelineno-0-417"></a><span class="sd">      the *next* run rather than lost. No commutativity of the</span>
+<a id="__codelineno-0-418" name="__codelineno-0-418"></a><span class="sd">      underlying confidence update is assumed or claimed.</span>
+<a id="__codelineno-0-419" name="__codelineno-0-419"></a><span class="sd">    * **Concurrent crystallization of the same partition is NOT</span>
+<a id="__codelineno-0-420" name="__codelineno-0-420"></a><span class="sd">      coordinated.** The recipe performs a read-modify-write with no</span>
+<a id="__codelineno-0-421" name="__codelineno-0-421"></a><span class="sd">      locking, so two crystallizers racing on one partition can</span>
+<a id="__codelineno-0-422" name="__codelineno-0-422"></a><span class="sd">      double-observe the same episodes. Run one crystallizer per</span>
+<a id="__codelineno-0-423" name="__codelineno-0-423"></a><span class="sd">      partition.</span>
+<a id="__codelineno-0-424" name="__codelineno-0-424"></a>
+<a id="__codelineno-0-425" name="__codelineno-0-425"></a><span class="sd">    Watermark semantics to be aware of:</span>
+<a id="__codelineno-0-426" name="__codelineno-0-426"></a>
+<a id="__codelineno-0-427" name="__codelineno-0-427"></a><span class="sd">    * The recency field&#39;s stored score equals the max **observed</span>
+<a id="__codelineno-0-428" name="__codelineno-0-428"></a><span class="sd">      episode** ``recorded_at``, which may predate the wall-clock</span>
+<a id="__codelineno-0-429" name="__codelineno-0-429"></a><span class="sd">      crystallize call. A ZSCORE read of the recency index therefore</span>
+<a id="__codelineno-0-430" name="__codelineno-0-430"></a><span class="sd">      means &quot;newest episode processed&quot;, not &quot;when crystallize last</span>
+<a id="__codelineno-0-431" name="__codelineno-0-431"></a><span class="sd">      ran&quot;, and recency-weighted recall ranks patterns by *episode*</span>
+<a id="__codelineno-0-432" name="__codelineno-0-432"></a><span class="sd">      time — batched/nightly crystallization makes patterns appear</span>
+<a id="__codelineno-0-433" name="__codelineno-0-433"></a><span class="sd">      correspondingly older.</span>
+<a id="__codelineno-0-434" name="__codelineno-0-434"></a><span class="sd">    * **Clock-sync assumption:** episode writers and the</span>
+<a id="__codelineno-0-435" name="__codelineno-0-435"></a><span class="sd">      crystallizer are assumed to be within ordinary NTP sync. A</span>
+<a id="__codelineno-0-436" name="__codelineno-0-436"></a><span class="sd">      writer whose clock lags the watermark can record an episode</span>
+<a id="__codelineno-0-437" name="__codelineno-0-437"></a><span class="sd">      *below* it, which the strict ``&gt;`` filter then skips forever.</span>
+<a id="__codelineno-0-438" name="__codelineno-0-438"></a><span class="sd">    * Crystallize-triggered saves use ``skip_auto_now=True``, so any</span>
+<a id="__codelineno-0-439" name="__codelineno-0-439"></a><span class="sd">      **other** ``auto_now`` field on ``pattern_model`` is frozen by</span>
+<a id="__codelineno-0-440" name="__codelineno-0-440"></a><span class="sd">      (and never populated by) crystallize-triggered saves.</span>
+<a id="__codelineno-0-441" name="__codelineno-0-441"></a>
+<a id="__codelineno-0-442" name="__codelineno-0-442"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-443" name="__codelineno-0-443"></a><span class="sd">        partition: Partition value to crystallize. Crystallization is</span>
+<a id="__codelineno-0-444" name="__codelineno-0-444"></a><span class="sd">            scoped per partition.</span>
+<a id="__codelineno-0-445" name="__codelineno-0-445"></a>
+<a id="__codelineno-0-446" name="__codelineno-0-446"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-447" name="__codelineno-0-447"></a><span class="sd">        List of ``pattern_model`` instances that were created or</span>
+<a id="__codelineno-0-448" name="__codelineno-0-448"></a><span class="sd">        reinforced by this call.</span>
+<a id="__codelineno-0-449" name="__codelineno-0-449"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-450" name="__codelineno-0-450"></a>    <span class="n">episodes</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span>
+<a id="__codelineno-0-451" name="__codelineno-0-451"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">episode_model</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">**</span><span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">partition_field</span><span class="p">:</span> <span class="n">partition</span><span class="p">})</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
+<a id="__codelineno-0-452" name="__codelineno-0-452"></a>    <span class="p">)</span>
+<a id="__codelineno-0-453" name="__codelineno-0-453"></a>
+<a id="__codelineno-0-454" name="__codelineno-0-454"></a>    <span class="c1"># Group by fingerprint tuple</span>
+<a id="__codelineno-0-455" name="__codelineno-0-455"></a>    <span class="n">groups</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">list</span><span class="p">)</span>
+<a id="__codelineno-0-456" name="__codelineno-0-456"></a>    <span class="k">for</span> <span class="n">episode</span> <span class="ow">in</span> <span class="n">episodes</span><span class="p">:</span>
+<a id="__codelineno-0-457" name="__codelineno-0-457"></a>        <span class="n">key</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">episode</span><span class="p">,</span> <span class="n">f</span><span class="p">)</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">fingerprint_fields</span><span class="p">)</span>
+<a id="__codelineno-0-458" name="__codelineno-0-458"></a>        <span class="n">groups</span><span class="p">[</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">episode</span><span class="p">)</span>
+<a id="__codelineno-0-459" name="__codelineno-0-459"></a>
+<a id="__codelineno-0-460" name="__codelineno-0-460"></a>    <span class="n">affected</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-461" name="__codelineno-0-461"></a>    <span class="k">for</span> <span class="n">fingerprint_tuple</span><span class="p">,</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">groups</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+<a id="__codelineno-0-462" name="__codelineno-0-462"></a>        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">group</span><span class="p">)</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">cluster_threshold</span><span class="p">:</span>
+<a id="__codelineno-0-463" name="__codelineno-0-463"></a>            <span class="k">continue</span>
 <a id="__codelineno-0-464" name="__codelineno-0-464"></a>
-<a id="__codelineno-0-465" name="__codelineno-0-465"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_observe_episodes</span><span class="p">(</span><span class="n">pattern</span><span class="p">,</span> <span class="n">observed_episodes</span><span class="p">)</span>
-<a id="__codelineno-0-466" name="__codelineno-0-466"></a>        <span class="c1"># Save advances DecayingSortedField (auto_now=True) and writes</span>
-<a id="__codelineno-0-467" name="__codelineno-0-467"></a>        <span class="c1"># the canonical_sequence update.</span>
-<a id="__codelineno-0-468" name="__codelineno-0-468"></a>        <span class="n">pattern</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
-<a id="__codelineno-0-469" name="__codelineno-0-469"></a>
-<a id="__codelineno-0-470" name="__codelineno-0-470"></a>        <span class="n">affected</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">pattern</span><span class="p">)</span>
-<a id="__codelineno-0-471" name="__codelineno-0-471"></a>
-<a id="__codelineno-0-472" name="__codelineno-0-472"></a>    <span class="k">return</span> <span class="n">affected</span>
+<a id="__codelineno-0-465" name="__codelineno-0-465"></a>        <span class="n">fingerprint</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fingerprint_fields</span><span class="p">,</span> <span class="n">fingerprint_tuple</span><span class="p">))</span>
+<a id="__codelineno-0-466" name="__codelineno-0-466"></a>
+<a id="__codelineno-0-467" name="__codelineno-0-467"></a>        <span class="c1"># Look up existing pattern (unique under partition, by KeyFields)</span>
+<a id="__codelineno-0-468" name="__codelineno-0-468"></a>        <span class="n">existing</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span>
+<a id="__codelineno-0-469" name="__codelineno-0-469"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">pattern_model</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+<a id="__codelineno-0-470" name="__codelineno-0-470"></a>                <span class="o">**</span><span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">partition_field</span><span class="p">:</span> <span class="n">partition</span><span class="p">,</span> <span class="o">**</span><span class="n">fingerprint</span><span class="p">}</span>
+<a id="__codelineno-0-471" name="__codelineno-0-471"></a>            <span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
+<a id="__codelineno-0-472" name="__codelineno-0-472"></a>        <span class="p">)</span>
+<a id="__codelineno-0-473" name="__codelineno-0-473"></a>
+<a id="__codelineno-0-474" name="__codelineno-0-474"></a>        <span class="n">canonical</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_canonical_sequence</span><span class="p">(</span><span class="n">group</span><span class="p">)</span>
+<a id="__codelineno-0-475" name="__codelineno-0-475"></a>
+<a id="__codelineno-0-476" name="__codelineno-0-476"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">existing</span><span class="p">:</span>
+<a id="__codelineno-0-477" name="__codelineno-0-477"></a>            <span class="c1"># New pattern (unsaved): observe every episode in the group</span>
+<a id="__codelineno-0-478" name="__codelineno-0-478"></a>            <span class="n">pattern</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_create_pattern</span><span class="p">(</span>
+<a id="__codelineno-0-479" name="__codelineno-0-479"></a>                <span class="n">partition</span><span class="o">=</span><span class="n">partition</span><span class="p">,</span>
+<a id="__codelineno-0-480" name="__codelineno-0-480"></a>                <span class="n">fingerprint</span><span class="o">=</span><span class="n">fingerprint</span><span class="p">,</span>
+<a id="__codelineno-0-481" name="__codelineno-0-481"></a>                <span class="n">canonical</span><span class="o">=</span><span class="n">canonical</span><span class="p">,</span>
+<a id="__codelineno-0-482" name="__codelineno-0-482"></a>            <span class="p">)</span>
+<a id="__codelineno-0-483" name="__codelineno-0-483"></a>            <span class="n">observed_episodes</span> <span class="o">=</span> <span class="n">group</span>
+<a id="__codelineno-0-484" name="__codelineno-0-484"></a>        <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-485" name="__codelineno-0-485"></a>            <span class="n">pattern</span> <span class="o">=</span> <span class="n">existing</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<a id="__codelineno-0-486" name="__codelineno-0-486"></a>            <span class="c1"># Re-running idempotence: only observe episodes strictly</span>
+<a id="__codelineno-0-487" name="__codelineno-0-487"></a>            <span class="c1"># newer than the stored watermark (max observed episode</span>
+<a id="__codelineno-0-488" name="__codelineno-0-488"></a>            <span class="c1"># timestamp from the previous run).</span>
+<a id="__codelineno-0-489" name="__codelineno-0-489"></a>            <span class="n">last_reinforced</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_episode_score</span><span class="p">(</span><span class="n">pattern</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">recency_field</span><span class="p">)</span>
+<a id="__codelineno-0-490" name="__codelineno-0-490"></a>            <span class="n">observed_episodes</span> <span class="o">=</span> <span class="p">[</span>
+<a id="__codelineno-0-491" name="__codelineno-0-491"></a>                <span class="n">e</span>
+<a id="__codelineno-0-492" name="__codelineno-0-492"></a>                <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">group</span>
+<a id="__codelineno-0-493" name="__codelineno-0-493"></a>                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_episode_score</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">episode_recency_field</span><span class="p">)</span>
+<a id="__codelineno-0-494" name="__codelineno-0-494"></a>                <span class="o">&gt;</span> <span class="n">last_reinforced</span>
+<a id="__codelineno-0-495" name="__codelineno-0-495"></a>            <span class="p">]</span>
+<a id="__codelineno-0-496" name="__codelineno-0-496"></a>            <span class="k">if</span> <span class="ow">not</span> <span class="n">observed_episodes</span><span class="p">:</span>
+<a id="__codelineno-0-497" name="__codelineno-0-497"></a>                <span class="c1"># No new evidence — nothing to do.</span>
+<a id="__codelineno-0-498" name="__codelineno-0-498"></a>                <span class="k">continue</span>
+<a id="__codelineno-0-499" name="__codelineno-0-499"></a>
+<a id="__codelineno-0-500" name="__codelineno-0-500"></a>            <span class="c1"># Recompute canonical sequence on the full group (deterministic).</span>
+<a id="__codelineno-0-501" name="__codelineno-0-501"></a>            <span class="nb">setattr</span><span class="p">(</span><span class="n">pattern</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">canonical_sequence_field</span><span class="p">,</span> <span class="n">canonical</span><span class="p">)</span>
+<a id="__codelineno-0-502" name="__codelineno-0-502"></a>
+<a id="__codelineno-0-503" name="__codelineno-0-503"></a>        <span class="c1"># Watermark: the max OBSERVED episode timestamp, not the</span>
+<a id="__codelineno-0-504" name="__codelineno-0-504"></a>        <span class="c1"># wall-clock save time. Saving the wall clock would let an</span>
+<a id="__codelineno-0-505" name="__codelineno-0-505"></a>        <span class="c1"># episode recorded between the query above and the save fall</span>
+<a id="__codelineno-0-506" name="__codelineno-0-506"></a>        <span class="c1"># below the stored score and be filtered out forever.</span>
+<a id="__codelineno-0-507" name="__codelineno-0-507"></a>        <span class="n">watermark</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span>
+<a id="__codelineno-0-508" name="__codelineno-0-508"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_episode_score</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">episode_recency_field</span><span class="p">)</span>
+<a id="__codelineno-0-509" name="__codelineno-0-509"></a>            <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">observed_episodes</span>
+<a id="__codelineno-0-510" name="__codelineno-0-510"></a>        <span class="p">)</span>
+<a id="__codelineno-0-511" name="__codelineno-0-511"></a>        <span class="nb">setattr</span><span class="p">(</span><span class="n">pattern</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">recency_field</span><span class="p">,</span> <span class="n">watermark</span><span class="p">)</span>
+<a id="__codelineno-0-512" name="__codelineno-0-512"></a>
+<a id="__codelineno-0-513" name="__codelineno-0-513"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">existing</span><span class="p">:</span>
+<a id="__codelineno-0-514" name="__codelineno-0-514"></a>            <span class="c1"># Bootstrap save: ConfidenceField.update_confidence is an</span>
+<a id="__codelineno-0-515" name="__codelineno-0-515"></a>            <span class="c1"># atomic Lua read-modify-write keyed on the member&#39;s redis</span>
+<a id="__codelineno-0-516" name="__codelineno-0-516"></a>            <span class="c1"># key, and requires the instance to already exist in Redis.</span>
+<a id="__codelineno-0-517" name="__codelineno-0-517"></a>            <span class="c1"># skip_auto_now keeps the explicit watermark here too, so</span>
+<a id="__codelineno-0-518" name="__codelineno-0-518"></a>            <span class="c1"># the new-pattern path never carries wall-clock semantics.</span>
+<a id="__codelineno-0-519" name="__codelineno-0-519"></a>            <span class="n">pattern</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">skip_auto_now</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-520" name="__codelineno-0-520"></a>
+<a id="__codelineno-0-521" name="__codelineno-0-521"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_observe_episodes</span><span class="p">(</span><span class="n">pattern</span><span class="p">,</span> <span class="n">observed_episodes</span><span class="p">)</span>
+<a id="__codelineno-0-522" name="__codelineno-0-522"></a>        <span class="c1"># Single authoritative save for both branches: persists the</span>
+<a id="__codelineno-0-523" name="__codelineno-0-523"></a>        <span class="c1"># watermark (skip_auto_now suppresses the DecayingSortedField&#39;s</span>
+<a id="__codelineno-0-524" name="__codelineno-0-524"></a>        <span class="c1"># auto_now wall-clock overwrite) and the canonical_sequence</span>
+<a id="__codelineno-0-525" name="__codelineno-0-525"></a>        <span class="c1"># update. Note: skip_auto_now also freezes any OTHER auto_now</span>
+<a id="__codelineno-0-526" name="__codelineno-0-526"></a>        <span class="c1"># field on pattern_model for crystallize-triggered saves.</span>
+<a id="__codelineno-0-527" name="__codelineno-0-527"></a>        <span class="n">pattern</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">skip_auto_now</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-528" name="__codelineno-0-528"></a>
+<a id="__codelineno-0-529" name="__codelineno-0-529"></a>        <span class="n">affected</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">pattern</span><span class="p">)</span>
+<a id="__codelineno-0-530" name="__codelineno-0-530"></a>
+<a id="__codelineno-0-531" name="__codelineno-0-531"></a>    <span class="k">return</span> <span class="n">affected</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -4355,66 +4634,7 @@ this call.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/recipes/trajectory_memory.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-474">474</a></span>
-<span class="normal"><a href="#__codelineno-0-475">475</a></span>
-<span class="normal"><a href="#__codelineno-0-476">476</a></span>
-<span class="normal"><a href="#__codelineno-0-477">477</a></span>
-<span class="normal"><a href="#__codelineno-0-478">478</a></span>
-<span class="normal"><a href="#__codelineno-0-479">479</a></span>
-<span class="normal"><a href="#__codelineno-0-480">480</a></span>
-<span class="normal"><a href="#__codelineno-0-481">481</a></span>
-<span class="normal"><a href="#__codelineno-0-482">482</a></span>
-<span class="normal"><a href="#__codelineno-0-483">483</a></span>
-<span class="normal"><a href="#__codelineno-0-484">484</a></span>
-<span class="normal"><a href="#__codelineno-0-485">485</a></span>
-<span class="normal"><a href="#__codelineno-0-486">486</a></span>
-<span class="normal"><a href="#__codelineno-0-487">487</a></span>
-<span class="normal"><a href="#__codelineno-0-488">488</a></span>
-<span class="normal"><a href="#__codelineno-0-489">489</a></span>
-<span class="normal"><a href="#__codelineno-0-490">490</a></span>
-<span class="normal"><a href="#__codelineno-0-491">491</a></span>
-<span class="normal"><a href="#__codelineno-0-492">492</a></span>
-<span class="normal"><a href="#__codelineno-0-493">493</a></span>
-<span class="normal"><a href="#__codelineno-0-494">494</a></span>
-<span class="normal"><a href="#__codelineno-0-495">495</a></span>
-<span class="normal"><a href="#__codelineno-0-496">496</a></span>
-<span class="normal"><a href="#__codelineno-0-497">497</a></span>
-<span class="normal"><a href="#__codelineno-0-498">498</a></span>
-<span class="normal"><a href="#__codelineno-0-499">499</a></span>
-<span class="normal"><a href="#__codelineno-0-500">500</a></span>
-<span class="normal"><a href="#__codelineno-0-501">501</a></span>
-<span class="normal"><a href="#__codelineno-0-502">502</a></span>
-<span class="normal"><a href="#__codelineno-0-503">503</a></span>
-<span class="normal"><a href="#__codelineno-0-504">504</a></span>
-<span class="normal"><a href="#__codelineno-0-505">505</a></span>
-<span class="normal"><a href="#__codelineno-0-506">506</a></span>
-<span class="normal"><a href="#__codelineno-0-507">507</a></span>
-<span class="normal"><a href="#__codelineno-0-508">508</a></span>
-<span class="normal"><a href="#__codelineno-0-509">509</a></span>
-<span class="normal"><a href="#__codelineno-0-510">510</a></span>
-<span class="normal"><a href="#__codelineno-0-511">511</a></span>
-<span class="normal"><a href="#__codelineno-0-512">512</a></span>
-<span class="normal"><a href="#__codelineno-0-513">513</a></span>
-<span class="normal"><a href="#__codelineno-0-514">514</a></span>
-<span class="normal"><a href="#__codelineno-0-515">515</a></span>
-<span class="normal"><a href="#__codelineno-0-516">516</a></span>
-<span class="normal"><a href="#__codelineno-0-517">517</a></span>
-<span class="normal"><a href="#__codelineno-0-518">518</a></span>
-<span class="normal"><a href="#__codelineno-0-519">519</a></span>
-<span class="normal"><a href="#__codelineno-0-520">520</a></span>
-<span class="normal"><a href="#__codelineno-0-521">521</a></span>
-<span class="normal"><a href="#__codelineno-0-522">522</a></span>
-<span class="normal"><a href="#__codelineno-0-523">523</a></span>
-<span class="normal"><a href="#__codelineno-0-524">524</a></span>
-<span class="normal"><a href="#__codelineno-0-525">525</a></span>
-<span class="normal"><a href="#__codelineno-0-526">526</a></span>
-<span class="normal"><a href="#__codelineno-0-527">527</a></span>
-<span class="normal"><a href="#__codelineno-0-528">528</a></span>
-<span class="normal"><a href="#__codelineno-0-529">529</a></span>
-<span class="normal"><a href="#__codelineno-0-530">530</a></span>
-<span class="normal"><a href="#__codelineno-0-531">531</a></span>
-<span class="normal"><a href="#__codelineno-0-532">532</a></span>
-<span class="normal"><a href="#__codelineno-0-533">533</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-533">533</a></span>
 <span class="normal"><a href="#__codelineno-0-534">534</a></span>
 <span class="normal"><a href="#__codelineno-0-535">535</a></span>
 <span class="normal"><a href="#__codelineno-0-536">536</a></span>
@@ -4432,84 +4652,143 @@ this call.</p>
 <span class="normal"><a href="#__codelineno-0-548">548</a></span>
 <span class="normal"><a href="#__codelineno-0-549">549</a></span>
 <span class="normal"><a href="#__codelineno-0-550">550</a></span>
-<span class="normal"><a href="#__codelineno-0-551">551</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-474" name="__codelineno-0-474"></a><span class="k">def</span><span class="w"> </span><span class="nf">recall</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fingerprint</span><span class="p">,</span> <span class="n">partition</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">score_weights</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<a id="__codelineno-0-475" name="__codelineno-0-475"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Recall ranked patterns for the given fingerprint (read path).</span>
-<a id="__codelineno-0-476" name="__codelineno-0-476"></a>
-<a id="__codelineno-0-477" name="__codelineno-0-477"></a><span class="sd">    Recall is keyed exact-match by fingerprint plus partition. Because</span>
-<a id="__codelineno-0-478" name="__codelineno-0-478"></a><span class="sd">    fingerprint fields are ``KeyField`` s and the (partition,</span>
-<a id="__codelineno-0-479" name="__codelineno-0-479"></a><span class="sd">    fingerprint) combination is unique under a partition, this is a</span>
-<a id="__codelineno-0-480" name="__codelineno-0-480"></a><span class="sd">    small, bounded query. The composite-score ranking matters when the</span>
-<a id="__codelineno-0-481" name="__codelineno-0-481"></a><span class="sd">    caller supplies a *partial* fingerprint (a subset of</span>
-<a id="__codelineno-0-482" name="__codelineno-0-482"></a><span class="sd">    ``fingerprint_fields``) — in that case multiple patterns may</span>
-<a id="__codelineno-0-483" name="__codelineno-0-483"></a><span class="sd">    match and are ranked by ``score_weights``.</span>
-<a id="__codelineno-0-484" name="__codelineno-0-484"></a>
-<a id="__codelineno-0-485" name="__codelineno-0-485"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-486" name="__codelineno-0-486"></a><span class="sd">        fingerprint: Dict of fingerprint-field values. May be a subset</span>
-<a id="__codelineno-0-487" name="__codelineno-0-487"></a><span class="sd">            of ``fingerprint_fields`` (partial-fingerprint recall).</span>
-<a id="__codelineno-0-488" name="__codelineno-0-488"></a><span class="sd">            Empty dicts return ``[]`` — caller must commit to at least</span>
-<a id="__codelineno-0-489" name="__codelineno-0-489"></a><span class="sd">            one fingerprint dimension to keep recall keyed rather than</span>
-<a id="__codelineno-0-490" name="__codelineno-0-490"></a><span class="sd">            an unfiltered scan.</span>
-<a id="__codelineno-0-491" name="__codelineno-0-491"></a><span class="sd">        partition: Partition value (exact-match filter).</span>
-<a id="__codelineno-0-492" name="__codelineno-0-492"></a><span class="sd">        limit: Maximum patterns to return. Defaults to</span>
-<a id="__codelineno-0-493" name="__codelineno-0-493"></a><span class="sd">            ``DEFAULT_RECALL_LIMIT`` (5). ``0`` or negative returns</span>
-<a id="__codelineno-0-494" name="__codelineno-0-494"></a><span class="sd">            ``[]``.</span>
-<a id="__codelineno-0-495" name="__codelineno-0-495"></a><span class="sd">        score_weights: Override the default composite-score weights for</span>
-<a id="__codelineno-0-496" name="__codelineno-0-496"></a><span class="sd">            this call.</span>
-<a id="__codelineno-0-497" name="__codelineno-0-497"></a>
-<a id="__codelineno-0-498" name="__codelineno-0-498"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-499" name="__codelineno-0-499"></a><span class="sd">        List of ``pattern_model`` instances ranked by composite score</span>
-<a id="__codelineno-0-500" name="__codelineno-0-500"></a><span class="sd">        (descending).</span>
-<a id="__codelineno-0-501" name="__codelineno-0-501"></a>
-<a id="__codelineno-0-502" name="__codelineno-0-502"></a><span class="sd">    Raises:</span>
-<a id="__codelineno-0-503" name="__codelineno-0-503"></a><span class="sd">        ValueError: If ``fingerprint`` contains a key not in</span>
-<a id="__codelineno-0-504" name="__codelineno-0-504"></a><span class="sd">            ``fingerprint_fields``.</span>
-<a id="__codelineno-0-505" name="__codelineno-0-505"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-506" name="__codelineno-0-506"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">fingerprint</span><span class="p">:</span>
-<a id="__codelineno-0-507" name="__codelineno-0-507"></a>        <span class="k">return</span> <span class="p">[]</span>
-<a id="__codelineno-0-508" name="__codelineno-0-508"></a>    <span class="k">if</span> <span class="n">limit</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-509" name="__codelineno-0-509"></a>        <span class="n">limit</span> <span class="o">=</span> <span class="n">DEFAULT_RECALL_LIMIT</span>
-<a id="__codelineno-0-510" name="__codelineno-0-510"></a>    <span class="k">if</span> <span class="n">limit</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
-<a id="__codelineno-0-511" name="__codelineno-0-511"></a>        <span class="k">return</span> <span class="p">[]</span>
-<a id="__codelineno-0-512" name="__codelineno-0-512"></a>
-<a id="__codelineno-0-513" name="__codelineno-0-513"></a>    <span class="c1"># Validate fingerprint keys belong to fingerprint_fields</span>
-<a id="__codelineno-0-514" name="__codelineno-0-514"></a>    <span class="n">unknown</span> <span class="o">=</span> <span class="p">[</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">fingerprint</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">fingerprint_fields</span><span class="p">]</span>
-<a id="__codelineno-0-515" name="__codelineno-0-515"></a>    <span class="k">if</span> <span class="n">unknown</span><span class="p">:</span>
-<a id="__codelineno-0-516" name="__codelineno-0-516"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-517" name="__codelineno-0-517"></a>            <span class="sa">f</span><span class="s2">&quot;recall fingerprint has unknown field(s): </span><span class="si">{</span><span class="n">unknown</span><span class="si">}</span><span class="s2">; &quot;</span>
-<a id="__codelineno-0-518" name="__codelineno-0-518"></a>            <span class="sa">f</span><span class="s2">&quot;expected subset of </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">fingerprint_fields</span><span class="si">}</span><span class="s2">&quot;</span>
-<a id="__codelineno-0-519" name="__codelineno-0-519"></a>        <span class="p">)</span>
-<a id="__codelineno-0-520" name="__codelineno-0-520"></a>
-<a id="__codelineno-0-521" name="__codelineno-0-521"></a>    <span class="n">weights</span> <span class="o">=</span> <span class="n">score_weights</span> <span class="k">if</span> <span class="n">score_weights</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">score_weights</span>
-<a id="__codelineno-0-522" name="__codelineno-0-522"></a>
-<a id="__codelineno-0-523" name="__codelineno-0-523"></a>    <span class="c1"># Drop any non-positive weight entries. At least one positive</span>
-<a id="__codelineno-0-524" name="__codelineno-0-524"></a>    <span class="c1"># weight is required for composite_score to run.</span>
-<a id="__codelineno-0-525" name="__codelineno-0-525"></a>    <span class="n">positive_weights</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">weights</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">v</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">}</span>
-<a id="__codelineno-0-526" name="__codelineno-0-526"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">positive_weights</span><span class="p">:</span>
-<a id="__codelineno-0-527" name="__codelineno-0-527"></a>        <span class="k">return</span> <span class="p">[]</span>
-<a id="__codelineno-0-528" name="__codelineno-0-528"></a>
-<a id="__codelineno-0-529" name="__codelineno-0-529"></a>    <span class="c1"># Resolve allowed redis_keys via the filter step. ``filter()`` walks</span>
-<a id="__codelineno-0-530" name="__codelineno-0-530"></a>    <span class="c1"># KeyField indexes and is cheap; we then restrict composite_score</span>
-<a id="__codelineno-0-531" name="__codelineno-0-531"></a>    <span class="c1"># to that allowed set via ``post_filter``. (composite_score itself</span>
-<a id="__codelineno-0-532" name="__codelineno-0-532"></a>    <span class="c1"># ranks via partition-scoped sorted sets and is unaware of</span>
-<a id="__codelineno-0-533" name="__codelineno-0-533"></a>    <span class="c1"># non-partition KeyField filters.)</span>
-<a id="__codelineno-0-534" name="__codelineno-0-534"></a>    <span class="n">filters</span> <span class="o">=</span> <span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">partition_field</span><span class="p">:</span> <span class="n">partition</span><span class="p">,</span> <span class="o">**</span><span class="n">fingerprint</span><span class="p">}</span>
-<a id="__codelineno-0-535" name="__codelineno-0-535"></a>    <span class="n">allowed_keys</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-536" name="__codelineno-0-536"></a>        <span class="n">inst</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span>
-<a id="__codelineno-0-537" name="__codelineno-0-537"></a>        <span class="k">for</span> <span class="n">inst</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">pattern_model</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">**</span><span class="n">filters</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
-<a id="__codelineno-0-538" name="__codelineno-0-538"></a>    <span class="p">}</span>
-<a id="__codelineno-0-539" name="__codelineno-0-539"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">allowed_keys</span><span class="p">:</span>
-<a id="__codelineno-0-540" name="__codelineno-0-540"></a>        <span class="k">return</span> <span class="p">[]</span>
-<a id="__codelineno-0-541" name="__codelineno-0-541"></a>
-<a id="__codelineno-0-542" name="__codelineno-0-542"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_post_filter</span><span class="p">(</span><span class="n">member</span><span class="p">,</span> <span class="n">_score</span><span class="p">,</span> <span class="n">_allowed</span><span class="o">=</span><span class="n">allowed_keys</span><span class="p">):</span>
-<a id="__codelineno-0-543" name="__codelineno-0-543"></a>        <span class="k">return</span> <span class="n">member</span> <span class="ow">in</span> <span class="n">_allowed</span>
-<a id="__codelineno-0-544" name="__codelineno-0-544"></a>
-<a id="__codelineno-0-545" name="__codelineno-0-545"></a>    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">pattern_model</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
-<a id="__codelineno-0-546" name="__codelineno-0-546"></a>        <span class="o">**</span><span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">partition_field</span><span class="p">:</span> <span class="n">partition</span><span class="p">}</span>
-<a id="__codelineno-0-547" name="__codelineno-0-547"></a>    <span class="p">)</span><span class="o">.</span><span class="n">composite_score</span><span class="p">(</span>
-<a id="__codelineno-0-548" name="__codelineno-0-548"></a>        <span class="n">indexes</span><span class="o">=</span><span class="n">positive_weights</span><span class="p">,</span>
-<a id="__codelineno-0-549" name="__codelineno-0-549"></a>        <span class="n">limit</span><span class="o">=</span><span class="n">limit</span><span class="p">,</span>
-<a id="__codelineno-0-550" name="__codelineno-0-550"></a>        <span class="n">post_filter</span><span class="o">=</span><span class="n">_post_filter</span><span class="p">,</span>
-<a id="__codelineno-0-551" name="__codelineno-0-551"></a>    <span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-551">551</a></span>
+<span class="normal"><a href="#__codelineno-0-552">552</a></span>
+<span class="normal"><a href="#__codelineno-0-553">553</a></span>
+<span class="normal"><a href="#__codelineno-0-554">554</a></span>
+<span class="normal"><a href="#__codelineno-0-555">555</a></span>
+<span class="normal"><a href="#__codelineno-0-556">556</a></span>
+<span class="normal"><a href="#__codelineno-0-557">557</a></span>
+<span class="normal"><a href="#__codelineno-0-558">558</a></span>
+<span class="normal"><a href="#__codelineno-0-559">559</a></span>
+<span class="normal"><a href="#__codelineno-0-560">560</a></span>
+<span class="normal"><a href="#__codelineno-0-561">561</a></span>
+<span class="normal"><a href="#__codelineno-0-562">562</a></span>
+<span class="normal"><a href="#__codelineno-0-563">563</a></span>
+<span class="normal"><a href="#__codelineno-0-564">564</a></span>
+<span class="normal"><a href="#__codelineno-0-565">565</a></span>
+<span class="normal"><a href="#__codelineno-0-566">566</a></span>
+<span class="normal"><a href="#__codelineno-0-567">567</a></span>
+<span class="normal"><a href="#__codelineno-0-568">568</a></span>
+<span class="normal"><a href="#__codelineno-0-569">569</a></span>
+<span class="normal"><a href="#__codelineno-0-570">570</a></span>
+<span class="normal"><a href="#__codelineno-0-571">571</a></span>
+<span class="normal"><a href="#__codelineno-0-572">572</a></span>
+<span class="normal"><a href="#__codelineno-0-573">573</a></span>
+<span class="normal"><a href="#__codelineno-0-574">574</a></span>
+<span class="normal"><a href="#__codelineno-0-575">575</a></span>
+<span class="normal"><a href="#__codelineno-0-576">576</a></span>
+<span class="normal"><a href="#__codelineno-0-577">577</a></span>
+<span class="normal"><a href="#__codelineno-0-578">578</a></span>
+<span class="normal"><a href="#__codelineno-0-579">579</a></span>
+<span class="normal"><a href="#__codelineno-0-580">580</a></span>
+<span class="normal"><a href="#__codelineno-0-581">581</a></span>
+<span class="normal"><a href="#__codelineno-0-582">582</a></span>
+<span class="normal"><a href="#__codelineno-0-583">583</a></span>
+<span class="normal"><a href="#__codelineno-0-584">584</a></span>
+<span class="normal"><a href="#__codelineno-0-585">585</a></span>
+<span class="normal"><a href="#__codelineno-0-586">586</a></span>
+<span class="normal"><a href="#__codelineno-0-587">587</a></span>
+<span class="normal"><a href="#__codelineno-0-588">588</a></span>
+<span class="normal"><a href="#__codelineno-0-589">589</a></span>
+<span class="normal"><a href="#__codelineno-0-590">590</a></span>
+<span class="normal"><a href="#__codelineno-0-591">591</a></span>
+<span class="normal"><a href="#__codelineno-0-592">592</a></span>
+<span class="normal"><a href="#__codelineno-0-593">593</a></span>
+<span class="normal"><a href="#__codelineno-0-594">594</a></span>
+<span class="normal"><a href="#__codelineno-0-595">595</a></span>
+<span class="normal"><a href="#__codelineno-0-596">596</a></span>
+<span class="normal"><a href="#__codelineno-0-597">597</a></span>
+<span class="normal"><a href="#__codelineno-0-598">598</a></span>
+<span class="normal"><a href="#__codelineno-0-599">599</a></span>
+<span class="normal"><a href="#__codelineno-0-600">600</a></span>
+<span class="normal"><a href="#__codelineno-0-601">601</a></span>
+<span class="normal"><a href="#__codelineno-0-602">602</a></span>
+<span class="normal"><a href="#__codelineno-0-603">603</a></span>
+<span class="normal"><a href="#__codelineno-0-604">604</a></span>
+<span class="normal"><a href="#__codelineno-0-605">605</a></span>
+<span class="normal"><a href="#__codelineno-0-606">606</a></span>
+<span class="normal"><a href="#__codelineno-0-607">607</a></span>
+<span class="normal"><a href="#__codelineno-0-608">608</a></span>
+<span class="normal"><a href="#__codelineno-0-609">609</a></span>
+<span class="normal"><a href="#__codelineno-0-610">610</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-533" name="__codelineno-0-533"></a><span class="k">def</span><span class="w"> </span><span class="nf">recall</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fingerprint</span><span class="p">,</span> <span class="n">partition</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">score_weights</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<a id="__codelineno-0-534" name="__codelineno-0-534"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Recall ranked patterns for the given fingerprint (read path).</span>
+<a id="__codelineno-0-535" name="__codelineno-0-535"></a>
+<a id="__codelineno-0-536" name="__codelineno-0-536"></a><span class="sd">    Recall is keyed exact-match by fingerprint plus partition. Because</span>
+<a id="__codelineno-0-537" name="__codelineno-0-537"></a><span class="sd">    fingerprint fields are ``KeyField`` s and the (partition,</span>
+<a id="__codelineno-0-538" name="__codelineno-0-538"></a><span class="sd">    fingerprint) combination is unique under a partition, this is a</span>
+<a id="__codelineno-0-539" name="__codelineno-0-539"></a><span class="sd">    small, bounded query. The composite-score ranking matters when the</span>
+<a id="__codelineno-0-540" name="__codelineno-0-540"></a><span class="sd">    caller supplies a *partial* fingerprint (a subset of</span>
+<a id="__codelineno-0-541" name="__codelineno-0-541"></a><span class="sd">    ``fingerprint_fields``) — in that case multiple patterns may</span>
+<a id="__codelineno-0-542" name="__codelineno-0-542"></a><span class="sd">    match and are ranked by ``score_weights``.</span>
+<a id="__codelineno-0-543" name="__codelineno-0-543"></a>
+<a id="__codelineno-0-544" name="__codelineno-0-544"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-545" name="__codelineno-0-545"></a><span class="sd">        fingerprint: Dict of fingerprint-field values. May be a subset</span>
+<a id="__codelineno-0-546" name="__codelineno-0-546"></a><span class="sd">            of ``fingerprint_fields`` (partial-fingerprint recall).</span>
+<a id="__codelineno-0-547" name="__codelineno-0-547"></a><span class="sd">            Empty dicts return ``[]`` — caller must commit to at least</span>
+<a id="__codelineno-0-548" name="__codelineno-0-548"></a><span class="sd">            one fingerprint dimension to keep recall keyed rather than</span>
+<a id="__codelineno-0-549" name="__codelineno-0-549"></a><span class="sd">            an unfiltered scan.</span>
+<a id="__codelineno-0-550" name="__codelineno-0-550"></a><span class="sd">        partition: Partition value (exact-match filter).</span>
+<a id="__codelineno-0-551" name="__codelineno-0-551"></a><span class="sd">        limit: Maximum patterns to return. Defaults to</span>
+<a id="__codelineno-0-552" name="__codelineno-0-552"></a><span class="sd">            ``DEFAULT_RECALL_LIMIT`` (5). ``0`` or negative returns</span>
+<a id="__codelineno-0-553" name="__codelineno-0-553"></a><span class="sd">            ``[]``.</span>
+<a id="__codelineno-0-554" name="__codelineno-0-554"></a><span class="sd">        score_weights: Override the default composite-score weights for</span>
+<a id="__codelineno-0-555" name="__codelineno-0-555"></a><span class="sd">            this call.</span>
+<a id="__codelineno-0-556" name="__codelineno-0-556"></a>
+<a id="__codelineno-0-557" name="__codelineno-0-557"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-558" name="__codelineno-0-558"></a><span class="sd">        List of ``pattern_model`` instances ranked by composite score</span>
+<a id="__codelineno-0-559" name="__codelineno-0-559"></a><span class="sd">        (descending).</span>
+<a id="__codelineno-0-560" name="__codelineno-0-560"></a>
+<a id="__codelineno-0-561" name="__codelineno-0-561"></a><span class="sd">    Raises:</span>
+<a id="__codelineno-0-562" name="__codelineno-0-562"></a><span class="sd">        ValueError: If ``fingerprint`` contains a key not in</span>
+<a id="__codelineno-0-563" name="__codelineno-0-563"></a><span class="sd">            ``fingerprint_fields``.</span>
+<a id="__codelineno-0-564" name="__codelineno-0-564"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-565" name="__codelineno-0-565"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">fingerprint</span><span class="p">:</span>
+<a id="__codelineno-0-566" name="__codelineno-0-566"></a>        <span class="k">return</span> <span class="p">[]</span>
+<a id="__codelineno-0-567" name="__codelineno-0-567"></a>    <span class="k">if</span> <span class="n">limit</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-568" name="__codelineno-0-568"></a>        <span class="n">limit</span> <span class="o">=</span> <span class="n">DEFAULT_RECALL_LIMIT</span>
+<a id="__codelineno-0-569" name="__codelineno-0-569"></a>    <span class="k">if</span> <span class="n">limit</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+<a id="__codelineno-0-570" name="__codelineno-0-570"></a>        <span class="k">return</span> <span class="p">[]</span>
+<a id="__codelineno-0-571" name="__codelineno-0-571"></a>
+<a id="__codelineno-0-572" name="__codelineno-0-572"></a>    <span class="c1"># Validate fingerprint keys belong to fingerprint_fields</span>
+<a id="__codelineno-0-573" name="__codelineno-0-573"></a>    <span class="n">unknown</span> <span class="o">=</span> <span class="p">[</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">fingerprint</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">fingerprint_fields</span><span class="p">]</span>
+<a id="__codelineno-0-574" name="__codelineno-0-574"></a>    <span class="k">if</span> <span class="n">unknown</span><span class="p">:</span>
+<a id="__codelineno-0-575" name="__codelineno-0-575"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-576" name="__codelineno-0-576"></a>            <span class="sa">f</span><span class="s2">&quot;recall fingerprint has unknown field(s): </span><span class="si">{</span><span class="n">unknown</span><span class="si">}</span><span class="s2">; &quot;</span>
+<a id="__codelineno-0-577" name="__codelineno-0-577"></a>            <span class="sa">f</span><span class="s2">&quot;expected subset of </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">fingerprint_fields</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-578" name="__codelineno-0-578"></a>        <span class="p">)</span>
+<a id="__codelineno-0-579" name="__codelineno-0-579"></a>
+<a id="__codelineno-0-580" name="__codelineno-0-580"></a>    <span class="n">weights</span> <span class="o">=</span> <span class="n">score_weights</span> <span class="k">if</span> <span class="n">score_weights</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">score_weights</span>
+<a id="__codelineno-0-581" name="__codelineno-0-581"></a>
+<a id="__codelineno-0-582" name="__codelineno-0-582"></a>    <span class="c1"># Drop any non-positive weight entries. At least one positive</span>
+<a id="__codelineno-0-583" name="__codelineno-0-583"></a>    <span class="c1"># weight is required for composite_score to run.</span>
+<a id="__codelineno-0-584" name="__codelineno-0-584"></a>    <span class="n">positive_weights</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">weights</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">v</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">}</span>
+<a id="__codelineno-0-585" name="__codelineno-0-585"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">positive_weights</span><span class="p">:</span>
+<a id="__codelineno-0-586" name="__codelineno-0-586"></a>        <span class="k">return</span> <span class="p">[]</span>
+<a id="__codelineno-0-587" name="__codelineno-0-587"></a>
+<a id="__codelineno-0-588" name="__codelineno-0-588"></a>    <span class="c1"># Resolve allowed redis_keys via the filter step. ``filter()`` walks</span>
+<a id="__codelineno-0-589" name="__codelineno-0-589"></a>    <span class="c1"># KeyField indexes and is cheap; we then restrict composite_score</span>
+<a id="__codelineno-0-590" name="__codelineno-0-590"></a>    <span class="c1"># to that allowed set via ``post_filter``. (composite_score itself</span>
+<a id="__codelineno-0-591" name="__codelineno-0-591"></a>    <span class="c1"># ranks via partition-scoped sorted sets and is unaware of</span>
+<a id="__codelineno-0-592" name="__codelineno-0-592"></a>    <span class="c1"># non-partition KeyField filters.)</span>
+<a id="__codelineno-0-593" name="__codelineno-0-593"></a>    <span class="n">filters</span> <span class="o">=</span> <span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">partition_field</span><span class="p">:</span> <span class="n">partition</span><span class="p">,</span> <span class="o">**</span><span class="n">fingerprint</span><span class="p">}</span>
+<a id="__codelineno-0-594" name="__codelineno-0-594"></a>    <span class="n">allowed_keys</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-0-595" name="__codelineno-0-595"></a>        <span class="n">inst</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span>
+<a id="__codelineno-0-596" name="__codelineno-0-596"></a>        <span class="k">for</span> <span class="n">inst</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">pattern_model</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">**</span><span class="n">filters</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
+<a id="__codelineno-0-597" name="__codelineno-0-597"></a>    <span class="p">}</span>
+<a id="__codelineno-0-598" name="__codelineno-0-598"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">allowed_keys</span><span class="p">:</span>
+<a id="__codelineno-0-599" name="__codelineno-0-599"></a>        <span class="k">return</span> <span class="p">[]</span>
+<a id="__codelineno-0-600" name="__codelineno-0-600"></a>
+<a id="__codelineno-0-601" name="__codelineno-0-601"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_post_filter</span><span class="p">(</span><span class="n">member</span><span class="p">,</span> <span class="n">_score</span><span class="p">,</span> <span class="n">_allowed</span><span class="o">=</span><span class="n">allowed_keys</span><span class="p">):</span>
+<a id="__codelineno-0-602" name="__codelineno-0-602"></a>        <span class="k">return</span> <span class="n">member</span> <span class="ow">in</span> <span class="n">_allowed</span>
+<a id="__codelineno-0-603" name="__codelineno-0-603"></a>
+<a id="__codelineno-0-604" name="__codelineno-0-604"></a>    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">pattern_model</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+<a id="__codelineno-0-605" name="__codelineno-0-605"></a>        <span class="o">**</span><span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">partition_field</span><span class="p">:</span> <span class="n">partition</span><span class="p">}</span>
+<a id="__codelineno-0-606" name="__codelineno-0-606"></a>    <span class="p">)</span><span class="o">.</span><span class="n">composite_score</span><span class="p">(</span>
+<a id="__codelineno-0-607" name="__codelineno-0-607"></a>        <span class="n">indexes</span><span class="o">=</span><span class="n">positive_weights</span><span class="p">,</span>
+<a id="__codelineno-0-608" name="__codelineno-0-608"></a>        <span class="n">limit</span><span class="o">=</span><span class="n">limit</span><span class="p">,</span>
+<a id="__codelineno-0-609" name="__codelineno-0-609"></a>        <span class="n">post_filter</span><span class="o">=</span><span class="n">_post_filter</span><span class="p">,</span>
+<a id="__codelineno-0-610" name="__codelineno-0-610"></a>    <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

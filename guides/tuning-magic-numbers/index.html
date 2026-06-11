@@ -2758,8 +2758,21 @@
 <td>[0.1, 0.9]</td>
 <td>Low</td>
 </tr>
+<tr>
+<td><code>evidence_cap</code></td>
+<td>20</td>
+<td>—</td>
+<td>Not swept — user-facing config, not a tuning constant</td>
+</tr>
+<tr>
+<td><code>CONFIDENCE_EPSILON</code></td>
+<td>1e-9</td>
+<td>—</td>
+<td>Not swept — internal float-boundary guard</td>
+</tr>
 </tbody>
 </table>
+<p><code>evidence_cap</code> (default <code>Defaults.CONFIDENCE_EVIDENCE_CAP = 20</code>) is the capped-evidence Bayesian rule's memory-window length — an epistemics knob deliberately exposed as per-field user config per the <a href="https://github.com/tomcounsell/popoto/issues/407">issue #407</a> decision, so it is excluded from experimental sweeps. <code>CONFIDENCE_EPSILON</code> is the float tolerance applied to the <code>AUTO_DISCHARGE_CONFIDENCE_THRESHOLD</code> comparison in <code>observation.py</code> (values within epsilon of the threshold do not discharge); it guards a boundary condition and is not user config. See <a href="../../features/confidence-field/">ConfidenceField</a> for the update-rule semantics.</p>
 <h3 id="writefiltermixin">WriteFilterMixin<a class="headerlink" href="#writefiltermixin" title="Permanent link">&para;</a></h3>
 <p>Source: <code>src/popoto/fields/write_filter.py</code></p>
 <table>
