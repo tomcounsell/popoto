@@ -73,9 +73,9 @@ All assumptions were resolved by direct code-read during planning (no parallel s
 ### spike-1: Lua script can receive cap and prior weight without API change
 - **Assumption**: "The Lua EVAL call site can pass extra ARGV without changing the public `update_confidence` signature"
 - **Method**: code-read
-- **Finding**: `update_confidence` already passes `ARGV[1..3]` (member, signal, initial_confidence) at `confidence_field.py:410-417`. Appending `ARGV[4]` (evidence_cap) and `ARGV[5]` (prior pseudo-count) is a self-contained change.
+- **Finding**: `update_confidence` already passes `ARGV[1..3]` (member, signal, initial_confidence) at `confidence_field.py:410-417`. Appending `ARGV[4]` (evidence_cap) is a self-contained change.
 - **Confidence**: high
-- **Impact on plan**: No public API signature change needed; `evidence_cap` is a field constructor kwarg only.
+- **Impact on plan**: No public API signature change needed; `evidence_cap` is a field constructor kwarg only. The prior pseudo-count is NOT passed as ARGV — it is inlined in the Lua script as a local constant (critique: Simplifier — passing a fixed internal constant through the protocol invites exactly the configurability the decision closed off).
 
 ### spike-2: Watermark save is implementable without new field plumbing
 - **Assumption**: "crystallize can set `last_reinforced` to the max observed episode timestamp instead of wall-clock now"
@@ -148,17 +148,18 @@ All assumptions were resolved by direct code-read during planning (no parallel s
 **1. Lua + field config (`src/popoto/fields/confidence_field.py`)**
 
 ```lua
--- ARGV[4] = evidence_cap, ARGV[5] = prior_weight (pseudo-count)
+-- ARGV[4] = evidence_cap (the only new ARGV)
+local prior_weight = 1  -- internal constant; not user config (issue #407 decision Q2)
 local cap = tonumber(ARGV[4])
-local prior_weight = tonumber(ARGV[5])
 local n_eff = math.min(evidence_count + prior_weight, cap)
 local new_confidence = confidence + (signal - confidence) / (n_eff + 1)
 ```
 
 - `evidence_count` semantics unchanged: counts *real* observations only (reporting via `get_confidence_data` is not inflated by the pseudo-count).
 - Constructor: `evidence_cap = kwargs.pop("evidence_cap", None)` → default `Defaults.CONFIDENCE_EVIDENCE_CAP` (20); raise `ModelException` unless `int` and `>= 1`.
-- New `Defaults` constants in `fields/constants.py`: `CONFIDENCE_EVIDENCE_CAP = 20` (deliberate user-facing config exception, per decision), `CONFIDENCE_PRIOR_WEIGHT = 1` (internal), `CONFIDENCE_EPSILON = 1e-9` (internal).
-- EVAL call site appends `str(field.evidence_cap)`, `str(Defaults.CONFIDENCE_PRIOR_WEIGHT)`.
+- New `Defaults` constants in `fields/constants.py`: `CONFIDENCE_EVIDENCE_CAP = 20` (deliberate user-facing config exception, per decision), `CONFIDENCE_EPSILON = 1e-9` (internal). The prior pseudo-count (1) lives only inside the Lua script — no `Defaults.CONFIDENCE_PRIOR_WEIGHT`, no Python-side knowledge of it (critique: Simplifier).
+- EVAL call site appends `str(field.evidence_cap)` as ARGV[4] — nothing else.
+- `update_confidence` docstring gains a **Warning** paragraph: all processes updating the same companion hash entry must configure identical `evidence_cap` values — the cap is passed per-call and not stored in the hash, so divergent caps across processes produce silently inconsistent gain schedules with no runtime detection (critique: Operator). Mirrored in the feature doc's `evidence_cap` parameter row.
 - Rename the script constant to `CAPPED_BAYESIAN_UPDATE_LUA` and rewrite docstring/comments to the new semantics (module docstring lines 1–5, Lua header comment, `update_confidence` docstring).
 - Clamp and `signal >= 0.5` corroboration/contradiction counting unchanged.
 
@@ -174,9 +175,12 @@ Semantics per decision Q3: values within epsilon of the threshold are *not* belo
 
 In `crystallize` (both new-pattern and existing-pattern paths):
 - Compute `watermark = max(self._episode_score(e, self.episode_recency_field) for e in observed_episodes)`.
-- After `_observe_episodes`, set `setattr(pattern, self.recency_field, watermark)` and call `pattern.save(skip_auto_now=True)`.
+- After `_observe_episodes`, set `setattr(pattern, self.recency_field, watermark)` and call `pattern.save(skip_auto_now=True)` — **this applies to BOTH branches**. To avoid the new-pattern double-save (where `_create_pattern`'s internal `pattern.save()` at `trajectory_memory.py:597` writes an auto_now wall-clock score that the watermark save immediately overwrites), refactor `_create_pattern` to return the *unsaved* pattern; `crystallize`'s post-`_observe_episodes` `save(skip_auto_now=True)` becomes the single authoritative save for new and existing patterns alike (critique: Skeptic — an ambiguous branch split here would let the new-pattern path silently retain wall-clock semantics).
 - Keep the strict `>` filter. Re-running crystallize after the fix observes exactly the episodes recorded after the last *observed* evidence, regardless of how much wall-clock time passed between query and save — closing the permanent-skip window where an episode recorded between query and save (score < save-time) was filtered out forever.
 - Update the `crystallize` docstring (line ~400) and recipe doc to state the honest guarantee: **sequential re-run idempotence via watermark filtering; concurrent crystallization of the same partition is not coordinated** (recipe-level read-modify-write can double-observe) — run one crystallizer per partition. Within the evidence window the capped rule makes interleaved confidence updates order-invariant, which bounds (but does not eliminate) concurrent-crystallize drift; the docs must not claim convergence.
+- Document two further watermark semantics explicitly (critique: Operator, User, Adversary):
+  - `last_reinforced`'s stored score now equals the max *observed episode* `recorded_at`, which may predate the wall-clock crystallize call — an operator running `ZSCORE` reads "newest episode processed", not "when crystallize last ran", and recency-weighted recall (`DEFAULT_SCORE_WEIGHTS` puts 0.4 on `last_reinforced`) ranks patterns by episode time, so batched/nightly crystallization makes patterns appear correspondingly older than under the previous behavior.
+  - The watermark guarantee is only as strong as cross-writer clock synchronization: a writer whose clock lags the max observed episode timestamp can record an episode *below* the watermark, which the strict `>` filter then skips forever. State the assumption (episode writers and crystallizer within ordinary NTP sync) in the recipe guide's idempotence section. A subtract-a-margin mitigation is deliberately **rejected**: episodes inside the margin would sit below an unmoving watermark and be re-observed on every run, breaking the zero-drift idempotence guarantee unless per-episode dedup is added — disproportionate for beta (see Race 4).
 
 **4. Docs honesty pass** (grep-driven over `Bayesian|commutative|converge|sqrt|resist change`):
 - `docs/features/confidence-field.md` — formula section, convergence table (rebuild for capped gain), header claim, auto-discharge section (epsilon + new first-contradiction trajectory), document `evidence_cap` with the window-length epistemics framing and worked forgetting example (0.9 → 0.5 in ~15 contradictions at cap 20).
@@ -199,22 +203,25 @@ In `crystallize` (both new-pattern and existing-pattern paths):
 
 ## Test Impact
 
-13 test files call `update_confidence`; most use relative/ordering assertions and survive unchanged. Files with exact-value assertions tied to the old formula:
+14 files call `update_confidence` (critique structural check; the 14th is `tests/benchmarks/scenarios/family_factory.py`, AUDIT-only); most use relative/ordering assertions and survive unchanged. Files with exact-value assertions tied to the old formula:
 
 - [ ] `tests/test_confidence_field.py` (41 tests) — UPDATE: formula tests at lines ~175–200 ("first update = signal", "sqrt(2) denominator") and exact-value assertions at lines ~250–300 must be recomputed for the capped rule (first update from 0.5 with signal 0.9 → **0.7**, not 0.9). Auto-discharge test at line 402 manually seeds a sub-0.1 value — still valid; UPDATE to assert the epsilon boundary explicitly (exactly-0.1-representable value does NOT discharge; threshold − 2e-9 does).
 - [ ] `tests/test_observation_protocol.py` (58 tests) — UPDATE: any assertion pinning post-acted/post-contradicted confidence values to the old trajectory; the "used does not update confidence" test (line 960) is value-free and survives.
-- [ ] `tests/test_agent_memory_e2e.py::test_contradicted_with_low_confidence_auto_discharges_pressure` (line 663) — UPDATE: currently relies on first-contradiction reaching <0.1; under the new rule it must drive confidence genuinely below threshold−epsilon (repeated contradictions) before asserting discharge.
-- [ ] `tests/test_trajectory_memory.py` (27 tests) — UPDATE where idempotence tests assume auto_now `last_reinforced`; ADD watermark assertions (post-crystallize `last_reinforced == max observed episode recorded_at`).
+- [ ] `tests/test_agent_memory_e2e.py::test_contradicted_with_low_confidence_auto_discharges_pressure` (line 663) — UPDATE with a stated closed-form oracle (critique: User): from `initial=0.5` with `signal=0.05`, value after n ≤ cap updates is `(0.5 + 0.05n)/(n+1)`; `< 0.1` requires `n > 8`, so **9 updates minimum**. Assert `final_conf < Defaults.AUTO_DISCHARGE_CONFIDENCE_THRESHOLD - Defaults.CONFIDENCE_EPSILON` (not a loose `< 0.15`), with the derivation as the oracle comment.
+- [ ] `tests/test_trajectory_memory.py` (27 tests) — ADD watermark assertions (post-crystallize `last_reinforced == max observed episode recorded_at`), including a dedicated **new-pattern** test (first crystallize of a brand-new pattern sets the watermark, not wall-clock — critique: Archaeologist). NOTE: `test_recency_advances_on_reinforcement` (lines 225-245) passes unchanged under watermark semantics (second-batch episodes are recorded after a sleep, so the watermark naturally advances) — treat as a passive regression guard, not an update target (critique: Archaeologist).
 - [ ] `tests/test_partitioned_confidence.py` (31 tests) — AUDIT: partition mechanics are formula-agnostic; recompute any exact-value assertions found.
 - [ ] `tests/test_adaptive_assembler.py`, `test_adoption_ladder.py`, `test_composite_score_query.py`, `test_guide_examples.py`, `test_integration_v144.py`, `test_co_occurrence_field.py`, `test_context_assembler.py`, `test_event_stream_mixin.py`, `test_subconscious_memory_integration.py` — AUDIT: expected to pass (relative assertions); recompute any exact-value failures surfaced by the full run. `test_guide_examples.py` may pin doc-example outputs — UPDATE alongside the docs pass.
 
 New tests (in `tests/test_confidence_field.py` unless noted):
-- Order-invariance property: a fixed evidence multiset (≤ cap signals) applied in several permutations converges to the identical value (tolerance ~1e-12).
+
+**Float-tolerance convention for all order-invariance assertions** (critique: Skeptic, Adversary, Consistency — BLOCKER resolution): the incremental Lua form `c ← c + (s − c)/(n_eff + 1)` is *algebraically* order-invariant but NOT IEEE-754 bit-identical across orderings (intermediate roundings differ; error ≲ 1e-14 for cap ≤ 20). Every such assertion compares against the closed-form oracle `(c0 + Σsi)/(n+1)` with `abs(actual − oracle) < 1e-12` — a formula-derived bound, never `==`.
+
+- Order-invariance property: a fixed evidence multiset (≤ cap signals) applied in several permutations lands within 1e-12 of the closed-form oracle (and hence of each other).
 - Prior weight: one update with signal 0.9 from `initial_confidence=0.5` → 0.7; from 0.01 → 0.455; prior is not erased.
-- Cap forgetting: maxed-out belief (≥20 corroborations at 0.9-trajectory toward high confidence) crosses 0.5 on the **15th** consecutive contradiction (spike-3 closed form), not the 5th.
-- Running-mean equivalence: n ≤ cap updates equal `(c0 + Σ signals)/(n+1)` exactly (within float tolerance).
+- Cap forgetting: belief **seeded directly** in the companion hash as `confidence=0.9, evidence_count=20` (driving 20 update-path corroborations from 0.5 at signal 0.9 reaches ≈0.8810, *not* 0.9 — the oracle comment must match the seeded state; critique: Adversary) crosses 0.5 on the **15th** consecutive 0.1-contradiction (spike-3 closed form `0.1 + 0.8·(20/21)^k`), not the 5th.
+- Running-mean equivalence: n ≤ cap updates equal `(c0 + Σ signals)/(n+1)` within 1e-12.
 - `evidence_cap` config: default 20; custom value honored (different forgetting rate); validation errors.
-- Concurrency regression: re-run the existing atomicity pattern (audit confirmed 2000/2000 bit-identical) under the new script — with the capped rule, concurrent updates within the window must now also be order-invariant, so the final value is asserted exactly, not just consistently.
+- Concurrency regression: re-run the existing atomicity pattern under the new script — concurrent updates within the window are order-invariant, so the final value is asserted against the closed-form oracle within 1e-12 (NOT exact equality, per the tolerance convention above).
 - Epsilon boundary (in `test_confidence_field.py` + `test_observation_protocol.py`): seeded value at the float predecessor of 0.1 does not discharge; value clearly below threshold−epsilon does.
 - Watermark idempotence (in `test_trajectory_memory.py`): double-crystallize produces zero confidence drift; an episode backdated between the watermark and wall-clock save time is still picked up by the next run (the exact scenario the old code lost forever).
 
@@ -233,7 +240,7 @@ No xfail/xpass tests relate to this bug (grep over `pytest.mark.xfail|pytest.xfa
 ## Risks
 
 ### Risk 1: Broad exact-value test fallout
-**Impact:** Many tests across 13 files pin trajectories of the old formula; a sloppy update pass could "fix" tests to whatever the new code emits, masking an implementation bug.
+**Impact:** Many tests across 14 files pin trajectories of the old formula; a sloppy update pass could "fix" tests to whatever the new code emits, masking an implementation bug.
 **Mitigation:** Every recomputed expectation in tests must be derived from the closed form `(c0 + Σsi)/(n+1)` (window) or the `20/21` geometric decay (at cap) — stated in a comment next to the assertion — never copied from observed output. The spike-3/spike-4 closed forms are the oracle.
 
 ### Risk 2: `save(skip_auto_now=True)` suppresses auto_now for ALL fields on the pattern model
@@ -269,7 +276,14 @@ No xfail/xpass tests relate to this bug (grep over `pytest.mark.xfail|pytest.xfa
 **Trigger:** Many writers updating the same member.
 **Data prerequisite:** none.
 **State prerequisite:** none.
-**Mitigation:** Already atomic (audit: 2000/2000 bit-identical). The capped rule upgrades the guarantee within the window from "serialized" to "order-invariant"; regression-tested.
+**Mitigation:** Already atomic (audit: 2000/2000 bit-identical). The capped rule upgrades the guarantee within the window from "serialized" to "order-invariant" (within float tolerance, see Test Impact convention); regression-tested.
+
+### Race 4: Cross-writer clock skew vs the watermark (critique: Adversary)
+**Location:** `trajectory_memory.py` crystallize filter (`> last_reinforced`)
+**Trigger:** Writer A's wall clock lags the crystallizer's view: B crystallizes observing episodes up to score 99 (watermark=99); A then records an episode stamped 95 by its lagging clock. The next run filters `> 99` and skips A's episode **forever** — qualitatively different from Race 3's same-microsecond collision; seconds of skew are common without tight NTP.
+**Data prerequisite:** Multi-process episode writers with unsynchronized clocks.
+**State prerequisite:** Watermark already advanced past the lagging writer's stamps.
+**Mitigation:** Documented operational assumption (episode writers + crystallizer within ordinary NTP sync), stated in the recipe guide's idempotence section alongside single-crystallizer-per-partition. The subtract-a-margin alternative (`watermark − CLOCK_SKEW_MARGIN`) is **rejected**: episodes inside the margin sit below an unmoving watermark and would be re-observed on *every* subsequent run, breaking the zero-drift double-crystallize guarantee unless per-episode dedup is added — the rabbit-hole tradeoff documented in Technical Approach item 3. This is the same clock-trust class as audit finding CONC-4 (client wall clocks throughout decay math), which remains tracked separately.
 
 ## No-Gos (Out of Scope)
 
@@ -287,8 +301,9 @@ No agent integration required — this is a library-internal change to popoto; n
 ## Documentation
 
 ### Feature Documentation
-- [ ] Rewrite `docs/features/confidence-field.md` update-formula and convergence sections for the capped rule; document `evidence_cap` (epistemics knob: memory-window length), prior weight behavior, the ~15-contradiction forgetting example, and epsilon discharge semantics
-- [ ] Update `docs/guides/trajectory-memory-recipe.md` line 100 idempotence paragraph (watermark semantics, single-crystallizer-per-partition, no commutativity claim) and the line 129/202 "Bayesian" labels
+- [ ] Rewrite `docs/features/confidence-field.md` update-formula and convergence sections for the capped rule; document `evidence_cap` (epistemics knob: memory-window length) **including the same-cap-across-processes warning**, prior weight behavior, the ~15-contradiction forgetting example, and epsilon discharge semantics
+- [ ] Update `docs/guides/trajectory-memory-recipe.md` line 100 idempotence paragraph (watermark semantics, single-crystallizer-per-partition, no commutativity claim, **cross-writer clock-sync assumption**) and the line 129/202 "Bayesian" labels
+- [ ] State the `last_reinforced` semantic change in both the `crystallize` docstring and the recipe guide (critique: Operator, User): the stored score equals the max observed episode `recorded_at` — possibly earlier than the crystallize call — so `ZSCORE` reads "newest episode processed" not "when crystallize ran", and recency-weighted recall ranks batched-crystallized patterns by episode time
 - [ ] Sweep `docs/features/observation-protocol.md`, `docs/features/agent-memory.md`, `docs/guides/agent-memory-quickstart.md`, `docs/features/README.md`, `docs/features/kitchen-edge-case-demo.md`, `docs/guides/policy-cache-recipe.md`, `docs/features/prediction-ledger.md` and essay guides for update-rule property claims (grep `Bayesian|commutative|converge|sqrt|resist change`); correct only sentences about ConfidenceField's update semantics
 
 ### External Documentation Site
@@ -301,12 +316,13 @@ No agent integration required — this is a library-internal change to popoto; n
 
 ## Success Criteria
 
-- [ ] Lua gain is `1/(min(evidence_count + 1, 20) + 1)`-style capped rule (prior weight 1, per-field cap default 20); first update from default 0.5 with signal 0.9 yields **0.7**
-- [ ] n ≤ cap updates equal the running mean `(c0 + Σsi)/(n+1)` exactly; permutation test shows bit-identical results across orderings
-- [ ] Maxed-out 0.9 belief crosses 0.5 on the 15th consecutive 0.1-contradiction (closed-form oracle)
-- [ ] `ConfidenceField(evidence_cap=N)` honored and validated; companion-hash schema unchanged; ORM field API otherwise unchanged
+- [ ] Lua gain is `1/(min(evidence_count + 1, 20) + 1)`-style capped rule (prior weight 1 inlined in Lua, per-field cap default 20 as the only new ARGV); first update from default 0.5 with signal 0.9 yields **0.7**
+- [ ] n ≤ cap updates match the running mean `(c0 + Σsi)/(n+1)` within 1e-12; permutation test shows order-invariance within 1e-12 (float rounding only — bit-identity is NOT claimed; critique BLOCKER resolution)
+- [ ] Belief seeded at confidence=0.9 / evidence_count=20 crosses 0.5 on the 15th consecutive 0.1-contradiction (closed-form oracle)
+- [ ] `ConfidenceField(evidence_cap=N)` honored and validated; companion-hash schema unchanged; ORM field API otherwise unchanged; docstring + feature doc carry the same-cap-across-processes warning
 - [ ] Float predecessor of 0.1 no longer triggers auto-discharge; genuine sub-threshold drop still does
-- [ ] Crystallize re-run produces zero confidence drift, and a backdated late-arriving episode is observed on the next run (watermark test)
+- [ ] Crystallize re-run produces zero confidence drift; a backdated late-arriving episode is observed on the next run; first crystallize of a brand-new pattern sets `last_reinforced` to the max observed episode timestamp (single authoritative save, no `_create_pattern` double-save)
+- [ ] Docs explicitly state the `last_reinforced` watermark semantics (episode time, not crystallize time; recall-ranking impact under batched crystallization) and the cross-writer clock-sync assumption
 - [ ] No doc, docstring, or comment claims unqualified Bayesian/commutative/convergent behavior; all claims scoped to the evidence window
 - [ ] Tests pass (`/do-test`)
 - [ ] Documentation updated (`/do-docs`)
@@ -355,12 +371,13 @@ No agent integration required — this is a library-internal change to popoto; n
 - **Assigned To**: confidence-core-builder
 - **Agent Type**: builder
 - **Parallel**: true
-- Add `Defaults.CONFIDENCE_EVIDENCE_CAP = 20`, `Defaults.CONFIDENCE_PRIOR_WEIGHT = 1`, `Defaults.CONFIDENCE_EPSILON = 1e-9` to `fields/constants.py` with comments distinguishing the cap (deliberate user config, decision #407) from the internal constants
-- Rewrite the Lua gain per Technical Approach item 1; rename script to `CAPPED_BAYESIAN_UPDATE_LUA`; pass `evidence_cap`/prior weight as ARGV[4]/ARGV[5]
+- Add `Defaults.CONFIDENCE_EVIDENCE_CAP = 20` and `Defaults.CONFIDENCE_EPSILON = 1e-9` to `fields/constants.py` with comments distinguishing the cap (deliberate user config, decision #407) from the internal epsilon; the prior pseudo-count is inlined in the Lua script only — do NOT add a Python constant or ARGV for it
+- Rewrite the Lua gain per Technical Approach item 1; rename script to `CAPPED_BAYESIAN_UPDATE_LUA`; pass `evidence_cap` as ARGV[4] (the only new ARGV)
 - Add `evidence_cap` constructor kwarg with validation (`int >= 1`, bool rejected)
+- Add the same-cap-across-processes Warning to the `update_confidence` docstring
 - Apply the epsilon comparison at `observation.py:372` and update the adjacent comment
 - Rewrite `confidence_field.py` docstrings/comments for capped semantics
-- Add new unit tests listed in Test Impact (order-invariance, prior weight, cap forgetting, running-mean equivalence, cap config/validation, epsilon boundary, concurrency order-invariance, corrupt-data recovery under new ARGV)
+- Add new unit tests listed in Test Impact (order-invariance, prior weight, cap forgetting from a directly-seeded 0.9/20 state, running-mean equivalence, cap config/validation, epsilon boundary, concurrency order-invariance, corrupt-data recovery under new ARGV) — all order-invariance assertions use the 1e-12 closed-form-oracle convention, never `==`
 
 ### 2. TrajectoryMemory watermark idempotence
 - **Task ID**: build-trajectory-watermark
@@ -370,9 +387,10 @@ No agent integration required — this is a library-internal change to popoto; n
 - **Assigned To**: trajectory-watermark-builder
 - **Agent Type**: builder
 - **Parallel**: true
-- In `crystallize`, compute the observed-episode watermark and persist it to the recency field via `save(skip_auto_now=True)` (both new-pattern and existing-pattern paths)
-- Update `crystallize` docstring (watermark guarantee, single-crystallizer-per-partition constraint)
-- Add tests: double-crystallize zero drift; backdated late episode observed on next run; extra-auto_now-field behavior (Risk 2); watermark equals max observed `recorded_at`
+- In `crystallize`, compute the observed-episode watermark and persist it to the recency field via `save(skip_auto_now=True)` — the single authoritative save for BOTH branches: refactor `_create_pattern` to return the unsaved pattern (remove its internal `save()` at line ~597) so the new-pattern path cannot silently retain auto_now wall-clock semantics
+- Update `crystallize` docstring (watermark guarantee, `last_reinforced` = max observed episode time not crystallize time, single-crystallizer-per-partition constraint, clock-sync assumption)
+- Add tests: double-crystallize zero drift; backdated late episode observed on next run; extra-auto_now-field behavior (Risk 2); watermark equals max observed `recorded_at`; dedicated new-pattern test asserting first crystallize sets the watermark (not wall-clock)
+- Do NOT modify `test_recency_advances_on_reinforcement` — it passes unchanged and serves as a passive regression guard
 
 ### 3. Exact-value test sweep
 - **Task ID**: build-test-sweep
@@ -383,44 +401,35 @@ No agent integration required — this is a library-internal change to popoto; n
 - **Agent Type**: test-engineer
 - **Parallel**: false
 - Run the full suite; for every failure, recompute the expected value from the closed form (comment the derivation next to the assertion) — never from observed output
-- Update `test_agent_memory_e2e.py` discharge test to drive confidence genuinely below threshold−epsilon
-- Audit `test_partitioned_confidence.py` and the remaining 9 caller files per Test Impact
+- Update `test_agent_memory_e2e.py` discharge test per the stated oracle (9+ updates at signal 0.05; assert `< threshold − epsilon`)
+- Audit `test_partitioned_confidence.py`, `tests/benchmarks/scenarios/family_factory.py`, and the remaining caller files per Test Impact
 
-### 4. Validate implementation
-- **Task ID**: validate-implementation
-- **Depends On**: build-test-sweep
-- **Assigned To**: confidence-validator
-- **Agent Type**: validator
-- **Parallel**: false
-- Verify each Success Criterion against the diff and test output
-- Confirm no `gain` mode switch or prior-weight config leaked into public API
-- Report pass/fail per criterion
-
-### 5. Documentation
+### 4. Documentation
 - **Task ID**: document-feature
-- **Depends On**: validate-implementation
+- **Depends On**: build-test-sweep
 - **Assigned To**: confidence-docs
 - **Agent Type**: documentarian
 - **Parallel**: false
-- Execute the Documentation section checklist (feature doc rewrite, recipe doc, grep-driven sweep)
+- Execute the Documentation section checklist (feature doc rewrite incl. cap warning, recipe doc incl. watermark/clock-sync/ranking notes, grep-driven sweep)
 - `mkdocs build --strict` must pass
 
-### 6. Final validation
+### 5. Final validation (single pass — critique: Simplifier merged the former tasks 4 and 6)
 - **Task ID**: validate-all
 - **Depends On**: document-feature
 - **Assigned To**: confidence-validator
 - **Agent Type**: validator
 - **Parallel**: false
+- Verify each Success Criterion against the diff and test output; confirm no `gain` mode switch, no `prior_weight` config, and no ARGV[5] leaked into the public API or protocol
 - `scripts/ci-local.sh` (tests + stress + docs gates)
 - Grep proof: no unqualified `commutative|concurrent crystallizations converge|resist change|sqrt(n)` claims remain in living docs/source
-- Generate final report
+- Generate final report (pass/fail per criterion)
 
 ## Verification
 
 | Check | Command | Expected |
 |-------|---------|----------|
 | Full suite | `pytest tests/ -x -q` | exit code 0 |
-| Capped rule landed | `grep -c "math.sqrt(evidence_count" src/popoto/fields/confidence_field.py` | output contains 0 |
+| Capped rule landed | `! grep -q "math.sqrt(evidence_count" src/popoto/fields/confidence_field.py` | exit code 0 (no matches; `grep -c` exits 1 on zero matches — critique: Consistency) |
 | Cap constant | `grep -n "CONFIDENCE_EVIDENCE_CAP" src/popoto/fields/constants.py` | exit code 0 |
 | Epsilon guard | `grep -n "CONFIDENCE_EPSILON" src/popoto/fields/observation.py` | exit code 0 |
 | No stale commutativity claim | `grep -rn "concurrent crystallizations converge" docs/features docs/guides src/` | exit code 1 |
@@ -429,9 +438,24 @@ No agent integration required — this is a library-internal change to popoto; n
 
 ## Critique Results
 
-<!-- Populated by /do-plan-critique (war room). Leave empty until critique is run. -->
+War room run 2026-06-11 (7 critics: Skeptic, Operator, Archaeologist, Adversary, Simplifier, User, Consistency + structural checks). All findings addressed in this revision; no finding challenged the core math direction or the watermark concept.
+
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
+| BLOCKER | Consistency (+Skeptic, Adversary) | "Bit-identical across orderings" success criterion contradicts the ~1e-12 test spec; the incremental Lua form is algebraically order-invariant but not IEEE-754 bit-identical | Test Impact tolerance convention + Success Criteria rewrite | All order-invariance assertions: `abs(actual − closed_form_oracle) < 1e-12`, formula-derived bound, never `==` |
+| CONCERN | Skeptic | Watermark save ambiguous between new-/existing-pattern branches; `_create_pattern`'s internal save makes a silent wall-clock retention bug likely | Technical Approach item 3, Task 2 | `_create_pattern` returns the unsaved pattern; `crystallize` performs the single authoritative `save(skip_auto_now=True)` for both branches |
+| CONCERN | Archaeologist | New-pattern watermark behavior (auto_now overwritten by older episode timestamp) correct-by-design but untested | Task 2, Success Criteria | Dedicated new-pattern test: first crystallize sets `last_reinforced == max(episode.recorded_at)` |
+| CONCERN | Adversary | Clock skew: a lagging writer's episodes can land below the watermark and be skipped forever | Race 4, Technical Approach item 3, Docs checklist | Documented NTP-sync assumption; margin mitigation explicitly rejected (would re-observe margin episodes every run, breaking zero-drift idempotence) |
+| CONCERN | Operator | `last_reinforced` ZSCORE now reads episode time, not crystallize time — operators will misread it | Docs checklist, Technical Approach item 3 | Documentary notes in `crystallize` docstring + recipe guide + feature doc |
+| CONCERN | User | The same semantic change shifts recency-weighted recall ranking under batched crystallization; not in docs checklist | Docs checklist + new Success Criterion | Ranking-impact sentence added to recipe guide and docstring requirements |
+| CONCERN | Operator | Divergent `evidence_cap` across processes is undetectable (cap not stored in hash) | Technical Approach item 1, Task 1, Success Criteria | Warning paragraph in `update_confidence` docstring + feature doc parameter row |
+| CONCERN | User | E2E discharge test could pass by coincidence without a stated oracle | Test Impact (e2e row), Task 3 | Closed form: `(0.5 + 0.05n)/(n+1) < 0.1 ⇒ n > 8`; assert `< threshold − epsilon` |
+| CONCERN | Simplifier | ARGV[5]/`Defaults.CONFIDENCE_PRIOR_WEIGHT` smuggles a fixed constant through the protocol, inviting the config creep the decision closed off | Technical Approach item 1, spike-1, Task 1 | `local prior_weight = 1` inlined in Lua; ARGV[4] (cap) is the only new ARGV; no Python constant |
+| CONCERN | Consistency | Verification table's `grep -c` check exits 1 on zero matches (reads as failure when correct) | Verification table | Replaced with `! grep -q …` (exit 0 iff no matches) |
+| NIT | Adversary (+structural) | "Maxed-out 0.9" oracle premise unreachable via the update path (20 corroborations from 0.5 reach ≈0.8810) | Test Impact (cap-forgetting row) | Test seeds `confidence=0.9, evidence_count=20` directly in the companion hash; oracle comment matches the seeded state |
+| NIT | Simplifier | Two serialized validator passes for four code changes | Tasks renumbered | Former tasks 4 and 6 merged into one post-docs `validate-all` |
+| NIT | Archaeologist | `test_recency_advances_on_reinforcement` flagged for update but passes unchanged | Test Impact, Task 2 | Marked passive regression guard — do not modify |
+| NIT | Structural | 14 (not 13) files call `update_confidence` | Test Impact | `tests/benchmarks/scenarios/family_factory.py` added to the AUDIT list |
 
 ---
 
