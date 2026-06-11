@@ -1,8 +1,14 @@
-"""ConfidenceField — Bayesian certainty tracking with entrainment.
+"""ConfidenceField — capped-evidence confidence tracking with entrainment.
 
-Maintains a Bayesian confidence score per member, updated atomically via
-Lua script. Precision grows with sqrt(n), so early evidence has outsized
-effect while established beliefs resist change.
+Maintains a confidence score per member, updated atomically via Lua script
+using a capped-evidence update rule (issue #407). While effective evidence
+(real observations plus a prior pseudo-count of 1) is at or below the
+``evidence_cap``, each update computes the exact running mean over
+{prior, signals...} — the result is order-invariant. Once effective
+evidence reaches the cap, the gain freezes at 1/(cap+1), giving
+fixed-gain exponential forgetting with an effective memory window of
+cap+1 observations: new evidence keeps a constant influence instead of
+vanishing as history grows.
 
 Companion Redis hash stores per-member confidence metadata:
     - $ConfidencF:{Model}:{field}:data — msgpack {confidence, evidence_count,
@@ -43,12 +49,17 @@ from .field import Field
 
 logger = logging.getLogger("POPOTO.ConfidenceField")
 
-# Lua script: atomic Bayesian update of confidence companion hash.
+# Lua script: atomic capped-evidence update of the confidence companion hash.
+# While n_eff = min(evidence_count + prior_weight, cap) is below the cap, the
+# update is an exact running mean over {prior, signals...} (order-invariant).
+# At the cap, the gain freezes at 1/(cap+1): fixed-gain exponential
+# forgetting with an effective memory window of cap+1 observations.
 # KEYS[1] = companion hash key
 # ARGV[1] = member key (redis_key of the model instance)
 # ARGV[2] = signal (float 0-1)
 # ARGV[3] = initial_confidence (default for missing data)
-BAYESIAN_UPDATE_LUA = """
+# ARGV[4] = evidence_cap
+CAPPED_BAYESIAN_UPDATE_LUA = """
 local hash_key = KEYS[1]
 local member = ARGV[1]
 local signal = tonumber(ARGV[2])
@@ -71,8 +82,13 @@ if raw then
     end
 end
 
--- Bayesian update: precision grows with sqrt(n)
-local new_confidence = confidence + (signal - confidence) / math.sqrt(evidence_count + 1)
+-- Capped-evidence update: running mean while effective evidence <= cap,
+-- fixed-gain exponential forgetting (window cap+1) beyond it.
+-- ARGV[4] = evidence_cap (the only new ARGV)
+local prior_weight = 1  -- internal constant; not user config (issue #407 decision Q2)
+local cap = tonumber(ARGV[4])
+local n_eff = math.min(evidence_count + prior_weight, cap)
+local new_confidence = confidence + (signal - confidence) / (n_eff + 1)
 
 -- Clamp to [0, 1]
 new_confidence = math.max(0, math.min(1, new_confidence))
@@ -100,13 +116,21 @@ return {tostring(new_confidence), tostring(evidence_count), tostring(corroborati
 
 
 class ConfidenceField(Field):
-    """A Field that tracks Bayesian confidence metadata in a companion Redis hash.
+    """A Field that tracks confidence metadata in a companion Redis hash.
 
     Not a SortedField — confidence is metadata, not a ranking dimension.
     Stores {confidence, evidence_count, corroborations, contradictions} per member.
 
+    Updates use a capped-evidence rule (issue #407): an order-invariant
+    running mean over {prior, signals...} while effective evidence is at
+    or below ``evidence_cap``, then fixed-gain exponential forgetting
+    (memory window cap+1) beyond it.
+
     Args:
         initial_confidence: Starting confidence for new members. Default 0.5.
+        evidence_cap: Cap on effective evidence (memory-window length).
+            Must be an int >= 1. Default ``Defaults.CONFIDENCE_EVIDENCE_CAP``
+            (20). Validated at model-class definition time.
         partition_by: Optional field name or tuple of field names to partition
             the companion hash. When set, each unique combination of partition
             field values gets its own Redis hash, reducing the cost of reads
@@ -147,6 +171,23 @@ class ConfidenceField(Field):
                 f"initial_confidence must be between 0 and 1 "
                 f"(got {self.initial_confidence})"
             )
+
+        # evidence_cap: memory-window length / epistemics knob (issue #407).
+        # Validated here so misconfiguration fails at model-class definition
+        # time (field construction), not at first update.
+        evidence_cap = kwargs.pop("evidence_cap", None)
+        if evidence_cap is None:
+            evidence_cap = Defaults.CONFIDENCE_EVIDENCE_CAP
+        # bool is a subclass of int — reject it explicitly
+        if isinstance(evidence_cap, bool) or not isinstance(evidence_cap, int):
+            raise ModelException(
+                f"evidence_cap must be an int >= 1 (got {evidence_cap!r})"
+            )
+        if evidence_cap < 1:
+            raise ModelException(
+                f"evidence_cap must be an int >= 1 (got {evidence_cap})"
+            )
+        self.evidence_cap = evidence_cap
 
         # Handle partition_by parameter
         partition_by = kwargs.pop("partition_by", tuple())
@@ -366,7 +407,23 @@ class ConfidenceField(Field):
 
     @classmethod
     def update_confidence(cls, model_instance, field_name, signal, pipeline=None):
-        """Update confidence for a member using Bayesian formula.
+        """Update confidence for a member using the capped-evidence rule.
+
+        While effective evidence (real observations plus a prior
+        pseudo-count of 1) is at or below the field's ``evidence_cap``,
+        the update computes the exact running mean over
+        {prior, signals...} — order-invariant, converging on the mean of
+        the observed signals. Once effective evidence reaches the cap,
+        the gain freezes at 1/(cap+1): fixed-gain exponential forgetting
+        with an effective memory window of cap+1 observations, so new
+        evidence keeps a constant influence.
+
+        Warning:
+            All processes updating the same companion hash entry must
+            configure identical ``evidence_cap`` values. The cap is
+            passed per-call, not stored in the hash, so divergent caps
+            across processes produce silently inconsistent gain
+            schedules with no runtime detection.
 
         Note: Always executes immediately via Lua EVAL (not batched into
         pipeline) because the Lua script needs to read-modify-write atomically.
@@ -408,12 +465,13 @@ class ConfidenceField(Field):
         data_hash_key = field.get_data_hash_key(model_instance, field_name)
 
         result = POPOTO_REDIS_DB.eval(
-            BAYESIAN_UPDATE_LUA,
+            CAPPED_BAYESIAN_UPDATE_LUA,
             1,  # number of KEYS
             data_hash_key,
             member_key,
             str(signal),
             str(field.initial_confidence),
+            str(field.evidence_cap),
         )
 
         new_confidence = float(result[0])

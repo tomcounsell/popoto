@@ -91,6 +91,11 @@ AUTO_DISCHARGE_CONFIDENCE_THRESHOLD = Defaults.AUTO_DISCHARGE_CONFIDENCE_THRESHO
 outcome. Very low confidence records should not continue building pressure.
 Optimal range: [0.05, 0.3]. Insensitive within this range."""
 
+CONFIDENCE_EPSILON = Defaults.CONFIDENCE_EPSILON
+"""Internal float-boundary tolerance for the auto-discharge comparison.
+Confidence values within this epsilon of the threshold are NOT below it.
+Not user config."""
+
 
 class ObservationProtocol:
     """Lifecycle hooks for passive behavioral inference on memory models.
@@ -364,12 +369,15 @@ def _apply_contradicted(instance, pipeline):
         except (TypeError, ValueError):
             pass  # Graceful degradation
 
-    # Auto-discharge: when confidence < 0.1, resolve pressure on CyclicDecayFields
+    # Auto-discharge: when confidence is clearly below the threshold, resolve
+    # pressure on CyclicDecayFields. Values within float epsilon of the
+    # threshold are NOT below it (fixes the 0.09999999999999998 artifact
+    # that auto-discharged on the first contradiction).
     for field_name, field in instance._meta.fields.items():
         if isinstance(field, ConfidenceField):
             try:
                 conf = ConfidenceField.get_confidence(instance, field_name)
-                if conf < AUTO_DISCHARGE_CONFIDENCE_THRESHOLD:
+                if conf < AUTO_DISCHARGE_CONFIDENCE_THRESHOLD - CONFIDENCE_EPSILON:
                     for cdf_name, cdf_field in instance._meta.fields.items():
                         if (
                             isinstance(cdf_field, CyclicDecayField)
