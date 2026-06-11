@@ -451,10 +451,13 @@ class ConsolidatedPattern(popoto.Model):
     corroborations = popoto.Field(type=int, default=0)
 ```
 
-**Bayesian confidence update** (Lua script):
+**Confidence update** (conceptual design sketch — see note):
+
+> **Note:** The shipped Popoto `ConfidenceField` uses a **capped-evidence Bayesian** rule, not the precision-weighted sqrt sketch below. The sketch is retained as a design exploration of the sqrt-precision approach; the actual implementation uses `n_eff = min(evidence_count + 1, cap)` with a fixed cap (default 20), giving an exact running mean within the window and bounded exponential forgetting beyond it. See [ConfidenceField docs](../features/confidence-field.md).
 
 ```lua
--- Precision-weighted Bayesian update for pattern confidence
+-- Conceptual sketch: precision-weighted Bayesian update
+-- NOTE: not the actual Popoto implementation (see ConfidenceField docs)
 -- KEYS[1] = pattern hash key
 -- ARGV[1] = new_evidence (0 or 1 for contradiction/corroboration), ARGV[2] = evidence_weight
 local key = KEYS[1]
@@ -464,11 +467,10 @@ local weight = tonumber(ARGV[2])    -- evidence strength [0, 1]
 local prior = tonumber(redis.call('HGET', key, 'confidence') or '0.5')
 local n = tonumber(redis.call('HGET', key, 'evidence_count') or '1')
 
--- Precision increases with evidence count (prior becomes harder to move)
-local prior_precision = math.sqrt(n)  -- Precision grows with sqrt(evidence)
+-- Precision-weighted update (design exploration)
+local prior_precision = math.sqrt(n)
 local likelihood_precision = weight
 
--- Precision-weighted update
 local posterior = (prior_precision * prior + likelihood_precision * evidence) 
                   / (prior_precision + likelihood_precision)
 posterior = math.max(0.01, math.min(0.99, posterior))

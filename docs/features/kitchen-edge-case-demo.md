@@ -109,7 +109,7 @@ via `python -m popoto_kitchen --ops` and print results to stdout.
 
 A new model using `ConfidenceField` with `partition_by="restaurant"` to
 track review confidence per restaurant. See
-[ConfidenceField docs](confidence-field.md) for the Bayesian update formula.
+[ConfidenceField docs](confidence-field.md) for the capped-evidence update formula.
 
 ```python
 class ReviewScore(Model):

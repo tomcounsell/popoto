@@ -468,7 +468,7 @@ See [fields.md](../fields.md#writefiltermixin) for the full field reference.
 
 ## ConfidenceField
 
-A `Field` subclass that tracks Bayesian confidence metadata per member, updated atomically via Lua script. Precision grows with `sqrt(n)` — early evidence has outsized effect while established beliefs resist change.
+A `Field` subclass that tracks confidence metadata per member, updated atomically via Lua script using a capped-evidence Bayesian rule. Within the evidence window (default cap: 20) updates form an exact running mean — order-invariant and prior-weighted. Beyond the cap, a fixed gain produces bounded exponential forgetting.
 
 Shipped in [PR #215](https://github.com/tomcounsell/popoto/pull/215).
 
@@ -498,13 +498,14 @@ data = ConfidenceField.get_confidence_data(knowledge, "certainty")
 # Returns: {confidence: 0.5, evidence_count: 2, corroborations: 1, contradictions: 1}
 ```
 
-### Bayesian update formula
+### Capped-evidence update formula
 
 ```
-new_confidence = prior + (signal - prior) / sqrt(evidence_count + 1)
+n_eff = min(evidence_count + 1, cap)   # cap default: 20
+new_confidence = confidence + (signal - confidence) / (n_eff + 1)
 ```
 
-Early updates move confidence significantly; later updates have diminishing effect as evidence accumulates. Results are clamped to `[0, 1]`.
+Within the evidence window (`evidence_count < cap`), this is an exact running mean over `{initial_confidence, s1, …, sn}` — order-invariant to ~1e-12. Beyond the cap, the gain is fixed at `1/(cap+1)`, producing bounded exponential forgetting (~15 consecutive contradictions to cross 0.5 from 0.9 at cap 20). Results are clamped to `[0, 1]`.
 
 ### Entrainment with ObservationProtocol
 

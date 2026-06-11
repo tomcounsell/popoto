@@ -345,7 +345,7 @@ The scoring function itself is **application layer** — Popoto provides the gat
 
 ## Step 4: ConfidenceField — Bayesian Certainty Tracking + Entrainment ✅ Shipped
 
-**What it is:** A field type that maintains a Bayesian confidence score updated atomically via Lua script. Each update provides a binary signal (corroborate/contradict) with a weight. The prior becomes harder to shift as evidence accumulates (precision grows with √n).
+**What it is:** A field type that maintains a confidence score updated atomically via Lua script using a capped-evidence Bayesian rule. Each update provides a binary signal (corroborate/contradict). Within the evidence window (default cap: 20) updates are an exact running mean — order-invariant and prior-weighted. Beyond the cap, a fixed gain produces bounded exponential forgetting.
 
 ConfidenceField also serves as the **entrainment mechanism** for CyclicDecayField (Step 1). Cyclical parameters (amplitude, phase) are hypotheses about temporal relevance. The observation protocol (Step 2) generates corroborate/contradict signals for these hypotheses, and ConfidenceField applies them. When a cycle's confidence drops below a threshold, the cycle auto-disables — this is how stale recurring memories ("send that client an update") die when the underlying context has changed ("that client contract ended").
 
@@ -356,7 +356,7 @@ ConfidenceField also serves as the **entrainment mechanism** for CyclicDecayFiel
 ```python
 class ConfidenceField(Field):
     """
-    Bayesian confidence score with precision-weighted updates.
+    Capped-evidence confidence score (forgetful Bayesian).
 
     Stored as: {confidence: float, evidence_count: int,
                 corroborations: int, contradictions: int}

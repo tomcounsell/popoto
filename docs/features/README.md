@@ -7,7 +7,7 @@ Agent-memory primitives and recipes shipped in Popoto.
 | [Agent Memory](agent-memory.md) | Overview of the 14-primitive agent-memory system | Stable |
 | [CoOccurrenceField](co-occurrence-field.md) | Associative co-occurrence graph for candidate expansion | Stable |
 | [CompositeScoreQuery](composite-score-query.md) | Multi-factor ranked retrieval across sorted indexes | Stable |
-| [ConfidenceField](confidence-field.md) | Bayesian certainty tracking with corroborate/contradict updates | Stable |
+| [ConfidenceField](confidence-field.md) | Capped-evidence certainty tracking with corroborate/contradict updates | Stable |
 | [ContentField + EmbeddingField](content-and-embedding-fields.md) | Large content routing and vector embedding storage | Stable |
 | [ContextAssembler](context-assembler.md) | Retrieval-to-injection bridge orchestrating pull and push paths | Stable |
 | [CyclicDecayField](cyclic-decay-field.md) | Cyclical resonance, pressure, and proactive surfacing | Stable |

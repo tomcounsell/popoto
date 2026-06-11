@@ -138,7 +138,7 @@ expired = RecallProposal.expire_stale(Memory, ttl=3600)
 ## See Also
 
 - [Metacognitive Layer](metacognitive-layer.md) — full `"used"` outcome documentation, `error_summary`, and `AdaptiveAssembler`
-- [ConfidenceField](confidence-field.md) — Bayesian certainty tracking
+- [ConfidenceField](confidence-field.md) — capped-evidence certainty tracking
 - [CyclicDecayField](cyclic-decay-field.md) — cyclical resonance and pressure
 - [PredictionLedger](prediction-ledger.md) — outcome tracking
 - [Agent Memory overview](agent-memory.md) — full primitives reference
