@@ -30,7 +30,7 @@ from src.popoto.fields.access_tracker import AccessTrackerMixin
 from src.popoto.fields.co_occurrence_field import CoOccurrenceField
 from src.popoto.fields.confidence_field import ConfidenceField
 from src.popoto.fields.cyclic_decay_field import CyclicDecayField
-from src.popoto.fields.constants import TemporalPeriod
+from src.popoto.fields.constants import Defaults, TemporalPeriod
 from src.popoto.fields.decaying_sorted_field import DecayingSortedField
 from src.popoto.fields.event_stream import EventStreamMixin
 from src.popoto.fields.existence_filter import ExistenceFilter, FrequencySketch
@@ -669,12 +669,17 @@ class TestTemporalDynamics:
         )
         m.save()
 
-        # Drive confidence very low first
+        # Drive confidence below the discharge threshold. Capped Bayesian
+        # oracle: from initial 0.5, after n <= cap updates at signal s the
+        # confidence is the running mean (0.5 + s*n) / (n + 1). At s = 0.05,
+        # (0.5 + 0.05n)/(n+1) < 0.1 requires n > 8, so at least 9 updates;
+        # use 10: (0.5 + 10*0.05) / 11 = 1.0/11 = 0.0909...
         for _ in range(10):
             ConfidenceField.update_confidence(m, "confidence", signal=0.05)
 
         conf = ConfidenceField.get_confidence(m, "confidence")
-        assert conf < 0.2
+        # (0.5 + 10*0.05) / 11 = 1.0/11
+        assert abs(conf - 1.0 / 11) < 1e-12
 
         # Set up old pressure
         field = m._meta.fields["relevance"]
@@ -690,15 +695,21 @@ class TestTemporalDynamics:
             msgpack.packb(pressure_data),
         )
 
-        # Contradict — should auto-discharge since confidence < 0.1
+        # Contradict — auto-discharges because the post-update confidence is
+        # strictly below threshold - epsilon (a value float-equal-ish to the
+        # threshold would NOT discharge under the epsilon guard, #407).
         ObservationProtocol.on_context_used(
             [m],
             {m.db_key.redis_key: "contradicted"},
         )
 
-        # Check confidence is very low
+        # Post-contradiction oracle: contradicted applies one more update at
+        # signal 0.1, so (0.5 + 10*0.05 + 0.1) / 12 = 1.1/12 = 0.091666...
         final_conf = ConfidenceField.get_confidence(m, "confidence")
-        assert final_conf < 0.15
+        assert abs(final_conf - 1.1 / 12) < 1e-12
+        assert final_conf < (
+            Defaults.AUTO_DISCHARGE_CONFIDENCE_THRESHOLD - Defaults.CONFIDENCE_EPSILON
+        )
 
     def test_cycle_amplitude_strengthens_on_acted(self):
         """Acted outcome strengthens cycle amplitudes via ObservationProtocol."""

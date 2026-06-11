@@ -51,6 +51,9 @@ class TestDefaultsSync:
         field_kwargs_and_class_attrs = {
             "DECAY_RATE",
             "INITIAL_CONFIDENCE",
+            # ConfidenceField constructor kwarg default (evidence_cap, #407);
+            # no module-level alias exists, so not in MODULE_CONSTANTS.
+            "CONFIDENCE_EVIDENCE_CAP",
             "WF_MIN_THRESHOLD",
             "WF_PRIORITY_THRESHOLD",
             "CO_OCCURRENCE_DECAY_FACTOR",
