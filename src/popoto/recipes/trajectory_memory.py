@@ -388,7 +388,7 @@ class TrajectoryMemory:
         return episode
 
     def crystallize(self, partition):
-        """Cluster recent episodes into canonical patterns (idempotent).
+        """Cluster recent episodes into canonical patterns.
 
         Loads every episode in ``partition``, groups them by their
         fingerprint tuple, and for each group at least
@@ -396,11 +396,48 @@ class TrajectoryMemory:
 
         * Upserts a ``pattern_model`` record keyed by ``(partition,
           *fingerprint_values)``.
-        * On existing patterns, observes only episodes newer than
-          ``pattern.last_reinforced`` (so re-running on an unchanged
-          episode set does not drift confidence — see plan Risk 2).
+        * On existing patterns, observes only episodes strictly newer
+          than the pattern's recency score (the watermark filter below).
         * Recomputes the canonical sequence as the modal trajectory
           across the group, ties broken by the most recent episode.
+        * Advances the pattern's recency field (``last_reinforced``) to
+          the **max observed episode timestamp** (the watermark), saved
+          with ``skip_auto_now=True`` — never to the wall-clock time of
+          the save.
+
+        Idempotence guarantee (and its limits):
+
+        * **Sequential re-run idempotence** via watermark filtering:
+          because the stored watermark equals the max *observed* episode
+          timestamp and the filter is strict ``>``, re-running
+          crystallize on an unchanged episode set observes nothing and
+          produces zero confidence drift. An episode recorded between
+          the episode query and the save (i.e. with a timestamp above
+          the watermark but below wall-clock save time) is picked up by
+          the *next* run rather than lost. No commutativity of the
+          underlying confidence update is assumed or claimed.
+        * **Concurrent crystallization of the same partition is NOT
+          coordinated.** The recipe performs a read-modify-write with no
+          locking, so two crystallizers racing on one partition can
+          double-observe the same episodes. Run one crystallizer per
+          partition.
+
+        Watermark semantics to be aware of:
+
+        * The recency field's stored score equals the max **observed
+          episode** ``recorded_at``, which may predate the wall-clock
+          crystallize call. A ZSCORE read of the recency index therefore
+          means "newest episode processed", not "when crystallize last
+          ran", and recency-weighted recall ranks patterns by *episode*
+          time — batched/nightly crystallization makes patterns appear
+          correspondingly older.
+        * **Clock-sync assumption:** episode writers and the
+          crystallizer are assumed to be within ordinary NTP sync. A
+          writer whose clock lags the watermark can record an episode
+          *below* it, which the strict ``>`` filter then skips forever.
+        * Crystallize-triggered saves use ``skip_auto_now=True``, so any
+          **other** ``auto_now`` field on ``pattern_model`` is frozen by
+          (and never populated by) crystallize-triggered saves.
 
         Args:
             partition: Partition value to crystallize. Crystallization is
@@ -437,7 +474,7 @@ class TrajectoryMemory:
             canonical = self._canonical_sequence(group)
 
             if not existing:
-                # New pattern: observe every episode in the group
+                # New pattern (unsaved): observe every episode in the group
                 pattern = self._create_pattern(
                     partition=partition,
                     fingerprint=fingerprint,
@@ -446,8 +483,9 @@ class TrajectoryMemory:
                 observed_episodes = group
             else:
                 pattern = existing[0]
-                # Re-running idempotence: only observe episodes newer than
-                # the pattern's last_reinforced timestamp.
+                # Re-running idempotence: only observe episodes strictly
+                # newer than the stored watermark (max observed episode
+                # timestamp from the previous run).
                 last_reinforced = self._episode_score(pattern, self.recency_field)
                 observed_episodes = [
                     e
@@ -462,10 +500,31 @@ class TrajectoryMemory:
                 # Recompute canonical sequence on the full group (deterministic).
                 setattr(pattern, self.canonical_sequence_field, canonical)
 
+            # Watermark: the max OBSERVED episode timestamp, not the
+            # wall-clock save time. Saving the wall clock would let an
+            # episode recorded between the query above and the save fall
+            # below the stored score and be filtered out forever.
+            watermark = max(
+                self._episode_score(e, self.episode_recency_field)
+                for e in observed_episodes
+            )
+            setattr(pattern, self.recency_field, watermark)
+
+            if not existing:
+                # Bootstrap save: ConfidenceField.update_confidence is an
+                # atomic Lua read-modify-write keyed on the member's redis
+                # key, and requires the instance to already exist in Redis.
+                # skip_auto_now keeps the explicit watermark here too, so
+                # the new-pattern path never carries wall-clock semantics.
+                pattern.save(skip_auto_now=True)
+
             self._observe_episodes(pattern, observed_episodes)
-            # Save advances DecayingSortedField (auto_now=True) and writes
-            # the canonical_sequence update.
-            pattern.save()
+            # Single authoritative save for both branches: persists the
+            # watermark (skip_auto_now suppresses the DecayingSortedField's
+            # auto_now wall-clock overwrite) and the canonical_sequence
+            # update. Note: skip_auto_now also freezes any OTHER auto_now
+            # field on pattern_model for crystallize-triggered saves.
+            pattern.save(skip_auto_now=True)
 
             affected.append(pattern)
 
@@ -586,16 +645,19 @@ class TrajectoryMemory:
         return list(winner)
 
     def _create_pattern(self, partition, fingerprint, canonical):
-        """Instantiate and save a new pattern record."""
+        """Instantiate a new pattern record WITHOUT saving it.
+
+        :meth:`crystallize` owns the save: it sets the recency watermark
+        first and persists with ``save(skip_auto_now=True)``, so no
+        auto_now wall-clock score is ever written for a new pattern.
+        """
         kwargs = {
             self.partition_field: partition,
             self.canonical_sequence_field: list(canonical),
         }
         for k, v in fingerprint.items():
             kwargs[k] = v
-        pattern = self.pattern_model(**kwargs)
-        pattern.save()
-        return pattern
+        return self.pattern_model(**kwargs)
 
     def _observe_episodes(self, pattern, episodes):
         """Bayesian-update the pattern's confidence using each episode's
