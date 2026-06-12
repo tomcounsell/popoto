@@ -1,11 +1,12 @@
 ---
-status: Planning
+status: docs_complete
 type: bug
 appetite: Medium
 owner: Valor Engels
 created: 2026-06-11
 tracking: https://github.com/tomcounsell/popoto/issues/408
 last_comment_id: none
+revision_applied: true
 ---
 
 # ContextAssembler Token Budget Honesty
