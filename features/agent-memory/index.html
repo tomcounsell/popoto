@@ -6524,11 +6524,11 @@
 <a id="__codelineno-43-4" name="__codelineno-43-4" href="#__codelineno-43-4"></a>    <span class="n">model_class</span><span class="p">,</span>              <span class="c1"># Popoto Model class to query</span>
 <a id="__codelineno-43-5" name="__codelineno-43-5" href="#__codelineno-43-5"></a>    <span class="n">score_weights</span><span class="p">,</span>            <span class="c1"># Dict mapping field names to weights for CompositeScoreQuery</span>
 <a id="__codelineno-43-6" name="__codelineno-43-6" href="#__codelineno-43-6"></a>    <span class="n">max_items</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>             <span class="c1"># Maximum records to return</span>
-<a id="__codelineno-43-7" name="__codelineno-43-7" href="#__codelineno-43-7"></a>    <span class="n">max_tokens</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>          <span class="c1"># Optional soft token budget</span>
+<a id="__codelineno-43-7" name="__codelineno-43-7" href="#__codelineno-43-7"></a>    <span class="n">max_tokens</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>          <span class="c1"># Optional token budget (enforced; first record always admitted)</span>
 <a id="__codelineno-43-8" name="__codelineno-43-8" href="#__codelineno-43-8"></a>    <span class="n">surfacing_threshold</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span>  <span class="c1"># Minimum score for push-path records</span>
 <a id="__codelineno-43-9" name="__codelineno-43-9" href="#__codelineno-43-9"></a>    <span class="n">propagation_depth</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>      <span class="c1"># BFS depth for CoOccurrence propagation</span>
 <a id="__codelineno-43-10" name="__codelineno-43-10" href="#__codelineno-43-10"></a>    <span class="n">output_format</span><span class="o">=</span><span class="s2">&quot;structured&quot;</span><span class="p">,</span>  <span class="c1"># &quot;structured&quot; (JSON), &quot;xml&quot;, or &quot;natural&quot;</span>
-<a id="__codelineno-43-11" name="__codelineno-43-11" href="#__codelineno-43-11"></a>    <span class="n">token_counter</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>       <span class="c1"># Optional callable(record) -&gt; int; default: len(str(r)) // 4</span>
+<a id="__codelineno-43-11" name="__codelineno-43-11" href="#__codelineno-43-11"></a>    <span class="n">token_counter</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>       <span class="c1"># Optional callable(serialized_text: str) -&gt; int; default: stdlib heuristic</span>
 <a id="__codelineno-43-12" name="__codelineno-43-12" href="#__codelineno-43-12"></a><span class="p">)</span>
 </code></pre></div>
 <p>The assembler auto-detects which fields are present on <code>model_class</code> and adapts the pipeline accordingly. Models without <code>ExistenceFilter</code> skip the pre-check; models without <code>CoOccurrenceField</code> skip propagation; models without <code>CyclicDecayField</code> skip the push path entirely.</p>
@@ -6629,6 +6629,10 @@
 <a id="__codelineno-48-16" name="__codelineno-48-16" href="#__codelineno-48-16"></a><span class="c1"># result.formatted is XML-formatted for LLM injection</span>
 </code></pre></div>
 <h4 id="custom-token-counter">Custom token counter<a class="headerlink" href="#custom-token-counter" title="Permanent link">&para;</a></h4>
+<p><code>token_counter</code> receives the serialized per-record string — the exact text slice
+the formatter emits for each record (a JSON object indented inside the array for
+<code>output_format="structured"</code>, a <code>&lt;record&gt;...&lt;/record&gt;</code> block for <code>"xml"</code>, or a
+<code>key: value</code> line for <code>"natural"</code>). It must return a non-negative <code>int</code>.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-49-1" name="__codelineno-49-1" href="#__codelineno-49-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">tiktoken</span>
 <a id="__codelineno-49-2" name="__codelineno-49-2" href="#__codelineno-49-2"></a>
 <a id="__codelineno-49-3" name="__codelineno-49-3" href="#__codelineno-49-3"></a><span class="n">enc</span> <span class="o">=</span> <span class="n">tiktoken</span><span class="o">.</span><span class="n">encoding_for_model</span><span class="p">(</span><span class="s2">&quot;gpt-4&quot;</span><span class="p">)</span>
@@ -6637,7 +6641,7 @@
 <a id="__codelineno-49-6" name="__codelineno-49-6" href="#__codelineno-49-6"></a>    <span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span>
 <a id="__codelineno-49-7" name="__codelineno-49-7" href="#__codelineno-49-7"></a>    <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;relevance&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span>
 <a id="__codelineno-49-8" name="__codelineno-49-8" href="#__codelineno-49-8"></a>    <span class="n">max_tokens</span><span class="o">=</span><span class="mi">4000</span><span class="p">,</span>
-<a id="__codelineno-49-9" name="__codelineno-49-9" href="#__codelineno-49-9"></a>    <span class="n">token_counter</span><span class="o">=</span><span class="k">lambda</span> <span class="n">record</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">enc</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">record</span><span class="p">))),</span>
+<a id="__codelineno-49-9" name="__codelineno-49-9" href="#__codelineno-49-9"></a>    <span class="n">token_counter</span><span class="o">=</span><span class="k">lambda</span> <span class="n">text</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">enc</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="n">text</span><span class="p">)),</span>
 <a id="__codelineno-49-10" name="__codelineno-49-10" href="#__codelineno-49-10"></a><span class="p">)</span>
 </code></pre></div>
 <h3 id="tuning-constants_1">Tuning Constants<a class="headerlink" href="#tuning-constants_1" title="Permanent link">&para;</a></h3>
