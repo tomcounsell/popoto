@@ -128,7 +128,7 @@ Reports how the agent used the injected memories via `ObservationProtocol.on_con
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `max_items` | 10 | Maximum memories injected per turn |
-| `max_tokens` | 4000 | Soft token budget for injected context |
+| `max_tokens` | 4000 | Token budget for injected context (enforced; see [Token Budget Semantics](../features/context-assembler.md#token-budget-semantics)) |
 | `extraction_min_length` | 10 | Minimum chars for a sentence to become a memory |
 | `score_weights` | (required) | Weight dict for composite scoring (e.g. `{"relevance": 0.6, "confidence": 0.3}`) |
 | `system_preamble` | "You are a helpful assistant." | Prefix for auto-created system messages |

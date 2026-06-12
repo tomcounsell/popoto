@@ -1262,7 +1262,7 @@ assembler = ContextAssembler(
     model_class,              # Popoto Model class to query
     score_weights,            # Dict mapping field names to weights for CompositeScoreQuery
     max_items=10,             # Maximum records to return
-    max_tokens=None,          # Optional soft token budget
+    max_tokens=None,          # Optional token budget (enforced; first record always admitted)
     surfacing_threshold=0.5,  # Minimum score for push-path records
     propagation_depth=2,      # BFS depth for CoOccurrence propagation
     output_format="structured",  # "structured" (JSON), "xml", or "natural"

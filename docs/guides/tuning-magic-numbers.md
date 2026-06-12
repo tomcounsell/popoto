@@ -117,7 +117,7 @@ These recipe-layer constants control the SubconsciousMemory pipeline (extraction
 |----------|---------|----------|------|
 | `DEFAULT_EXTRACTION_MIN_LENGTH` | 10 | `subconscious_memory.py` | Minimum character length for a sentence to be saved as a memory |
 | `max_items` | 10 | Constructor arg | Maximum memory records injected per turn |
-| `max_tokens` | 4000 | Constructor arg | Soft token budget for injected context |
+| `max_tokens` | 4000 | Constructor arg | Token budget for injected context (enforced; see [Token Budget Semantics](../features/context-assembler.md#token-budget-semantics)) |
 | `default importance` | 0.5 | `extract_memories()` arg | Importance score assigned to newly extracted memories |
 | `score_weights` | (user-provided) | Constructor arg | Weight dict for ContextAssembler composite scoring |
 
