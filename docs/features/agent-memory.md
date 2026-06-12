@@ -1262,11 +1262,11 @@ assembler = ContextAssembler(
     model_class,              # Popoto Model class to query
     score_weights,            # Dict mapping field names to weights for CompositeScoreQuery
     max_items=10,             # Maximum records to return
-    max_tokens=None,          # Optional soft token budget
+    max_tokens=None,          # Optional token budget (enforced; first record always admitted)
     surfacing_threshold=0.5,  # Minimum score for push-path records
     propagation_depth=2,      # BFS depth for CoOccurrence propagation
     output_format="structured",  # "structured" (JSON), "xml", or "natural"
-    token_counter=None,       # Optional callable(record) -> int; default: len(str(r)) // 4
+    token_counter=None,       # Optional callable(serialized_text: str) -> int; default: stdlib heuristic
 )
 ```
 
@@ -1367,6 +1367,11 @@ result = assembler.assemble(
 
 #### Custom token counter
 
+`token_counter` receives the serialized per-record string — the exact text slice
+the formatter emits for each record (a JSON object indented inside the array for
+`output_format="structured"`, a `<record>...</record>` block for `"xml"`, or a
+`key: value` line for `"natural"`). It must return a non-negative `int`.
+
 ```python
 import tiktoken
 
@@ -1376,7 +1381,7 @@ assembler = ContextAssembler(
     model_class=Memory,
     score_weights={"relevance": 1.0},
     max_tokens=4000,
-    token_counter=lambda record: len(enc.encode(str(record))),
+    token_counter=lambda text: len(enc.encode(text)),
 )
 ```
 

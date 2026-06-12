@@ -225,13 +225,51 @@ class TestContextAssemblerInit:
         assert assembler.output_format == "xml"
         assert assembler._token_counter is counter
 
+    def test_token_counter_receives_serialized_string(self):
+        """New contract: the token_counter is handed the serialized record
+        STRING (the exact per-record slice the formatter emits), never the
+        record object."""
+        m = SimpleMemory(agent_id="a1", content="counter contract content")
+        m.save()
+
+        seen = []
+
+        def spy_counter(arg):
+            seen.append(arg)
+            return 10
+
+        assembler = ContextAssembler(
+            model_class=SimpleMemory,
+            score_weights={"relevance": 1.0},
+            max_tokens=1000,
+            token_counter=spy_counter,
+        )
+        seen.clear()  # drop the construction-time contract probe call
+        result = assembler.assemble(
+            query_cues={"topic": "test"},
+            partition_filters={"agent_id": "a1"},
+        )
+        assert len(result.records) == 1
+        assert len(seen) == 1
+        assert isinstance(seen[0], str)  # serialized text, not the record
+        assert "counter contract content" in seen[0]
+
     def test_default_token_counter(self):
         assembler = ContextAssembler(
             model_class=SimpleMemory,
             score_weights={"relevance": 1.0},
         )
-        # Default: len(str(record)) // 4
-        assert assembler._token_counter("hello world") == len("hello world") // 4
+        # Default is the module-private stdlib estimator over serialized text
+        from src.popoto.recipes.context_assembler import _estimate_tokens
+
+        assert assembler._token_counter is _estimate_tokens
+        # The estimator measures content scale: 2,000 chars of prose-like
+        # content must count hundreds of tokens, not the ~12 the old
+        # key-length heuristic produced.
+        text = "the quick brown fox jumps over the lazy dog " * 45  # ~2,000 chars
+        assert assembler._token_counter(text) > 100
+        # Empty input counts zero
+        assert _estimate_tokens("") == 0
 
 
 # ---------------------------------------------------------------------------
@@ -333,7 +371,9 @@ class TestAssembleBudget:
         assert len(result.records) <= 3
 
     def test_max_tokens_cap(self):
-        """Records beyond max_tokens budget are dropped."""
+        """Records beyond max_tokens budget are dropped — token_count stays
+        within budget AND at least one record is admitted (conjunction, not
+        the old weak disjunction)."""
         for i in range(5):
             m = SimpleMemory(agent_id="a1", content=f"long content item {i}" * 10)
             m.save()
@@ -342,13 +382,50 @@ class TestAssembleBudget:
             model_class=SimpleMemory,
             score_weights={"relevance": 1.0},
             max_items=10,
-            max_tokens=50,  # Very small budget
+            max_tokens=35,
+            # Deterministic counter: every record costs 10 tokens, so the
+            # budget admits exactly 3 of the 5 and never overshoots.
+            token_counter=lambda text: 10,
         )
         result = assembler.assemble(
             query_cues={"topic": "test"},
             partition_filters={"agent_id": "a1"},
         )
-        assert result.metadata["token_count"] <= 50 or len(result.records) <= 1
+        assert len(result.records) >= 1
+        assert len(result.records) < 5  # the budget actually dropped records
+        assert result.metadata["token_count"] == 10 * len(result.records)
+        assert result.metadata["token_count"] <= 35
+
+    def test_max_tokens_skip_not_break_mixed_sizes(self):
+        """An oversized record ranked between small ones is skipped — not a
+        packing terminator: the small record after it is still admitted, and
+        token_count reflects only admitted records."""
+        small1 = SimpleMemory(agent_id="a1", content="s" * 100)
+        small1.save()
+        big = SimpleMemory(agent_id="a1", content="B" * 8000)
+        big.save()
+        small2 = SimpleMemory(agent_id="a1", content="t" * 100)
+        small2.save()
+
+        assembler = ContextAssembler(
+            model_class=SimpleMemory,
+            score_weights={"relevance": 1.0},
+            max_items=10,
+            max_tokens=50,
+            # Size-keyed counter: small records cost 10, the oversized
+            # record costs 10,000 (never fits in the budget).
+            token_counter=lambda text: 10 if len(text) < 1000 else 10_000,
+        )
+        # Pin candidate rank order deterministically: [small1, big, small2].
+        order = [small1, big, small2]
+        assembler._pull_path = lambda cues, filters: (order, order)
+
+        result = assembler.assemble(query_cues={"topic": "test"})
+
+        admitted = [str(r) for r in result.records]
+        assert admitted == [str(small1), str(small2)]
+        assert str(big) not in admitted
+        assert result.metadata["token_count"] == 20  # admitted records only
 
 
 # ---------------------------------------------------------------------------

@@ -144,9 +144,70 @@ If both BM25 and vector signals return empty results, the path falls back to the
 
 1. **Deduplicate**: Records appearing in both paths are kept once.
 2. **Re-rank**: Combined score from both paths.
-3. **Budget-select**: Fit within `max_items` and `max_tokens` constraints.
+3. **Budget-select**: Fit within `max_items` and `max_tokens` constraints. See [Token Budget Semantics](#token-budget-semantics) for the exact packing rules and counter contract.
 4. **Post-effects**: Fire `ObservationProtocol.on_read()` for selected records.
 5. **Competitive suppression**: Non-selected pull-path candidates receive a mild contradiction signal via ConfidenceField.
+
+## Token Budget Semantics
+
+`max_tokens` is enforced against the serialized text that is actually emitted to the LLM — not against a proxy like the Redis key or `str(record)`.
+
+### Counter contract
+
+`token_counter` receives one argument: the serialized per-record string for the active `output_format` (the exact slice the formatter emits — JSON object indented inside the array, `<record>...</record>` block, or `key: value` line). It must return a non-negative `int`.
+
+```python
+# Correct contract — text is the serialized record string
+token_counter=lambda text: len(enc.encode(text))
+
+# Old contract — do NOT use (tokenizes the Redis key, not the content)
+# token_counter=lambda record: len(enc.encode(str(record)))  # broken
+```
+
+Supplying a callable that raises `TypeError` or `AttributeError` when called with a string (the signature of an old-contract `callable(record)` counter) triggers a `DeprecationWarning` at construction time and falls back to the stdlib heuristic on every call.
+
+### Default heuristic (`_estimate_tokens`)
+
+When no `token_counter` is supplied, `ContextAssembler` uses a zero-dependency escape-aware character-class heuristic (spike-1) that operates on the serialized string. It handles `json.dumps` `ensure_ascii=True` output (which converts all non-ASCII content to `\uXXXX` hex escapes) by counting escapes as whole units rather than individual characters.
+
+Measured accuracy vs tiktoken cl100k_base over the `json.dumps`-formatted envelope:
+
+| Content type | Error vs cl100k_base |
+|---|---|
+| English prose | +20.3% (overestimate) |
+| Code | +20.6% (overestimate) |
+| CJK | +4.5% (overestimate) |
+| URLs / hashes | −15.0% (underestimate) |
+| Emoji | −1.1% (underestimate, negligible) |
+
+All errors are overestimates — the safe direction for budget enforcement (underestimates let more content through than intended) — except URL/hash-heavy content (−15.0%, the worst-case underestimate) and emoji (−1.1%, negligible).
+
+For hard budget requirements or URL/hash-heavy memory stores, supply a real tokenizer via `token_counter` and/or set `max_tokens` with a safety margin (for example, 85% of your model's true context limit).
+
+### Packing semantics: skip-not-break
+
+Budget selection is greedy first-fit in rank order with **skip-not-break** behaviour: a record that does not fit within the remaining budget is skipped, and the loop continues to evaluate later (potentially smaller) records. Admitted records therefore need not form a strict rank-prefix of the candidate list.
+
+**First-record guarantee**: The first record is always admitted regardless of its token count. This prevents `assemble()` from returning zero records when candidates exist. The tradeoff is that a single oversized record can overshoot the budget; the actual token count is always visible in `metadata["token_count"]`.
+
+### Wrapper framing exclusion
+
+Wrapper framing (JSON array brackets `[...]`, `<records>...</records>` envelope, enumeration prefixes in natural format) is excluded from per-record token counting. This residual is a fixed handful of tokens per assembly — less than 20 tokens per format, independent of record count or size — and is asserted by golden composition tests.
+
+`metadata["token_count"]` reflects the serialized per-record content actually emitted. It does not include the wrapper framing residual.
+
+### Hard-budget recommendations
+
+- **Use a real tokenizer** for strict context-limit compliance: `token_counter=lambda text: len(enc.encode(text))` where `enc = tiktoken.encoding_for_model("gpt-4")`.
+- **Apply a safety margin** when using the default heuristic, especially with URL/hash-heavy memories: set `max_tokens` to 85% of your model's true limit.
+- **Check `metadata["token_count"]`** after assembly to confirm actual usage.
+
+!!! warning "Upgrading from earlier versions"
+    `max_tokens` is now enforced for real. If you set a `max_tokens` budget before this fix, you will receive **fewer records per assembly** than you did previously — the old counter was measuring the Redis key (typically 12–14 "tokens" per record regardless of content size), so any budget above `max_items × ~14` never engaged.
+
+    **Action required:** audit your `max_tokens` values and raise them if needed. A budget of 4,000 previously admitted everything `max_items` allowed; to replicate that behaviour, either remove the budget or set it generously above your expected content size.
+
+    Old-contract `callable(record)` counters trigger a `DeprecationWarning` at construction and fall back to the stdlib heuristic at call time. Update them to `callable(text: str) -> int`.
 
 ## LLM Integration
 

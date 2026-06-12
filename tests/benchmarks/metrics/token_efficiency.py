@@ -7,6 +7,21 @@ memories consume most of the token budget versus low-relevance padding.
 import statistics
 from typing import Callable, Dict, List, Optional
 
+# In-repo test utility: importing the assembler's private helpers keeps this
+# metric's default counter in lockstep with the production default — tokens
+# are estimated over the serialized record content, not the Redis key.
+from popoto.recipes.context_assembler import _estimate_tokens, _serialize_record
+
+
+def _default_token_counter(record) -> int:
+    """Estimate tokens over serialized record content (callable(record))."""
+    try:
+        return _estimate_tokens(_serialize_record(record, "structured"))
+    except (AttributeError, TypeError):
+        # Benchmark fixtures may pass plain strings instead of model
+        # instances/dicts; estimate over their text directly.
+        return _estimate_tokens(str(record))
+
 
 def token_utilization_ratio(
     records: list,
@@ -24,7 +39,8 @@ def token_utilization_ratio(
         records: List of model instances or dicts.
         relevance_scores: Mapping of record key -> relevance score.
         token_counter: Optional callable(record) -> int token count.
-            Default: len(str(record)) // 4.
+            Default: ``_estimate_tokens(_serialize_record(r, "structured"))``
+            — the assembler's stdlib heuristic over serialized content.
         key_fn: Optional callable(record) -> str key for lookup.
             Default: str(record).
 
@@ -41,7 +57,7 @@ def token_utilization_ratio(
         }
 
     if token_counter is None:
-        token_counter = lambda r: len(str(r)) // 4
+        token_counter = _default_token_counter
     if key_fn is None:
         key_fn = str
 
