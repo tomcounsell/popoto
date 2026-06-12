@@ -1,5 +1,5 @@
 ---
-status: Planning
+status: docs_complete
 type: bug
 appetite: Medium
 owner: Valor Engels
@@ -518,16 +518,16 @@ surface or bridge involvement.
 ## Documentation
 
 ### Feature Documentation
-- [ ] `docs/features/context-assembler.md`: add a **Token Budget Semantics**
+- [x] `docs/features/context-assembler.md`: add a **Token Budget Semantics**
   section — counter contract (receives the serialized per-record string),
   default heuristic with per-content-type accuracy table from the spike,
   first-record-always-admitted guarantee (and its overshoot tradeoff),
   skip-not-break packing semantics, wrapper-framing exclusion, and the
   hard-budget recommendation (real tokenizer + safety margin).
-- [ ] `docs/features/agent-memory.md`: fix the custom token counter example
+- [x] `docs/features/agent-memory.md`: fix the custom token counter example
   to `token_counter=lambda text: len(enc.encode(text))` and show what `text`
   contains.
-- [ ] **Upgrade-impact callout** (Risk 4): release-notes entry + admonition
+- [x] **Upgrade-impact callout** (Risk 4): release-notes entry + admonition
   in `docs/features/context-assembler.md` — `max_tokens` is now enforced for
   real; upgraders who set it will receive fewer records per assembly and
   should audit (or temporarily raise) their budget values. Old-contract
@@ -535,7 +535,7 @@ surface or bridge involvement.
   construction and fall back to the heuristic at call time.
 
 ### External Documentation Site
-- [ ] `mkdocs build --strict` passes (docs gate of `scripts/ci-local.sh`).
+- [x] `mkdocs build --strict` passes (docs gate of `scripts/ci-local.sh`).
 
 ### Inline Documentation
 - [ ] Docstrings for `_estimate_tokens`, `_serialize_record`, the

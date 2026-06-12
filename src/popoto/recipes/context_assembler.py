@@ -810,7 +810,7 @@ class ContextAssembler:
             pull path (e.g., ``{"relevance": 0.6, "confidence": 0.3}``).
             Ignored when the effective retrieval mode is ``"hybrid"``.
         max_items: Maximum records to return. Default 10.
-        max_tokens: Optional soft token budget over the serialized
+        max_tokens: Optional enforced token budget over the serialized
             per-record output. Packing is greedy first-fit in rank order:
             a record that does not fit is skipped (not a packing
             terminator) and later smaller records may still be admitted.
