@@ -178,9 +178,9 @@ Measured accuracy vs tiktoken cl100k_base over the `json.dumps`-formatted envelo
 | Code | +20.6% (overestimate) |
 | CJK | +4.5% (overestimate) |
 | URLs / hashes | −15.0% (underestimate) |
-| Emoji | −1.1% (overestimate) |
+| Emoji | −1.1% (underestimate, negligible) |
 
-All errors except URL/hash-heavy content are overestimates, which is the safe direction for budget enforcement (underestimates let more content through than intended). The worst-case underestimate of −15.0% occurs on URL-heavy or hash-heavy records.
+All errors are overestimates — the safe direction for budget enforcement (underestimates let more content through than intended) — except URL/hash-heavy content (−15.0%, the worst-case underestimate) and emoji (−1.1%, negligible).
 
 For hard budget requirements or URL/hash-heavy memory stores, supply a real tokenizer via `token_counter` and/or set `max_tokens` with a safety margin (for example, 85% of your model's true context limit).
 
