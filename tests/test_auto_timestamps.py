@@ -1,9 +1,11 @@
 """Tests for auto_now_add and auto_now on SortedField."""
 
 import time
+from datetime import datetime, timezone
+
 import pytest
 
-from popoto import Model, KeyField, Field, SortedField
+from popoto import Model, KeyField, Field, SortedField, DatetimeField
 
 
 class AutoNowAddModel(Model):
@@ -261,3 +263,85 @@ class TestAsyncAutoTimestamps:
         await instance.async_save()
 
         assert instance.updated_at > original_timestamp
+
+
+class UTCAutoNowAddModel(Model):
+    """DatetimeField model with auto_now_add timestamp."""
+
+    key = KeyField(type=str)
+    created_at = DatetimeField(auto_now_add=True)
+    name = Field(type=str, null=True)
+
+
+class UTCAutoNowModel(Model):
+    """DatetimeField model with auto_now timestamp."""
+
+    key = KeyField(type=str)
+    updated_at = DatetimeField(auto_now=True)
+    name = Field(type=str, null=True)
+
+
+def _as_naive(dt):
+    """Drop tzinfo for naive-to-naive comparison.
+
+    The encoder stores wall-clock without tzinfo, so a round-tripped value is
+    naive. A freshly-stamped in-memory value is tz-aware UTC. Comparing the two
+    directly raises TypeError, so we normalize both to naive before asserting.
+    """
+    return dt.replace(tzinfo=None) if dt.tzinfo is not None else dt
+
+
+class TestDatetimeFieldUTC:
+    """DatetimeField auto_now/auto_now_add stamp UTC wall-clock (tomcounsell/ai#1653).
+
+    Run under a non-UTC TZ (e.g. ``TZ=America/New_York pytest``) to make a naive
+    ``datetime.now()`` regression visibly diverge: the stamped wall-clock would
+    fall outside the UTC ``before``/``after`` bounds by the host's UTC offset.
+    """
+
+    def setup_method(self):
+        UTCAutoNowAddModel.delete_all()
+        UTCAutoNowModel.delete_all()
+
+    def teardown_method(self):
+        UTCAutoNowAddModel.delete_all()
+        UTCAutoNowModel.delete_all()
+
+    def test_auto_now_add_stamps_utc_wallclock(self):
+        """auto_now_add stamps the current UTC wall-clock, not host-local time."""
+        before = datetime.now(timezone.utc).replace(tzinfo=None)
+        instance = UTCAutoNowAddModel.create(key="dt-add-1")
+        after = datetime.now(timezone.utc).replace(tzinfo=None)
+
+        assert instance.created_at is not None
+        # in-memory fresh stamp (tz-aware UTC) normalized to naive UTC wall-clock
+        assert before <= _as_naive(instance.created_at) <= after
+
+        # round-trip from Redis: decoder returns a naive datetime carrying the
+        # stored UTC wall-clock, which must still fall within the UTC bounds.
+        reloaded = UTCAutoNowAddModel.query.get(key="dt-add-1")
+        assert reloaded.created_at.tzinfo is None
+        assert before <= reloaded.created_at <= after
+
+    def test_auto_now_stamps_utc_wallclock(self):
+        """auto_now stamps the current UTC wall-clock on every save."""
+        before = datetime.now(timezone.utc).replace(tzinfo=None)
+        instance = UTCAutoNowModel.create(key="dt-now-1")
+        after = datetime.now(timezone.utc).replace(tzinfo=None)
+
+        assert before <= _as_naive(instance.updated_at) <= after
+
+        reloaded = UTCAutoNowModel.query.get(key="dt-now-1")
+        assert reloaded.updated_at.tzinfo is None
+        assert before <= reloaded.updated_at <= after
+
+    def test_skip_auto_now_preserves_value(self):
+        """skip_auto_now=True must not re-stamp an existing auto_now value."""
+        instance = UTCAutoNowModel.create(key="dt-skip-1", name="original")
+        original = instance.updated_at
+
+        time.sleep(0.01)
+        instance.name = "updated"
+        instance.save(skip_auto_now=True)
+
+        assert instance.updated_at == original
