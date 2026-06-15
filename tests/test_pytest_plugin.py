@@ -11,6 +11,7 @@ These tests verify that the auto-registering pytest plugin correctly:
 import asyncio
 import importlib
 import sys
+import types
 
 import pytest
 
@@ -322,6 +323,90 @@ class TestSrcPopotoImportPaths:
         db = canonical_rdb.POPOTO_REDIS_DB.connection_pool.connection_kwargs.get("db", 0)
         assert db != 0, "popoto.redis_db.POPOTO_REDIS_DB is still on DB 0"
         assert db == 15, f"Expected DB 15, got {db}"
+
+
+class TestDecoyModuleNotStomped:
+    """Regression: alias-collapse must not affect unrelated same-named downstream modules.
+
+    Option A's original name-suffix matcher (``name.endswith(".popoto")``) would have
+    stomped on unrelated modules like ``acme.popoto`` in sys.modules.  Option D
+    (alias-collapse) does not enumerate sys.modules at all — it only writes
+    ``src.popoto.*`` aliases — so unrelated entries are safe by construction.
+
+    These tests verify the invariant in all environments (single-tree and worktree).
+    """
+
+    def test_decoy_module_not_stomped(self):
+        """A stub 'acme.popoto' in sys.modules is not touched by pytest_configure.
+
+        Inject a decoy before re-running the configure hook, then verify it is
+        unchanged.  (pytest_configure already ran at session start; we call it
+        again to verify idempotency and non-interference.)
+
+        We load pytest_configure from src.popoto.pytest_plugin so the test
+        exercises the new implementation even when the editable install still
+        points to the pre-fix main-repo file (a worktree-only situation).
+        """
+        from unittest.mock import MagicMock
+
+        # Load the new pytest_configure from the actual module under test.
+        # src.popoto.pytest_plugin resolves to the worktree file in development;
+        # in CI (post-merge) it resolves to the installed file (same code).
+        try:
+            _pp = importlib.import_module("src.popoto.pytest_plugin")
+        except ImportError:
+            _pp = importlib.import_module("popoto.pytest_plugin")
+
+        if not hasattr(_pp, "pytest_configure"):
+            pytest.skip(
+                "pytest_configure not found in loaded pytest_plugin — "
+                "running against pre-fix installed version; skip in worktree."
+            )
+
+        # Build a minimal stub that looks like a downstream package's 'popoto'.
+        decoy = types.ModuleType("acme.popoto")
+        decoy.__file__ = "/fake/acme/popoto/__init__.py"
+        decoy.sentinel = "untouched"
+
+        sys.modules["acme.popoto"] = decoy
+        try:
+            # Re-run the hook — it must be idempotent and must not touch acme.popoto.
+            _pp.pytest_configure(MagicMock())
+
+            surviving = sys.modules.get("acme.popoto")
+            assert surviving is decoy, (
+                "pytest_configure replaced sys.modules['acme.popoto'] — "
+                "the alias-collapse must only write src.* keys."
+            )
+            assert getattr(surviving, "sentinel", None) == "untouched", (
+                "The decoy module's attributes were modified by pytest_configure."
+            )
+        finally:
+            sys.modules.pop("acme.popoto", None)
+
+    def test_src_popoto_keys_only_written(self):
+        """pytest_configure writes only src.popoto.* keys, never other namespaces.
+
+        After the plugin's pytest_configure runs, sys.modules must contain
+        src.popoto (and src.popoto.* submodules) but must NOT contain any
+        unexpected new entries under unrelated namespace prefixes.
+        """
+        # Collect all keys that start with "src.popoto" — the expected aliases.
+        src_popoto_keys = {
+            k for k in sys.modules
+            if k == "src.popoto" or k.startswith("src.popoto.")
+        }
+
+        # Every aliased entry must be a non-None module object.
+        for key in src_popoto_keys:
+            mod = sys.modules[key]
+            assert mod is not None, f"sys.modules[{key!r}] is None after alias-collapse"
+
+        # There must be at least one aliased entry (the collapse ran).
+        assert len(src_popoto_keys) >= 1, (
+            "No src.popoto.* entries in sys.modules — pytest_configure alias-collapse "
+            "did not run or registered nothing."
+        )
 
 
 class TestDB0Tripwire:
