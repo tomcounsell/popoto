@@ -43,6 +43,68 @@ from popoto import redis_db
 logger = logging.getLogger("POPOTO-PYTEST")
 
 
+def pytest_configure(config):
+    """Collapse src.popoto onto the canonical popoto module objects.
+
+    When pytest adds the repo root to sys.path, both ``import popoto`` and
+    ``import src.popoto`` resolve to the same physical file but create two
+    distinct module objects.  The plugin swaps the connection pool on the
+    ``popoto`` instance; the ``src.popoto`` instance keeps the DB-0 default.
+
+    This hook runs before any test-module import.  It registers
+    ``src.popoto`` (and every already-loaded ``popoto.*`` submodule) as the
+    *same objects* as their ``popoto`` counterparts, so the duplicate instance
+    never exists and the DB-15 swap covers everything automatically.
+
+    Tolerant of environments where there is no ``src/`` layout (downstream
+    users, sdist installs): if ``src`` is not importable the hook is a no-op.
+    """
+    import importlib
+    import sys
+
+    # Ensure the canonical submodules we care about are loaded first.
+    try:
+        import popoto as _popoto  # noqa: F401
+
+        importlib.import_module("popoto.redis_db")
+    except ImportError:
+        return  # popoto not installed — nothing to collapse
+
+    # Obtain or create the src package object.
+    src_pkg = sys.modules.get("src")
+    if src_pkg is None:
+        try:
+            src_pkg = importlib.import_module("src")
+        except ImportError:
+            return  # No src/ layout — downstream install, skip silently.
+
+    import popoto as _canonical_popoto
+
+    # Bind the attr on the src package so attribute access (src.popoto) works.
+    setattr(src_pkg, "popoto", _canonical_popoto)
+
+    # Register src.popoto and every already-loaded popoto.* submodule into
+    # sys.modules under the src.* key so import statements work too.
+    # Collect first to avoid mutating the dict while iterating.
+    aliases = {}
+    for name, mod in list(sys.modules.items()):
+        if name == "popoto" or name.startswith("popoto."):
+            aliases["src." + name] = mod
+
+    for alias_name, mod in aliases.items():
+        existing = sys.modules.get(alias_name)
+        if existing is not None and existing is not mod:
+            # Already loaded as a *different* object — overwrite and log.
+            logger.warning(
+                "popoto pytest plugin: overwriting sys.modules[%r] "
+                "(was %r, now collapsed onto canonical %r)",
+                alias_name,
+                existing,
+                mod,
+            )
+        sys.modules[alias_name] = mod
+
+
 def _swap_db(target_db, **extra_kwargs):
     """Swap the connection pool on the existing POPOTO_REDIS_DB object.
 
@@ -87,9 +149,7 @@ def _popoto_test_db(request):
     try:
         test_db = int(raw_value)
     except (ValueError, TypeError):
-        raise ValueError(
-            f"popoto_test_db must be an integer, got {raw_value!r}"
-        )
+        raise ValueError(f"popoto_test_db must be an integer, got {raw_value!r}")
     if test_db == 0:
         raise ValueError(
             "popoto_test_db=0 is not allowed — DB 0 is typically production. "
@@ -164,3 +224,53 @@ def _popoto_reset_async():
     except Exception:
         pass
     redis_db._POPOTO_ASYNC_REDIS_DB = None
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _popoto_db0_tripwire(request):
+    """CI/clean-DB-0-only tripwire: assert DB 0 stays empty during the session.
+
+    Runs only when DB 0 is verifiably idle at session start (dbsize == 0).
+    On a non-idle DB 0 (developer box with real app data, or an upstream
+    ``REDIS_URL`` pointing at DB 0) this fixture SKIPs loudly — it never
+    causes a failure in that scenario.
+
+    Uses only Redis-core commands (DBSIZE) — compatible with both Redis and
+    Valkey.  The real fix-proof is the regression test
+    (``test_src_popoto_writes_to_test_db``), which needs no idle DB 0.
+    """
+    import redis as _redis
+
+    # Connect to DB 0 using the same host/port as the test connection,
+    # but always on database 0.
+    try:
+        pool_kwargs = redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs.copy()
+        pool_kwargs["db"] = 0
+        db0_client = _redis.Redis(**pool_kwargs)
+        before = db0_client.dbsize()
+    except Exception:
+        # Can't connect to DB 0 — skip silently (not a failure).
+        return
+
+    if before != 0:
+        logger.warning(
+            "popoto pytest plugin: DB 0 is non-idle (%d keys) at session "
+            "start — DB-0 tripwire SKIPPED.  Run against a clean Redis "
+            "instance to enable the tripwire.",
+            before,
+        )
+        return
+
+    yield
+
+    try:
+        after = db0_client.dbsize()
+    except Exception:
+        return
+
+    if after != 0:
+        pytest.fail(
+            f"DB isolation may be bypassed — test writes leaked into DB 0 "
+            f"({after} keys found, 0 expected).  DB 0 was empty at session "
+            f"start.",
+        )
