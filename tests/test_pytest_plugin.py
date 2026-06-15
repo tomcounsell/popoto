@@ -118,9 +118,7 @@ class TestAsyncReset:
         sync_db = redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs.get(
             "db", 0
         )
-        async_kwargs = (
-            redis_db._POPOTO_ASYNC_REDIS_DB.connection_pool.connection_kwargs
-        )
+        async_kwargs = redis_db._POPOTO_ASYNC_REDIS_DB.connection_pool.connection_kwargs
         async_db = async_kwargs.get("db", 0)
         assert async_db == sync_db, f"Async DB {async_db} != sync DB {sync_db}"
 
@@ -154,12 +152,17 @@ class TestAsyncIntegration:
         import redis.asyncio as aioredis
 
         assert isinstance(redis_db._POPOTO_ASYNC_REDIS_DB, aioredis.Redis)
-        async_db = redis_db._POPOTO_ASYNC_REDIS_DB.connection_pool.connection_kwargs.get("db", 0)
+        async_db = (
+            redis_db._POPOTO_ASYNC_REDIS_DB.connection_pool.connection_kwargs.get(
+                "db", 0
+            )
+        )
         assert async_db == 15, f"Expected async on DB 15, got DB {async_db}"
 
 
 class PluginTestModel(popoto.Model):
     """Model defined at module level to avoid metaclass re-registration issues."""
+
     name = popoto.KeyField()
 
 
@@ -234,7 +237,9 @@ class TestSrcPopotoImportPaths:
         object from the cache rather than loading a fresh module off disk.
         """
         if not _is_single_tree_env():
-            pytest.skip("Worktree env: two distinct src/popoto copies — alias-collapse tests skipped")
+            pytest.skip(
+                "Worktree env: two distinct src/popoto copies — alias-collapse tests skipped"
+            )
         assert "src.popoto" in sys.modules, (
             "pytest_configure did not register src.popoto in sys.modules. "
             "The alias-collapse fix did not run."
@@ -243,7 +248,9 @@ class TestSrcPopotoImportPaths:
     def test_src_popoto_redis_db_registered_in_sys_modules(self):
         """pytest_configure must register src.popoto.redis_db in sys.modules."""
         if not _is_single_tree_env():
-            pytest.skip("Worktree env: two distinct src/popoto copies — alias-collapse tests skipped")
+            pytest.skip(
+                "Worktree env: two distinct src/popoto copies — alias-collapse tests skipped"
+            )
         assert "src.popoto.redis_db" in sys.modules, (
             "pytest_configure did not register src.popoto.redis_db in sys.modules."
         )
@@ -257,11 +264,15 @@ class TestSrcPopotoImportPaths:
         whose POPOTO_REDIS_DB has already been swapped to DB 15 by the session fixture.
         """
         if not _is_single_tree_env():
-            pytest.skip("Worktree env: two distinct src/popoto copies — alias-collapse tests skipped")
+            pytest.skip(
+                "Worktree env: two distinct src/popoto copies — alias-collapse tests skipped"
+            )
 
         src_redis_db = sys.modules.get("src.popoto.redis_db")
         if src_redis_db is None:
-            pytest.skip("src.popoto.redis_db not in sys.modules — alias-collapse did not run")
+            pytest.skip(
+                "src.popoto.redis_db not in sys.modules — alias-collapse did not run"
+            )
 
         db = src_redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs.get("db", 0)
         assert db != 0, (
@@ -277,13 +288,17 @@ class TestSrcPopotoImportPaths:
         module does not affect the src.popoto.redis_db path.
         """
         if not _is_single_tree_env():
-            pytest.skip("Worktree env: two distinct src/popoto copies — alias-collapse tests skipped")
+            pytest.skip(
+                "Worktree env: two distinct src/popoto copies — alias-collapse tests skipped"
+            )
 
         import popoto.redis_db as canonical_redis_db
 
         src_redis_db = sys.modules.get("src.popoto.redis_db")
         if src_redis_db is None:
-            pytest.skip("src.popoto.redis_db not in sys.modules — alias-collapse did not run")
+            pytest.skip(
+                "src.popoto.redis_db not in sys.modules — alias-collapse did not run"
+            )
 
         assert src_redis_db is canonical_redis_db, (
             "sys.modules['src.popoto.redis_db'] is a distinct object from popoto.redis_db. "
@@ -298,13 +313,17 @@ class TestSrcPopotoImportPaths:
         visible on both paths.
         """
         if not _is_single_tree_env():
-            pytest.skip("Worktree env: two distinct src/popoto copies — alias-collapse tests skipped")
+            pytest.skip(
+                "Worktree env: two distinct src/popoto copies — alias-collapse tests skipped"
+            )
 
         import popoto.redis_db as canonical_rdb
 
         src_rdb = sys.modules.get("src.popoto.redis_db")
         if src_rdb is None:
-            pytest.skip("src.popoto.redis_db not in sys.modules — alias-collapse did not run")
+            pytest.skip(
+                "src.popoto.redis_db not in sys.modules — alias-collapse did not run"
+            )
 
         assert src_rdb.POPOTO_REDIS_DB is canonical_rdb.POPOTO_REDIS_DB, (
             "POPOTO_REDIS_DB is not the same object via both import paths. "
@@ -320,7 +339,9 @@ class TestSrcPopotoImportPaths:
         """
         import popoto.redis_db as canonical_rdb
 
-        db = canonical_rdb.POPOTO_REDIS_DB.connection_pool.connection_kwargs.get("db", 0)
+        db = canonical_rdb.POPOTO_REDIS_DB.connection_pool.connection_kwargs.get(
+            "db", 0
+        )
         assert db != 0, "popoto.redis_db.POPOTO_REDIS_DB is still on DB 0"
         assert db == 15, f"Expected DB 15, got {db}"
 
@@ -393,8 +414,7 @@ class TestDecoyModuleNotStomped:
         """
         # Collect all keys that start with "src.popoto" — the expected aliases.
         src_popoto_keys = {
-            k for k in sys.modules
-            if k == "src.popoto" or k.startswith("src.popoto.")
+            k for k in sys.modules if k == "src.popoto" or k.startswith("src.popoto.")
         }
 
         # Every aliased entry must be a non-None module object.
@@ -434,6 +454,120 @@ class TestDB0Tripwire:
         from popoto import redis_db as rdb
 
         test_db_num = rdb.POPOTO_REDIS_DB.connection_pool.connection_kwargs.get("db", 0)
-        assert test_db_num != 0, (
-            f"Tests must not run on DB 0. DB 0 size={db0_size}."
+        assert test_db_num != 0, f"Tests must not run on DB 0. DB 0 size={db0_size}."
+
+
+class TestIsolatedDbSubprocess:
+    """End-to-end, environment-independent proof that DB 0 is never written.
+
+    The in-process ``TestSrcPopotoImportPaths`` checks SKIP in a git worktree
+    (two physical src/popoto copies make the in-process identity asserts
+    meaningless).  This test does not: it spawns a *fresh* pytest process, so
+    the plugin's ``pytest_configure`` alias-collapse runs cleanly with no prior
+    ``src.popoto`` imports, and the proof holds in both single-tree and worktree
+    environments.  This is the keeper fix-proof for issue #420, replacing the
+    destructive ``redis-cli -n 0 flushdb`` verification the original plan
+    proposed.
+    """
+
+    def test_isolated_db_subprocess(self, tmp_path):
+        """Spawn pytest against a stand-in DB; assert DB 0 is never written.
+
+        A subprocess runs a probe test that imports via ``src.popoto``, saves a
+        uniquely-named model, and asserts it is retrievable on the plugin's test
+        DB.  After it exits, this parent process scans DB 0 for the probe's
+        unique key prefix and asserts none leaked there.
+
+        Non-destructive: only *reads* DB 0, matching a marker that cannot collide
+        with real application data.  DB 0 is never flushed.
+        """
+        import os
+        import subprocess
+        import sys
+        import textwrap
+
+        import redis as _redis
+
+        # Repo root sits one level above this test file's tests/ directory and
+        # holds the src/ tree.  Running ``python -m pytest`` from there puts the
+        # repo root on sys.path, so ``import src.popoto`` resolves.
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if not os.path.isdir(os.path.join(repo_root, "src", "popoto")):
+            pytest.skip("no src/ layout next to the test suite — alias-collapse N/A")
+
+        marker = "SubprocIsolationProbe420"
+        stand_in_db = "14"  # distinct from this session's DB 15
+
+        probe = tmp_path / "test_subproc_isolation_probe.py"
+        probe.write_text(
+            textwrap.dedent(
+                f"""
+                import src.popoto as popoto
+
+
+                class {marker}(popoto.Model):
+                    name = popoto.KeyField()
+
+
+                def test_src_popoto_write_lands_on_test_db():
+                    {marker}(name="probe").save()
+                    assert {marker}.query.get(name="probe") is not None
+                """
+            )
+        )
+
+        # DB-0 client for the (non-destructive) leak check.  Connect on the same
+        # host/port the suite uses, but always DB 0.
+        kwargs = redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs.copy()
+        kwargs["db"] = 0
+        db0 = _redis.Redis(**kwargs)
+
+        def _marker_keys():
+            return list(db0.scan_iter(match=f"{marker}*"))
+
+        # Clear any residue from a previous (possibly broken) run so the check
+        # measures only this run.  Touches only the unique marker prefix, which
+        # cannot collide with real application data.
+        stale = _marker_keys()
+        if stale:
+            db0.delete(*stale)
+
+        env = dict(os.environ)
+        env["POPOTO_TEST_DB"] = stand_in_db
+        # Pin the subprocess to *this* working tree, so it validates the code
+        # under test rather than whatever ``popoto`` happens to be pip-installed
+        # in the active venv.  Prepending repo_root/src makes ``import popoto``
+        # (and the auto-loaded plugin) resolve here; repo_root makes
+        # ``import src.popoto`` resolve to the same physical files.  In CI the
+        # installed package already is this tree, so these entries are a no-op.
+        src_dir = os.path.join(repo_root, "src")
+        existing_pp = env.get("PYTHONPATH")
+        env["PYTHONPATH"] = os.pathsep.join(
+            [repo_root, src_dir] + ([existing_pp] if existing_pp else [])
+        )
+        result = subprocess.run(
+            [sys.executable, "-m", "pytest", str(probe), "-q"],
+            cwd=repo_root,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, (
+            "subprocess pytest run failed — src.popoto write may not have been "
+            f"isolated to the test DB:\nSTDOUT:\n{result.stdout}\n"
+            f"STDERR:\n{result.stderr}"
+        )
+
+        # Non-destructive DB-0 leak check: the uniquely-named probe must never
+        # appear on DB 0.
+        try:
+            leaked = _marker_keys()
+            if leaked:
+                db0.delete(*leaked)  # don't leave residue for the next run
+        finally:
+            db0.close()
+
+        assert not leaked, (
+            f"src.popoto write leaked to DB 0 — isolation bypassed. "
+            f"Found {len(leaked)} key(s): {leaked[:10]}"
         )

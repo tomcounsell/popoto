@@ -242,35 +242,47 @@ def _popoto_db0_tripwire(request):
     import redis as _redis
 
     # Connect to DB 0 using the same host/port as the test connection,
-    # but always on database 0.
+    # but always on database 0.  ``before is None`` means the tripwire is
+    # disabled (couldn't connect, or DB 0 was non-idle at session start).
+    db0_client = None
+    before = None
     try:
         pool_kwargs = redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs.copy()
         pool_kwargs["db"] = 0
         db0_client = _redis.Redis(**pool_kwargs)
         before = db0_client.dbsize()
     except Exception:
-        # Can't connect to DB 0 — skip silently (not a failure).
-        return
+        # Can't connect to DB 0 — disable the tripwire (never a failure).
+        before = None
 
-    if before != 0:
+    if before not in (0, None):
         logger.warning(
             "popoto pytest plugin: DB 0 is non-idle (%d keys) at session "
             "start — DB-0 tripwire SKIPPED.  Run against a clean Redis "
             "instance to enable the tripwire.",
             before,
         )
-        return
 
-    yield
-
+    # Always yield exactly once (a session yield-fixture that returns before
+    # yielding errors under pytest-asyncio auto mode), and always release the
+    # DB-0 client so the tripwire never leaks a connection.
     try:
-        after = db0_client.dbsize()
-    except Exception:
-        return
-
-    if after != 0:
-        pytest.fail(
-            f"DB isolation may be bypassed — test writes leaked into DB 0 "
-            f"({after} keys found, 0 expected).  DB 0 was empty at session "
-            f"start.",
-        )
+        yield
+    finally:
+        after = None
+        if before == 0 and db0_client is not None:
+            try:
+                after = db0_client.dbsize()
+            except Exception:
+                after = None
+        if db0_client is not None:
+            try:
+                db0_client.close()
+            except Exception:
+                pass
+        if before == 0 and after:
+            pytest.fail(
+                f"DB isolation may be bypassed — test writes leaked into DB 0 "
+                f"({after} keys found, 0 expected).  DB 0 was empty at session "
+                f"start.",
+            )
