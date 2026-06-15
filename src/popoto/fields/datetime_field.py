@@ -22,7 +22,7 @@ wrappers, DatetimeField lives in its own module because it introduces behavioral
 """
 
 from .field import Field
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class DatetimeField(Field):
@@ -103,17 +103,25 @@ class DatetimeField(Field):
             **kwargs: Additional keyword arguments for forward compatibility.
 
         Returns:
-            datetime: The processed datetime value. Returns current time for
-                auto_now fields (unless skip_auto_now is True), current time
-                for auto_now_add when field_value is falsy, or the original
-                field_value otherwise.
+            datetime: The processed datetime value. Returns the current UTC time
+                for auto_now fields (unless skip_auto_now is True), the current
+                UTC time for auto_now_add when field_value is falsy, or the
+                original field_value otherwise.
 
         Implementation note:
+            Timestamps are stamped in UTC via ``datetime.now(timezone.utc)`` so
+            that auto_now/auto_now_add fields record correct instants regardless
+            of host timezone. (The encoder stores wall-clock without tzinfo, so
+            consumers re-attach UTC on read.) ``timezone.utc`` is used rather than
+            ``datetime.UTC`` to stay valid on Python 3.10 (the ``requires-python``
+            floor); ``datetime.UTC`` is 3.11+.
+
             auto_now takes precedence if both flags are set, as it unconditionally
-            returns datetime.now() regardless of existing value (unless skipped).
+            returns the current UTC time regardless of existing value (unless
+            skipped).
         """
         if self.auto_now_add and not field_value:
-            return datetime.now()
+            return datetime.now(timezone.utc)
         if self.auto_now and not skip_auto_now:
-            return datetime.now()
+            return datetime.now(timezone.utc)
         return field_value
