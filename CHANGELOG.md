@@ -31,6 +31,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Tier 5 benchmark sweep grid** (`TIER5_SWEEPS` in `tests/benchmarks/run_sweeps.py`) — five lifecycle constants with sweep ranges for tuning against LoCoMo + LongMemEval-S
 - **`docs/benchmarks/memory_lifecycle_baseline.md`** — pre-lifecycle retrieval baseline and sweep grid documentation
 
+## [1.7.1] - 2026-06-15
+
+### Fixed
+
+- **`DatetimeField` `auto_now` / `auto_now_add` now stamp UTC** ([tomcounsell/ai#1653](https://github.com/tomcounsell/ai/issues/1653)) — `format_value_pre_save` previously returned naive `datetime.now()` (host **local** wall-clock). Since the encoder serializes wall-clock without tzinfo, every `auto_now`/`auto_now_add` timestamp on a non-UTC host was skewed by the host's UTC offset, breaking downstream "age since update" math. It now returns `datetime.now(timezone.utc)`, so timestamps are correct regardless of host timezone. Uses `timezone.utc` (valid on the `requires-python = ">=3.10"` floor), not the 3.11+ `datetime.UTC`. Write-only and non-migrating: existing rows are unchanged; UTC hosts already stamped UTC.
+
 ## [1.5.0](https://github.com/tomcounsell/popoto/compare/v1.0.3...v1.5.0) (2026-04-21)
 
 ### Popoto Agent Memory — Now in Beta
