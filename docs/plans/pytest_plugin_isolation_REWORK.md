@@ -1,5 +1,46 @@
 # Restart Plan — Fix #420 (src.popoto DB-isolation) WITHOUT regressing the suite
 
+> ## ✅ RESOLVED (2026-06-16)
+>
+> The regression is fixed and #420 is closed. Full suite is back to **main parity** —
+> two consecutive clean runs: **1484 passed, 0 failed** (≤1 gate met with margin), and
+> ~45 s vs the broken branch's 183 s (connection thrashing gone).
+>
+> **Confirmed mechanism (measured, NOT the plan's "wrong event loop" hypothesis).** A live
+> mid-test probe (`sync_db=15 async_db=0 sync_keys=1 loaded=False`) showed the async write
+> *does* land in DB 15 (it runs via `to_thread(create→save)` on the **sync** pool — the plan's
+> "write lands in neither DB" was confounded by the session-teardown flush). The bug was a
+> **DB-targeting mismatch**: `get_async_redis_db()` lazily rebuilt the async client from
+> `REDIS_URL` (→ **DB 0**), ignoring the swapped sync DB, so async reads hit DB 0 while sync
+> writes hit DB 15. Every async path resets `_POPOTO_ASYNC_REDIS_DB=None` to rebuild in-loop, so
+> all of them funneled into the DB-0 lazy builder. A second, independent contributor surfaced once
+> the async path was fixed: `tests/test_connection.py::test_set_redis_db_settings_with_valid_url`
+> rebinds the global `POPOTO_REDIS_DB` to a **DB-0** connection and never restores it; on `main`
+> this was masked (the `src.popoto` path was always DB 0), but after the collapse it drifted the
+> shared connection off the test DB for every subsequent test.
+>
+> **Fix (3 changes, no `sys.meta_path` hook needed):**
+> 1. `redis_db.get_async_redis_db()` now mirrors the *current* sync
+>    `POPOTO_REDIS_DB.connection_pool.connection_kwargs` (host/port/db/auth) instead of re-reading
+>    `REDIS_URL`. The async client always follows the sync DB — including the plugin's swap.
+> 2. `pytest_plugin._popoto_reset_async` sets the async global to `None` (lazy in-loop rebuild)
+>    instead of pre-creating an off-loop client. Removes the wrong-loop risk entirely.
+> 3. `pytest_plugin._popoto_flush_db` re-asserts the test DB per-test when the connection has
+>    drifted (cheap no-op unless a test rebound the connection). Honors the plugin's "isolation
+>    just works" promise against any `set_REDIS_DB_settings()` caller, sync or async.
+>
+> The configure-time alias-collapse from `c8cea88` is kept as-is: it correctly makes `src.popoto`
+> and `src.popoto.redis_db` the canonical objects, and lazily-imported `src.popoto.*` submodules
+> still resolve `redis_db` through the aliased `sys.modules` entry — so the DB invariant holds
+> without a `MetaPathFinder` (§4.2). The 0-failure suite confirms it empirically. The good pieces
+> of `0158e4a` (hardened tripwire, `TestIsolatedDbSubprocess` proof) are retained and pass; the 3
+> `TestAsyncReset`/`TestAsyncIntegration` plugin tests were updated to assert the new
+> lazy-in-loop contract.
+>
+> Everything below is the original handoff, kept for provenance.
+
+---
+
 **Status:** PR #422 is on HOLD (do not merge). Its approach (Option D alias-collapse) is
 verified to **regress the full suite from 1 → 78 failures**. This document is a self-contained
 handoff so a fresh agent can restart. Read it fully before touching code.

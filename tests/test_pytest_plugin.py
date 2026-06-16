@@ -107,19 +107,29 @@ class TestAuthPreservation:
 class TestAsyncReset:
     """Verify the async connection is reset before each test."""
 
-    def test_async_connection_is_preconfigured(self):
-        """The async connection should be pre-configured for the test DB."""
-        import redis.asyncio as aioredis
+    def test_async_connection_is_cleared_for_lazy_creation(self):
+        """The async global is cleared (not pre-created) before each test.
 
-        assert isinstance(redis_db._POPOTO_ASYNC_REDIS_DB, aioredis.Redis)
+        Pre-creating a client in the fixture's synchronous setup would bind it
+        to the wrong event loop (pytest-asyncio makes a fresh loop per test),
+        causing async ops to silently target the wrong loop. The fixture leaves
+        the global ``None`` so ``get_async_redis_db()`` rebuilds it lazily
+        inside the test's own running loop.
+        """
+        assert redis_db._POPOTO_ASYNC_REDIS_DB is None
 
-    def test_async_connection_uses_test_db(self):
-        """The async connection should point to the same DB as sync."""
+    def test_async_connection_uses_test_db_when_built(self):
+        """A lazily-built async client points to the same DB as sync."""
         sync_db = redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs.get(
             "db", 0
         )
-        async_kwargs = redis_db._POPOTO_ASYNC_REDIS_DB.connection_pool.connection_kwargs
-        async_db = async_kwargs.get("db", 0)
+
+        loop = asyncio.new_event_loop()
+        try:
+            async_redis = loop.run_until_complete(get_async_redis_db())
+        finally:
+            loop.close()
+        async_db = async_redis.connection_pool.connection_kwargs.get("db", 0)
         assert async_db == sync_db, f"Async DB {async_db} != sync DB {sync_db}"
 
     def test_async_lock_is_fresh(self):
@@ -148,15 +158,16 @@ class TestAsyncIntegration:
             loop.close()
 
     def test_async_connection_on_test_db(self):
-        """The async connection should be on the test DB, not DB 0."""
+        """A lazily-built async connection is on the test DB, not DB 0."""
         import redis.asyncio as aioredis
 
-        assert isinstance(redis_db._POPOTO_ASYNC_REDIS_DB, aioredis.Redis)
-        async_db = (
-            redis_db._POPOTO_ASYNC_REDIS_DB.connection_pool.connection_kwargs.get(
-                "db", 0
-            )
-        )
+        loop = asyncio.new_event_loop()
+        try:
+            async_redis = loop.run_until_complete(get_async_redis_db())
+        finally:
+            loop.close()
+        assert isinstance(async_redis, aioredis.Redis)
+        async_db = async_redis.connection_pool.connection_kwargs.get("db", 0)
         assert async_db == 15, f"Expected async on DB 15, got DB {async_db}"
 
 
@@ -251,9 +262,9 @@ class TestSrcPopotoImportPaths:
             pytest.skip(
                 "Worktree env: two distinct src/popoto copies — alias-collapse tests skipped"
             )
-        assert "src.popoto.redis_db" in sys.modules, (
-            "pytest_configure did not register src.popoto.redis_db in sys.modules."
-        )
+        assert (
+            "src.popoto.redis_db" in sys.modules
+        ), "pytest_configure did not register src.popoto.redis_db in sys.modules."
 
     def test_src_popoto_redis_db_on_test_db(self):
         """sys.modules['src.popoto.redis_db'].POPOTO_REDIS_DB must be on the test DB.
@@ -399,9 +410,9 @@ class TestDecoyModuleNotStomped:
                 "pytest_configure replaced sys.modules['acme.popoto'] — "
                 "the alias-collapse must only write src.* keys."
             )
-            assert getattr(surviving, "sentinel", None) == "untouched", (
-                "The decoy module's attributes were modified by pytest_configure."
-            )
+            assert (
+                getattr(surviving, "sentinel", None) == "untouched"
+            ), "The decoy module's attributes were modified by pytest_configure."
         finally:
             sys.modules.pop("acme.popoto", None)
 
@@ -499,9 +510,7 @@ class TestIsolatedDbSubprocess:
         stand_in_db = "14"  # distinct from this session's DB 15
 
         probe = tmp_path / "test_subproc_isolation_probe.py"
-        probe.write_text(
-            textwrap.dedent(
-                f"""
+        probe.write_text(textwrap.dedent(f"""
                 import src.popoto as popoto
 
 
@@ -512,9 +521,7 @@ class TestIsolatedDbSubprocess:
                 def test_src_popoto_write_lands_on_test_db():
                     {marker}(name="probe").save()
                     assert {marker}.query.get(name="probe") is not None
-                """
-            )
-        )
+                """))
 
         # DB-0 client for the (non-destructive) leak check.  Connect on the same
         # host/port the suite uses, but always DB 0.

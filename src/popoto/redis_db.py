@@ -221,8 +221,12 @@ async def get_async_redis_db():
     contexts. The connection is created lazily on first call to avoid event loop
     issues at module import time.
 
-    The async client uses the same connection parameters as the sync client
-    (via REDIS_URL or localhost:6379 default).
+    The async client mirrors the *current* sync client's connection parameters
+    (host, port, db, auth) rather than re-reading ``REDIS_URL`` independently.
+    This is what makes the async path follow any runtime connection swap — most
+    importantly the pytest plugin's switch to the test DB. Re-reading
+    ``REDIS_URL`` here would silently pin the async client to DB 0 while sync
+    writes go to the test DB, so async reads would never see them.
 
     Returns:
         redis.asyncio.Redis: The configured async Redis client instance.
@@ -254,26 +258,29 @@ async def get_async_redis_db():
         if _POPOTO_ASYNC_REDIS_DB is not None:
             return _POPOTO_ASYNC_REDIS_DB
 
-        REDIS_URL = os.environ.get("REDIS_URL", "")
-        if REDIS_URL:
-            pool = aioredis.BlockingConnectionPool.from_url(
-                REDIS_URL,
-                socket_timeout=5,
-                socket_connect_timeout=5,
-                max_connections=_ASYNC_MAX_CONNECTIONS,
-            )
-            _POPOTO_ASYNC_REDIS_DB = aioredis.Redis(connection_pool=pool)
-        else:
-            pool = aioredis.BlockingConnectionPool(
-                host="127.0.0.1",
-                port=6379,
-                db=0,
-                socket_timeout=5,
-                socket_connect_timeout=5,
-                max_connections=_ASYNC_MAX_CONNECTIONS,
-            )
-            _POPOTO_ASYNC_REDIS_DB = aioredis.Redis(connection_pool=pool)
-        logger.debug("Async Redis connection established.")
+        # Mirror the sync connection's parameters so the async client always
+        # targets the same server/DB as POPOTO_REDIS_DB. The sync pool's
+        # connection_kwargs were built from REDIS_URL (or the localhost
+        # default) and reflect any later swap of the DB, so reusing them keeps
+        # the two clients in lockstep without re-parsing REDIS_URL.
+        sync_kwargs = POPOTO_REDIS_DB.connection_pool.connection_kwargs
+        async_kwargs = {}
+        for key in ("host", "port", "db", "password", "username"):
+            value = sync_kwargs.get(key)
+            if value is not None:
+                async_kwargs[key] = value
+        async_kwargs.setdefault("socket_timeout", 5)
+        async_kwargs.setdefault("socket_connect_timeout", 5)
+
+        pool = aioredis.BlockingConnectionPool(
+            max_connections=_ASYNC_MAX_CONNECTIONS,
+            **async_kwargs,
+        )
+        _POPOTO_ASYNC_REDIS_DB = aioredis.Redis(connection_pool=pool)
+        logger.debug(
+            "Async Redis connection established (db=%s).",
+            async_kwargs.get("db", 0),
+        )
         return _POPOTO_ASYNC_REDIS_DB
 
 

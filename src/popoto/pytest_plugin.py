@@ -178,51 +178,42 @@ def _popoto_test_db(request):
 
 @pytest.fixture(autouse=True)
 def _popoto_flush_db(_popoto_test_db):
-    """Flush the test database before each test for a clean slate."""
+    """Flush the test database before each test for a clean slate.
+
+    Also re-asserts the test DB if a prior test drifted the connection off it.
+    Tests that call ``set_REDIS_DB_settings()`` (or otherwise rebind
+    ``redis_db.POPOTO_REDIS_DB``) replace the global with a connection that
+    defaults to DB 0 and may not restore it. Without this guard, every
+    subsequent test — and the lazily-rebuilt async client, which mirrors the
+    sync DB — would silently run against DB 0, bypassing isolation. Re-swapping
+    only when the DB has drifted keeps the common path a cheap no-op.
+    """
+    current_db = redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs.get("db")
+    if current_db != _popoto_test_db:
+        _swap_db(_popoto_test_db)
     redis_db.POPOTO_REDIS_DB.flushdb()
     yield
 
 
 @pytest.fixture(autouse=True)
 def _popoto_reset_async():
-    """Reset the async Redis connection before each test.
+    """Reset the async Redis connection before and after each test.
 
-    This prevents 'Future attached to a different loop' errors when
-    pytest-asyncio creates a new event loop per test function.
+    pytest-asyncio creates a fresh event loop per test function, so an async
+    client created in one test's loop is bound to a now-closed loop in the
+    next test ("Future attached to a different loop"). Clearing the cached
+    global forces ``get_async_redis_db()`` to lazily rebuild the client
+    *inside* the running test's own loop on first use.
 
-    The new async connection is pre-configured to use the same DB as the
-    sync connection, since get_async_redis_db() would otherwise default
-    to DB 0 or REDIS_URL (ignoring the plugin's DB switch).
+    Crucially, the client is NOT pre-created here. This fixture runs in a
+    synchronous setup context, outside the test's event loop; a client built
+    now would be bound to the wrong loop. ``get_async_redis_db()`` already
+    mirrors the swapped sync DB (see redis_db.py), so lazy in-loop creation
+    lands on the test DB without any pre-configuration in this fixture.
     """
-    import redis.asyncio as aioredis
-
-    # Read current sync connection settings to mirror them for async
-    pool_kwargs = redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs
-    async_kwargs = {}
-    for key in ("host", "port", "password", "username", "db"):
-        if key in pool_kwargs:
-            async_kwargs[key] = pool_kwargs[key]
-    async_kwargs.setdefault("socket_timeout", 5)
-    async_kwargs.setdefault("socket_connect_timeout", 5)
-
-    # Set a pre-configured async connection so get_async_redis_db() returns it
-    redis_db._POPOTO_ASYNC_REDIS_DB = aioredis.Redis(**async_kwargs)
+    redis_db._POPOTO_ASYNC_REDIS_DB = None
     redis_db._async_redis_lock = asyncio.Lock()
     yield
-    # Clean up: close the async client's connection pool and set to None
-    try:
-        if redis_db._POPOTO_ASYNC_REDIS_DB is not None:
-            pool = redis_db._POPOTO_ASYNC_REDIS_DB.connection_pool
-            # disconnect() is a coroutine on async pools; run it synchronously
-            try:
-                loop = asyncio.get_running_loop()
-                # Loop is running (e.g. async test); schedule cleanup
-                loop.create_task(pool.disconnect())
-            except RuntimeError:
-                # No running loop; safe to use asyncio.run()
-                asyncio.run(pool.disconnect())
-    except Exception:
-        pass
     redis_db._POPOTO_ASYNC_REDIS_DB = None
 
 
