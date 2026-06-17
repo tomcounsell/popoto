@@ -1,11 +1,12 @@
 ---
-status: Planning
+status: Ready
 type: bug
 appetite: Medium
 owner: valorengels
 created: 2026-06-17
 tracking: https://github.com/tomcounsell/popoto/issues/412
 last_comment_id:
+revision_applied: true
 ---
 
 # Atomic Secondary-Index Maintenance via Lua (cross-process save() race)
@@ -37,9 +38,12 @@ The June 2026 audit PoC measured (reconfirmed against main @ 61f36aa on 2026-06-
 **Desired outcome:** Concurrent `save()` from any number of processes never leaves a
 record in more than one value Set per indexed field, and never lets two records occupy
 the same `UniqueField` value. Index maintenance becomes an atomic server-side
-check-and-swap (Lua) — the in-repo pattern already proven flawless under 8-process
-contention (`BAYESIAN_UPDATE_LUA`, `confidence_field.py:51`). Single-process behavior,
-API, exception types, and key schema stay identical.
+check-and-swap (Lua) — reusing the in-repo Lua-via-cmsgpack pattern established by
+`CAPPED_BAYESIAN_UPDATE_LUA` (`confidence_field.py:62`, rewritten in PR #417;
+invoked standalone via `POPOTO_REDIS_DB.eval(...)` at `:467`). Single-process behavior,
+API, exception types, and key schema stay identical. (Note: ConfidenceField runs its
+EVAL standalone, not inside a MULTI/EXEC — this plan instead queues the EVAL inside the
+save pipeline, an integration that spike-5 verified independently; see Spike Results.)
 
 ## Freshness Check
 
@@ -52,7 +56,7 @@ API, exception types, and key schema stay identical.
 - `src/popoto/fields/indexed_field_mixin.py:150-166` — uniqueness check is immediate `SMEMBERS` (line 155) even with a pipeline; SADD deferred — **still holds**.
 - `src/popoto/fields/indexed_field_mixin.py:73-74, 115-116` — "best-effort under concurrent writes" docstrings — **still holds**.
 - `src/popoto/models/base.py:1276-1348` (external pipeline) and `:1350-1418` (internal pipeline) — both run all `on_save` hooks inside one atomic unit — **still holds**.
-- `src/popoto/fields/confidence_field.py:51-99` (`BAYESIAN_UPDATE_LUA`) and `:410-417` (invocation) — Lua precedent — **still holds**.
+- `src/popoto/fields/confidence_field.py:62-115` (`CAPPED_BAYESIAN_UPDATE_LUA`) and `:467-475` (invocation) — Lua precedent — **still holds**. (Corrected from the prior draft, which cited a stale `BAYESIAN_UPDATE_LUA`/`:51` symbol with a since-retracted "4000/4000 audit-verified" claim; the live symbol is `CAPPED_BAYESIAN_UPDATE_LUA`, rewritten in PR #417, and it is invoked **standalone** — `POPOTO_REDIS_DB.eval(...)` — not inside a MULTI/EXEC. The pipeline-queued-EVAL integration this plan relies on is therefore NOT pre-existing precedent and was proven independently in spike-5.)
 - `src/popoto/models/base.py:3147` (`clean_indexes`) — manual repair API — **still holds** (remediation, not prevention).
 
 **Key-prefix correction (drift from issue body):** The issue states both `IndexedField`
@@ -71,11 +75,16 @@ So `UniqueField` indexes live under `$UniquF:`, not `$IndexF:`. The audit PoC's
 reported **0** — a false negative. The spike re-counted against `$UniquF:` and found 68
 sets with 2 members, matching `both_saves_succeeded`. **The regression test must derive
 each field's prefix from `field_class_key` / `get_special_use_field_db_key`, never
-hard-code `$IndexF:`.** The module docstring also still says `$IdxF:` (`indexed_field_mixin.py:18,25`) — wrong; fix in passing.
+hard-code `$IndexF:`.** The module/method docstrings also still say `$IdxF:`
+(`indexed_field_mixin.py:18, 25, 28, 110` — re-grepped 2026-06-17, four occurrences,
+not two as the prior draft stated) — wrong; fix in passing.
 
 **Cited sibling issues/PRs re-checked:**
 - CONC-2, CONC-3 (audit findings) — explicitly out of scope per issue; different mechanisms.
-- PR #417 (ConfidenceField capped-evidence) — merged 2026-06-11; established/extended the audit-verified Lua atomicity pattern this fix reuses.
+- PR #417 (ConfidenceField capped-evidence) — merged 2026-06-11; rewrote the Lua script to
+  `CAPPED_BAYESIAN_UPDATE_LUA`. It establishes the Lua-via-cmsgpack *coding* pattern this fix
+  reuses, but it runs its EVAL standalone (no pipeline), so it is not precedent for the
+  pipeline-queued-EVAL atomicity this plan needs (proven separately in spike-5).
 
 **Commits on main since issue filed (touching referenced files):** none
 (`git log --since=2026-06-11T05:20:32Z` on `indexed_field_mixin.py`, `base.py`,
@@ -91,9 +100,13 @@ mentions IndexedField but addresses key immutability, not the save-path index ra
 - **PR #190** — `atomic_increment()` for numeric fields (merged 2026-03-12): established
   the pattern of moving a read-modify-write into an atomic server-side op. Direct
   precedent for the approach, different field.
-- **PR #417** — ConfidenceField Bayesian update (merged 2026-06-11): the
-  `BAYESIAN_UPDATE_LUA` script + `POPOTO_REDIS_DB.eval(SCRIPT, numkeys, *args)`
-  invocation this fix reuses. Audit-verified zero lost updates under 8 processes.
+- **PR #417** — ConfidenceField capped-evidence update (merged 2026-06-11): the
+  `CAPPED_BAYESIAN_UPDATE_LUA` script (`confidence_field.py:62`) + standalone
+  `POPOTO_REDIS_DB.eval(SCRIPT, numkeys, *args)` invocation (`:467`) whose Lua/cmsgpack
+  coding pattern this fix reuses. (The earlier "4000/4000 audit-verified" / 8-process
+  figures attached to a prior `BAYESIAN_UPDATE_LUA` symbol were retracted by the
+  maintainer and are not relied on here; ConfidenceField also runs its EVAL standalone,
+  so it is not precedent for in-pipeline EVAL atomicity — that was proven in spike-5.)
 - **Issue #147** (atomic save) — `tests/test_atomic_save.py`: the reason `save()` bundles
   hash-write + index ops into one MULTI/EXEC. The fix MUST preserve this (see Risk 1).
 - No closed issue previously attempted this cross-process index fix — greenfield for #412.
@@ -104,7 +117,8 @@ mentions IndexedField but addresses key immutability, not the save-path index ra
 No relevant external findings beyond ecosystem facts validated empirically in the spikes
 below (cmsgpack in Lua, redis-py Pipeline.eval, Lua error surfacing). Proceeding with
 codebase context. Lua check-and-swap for index maintenance is a standard Redis pattern;
-the in-repo `BAYESIAN_UPDATE_LUA` is the authoritative reference.
+the in-repo `CAPPED_BAYESIAN_UPDATE_LUA` (`confidence_field.py:62`) is the authoritative
+reference for the Lua/cmsgpack coding style (though it runs standalone, not in a pipeline).
 
 ## Spike Results
 
@@ -127,14 +141,30 @@ the in-repo `BAYESIAN_UPDATE_LUA` is the authoritative reference.
 - **Method**: prototype (live EVAL on DB 13).
 - **Finding**: Server is **Redis 8.6.2** (standalone). cmsgpack PASS (str/int/float/None round-trip; `None`→`0xc0`→Lua `nil`, byte-identical to python `msgpack`). Popoto hash values decode via cmsgpack PASS. `Pipeline.eval`/`.evalsha` exist PASS. `redis.error_reply('msg')` → `redis.exceptions.ResponseError('msg')` PASS.
 - **Confidence**: high.
-- **Impact on plan**: Confirms the Lua-via-cmsgpack approach is viable; conflict signalling via `redis.error_reply` mapped to `ModelException` is sound. **Note**: must still smoke-test on Valkey (the running dev server is Redis; project rule requires both — see Risks).
+- **Impact on plan**: Confirms the Lua-via-cmsgpack approach is viable; conflict signalling via `redis.error_reply` mapped to `ModelException` is sound. **Valkey now smoke-tested in spike-5** (Valkey 9.1.0 on port 6400): identical EVAL-in-pipeline wire order; full regression run on Valkey still required at validation time (acceptance criterion / Risk 3).
 
 ### spike-4: How does EVAL compose with both save() pipeline paths?
 - **Assumption**: A single-command EVAL can integrate with both the internal and external MULTI/EXEC paths without breaking #147 atomicity.
 - **Method**: code-read + redis-py API check.
-- **Finding**: `Pipeline.eval()` is supported and runs inside the surrounding MULTI/EXEC, so queuing the swap EVAL alongside the hash HSET preserves #147 atomicity. **Hazard**: a Lua error inside MULTI/EXEC does NOT roll back earlier queued commands — so a uniqueness `error_reply` would still leave the hash written. Conflict detection must therefore happen **before** the hash is committed, or the check must be ordered so the EVAL runs first / the script is self-contained. For the **external pipeline** path the conflict can only surface at the caller's `execute()`, deferring the `ModelException` — a documented semantics change to weigh.
-- **Confidence**: high on the API facts; the ordering resolution is specified in Technical Approach + Open Questions.
-- **Impact on plan**: Drove the two-path treatment and the "EVAL-first, then HSET" ordering decision, plus Open Question on external-pipeline error timing.
+- **Finding**: `Pipeline.eval()` is supported and queues into the surrounding MULTI/EXEC. **Hazard**: a Lua error inside MULTI/EXEC does NOT roll back earlier queued commands — so a uniqueness `error_reply` would still leave the hash written. Conflict detection must therefore happen **before** the hash is committed, or the check must be ordered so the EVAL runs first / the script is self-contained. For the **external pipeline** path the conflict can only surface at the caller's `execute()`, deferring the `ModelException` — a documented semantics change (resolved in OQ3 below). **The bare API-support claim was not sufficient to assert atomicity — spike-5 was added to prove the actual wire order.**
+- **Confidence**: high on the API facts; the ordering resolution is specified in Technical Approach.
+- **Impact on plan**: Drove the two-path treatment and the "EVAL-first, then HSET" ordering decision, plus the external-pipeline error-timing decision (OQ3).
+
+### spike-5: Prove the MULTI -> EVAL -> EXEC wire order on BOTH Redis and Valkey (Blocker 1).
+- **Assumption**: When `Pipeline.eval()` is queued into a transactional `POPOTO_REDIS_DB.pipeline()` (the exact object save() builds), the EVAL is actually wrapped inside the MULTI/EXEC on the wire — not silently promoted out of the transaction — so its index ops execute atomically with the hash HSET. The prior plan rested on this purely from API docs; the only in-repo precedent (`confidence_field.py` `update_confidence()`) deliberately runs eval **standalone**, so it does not corroborate the in-pipeline claim.
+- **Method**: prototype (live `MONITOR` capture on DB 13), run identically against **Redis 8.6.2** (localhost:6379) and **Valkey 9.1.0** (localhost:6400, `valkey_version:9.1.0`, `server_name:valkey`). Built `r.pipeline()` with **default args** (mirroring `base.py:1352` / `:1276`), queued `HSET` → `EVAL` (whose body does `SADD`) → `SADD`, then `execute()`, while a second connection ran `MONITOR`.
+- **Finding**: **CONFIRMED on both servers — byte-identical wire order:**
+  ```
+  MULTI
+  HSET Model:k1 f \x01
+  EVAL redis.call('SADD', KEYS[1], ARGV[1]); return 1  1  $IndexF:Model:f:v  Model:k1
+  SADD $IndexF:Model:f:v Model:k1          <- the EVAL's internal SADD, executed at EXEC time
+  SADD ClassSet Model:k1
+  EXEC
+  ```
+  The EVAL sits between `MULTI` and `EXEC`; its internal `SADD` runs at EXEC time inside the transaction. `execute()` returned `[1, 1, 1]`. The pipeline object reported `pipeline.transaction == True` (it is NOT built with `transaction=False`) — and code inspection confirms `base.py:1352` builds `POPOTO_REDIS_DB.pipeline()` with default args (transactional) and `base.py:1276` reuses the caller's pipeline. So queuing `INDEX_SWAP_LUA` into the save pipeline genuinely runs the swap inside the same MULTI/EXEC as the hash write.
+- **Confidence**: high (direct MONITOR evidence on both engines; matches the exact pipeline construction the save path uses).
+- **Impact on plan**: Closes the unproven-atomicity blocker. #147 atomicity (Risk 1) is preserved by the EVAL being inside MULTI/EXEC on both Redis and Valkey. Note the Lua-error-no-rollback hazard (spike-4 / Risk 2) is orthogonal and is handled by EVAL-first ordering + hash-write ownership (OQ2, now resolved).
 
 ## Data Flow
 
@@ -169,8 +199,9 @@ stale across processes. Atomicity must move server-side, where Redis serializes 
   `$IndexF:`/`$UniquF:` key schema are unchanged. Internal `on_save` implementation changes.
 - **Coupling**: `on_save` gains a dependency on the model hash being written in the same
   transaction (ordering constraint), tightening the existing #147 coupling — acceptable and intended.
-- **Data ownership**: unchanged. (If a reverse-pointer companion is adopted for old-set
-  discovery, it is an additive internal structure owned by the mixin — see Open Question 1.)
+- **Data ownership**: unchanged. (A reverse-pointer companion for old-set discovery was
+  considered and rejected — the live model hash, read inside the EVAL, is the single source
+  of truth; see Technical Approach → Old-set discovery.)
 - **Reversibility**: high. The change is localized to `indexed_field_mixin.on_save` + a
   registered Lua script; revertible by restoring the old method. No data migration required
   (existing Sets remain valid; `clean_indexes()` repairs any pre-existing corruption).
@@ -182,7 +213,7 @@ stale across processes. Atomicity must move server-side, where Redis serializes 
 **Team:** Solo dev, code reviewer
 
 **Interactions:**
-- PM check-ins: 1-2 (one Open Question on external-pipeline error timing + old-set-discovery mechanism)
+- PM check-ins: 0-1 (all prior Open Questions resolved in this revision; remaining contact is optional confirmation)
 - Review rounds: 1-2 (concurrency-sensitive change to the core save path)
 
 ## Prerequisites
@@ -235,34 +266,97 @@ from the stale snapshot) and the new value. Concretely the script receives:
   bytes against the intended new value to detect "already moved by a concurrent writer")
 - `ARGV[4]` = `unique` flag ("1"/"0")
 - `ARGV[5]` = old value Set key candidate (Python-computed from a *fresh* re-read, used as
-  the SREM target)
+  the SREM target) **OR the sentinel `"\x00__NONE__"`** when there is no prior set to remove
+  from (first save, or the previous value was `None`). See "None→value transition" below.
 
 Script logic: read the current hash bytes; if they already equal `ARGV[3]` and the member
 is already in `KEYS[2]`, no-op (idempotent re-save). Otherwise: for unique, check `KEYS[2]`
-occupancy excluding self → `error_reply` if taken; `SREM ARGV[5] member`; `SADD KEYS[2] member`;
-then write the hash field so the hash and index move together. **The hash HSET for the
-indexed field happens inside the same EVAL**, making the authoritative value and its Set
-membership update a single atomic step — this is what closes both the dual-membership and
-the check-then-act windows.
+occupancy excluding self → `error_reply` if taken; **if `ARGV[5] ~= sentinel`** then
+`SREM ARGV[5] member`; `SADD KEYS[2] member`; then write the hash field so the hash and
+index move together. **The hash HSET for the indexed field happens inside the same EVAL**,
+making the authoritative value and its Set membership update a single atomic step — this is
+what closes both the dual-membership and the check-then-act windows.
 
-> Open Question 1 records the alternative (a per-member reverse-pointer companion hash) if
-> re-reading the old Set key in Python proves insufficient for a third-writer interleaving.
-> The spike's "third writer" analysis showed the EVAL-reads-hash approach converges
-> correctly because each EVAL removes from whatever Set the member is currently in (via the
-> hash-derived current value), not a cached view; the Python-passed `ARGV[5]` is a fast-path
-> hint the script validates against the live hash before trusting.
+**None→value transition (Concern 5 — resolved).** Today the SREM is guarded by
+`if old_value is not None and old_value != field_value` (`indexed_field_mixin.py:139`).
+The Lua script MUST mirror this guard, or an unconditional `SREM ARGV[5] member` would touch
+an unintended key on every *first* save (where there is no old set). **Resolution:** Python
+passes the sentinel `"\x00__NONE__"` as `ARGV[5]` whenever `old_value is None` (or the field
+is being saved for the first time / has no `_saved_field_values` entry); the script does
+`if ARGV[5] ~= '\x00__NONE__' then redis.call('SREM', ARGV[5], member) end`. The sentinel is
+a NUL-prefixed string that cannot collide with any real `DB_key.clean(...)` Set key (clean
+never emits a leading NUL). This is the direct Lua analogue of the existing
+`old_value is not None` Python check.
+
+**Hash-write ownership (OQ2 — resolved; was Blocker 2).** Today `save()` writes the FULL
+field mapping via a single top-level `HSET ... mapping=hset_mapping` at step 1
+(`base.py:1273-1277` external, `:1354` internal), and `on_save` runs later at step 5
+(`:1310-1319` / `:1389-1398`). If the EVAL *also* wrote the indexed field's hash value, two
+writers would target the same hash field in one transaction; worse, a unique-conflict
+`error_reply` at step 5 does NOT roll back the step-1 HSET (spike-4 / Risk 2), so the
+rejected value would remain persisted in the hash — a brand-new partial-write corruption
+mode. **Decision: option (b) — exclude indexed AND unique fields from the top-level
+`hset_mapping`, and let each such field's `INDEX_SWAP_LUA` own its own hash write inside the
+EVAL.** Concretely:
+  - `encode_popoto_model_obj(self)` (or the call site at `base.py:1273`/`:1354`) is filtered
+    to drop entries for fields whose class is an `IndexedFieldMixin` subclass (Indexed +
+    Unique). Non-indexed fields continue to be written by the top-level HSET unchanged.
+  - For each excluded field, `INDEX_SWAP_LUA` performs `HSET model_key field_name new_bytes`
+    as the LAST step of the swap, AFTER the unique occupancy check. Because the EVAL is a
+    single atomic unit, a unique conflict aborts via `error_reply` **before** the hash field
+    is written — so the hash never reflects a rejected value (closes Risk 2 at the field
+    level), and the value+Set always move together (closes dual-membership).
+  - `self._db_content` (`base.py:1274`) must still reflect the complete intended mapping for
+    backward-compat/read-back; it is built from the full encode and is unaffected by what the
+    top-level HSET omits, since the EVAL writes the omitted fields within the same EXEC.
+  - Rejected alternative (a) — keep the top-level HSET writing everything and only move Sets
+    in the EVAL — was rejected precisely because it cannot prevent the step-1 HSET from
+    persisting a value the step-5 unique check then rejects, even with EVAL-first ordering
+    (the full-mapping HSET is structurally first and writes all fields at once).
+
+**Old-set discovery mechanism (was OQ1 — resolved).** Decision: **no new reverse-pointer
+companion structure.** The script reads the live hash (`HGET KEYS[1] ARGV[1]`) as the
+authoritative current value and removes the member from the Set implied by it; the
+Python-passed `ARGV[5]` is a fast-path SREM target that the script validates against the
+live hash before trusting (when `ARGV[5]` disagrees with the hash-derived current value,
+the script removes from the hash-derived Set, computed via the same Python-clean rule by
+passing the hash-current value's set key — see implementation note). This converges under
+third-writer interleaving (Race 3) because each EVAL removes from whatever Set the member is
+*currently* in per the live hash, never a cached/snapshot view. A per-member reverse-pointer
+companion hash was considered and **rejected** as unnecessary additive surface: the live hash
+is already the single source of truth and is read inside the same atomic EVAL, so it provides
+deterministic old-set removal without a second structure to keep consistent. (Implementation
+note: to keep the type-parity guarantee, the script does NOT `clean()`/`str()` in Lua; when
+the hash-current value differs from `ARGV[5]`, the script SREMs `ARGV[5]` only if it matches,
+and otherwise SADDs the new set and lets the next writer's EVAL reconcile any stray membership
+via its own hash read — the multiprocess regression test at ≥200 rounds is the convergence gate.)
 
 **Pipeline integration (spike-4).**
 - *Internal path* (`base.py:1350-1418`): queue the EVAL into `internal_pipeline` so it
   executes inside the existing MULTI/EXEC — preserves #147. Wrap `internal_pipeline.execute()`
   to catch `ResponseError` from a unique conflict and raise `ModelException`. Order the
-  per-field EVAL so a conflict aborts before the top-level hash HSET is relied upon
-  (the EVAL writes the field's hash value itself; the outer HSET of the full mapping must
-  be reconciled — see Open Question 2).
+  per-field EVAL so a conflict aborts before any hash value for that field is written
+  (the EVAL writes the field's hash value itself; indexed/unique fields are excluded from
+  the top-level full-mapping HSET — see Hash-write ownership, OQ2 resolved).
+  spike-5 confirms the queued EVAL runs inside this MULTI/EXEC on both Redis and Valkey.
 - *External path* (`base.py:1276-1348`): queue the EVAL into the caller's pipeline. The
-  unique conflict can only surface at the caller's `execute()`. Either (a) keep the eager
-  pre-check for the external path only (documented best-effort, unchanged from today), or
-  (b) document that conflicts now raise at `execute()`. **This is Open Question 3.**
+  unique conflict can only surface at the caller's `execute()`. **Decision (was OQ3 —
+  resolved): option (a) — keep the eager `SMEMBERS` pre-check for the external pipeline path
+  only.** Rationale: `save(pipeline=...)` is an explicit batching contract where the caller
+  controls when EXEC happens; raising `ModelException` from inside `save()` at queue time
+  preserves the existing, documented immediate-raise semantics for the common case and does
+  not surprise callers with a deferred `ResponseError` at their own `execute()`. The pre-check
+  remains genuinely best-effort across processes (the atomic EVAL inside the pipeline is the
+  real guarantee at EXEC time; the pre-check is a fast, friendly early raise), so the external
+  path's docstring caveat stays — see Documentation. The internal path drops the pre-check
+  entirely because the atomic EVAL is the sole and complete guarantee there.
+
+  Consequence for the docstring edits (`indexed_field_mixin.py:73-74, 115-116`): the
+  "best-effort under concurrent writes" / "race condition" caveat is **removed only for the
+  internal-pipeline (no-pipeline-argument) path and reworded**, NOT unconditionally deleted.
+  The external-pipeline path keeps an accurate caveat: the eager pre-check is best-effort and
+  the authoritative uniqueness guarantee is enforced atomically at `execute()` time by the
+  queued EVAL.
 
 **No key-schema change.** Sets remain `$IndexF:`/`$UniquF:...`. The `$IdxF:` docstring is
 corrected in passing.
@@ -306,8 +400,8 @@ No existing test asserts the *buggy* behavior, so nothing needs DELETE/REPLACE.
 
 - **Reconstructing `DB_key.clean(str(value))` inside Lua.** Type-parity (float `1.0`,
   `None`, bool) makes this brittle (spike-1). Avoid — compute Set keys in Python, pass in.
-- **A general reverse-index/secondary-structure overhaul.** Out of scope; only add a
-  companion structure if Open Question 1 forces it, and keep it additive/internal.
+- **A general reverse-index/secondary-structure overhaul.** Out of scope; the OQ1 decision
+  is to use the live model hash for old-set discovery, adding no companion structure.
 - **Fixing CONC-2 / CONC-3** (ObservationProtocol, CyclicDecayField RMW). Different
   mechanisms; separate issues (see No-Gos).
 - **`filter()` re-verification against the hash.** Tempting defense-in-depth, but it
@@ -328,11 +422,16 @@ membership move within one atomic unit.
 ### Risk 2: Lua error inside MULTI/EXEC does not roll back (spike-4)
 **Impact:** A unique-conflict `error_reply` after other commands queued in the same EXEC
 leaves partial writes (e.g., the top-level hash HSET already applied).
-**Mitigation:** Order so the conflict-detecting EVAL runs first / make the EVAL own the
-field's hash write so a conflict aborts before any visible state changes for that field;
-on caught `ResponseError`, the save raises and the (now-uncommitted-for-that-field) state
-stays consistent. Add a test asserting that after a rejected unique save, neither the hash
-field nor the Set reflects the rejected value. Resolve via Open Question 2.
+**Mitigation (OQ2 resolved):** Exclude Indexed/Unique fields from the top-level
+`hset_mapping` and make each field's `INDEX_SWAP_LUA` own that field's hash write as the LAST
+step of the EVAL, after the unique occupancy check. A conflict therefore aborts via
+`error_reply` before the field's hash value is written, so neither the hash field nor the Set
+ever reflects a rejected value. (If indexed fields were left in the top-level HSET, that
+step-1 write would persist a value the EVAL later rejects — a new partial-write corruption
+mode; this is why option (b) was chosen. See Technical Approach → Hash-write ownership.)
+On caught `ResponseError`, the save raises `ModelException` and the per-field state stays
+consistent. Add a test asserting that after a rejected unique save, neither the hash field
+nor the Set reflects the rejected value.
 
 ### Risk 3: Valkey parity unverified
 **Impact:** Dev server is Redis 8.6.2 (spike-3); project rule requires Redis AND Valkey,
@@ -381,12 +480,14 @@ multiprocess regression test running ≥200 rounds.
 
 ## No-Gos (Out of Scope)
 
-- [SEPARATE-SLUG #412] CONC-2 (ObservationProtocol torn outcome application) — different
-  mechanism (immediate-EVAL vs deferred-pipeline), should be its own issue. *(Note: no
-  separate issue filed yet; if the maintainer wants it tracked, file before relying on this
-  tag — see Open Question 4.)*
-- [SEPARATE-SLUG #412] CONC-3 (CyclicDecayField companion-hash RMW) — same RMW family,
-  different keys/fix surface (per-field Lua like `BAYESIAN_UPDATE_LUA`). Separate issue.
+- CONC-2 (ObservationProtocol torn outcome application) — different mechanism
+  (immediate-EVAL vs deferred-pipeline). **Out of scope for #412.** Decision (was OQ4): do
+  NOT file a separate issue as part of this plan — it is noted here only. The maintainer can
+  open a tracking issue later if desired; this plan does not depend on it and carries no
+  `[SEPARATE-SLUG]` obligation.
+- CONC-3 (CyclicDecayField companion-hash RMW) — same RMW family, different keys/fix surface
+  (per-field Lua like `CAPPED_BAYESIAN_UPDATE_LUA`). **Out of scope for #412.** Noted here
+  only; not filed as a separate issue (OQ4 decision), consistent with CONC-2.
 - [DESTRUCTIVE] Bulk repair of already-corrupted production indexes — `clean_indexes()`
   exists for this and should be run deliberately by an operator, not bundled into the fix.
 - `filter()` client-side re-verification — deliberately not done; unnecessary once writes
@@ -413,11 +514,15 @@ surface.
 - [ ] Verify mkdocs build passes after edits.
 
 ### Inline Documentation
-- [ ] Correct `indexed_field_mixin.py:18,25` docstring (`$IdxF:` → `$IndexF:`).
-- [ ] Update the `on_save` docstrings (`:73-74`, `:115-116`) to remove the "best-effort
-  under concurrent writes" / "race condition" caveats once the EVAL path lands (for the
-  internal-pipeline path at minimum; keep an accurate caveat for the external path if
-  Open Question 3 leaves it best-effort).
+- [ ] Correct all four `$IdxF:` docstring occurrences (`indexed_field_mixin.py:18, 25, 28, 110`)
+  → `$IndexF:`. (Verify with `grep -n IdxF`; all four must be gone.)
+- [ ] Update the `on_save` docstrings (`:73-74`, `:115-116`) **conditionally, not by
+  unconditional removal** (OQ3 decision): for the internal-pipeline / no-pipeline path,
+  remove or reword the "best-effort under concurrent writes" / "race condition" caveat — that
+  path is now fully atomic via the EVAL. For the **external-pipeline path, KEEP an accurate
+  caveat**: the eager pre-check is best-effort and the authoritative uniqueness guarantee is
+  enforced atomically at the caller's `execute()` by the queued EVAL (conflict surfaces as
+  `ResponseError`→`ModelException` at that point).
 - [ ] Docstring for the new `INDEX_SWAP_LUA` explaining KEYS/ARGV contract and the
   type-parity rationale for computing Set keys in Python.
 
@@ -473,15 +578,16 @@ surface.
 - **Task ID**: build-lua-swap
 - **Depends On**: none
 - **Validates**: tests/test_atomic_save.py, tests/test_indexed_fields.py (if present), tests/test_queries.py
-- **Informed By**: spike-1 (compute Set keys in Python, not Lua), spike-3 (cmsgpack/error_reply facts), spike-4 (queue EVAL inside MULTI/EXEC; Lua errors don't roll back)
+- **Informed By**: spike-1 (compute Set keys in Python, not Lua), spike-3 (cmsgpack/error_reply facts), spike-4 (Lua errors don't roll back), spike-5 (EVAL queues inside MULTI/EXEC on Redis AND Valkey — atomicity proven)
 - **Assigned To**: lua-swap-builder
 - **Agent Type**: async-specialist
 - **Parallel**: true
-- Add `INDEX_SWAP_LUA` (KEYS/ARGV contract per Technical Approach) near the mixin.
-- Rewrite `IndexedFieldMixin.on_save` to queue the EVAL for both internal and external paths; remove stale-snapshot SREM and pre-check SMEMBERS from the internal path.
-- Map unique-conflict `ResponseError` to `ModelException` with the existing message wording.
-- Fix `$IdxF:`→`$IndexF:` docstring; update best-effort caveats per resolution of Open Question 3.
-- Ensure the field's hash write and Set move occur in one atomic unit (Risk 1/2).
+- Add `INDEX_SWAP_LUA` (KEYS/ARGV contract per Technical Approach, including the `ARGV[5]` sentinel `"\x00__NONE__"` guard mirroring the existing `old_value is not None` check) near the mixin.
+- **Exclude Indexed/Unique fields from the top-level `hset_mapping`** (`base.py:1273-1277` external, `:1354` internal) and have each field's EVAL own its hash write as the last step of the swap (OQ2 decision). Keep `self._db_content` reflecting the full intended mapping.
+- Rewrite `IndexedFieldMixin.on_save`: internal path queues the EVAL and drops the stale-snapshot SREM and pre-check SMEMBERS entirely; **external path keeps the eager `SMEMBERS` pre-check** and queues the EVAL into the caller's pipeline (OQ3 decision (a)).
+- Map unique-conflict `ResponseError` to `ModelException` with the existing message wording; ensure only the unique-conflict sentinel maps (other `ResponseError`s propagate).
+- Fix all four `$IdxF:`→`$IndexF:` docstring occurrences (`:18, 25, 28, 110`); reword the internal-path best-effort caveat and KEEP an accurate external-path caveat (OQ3).
+- Ensure the field's hash write and Set move occur in one atomic unit (Risk 1/2; spike-5 confirms in-pipeline EVAL atomicity).
 
 ### 2. Author multiprocess regression + extend atomic-save tests
 - **Task ID**: build-tests
@@ -533,37 +639,34 @@ surface.
 
 ## Critique Results
 
-<!-- Populated by /do-plan-critique (war room). Leave empty until critique is run. -->
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
+| BLOCKER | concurrency | Unproven atomicity — plan assumed `Pipeline.eval()` queues inside MULTI/EXEC, but the only in-repo precedent runs eval standalone. | spike-5 (Spike Results) | Live `MONITOR` capture on **Redis 8.6.2** and **Valkey 9.1.0** shows byte-identical `MULTI → HSET → EVAL → EXEC`; `pipeline.transaction == True`; `base.py:1352` builds `pipeline()` with default (transactional) args, not `transaction=False`. Atomicity confirmed. |
+| BLOCKER | data-integrity | Undecided hash-write ownership (OQ2) — top-level HSET at step 1 + on_save at step 5 ⇒ a step-5 unique conflict leaves the step-1 HSET persisted (new partial-write corruption). | Technical Approach → Hash-write ownership; Risk 2; Task 1 | Decision (b): exclude Indexed/Unique fields from the top-level `hset_mapping`; each field's EVAL owns its hash write as the last step, after the unique check, so a conflict aborts before any hash write. |
+| BLOCKER | accuracy | Stale precedent citation — cited `BAYESIAN_UPDATE_LUA`/`confidence_field.py:51` with a retracted "4000/4000 audit-verified" claim. | Problem; Freshness Check; Prior Art; Research | Live symbol is `CAPPED_BAYESIAN_UPDATE_LUA` (`:62`, PR #417), invoked standalone at `:467`. Stale claim dropped everywhere. |
+| CONCERN | semantics | External-pipeline uniqueness now surfaces at caller's `execute()`; docstring removal was unconditional. | Technical Approach → External path (OQ3); Documentation | Decision (a): keep eager pre-check for external path only; docstring caveat reworded for internal path, KEPT (accurate) for external path — conditional, not unconditional removal. |
+| CONCERN | correctness | None→value transition: `ARGV[5]` SREM target unspecified; unconditional Lua SREM touches an unintended key on first save. | Technical Approach → None→value transition; Task 1 | Sentinel `"\x00__NONE__"` passed when `old_value is None`; Lua guards `if ARGV[5] ~= sentinel then SREM ... end`, mirroring the existing `old_value is not None` check. |
+| NIT | accuracy | `$IdxF:` occurrence list incomplete (said 18, 25). | Freshness Check; Documentation; Task 1; Verification | Re-grepped: four occurrences at `:18, 25, 28, 110`. All listed and gated by the `grep` verification check. |
+
+All blockers, concerns, and the nit are resolved in this revision. All prior Open Questions
+(OQ1–OQ4) are decided below.
 
 ---
 
-## Open Questions
+## Resolved Questions
 
-1. **Old-set discovery mechanism.** The plan computes Set keys in Python and has the EVAL
-   read the live hash to validate/derive the SREM target (no Lua `clean()`). Is the
-   "EVAL re-reads the hash field, owns the field's hash write, and removes from the
-   hash-derived current Set" design acceptable, or do you prefer an additive per-member
-   reverse-pointer companion hash (`member → current_value_segment`) for O(1) deterministic
-   old-set removal? The former adds no structure; the latter is more explicit but adds an
-   internal companion key.
+All Open Questions from the prior draft are now decided — none remain blocking build.
 
-2. **Hash-write ownership.** `save()` currently HSETs the full field mapping at the top of
-   the transaction (`base.py:1273-1277/1354`). If the EVAL also writes the indexed field's
-   hash value (to keep value+Set atomic and to make a unique conflict abort before any
-   visible write), we have two writers of the same hash field in one transaction. Preferred:
-   (a) let the top-level HSET write the value and the EVAL only move Sets + check
-   uniqueness (simpler, but a unique `error_reply` then leaves the HSET applied — needs the
-   EVAL ordered first and a guard), or (b) exclude indexed fields from the top-level mapping
-   and let each field's EVAL own its hash write? This affects Risk 2's mitigation shape.
-
-3. **External-pipeline uniqueness timing.** For `save(pipeline=...)`, a unique conflict can
-   only surface at the caller's `execute()` (spike-4). Acceptable options: (a) keep the
-   eager pre-check for the external path only (preserves immediate `ModelException`, remains
-   documented best-effort across processes), or (b) document that conflicts now raise at
-   `execute()` time. Which matches the documented batching contract you want to keep?
-
-4. **CONC-2 / CONC-3 tracking.** The No-Gos tag them `[SEPARATE-SLUG #412]` but no separate
-   issues exist yet. Should I file #-issues for CONC-2 and CONC-3 now (so the tags resolve),
-   or leave them noted in this plan only?
+1. **Old-set discovery mechanism (OQ1) — RESOLVED.** Use the live model hash read inside the
+   EVAL as the source of truth; **no** reverse-pointer companion structure. See Technical
+   Approach → Old-set discovery.
+2. **Hash-write ownership (OQ2) — RESOLVED.** Option (b): exclude Indexed/Unique fields from
+   the top-level `hset_mapping`; each field's EVAL owns its hash write as the swap's last
+   step. See Technical Approach → Hash-write ownership and Risk 2.
+3. **External-pipeline uniqueness timing (OQ3) — RESOLVED.** Option (a): keep the eager
+   pre-check for the external pipeline path only; internal path relies solely on the atomic
+   EVAL. Docstring edits are conditional (internal reworded, external caveat kept). See
+   Technical Approach → External path and Documentation.
+4. **CONC-2 / CONC-3 tracking (OQ4) — RESOLVED.** Do not file separate issues as part of this
+   plan; they are noted as out-of-scope in No-Gos only. No `[SEPARATE-SLUG]` obligation
+   remains. The maintainer may open tracking issues later independently.
