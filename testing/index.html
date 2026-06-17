@@ -2233,6 +2233,8 @@
 <li>Switches all Redis operations to DB 15 (or a configured DB) for the test session.</li>
 <li>Runs <code>flushdb()</code> before each test for a clean slate.</li>
 <li>Resets the async Redis connection per test to avoid event-loop conflicts.</li>
+<li>Collapses <code>src.popoto</code> (and all <code>popoto.*</code> submodules) onto the canonical <code>popoto</code> objects in <code>sys.modules</code> so that tests using either <code>import popoto</code> or <code>import src.popoto</code> share the same DB-15 connection (no DB-0 leaks from <code>src/</code>-layout imports).</li>
+<li>Enforces a DB-0 tripwire: aborts the session if the test DB resolves to DB 0, preventing silent writes to production data.</li>
 </ul>
 <p><strong>Configuration priority</strong> (highest to lowest):</p>
 <ol>

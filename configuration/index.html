@@ -2977,7 +2977,7 @@
 <h3 id="default-connection">Default Connection<a class="headerlink" href="#default-connection" title="Permanent link">&para;</a></h3>
 <p>If <code>REDIS_URL</code> is not set, Popoto connects to <code>127.0.0.1:6379</code> using a connection pool:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># This is what Popoto does internally when REDIS_URL is not set</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">pool</span> <span class="o">=</span> <span class="n">redis</span><span class="o">.</span><span class="n">ConnectionPool</span><span class="p">(</span><span class="n">host</span><span class="o">=</span><span class="s2">&quot;127.0.0.1&quot;</span><span class="p">,</span> <span class="n">port</span><span class="o">=</span><span class="mi">6379</span><span class="p">,</span> <span class="n">db</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">pool</span> <span class="o">=</span> <span class="n">redis</span><span class="o">.</span><span class="n">BlockingConnectionPool</span><span class="p">(</span><span class="n">host</span><span class="o">=</span><span class="s2">&quot;127.0.0.1&quot;</span><span class="p">,</span> <span class="n">port</span><span class="o">=</span><span class="mi">6379</span><span class="p">,</span> <span class="n">db</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">POPOTO_REDIS_DB</span> <span class="o">=</span> <span class="n">redis</span><span class="o">.</span><span class="n">Redis</span><span class="p">(</span><span class="n">connection_pool</span><span class="o">=</span><span class="n">pool</span><span class="p">)</span>
 </code></pre></div>
 <p>No configuration is needed for local development with Redis running on the default port.</p>
@@ -3296,6 +3296,16 @@ set the <code>POPOTO_SENTRY_DSN</code> environment variable:</p>
 <td><code>POPOTO_TEST_DB</code></td>
 <td><code>15</code></td>
 <td>Redis DB number used by the pytest plugin for test isolation. Overrides the <code>popoto_test_db</code> ini option. DB 0 is rejected to prevent accidental production data loss.</td>
+</tr>
+<tr>
+<td><code>POPOTO_ASYNC_MAX_CONNECTIONS</code></td>
+<td><code>128</code></td>
+<td>Maximum async Redis connection pool size (BlockingConnectionPool).</td>
+</tr>
+<tr>
+<td><code>POPOTO_SYNC_MAX_CONNECTIONS</code></td>
+<td><code>128</code></td>
+<td>Maximum sync Redis connection pool size (BlockingConnectionPool).</td>
 </tr>
 </tbody>
 </table>
