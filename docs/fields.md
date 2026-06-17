@@ -633,7 +633,7 @@ category = Field(type=str, indexed=True)  # equivalent to IndexedField(type=str)
 ```
 
 See [Indexed Fields](indexed_fields.md) for full details on index key patterns,
-performance characteristics, and the comparison table.
+the atomic save guarantee, operator notes, and the comparison table.
 
 ## UniqueField
 
@@ -662,8 +662,8 @@ except Exception as e:
 `UniqueField` cannot be null and cannot have `unique=False`. It supports the same
 query lookups as `IndexedField`.
 
-See [Indexed Fields](indexed_fields.md) for the uniqueness trade-offs under
-concurrent writes and the full comparison table.
+See [Indexed Fields](indexed_fields.md) for the concurrency guarantee, operator
+notes on the internal bookkeeping field, and the full comparison table.
 
 ## DecayingSortedField
 
