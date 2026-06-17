@@ -53,6 +53,12 @@ from ..redis_db import POPOTO_REDIS_DB, scan_keys
 
 logger = logging.getLogger("POPOTO.IndexedFieldMixin")
 
+# Sentinel used to distinguish "field not in saved_values" from "field was None".
+# This matters for the legacy-old-set hint: when old_value is None (the field
+# was stored as None before), we still want to emit the SREM hint so that legacy
+# records (without a server-authoritative pointer) can be cleaned up correctly.
+_SENTINEL = object()
+
 
 # INDEX_SWAP_LUA — atomic check-and-swap for indexed/unique field secondary index.
 #
@@ -228,8 +234,11 @@ class IndexedFieldMixin:
         # this only when the pointer is absent (i.e., never been written by
         # the new code path).
         saved_values = getattr(model_instance, "_saved_field_values", {})
-        old_value = saved_values.get(field_name)
-        if old_value is not None and old_value != field_value:
+        old_value = saved_values.get(field_name, _SENTINEL)
+        if old_value is not _SENTINEL and old_value != field_value:
+            # Use the saved value (even if it was None) as the legacy SREM hint.
+            # This handles legacy records (no server-authoritative pointer) where
+            # the field was previously stored as None.
             legacy_old_set = DB_key(
                 cls.get_special_use_field_db_key(model_instance, field_name),
                 old_value,
@@ -260,7 +269,7 @@ class IndexedFieldMixin:
             pipeline.eval(
                 INDEX_SWAP_LUA,
                 2,
-                member_key,   # KEYS[1]: the model hash key (same as record redis_key)
+                member_key,  # KEYS[1]: the model hash key (same as record redis_key)
                 new_set_key,  # KEYS[2]: new value Set key
                 field_name,
                 member_key,
@@ -277,7 +286,7 @@ class IndexedFieldMixin:
                 result = POPOTO_REDIS_DB.eval(
                     INDEX_SWAP_LUA,
                     2,
-                    member_key,   # KEYS[1]: the model hash key (same as record redis_key)
+                    member_key,  # KEYS[1]: the model hash key (same as record redis_key)
                     new_set_key,  # KEYS[2]: new value Set key
                     field_name,
                     member_key,
@@ -330,7 +339,9 @@ class IndexedFieldMixin:
 
         if ptr_value:
             # Pointer present: SREM from the set it names
-            index_set_key = ptr_value.decode() if isinstance(ptr_value, bytes) else ptr_value
+            index_set_key = (
+                ptr_value.decode() if isinstance(ptr_value, bytes) else ptr_value
+            )
         else:
             # Legacy record (no pointer): fall back to field_value-derived key
             index_set_key = DB_key(
