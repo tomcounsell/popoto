@@ -222,10 +222,15 @@ stale across processes. Atomicity must move server-side, where Redis serializes 
   partial-save empty-mapping `DataError` guard and the `results[0]` index fix; and (3) **three**
   decode-skip edits in `encoding.py` (`:315-320`, `:327-332`, `:415-417`). Reverting cleanly
   requires undoing all three groups together — the exclusion and the EVAL-owns-the-write are a
-  matched pair (excluding without the EVAL writing would drop the field value entirely). No data
-  migration is required (existing Sets remain valid; `clean_indexes()` repairs any pre-existing
-  corruption), and the on-disk format gains only the additive `\x00idxset` pointer field, but
-  the code surface is wider than a one-method swap.
+  matched pair (excluding without the EVAL writing would drop the field value entirely). **No
+  mandatory data migration:** existing Sets remain valid, and legacy records (no `\x00idxset`
+  pointer) self-heal on their first post-upgrade save via the one-shot `ARGV[6]` legacy-old-set
+  hint (Round-4 BLOCKER — Technical Approach → Legacy-record upgrade); `rebuild_indexes()` is an
+  optional clean cut-over. (Note: `clean_indexes()` is NOT sufficient for the legacy case — it
+  only removes entries that reference *non-existent* instance keys, whereas a stranded legacy
+  membership references a *live* key sitting in a stale value Set; that is precisely why the
+  `ARGV[6]` self-heal, or `rebuild_indexes()`, is needed.) The on-disk format gains only the
+  additive `\x00idxset` pointer field, but the code surface is wider than a one-method swap.
 
 ## Appetite
 
@@ -308,18 +313,32 @@ The pointer value is computed **in Python** (`DB_key(prefix, value).redis_key`, 
 it back verbatim and writes it back verbatim — never reconstructs a key from a value. This
 eliminates the Lua `str()`/`clean()` type-parity hazard from spike-1 entirely.
 
-**Decode-path exclusion (mandatory).** `decode_popoto_model_hashmap` (`encoding.py:271`)
-builds `model_attrs` from **every** field returned by `HGETALL` and passes them to
-`model_class(**model_attrs)`; it also `msgpack.unpackb`s each value. The `\x00idxset` pointer
-fields are plain (non-msgpack) strings and are not model attributes, so both decode branches
-(`fields_only` at `:315-320` and the default at `:327-332`) MUST skip any hash field whose
-name contains the `\x00` NUL byte (or, equivalently, endswith `\x00idxset`). The same skip is
-required wherever else `HGETALL`/`hgetall` results are turned into attributes (e.g.
-`_create_lazy_model`'s `_lazy_fields` build at `:415-417`, reached via the lazy branch at
-`:323-325`; `_saved_field_values` reconstruction at `:343-346` iterates `_meta.fields` only
-and is therefore already safe). This skip is the single
-behavioral coupling the pointer introduces and is covered by the single-process read-back
-parity test (Concern 2).
+**Decode-path exclusion (mandatory; type-correct per branch — Round-4 Concern 1).**
+`decode_popoto_model_hashmap` (`encoding.py:271`) builds `model_attrs` from **every** field
+returned by `HGETALL` and passes them to `model_class(**model_attrs)`; it also `msgpack.unpackb`s
+each value. The `\x00idxset` pointer fields are plain (non-msgpack) strings and are not model
+attributes, so all three reconstruction sites MUST skip them. **Critically, the three sites key
+the hash dict by different types, so the skip predicate must match the dict-key type at each
+site — keying the predicate by the wrong type silently never matches and the pointer leaks into
+`msgpack.unpackb`, a read-path crash on every indexed record:**
+
+| Site | File:line | Dict key type | Correct skip predicate |
+|---|---|---|---|
+| `fields_only` branch | `encoding.py:315-320` | **raw `bytes`** (`key_b`, undecoded) | `if b"\x00" in key_b: continue` (bytes literal) |
+| default branch | `encoding.py:327-332` | **`str`** (`key_b.decode(ENCODING)`) | `if "\x00" in key_b.decode(ENCODING): continue` (str literal) — or filter on `key_b` (bytes) **before** decoding: `if b"\x00" in key_b: continue` |
+| `_create_lazy_model` `_lazy_fields` | `encoding.py:415-417` | **`str`** (`key_b.decode(ENCODING)`) | filter on `key_b` (bytes) before the comprehension stores it: `if b"\x00" not in key_b` |
+
+The earlier draft wrote a single `"\x00"` (str) predicate for all sites; that is **wrong for the
+`fields_only` branch**, which keys by raw `b"..."` bytes — a str `in bytes` membership test is a
+`TypeError`, and even guarded it would never match. **Recommended uniform implementation: test
+the predicate against the raw `key_b` *bytes* (`b"\x00" in key_b`) at every site, before any
+`.decode()` / `msgpack.unpackb`**, since `key_b` is bytes at all three sites (only its post-skip
+*use* differs). This is type-correct everywhere and keeps the skip a pure pre-filter.
+
+`_saved_field_values` reconstruction at `:343-346` iterates `_meta.fields` only and is therefore
+already safe (the pointer is not a declared field). This skip is the single behavioral coupling
+the pointer introduces and is covered by the single-process read-back parity test plus an
+explicit **`fields_only`-path hydration test** (Concern 2 / Round-4 Concern 1).
 
 **Hash-write / hash-read site audit (Concern 3 — broader than the two full-save HSETs).** The
 `\x00idxset` pointer is a schema addition, so EVERY place that writes the model hash, reads it
@@ -332,9 +351,9 @@ back into attributes, or rebuilds indexes from it was audited (against main @ 61
 | **Partial-save HSET (external)** | `base.py:1135-1140` | **Apply exclusion to partial `hset_mapping`; guard empty-mapping DataError (Round-3 BLOCKER).** |
 | **Partial-save HSET (internal)** | `base.py:1135-1136, :1198` | **Same exclusion + empty-mapping guard; fix `results[0]` indexing when HSET skipped.** |
 | `async_save` | `base.py:2290` | Delegates to `save()`; no separate fix. |
-| Decode → attrs (full) | `encoding.py:327-332` | Skip `\x00`-containing fields. |
-| Decode → attrs (fields_only) | `encoding.py:315-320` | Skip `\x00`-containing fields. |
-| Decode → lazy | `encoding.py:415-417` | Skip `\x00`-containing fields. |
+| Decode → attrs (full) | `encoding.py:327-332` | Skip `b"\x00"`-containing fields (test raw `key_b` bytes before `.decode()`). |
+| Decode → attrs (fields_only) | `encoding.py:315-320` | Skip `b"\x00"`-containing fields — **dict is keyed by raw `bytes` here, so the predicate MUST be a bytes test** (`b"\x00" in key_b`), not a str test (Round-4 Concern 1). |
+| Decode → lazy | `encoding.py:415-417` | Skip `b"\x00"`-containing fields (test raw `key_b` bytes). |
 | `rebuild_indexes` | `base.py:2707` | DELs all index Sets, then re-runs `on_save` per field. Decodes via `decode_popoto_model_hashmap` (`:2805`, already skips the pointer per the decode fix). The EVAL still HGETs the (now-stale) live pointer, SREMs from the just-deleted set (harmless no-op), SADDs, and rewrites the pointer — so **rebuild is convergent even with a stale pointer** (NIT 5b). No change needed beyond the decode skip. |
 | `check_indexes` | `base.py:2964` | Read-only; scans the five index *Set* types and EXISTS-checks referenced instance keys. The `\x00idxset` pointer lives **inside the model hash**, not as a separate index Set, so it is never scanned and never counted as an orphan. No change needed. |
 | `clean_indexes` | `base.py:3147` | Repairs orphaned Set entries / partial-write hashes; same structure as `check_indexes` (scans Sets, not hash fields). The pointer is not a Set member, so it is untouched. No change needed; existing remediation stays correct. |
@@ -356,11 +375,17 @@ Concretely the script receives:
 - `ARGV[4]` = `unique` flag ("1"/"0")
 - `ARGV[5]` = the pointer hash field name, `{field_name}\x00idxset` (passed explicitly so the
   Python side owns the naming convention; the EVAL treats it as an opaque field name)
+- `ARGV[6]` = **legacy-old-set hint** (the pre-cleaned old value-Set key derived from the
+  client `_saved_field_values` snapshot, or `""` if none). Used **only on the pointer-absent
+  branch** to clean up memberships written by the pre-fix code, which carry no `\x00idxset`
+  pointer (Round-4 BLOCKER — legacy-record upgrade race). Ignored whenever the
+  server-authoritative pointer is present. See "Legacy-record upgrade" below.
 
 Script logic (pseudocode):
 ```lua
 local model_key, new_set = KEYS[1], KEYS[2]
-local field, member, new_bytes, is_unique, ptr_field = ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5]
+local field, member, new_bytes, is_unique, ptr_field, legacy_old_set =
+  ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6]
 local old_set = redis.call('HGET', model_key, ptr_field)   -- server-authoritative; may be false/nil
 
 -- idempotent re-save: same set already recorded AND member already present -> still rewrite
@@ -378,8 +403,16 @@ if is_unique == '1' then
   end
 end
 
-if old_set and old_set ~= false and old_set ~= '' and old_set ~= new_set then
-  redis.call('SREM', old_set, member)        -- remove from the EXACT set we last put it in
+if old_set and old_set ~= false and old_set ~= '' then
+  -- server-authoritative pointer present: remove from the EXACT set we last put it in
+  if old_set ~= new_set then
+    redis.call('SREM', old_set, member)
+  end
+elseif legacy_old_set ~= '' and legacy_old_set ~= new_set then
+  -- pointer ABSENT (record predates the fix): use the client snapshot hint to clean up the
+  -- legacy membership so it is not stranded (Round-4 BLOCKER). One-shot: after this save the
+  -- pointer below is written, so subsequent saves take the server-authoritative branch.
+  redis.call('SREM', legacy_old_set, member)
 end
 redis.call('SADD', new_set, member)
 redis.call('HSET', model_key, ptr_field, new_set)   -- advance the server-authoritative pointer
@@ -390,9 +423,48 @@ return 1
 The `unique` occupancy scan excludes self, so re-saving the same record is never a
 self-collision (mirrors the existing `:156-161` self-exclusion). The unique check runs
 **before** any SREM/SADD/HSET, so a conflict aborts via `error_reply` with nothing written
-(see Risk 2). On a genuine first save the pointer is absent (`HGET` → `false`), so no SREM is
-attempted — this is the type-safe replacement for the old `old_value is not None` Python
-guard (Concern 5), needing no sentinel string.
+(see Risk 2). On a genuine first save the pointer is absent (`HGET` → `false`) **and** there
+is no legacy membership (`ARGV[6]` is `""`), so no SREM is attempted — this is the type-safe
+replacement for the old `old_value is not None` Python guard (Concern 5), needing no sentinel
+string.
+
+**Legacy-record upgrade (Round-4 BLOCKER — resolved).** Records saved by the **pre-fix code**
+carry an existing value-Set membership (written by the old `SREM`-snapshot + `SADD` path,
+`indexed_field_mixin.py:136-147`) but have **no `\x00idxset` pointer**. The first post-upgrade
+`save()` of such a record to a *new* value would, with the pointer-only design, do
+`HGET pointer → false`, skip the SREM, and **strand the legacy membership in the old value
+Set** — reproducing the exact 26–29% dual-membership corruption this plan exists to eliminate,
+the moment a deployment upgrades over a populated database.
+
+**Decision: a migration-only legacy-old-set hint (`ARGV[6]`), applied automatically on the
+pointer-absent branch — no operator action required.** The Python `on_save` already holds the
+authoritative snapshot of the record's *previous committed value* in `_saved_field_values`
+(`encoding.py:343-346` populates it at hydration; the legacy SREM at
+`indexed_field_mixin.py:137-138` reads exactly this). On every save, Python computes the
+pre-cleaned old value-Set key from `_saved_field_values[field_name]` (when present and changed,
+exactly as the legacy code did via `DB_key(get_special_use_field_db_key(...), old_value)`) and
+passes it as `ARGV[6]`; if there is no prior value it passes `""`. The EVAL uses `ARGV[6]`
+**only when the server-authoritative pointer is absent** — i.e. exactly the legacy / true-first-
+save case. The branch is naturally one-shot: the same EVAL writes the `\x00idxset` pointer, so
+every subsequent save of that record takes the server-authoritative branch and ignores
+`ARGV[6]`. For a genuine first save `_saved_field_values` has no entry → `ARGV[6] == ""` → no
+SREM, identical to the clean-DB behavior above. For a true post-fix record the pointer is always
+present, so `ARGV[6]` is never consulted and the convergence invariant is unaffected.
+
+Why this hint is **safe** here even though a client-computed SREM hint was rejected as the core
+design (round-2 blocker): the rejected hint was proposed as the *steady-state* removal
+mechanism, where it cannot converge across an *older*-set stranding by an interleaved writer.
+Here `ARGV[6]` is consulted **only on the pointer-absent branch**, which by construction is the
+very first save under the new code for that record — there has been no prior new-code writer to
+strand anything in an older set, so there is no convergence gap to reopen. After this single
+save the record is fully under the server-authoritative pointer regime. The two mechanisms do
+not interact.
+
+Operators who prefer a clean cut-over may instead run `Model.rebuild_indexes()` once after
+deploying (it DELs all index Sets and reconstructs from hash data, see the audit table), which
+makes `ARGV[6]` moot; but it is **not required** — the `ARGV[6]` path makes the upgrade
+self-healing on first write. This is documented as an operator note (see Documentation), not a
+mandatory prerequisite.
 
 **Single-process read-back parity (Concern 2 — resolved).** Because indexed/unique fields are
 excluded from the top-level full-mapping HSET (see Hash-write ownership), read-back depends on
@@ -407,8 +479,12 @@ no-op-re-save cases.
 EVAL commits, the record is a member of exactly the one value-Set named by its
 `{field}\x00idxset` pointer, and of no other value-Set for that field; and the pointer equals
 the value-Set key derived from the bytes just written to the hash field.* This holds per-EVAL
+for records first saved under the fix; for a **legacy record** (no pointer, pre-fix membership)
+the invariant is established on its first post-upgrade save, after the one-shot `ARGV[6]` cleanup
+SREMs the stranded legacy membership (Round-4 BLOCKER). It holds per-EVAL
 (not merely in aggregate over many rounds) because the EVAL is serialized by Redis and, within
-one EVAL, the SREM removes from the previously-recorded set, the SADD adds to the new set, and
+one EVAL, the SREM removes from the previously-recorded set (or, on the legacy first save, from
+the `ARGV[6]`-named set), the SADD adds to the new set, and
 the pointer+value advance together. Under any interleaving of N concurrent writers, the
 last-to-EXEC writer's post-state satisfies the invariant; every earlier writer's post-state
 also satisfied it at its own EXEC. The ≥200-round test is the *regression gate* for this
@@ -501,11 +577,14 @@ member from exactly that Set — unconditionally — then advances the pointer. 
 Approach → Old-set discovery for the full rationale and script. This *is* the reverse-lookup
 spike-1 found safest; it is stored inside the model hash (same key, one extra field), so it
 adds no separate top-level structure to keep consistent, and it is read+written inside the
-same atomic EVAL as the value and Set move. A purely client-computed SREM-target hint
-(`ARGV[5]`-as-target) was **rejected** as the core blocker of the prior draft: it can only
-name the current writer's old value, so a membership stranded in an *older* value-Set by an
-earlier interleaved writer is never named by any future hint and persists forever (re-opening
-Race 1). The server-authoritative pointer closes that gap because removal always targets the
+same atomic EVAL as the value and Set move. A purely client-computed SREM-target hint **used as
+the steady-state removal mechanism** was **rejected** as the core blocker of the prior draft: it
+can only name the current writer's old value, so a membership stranded in an *older* value-Set by
+an earlier interleaved writer is never named by any future hint and persists forever (re-opening
+Race 1). (NB: this rejected steady-state hint is distinct from the `ARGV[6]` legacy-old-set hint
+adopted for the one-shot upgrade path — the latter is consulted *only* on the pointer-absent
+branch, where no prior new-code writer exists to strand an older set, so it carries no
+convergence gap. See "Legacy-record upgrade".) The server-authoritative pointer closes that gap because removal always targets the
 set named by the record's own last-committed pointer. The pointer string is computed in
 Python (correct `clean(str(value))` for all types) and only ever read/written verbatim in
 Lua — no Lua-side `clean()`/`str()` (type-parity guarantee preserved).
@@ -555,9 +634,13 @@ corrected in passing.
 - `field_value=None`: must map to the `None` value Set (Python `str(None)`→`"None"`,
   cleaned) — the pointer is set to that Set's key like any other value, and the value bytes
   are msgpack `None` (spike-3). On a genuine first save the `\x00idxset` pointer is absent
-  (`HGET`→`false`), so no SREM is attempted (the type-safe replacement for the old
-  `old_value is not None` guard). Add a test: first save (no pointer) → value `None` → back to
-  a value, asserting correct Set membership and pointer at each step.
+  (`HGET`→`false`) **and** `_saved_field_values` has no entry so `ARGV[6]==""`, so no SREM is
+  attempted (the type-safe replacement for the old `old_value is not None` guard). Add a test:
+  first save (no pointer, no legacy hint) → value `None` → back to a value, asserting correct
+  Set membership and pointer at each step.
+- **Legacy record (pointer absent, legacy hint present):** the EVAL's pointer-absent branch
+  consults `ARGV[6]` and SREMs the stranded legacy membership (Round-4 BLOCKER); covered by the
+  legacy-record upgrade test in Task 2.
 - Re-saving the same instance with the same value must be a no-op (idempotent), not a
   self-collision for unique fields (existing self-exclusion logic at `:156-161`), and must
   still write the field's value bytes to the hash (read-back parity).
@@ -636,9 +719,12 @@ earlier in the same EXEC. Two distinct sub-hazards:
      rollback. To bound the blast radius of a hypothetical 2b, the SADD+pointer-HSET+value-HSET
      are ordered so the member is added to the new Set and the pointer advanced **immediately
      before** the value HSET, minimizing any window; and a regression test deliberately injects
-     a forced non-unique Lua error after a partial mutation (via a test-only script variant) to
-     assert that no half-state is queryable through `filter()` — i.e. either the whole swap
-     applied or, on the production script, the unique-conflict path left nothing.
+     a forced non-unique Lua error after a partial mutation **using a separate test-only script
+     variant** (NIT 5a — the production `INDEX_SWAP_LUA` has NO such error branch; injecting it
+     into the production script would be a dead/unreachable path, so the test ships its own
+     `_INDEX_SWAP_LUA_FORCE_ERROR` variant in the test module rather than gating a branch in the
+     shipped script) to assert that no half-state is queryable through `filter()` — i.e. either
+     the whole swap applied or, on the production script, the unique-conflict path left nothing.
 On caught `ResponseError`, the save raises `ModelException` and the per-field state stays
 consistent. Tests: (i) after a rejected unique save, neither the hash field, the pointer, nor
 the Set reflects the rejected value; (ii) the forced-mid-error variant leaves no
@@ -651,10 +737,31 @@ no Redis modules.
 Run the new regression test against a Valkey instance before merge (acceptance criterion).
 
 ### Risk 4: Performance regression at ~20k records/model
-**Impact:** Extra EVAL round-trip per indexed field per save.
-**Mitigation:** Swap is O(1) per field (HGET + SREM + SADD), comparable to today's
-SREM+SADD plus the eliminated SMEMBERS round-trip; for unique fields it may even reduce
-round-trips. Include rough before/after `save()` timing at 20k in the PR.
+**Impact:** The EVAL is one queued command per indexed field per save (no extra network
+round-trip — it rides inside the existing pipeline EXEC), but it adds **server-side work** the
+old path did not do. Full per-field op accounting (Round-4 Concern 2):
+
+| | Old path (per indexed field) | New EVAL (per indexed field) |
+|---|---|---|
+| Value write | (folded into the one top-level HSET mapping) | **+1 HSET** (field value, now written by the EVAL) |
+| Pointer write | — | **+1 HSET** (`\x00idxset` advance) |
+| Old-set removal | SREM (conditional) | HGET (pointer) + SREM (conditional) |
+| New-set add | SADD | SADD |
+| Unique check | SMEMBERS (separate round-trip, **eliminated** on internal path) | SMEMBERS (inside EVAL, no extra round-trip) |
+
+Net per indexed field: **+2 HSET and +1 HGET of server-side work**, offset by removing one
+client→server SMEMBERS *round-trip* for unique fields. The value HSET is not truly "extra" work
+(the old path also wrote that field, just batched into the mapping HSET) — the genuinely new
+cost is the **+1 pointer HSET and +1 pointer HGET per indexed field per save**. All are O(1)
+small-string ops on the same hash key already being written, so the expected wall-clock impact
+is small, but it is non-zero and grows with the number of indexed fields per model.
+**Mitigation:** Swap is O(1) per field. **This is a GATE, not an FYI:** measure mean `save()`
+latency over a model carrying ≥1 indexed + ≥1 unique field at ~20k pre-existing records,
+before (main @ baseline) and after, on the same host/server, ≥3 runs each. **Tolerance:
+post-fix mean `save()` latency must be within +15% of baseline** (accommodates the +2 HSET/+1
+HGET while catching any accidental O(n) regression such as a per-save full-Set scan). If the
+gate is exceeded, the PR must not merge until the regression is explained or removed. Record the
+before/after numbers, host, server (Redis + Valkey), and run count in the PR.
 
 ## Race Conditions
 
@@ -729,6 +836,20 @@ surface.
   and `UniqueField` enforcement are now atomic under concurrent cross-process writes
   (remove/soften any "best-effort" implication).
 
+### Operator-Facing / Observability Note (Round-4 Concern 3)
+- [ ] Document, in `docs/indexed_fields.md` (and the debugging notes in `CLAUDE.md`'s
+  Redis-CLI section if appropriate), that each model hash for a model with indexed/unique
+  fields now carries one **additional internal hash field per indexed field**, named
+  `{field_name}\x00idxset` (a NUL byte, U+0000, followed by `idxset`). It holds the
+  pre-cleaned old value-Set key and is internal index bookkeeping — **it WILL appear in
+  `redis-cli HGETALL <Model:key>` output** (rendered as `"field_name\x00idxset"` or
+  `field_name\x00idxset` depending on CLI escaping) alongside the user fields. Operators must
+  know: (a) it is expected, not corruption; (b) it must NOT be edited or deleted manually
+  (doing so reopens the stranding race until the next save rewrites it); (c) it is invisible to
+  the Python model API (`filter()`, attribute access) by design. State that its presence is the
+  one observable on-disk change introduced by this fix; the `$IndexF:`/`$UniquF:` Set schema is
+  otherwise unchanged.
+
 ### External Documentation Site
 - [ ] Verify mkdocs build passes after edits.
 
@@ -771,6 +892,15 @@ surface.
   forced-error test variant leaves either a complete swap or no change.
 - [ ] **Pointer field is invisible to the model API:** `\x00idxset` fields never decode into
   model attributes and never appear in `filter()` results.
+- [ ] **`fields_only` decode path is crash-free (Round-4 Concern 1):** hydrating an indexed
+  record via the `fields_only=True` branch (e.g. `Query.values(...)`) does not raise, and the
+  `\x00idxset` pointer is absent from the projected dict — proving the skip predicate is
+  bytes-typed in the bytes-keyed branch.
+- [ ] **Legacy-record upgrade leaves no stranded membership (Round-4 BLOCKER):** a record seeded
+  in the pre-fix shape (value-Set membership present, NO `\x00idxset` pointer) that is then
+  `save()`d to a new value is SREM'd from the legacy Set, present in exactly the new Set, gains a
+  `\x00idxset` pointer, and shows 0 dual-membership; same for a `UniqueField`. (Operators may
+  alternatively run `rebuild_indexes()` once — not required.)
 - [ ] **Partial-save (`update_fields`) parity & safety (Round-3 BLOCKER):** an indexed/unique
   field passed in `update_fields` is written exactly once (no double-write), `save(update_fields=
   [<only indexed/unique>])` raises no `DataError`, and a partial-save unique conflict raises
@@ -781,7 +911,10 @@ surface.
   for single-process users (`test_atomic_save.py` green = #147 preserved). The only new hash
   field is the internal `\x00idxset` pointer, excluded from decode.
 - [ ] Verified green against both Redis and Valkey (no Redis modules used).
-- [ ] No measurable `save()` regression at ~20k records/model (rough before/after timing in PR).
+- [ ] **`save()` perf GATE at ~20k records/model (Round-4 Concern 2):** post-fix mean `save()`
+  latency is within **+15%** of the main baseline on the same host/server, ≥3 runs each, for a
+  model with ≥1 indexed + ≥1 unique field. Before/after numbers (Redis + Valkey), host, and run
+  count recorded in the PR. Exceeding the tolerance blocks merge until explained or fixed.
 - [ ] Tests pass (`/do-test`)
 - [ ] Documentation updated (`/do-docs`)
 
@@ -826,10 +959,18 @@ surface.
 - Add `INDEX_SWAP_LUA` (KEYS/ARGV contract per Technical Approach → Old-set discovery). The
   script: reads the server-authoritative `{field}\x00idxset` pointer (`ARGV[5]` = pointer
   field name); for unique, runs the self-excluding occupancy check **first** (abort before any
-  mutation); SREMs the member from the pointer-named set when non-empty and changed; SADDs the
+  mutation); when the pointer is present SREMs the member from the pointer-named set (when
+  changed); **when the pointer is ABSENT, SREMs from the `ARGV[6]` legacy-old-set hint if it is
+  non-empty and differs from the new set (Round-4 BLOCKER — legacy-record upgrade)**; SADDs the
   new set; HSETs the pointer to the new set key; HSETs the field value bytes (`ARGV[3]`) on
   **every** non-error path (including the idempotent no-op branch — Concern 2). No
   `str()`/`clean()` in Lua.
+- **Wire `ARGV[6]` (legacy-old-set hint) in `on_save`:** compute the pre-cleaned old value-Set
+  key from `_saved_field_values[field_name]` (when present and changed, via
+  `DB_key(get_special_use_field_db_key(...), old_value).redis_key`, exactly as the legacy SREM at
+  `indexed_field_mixin.py:137-143` did) and pass it as `ARGV[6]`; pass `""` when there is no
+  prior value. This makes the first post-upgrade save self-heal the stranded legacy membership
+  with no operator action (Round-4 BLOCKER).
 - **Exclude Indexed/Unique fields from the top-level `hset_mapping`** (`base.py:1273-1277` external, `:1354` internal) so the EVAL is the SOLE writer of each indexed field's hash value (OQ2 decision (b); Concern 1 — write-ownership, not ordering). Keep `self._db_content` reflecting the full intended mapping.
 - **Apply the SAME exclusion to the partial-save path** (`save(update_fields=...)`): filter the partial `hset_mapping` dict comprehension (`base.py:1135-1136`) to drop IndexedFieldMixin-subclass fields, on BOTH the external (`:1140`) and internal (`:1198`) branches (Round-3 BLOCKER). The listed-field `on_save` loop (`:1164` / `:1224`) is unchanged and queues the EVAL for those fields. `async_save` (`:2290`) delegates to `save()` and needs no separate change.
 - **Guard the empty `hset_mapping` (DataError)** in the partial-save path: when `update_fields` contains only indexed/unique fields the filtered mapping is `{}`; skip the `pipeline.hset(..., mapping={})` call (`:1140` / `:1198`) entirely, and on the internal path adjust the `db_response = results[0]` bookkeeping (`:1242`) so a skipped HSET does not misalign the result index or return a falsy db_response.
@@ -853,7 +994,9 @@ surface.
 - Add single-process tests: nullable field through `None` (first-save = no pointer = no SREM), idempotent re-save, rejected-unique leaves neither hash, pointer, nor Set changed (Risk 2a).
 - **Hash-content parity test (Concern 2):** after `save()`, `HGET model_key field` equals the legacy full-mapping bytes for indexed/unique/no-op/`None` cases.
 - **Pointer-invisibility test:** `\x00idxset` fields never decode into attributes and never appear in `filter()` results.
-- **Forced mid-EVAL error test (Risk 2b):** a test-only script variant that errors after a partial mutation leaves no `filter()`-visible half-state.
+- **`fields_only`-path hydration test (Round-4 Concern 1):** hydrate an indexed record via the `fields_only=True` decode branch (e.g. `Query.values(...)`) and assert it does NOT crash on the pointer field and the pointer is absent from the projected dict — proving the bytes-keyed skip predicate is type-correct in that branch (a str predicate would `TypeError` / silently leak the pointer into `msgpack.unpackb`).
+- **Legacy-record upgrade test (Round-4 BLOCKER):** seed a record in the **pre-fix on-disk shape** — value-Set membership present, **no `\x00idxset` pointer** (write the hash + SADD the legacy value Set directly, or capture state from the pre-fix code path), hydrate it so `_saved_field_values` reflects the legacy value, then `save()` it to a NEW value. Assert: (a) the legacy membership is SREM'd (record no longer in the old value Set), (b) the record is in exactly the new value Set, (c) the `\x00idxset` pointer is now written, (d) 0 dual-membership. Repeat for a `UniqueField`. This is the regression gate that the upgrade-over-populated-DB case does not strand legacy memberships.
+- **Forced mid-EVAL error test (Risk 2b / NIT 5a):** a **separate test-only** `INDEX_SWAP_LUA` variant (defined in the test module, NOT a branch in the shipped script) that errors after a partial mutation leaves no `filter()`-visible half-state.
 - **Partial-save (`update_fields`) parity + conflict tests (Round-3 BLOCKER):**
   (a) `save(update_fields=[<indexed field>])` writes the field value exactly once and moves the index correctly — `HGET` parity with the legacy path, no double-write;
   (b) `save(update_fields=[<only an indexed field>])` and the unique-only variant do NOT raise `redis.DataError` (empty-mapping guard) and still index/value-write via the EVAL;
@@ -897,6 +1040,8 @@ surface.
 | No $IdxF leftover in code/docstrings | `grep -rn 'IdxF' src/popoto/fields/indexed_field_mixin.py` | exit code 1 |
 | Pointer field excluded from decode | `.venv/bin/pytest tests/test_concurrent_index_integrity.py -q -k "parity or invisible"` | exit code 0 |
 | Partial-save (`update_fields`) safety | `.venv/bin/pytest tests/test_concurrent_index_integrity.py -q -k "update_fields or partial"` | exit code 0 |
+| Legacy-record upgrade (no stranded membership) | `.venv/bin/pytest tests/test_concurrent_index_integrity.py -q -k "legacy"` | exit code 0 |
+| `fields_only` decode path crash-free | `.venv/bin/pytest tests/test_concurrent_index_integrity.py -q -k "fields_only or values"` | exit code 0 |
 
 ## Critique Results
 
@@ -913,7 +1058,7 @@ surface.
 
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
-| BLOCKER | concurrency | Old-set discovery does not converge: a client-computed `ARGV[5]` SREM target only names the current writer's old value, so a membership stranded in an OLDER value-Set is never named by any future writer and persists forever — re-introducing Race 1. | Technical Approach → Old-set discovery; spike-1; Race 1; Race 3; Architectural Impact | Replaced the client-computed hint with a **server-authoritative `{field}\x00idxset` pointer** written inside the EVAL, holding the pre-cleaned old-set key. Each writer SREMs from exactly the set its own last-committed pointer names — unconditionally — closing the convergence gap. Per-EVAL deterministic invariant stated. |
+| BLOCKER | concurrency | Old-set discovery does not converge: a client-computed SREM-target hint (then proposed as the steady-state removal `ARGV`; the `ARGV[5]` slot in the round-2 draft, now reassigned to the pointer field name) only names the current writer's old value, so a membership stranded in an OLDER value-Set is never named by any future writer and persists forever — re-introducing Race 1. | Technical Approach → Old-set discovery; spike-1; Race 1; Race 3; Architectural Impact | Replaced the client-computed hint with a **server-authoritative `{field}\x00idxset` pointer** written inside the EVAL, holding the pre-cleaned old-set key. Each writer SREMs from exactly the set its own last-committed pointer names — unconditionally — closing the convergence gap. Per-EVAL deterministic invariant stated. |
 | CONCERN | correctness | OQ2 rejection of alt (a) was unsound ("full-mapping HSET is structurally first and immovable" contradicts the adopted EVAL-first ordering). | Technical Approach → Hash-write ownership; spike-4 impact | Re-argued on **write-ownership**, not ordering: the EVAL must be the sole writer of each indexed field (value+index in one atomic step), so leaving the field in the top-level HSET means two writers to one hash field; the unique check then gates only one of them. Holds regardless of queue order. |
 | CONCERN | correctness | Read-back parity: excluding indexed fields from the wire HSET makes read-back depend on every EVAL writing them; the no-op branch could leave a field unwritten. | Technical Approach → Single-process read-back parity; Lua sketch; Success Criteria; Task 2 | EVAL writes `HSET model_key field new_bytes` on **every** non-error path, including the idempotent no-op branch. New hash-content parity success criterion + test. |
 | CONCERN | correctness | Mid-EXEC non-unique Lua error can commit a hash missing indexed values; `filter()` never re-verifies ⇒ invisible records. | Risk 2 (2a/2b split); Success Criteria; Task 2 | Unique check is first (aborts before any mutation); EVAL is the sole writer with no separate top-level HSET to strand; forced-mid-error test asserts no `filter()`-visible half-state. |
@@ -931,7 +1076,18 @@ surface.
 | CONCERN | accuracy | Appetite/reversibility claims are now inaccurate. | Appetite → Scope note; Architectural Impact → Reversibility | Reversibility revised down to "moderate" (edit spans 4 HSET sites + 3 decode sites + the EVAL, not one method); Appetite kept Medium with an explicit scope note. |
 | NIT | accuracy | Note that `rebuild_indexes` is already convergent with a stale pointer. | Technical Approach → Hash-write site audit table (`rebuild_indexes` row); NIT 5b | Documented: rebuild DELs all Sets then re-runs `on_save`; the EVAL SREMs from the just-deleted (stale-pointer-named) set harmlessly and rewrites the pointer. |
 
-All round-1, round-2, and round-3 blockers, concerns, and nits are resolved in this revision.
+### Round 4 (fourth revision pass)
+
+| Severity | Critic | Finding | Addressed By | Implementation Note |
+|----------|--------|---------|--------------|---------------------|
+| BLOCKER | data-integrity | Legacy-record upgrade race: records saved BEFORE the fix have no `\x00idxset` pointer but DO carry an existing value-Set membership. The first post-upgrade save to a new value does `HGET pointer → false`, skips the SREM, and strands the legacy membership — reproducing the 26–29% dual-membership corruption. No success criterion exercised pre-existing legacy state. | Technical Approach → Old-set discovery (Legacy-record upgrade subsection) + Lua sketch (`ARGV[6]` branch); Task 1 (`ARGV[6]` wiring); Task 2 (legacy-record upgrade test); Empty-Input handling; Success Criteria | Adopted the **migration-only `ARGV[6]` legacy-old-set hint** (computed from `_saved_field_values`), consulted **only on the pointer-absent branch** so it cleans up the legacy membership on the first post-upgrade save with **no operator action**. One-shot (the same EVAL writes the pointer; subsequent saves are server-authoritative). `rebuild_indexes()` documented as an optional clean-cut alternative. New legacy-state regression test + success criterion added. |
+| CONCERN | correctness | Decode-skip predicate is type-wrong — the `fields_only` branch keys by raw bytes (`b"\x00"`) while the rest keys by str (`"\x00"`); a str predicate there is a read-path crash on every indexed record. | Technical Approach → Decode-path exclusion (per-branch table); Hash-write site audit (decode rows); Task 2 (`fields_only` hydration test); Success Criteria | Predicate specified per dict-key type; recommended uniform implementation tests the **raw `key_b` bytes** (`b"\x00" in key_b`) at all three sites before any `.decode()`/`unpackb`. New `fields_only`-path hydration test + success criterion. |
+| CONCERN | perf | Risk 4 omitted the +2 HSET per indexed field per save (pointer + value write); the 20k timing was a rough FYI, not a gate. | Risk 4 (op-accounting table + GATE); Success Criteria (perf GATE) | Full per-field op accounting added (+2 HSET, +1 HGET; one SMEMBERS round-trip removed). The 20k timing is now a **GATE: post-fix mean `save()` ≤ +15% of baseline**, ≥3 runs, Redis + Valkey; exceeding it blocks merge. |
+| CONCERN | observability | The `\x00idxset` field is now visible in `redis-cli HGETALL` output — an operator-facing change. | Documentation → Operator-Facing / Observability Note | Documented that the pointer field appears in `HGETALL`, is expected (not corruption), must not be hand-edited/deleted, and is invisible to the Python API; called out as the one observable on-disk change. |
+| NIT | clarity | Unreachable test-only Lua error path. | Risk 2 (point 3); Task 2 (forced-error test) | Clarified: the forced-error branch is a **separate test-only `_INDEX_SWAP_LUA_FORCE_ERROR` variant** in the test module — the shipped script has no such branch (would be dead code). |
+| NIT | accuracy | `ARGV[5]` label collision (the rejected client-hint text referenced `ARGV[5]`, now the pointer field name). | Technical Approach → Old-set discovery (rejected-alternative note); Round-2 critique row | Disambiguated: the rejected steady-state hint is distinct from the adopted one-shot `ARGV[6]` legacy hint; the round-2 row notes the `ARGV[5]` slot was reassigned to the pointer field name. |
+
+All round-1, round-2, round-3, and round-4 blockers, concerns, and nits are resolved in this revision.
 All prior Open Questions (OQ1–OQ4) are decided below.
 
 ---
