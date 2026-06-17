@@ -878,10 +878,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#uniqueness-trade-offs" class="md-nav__link">
+  <a href="#concurrency-guarantee" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Uniqueness Trade-offs
+        Concurrency Guarantee
       
     </span>
   </a>
@@ -921,6 +921,17 @@
     <span class="md-ellipsis">
       
         Save Behavior
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#operator-note" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Operator Note
       
     </span>
   </a>
@@ -2439,10 +2450,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#uniqueness-trade-offs" class="md-nav__link">
+  <a href="#concurrency-guarantee" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Uniqueness Trade-offs
+        Concurrency Guarantee
       
     </span>
   </a>
@@ -2482,6 +2493,17 @@
     <span class="md-ellipsis">
       
         Save Behavior
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#operator-note" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Operator Note
       
     </span>
   </a>
@@ -2685,30 +2707,58 @@ per-value uniqueness constraint on top of the secondary index.</p>
 <li>Setting <code>unique=False</code> raises <code>ModelException</code></li>
 <li>Setting <code>null=True</code> raises <code>ModelException</code></li>
 </ul>
-<h3 id="uniqueness-trade-offs">Uniqueness Trade-offs<a class="headerlink" href="#uniqueness-trade-offs" title="Permanent link">&para;</a></h3>
-<p>The uniqueness check reads the index Set before writing. Under concurrent writes,
-two processes could both read an empty Set and both proceed to write, resulting in a
-duplicate. This is the same best-effort trade-off as <code>UniqueKeyField</code>.</p>
-<p>For applications requiring strict uniqueness guarantees under high concurrency,
-implement application-level locking or use Redis transactions.</p>
+<h3 id="concurrency-guarantee">Concurrency Guarantee<a class="headerlink" href="#concurrency-guarantee" title="Permanent link">&para;</a></h3>
+<p><code>UniqueField</code> enforces uniqueness inside an atomic server-side Lua script
+(<code>INDEX_SWAP_LUA</code>). Under concurrent cross-process writes, the script runs as a
+single Redis command: it reads the current index pointer, performs the uniqueness
+check, and moves the record to the new Set — all without a race window.</p>
+<p>When a caller provides an external Redis pipeline, a best-effort SMEMBERS pre-check
+is made before queuing the EVAL. The authoritative guarantee is still enforced at
+<code>pipeline.execute()</code> time when the Lua script runs on the server; the pre-check only
+surfaces conflicts earlier for the common case.</p>
 <h2 id="how-it-works">How It Works<a class="headerlink" href="#how-it-works" title="Permanent link">&para;</a></h2>
 <h3 id="index-key-pattern">Index Key Pattern<a class="headerlink" href="#index-key-pattern" title="Permanent link">&para;</a></h3>
 <p>Indexed fields maintain Redis Sets following this pattern:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>$IdxF:ModelName:field_name:value -&gt; Set of redis_keys
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>$IndexF:ModelName:field_name:value -&gt; Set of redis_keys
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>$UniquF:ModelName:field_name:value -&gt; Set of redis_keys (UniqueField)
 </code></pre></div>
 <p>For example, a <code>User</code> model with <code>status = IndexedField(type=str)</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>$IdxF:User:status:active    -&gt; {User:abc123, User:def456}
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>$IdxF:User:status:inactive  -&gt; {User:ghi789}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>$IndexF:User:status:active    -&gt; {User:abc123, User:def456}
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>$IndexF:User:status:inactive  -&gt; {User:ghi789}
 </code></pre></div>
-<p>This mirrors the <code>$KeyF</code> pattern used by KeyField but uses the <code>$IdxF</code> prefix.</p>
+<p>This mirrors the <code>$KeyF</code> pattern used by KeyField.</p>
 <h3 id="save-behavior">Save Behavior<a class="headerlink" href="#save-behavior" title="Permanent link">&para;</a></h3>
-<p>When a model instance is saved:</p>
+<p>When a model instance is saved, an atomic server-side Lua script (<code>INDEX_SWAP_LUA</code>)
+handles the index update in a single Redis command:</p>
 <ol>
-<li>If the indexed value changed, the old Set entry is removed</li>
-<li>If <code>unique=True</code>, the target Set is checked for existing members</li>
-<li>The instance's Redis key is added to the Set for the current value</li>
+<li>Reads a server-authoritative pointer (<code>{field_name}\x00idxset</code>) from the model hash
+   to identify which Set the record currently belongs to</li>
+<li>If <code>unique=True</code>, scans the target Set for any member other than the current record
+   and raises <code>ModelException</code> immediately on conflict</li>
+<li>Atomically removes the record from the old Set, adds it to the new Set, updates the
+   pointer, and writes the field bytes — no race window between any of these steps</li>
 </ol>
-<p>All operations are pipelined with the main model save for zero extra round-trips.</p>
+<p>This eliminates the stale-snapshot SREM+SADD race that existed in earlier versions.</p>
+<h3 id="operator-note">Operator Note<a class="headerlink" href="#operator-note" title="Permanent link">&para;</a></h3>
+<p>Each model hash for models with <code>IndexedField</code> or <code>UniqueField</code> fields carries one
+extra hash field per indexed field, visible in <code>redis-cli HGETALL &lt;Model:key&gt;</code> output:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>{field_name}\x00idxset  -&gt;  $IndexF:ModelName:field_name:current_value
+</code></pre></div>
+<p>The <code>\x00</code> (NUL byte) in the field name is intentional internal bookkeeping. This is
+expected — it is NOT corruption.</p>
+<ul>
+<li>Do NOT edit or delete it manually. Removing it reopens the index-stranding race until
+  the record's next save.</li>
+<li>It is invisible to the Python model API: <code>filter()</code>, attribute access, and
+  <code>is_valid()</code> all ignore it.</li>
+<li>The <code>$IndexF:</code> and <code>$UniquF:</code> Set schema itself is unchanged from earlier versions.</li>
+</ul>
+<p><strong>Upgrading over a populated database:</strong> Records saved before this fix self-heal on
+their first post-upgrade save (the Lua script falls back to a client-supplied hint for
+the old Set on the first write, then records the authoritative pointer for all future
+saves). A full clean cut-over is optional:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">User</span><span class="o">.</span><span class="n">rebuild_indexes</span><span class="p">()</span>   <span class="c1"># optional — not required for correctness</span>
+</code></pre></div>
 <h3 id="delete-behavior">Delete Behavior<a class="headerlink" href="#delete-behavior" title="Permanent link">&para;</a></h3>
 <p>When a model instance is deleted, the instance's Redis key is removed from the
 index Set.</p>
@@ -2802,20 +2852,20 @@ index Set.</p>
 <h2 id="immutable-keys-and-key-migration">Immutable Keys and Key Migration<a class="headerlink" href="#immutable-keys-and-key-migration" title="Permanent link">&para;</a></h2>
 <p>KeyField values are immutable by default after the initial save. Changing a KeyField
 value and calling <code>save()</code> raises <code>KeyMutationError</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">KeyMutationError</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="n">instance</span> <span class="o">=</span> <span class="n">MyModel</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;old_name&quot;</span><span class="p">)</span>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="n">instance</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;new_name&quot;</span>
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>    <span class="n">instance</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
-<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="k">except</span> <span class="n">KeyMutationError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
-<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>    <span class="c1"># =&gt; KeyField &#39;name&#39; changed from &#39;old_name&#39; to &#39;new_name&#39;. Use save(migrate_key=True).</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">KeyMutationError</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="n">instance</span> <span class="o">=</span> <span class="n">MyModel</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;old_name&quot;</span><span class="p">)</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="n">instance</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;new_name&quot;</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>    <span class="n">instance</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="k">except</span> <span class="n">KeyMutationError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>    <span class="c1"># =&gt; KeyField &#39;name&#39; changed from &#39;old_name&#39; to &#39;new_name&#39;. Use save(migrate_key=True).</span>
 </code></pre></div>
 <p>To intentionally migrate a key, pass <code>migrate_key=True</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">instance</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;new_name&quot;</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="n">instance</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">migrate_key</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>  <span class="c1"># Succeeds, old key is cleaned up</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="n">instance</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;new_name&quot;</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="n">instance</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">migrate_key</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>  <span class="c1"># Succeeds, old key is cleaned up</span>
 </code></pre></div>
 <p>The <code>migrate_key=True</code> flag handles the full migration: deleting the old Redis hash,
 removing old index entries (sorted sets, geo sets, unique constraints, indexed fields),

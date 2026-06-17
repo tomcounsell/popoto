@@ -1406,7 +1406,7 @@ category = Field(type=str, indexed=True)  # equivalent to IndexedField(type=str)
 ```
 
 See [Indexed Fields](indexed_fields.md) for full details on index key patterns,
-performance characteristics, and the comparison table.
+the atomic save guarantee, operator notes, and the comparison table.
 
 ## UniqueField
 
@@ -1435,8 +1435,8 @@ except Exception as e:
 `UniqueField` cannot be null and cannot have `unique=False`. It supports the same
 query lookups as `IndexedField`.
 
-See [Indexed Fields](indexed_fields.md) for the uniqueness trade-offs under
-concurrent writes and the full comparison table.
+See [Indexed Fields](indexed_fields.md) for the concurrency guarantee, operator
+notes on the internal bookkeeping field, and the full comparison table.
 
 ## DecayingSortedField
 
@@ -5094,14 +5094,17 @@ except Exception as e:
 - Setting `unique=False` raises `ModelException`
 - Setting `null=True` raises `ModelException`
 
-### Uniqueness Trade-offs
+### Concurrency Guarantee
 
-The uniqueness check reads the index Set before writing. Under concurrent writes,
-two processes could both read an empty Set and both proceed to write, resulting in a
-duplicate. This is the same best-effort trade-off as `UniqueKeyField`.
+`UniqueField` enforces uniqueness inside an atomic server-side Lua script
+(`INDEX_SWAP_LUA`). Under concurrent cross-process writes, the script runs as a
+single Redis command: it reads the current index pointer, performs the uniqueness
+check, and moves the record to the new Set — all without a race window.
 
-For applications requiring strict uniqueness guarantees under high concurrency,
-implement application-level locking or use Redis transactions.
+When a caller provides an external Redis pipeline, a best-effort SMEMBERS pre-check
+is made before queuing the EVAL. The authoritative guarantee is still enforced at
+`pipeline.execute()` time when the Lua script runs on the server; the pre-check only
+surfaces conflicts earlier for the common case.
 
 ## How It Works
 
@@ -5110,27 +5113,59 @@ implement application-level locking or use Redis transactions.
 Indexed fields maintain Redis Sets following this pattern:
 
 ```
-$IdxF:ModelName:field_name:value -> Set of redis_keys
+$IndexF:ModelName:field_name:value -> Set of redis_keys
+$UniquF:ModelName:field_name:value -> Set of redis_keys (UniqueField)
 ```
 
 For example, a `User` model with `status = IndexedField(type=str)`:
 
 ```
-$IdxF:User:status:active    -> {User:abc123, User:def456}
-$IdxF:User:status:inactive  -> {User:ghi789}
+$IndexF:User:status:active    -> {User:abc123, User:def456}
+$IndexF:User:status:inactive  -> {User:ghi789}
 ```
 
-This mirrors the `$KeyF` pattern used by KeyField but uses the `$IdxF` prefix.
+This mirrors the `$KeyF` pattern used by KeyField.
 
 ### Save Behavior
 
-When a model instance is saved:
+When a model instance is saved, an atomic server-side Lua script (`INDEX_SWAP_LUA`)
+handles the index update in a single Redis command:
 
-1. If the indexed value changed, the old Set entry is removed
-2. If `unique=True`, the target Set is checked for existing members
-3. The instance's Redis key is added to the Set for the current value
+1. Reads a server-authoritative pointer (`{field_name}\x00idxset`) from the model hash
+   to identify which Set the record currently belongs to
+2. If `unique=True`, scans the target Set for any member other than the current record
+   and raises `ModelException` immediately on conflict
+3. Atomically removes the record from the old Set, adds it to the new Set, updates the
+   pointer, and writes the field bytes — no race window between any of these steps
 
-All operations are pipelined with the main model save for zero extra round-trips.
+This eliminates the stale-snapshot SREM+SADD race that existed in earlier versions.
+
+### Operator Note
+
+Each model hash for models with `IndexedField` or `UniqueField` fields carries one
+extra hash field per indexed field, visible in `redis-cli HGETALL <Model:key>` output:
+
+```
+{field_name}\x00idxset  ->  $IndexF:ModelName:field_name:current_value
+```
+
+The `\x00` (NUL byte) in the field name is intentional internal bookkeeping. This is
+expected — it is NOT corruption.
+
+- Do NOT edit or delete it manually. Removing it reopens the index-stranding race until
+  the record's next save.
+- It is invisible to the Python model API: `filter()`, attribute access, and
+  `is_valid()` all ignore it.
+- The `$IndexF:` and `$UniquF:` Set schema itself is unchanged from earlier versions.
+
+**Upgrading over a populated database:** Records saved before this fix self-heal on
+their first post-upgrade save (the Lua script falls back to a client-supplied hint for
+the old Set on the first write, then records the authoritative pointer for all future
+saves). A full clean cut-over is optional:
+
+```python
+User.rebuild_indexes()   # optional — not required for correctness
+```
 
 ### Delete Behavior
 

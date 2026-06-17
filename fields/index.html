@@ -4010,7 +4010,7 @@ enables efficient exact-match queries via <code>filter()</code>.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="n">category</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">indexed</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>  <span class="c1"># equivalent to IndexedField(type=str)</span>
 </code></pre></div>
 <p>See <a href="../indexed_fields/">Indexed Fields</a> for full details on index key patterns,
-performance characteristics, and the comparison table.</p>
+the atomic save guarantee, operator notes, and the comparison table.</p>
 <h2 id="uniquefield">UniqueField<a class="headerlink" href="#uniquefield" title="Permanent link">&para;</a></h2>
 <p><code>UniqueField</code> combines secondary indexing with a per-value uniqueness constraint. It
 guarantees that no two model instances share the same value for this field, without
@@ -4033,8 +4033,8 @@ making the field part of the Redis key.</p>
 </code></pre></div>
 <p><code>UniqueField</code> cannot be null and cannot have <code>unique=False</code>. It supports the same
 query lookups as <code>IndexedField</code>.</p>
-<p>See <a href="../indexed_fields/">Indexed Fields</a> for the uniqueness trade-offs under
-concurrent writes and the full comparison table.</p>
+<p>See <a href="../indexed_fields/">Indexed Fields</a> for the concurrency guarantee, operator
+notes on the internal bookkeeping field, and the full comparison table.</p>
 <h2 id="decayingsortedfield">DecayingSortedField<a class="headerlink" href="#decayingsortedfield" title="Permanent link">&para;</a></h2>
 <p><code>DecayingSortedField</code> is a <code>SortedField</code> subclass where records lose relevance over time
 following a power-law decay curve. The sorted set score is always a timestamp, and a
