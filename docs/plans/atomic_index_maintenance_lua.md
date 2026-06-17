@@ -170,7 +170,11 @@ reference for the Lua/cmsgpack coding style (though it runs standalone, not in a
 
 ## Data Flow
 
-1. **Entry point**: `Model.save()` (`base.py`), internal or external pipeline path.
+1. **Entry point**: `Model.save()` (`base.py`), internal or external pipeline path. Two
+   sub-paths share the hash-write surface: the **full-save path** (`:1257+`) and the
+   **partial-save path** taken when `update_fields=[...]` is passed (`:1119-1255`); both build an
+   `hset_mapping` and both must apply the indexed/unique exclusion. `async_save` delegates to
+   `save()` and inherits both.
 2. **Per-field hooks**: for each field, `field.on_save(...)` is invoked
    (`base.py:1310-1319` external, `:1389-1398` internal).
 3. **IndexedFieldMixin.on_save** (today): SREM old Set (from stale snapshot) → optional
@@ -211,9 +215,17 @@ stale across processes. Atomicity must move server-side, where Redis serializes 
   removal; it is written and read only inside `INDEX_SWAP_LUA`. It is internal bookkeeping
   (NUL-suffixed, invisible to user field names and to `filter()`), excluded from decoding back
   into model attributes. See Technical Approach → Old-set discovery.
-- **Reversibility**: high. The change is localized to `indexed_field_mixin.on_save` + a
-  registered Lua script; revertible by restoring the old method. No data migration required
-  (existing Sets remain valid; `clean_indexes()` repairs any pre-existing corruption).
+- **Reversibility**: moderate (revised down from "high" — Concern 4). The change is NOT
+  localized to a single method. It spans: (1) `indexed_field_mixin.on_save` + the new
+  `INDEX_SWAP_LUA`; (2) **four** hash-write exclusion edits in `base.py` — both full-save sites
+  (`:1277`, `:1354`) AND both partial-save sites (`:1135-1140`, `:1198`) including the
+  partial-save empty-mapping `DataError` guard and the `results[0]` index fix; and (3) **three**
+  decode-skip edits in `encoding.py` (`:315-320`, `:327-332`, `:415-417`). Reverting cleanly
+  requires undoing all three groups together — the exclusion and the EVAL-owns-the-write are a
+  matched pair (excluding without the EVAL writing would drop the field value entirely). No data
+  migration is required (existing Sets remain valid; `clean_indexes()` repairs any pre-existing
+  corruption), and the on-disk format gains only the additive `\x00idxset` pointer field, but
+  the code surface is wider than a one-method swap.
 
 ## Appetite
 
@@ -224,6 +236,15 @@ stale across processes. Atomicity must move server-side, where Redis serializes 
 **Interactions:**
 - PM check-ins: 0-1 (all prior Open Questions resolved in this revision; remaining contact is optional confirmation)
 - Review rounds: 1-2 (concurrency-sensitive change to the core save path)
+
+**Scope note (Round-3 — Concern 4):** Still Medium, but the edit surface is wider than a
+single-method swap implied. The hash-write exclusion must be applied at **four** sites (two
+full-save + two partial-save `update_fields` HSETs), the partial-save path needs an
+empty-mapping `DataError` guard and a `results[0]` index fix, and the decode skip touches three
+sites in `encoding.py`. `rebuild_indexes`/`check_indexes`/`clean_indexes` were audited and need
+no change. This is bounded, additive work — it does not change the appetite tier, but the
+"localized to one method" framing from earlier drafts was inaccurate (reflected in Reversibility
+above).
 
 ## Prerequisites
 
@@ -299,6 +320,30 @@ required wherever else `HGETALL`/`hgetall` results are turned into attributes (e
 and is therefore already safe). This skip is the single
 behavioral coupling the pointer introduces and is covered by the single-process read-back
 parity test (Concern 2).
+
+**Hash-write / hash-read site audit (Concern 3 — broader than the two full-save HSETs).** The
+`\x00idxset` pointer is a schema addition, so EVERY place that writes the model hash, reads it
+back into attributes, or rebuilds indexes from it was audited (against main @ 61f36aa):
+
+| Site | File:line | Disposition |
+|---|---|---|
+| Full-save HSET (external) | `base.py:1277` | Exclude indexed/unique from `hset_mapping` (Hash-write ownership). |
+| Full-save HSET (internal) | `base.py:1354` | Same exclusion. |
+| **Partial-save HSET (external)** | `base.py:1135-1140` | **Apply exclusion to partial `hset_mapping`; guard empty-mapping DataError (Round-3 BLOCKER).** |
+| **Partial-save HSET (internal)** | `base.py:1135-1136, :1198` | **Same exclusion + empty-mapping guard; fix `results[0]` indexing when HSET skipped.** |
+| `async_save` | `base.py:2290` | Delegates to `save()`; no separate fix. |
+| Decode → attrs (full) | `encoding.py:327-332` | Skip `\x00`-containing fields. |
+| Decode → attrs (fields_only) | `encoding.py:315-320` | Skip `\x00`-containing fields. |
+| Decode → lazy | `encoding.py:415-417` | Skip `\x00`-containing fields. |
+| `rebuild_indexes` | `base.py:2707` | DELs all index Sets, then re-runs `on_save` per field. Decodes via `decode_popoto_model_hashmap` (`:2805`, already skips the pointer per the decode fix). The EVAL still HGETs the (now-stale) live pointer, SREMs from the just-deleted set (harmless no-op), SADDs, and rewrites the pointer — so **rebuild is convergent even with a stale pointer** (NIT 5b). No change needed beyond the decode skip. |
+| `check_indexes` | `base.py:2964` | Read-only; scans the five index *Set* types and EXISTS-checks referenced instance keys. The `\x00idxset` pointer lives **inside the model hash**, not as a separate index Set, so it is never scanned and never counted as an orphan. No change needed. |
+| `clean_indexes` | `base.py:3147` | Repairs orphaned Set entries / partial-write hashes; same structure as `check_indexes` (scans Sets, not hash fields). The pointer is not a Set member, so it is untouched. No change needed; existing remediation stays correct. |
+
+Net: the only code edits the pointer forces are (1) the four hash-write exclusions (two
+full-save + two partial-save) with the partial-save empty-mapping guard, and (2) the three
+decode skips. `rebuild_indexes` / `check_indexes` / `clean_indexes` need no logic change — they
+are already correct (rebuild is convergent against a stale pointer; the two read-only checkers
+never observe the pointer because it is not a Set).
 
 Concretely the script receives:
 
@@ -413,6 +458,42 @@ EVAL.** Concretely:
     inside one EVAL (option (b)) is what makes the convergence invariant hold and makes the
     unique check gate the value write.
 
+**Partial-save path `update_fields` (Round-3 BLOCKER — resolved).** The two full-save sites
+(`base.py:1277` external, `:1354` internal) are NOT the only places the hash is written. The
+**partial-save path** taken when `save(update_fields=[...])` is passed (`base.py:1119-1255`)
+builds its **own** `hset_mapping` from the encoded full mapping filtered to the listed fields
+(`:1135-1136`), HSETs it (`:1140` external / `:1198` internal), and *then* runs each listed
+field's `on_save` (`:1164-1173` external / `:1224-1233` internal) — which, under this plan,
+queues the field's `INDEX_SWAP_LUA`. If an Indexed/Unique field appears in `update_fields`,
+that field is therefore written **twice** in one transaction (once by the partial HSET, once
+by the EVAL), and on a unique conflict the partial HSET is **not** gated by the EVAL's
+`error_reply`, so the rejected value stays persisted in the hash — the *exact* double-write /
+no-rollback corruption the full-save fix closes, reopened on the partial path.
+`async_save(update_fields=...)` (`base.py:2290`) delegates straight to `save()` via
+`to_thread`, so it inherits the gap and needs no separate fix beyond fixing `save()`.
+
+  - **Decision: apply the identical IndexedFieldMixin exclusion to the partial `hset_mapping`.**
+    The dict comprehension at `:1135-1136` MUST drop entries for fields whose class is an
+    `IndexedFieldMixin` subclass (Indexed + Unique), exactly as the full-save mapping does — so
+    those fields are written **only** by their EVAL. The listed-field `on_save` loop
+    (`:1164` / `:1224`) is unchanged: it still queues the EVAL for every listed field, including
+    the now-excluded indexed/unique ones, so they are still indexed AND value-written (by the
+    EVAL). Non-indexed listed fields continue to be written by the partial HSET.
+  - **Empty-mapping guard (mandatory — DataError).** If `update_fields` contains **only**
+    indexed/unique field names, the filtered `hset_mapping` becomes `{}`, and redis-py raises
+    `redis.DataError("HSET requires at least one field/value pair")` (equivalently the
+    server rejects an empty `HSET`). The partial HSET call (`:1140` / `:1198`) MUST therefore be
+    **guarded**: skip the `pipeline.hset(..., mapping=hset_mapping)` entirely when
+    `hset_mapping` is empty (the EVALs queued by the subsequent `on_save` loop perform the only
+    necessary hash writes). The `HSET` result is currently captured as `db_response = results[0]`
+    on the internal path (`:1242`); when the HSET is skipped, the result-index bookkeeping must
+    be adjusted (or a benign return value substituted) so the internal path still returns a
+    truthy db_response and `results[0]` indexing does not misalign. Add an explicit test for
+    `save(update_fields=[<only an indexed field>])` (and the unique variant) to lock this in.
+  - **`obsolete_key` cleanup (`:1142-1162` / `:1199-1222`) is unaffected**: it runs `on_delete`
+    for *all* fields against the obsolete key and DELs the old hash, which does not write the new
+    hash's indexed fields and so does not collide with the EVAL.
+
 **Old-set discovery mechanism (was OQ1 — resolved).** Decision: **a server-authoritative
 sibling pointer field** `{field_name}\x00idxset`, written by the EVAL on every save, holding
 the pre-cleaned old value-Set key. The next save's EVAL reads it server-side and SREMs the
@@ -494,7 +575,11 @@ corrected in passing.
 - `tests/test_stress.py::test_concurrent_creates_from_threads` — VERIFY: should still pass
   and ideally show improved index consistency.
 - New: `tests/test_concurrent_index_integrity.py` — multiprocess reproduction (marked so CI
-  can skip if it cannot run spawn-multiprocess against the server).
+  can skip if it cannot run spawn-multiprocess against the server) PLUS single-process
+  partial-save (`update_fields`) parity/empty-mapping/conflict cases (Round-3 BLOCKER).
+- `tests/test_*` exercising `save(update_fields=...)` (partial save) — VERIFY unchanged: the
+  exclusion + empty-mapping guard must not regress existing partial-save behavior for
+  non-indexed fields.
 
 No existing test asserts the *buggy* behavior, so nothing needs DELETE/REPLACE.
 
@@ -535,10 +620,12 @@ earlier in the same EXEC. Two distinct sub-hazards:
     re-verifies against the hash (Data Flow step 6), such a record could become invisible to
     queries or appear under a stale value.
 **Mitigation (OQ2 resolved + ordering inside the EVAL):**
-  1. Exclude Indexed/Unique fields from the top-level `hset_mapping` so the EVAL is the
-     **single** writer of each indexed field's hash value (Technical Approach → Hash-write
-     ownership). There is no separate top-level HSET that a later EVAL error could leave
-     stranded.
+  1. Exclude Indexed/Unique fields from the `hset_mapping` at **all four** HSET sites — both
+     full-save (`base.py:1277`/`:1354`) AND both partial-save `update_fields` branches
+     (`:1140`/`:1198`) — so the EVAL is the **single** writer of each indexed field's hash value
+     (Technical Approach → Hash-write ownership + Partial-save path). There is no separate HSET
+     (full or partial) that a later EVAL error could leave stranded. The partial-save path also
+     guards the empty-mapping `DataError`.
   2. **The unique occupancy check is the FIRST mutating-relevant step in the EVAL — before any
      SREM, SADD, or HSET.** On conflict the EVAL `error_reply`s having written nothing, so
      neither the value, the pointer, nor any Set changes (closes 2a deterministically).
@@ -684,6 +771,11 @@ surface.
   forced-error test variant leaves either a complete swap or no change.
 - [ ] **Pointer field is invisible to the model API:** `\x00idxset` fields never decode into
   model attributes and never appear in `filter()` results.
+- [ ] **Partial-save (`update_fields`) parity & safety (Round-3 BLOCKER):** an indexed/unique
+  field passed in `update_fields` is written exactly once (no double-write), `save(update_fields=
+  [<only indexed/unique>])` raises no `DataError`, and a partial-save unique conflict raises
+  `ModelException` leaving neither the hash field, the pointer, nor the Set holding the rejected
+  value. `async_save(update_fields=...)` shares the same guarantees (delegates to `save()`).
 - [ ] New multiprocess regression test added (marked/skippable if CI cannot run spawn-mp).
 - [ ] Existing suite passes unchanged — no API, exception-type, or key-schema differences
   for single-process users (`test_atomic_save.py` green = #147 preserved). The only new hash
@@ -739,6 +831,8 @@ surface.
   **every** non-error path (including the idempotent no-op branch — Concern 2). No
   `str()`/`clean()` in Lua.
 - **Exclude Indexed/Unique fields from the top-level `hset_mapping`** (`base.py:1273-1277` external, `:1354` internal) so the EVAL is the SOLE writer of each indexed field's hash value (OQ2 decision (b); Concern 1 — write-ownership, not ordering). Keep `self._db_content` reflecting the full intended mapping.
+- **Apply the SAME exclusion to the partial-save path** (`save(update_fields=...)`): filter the partial `hset_mapping` dict comprehension (`base.py:1135-1136`) to drop IndexedFieldMixin-subclass fields, on BOTH the external (`:1140`) and internal (`:1198`) branches (Round-3 BLOCKER). The listed-field `on_save` loop (`:1164` / `:1224`) is unchanged and queues the EVAL for those fields. `async_save` (`:2290`) delegates to `save()` and needs no separate change.
+- **Guard the empty `hset_mapping` (DataError)** in the partial-save path: when `update_fields` contains only indexed/unique fields the filtered mapping is `{}`; skip the `pipeline.hset(..., mapping={})` call (`:1140` / `:1198`) entirely, and on the internal path adjust the `db_response = results[0]` bookkeeping (`:1242`) so a skipped HSET does not misalign the result index or return a falsy db_response.
 - **Add decode-path exclusion** for `\x00idxset` pointer fields in `decode_popoto_model_hashmap` (`encoding.py:315-320` and `:327-332`) and `_create_lazy_model` (`:415-417`): skip any hash field whose name contains `\x00`. (Pointer values are plain strings, not msgpack — they must never reach `msgpack.unpackb` or `model_class(**attrs)`.)
 - Rewrite `IndexedFieldMixin.on_save`: internal path queues the EVAL and drops the stale-snapshot SREM and pre-check SMEMBERS entirely; **external path keeps the eager `SMEMBERS` pre-check** and queues the EVAL into the caller's pipeline (OQ3 decision (a)). Compute the pre-cleaned new-set key and the pointer field name in Python; pass them in.
 - Map unique-conflict `ResponseError` to `ModelException` with the existing message wording; match only the `POPOTO_UNIQUE_CONFLICT` sentinel (other `ResponseError`s propagate).
@@ -760,6 +854,11 @@ surface.
 - **Hash-content parity test (Concern 2):** after `save()`, `HGET model_key field` equals the legacy full-mapping bytes for indexed/unique/no-op/`None` cases.
 - **Pointer-invisibility test:** `\x00idxset` fields never decode into attributes and never appear in `filter()` results.
 - **Forced mid-EVAL error test (Risk 2b):** a test-only script variant that errors after a partial mutation leaves no `filter()`-visible half-state.
+- **Partial-save (`update_fields`) parity + conflict tests (Round-3 BLOCKER):**
+  (a) `save(update_fields=[<indexed field>])` writes the field value exactly once and moves the index correctly — `HGET` parity with the legacy path, no double-write;
+  (b) `save(update_fields=[<only an indexed field>])` and the unique-only variant do NOT raise `redis.DataError` (empty-mapping guard) and still index/value-write via the EVAL;
+  (c) `save(update_fields=[<unique field>])` that conflicts raises `ModelException` and leaves **neither** the hash field, the pointer, nor the target Set holding the rejected value (no un-gated partial HSET persisted);
+  (d) the internal-path partial save still returns a truthy db_response when the HSET is skipped.
 
 ### 3. Validate concurrency + cross-server + #147
 - **Task ID**: validate-concurrency
@@ -797,6 +896,7 @@ surface.
 | cmsgpack available | `.venv/bin/python -c "from popoto.redis_db import POPOTO_REDIS_DB as r; print(r.eval('return cmsgpack.unpack(cmsgpack.pack(7))',0))"` | output contains 7 |
 | No $IdxF leftover in code/docstrings | `grep -rn 'IdxF' src/popoto/fields/indexed_field_mixin.py` | exit code 1 |
 | Pointer field excluded from decode | `.venv/bin/pytest tests/test_concurrent_index_integrity.py -q -k "parity or invisible"` | exit code 0 |
+| Partial-save (`update_fields`) safety | `.venv/bin/pytest tests/test_concurrent_index_integrity.py -q -k "update_fields or partial"` | exit code 0 |
 
 ## Critique Results
 
@@ -820,8 +920,19 @@ surface.
 | CONCERN | consistency | spike-1 self-contradictory: named reverse-lookup safest but Resolution rejected it. | spike-1; Old-set discovery | Reconciled: the server-authoritative pointer IS the reverse-lookup spike-1 found safest; spike-1 Finding/Resolution/Impact now all adopt it. |
 | NIT | clarity | Convergence invariant only stated as "≥200-round test passes". | Technical Approach → Convergence invariant; Race 3; Success Criteria | Deterministic per-EVAL invariant stated explicitly; the round-test is named as the regression gate, not the proof. |
 
-All round-1 and round-2 blockers, concerns, and nits are resolved in this revision. All prior
-Open Questions (OQ1–OQ4) are decided below.
+### Round 3 (third revision pass)
+
+| Severity | Critic | Finding | Addressed By | Implementation Note |
+|----------|--------|---------|--------------|---------------------|
+| BLOCKER | data-integrity | `update_fields` partial-save path reopens the double-write / unique-no-rollback corruption: it builds its own `hset_mapping` (`base.py:1135-1136`), HSETs it (`:1140`/`:1198`), then runs the EVAL for the same fields — an indexed/unique field in `update_fields` is written twice, and a unique conflict leaves the un-gated partial HSET persisted. `async_save` (`:2290`) inherits it. | Technical Approach → Partial-save path `update_fields`; Hash-write site audit; Task 1; Task 2; Success Criteria | Apply the IndexedFieldMixin exclusion to the partial `hset_mapping` on both branches; guard the empty-mapping `DataError`; fix internal `results[0]` indexing; add `save(update_fields=[indexed/unique])` parity + conflict tests. `async_save` delegates to `save()` and is covered. |
+| CONCERN | correctness | Apply/audit the exclusion at EVERY hash-write and hash-read site, not just the two full-save sites (filter at the HSET call site, not the encoder). | Technical Approach → Hash-write site audit table; Hash-write ownership | Audited all hash-write (4), decode-read (3), and index-rebuild/check (3) sites. Exclusion applied at the four HSET call sites; decode skip at three sites. |
+| CONCERN | correctness | Decode skip must be a pre-filter before `msgpack.unpackb`. | Technical Approach → Decode-path exclusion; Task 1 | The skip drops `\x00`-containing fields **before** they reach `msgpack.unpackb`/`model_class(**attrs)` (pointer values are plain strings, not msgpack). |
+| CONCERN | completeness | The `\x00idxset` field is a schema addition needing a broader exclusion audit (`clean_indexes`/`check_indexes`/`rebuild_indexes`). | Technical Approach → Hash-write site audit table | Audited: `check_indexes`/`clean_indexes` scan index Sets (not hash fields) so never observe the pointer; `rebuild_indexes` is convergent against a stale pointer. No logic change needed in any of the three. |
+| CONCERN | accuracy | Appetite/reversibility claims are now inaccurate. | Appetite → Scope note; Architectural Impact → Reversibility | Reversibility revised down to "moderate" (edit spans 4 HSET sites + 3 decode sites + the EVAL, not one method); Appetite kept Medium with an explicit scope note. |
+| NIT | accuracy | Note that `rebuild_indexes` is already convergent with a stale pointer. | Technical Approach → Hash-write site audit table (`rebuild_indexes` row); NIT 5b | Documented: rebuild DELs all Sets then re-runs `on_save`; the EVAL SREMs from the just-deleted (stale-pointer-named) set harmlessly and rewrites the pointer. |
+
+All round-1, round-2, and round-3 blockers, concerns, and nits are resolved in this revision.
+All prior Open Questions (OQ1–OQ4) are decided below.
 
 ---
 
