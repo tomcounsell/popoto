@@ -168,12 +168,12 @@ def _set_prefix(field_class, model_class, field_name: str) -> str:
 
 
 def _index_set_key(field_class, model_class, field_name: str, value) -> str:
-    """Full index Set key for a given field value."""
+    """Full index Set key for a given field value, matching production's on_save() derivation."""
     from popoto.models.db_key import DB_key
 
-    prefix = _set_prefix(field_class, model_class, field_name)
-    db_prefix = DB_key(prefix)
-    return DB_key(db_prefix, value).redis_key
+    field = model_class._meta.fields[field_name]
+    set_key_prefix = field.get_special_use_field_db_key(model_class, field_name)
+    return DB_key(set_key_prefix, value).redis_key
 
 
 def _get_all_sets_for_field(r: redis_lib.Redis, field_class, model_class, field_name: str) -> dict:
@@ -239,9 +239,60 @@ def _check_pointer_matches_set(r: redis_lib.Redis, member_redis_key: str, field_
 # ---------------------------------------------------------------------------
 
 
-def _worker_set_status(record_id: str, value: str, barrier: mp.Barrier, result_queue: mp.Queue):
-    """Worker: wait at barrier then save status=value on the shared record."""
+def _get_test_redis_url() -> str:
+    """Get the current test redis URL including DB number."""
+    from popoto.redis_db import POPOTO_REDIS_DB
+
+    conn = POPOTO_REDIS_DB.connection_pool.connection_kwargs
+    host = conn.get("host", "localhost")
+    port = conn.get("port", 6379)
+    db = conn.get("db", 15)
+    return f"redis://{host}:{port}/{db}"
+
+
+def _swap_db_inplace(redis_url: str) -> None:
+    """Swap POPOTO_REDIS_DB connection pool in-place to match redis_url.
+
+    Must be called after ``import popoto`` in a spawned worker, where
+    module-level import has already created the connection on the default DB.
+    Mirrors pytest_plugin._swap_db: modifies the existing object in-place so
+    all cached references (e.g. in query.py) automatically see the test DB.
+    """
+    import redis as _redis_lib
+    import urllib.parse
+    from popoto import redis_db as _redis_db_mod
+
+    parsed = urllib.parse.urlparse(redis_url)
+    db_num = int(parsed.path.lstrip("/")) if parsed.path.lstrip("/").isdigit() else 15
+    db_obj = _redis_db_mod.POPOTO_REDIS_DB
+    current_kwargs = dict(db_obj.connection_pool.connection_kwargs)
+    current_kwargs["db"] = db_num
+    current_kwargs["host"] = parsed.hostname or "localhost"
+    current_kwargs["port"] = parsed.port or 6379
+    current_kwargs.setdefault("socket_timeout", 5)
+    current_kwargs.setdefault("socket_connect_timeout", 5)
+    # Remove non-serializable attrs injected by redis-py maint pool
+    for _k in ("maint_notifications_pool_handler", "maint_notifications_config",
+               "orig_host_address", "orig_socket_timeout", "orig_socket_connect_timeout"):
+        current_kwargs.pop(_k, None)
+    connection_class = db_obj.connection_pool.connection_class
+    new_pool = _redis_lib.ConnectionPool(connection_class=connection_class, **current_kwargs)
+    old_pool = db_obj.connection_pool
+    db_obj.connection_pool = new_pool
+    old_pool.disconnect()
+
+
+def _worker_set_status(record_id: str, value: str, barrier: mp.Barrier, result_queue: mp.Queue, redis_url: str = "redis://localhost:6379/15"):
+    """Worker: wait at barrier then save status=value on the shared record.
+
+    The spawn-based worker re-imports the test module (including ``import popoto``
+    at module level) before this function body runs, so POPOTO_REDIS_DB is already
+    created against the default DB.  _swap_db_inplace() reconnects in-place so
+    all popoto internal references (query.py, etc.) automatically use the test DB.
+    """
     import popoto as _pop
+
+    _swap_db_inplace(redis_url)
 
     class ConcurrentStatusModel(_pop.Model):
         record_id = _pop.AutoKeyField()
@@ -261,10 +312,16 @@ def _worker_set_status(record_id: str, value: str, barrier: mp.Barrier, result_q
         result_queue.put(("error", str(exc)))
 
 
-def _worker_save_unique_email(email: str, barrier: mp.Barrier, result_queue: mp.Queue):
-    """Worker: wait at barrier then try to create a record with the given email."""
+def _worker_save_unique_email(email: str, barrier: mp.Barrier, result_queue: mp.Queue, redis_url: str = "redis://localhost:6379/15"):
+    """Worker: wait at barrier then try to create a record with the given email.
+
+    Same spawn-reconnect pattern as _worker_set_status: _swap_db_inplace() is
+    called after module-level import so the test DB is used for all popoto ops.
+    """
     import popoto as _pop
     from popoto import ModelException as ME
+
+    _swap_db_inplace(redis_url)
 
     class ConcurrentEmailModel(_pop.Model):
         record_id = _pop.AutoKeyField()
@@ -308,6 +365,7 @@ class TestMultiprocessConcurrency:
 
         ctx = mp.get_context("spawn")
 
+        redis_url = _get_test_redis_url()
         for round_num in range(self.ROUNDS):
             # Create a fresh record each round
             obj = ConcurrentStatusModel.create(status="initial")
@@ -317,8 +375,8 @@ class TestMultiprocessConcurrency:
             barrier = ctx.Barrier(2)
             q = ctx.Queue()
 
-            p1 = ctx.Process(target=_worker_set_status, args=(record_id, "A", barrier, q))
-            p2 = ctx.Process(target=_worker_set_status, args=(record_id, "B", barrier, q))
+            p1 = ctx.Process(target=_worker_set_status, args=(record_id, "A", barrier, q, redis_url))
+            p2 = ctx.Process(target=_worker_set_status, args=(record_id, "B", barrier, q, redis_url))
             p1.start()
             p2.start()
             p1.join(timeout=10)
@@ -356,6 +414,7 @@ class TestMultiprocessConcurrency:
 
         ctx = mp.get_context("spawn")
 
+        redis_url = _get_test_redis_url()
         for round_num in range(min(self.ROUNDS, 25)):
             test_email = f"race{round_num}@example.com"
 
@@ -366,8 +425,8 @@ class TestMultiprocessConcurrency:
             barrier = ctx.Barrier(2)
             q = ctx.Queue()
 
-            p1 = ctx.Process(target=_worker_save_unique_email, args=(test_email, barrier, q))
-            p2 = ctx.Process(target=_worker_save_unique_email, args=(test_email, barrier, q))
+            p1 = ctx.Process(target=_worker_save_unique_email, args=(test_email, barrier, q, redis_url))
+            p2 = ctx.Process(target=_worker_save_unique_email, args=(test_email, barrier, q, redis_url))
             p1.start()
             p2.start()
             p1.join(timeout=10)

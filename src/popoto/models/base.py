@@ -1254,8 +1254,8 @@ class Model(metaclass=ModelBase):
                     )
                 results = internal_pipeline.execute()
                 # When hset_mapping is non-empty, results[0] is the HSET count.
-                # When EVAL-only (all fields are indexed), results[0] is the
-                # first EVAL return value — still an int, so backward-compat holds.
+                # When EVAL-only (all fields are indexed), hset_mapping is empty so
+                # results[0] is the first queued pipeline op result (expire/sadd), still an int.
                 db_response = results[0] if results else 0
                 self._is_persisted = True
                 self._redis_key = new_db_key.redis_key
@@ -1448,8 +1448,8 @@ class Model(metaclass=ModelBase):
             # all responses are received, guaranteeing write visibility after return
             results = internal_pipeline.execute()
             # When hset_mapping is non-empty, results[0] is the HSET count.
-            # When EVAL-only (all fields are indexed), results[0] is the
-            # first EVAL return value — still an int, so backward-compat holds.
+            # When EVAL-only (all fields are indexed), hset_mapping is empty so
+            # results[0] is the first queued pipeline op result (expire/sadd), still an int.
             db_response = results[0] if results else 0  # HSET result (backward compat)
 
             self._is_persisted = True
