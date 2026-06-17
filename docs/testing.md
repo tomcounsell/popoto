@@ -11,6 +11,8 @@ The `popoto.pytest_plugin` module is registered as a [pytest11 entry point](http
 - Switches all Redis operations to DB 15 (or a configured DB) for the test session.
 - Runs `flushdb()` before each test for a clean slate.
 - Resets the async Redis connection per test to avoid event-loop conflicts.
+- Collapses `src.popoto` (and all `popoto.*` submodules) onto the canonical `popoto` objects in `sys.modules` so that tests using either `import popoto` or `import src.popoto` share the same DB-15 connection (no DB-0 leaks from `src/`-layout imports).
+- Enforces a DB-0 tripwire: aborts the session if the test DB resolves to DB 0, preventing silent writes to production data.
 
 **Configuration priority** (highest to lowest):
 
