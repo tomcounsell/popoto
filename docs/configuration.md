@@ -47,7 +47,7 @@ If `REDIS_URL` is not set, Popoto connects to `127.0.0.1:6379` using a connectio
 
 ```python
 # This is what Popoto does internally when REDIS_URL is not set
-pool = redis.ConnectionPool(host="127.0.0.1", port=6379, db=0)
+pool = redis.BlockingConnectionPool(host="127.0.0.1", port=6379, db=0)
 POPOTO_REDIS_DB = redis.Redis(connection_pool=pool)
 ```
 
@@ -380,6 +380,8 @@ popoto.enable_error_reporting(dsn="https://your-key@your-org.ingest.sentry.io/yo
 | `POPOTO_LOG_LEVEL` | `WARNING` | Log level for POPOTO-REDIS_DB logger (DEBUG, INFO, WARNING, ERROR, CRITICAL) |
 | `POPOTO_SENTRY_DSN` | *(built-in)* | Override the Sentry DSN used by `enable_error_reporting()`. |
 | `POPOTO_TEST_DB` | `15` | Redis DB number used by the pytest plugin for test isolation. Overrides the `popoto_test_db` ini option. DB 0 is rejected to prevent accidental production data loss. |
+| `POPOTO_ASYNC_MAX_CONNECTIONS` | `128` | Maximum async Redis connection pool size (BlockingConnectionPool). |
+| `POPOTO_SYNC_MAX_CONNECTIONS` | `128` | Maximum sync Redis connection pool size (BlockingConnectionPool). |
 
 ## Thread Safety
 
