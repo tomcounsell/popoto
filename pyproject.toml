@@ -80,6 +80,7 @@ popoto = "popoto.pytest_plugin"
 markers = [
     "slow: stress and performance tests (deselect with '-m \"not slow\"')",
     "benchmark: performance benchmarking tests",
+    "concurrent_mp: spawn-based multiprocess concurrency tests (skip with '-m \"not concurrent_mp\"')",
 ]
 addopts = "-v"
 
