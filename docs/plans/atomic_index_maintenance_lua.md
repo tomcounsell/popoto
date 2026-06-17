@@ -125,9 +125,11 @@ reference for the Lua/cmsgpack coding style (though it runs standalone, not in a
 ### spike-1: How does Lua determine the *authoritative* old value-Set to SREM from?
 - **Assumption**: Lua can avoid the stale `_saved_field_values` snapshot by reading the current state server-side.
 - **Method**: code-read.
-- **Finding**: The value-Set key is `DB_key(prefix, value).redis_key` = `prefix:clean(str(python_value))`. The stored hash field is msgpack-encoded. The robust approach is **Strategy 3**: inside the script, `HGET model_key field_name` → `cmsgpack.unpack` → reconstruct the segment, then `SREM` from that exact Set and `SADD` the new Set — all atomic. **Critical hazard**: Lua `tostring(1.0)` == `"1"` but Python `str(1.0)` == `"1.0"`; `None` vs `nil`; `True/False` vs `true/false`. Naive segment reconstruction in Lua will target the wrong Set for float/None/bool. **Resolution adopted** (see Technical Approach): do NOT reconstruct the segment in Lua. Instead Python passes the **new** Set key plus the **member key**, and the script removes the member from any stale Set via a different mechanism — see "old-set discovery" decision below. No new reverse-lookup structure exists in the repo today; one is the safest way to make old-set discovery type-safe.
-- **Confidence**: high (on the hazard and on cmsgpack availability); the chosen old-set-discovery mechanism is decided in Technical Approach.
-- **Impact on plan**: Drove the decision to discover the old Set via a **per-member reverse pointer in the model hash itself** (the already-stored, already-msgpack value) but compute the SREM target key **in Python and pass it pre-cleaned to Lua**, with the script re-reading the hash to detect concurrent moves — see Technical Approach. Eliminates Lua-side `clean()`/`str()` parity risk entirely.
+- **Finding**: The value-Set key is `DB_key(prefix, value).redis_key` = `prefix:clean(str(python_value))` (`db_key.py:136-160, 186-206`). The stored hash field is msgpack-encoded. Two candidate strategies were examined:
+  - **Reconstruct-in-Lua**: `HGET model_key field_name` → `cmsgpack.unpack` → rebuild the Set-key segment in Lua, then `SREM`. **Rejected — critical hazard**: Lua `tostring(1.0)` == `"1"` but Python `str(1.0)` == `"1.0"`; `None` vs `nil`; `True/False` vs `true/false`; and `DB_key.clean()`'s escaping (`/`-doubling, glob-char prefixing, `{&#58;}` colon-encoding) would have to be re-implemented byte-for-byte in Lua. Any drift targets the wrong Set. The script MUST NOT `str()`/`clean()` in Lua.
+  - **Server-authoritative reverse pointer (Strategy 3 / reverse-lookup)**: store the *pre-cleaned old value-Set key* as a sibling hash field written **inside the same EVAL**. The next writer reads that field server-side and `SREM`s the member from exactly the Set it is actually in — unconditionally — then overwrites the pointer with the new Set key. This is type-safe (the key string is computed once in Python, where `clean(str(value))` is correct for every type, and is thereafter only ever read back verbatim — never reconstructed). **This is the strategy adopted** (see Technical Approach → Old-set discovery). It is precisely the reverse-lookup this spike found safest.
+- **Confidence**: high (on the hazard, on cmsgpack availability, and on the reverse-pointer being the only convergent type-safe option).
+- **Impact on plan**: Drove the decision to discover the old Set via a **server-authoritative sibling pointer hash field** (`{field_name}\x00idxset`) that stores the Python-pre-cleaned old value-Set key. The EVAL reads it, SREMs unconditionally, then rewrites it — closing the convergence gap (no membership can be stranded in a set no future writer names) while eliminating Lua-side `clean()`/`str()` parity risk entirely. See Technical Approach → Old-set discovery.
 
 ### spike-2: Reproduce the baseline corruption on current main.
 - **Assumption**: The bug still reproduces at the rates the issue claims.
@@ -164,7 +166,7 @@ reference for the Lua/cmsgpack coding style (though it runs standalone, not in a
   ```
   The EVAL sits between `MULTI` and `EXEC`; its internal `SADD` runs at EXEC time inside the transaction. `execute()` returned `[1, 1, 1]`. The pipeline object reported `pipeline.transaction == True` (it is NOT built with `transaction=False`) — and code inspection confirms `base.py:1352` builds `POPOTO_REDIS_DB.pipeline()` with default args (transactional) and `base.py:1276` reuses the caller's pipeline. So queuing `INDEX_SWAP_LUA` into the save pipeline genuinely runs the swap inside the same MULTI/EXEC as the hash write.
 - **Confidence**: high (direct MONITOR evidence on both engines; matches the exact pipeline construction the save path uses).
-- **Impact on plan**: Closes the unproven-atomicity blocker. #147 atomicity (Risk 1) is preserved by the EVAL being inside MULTI/EXEC on both Redis and Valkey. Note the Lua-error-no-rollback hazard (spike-4 / Risk 2) is orthogonal and is handled by EVAL-first ordering + hash-write ownership (OQ2, now resolved).
+- **Impact on plan**: Closes the unproven-atomicity blocker. #147 atomicity (Risk 1) is preserved by the EVAL being inside MULTI/EXEC on both Redis and Valkey. Note the Lua-error-no-rollback hazard (spike-4 / Risk 2) is orthogonal and is handled by **EVAL hash-write ownership** (the EVAL is the sole writer of each indexed field; OQ2 resolved) plus **unique-check-first ordering inside the EVAL** (the conflict aborts before any mutation). The earlier "EVAL-first vs top-level-HSET ordering" framing is superseded: with write-ownership the relative queue order of the EVAL and the top-level HSET is irrelevant (Concern 1).
 
 ## Data Flow
 
@@ -180,8 +182,12 @@ reference for the Lua/cmsgpack coding style (though it runs standalone, not in a
 6. **Read path**: `filter()` (`indexed_field_mixin.py:241-333`) reads Sets directly — no
    re-verification against the hash, so a wrong Set entry = a wrong result.
 
-The fix replaces step 3 with a single atomic EVAL (the check-and-swap), keeping it inside
-the same atomic unit as the hash HSET (step 4) so #147 holds.
+The fix replaces step 3 with a single atomic EVAL that owns the indexed field's hash write,
+its Set move, and the advance of a server-authoritative `{field}\x00idxset` pointer — all
+inside the same atomic unit as the rest of the save (step 4) so #147 holds. Indexed/unique
+fields are dropped from the top-level full-mapping HSET (step 5's encode) so the EVAL is their
+sole hash writer. The pointer field is excluded from the read path's decode (see Technical
+Approach → Decode-path exclusion).
 
 ## Why Previous Fixes Failed
 
@@ -199,9 +205,12 @@ stale across processes. Atomicity must move server-side, where Redis serializes 
   `$IndexF:`/`$UniquF:` key schema are unchanged. Internal `on_save` implementation changes.
 - **Coupling**: `on_save` gains a dependency on the model hash being written in the same
   transaction (ordering constraint), tightening the existing #147 coupling — acceptable and intended.
-- **Data ownership**: unchanged. (A reverse-pointer companion for old-set discovery was
-  considered and rejected — the live model hash, read inside the EVAL, is the single source
-  of truth; see Technical Approach → Old-set discovery.)
+- **Data ownership**: each indexed/unique field gains **one additional hash field**,
+  `{field_name}\x00idxset`, stored inside the existing model hash (no new top-level key). It
+  holds the pre-cleaned old value-Set key and is the server-authoritative source for old-set
+  removal; it is written and read only inside `INDEX_SWAP_LUA`. It is internal bookkeeping
+  (NUL-suffixed, invisible to user field names and to `filter()`), excluded from decoding back
+  into model attributes. See Technical Approach → Old-set discovery.
 - **Reversibility**: high. The change is localized to `indexed_field_mixin.on_save` + a
   registered Lua script; revertible by restoring the old method. No data migration required
   (existing Sets remain valid; `clean_indexes()` repairs any pre-existing corruption).
@@ -250,43 +259,115 @@ atomically alongside the hash HSET → on unique conflict the EVAL returns an er
 
 ### Technical Approach
 
-**Old-set discovery (the core decision).** To avoid the stale snapshot AND avoid the
-Lua `str()`/`clean()` type-parity hazard from spike-1, the script reads the
-**authoritative current value from the model hash** (`HGET model_key field_name` →
-`cmsgpack.unpack`) and uses it only to decide *whether* a move is needed. The actual SREM
-target Set key is computed **in Python** (where `DB_key.clean(str(value))` is correct for
-all types) and passed in pre-cleaned, for both the previously-stored value (read fresh, not
-from the stale snapshot) and the new value. Concretely the script receives:
+**Old-set discovery (the core decision — server-authoritative reverse pointer).** The
+removal target must NOT be a client-computed hint. A client-computed `ARGV` SREM target only
+ever names the *current writer's* old value; a membership stranded in an **older** value-Set
+(left behind by an earlier interleaved writer) is never named by any future writer's hint and
+persists forever. That is the exact stale-client-computed-SREM-target bug (Race 1) #412
+exists to eliminate, and it would fail the "0 dual-membership over ≥200 rounds" criterion.
+
+**The script therefore removes the member from a SERVER-AUTHORITATIVE pointer it itself
+wrote on the previous save.** Each indexed field gets a sibling pointer hash field,
+`{field_name}\x00idxset` (NUL-suffixed so it can never collide with a real user field name —
+field names must start with a lowercase letter per the model rules, and NUL is not a legal
+field-name byte). The pointer stores the **pre-cleaned old value-Set key** as a plain string.
+On each save the EVAL: (1) reads the pointer, (2) if the pointer is non-empty and differs
+from the new Set key, `SREM`s the member from exactly the Set the pointer names —
+unconditionally, because the pointer is *the set this member is actually in* per the last
+committed save — (3) `SADD`s the member to the new Set, (4) overwrites the pointer with the
+new Set key, and (5) writes the field's value bytes into the hash. All five are one atomic
+EVAL. Because removal always targets the set named by the record's own last-committed
+pointer, **no membership can ever be stranded in a set no future writer names** — every
+writer cleans up exactly the predecessor it observes, and the pointer always reflects the one
+set the member belongs to. Convergence is *per-EVAL deterministic*, not statistical (see the
+invariant below and Race 3).
+
+The pointer value is computed **in Python** (`DB_key(prefix, value).redis_key`, where
+`clean(str(value))` is correct for every type) and passed in pre-cleaned; Lua only ever reads
+it back verbatim and writes it back verbatim — never reconstructs a key from a value. This
+eliminates the Lua `str()`/`clean()` type-parity hazard from spike-1 entirely.
+
+**Decode-path exclusion (mandatory).** `decode_popoto_model_hashmap` (`encoding.py:271`)
+builds `model_attrs` from **every** field returned by `HGETALL` and passes them to
+`model_class(**model_attrs)`; it also `msgpack.unpackb`s each value. The `\x00idxset` pointer
+fields are plain (non-msgpack) strings and are not model attributes, so both decode branches
+(`fields_only` at `:315-320` and the default at `:327-332`) MUST skip any hash field whose
+name contains the `\x00` NUL byte (or, equivalently, endswith `\x00idxset`). The same skip is
+required wherever else `HGETALL`/`hgetall` results are turned into attributes (e.g.
+`_create_lazy_model`'s `_lazy_fields` build at `:415-417`, reached via the lazy branch at
+`:323-325`; `_saved_field_values` reconstruction at `:343-346` iterates `_meta.fields` only
+and is therefore already safe). This skip is the single
+behavioral coupling the pointer introduces and is covered by the single-process read-back
+parity test (Concern 2).
+
+Concretely the script receives:
 
 - `KEYS[1]` = model hash key
 - `KEYS[2]` = new value Set key (Python-computed, pre-cleaned)
 - `ARGV[1]` = field name (hash field)
 - `ARGV[2]` = member key (the record's redis_key)
-- `ARGV[3]` = new value, msgpack-packed by Python (so Lua compares the authoritative hash
-  bytes against the intended new value to detect "already moved by a concurrent writer")
+- `ARGV[3]` = new value, msgpack-packed by Python (the bytes the EVAL writes into the hash
+  field; the EVAL never decodes it — it is stored verbatim, matching today's HSET payload)
 - `ARGV[4]` = `unique` flag ("1"/"0")
-- `ARGV[5]` = old value Set key candidate (Python-computed from a *fresh* re-read, used as
-  the SREM target) **OR the sentinel `"\x00__NONE__"`** when there is no prior set to remove
-  from (first save, or the previous value was `None`). See "None→value transition" below.
+- `ARGV[5]` = the pointer hash field name, `{field_name}\x00idxset` (passed explicitly so the
+  Python side owns the naming convention; the EVAL treats it as an opaque field name)
 
-Script logic: read the current hash bytes; if they already equal `ARGV[3]` and the member
-is already in `KEYS[2]`, no-op (idempotent re-save). Otherwise: for unique, check `KEYS[2]`
-occupancy excluding self → `error_reply` if taken; **if `ARGV[5] ~= sentinel`** then
-`SREM ARGV[5] member`; `SADD KEYS[2] member`; then write the hash field so the hash and
-index move together. **The hash HSET for the indexed field happens inside the same EVAL**,
-making the authoritative value and its Set membership update a single atomic step — this is
-what closes both the dual-membership and the check-then-act windows.
+Script logic (pseudocode):
+```lua
+local model_key, new_set = KEYS[1], KEYS[2]
+local field, member, new_bytes, is_unique, ptr_field = ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5]
+local old_set = redis.call('HGET', model_key, ptr_field)   -- server-authoritative; may be false/nil
 
-**None→value transition (Concern 5 — resolved).** Today the SREM is guarded by
-`if old_value is not None and old_value != field_value` (`indexed_field_mixin.py:139`).
-The Lua script MUST mirror this guard, or an unconditional `SREM ARGV[5] member` would touch
-an unintended key on every *first* save (where there is no old set). **Resolution:** Python
-passes the sentinel `"\x00__NONE__"` as `ARGV[5]` whenever `old_value is None` (or the field
-is being saved for the first time / has no `_saved_field_values` entry); the script does
-`if ARGV[5] ~= '\x00__NONE__' then redis.call('SREM', ARGV[5], member) end`. The sentinel is
-a NUL-prefixed string that cannot collide with any real `DB_key.clean(...)` Set key (clean
-never emits a leading NUL). This is the direct Lua analogue of the existing
-`old_value is not None` Python check.
+-- idempotent re-save: same set already recorded AND member already present -> still rewrite
+-- the hash field bytes (single-process read-back parity) but skip SREM/SADD churn.
+if old_set == new_set and redis.call('SISMEMBER', new_set, member) == 1 then
+  redis.call('HSET', model_key, field, new_bytes)          -- ALWAYS write the field value
+  return 1
+end
+
+if is_unique == '1' then
+  -- occupancy check excluding self, atomic with the SADD below
+  local members = redis.call('SMEMBERS', new_set)
+  for _, m in ipairs(members) do
+    if m ~= member then return redis.error_reply('POPOTO_UNIQUE_CONFLICT') end
+  end
+end
+
+if old_set and old_set ~= false and old_set ~= '' and old_set ~= new_set then
+  redis.call('SREM', old_set, member)        -- remove from the EXACT set we last put it in
+end
+redis.call('SADD', new_set, member)
+redis.call('HSET', model_key, ptr_field, new_set)   -- advance the server-authoritative pointer
+redis.call('HSET', model_key, field, new_bytes)     -- value + index move together, ALWAYS written
+return 1
+```
+
+The `unique` occupancy scan excludes self, so re-saving the same record is never a
+self-collision (mirrors the existing `:156-161` self-exclusion). The unique check runs
+**before** any SREM/SADD/HSET, so a conflict aborts via `error_reply` with nothing written
+(see Risk 2). On a genuine first save the pointer is absent (`HGET` → `false`), so no SREM is
+attempted — this is the type-safe replacement for the old `old_value is not None` Python
+guard (Concern 5), needing no sentinel string.
+
+**Single-process read-back parity (Concern 2 — resolved).** Because indexed/unique fields are
+excluded from the top-level full-mapping HSET (see Hash-write ownership), read-back depends on
+every EVAL writing the field's value bytes. The script therefore writes `HSET model_key field
+new_bytes` on **every** non-error path — including the idempotent/no-op branch above — so a
+fresh save always persists the field value even when the index does not move. A new
+single-process test asserts hash-content parity: after `save()`, `HGET model_key field` equals
+the value the legacy (full-mapping HSET) path would have written, for indexed, unique, and
+no-op-re-save cases.
+
+**Convergence invariant (NIT 5 — stated explicitly).** *After every individual `INDEX_SWAP_LUA`
+EVAL commits, the record is a member of exactly the one value-Set named by its
+`{field}\x00idxset` pointer, and of no other value-Set for that field; and the pointer equals
+the value-Set key derived from the bytes just written to the hash field.* This holds per-EVAL
+(not merely in aggregate over many rounds) because the EVAL is serialized by Redis and, within
+one EVAL, the SREM removes from the previously-recorded set, the SADD adds to the new set, and
+the pointer+value advance together. Under any interleaving of N concurrent writers, the
+last-to-EXEC writer's post-state satisfies the invariant; every earlier writer's post-state
+also satisfied it at its own EXEC. The ≥200-round test is the *regression gate* for this
+invariant, not its proof.
 
 **Hash-write ownership (OQ2 — resolved; was Blocker 2).** Today `save()` writes the FULL
 field mapping via a single top-level `HSET ... mapping=hset_mapping` at step 1
@@ -309,27 +390,44 @@ EVAL.** Concretely:
   - `self._db_content` (`base.py:1274`) must still reflect the complete intended mapping for
     backward-compat/read-back; it is built from the full encode and is unaffected by what the
     top-level HSET omits, since the EVAL writes the omitted fields within the same EXEC.
-  - Rejected alternative (a) — keep the top-level HSET writing everything and only move Sets
-    in the EVAL — was rejected precisely because it cannot prevent the step-1 HSET from
-    persisting a value the step-5 unique check then rejects, even with EVAL-first ordering
-    (the full-mapping HSET is structurally first and writes all fields at once).
+  - **Why exclusion is necessary (Concern 1 — re-examined).** The prior draft justified
+    excluding indexed fields with "the full-mapping HSET is structurally first and immovable,"
+    which is unsound — the internal path already adopts EVAL-first ordering, so command order
+    is *not* fixed. The real, ordering-independent reason exclusion is required: once the EVAL
+    **owns the field's hash write** (mandatory here, because the value bytes and the index
+    move must be one atomic step for the convergence invariant — the pointer must equal the
+    value just written), leaving the same field in the top-level full-mapping HSET would mean
+    **two commands write the same hash field in one transaction.** That is redundant at best
+    and, on the no-rollback path (Risk 2), actively harmful: a top-level HSET of the indexed
+    field would persist a value the EVAL's unique check then rejects, since the top-level HSET
+    is not gated by the EVAL's `error_reply`. Excluding indexed/unique fields from the
+    top-level mapping makes the EVAL the *single* writer of those fields, so the unique check
+    gates the only write that exists. This holds regardless of whether the EVAL is queued
+    before or after the top-level HSET — it is a write-ownership argument, not an ordering one.
+  - Rejected alternative (a) — keep the top-level HSET writing *all* fields and have the EVAL
+    move *only* the Sets (not write the field value) — was rejected because it severs the
+    value-write from the index-move: the field bytes (top-level HSET) and the Set membership
+    (EVAL) would then be two separate writes that a unique `error_reply` can split (HSET
+    commits, EVAL aborts ⇒ hash holds a value with no/ wrong index entry), reopening exactly
+    the partial-write window this fix closes. Co-locating the value write and the index move
+    inside one EVAL (option (b)) is what makes the convergence invariant hold and makes the
+    unique check gate the value write.
 
-**Old-set discovery mechanism (was OQ1 — resolved).** Decision: **no new reverse-pointer
-companion structure.** The script reads the live hash (`HGET KEYS[1] ARGV[1]`) as the
-authoritative current value and removes the member from the Set implied by it; the
-Python-passed `ARGV[5]` is a fast-path SREM target that the script validates against the
-live hash before trusting (when `ARGV[5]` disagrees with the hash-derived current value,
-the script removes from the hash-derived Set, computed via the same Python-clean rule by
-passing the hash-current value's set key — see implementation note). This converges under
-third-writer interleaving (Race 3) because each EVAL removes from whatever Set the member is
-*currently* in per the live hash, never a cached/snapshot view. A per-member reverse-pointer
-companion hash was considered and **rejected** as unnecessary additive surface: the live hash
-is already the single source of truth and is read inside the same atomic EVAL, so it provides
-deterministic old-set removal without a second structure to keep consistent. (Implementation
-note: to keep the type-parity guarantee, the script does NOT `clean()`/`str()` in Lua; when
-the hash-current value differs from `ARGV[5]`, the script SREMs `ARGV[5]` only if it matches,
-and otherwise SADDs the new set and lets the next writer's EVAL reconcile any stray membership
-via its own hash read — the multiprocess regression test at ≥200 rounds is the convergence gate.)
+**Old-set discovery mechanism (was OQ1 — resolved).** Decision: **a server-authoritative
+sibling pointer field** `{field_name}\x00idxset`, written by the EVAL on every save, holding
+the pre-cleaned old value-Set key. The next save's EVAL reads it server-side and SREMs the
+member from exactly that Set — unconditionally — then advances the pointer. See Technical
+Approach → Old-set discovery for the full rationale and script. This *is* the reverse-lookup
+spike-1 found safest; it is stored inside the model hash (same key, one extra field), so it
+adds no separate top-level structure to keep consistent, and it is read+written inside the
+same atomic EVAL as the value and Set move. A purely client-computed SREM-target hint
+(`ARGV[5]`-as-target) was **rejected** as the core blocker of the prior draft: it can only
+name the current writer's old value, so a membership stranded in an *older* value-Set by an
+earlier interleaved writer is never named by any future hint and persists forever (re-opening
+Race 1). The server-authoritative pointer closes that gap because removal always targets the
+set named by the record's own last-committed pointer. The pointer string is computed in
+Python (correct `clean(str(value))` for all types) and only ever read/written verbatim in
+Lua — no Lua-side `clean()`/`str()` (type-parity guarantee preserved).
 
 **Pipeline integration (spike-4).**
 - *Internal path* (`base.py:1350-1418`): queue the EVAL into `internal_pipeline` so it
@@ -374,10 +472,14 @@ corrected in passing.
 
 ### Empty/Invalid Input Handling
 - `field_value=None`: must map to the `None` value Set (Python `str(None)`→`"None"`,
-  cleaned), and msgpack `None`→Lua `nil` (spike-3). Add a test saving then changing a
-  nullable IndexedField through `None` and asserting correct Set membership.
+  cleaned) — the pointer is set to that Set's key like any other value, and the value bytes
+  are msgpack `None` (spike-3). On a genuine first save the `\x00idxset` pointer is absent
+  (`HGET`→`false`), so no SREM is attempted (the type-safe replacement for the old
+  `old_value is not None` guard). Add a test: first save (no pointer) → value `None` → back to
+  a value, asserting correct Set membership and pointer at each step.
 - Re-saving the same instance with the same value must be a no-op (idempotent), not a
-  self-collision for unique fields (existing self-exclusion logic at `:156-161`).
+  self-collision for unique fields (existing self-exclusion logic at `:156-161`), and must
+  still write the field's value bytes to the hash (read-back parity).
 
 ### Error State Rendering
 - The `ModelException` message must remain user-visible and identical in wording for
@@ -400,8 +502,10 @@ No existing test asserts the *buggy* behavior, so nothing needs DELETE/REPLACE.
 
 - **Reconstructing `DB_key.clean(str(value))` inside Lua.** Type-parity (float `1.0`,
   `None`, bool) makes this brittle (spike-1). Avoid — compute Set keys in Python, pass in.
-- **A general reverse-index/secondary-structure overhaul.** Out of scope; the OQ1 decision
-  is to use the live model hash for old-set discovery, adding no companion structure.
+- **A general reverse-index/secondary-structure overhaul.** Out of scope. The OQ1 decision
+  adds exactly one bookkeeping field per indexed field (`{field}\x00idxset`) inside the
+  existing model hash for old-set discovery — not a new top-level index structure or a
+  general reverse-index subsystem.
 - **Fixing CONC-2 / CONC-3** (ObservationProtocol, CyclicDecayField RMW). Different
   mechanisms; separate issues (see No-Gos).
 - **`filter()` re-verification against the hash.** Tempting defense-in-depth, but it
@@ -420,18 +524,38 @@ MULTI/EXEC. Keep `test_atomic_save.py` green as a gate. Verify the field's hash 
 membership move within one atomic unit.
 
 ### Risk 2: Lua error inside MULTI/EXEC does not roll back (spike-4)
-**Impact:** A unique-conflict `error_reply` after other commands queued in the same EXEC
-leaves partial writes (e.g., the top-level hash HSET already applied).
-**Mitigation (OQ2 resolved):** Exclude Indexed/Unique fields from the top-level
-`hset_mapping` and make each field's `INDEX_SWAP_LUA` own that field's hash write as the LAST
-step of the EVAL, after the unique occupancy check. A conflict therefore aborts via
-`error_reply` before the field's hash value is written, so neither the hash field nor the Set
-ever reflects a rejected value. (If indexed fields were left in the top-level HSET, that
-step-1 write would persist a value the EVAL later rejects — a new partial-write corruption
-mode; this is why option (b) was chosen. See Technical Approach → Hash-write ownership.)
+**Impact:** Any Lua `error_reply` (the intended unique-conflict signal) or any *unexpected*
+Lua runtime error (script bug, wrong-type, OOM) does NOT roll back commands already applied
+earlier in the same EXEC. Two distinct sub-hazards:
+  - **(2a) unique-conflict (expected error):** if the rejected value had already been written
+    to the hash by a separate command, the hash would hold a value the index rejected.
+  - **(2b) mid-EXEC non-unique error (unexpected):** a script that performed SREM/SADD/HSET in
+    a partial order and then errored could commit a hash value whose indexed Set entry was
+    never written (or vice-versa). Because `filter()` reads Sets directly and never
+    re-verifies against the hash (Data Flow step 6), such a record could become invisible to
+    queries or appear under a stale value.
+**Mitigation (OQ2 resolved + ordering inside the EVAL):**
+  1. Exclude Indexed/Unique fields from the top-level `hset_mapping` so the EVAL is the
+     **single** writer of each indexed field's hash value (Technical Approach → Hash-write
+     ownership). There is no separate top-level HSET that a later EVAL error could leave
+     stranded.
+  2. **The unique occupancy check is the FIRST mutating-relevant step in the EVAL — before any
+     SREM, SADD, or HSET.** On conflict the EVAL `error_reply`s having written nothing, so
+     neither the value, the pointer, nor any Set changes (closes 2a deterministically).
+  3. For 2b: the EVAL is short, branch-simple, and performs no operation that can fail
+     mid-sequence under normal data (HGET/SISMEMBER/SMEMBERS/SREM/SADD/HSET on known key
+     types). The only deliberate error path is the unique `error_reply` at step 2. A script
+     *bug* is a code-correctness matter, not a runtime race; it is guarded by tests, not by
+     rollback. To bound the blast radius of a hypothetical 2b, the SADD+pointer-HSET+value-HSET
+     are ordered so the member is added to the new Set and the pointer advanced **immediately
+     before** the value HSET, minimizing any window; and a regression test deliberately injects
+     a forced non-unique Lua error after a partial mutation (via a test-only script variant) to
+     assert that no half-state is queryable through `filter()` — i.e. either the whole swap
+     applied or, on the production script, the unique-conflict path left nothing.
 On caught `ResponseError`, the save raises `ModelException` and the per-field state stays
-consistent. Add a test asserting that after a rejected unique save, neither the hash field
-nor the Set reflects the rejected value.
+consistent. Tests: (i) after a rejected unique save, neither the hash field, the pointer, nor
+the Set reflects the rejected value; (ii) the forced-mid-error variant leaves no
+`filter()`-visible inconsistency.
 
 ### Risk 3: Valkey parity unverified
 **Impact:** Dev server is Redis 8.6.2 (spike-3); project rule requires Redis AND Valkey,
@@ -452,11 +576,15 @@ round-trips. Include rough before/after `save()` timing at 20k in the PR.
 **Trigger:** Two processes hydrate the same record at value `X`; one saves `A`, the other
 `B`. Each SREMs the snapshot Set (`X`) and SADDs its own; the loser's SADD survives → record
 in both `A` and `B`.
-**Data prerequisite:** The authoritative current value must be read at swap time, not from
-the hydration snapshot.
-**State prerequisite:** The read-of-current and the SREM/SADD must be one atomic unit.
-**Mitigation:** EVAL reads the live hash value and moves the member from the Set it is
-actually in, atomically (Technical Approach).
+**Data prerequisite:** The SREM target must be the set the member is *actually* in, recorded
+server-side — not a client snapshot and not a client-computed hint that only names the current
+writer's old value.
+**State prerequisite:** The read-of-pointer and the SREM/SADD/pointer-advance must be one
+atomic unit.
+**Mitigation:** EVAL reads the server-authoritative `{field}\x00idxset` pointer it wrote on
+the previous save, SREMs from exactly that set, then advances the pointer — atomically
+(Technical Approach → Old-set discovery). No membership can be stranded in a set no future
+writer names.
 
 ### Race 2: Check-then-act uniqueness
 **Location:** `src/popoto/fields/indexed_field_mixin.py:150-166`
@@ -469,14 +597,18 @@ see an empty Set; both SADD.
 
 ### Race 3: Third-writer interleaving (convergence)
 **Location:** new `INDEX_SWAP_LUA`
-**Trigger:** Three+ processes saving the same record to different values in rapid succession.
-**Data prerequisite:** Each EVAL must remove from the Set implied by the *current* hash, not
-a passed-in hint, when the hint is stale.
-**State prerequisite:** Script validates the Python-passed old-set hint against the live hash
-before trusting it; falls back to hash-derived removal.
-**Mitigation:** Script reads the hash inside the EVAL; the final committed state always
-matches the last writer's hash value with exactly one Set membership. Covered by the
-multiprocess regression test running ≥200 rounds.
+**Trigger:** Three+ processes saving the same record to different values in rapid succession,
+including a membership left in an *older* value-Set by an earlier interleaved writer.
+**Data prerequisite:** Each EVAL must remove from the set named by the record's own
+last-committed server-authoritative pointer — guaranteeing every stale membership is named
+and removed by the next writer, with none stranded.
+**State prerequisite:** The pointer is read, used for SREM, and re-advanced inside one
+serialized EVAL.
+**Mitigation:** Per the Convergence invariant (Technical Approach), after every EVAL the
+record is in exactly the one set its pointer names and no other; therefore after the
+last-to-EXEC writer the record has exactly one membership matching its stored value. This is
+*per-EVAL deterministic*, not statistical. The ≥200-round multiprocess test is the regression
+gate, not the proof.
 
 ## No-Gos (Out of Scope)
 
@@ -523,8 +655,11 @@ surface.
   caveat**: the eager pre-check is best-effort and the authoritative uniqueness guarantee is
   enforced atomically at the caller's `execute()` by the queued EVAL (conflict surfaces as
   `ResponseError`→`ModelException` at that point).
-- [ ] Docstring for the new `INDEX_SWAP_LUA` explaining KEYS/ARGV contract and the
-  type-parity rationale for computing Set keys in Python.
+- [ ] Docstring for the new `INDEX_SWAP_LUA` explaining the KEYS/ARGV contract, the
+  server-authoritative `{field}\x00idxset` pointer, and the type-parity rationale for computing
+  Set keys in Python.
+- [ ] Comment the decode-path exclusion in `encoding.py` explaining why `\x00`-containing hash
+  fields are internal index bookkeeping and must be skipped during attribute reconstruction.
 
 ## Success Criteria
 
@@ -536,9 +671,23 @@ surface.
   `field_class_key`, not hard-coded).
 - [ ] After any concurrent round, `filter(field=v)` returns only records whose stored hash
   value is actually `v`.
+- [ ] **Single-process hash-content parity (Concern 2):** after `save()`, `HGET model_key
+  field` equals the bytes the legacy full-mapping-HSET path would have written, for indexed,
+  unique, no-op-re-save, and `None`-valued cases — proving the EVAL always writes the field
+  value even on a no-op index move.
+- [ ] **Convergence invariant holds (NIT 5):** after every round, for each record the
+  `{field}\x00idxset` pointer names exactly the one value-Set the record is a member of, and
+  that set matches the record's stored value; 0 records in more than one value-Set per field.
+- [ ] **Rejected-unique leaves nothing (Risk 2a):** after a unique conflict, neither the hash
+  field, the pointer, nor the target Set reflects the rejected value.
+- [ ] **No `filter()`-visible half-state under a forced mid-EVAL error (Risk 2b):** the
+  forced-error test variant leaves either a complete swap or no change.
+- [ ] **Pointer field is invisible to the model API:** `\x00idxset` fields never decode into
+  model attributes and never appear in `filter()` results.
 - [ ] New multiprocess regression test added (marked/skippable if CI cannot run spawn-mp).
 - [ ] Existing suite passes unchanged — no API, exception-type, or key-schema differences
-  for single-process users (`test_atomic_save.py` green = #147 preserved).
+  for single-process users (`test_atomic_save.py` green = #147 preserved). The only new hash
+  field is the internal `\x00idxset` pointer, excluded from decode.
 - [ ] Verified green against both Redis and Valkey (no Redis modules used).
 - [ ] No measurable `save()` regression at ~20k records/model (rough before/after timing in PR).
 - [ ] Tests pass (`/do-test`)
@@ -577,17 +726,24 @@ surface.
 ### 1. Implement the Lua check-and-swap + on_save rewrite
 - **Task ID**: build-lua-swap
 - **Depends On**: none
-- **Validates**: tests/test_atomic_save.py, tests/test_indexed_fields.py (if present), tests/test_queries.py
-- **Informed By**: spike-1 (compute Set keys in Python, not Lua), spike-3 (cmsgpack/error_reply facts), spike-4 (Lua errors don't roll back), spike-5 (EVAL queues inside MULTI/EXEC on Redis AND Valkey — atomicity proven)
+- **Validates**: tests/test_atomic_save.py, tests/test_indexed_fields.py (if present), tests/test_queries.py, tests/test_concurrent_index_integrity.py (parity + invisibility cases)
+- **Informed By**: spike-1 (server-authoritative reverse pointer; never `str()`/`clean()` in Lua), spike-3 (cmsgpack/error_reply facts), spike-4 (Lua errors don't roll back), spike-5 (EVAL queues inside MULTI/EXEC on Redis AND Valkey — atomicity proven), round-2 convergence blocker (pointer design), Concern 1 (write-ownership), Concern 2 (always-write field value)
 - **Assigned To**: lua-swap-builder
 - **Agent Type**: async-specialist
 - **Parallel**: true
-- Add `INDEX_SWAP_LUA` (KEYS/ARGV contract per Technical Approach, including the `ARGV[5]` sentinel `"\x00__NONE__"` guard mirroring the existing `old_value is not None` check) near the mixin.
-- **Exclude Indexed/Unique fields from the top-level `hset_mapping`** (`base.py:1273-1277` external, `:1354` internal) and have each field's EVAL own its hash write as the last step of the swap (OQ2 decision). Keep `self._db_content` reflecting the full intended mapping.
-- Rewrite `IndexedFieldMixin.on_save`: internal path queues the EVAL and drops the stale-snapshot SREM and pre-check SMEMBERS entirely; **external path keeps the eager `SMEMBERS` pre-check** and queues the EVAL into the caller's pipeline (OQ3 decision (a)).
-- Map unique-conflict `ResponseError` to `ModelException` with the existing message wording; ensure only the unique-conflict sentinel maps (other `ResponseError`s propagate).
+- Add `INDEX_SWAP_LUA` (KEYS/ARGV contract per Technical Approach → Old-set discovery). The
+  script: reads the server-authoritative `{field}\x00idxset` pointer (`ARGV[5]` = pointer
+  field name); for unique, runs the self-excluding occupancy check **first** (abort before any
+  mutation); SREMs the member from the pointer-named set when non-empty and changed; SADDs the
+  new set; HSETs the pointer to the new set key; HSETs the field value bytes (`ARGV[3]`) on
+  **every** non-error path (including the idempotent no-op branch — Concern 2). No
+  `str()`/`clean()` in Lua.
+- **Exclude Indexed/Unique fields from the top-level `hset_mapping`** (`base.py:1273-1277` external, `:1354` internal) so the EVAL is the SOLE writer of each indexed field's hash value (OQ2 decision (b); Concern 1 — write-ownership, not ordering). Keep `self._db_content` reflecting the full intended mapping.
+- **Add decode-path exclusion** for `\x00idxset` pointer fields in `decode_popoto_model_hashmap` (`encoding.py:315-320` and `:327-332`) and `_create_lazy_model` (`:415-417`): skip any hash field whose name contains `\x00`. (Pointer values are plain strings, not msgpack — they must never reach `msgpack.unpackb` or `model_class(**attrs)`.)
+- Rewrite `IndexedFieldMixin.on_save`: internal path queues the EVAL and drops the stale-snapshot SREM and pre-check SMEMBERS entirely; **external path keeps the eager `SMEMBERS` pre-check** and queues the EVAL into the caller's pipeline (OQ3 decision (a)). Compute the pre-cleaned new-set key and the pointer field name in Python; pass them in.
+- Map unique-conflict `ResponseError` to `ModelException` with the existing message wording; match only the `POPOTO_UNIQUE_CONFLICT` sentinel (other `ResponseError`s propagate).
 - Fix all four `$IdxF:`→`$IndexF:` docstring occurrences (`:18, 25, 28, 110`); reword the internal-path best-effort caveat and KEEP an accurate external-path caveat (OQ3).
-- Ensure the field's hash write and Set move occur in one atomic unit (Risk 1/2; spike-5 confirms in-pipeline EVAL atomicity).
+- Ensure the field's value HSET, pointer HSET, and Set move occur in one atomic unit (Risk 1/2; spike-5 confirms in-pipeline EVAL atomicity).
 
 ### 2. Author multiprocess regression + extend atomic-save tests
 - **Task ID**: build-tests
@@ -599,7 +755,11 @@ surface.
 - **Parallel**: true
 - Port the issue PoC into a marked multiprocess test (spawn, Redis barrier), correcting the UniqueField prefix to `$UniquF:` via `field_class_key`.
 - Assert 0 dual-membership over ≥200 rounds and 0 unique double-occupancy over ≥100 rounds.
-- Add single-process tests: nullable field through `None`, idempotent re-save, rejected-unique leaves neither hash nor Set changed (Risk 2).
+- **Assert the convergence invariant after each round (NIT 5):** for each record, the `{field}\x00idxset` pointer names exactly the one set the record is in, and that set matches its stored value.
+- Add single-process tests: nullable field through `None` (first-save = no pointer = no SREM), idempotent re-save, rejected-unique leaves neither hash, pointer, nor Set changed (Risk 2a).
+- **Hash-content parity test (Concern 2):** after `save()`, `HGET model_key field` equals the legacy full-mapping bytes for indexed/unique/no-op/`None` cases.
+- **Pointer-invisibility test:** `\x00idxset` fields never decode into attributes and never appear in `filter()` results.
+- **Forced mid-EVAL error test (Risk 2b):** a test-only script variant that errors after a partial mutation leaves no `filter()`-visible half-state.
 
 ### 3. Validate concurrency + cross-server + #147
 - **Task ID**: validate-concurrency
@@ -636,6 +796,7 @@ surface.
 | Concurrency regression | `.venv/bin/pytest tests/test_concurrent_index_integrity.py -q` | exit code 0 |
 | cmsgpack available | `.venv/bin/python -c "from popoto.redis_db import POPOTO_REDIS_DB as r; print(r.eval('return cmsgpack.unpack(cmsgpack.pack(7))',0))"` | output contains 7 |
 | No $IdxF leftover in code/docstrings | `grep -rn 'IdxF' src/popoto/fields/indexed_field_mixin.py` | exit code 1 |
+| Pointer field excluded from decode | `.venv/bin/pytest tests/test_concurrent_index_integrity.py -q -k "parity or invisible"` | exit code 0 |
 
 ## Critique Results
 
@@ -645,11 +806,22 @@ surface.
 | BLOCKER | data-integrity | Undecided hash-write ownership (OQ2) — top-level HSET at step 1 + on_save at step 5 ⇒ a step-5 unique conflict leaves the step-1 HSET persisted (new partial-write corruption). | Technical Approach → Hash-write ownership; Risk 2; Task 1 | Decision (b): exclude Indexed/Unique fields from the top-level `hset_mapping`; each field's EVAL owns its hash write as the last step, after the unique check, so a conflict aborts before any hash write. |
 | BLOCKER | accuracy | Stale precedent citation — cited `BAYESIAN_UPDATE_LUA`/`confidence_field.py:51` with a retracted "4000/4000 audit-verified" claim. | Problem; Freshness Check; Prior Art; Research | Live symbol is `CAPPED_BAYESIAN_UPDATE_LUA` (`:62`, PR #417), invoked standalone at `:467`. Stale claim dropped everywhere. |
 | CONCERN | semantics | External-pipeline uniqueness now surfaces at caller's `execute()`; docstring removal was unconditional. | Technical Approach → External path (OQ3); Documentation | Decision (a): keep eager pre-check for external path only; docstring caveat reworded for internal path, KEPT (accurate) for external path — conditional, not unconditional removal. |
-| CONCERN | correctness | None→value transition: `ARGV[5]` SREM target unspecified; unconditional Lua SREM touches an unintended key on first save. | Technical Approach → None→value transition; Task 1 | Sentinel `"\x00__NONE__"` passed when `old_value is None`; Lua guards `if ARGV[5] ~= sentinel then SREM ... end`, mirroring the existing `old_value is not None` check. |
+| CONCERN | correctness | None→value transition: SREM target unspecified; unconditional Lua SREM touches an unintended key on first save. | Technical Approach → Old-set discovery / Empty-Input handling; Task 1 | Superseded by the server-authoritative pointer (round 2): on first save the `\x00idxset` pointer is absent (`HGET`→`false`), so no SREM is attempted — no sentinel needed. |
 | NIT | accuracy | `$IdxF:` occurrence list incomplete (said 18, 25). | Freshness Check; Documentation; Task 1; Verification | Re-grepped: four occurrences at `:18, 25, 28, 110`. All listed and gated by the `grep` verification check. |
 
-All blockers, concerns, and the nit are resolved in this revision. All prior Open Questions
-(OQ1–OQ4) are decided below.
+### Round 2 (second revision pass)
+
+| Severity | Critic | Finding | Addressed By | Implementation Note |
+|----------|--------|---------|--------------|---------------------|
+| BLOCKER | concurrency | Old-set discovery does not converge: a client-computed `ARGV[5]` SREM target only names the current writer's old value, so a membership stranded in an OLDER value-Set is never named by any future writer and persists forever — re-introducing Race 1. | Technical Approach → Old-set discovery; spike-1; Race 1; Race 3; Architectural Impact | Replaced the client-computed hint with a **server-authoritative `{field}\x00idxset` pointer** written inside the EVAL, holding the pre-cleaned old-set key. Each writer SREMs from exactly the set its own last-committed pointer names — unconditionally — closing the convergence gap. Per-EVAL deterministic invariant stated. |
+| CONCERN | correctness | OQ2 rejection of alt (a) was unsound ("full-mapping HSET is structurally first and immovable" contradicts the adopted EVAL-first ordering). | Technical Approach → Hash-write ownership; spike-4 impact | Re-argued on **write-ownership**, not ordering: the EVAL must be the sole writer of each indexed field (value+index in one atomic step), so leaving the field in the top-level HSET means two writers to one hash field; the unique check then gates only one of them. Holds regardless of queue order. |
+| CONCERN | correctness | Read-back parity: excluding indexed fields from the wire HSET makes read-back depend on every EVAL writing them; the no-op branch could leave a field unwritten. | Technical Approach → Single-process read-back parity; Lua sketch; Success Criteria; Task 2 | EVAL writes `HSET model_key field new_bytes` on **every** non-error path, including the idempotent no-op branch. New hash-content parity success criterion + test. |
+| CONCERN | correctness | Mid-EXEC non-unique Lua error can commit a hash missing indexed values; `filter()` never re-verifies ⇒ invisible records. | Risk 2 (2a/2b split); Success Criteria; Task 2 | Unique check is first (aborts before any mutation); EVAL is the sole writer with no separate top-level HSET to strand; forced-mid-error test asserts no `filter()`-visible half-state. |
+| CONCERN | consistency | spike-1 self-contradictory: named reverse-lookup safest but Resolution rejected it. | spike-1; Old-set discovery | Reconciled: the server-authoritative pointer IS the reverse-lookup spike-1 found safest; spike-1 Finding/Resolution/Impact now all adopt it. |
+| NIT | clarity | Convergence invariant only stated as "≥200-round test passes". | Technical Approach → Convergence invariant; Race 3; Success Criteria | Deterministic per-EVAL invariant stated explicitly; the round-test is named as the regression gate, not the proof. |
+
+All round-1 and round-2 blockers, concerns, and nits are resolved in this revision. All prior
+Open Questions (OQ1–OQ4) are decided below.
 
 ---
 
@@ -657,9 +829,13 @@ All blockers, concerns, and the nit are resolved in this revision. All prior Ope
 
 All Open Questions from the prior draft are now decided — none remain blocking build.
 
-1. **Old-set discovery mechanism (OQ1) — RESOLVED.** Use the live model hash read inside the
-   EVAL as the source of truth; **no** reverse-pointer companion structure. See Technical
-   Approach → Old-set discovery.
+1. **Old-set discovery mechanism (OQ1) — RESOLVED (revised in round 2).** Use a
+   **server-authoritative `{field}\x00idxset` pointer** stored inside the model hash, written
+   by the EVAL on each save and holding the pre-cleaned old value-Set key. The next save's
+   EVAL reads it and SREMs from exactly that set unconditionally, then advances it. This is the
+   reverse-lookup spike-1 found safest and is the only convergent, type-safe option (a
+   client-computed SREM hint cannot converge — round-2 blocker). See Technical Approach →
+   Old-set discovery.
 2. **Hash-write ownership (OQ2) — RESOLVED.** Option (b): exclude Indexed/Unique fields from
    the top-level `hset_mapping`; each field's EVAL owns its hash write as the swap's last
    step. See Technical Approach → Hash-write ownership and Risk 2.
