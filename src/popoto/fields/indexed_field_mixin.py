@@ -260,8 +260,8 @@ class IndexedFieldMixin:
             pipeline.eval(
                 INDEX_SWAP_LUA,
                 2,
-                model_instance.redis_key,
-                new_set_key,
+                member_key,   # KEYS[1]: the model hash key (same as record redis_key)
+                new_set_key,  # KEYS[2]: new value Set key
                 field_name,
                 member_key,
                 new_bytes,
@@ -277,8 +277,8 @@ class IndexedFieldMixin:
                 result = POPOTO_REDIS_DB.eval(
                     INDEX_SWAP_LUA,
                     2,
-                    model_instance.redis_key,
-                    new_set_key,
+                    member_key,   # KEYS[1]: the model hash key (same as record redis_key)
+                    new_set_key,  # KEYS[2]: new value Set key
                     field_name,
                     member_key,
                     new_bytes,
@@ -308,6 +308,10 @@ class IndexedFieldMixin:
         """
         Remove the model instance from the index Set on delete.
 
+        Uses the server-authoritative {field}\x00idxset pointer (if present) to
+        determine which value-Set to SREM from. Falls back to field_value-derived
+        key for legacy records without the pointer.
+
         Args:
             model_instance: The Model instance being deleted.
             field_name: The name of this field on the model.
@@ -317,15 +321,27 @@ class IndexedFieldMixin:
         Returns:
             The pipeline (if provided) or the SREM result.
         """
-        index_set_key = DB_key(
-            cls.get_special_use_field_db_key(model_instance, field_name),
-            field_value,
-        )
         member_key = kwargs.get("saved_redis_key", model_instance.db_key.redis_key)
-        if pipeline:
-            return pipeline.srem(index_set_key.redis_key, member_key)
+        model_hash_key = member_key  # model hash key = redis_key for this record
+
+        # Read server-authoritative pointer to find the exact set this member is in
+        ptr_field = f"{field_name}\x00idxset"
+        ptr_value = POPOTO_REDIS_DB.hget(model_hash_key, ptr_field)
+
+        if ptr_value:
+            # Pointer present: SREM from the set it names
+            index_set_key = ptr_value.decode() if isinstance(ptr_value, bytes) else ptr_value
         else:
-            return POPOTO_REDIS_DB.srem(index_set_key.redis_key, member_key)
+            # Legacy record (no pointer): fall back to field_value-derived key
+            index_set_key = DB_key(
+                cls.get_special_use_field_db_key(model_instance, field_name),
+                field_value,
+            ).redis_key
+
+        if pipeline:
+            return pipeline.srem(index_set_key, member_key)
+        else:
+            return POPOTO_REDIS_DB.srem(index_set_key, member_key)
 
     def get_filter_query_params(self, field_name: str) -> set:
         """
