@@ -1127,17 +1127,29 @@ class Model(metaclass=ModelBase):
             if self._redis_key != new_db_key.redis_key:
                 obsolete_key = self._redis_key
 
-            # Encode all fields, then filter to only update_fields
+            # Encode all fields, then filter to only update_fields.
+            # Exclude IndexedFieldMixin fields — EVAL (INDEX_SWAP_LUA) owns their
+            # hash writes atomically, so the plain HSET must not race with them.
             full_mapping = encode_popoto_model_obj(self)
             update_field_names_bytes = {
                 field_name.encode(ENCODING) for field_name in update_fields
             }
+            indexed_field_names_bytes = {
+                field_name.encode(ENCODING)
+                for field_name, field in self._meta.fields.items()
+                if isinstance(field, IndexedFieldMixin)
+            }
             hset_mapping = {
-                k: v for k, v in full_mapping.items() if k in update_field_names_bytes
+                k: v
+                for k, v in full_mapping.items()
+                if k in update_field_names_bytes
+                and k not in indexed_field_names_bytes
             }
 
             if isinstance(pipeline, redis.client.Pipeline):
-                pipeline = pipeline.hset(new_db_key.redis_key, mapping=hset_mapping)
+                if hset_mapping:
+                    pipeline = pipeline.hset(new_db_key.redis_key, mapping=hset_mapping)
+                # else: EVAL-only path — indexed field EVALs write the hash fields
                 # If db_key changed, clean up the obsolete key
                 if obsolete_key and obsolete_key != new_db_key.redis_key:
                     # Remove old index entries using saved field values
@@ -1195,7 +1207,9 @@ class Model(metaclass=ModelBase):
             else:
                 # Use internal pipeline for atomic execution
                 internal_pipeline = POPOTO_REDIS_DB.pipeline()
-                internal_pipeline.hset(new_db_key.redis_key, mapping=hset_mapping)
+                if hset_mapping:
+                    internal_pipeline.hset(new_db_key.redis_key, mapping=hset_mapping)
+                # else: EVAL-only path — indexed field EVALs write the hash fields
                 # If db_key changed, clean up the obsolete key
                 if obsolete_key and obsolete_key != new_db_key.redis_key:
                     # Remove old index entries using saved field values
@@ -1239,7 +1253,10 @@ class Model(metaclass=ModelBase):
                         new_db_key.redis_key, int(self._expire_at.timestamp())
                     )
                 results = internal_pipeline.execute()
-                db_response = results[0]  # HSET result
+                # When hset_mapping is non-empty, results[0] is the HSET count.
+                # When EVAL-only (all fields are indexed), results[0] is the
+                # first EVAL return value — still an int, so backward-compat holds.
+                db_response = results[0] if results else 0
                 self._is_persisted = True
                 self._redis_key = new_db_key.redis_key
                 # Merge into saved_field_values (preserve existing, update listed)
@@ -1272,9 +1289,22 @@ class Model(metaclass=ModelBase):
 
         hset_mapping = encode_popoto_model_obj(self)  # 1
         self._db_content = hset_mapping  # 1
+        # Exclude IndexedFieldMixin fields — EVAL (INDEX_SWAP_LUA) owns their
+        # hash writes atomically, so the plain HSET must not race with them.
+        from ..redis_db import ENCODING as _ENCODING
+        _indexed_field_names_bytes = {
+            field_name.encode(_ENCODING)
+            for field_name, field in self._meta.fields.items()
+            if isinstance(field, IndexedFieldMixin)
+        }
+        hset_mapping = {
+            k: v for k, v in hset_mapping.items()
+            if k not in _indexed_field_names_bytes
+        }
 
         if isinstance(pipeline, redis.client.Pipeline):
-            pipeline = pipeline.hset(new_db_key.redis_key, mapping=hset_mapping)  # 1
+            if hset_mapping:
+                pipeline = pipeline.hset(new_db_key.redis_key, mapping=hset_mapping)  # 1
             if self._ttl is not None:
                 pipeline = pipeline.expire(new_db_key.redis_key, self._ttl)  # 2
             elif self._expire_at is not None:
@@ -1351,7 +1381,8 @@ class Model(metaclass=ModelBase):
             # Use internal pipeline for atomic execution (all-or-nothing)
             internal_pipeline = POPOTO_REDIS_DB.pipeline()
 
-            internal_pipeline.hset(new_db_key.redis_key, mapping=hset_mapping)  # 1
+            if hset_mapping:
+                internal_pipeline.hset(new_db_key.redis_key, mapping=hset_mapping)  # 1
             if self._ttl is not None:
                 internal_pipeline.expire(new_db_key.redis_key, self._ttl)  # 2
             elif self._expire_at is not None:
@@ -1416,7 +1447,10 @@ class Model(metaclass=ModelBase):
             # pipeline.execute() is synchronous in redis-py: it blocks until
             # all responses are received, guaranteeing write visibility after return
             results = internal_pipeline.execute()
-            db_response = results[0]  # HSET result (backward compat)
+            # When hset_mapping is non-empty, results[0] is the HSET count.
+            # When EVAL-only (all fields are indexed), results[0] is the
+            # first EVAL return value — still an int, so backward-compat holds.
+            db_response = results[0] if results else 0  # HSET result (backward compat)
 
             self._is_persisted = True
             self._redis_key = new_db_key.redis_key  # 7

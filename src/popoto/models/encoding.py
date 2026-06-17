@@ -317,6 +317,7 @@ def decode_popoto_model_hashmap(
                     msgpack.unpackb(value_b, strict_map_key=False)
                 )
                 for key_b, value_b in redis_hash.items()
+                if b"\x00" not in key_b  # skip internal pointer fields (e.g. \x00idxset)
             }
             return model_attrs
 
@@ -329,6 +330,7 @@ def decode_popoto_model_hashmap(
                 msgpack.unpackb(value_b, strict_map_key=False)
             )
             for key_b, value_b in redis_hash.items()
+            if b"\x00" not in key_b  # skip internal pointer fields (e.g. \x00idxset)
         }
 
         # Create the model instance
@@ -411,9 +413,13 @@ def _create_lazy_model(model_class: "Model", redis_hash: dict) -> "Model":
     # Create instance without calling __init__
     instance = object.__new__(model_class)
 
-    # Store raw msgpack bytes for lazy decoding
+    # Store raw msgpack bytes for lazy decoding.
+    # Skip internal pointer fields (names containing \x00, e.g. field\x00idxset)
+    # so they never surface as model attributes.
     instance._lazy_fields = {
-        key_b.decode(ENCODING): value_b for key_b, value_b in redis_hash.items()
+        key_b.decode(ENCODING): value_b
+        for key_b, value_b in redis_hash.items()
+        if b"\x00" not in key_b
     }
     instance._decoded_fields = {}
 
