@@ -1,11 +1,12 @@
 ---
-status: Planning
+status: Ready
 type: bug
 appetite: Medium
 owner: valorengels
 created: 2026-06-19
 tracking: https://github.com/tomcounsell/popoto/issues/409
 last_comment_id: 4689746491
+revision_applied: true
 ---
 
 # Make BM25 a First-Class Retrieval Mode and Recipe Default
@@ -194,7 +195,8 @@ not coding-bound.
 | Redis/Valkey on localhost:6379 | `redis-cli ping` | Tests run against a live server (DB 15 via plugin) |
 | Editable install current | `python -c "import popoto; print(popoto.__version__)"` | Plugin isolation + BM25 Lua available |
 
-Run all checks: `python scripts/check_prerequisites.py docs/plans/bm25_first_class_retrieval_mode.md`
+Run the checks directly (there is no `scripts/check_prerequisites.py` in this repo):
+`redis-cli ping && python -c "import popoto; print(popoto.__version__)"`
 
 ## Solution
 
@@ -226,28 +228,84 @@ Recipe Quick Start (with `BM25Field`) → `SubconsciousMemory.inject_context(mes
 
 ### Technical Approach
 
-- **Mode resolution (`context_assembler.py:926-948`)**: Add a `"lexical"` branch and revise `"auto"`:
-  - `"auto"`: `"hybrid"` if (BM25 and embedding); elif `"lexical"` if BM25; elif `"hybrid"`-via-embedding
-    decision (preserve any embedding-only behavior that exists today — verify); else `"composite"`.
-    (Confirm current embedding-only behavior during build; the issue is silent about an
-    embedding-only-no-BM25 model. Default that to composite unless a hybrid-capable path exists.)
-  - `"lexical"`: require `_bm25_field is not None`, else raise `QueryException` with a message
-    mirroring the `"hybrid"` guard (`"retrieval_mode='lexical' requires BM25Field on {model}"`).
-  - `"hybrid"`: unchanged (still requires both fields).
+- **Mode resolution (`context_assembler.py:926-948`)**: Add a `"lexical"` branch and revise `"auto"`.
+  The current `"auto"` block resolves `"hybrid"` iff (BM25 and embedding) else `"composite"` (verified
+  at `:927-932`). Revise to (decision per resolved Q2 — keep the `"hybrid"` both-fields contract loud,
+  add an explicit named `"lexical"` mode rather than relaxing `"hybrid"`):
+  ```python
+  if retrieval_mode == "auto":
+      if self._bm25_field is not None and self._embedding_field is not None:
+          self._effective_mode = "hybrid"
+      elif self._bm25_field is not None:
+          self._effective_mode = "lexical"      # NEW: BM25-only is query-sensitive
+      else:
+          self._effective_mode = "composite"     # no BM25 → unchanged (incl. embedding-only, see Q3)
+  ```
+  - `"lexical"` (explicit): require `_bm25_field is not None`, else raise `QueryException` with a
+    message mirroring the `"hybrid"` guard: `"retrieval_mode='lexical' requires BM25Field on {model}"`.
+  - `"hybrid"`: unchanged (still requires both fields; loud guard preserved).
   - `"composite"`: unchanged.
-- **Pull-path dispatch (`:1134-1142`)**: Route `"lexical"` to `_pull_path_hybrid` (which already
-  tolerates empty vector results) **or** add a thin `_pull_path_lexical` that calls only the BM25
-  + fuse + optional-graph subset. Prefer routing through `_pull_path_hybrid` to avoid duplication —
-  but verify the `if not keyword_results and not vector_results: fall back to composite` branch
-  (`:1268-1273`) behaves acceptably for lexical (a truly empty BM25 result legitimately falling to
-  composite is acceptable; document it). If reuse is awkward, extract a shared helper.
-- **`_get_vector_scores` guard**: In lexical mode, do **not** call `_get_vector_scores` (it may
-  import numpy / require an embedding provider). Gate the vector branch on `self._embedding_field
-  is not None` so a numpy-free environment never touches vector code. (Verify the current hybrid
-  path doesn't already short-circuit when `_embedding_field is None`; if it does, lexical reuse is free.)
-- **SubconsciousMemory (`subconscious_memory.py:132-137`)**: Either (a) keep building with
-  `retrieval_mode="auto"` and rely on improved resolution (preferred — zero new surface), or
-  (b) accept/forward a `retrieval_mode` kwarg. Decide via Open Question 1.
+  - **Embedding-only (no BM25) under `"auto"` (resolved Q3): explicitly out of scope.** An
+    `EmbeddingField`-only model continues to resolve to `"composite"` (query-blind) exactly as today.
+    BM25-only is the stated target of #409; relaxing `"auto"` to route embedding-only models to a
+    vector path is a separate concern (see No-Gos). The build must NOT change embedding-only behavior.
+- **Pull-path dispatch (`:1134-1142`) — MANDATORY new dispatch entry (BLOCKER 2)**: The current
+  `_pull_path` routes **only** `"hybrid"` to `_pull_path_hybrid`; everything else (including a
+  resolved `"lexical"` mode) falls through to `_pull_path_composite` — which is the exact
+  query-blind bug this plan fixes. A `"lexical"` mode that resolves correctly in `__init__` but is
+  not added to the dispatcher would silently regress to composite and pass no test that doesn't
+  assert the dispatch target. **Add the dispatch entry before the composite fallthrough:**
+  ```python
+  def _pull_path(self, query_cues, filters):
+      if self._effective_mode == "hybrid":
+          return self._pull_path_hybrid(query_cues, filters)
+      elif self._effective_mode == "lexical":          # NEW — load-bearing
+          return self._pull_path_hybrid(query_cues, filters)
+      return self._pull_path_composite(query_cues, filters)
+  ```
+  Lexical routes through `_pull_path_hybrid` (shared body); the mode difference is realized entirely
+  by the `self._embedding_field is None` vector-branch gate below — in lexical mode `_embedding_field`
+  is guaranteed `None`, so the vector branch is skipped and only BM25 (+ optional graph) feeds RRF.
+  A truly empty BM25 result still falls to composite (`:1268-1273`), which is acceptable and
+  documented. (`_pull_path_lexical` as a separate method is rejected: it would duplicate the
+  ExistenceFilter pre-check, graph-seeding, and RRF fusion for no behavioral gain now that the
+  vector branch is gated.)
+- **`_get_vector_scores` gate — MANDATORY code change, not "verify/optional" (BLOCKER 1)**: The
+  current `_pull_path_hybrid` (`:1255-1266`) calls `_qb._get_vector_scores(...)` **unconditionally**
+  inside a warn-only `try/except`; it is NOT gated on `self._embedding_field`. As written today, a
+  BM25-only (lexical) model would import `QueryBuilder`, attempt vector scoring, hit a failed
+  numpy/embedding-provider path, and **swallow the warning on every single query**. This makes the
+  "no numpy required on the lexical path" acceptance criterion unachievable and adds silent
+  per-query overhead. **Wrap the entire vector import+call in `if self._embedding_field is not None:`
+  with `vector_results` pre-initialized to `[]`:**
+  ```python
+  vector_results: list = []
+  # --- Vector semantic retrieval (only when an EmbeddingField is configured) ---
+  if self._embedding_field is not None:
+      try:
+          from ..models.query import QueryBuilder as _QueryBuilder
+          _q = self.model_class.query
+          _qb = _q.filter(**filters) if filters else _QueryBuilder(_q)
+          vector_results = _qb._get_vector_scores(query_text, limit=candidate_limit)
+      except Exception as e:
+          logger.warning("Vector search failed in hybrid path: %s", e)
+  ```
+  This is a hard requirement: the `from ..models.query import QueryBuilder` and the
+  `_get_vector_scores` call must both be inside the `if self._embedding_field is not None:` block so
+  a numpy-free environment never touches vector code. The existing `vector_results: list = []`
+  pre-init at `:1241` already exists; the change is moving the import+call under the gate. This also
+  benefits the existing `"hybrid"` mode harmlessly (in hybrid, `_embedding_field` is non-null by the
+  `__init__` guard, so the gate is always true and behavior is unchanged).
+- **SubconsciousMemory (`subconscious_memory.py:132-137`) — resolved Q1**: `SubconsciousMemory.__init__`
+  builds `ContextAssembler(...)` with **no** `retrieval_mode` kwarg (verified at `:132-137`), so it
+  always defaults to `"auto"`. This is the primary entry point the recipe documents and the one the
+  RETR-1 audit measured. **Decision: keep building with `retrieval_mode="auto"` and rely on the
+  improved resolution — zero new public surface.** Because the recipe's default `Memory` model gains a
+  `BM25Field` (below), `"auto"` now resolves to `"lexical"` automatically; no kwarg is needed and none
+  is added. (A forcing kwarg is deferred to a future issue if a concrete need appears; adding it now
+  would be speculative surface.) **This is load-bearing: the end-to-end success of #409 depends on a
+  BM25-only `SubconsciousMemory` resolving to `lexical` via the no-kwarg `"auto"` path — covered by a
+  dedicated end-to-end test (see Test Impact / Success Criteria).**
 - **Recipe model + quickstart**: Add `content_bm25 = BM25Field(source="content")` to the Quick
   Start model (`subconscious-memory-recipe.md:39-54`) and the quickstart guide levels that the
   recipe references (Level 2+ in `agent-memory-quickstart.md`). Keep `EmbeddingField` as the
@@ -289,9 +347,18 @@ Recipe Quick Start (with `BM25Field`) → `SubconsciousMemory.inject_context(mes
 - `tests/test_bm25_field.py` — likely no change (BM25 engine unchanged); verify still green.
 - `tests/test_hybrid_retrieval.py` — verify still green (RRF fusion unchanged); add a lexical-only
   fusion case if not covered.
-- NEW `tests/test_retrieval_quality_regression.py` (or similar) — REPLACE/ADD: the PoC-corpus P@10
-  regression test. **Pin `max_tokens` ample/unset** so post-#419 budget packing does not truncate
-  the top-10 and masquerade as a retrieval regression (per the #419 upstream notice).
+- NEW `tests/test_retrieval_quality_regression.py` — ADD: the P@10 regression test. **Pin `max_tokens`
+  ample/unset** so post-#419 budget packing does not truncate the top-10 and masquerade as a retrieval
+  regression (per the #419 upstream notice).
+- NEW `tests/fixtures/retr1_corpus.json` (or `.py`) — ADD (CONCERN 5): the RETR-1 audit corpus pinned
+  as a **static fixture**, NOT regenerated at test time. The audit PoC built it with
+  `random.Random(42)` (200 records / 10 topics / 20 queries / 20 relevant per query); freeze that
+  exact generated output to a committed file so the corpus is reproducible regardless of future
+  changes to `random` semantics or generator code. The test loads the fixture and **asserts its shape
+  before measuring**: `assert len(corpus.records) == 200`, `assert len(corpus.queries) == 20`,
+  `assert all(len(q.relevant) == 20 for q in corpus.queries)`. A corpus that fails the shape assertion
+  fails the test loudly rather than silently measuring P@10 against the wrong baseline. (`tests/fixtures/`
+  does not exist yet — create it. There is no existing static RETR-1 fixture in the repo, verified.)
 
 ## Rabbit Holes
 
@@ -310,9 +377,12 @@ Recipe Quick Start (with `BM25Field`) → `SubconsciousMemory.inject_context(mes
 ### Risk 1: Lexical reuse of `_pull_path_hybrid` accidentally invokes numpy/embedding code
 **Impact:** A BM25-only deployment without numpy crashes or imports a missing provider, violating
 the "no new required deps" acceptance criterion.
-**Mitigation:** Gate every vector branch on `self._embedding_field is not None`. Add a test that
-runs the lexical path with the vector branch asserted unreached (monkeypatch `_get_vector_scores`
-to raise, expect it never called). Verify in build whether the current hybrid path already short-circuits.
+**Mitigation:** The vector-branch gate is a **mandatory code change** (BLOCKER 1), not a verification:
+wrap the `QueryBuilder` import and `_get_vector_scores` call in `if self._embedding_field is not None:`
+with `vector_results = []` pre-initialized (the current code calls it unconditionally inside a warn-only
+try/except — confirmed at `:1255-1266`). The vector-branch-never-called test (monkeypatch
+`_get_vector_scores` to raise, assert never called in lexical mode) is a required Success Criterion, not
+optional.
 
 ### Risk 2: P@10 regression test is flaky or environment-sensitive
 **Impact:** CI noise; false regressions from budget truncation (#419) or tokenizer changes.
@@ -341,6 +411,10 @@ synchronous sequence of Redis calls. BM25 indexing already happens in field `on_
   concern per the issue's "Dropped" bucket; file independently.
 - [SEPARATE-SLUG #394] Wiring P@10 into the LongMemEval-S / LoCoMo benchmark harness — #394 is the
   proper home for harness-based regression tracking; this plan ships a self-contained pytest instead.
+- [SEPARATE ISSUE] Routing embedding-only (`EmbeddingField`, no `BM25Field`) models under `"auto"` to a
+  vector-sensitive path (resolved Q3). Such models stay `"composite"` (query-blind) exactly as today.
+  #409 targets BM25-only; the embedding-only-auto question is a distinct follow-up and the build must
+  not touch that branch.
 
 <!-- NOTE: PERF-7 and the extraction finding are flagged in issue #409 itself as out-of-scope and
      "should be filed independently." They are not yet separate issues; the build/merge step should
@@ -377,11 +451,25 @@ bridge in scope; `ContextAssembler`/`SubconsciousMemory` are imported directly b
 ## Success Criteria
 
 - [ ] A model with `BM25Field` and no `EmbeddingField` passed to
-      `ContextAssembler(retrieval_mode="auto")` resolves to a lexical-capable mode (assert
-      `_effective_mode`) and returns query-dependent results; no numpy required on that path.
+      `ContextAssembler(retrieval_mode="auto")` resolves to `_effective_mode == "lexical"` and returns
+      query-dependent results; no numpy required on that path.
+- [ ] **(BLOCKER 2) Dispatch test**: with `_effective_mode == "lexical"`, `_pull_path` routes to
+      `_pull_path_hybrid` (not `_pull_path_composite`). Assert via spy/monkeypatch that
+      `_pull_path_composite` is NOT entered for a non-empty BM25 result, proving the lexical dispatch
+      entry exists and is load-bearing.
+- [ ] **(BLOCKER 1) Vector-branch-never-called test**: in lexical mode (`_embedding_field is None`),
+      the vector branch is never executed. Monkeypatch `QueryBuilder._get_vector_scores` to raise
+      `AssertionError("vector branch must not run in lexical mode")` and assert it is never called
+      during a lexical `assemble()` — proving the `if self._embedding_field is not None:` gate holds and
+      no numpy/embedding-provider code is touched.
+- [ ] **(CONCERN 3) End-to-end SubconsciousMemory test**: a BM25-only `SubconsciousMemory` (built with
+      the default no-`retrieval_mode` constructor) resolves its internal assembler to
+      `_effective_mode == "lexical"`, and `inject_context()` returns query-dependent sets across
+      different user messages. This covers the primary documented entry point (Q1).
 - [ ] The post-update recipe Quick Start model returns different memory sets for different queries:
-      on the PoC corpus (200 / 10 topics / 20 queries), ≥ 19/20 distinct injected sets, mean
-      pairwise Jaccard well below 1.0.
+      on the RETR-1 static fixture (200 / 10 topics / 20 queries), the distinct-set fraction
+      `distinct_injected_sets / total_queries >= 0.95` (i.e. ≥ 19/20), and mean pairwise Jaccard
+      well below 1.0.
 - [ ] Regression test: documented-default model through `SubconsciousMemory.inject_context()`
       achieves mean P@10 ≥ 0.5 (with `max_tokens` pinned ample/unset).
 - [ ] Explicit `retrieval_mode="lexical"` on a model without `BM25Field` raises `QueryException`
@@ -432,11 +520,17 @@ bridge in scope; `ContextAssembler`/`SubconsciousMemory` are imported directly b
 - **Agent Type**: builder
 - **Parallel**: false
 - Add `"lexical"` to `retrieval_mode` resolution in `context_assembler.py:926-948`; revise `"auto"`
-  so BM25-present (no embedding) → `"lexical"`, both → `"hybrid"`, neither → `"composite"`.
+  so BM25-present (no embedding) → `"lexical"`, both → `"hybrid"`, neither → `"composite"`
+  (embedding-only stays `"composite"` — resolved Q3, do not change).
 - Add loud `QueryException` guard for explicit `"lexical"` without `BM25Field`.
-- Route `"lexical"` through `_pull_path_hybrid` (verify vector branch is gated on
-  `_embedding_field is not None`; add the gate if missing) or extract a shared helper.
-- Decide SubconsciousMemory wiring per Open Question 1 (default: rely on improved `"auto"`).
+- **(BLOCKER 2, MANDATORY)** Add the `elif self._effective_mode == "lexical": return
+  self._pull_path_hybrid(...)` dispatch entry in `_pull_path` (`:1134-1142`) before the composite
+  fallthrough. Without it, lexical silently regresses to composite.
+- **(BLOCKER 1, MANDATORY)** Gate the vector branch in `_pull_path_hybrid` (`:1255-1266`) on
+  `if self._embedding_field is not None:` with `vector_results = []` pre-init — move both the
+  `QueryBuilder` import and the `_get_vector_scores` call inside the gate. Currently unconditional.
+- SubconsciousMemory wiring (resolved Q1): no change — keep the no-`retrieval_mode` constructor; rely
+  on improved `"auto"` (BM25-default model now resolves to `"lexical"` automatically).
 
 ### 2. Update recipe default model + quickstart levels
 - **Task ID**: build-recipe-model
@@ -464,8 +558,14 @@ bridge in scope; `ContextAssembler`/`SubconsciousMemory` are imported directly b
 - **Assigned To**: test-builder
 - **Agent Type**: test-engineer
 - **Parallel**: false
-- Add the PoC-corpus P@10 regression test (pin `max_tokens`); add lexical mode resolution,
-  loud-failure, query-sensitivity, and numpy-free gating tests.
+- Add the RETR-1 static-fixture P@10 regression test (pin `max_tokens`; assert fixture shape
+  `len==200`/`20`/`20`-relevant before measuring; distinct-set fraction `>= 0.95`).
+- Add lexical mode resolution test (`"auto"`+BM25-only → `_effective_mode == "lexical"`).
+- Add the BLOCKER 2 dispatch test (`_pull_path` routes lexical → `_pull_path_hybrid`, not composite).
+- Add the BLOCKER 1 vector-branch-never-called test (monkeypatch `_get_vector_scores` to raise;
+  assert never called in lexical mode).
+- Add the end-to-end SubconsciousMemory→lexical test (default constructor, query-dependent sets).
+- Add the loud-failure test (explicit `"lexical"` without `BM25Field` raises `QueryException`).
 
 ### 5. Final validation
 - **Task ID**: validate-all
@@ -489,23 +589,26 @@ bridge in scope; `ContextAssembler`/`SubconsciousMemory` are imported directly b
 
 ## Critique Results
 
-<!-- Populated by /do-plan-critique (war room). Leave empty until critique is run. -->
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
+| BLOCKER 1 | Critique R1 | Vector branch (`_get_vector_scores`) called unconditionally inside warn-only try/except, not gated on `_embedding_field`; BM25-only models pay a failed numpy import + swallowed warning every query, breaking "no numpy required". | Technical Approach › `_get_vector_scores` gate; Step 1; Risk 1; Success Criteria | MANDATORY code change: wrap import+call in `if self._embedding_field is not None:` with `vector_results = []` pre-init. Test asserts vector branch never called in lexical mode. |
+| BLOCKER 2 | Critique R1 | `_pull_path` routes only `"hybrid"` → `_pull_path_hybrid`; a resolved-lexical model silently falls through to `_pull_path_composite` (the bug being fixed). | Technical Approach › Pull-path dispatch; Step 1; Success Criteria | MANDATORY: add `elif self._effective_mode == "lexical": return self._pull_path_hybrid(...)` before composite fallthrough. Dispatch test added. |
+| CONCERN 3 | Critique R1 | Close all 3 Open Questions; SubconsciousMemory uses no-kwarg auto default, so Q1 governs the primary entry point. | Resolved Questions; Technical Approach › SubconsciousMemory; Success Criteria | All 3 Qs closed. End-to-end test: BM25-only SubconsciousMemory resolves to lexical. |
+| CONCERN 4 | Critique R1 | Decide lexical-as-new-mode vs relaxing auto→hybrid (Q2). | Resolved Questions (Q2); Technical Approach › Mode resolution | Decision: explicit `"lexical"` mode; keep `"hybrid"` both-fields contract loud. |
+| CONCERN 5 | Critique R1 | Pin P@10 corpus as a static fixture with a length assertion; express distinct-set criterion as a fraction. | Test Impact (new fixture); Success Criteria; Step 4 | `tests/fixtures/retr1_corpus.json` frozen; shape asserted (200/20/20-relevant); distinct/total >= 0.95. |
+| CONCERN 6 | Critique R1 | `scripts/check_prerequisites.py` referenced in Prerequisites does not exist. | Prerequisites | Replaced with direct check command (`redis-cli ping && python -c "import popoto..."`). |
 
 ---
 
-## Open Questions
+## Resolved Questions
 
-1. **SubconsciousMemory wiring**: Should `SubconsciousMemory` keep building the assembler with
-   `retrieval_mode="auto"` and rely on the improved resolution (zero new surface, recommended), or
-   should it expose/forward a `retrieval_mode` kwarg so callers can force `"lexical"`/`"composite"`?
-   Recommendation: rely on improved `"auto"`; add the kwarg only if a forcing use case is needed.
-2. **`"lexical"` vs relaxing `"hybrid"`**: The issue offers two shapes — (a) a new `"lexical"` mode,
-   or (b) relax `"hybrid"` to "fuse whichever signals exist." This plan picks (a) `"lexical"` for an
-   explicit, discoverable name and to keep `"hybrid"`'s both-fields contract loud. Confirm this is the
-   preferred shape.
-3. **Embedding-only (no-BM25) model under `"auto"`**: The issue is silent on a model with
-   `EmbeddingField` but no `BM25Field`. Current behavior resolves such a model to `"composite"`
-   (query-blind). Should `"auto"` also route embedding-only models to a vector-sensitive path, or is
-   that out of scope (BM25-only is the stated target)? Recommendation: out of scope unless trivial.
+All three former Open Questions are closed and folded into the plan body (Technical Approach / No-Gos):
+
+1. **SubconsciousMemory wiring (Q1)** — RESOLVED: keep the no-`retrieval_mode` constructor and rely on
+   improved `"auto"`. No new public surface. Because the recipe default model gains a `BM25Field`,
+   `"auto"` resolves to `"lexical"` at the primary documented entry point. Covered by a dedicated
+   end-to-end test (Success Criteria). See Technical Approach › SubconsciousMemory.
+2. **`"lexical"` vs relaxing `"hybrid"` (Q2)** — RESOLVED: add an explicit, discoverable `"lexical"`
+   mode; keep `"hybrid"`'s both-fields contract loud. See Technical Approach › Mode resolution.
+3. **Embedding-only (no-BM25) under `"auto"` (Q3)** — RESOLVED: out of scope. Embedding-only models
+   stay `"composite"` (unchanged). Filed conceptually as a separate follow-up. See No-Gos.
