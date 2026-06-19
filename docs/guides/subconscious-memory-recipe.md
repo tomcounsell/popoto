@@ -30,7 +30,7 @@ Agent response
 ```python
 from popoto import (
     Model, AutoKeyField, KeyField, StringField, FloatField,
-    DecayingSortedField, ConfidenceField,
+    DecayingSortedField, ConfidenceField, BM25Field,
     WriteFilterMixin, AccessTrackerMixin,
 )
 from popoto.recipes.subconscious_memory import SubconsciousMemory
@@ -46,6 +46,7 @@ class Memory(WriteFilterMixin, AccessTrackerMixin, Model):
         partition_by="agent_id",
     )
     confidence = ConfidenceField(initial_confidence=0.5)
+    content_bm25 = BM25Field(source="content")  # keyword search index
 
     _wf_min_threshold = 0.1  # default after sweep 2026-04-17 (was 0.2)
     _wf_priority_threshold = 0.7
@@ -62,6 +63,19 @@ sm = SubconsciousMemory(
     max_tokens=4000,
 )
 ```
+
+### Reindexing Existing Records
+
+`BM25Field` populates its keyword index via the `on_save()` hook. **New records are indexed automatically.** Existing records saved before `content_bm25` was added are not in the index and will not appear in BM25-driven retrieval.
+
+To backfill, re-save every record once:
+
+```python
+for memory in Memory.query.filter():
+    memory.save()
+```
+
+Run this once after adding `BM25Field` to an existing model. The operation is idempotent -- re-running it is safe.
 
 ## OpenAI SDK Integration
 

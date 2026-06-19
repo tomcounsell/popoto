@@ -38,10 +38,11 @@ for m in results:
 
 ## Level 2: Attention — Filter Noise, Track Reads
 
-Add `WriteFilterMixin` to discard low-value records before they hit Redis. Add `AccessTrackerMixin` to know which memories the agent actually uses.
+Add `WriteFilterMixin` to discard low-value records before they hit Redis. Add `AccessTrackerMixin` to know which memories the agent actually uses. Add `BM25Field` so retrieval is query-sensitive rather than purely time-weighted.
 
 ```python
 from popoto import WriteFilterMixin, AccessTrackerMixin
+from popoto import BM25Field
 
 class Memory(WriteFilterMixin, AccessTrackerMixin, Model):
     memory_id = AutoKeyField()
@@ -52,6 +53,7 @@ class Memory(WriteFilterMixin, AccessTrackerMixin, Model):
         base_score_field="importance",
         partition_by="agent_id",
     )
+    content_bm25 = BM25Field(source="content")  # keyword search index
 
     _wf_min_threshold = 0.1       # below this: silently discarded (default; was 0.2 before sweep 2026-04-17)
     _wf_priority_threshold = 0.7  # above this: tagged as priority
@@ -71,7 +73,16 @@ results = Memory.query.filter(agent_id="agent-1").top_by_decay(n=5)
 results[0].confirm_access()  # marks as actually used
 ```
 
-**What you get:** Cleaner memory — noise never persists. Read tracking shows which memories drive agent behavior.
+**What you get:** Cleaner memory — noise never persists. Read tracking shows which memories drive agent behavior. BM25 ensures retrieval favors query-relevant records rather than just the most recent ones.
+
+**Adding BM25Field to an existing model:** `BM25Field` indexes content via the `on_save()` hook, so new records are indexed automatically. Existing records must be re-saved once to populate the index:
+
+```python
+for memory in Memory.query.filter():
+    memory.save()
+```
+
+This is idempotent — safe to run more than once.
 
 ## Level 3: Learning — Outcomes Strengthen or Weaken Beliefs
 
@@ -90,6 +101,7 @@ class Memory(WriteFilterMixin, AccessTrackerMixin, Model):
         partition_by="agent_id",
     )
     confidence = ConfidenceField(initial_confidence=0.5)
+    content_bm25 = BM25Field(source="content")  # keyword search index
 
     _wf_min_threshold = 0.1  # default after sweep 2026-04-17 (was 0.2)
     _wf_priority_threshold = 0.7
@@ -130,6 +142,7 @@ class Memory(WriteFilterMixin, AccessTrackerMixin, Model):
         partition_by="agent_id",
     )
     confidence = ConfidenceField(initial_confidence=0.5)
+    content_bm25 = BM25Field(source="content")  # keyword search index
     associations = CoOccurrenceField(symmetric=True, max_edges=50)
 
     _wf_min_threshold = 0.1  # default after sweep 2026-04-17 (was 0.2)
@@ -302,6 +315,7 @@ All imports come from the top-level `popoto` package:
 # Models and fields
 from popoto import Model, AutoKeyField, KeyField, StringField, FloatField
 from popoto import DecayingSortedField, ConfidenceField, CoOccurrenceField
+from popoto import BM25Field
 from popoto import ContentField, EmbeddingField
 
 # Mixins (listed before Model in class definition)
