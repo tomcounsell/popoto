@@ -539,14 +539,22 @@ class TestLexicalMode:
             mock_composite.assert_not_called()
 
     def test_vector_branch_never_called_in_lexical_mode(self):
-        """(BLOCKER 1) In lexical mode, _get_vector_scores must NEVER be called.
-        The embedding_field guard must prevent any numpy/provider code from running."""
+        """(BLOCKER 1 / C2) In lexical mode, _get_vector_scores must NEVER be called.
+        Uses a call-count sentinel — NOT raise AssertionError — because the warn-only
+        except Exception in _pull_path_hybrid would swallow AssertionError and silently
+        pass a regressed test."""
         assembler = ContextAssembler(
             model_class=BM25OnlyMemory,
             score_weights={"relevance": 1.0},
             retrieval_mode="lexical",
         )
         assert assembler._embedding_field is None, "lexical mode requires no EmbeddingField"
+
+        call_count = {"n": 0}
+
+        def counting_get_vector_scores(self_qb, *args, **kwargs):
+            call_count["n"] += 1
+            return []
 
         with (
             patch(
@@ -555,13 +563,16 @@ class TestLexicalMode:
             ),
             patch(
                 "src.popoto.models.query.QueryBuilder._get_vector_scores",
-                side_effect=AssertionError("vector branch must not run in lexical mode"),
+                counting_get_vector_scores,
             ),
         ):
-            # If the vector branch is called, the side_effect will raise AssertionError
-            # and the test will fail — proving the gate holds.
             result = assembler.assemble(query_cues={"topic": "test"})
             assert isinstance(result.records, list)
+
+        assert call_count["n"] == 0, (
+            f"_get_vector_scores was called {call_count['n']} times in lexical mode; "
+            "the embedding_field guard is broken"
+        )
 
     def test_lexical_mode_does_not_call_composite_on_bm25_results(self):
         """(BLOCKER 2 dispatch test) When BM25 returns results in lexical mode,
