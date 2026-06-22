@@ -303,7 +303,9 @@ results = Memory.query.semantic_search(
 )
 ```
 
-**What you get:** Memories are searchable by meaning, not just keywords. Combined with decay and confidence, the most relevant, recent, and trusted memories surface first.
+**What you get:** Memories are searchable by meaning via `semantic_search()`. Combined with decay and confidence indexes, the most semantically similar, recent, and trusted memories surface first in direct vector queries.
+
+> **Note for `ContextAssembler` users:** a model with `EmbeddingField` but no `BM25Field` resolves to `"composite"` (query-blind) under `retrieval_mode='auto'`. To get query-sensitive retrieval through `ContextAssembler`, add `BM25Field` alongside `EmbeddingField` — this enables hybrid mode (BM25 + vector + graph). See [ContextAssembler retrieval modes](../features/context-assembler.md#pull-path-modes-retrieval_mode).
 
 > **Install extras:** `pip install popoto[voyage]` for Voyage AI embeddings, or `pip install popoto[openai]` for OpenAI. For a no-API-key setup, run [Ollama](https://ollama.com) locally and use `OllamaProvider` (no extras needed -- stdlib only). See [Content and Embedding Fields](../features/content-and-embedding-fields.md) for all provider options.
 

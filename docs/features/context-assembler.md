@@ -23,6 +23,17 @@ The pull path supports four modes controlled by the `retrieval_mode` constructor
 
 **Emergent mode under `"auto"`:** the effective retrieval mode is determined by which fields are declared on the model at init time. Declaring or removing `BM25Field`/`EmbeddingField` changes the effective mode without any change at the `ContextAssembler` call site. For example: adding `EmbeddingField` to a BM25-only model silently flips `lexical → hybrid`.
 
+**`EmbeddingField` alone does not enable query-sensitive retrieval.** A model with `EmbeddingField` but no `BM25Field` resolves to `"composite"` under `"auto"` — query-blind, ranked by score indexes. Query-sensitive retrieval (lexical or hybrid) requires a `BM25Field`.
+
+**Reindex caveat:** `BM25Field` populates its keyword index via the `on_save()` hook. New records are indexed automatically on save. Records that existed before `BM25Field` was added are not in the index and will not appear in BM25-driven retrieval. To backfill an existing corpus after adding `BM25Field`:
+
+```python
+for record in YourModel.query.filter():
+    record.save()
+```
+
+Run this once after adding `BM25Field`. The operation is idempotent — re-running is safe.
+
 **Zero-hit fallback:** when BM25 returns zero matches (e.g. a query with no lexical overlap with the corpus), the lexical and hybrid paths degrade to `"composite"` ranking — query-blind, but no crash. Document this at your call site if queries are expected to have no keyword overlap.
 
 `retrieval_mode="lexical"` raises `QueryException` at init if `BM25Field` is absent. `retrieval_mode="hybrid"` raises `QueryException` at init if `BM25Field` or `EmbeddingField` is absent. Any unrecognised mode string raises `QueryException` immediately.
