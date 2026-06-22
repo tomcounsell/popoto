@@ -167,8 +167,11 @@ No prior attempt addressed BM25-only gating or the recipe-default model. This is
 - **Interface changes** (beta substrate, breaking acceptable):
   - `retrieval_mode` gains a `"lexical"` value and `"auto"` resolution rules change (BM25-present
     → lexical/hybrid instead of composite).
+  - **(C4) `retrieval_mode` input contract narrows**: unrecognized values now raise `QueryException`
+    instead of silently coercing to `"composite"`. This is a *deliberate* beta-acceptable break (see
+    Technical Approach › Mode resolution › Contract-narrowing acknowledgment); flag it in the PR/changelog.
   - `SubconsciousMemory` should pass `retrieval_mode` through (or default to `"auto"` and rely on
-    the improved resolution — see Open Questions).
+    the improved resolution — resolved Q1: keep no-kwarg `"auto"`).
 - **Coupling**: Unchanged. Reuses existing `_pull_path_hybrid`, `BM25Field.search`, `query.fuse`.
 - **Data ownership**: Unchanged.
 - **Reversibility**: High. Mode resolution is a localized `__init__` branch; the recipe model and
@@ -250,6 +253,16 @@ Recipe Quick Start (with `BM25Field`) → `SubconsciousMemory.inject_context(mes
     or an unknown mode) must `raise QueryException` naming the bad value and the allowed set — it must
     **not** fall through an `else` branch to `"composite"`, which would silently reproduce a query-blind
     result for what the caller believes is a valid mode. Add a unit test asserting an unknown mode raises.
+  - **Contract-narrowing acknowledgment (CONCERN C4):** closed-set validation is a *deliberate,
+    documented* narrowing of the `retrieval_mode` input contract. Today an unrecognized value silently
+    coerces to `"composite"`; after this change it raises `QueryException`. Any caller currently passing
+    a value outside `{"auto","lexical","hybrid","composite"}` (including unintended typos that happened
+    to "work" by coercing to composite) will now get a loud failure instead of silent degradation. This
+    is **intentional and acceptable** under the beta-substrate breaking-changes-OK policy (per the
+    memory-remediation decisions: substrate/system are beta, breaking changes acceptable). It is the
+    correct trade — a typo'd mode silently returning query-blind results is the precise failure class
+    #409 exists to eliminate. The build must call this out in the changelog/PR description as a
+    deliberate behavioral break, not slip it in as an internal tidy-up.
   - **Embedding-only (no BM25) under `"auto"` (resolved Q3): explicitly out of scope.** An
     `EmbeddingField`-only model continues to resolve to `"composite"` (query-blind) exactly as today.
     BM25-only is the stated target of #409; relaxing `"auto"` to route embedding-only models to a
@@ -288,6 +301,20 @@ Recipe Quick Start (with `BM25Field`) → `SubconsciousMemory.inject_context(mes
     and the mode table, and covered by a dedicated test (feed a query with no lexical overlap; assert
     the documented composite fallback occurs without crashing). The keyword-rich RETR-1 fixture will
     essentially never hit this path, so it does NOT cover this gap — the dedicated test is required.
+  - **Cold-index silent degradation — add observability (CONCERN C1):** the zero-BM25-hit→composite
+    fallback above is *indistinguishable at runtime* from the far more dangerous **cold-index** case:
+    a model that declares `BM25Field` but whose index is empty because existing records were never
+    re-saved after the field was added (NOTE 4). In both cases `BM25Field.search()` returns `[]` and
+    lexical silently degrades to query-blind composite — exactly the #409 bug, re-introduced invisibly
+    for users who copy the new recipe onto an existing corpus. **Mandatory:** when lexical mode resolves
+    its BM25 search to zero hits, emit a single `logger.warning` (or `logger.info`, builder's call —
+    warning preferred) at the lexical pull-path that names the model and signals the degradation, e.g.
+    `"lexical retrieval for {model}: BM25 returned 0 hits — query has no lexical overlap OR the BM25
+    index is empty (re-save existing records to backfill; see recipe reindex caveat). Falling back to
+    composite (query-blind)."` This is the only runtime signal a user gets that their copy-pasted recipe
+    is silently query-blind. Do NOT make it per-query-spammy beyond a single warning per assemble()
+    call (it fires only on the zero-hit branch, which is already the exception path). Cross-reference
+    the reindex/backfill caveat (NOTE 4) in the message so the log points at the fix.
 - **`_get_vector_scores` gate — MANDATORY code change, not "verify/optional" (BLOCKER 1)**: The
   current `_pull_path_hybrid` (`:1255-1266`) calls `_qb._get_vector_scores(...)` **unconditionally**
   inside a warn-only `try/except`; it is NOT gated on `self._embedding_field`. As written today, a
@@ -333,8 +360,9 @@ Recipe Quick Start (with `BM25Field`) → `SubconsciousMemory.inject_context(mes
   is effectively unreachable). Update the `docs/features/context-assembler.md:17-23` mode table
   with the `"lexical"` row and revised `"auto"` rules. The mode table and recipe guide must also
   carry: the IMPLEMENTATION NOTE 2 wording ("BM25 + graph, no embeddings"), the IMPLEMENTATION
-  NOTE 3 zero-hit→composite fallback, the IMPLEMENTATION NOTE 4 reindex caveat, and the
-  IMPLEMENTATION NOTE 5 emergent-mode behavior (see below).
+  NOTE 3 zero-hit→composite fallback, the IMPLEMENTATION NOTE 4 reindex caveat, the
+  IMPLEMENTATION NOTE 5 emergent-mode behavior, and the CONCERN N1 explicit flag that
+  embedding-only (no BM25) is itself query-blind composite (see below).
 - **Reindex/migration caveat — make it prominent (IMPLEMENTATION NOTE 4):** adding `BM25Field` to a
   model does **not** retroactively index already-stored records — the BM25 index for a field stays
   empty until each record is re-saved (the `on_save` hook builds it). A user copying the new recipe
@@ -349,6 +377,16 @@ Recipe Quick Start (with `BM25Field`) → `SubconsciousMemory.inject_context(mes
   `"composite"`. This is intended but surprising if undocumented. Document it in the recipe guide and
   the context-assembler mode table; call out the `lexical → hybrid` flip on adding embeddings
   explicitly so it is not a debugging surprise.
+- **Embedding-only path is STILL query-blind — flag it explicitly (CONCERN N1):** the honesty pass must
+  not only fix the *current* default-model overpromise; it must explicitly warn that the
+  `EmbeddingField`-only (no `BM25Field`) configuration **resolves to `"composite"` and is itself
+  query-blind** — the exact #409 bug, just reached by a different field combination (resolved Q3 keeps
+  this out of scope to *fix*, but it is squarely in scope to *honestly document*). A user who adds an
+  `EmbeddingField` expecting semantic query-relevance, but omits `BM25Field`, gets importance-ranked
+  query-blind composite — silently. The mode table and recipe guide must state plainly: **query-sensitive
+  retrieval requires a `BM25Field` (lexical or hybrid); an embedding-only model is query-blind composite
+  under `"auto"`.** Do not let the docs imply that "adding embeddings" alone buys query-relevance through
+  the recipe's no-kwarg `"auto"` path — it does not. This is the docs counterpart to the No-Gos entry.
 - **Terminology nit (fold in opportunistically):** prefer the precise term "query-sensitive" over
   "query-relevant" when contrasting composite vs lexical — composite takes no query input at all,
   so it is not merely "less relevant".
@@ -381,6 +419,15 @@ Recipe Quick Start (with `BM25Field`) → `SubconsciousMemory.inject_context(mes
   guard. Existing hybrid (both-fields) assertions must still pass unchanged. Also add: the
   unknown/typo'd-mode raises `QueryException` test (IMPLEMENTATION NOTE 1) and the zero-BM25-hit
   composite-fallback test (IMPLEMENTATION NOTE 3).
+- **(CONCERN C1) Cold-index backfill-recovery test** (in `tests/test_context_assembler_hybrid.py` or
+  the integration test): build a BM25-declaring model, save records **before** asserting nothing, then
+  simulate the cold-index condition (records present but BM25 index empty — e.g. construct the scenario
+  the recipe-onto-existing-corpus upgrade produces) and assert two things: (1) lexical retrieval
+  degrades to composite **and emits the cold-index warning** (assert on the captured log record, not
+  silent), and (2) after **re-saving** the records (the documented backfill one-liner), the same query
+  now returns query-dependent BM25 results — proving the documented recovery path actually recovers.
+  This is the test that makes the NOTE 4 caveat and the C1 observability load-bearing rather than
+  aspirational.
 - `tests/test_subconscious_memory_integration.py` — UPDATE: the documented-default model now has a
   `BM25Field`; any assertion pinned to composite behavior for the default model must be revised. Add
   query-sensitivity assertions (distinct sets per query).
@@ -420,9 +467,14 @@ the "no new required deps" acceptance criterion.
 **Mitigation:** The vector-branch gate is a **mandatory code change** (BLOCKER 1), not a verification:
 wrap the `QueryBuilder` import and `_get_vector_scores` call in `if self._embedding_field is not None:`
 with `vector_results = []` pre-initialized (the current code calls it unconditionally inside a warn-only
-try/except — confirmed at `:1255-1266`). The vector-branch-never-called test (monkeypatch
-`_get_vector_scores` to raise, assert never called in lexical mode) is a required Success Criterion, not
-optional.
+try/except — confirmed at `:1255-1266`). The vector-branch-never-called test is a required Success
+Criterion, not optional. **C2:** the test must use a **call-count sentinel** (or a `BaseException` the
+`except Exception` cannot swallow), NOT a monkeypatched `raise AssertionError` — the warn-only
+try/except would swallow an `AssertionError` and silently pass a regressed test. **C3:** the
+"numpy-free" guarantee is a property of the **vector/embedding branch** being gated off — it is NOT a
+claim that the entire lexical pull path skips all co-paths. The graph-propagation branch still runs
+under lexical (lexical = "BM25 + graph, no embeddings", NOTE 2); the criterion asserts only that the
+*vector/embedding* branch is never entered.
 
 ### Risk 2: P@10 regression test is flaky or environment-sensitive
 **Impact:** CI noise; false regressions from budget truncation (#419) or tokenizer changes.
@@ -476,10 +528,12 @@ bridge in scope; `ContextAssembler`/`SubconsciousMemory` are imported directly b
 - [ ] Update `docs/features/context-assembler.md` mode table (`:17-23`): add the `"lexical"` row
       (described as "BM25 + graph, no embeddings" — NOTE 2), revise `"auto"` resolution rules, update
       the `"hybrid"` exception note, document the zero-hit→composite fallback (NOTE 3) and the
-      emergent-mode behavior under no-kwarg `"auto"` incl. the `lexical → hybrid` flip (NOTE 5).
+      emergent-mode behavior under no-kwarg `"auto"` incl. the `lexical → hybrid` flip (NOTE 5), and
+      explicitly flag that embedding-only (no BM25) resolves to query-blind composite (N1).
 - [ ] Update `docs/guides/subconscious-memory-recipe.md`: add `BM25Field` to the Quick Start model;
       reword the overpromising claims at `:5,13,80,101,106` (prefer "query-sensitive" — nit); add the
-      prominent reindex/backfill caveat (NOTE 4); document emergent-mode behavior (NOTE 5).
+      prominent reindex/backfill caveat (NOTE 4); document emergent-mode behavior (NOTE 5); state plainly
+      that query-sensitivity requires a `BM25Field` and that embedding-only is query-blind composite (N1).
 - [ ] Update `docs/guides/agent-memory-quickstart.md`: add `BM25Field` to the recipe-feeding levels
       (Level 2+) so the progressive path is query-sensitive; keep Level 6 EmbeddingField as the
       semantic upgrade; carry the reindex caveat (NOTE 4).
@@ -500,11 +554,22 @@ bridge in scope; `ContextAssembler`/`SubconsciousMemory` are imported directly b
       `_pull_path_hybrid` (not `_pull_path_composite`). Assert via spy/monkeypatch that
       `_pull_path_composite` is NOT entered for a non-empty BM25 result, proving the lexical dispatch
       entry exists and is load-bearing.
-- [ ] **(BLOCKER 1) Vector-branch-never-called test**: in lexical mode (`_embedding_field is None`),
-      the vector branch is never executed. Monkeypatch `QueryBuilder._get_vector_scores` to raise
-      `AssertionError("vector branch must not run in lexical mode")` and assert it is never called
-      during a lexical `assemble()` — proving the `if self._embedding_field is not None:` gate holds and
-      no numpy/embedding-provider code is touched.
+- [ ] **(BLOCKER 1 / C2 / C3) Vector-branch-never-called test — must be falsifiable**: in lexical mode
+      (`_embedding_field is None`), the **vector/embedding branch** is never executed. **C2 (test-design
+      correction):** do NOT monkeypatch `_get_vector_scores` to `raise AssertionError` — the vector call
+      site is wrapped in `try/except Exception` (BLOCKER 1 gate), which would **swallow the
+      `AssertionError` and make the test pass even if the branch ran** (unfalsifiable). Instead use a
+      signal that survives the gate:
+        - a **call-count sentinel** — monkeypatch `_get_vector_scores` with a stub that increments a
+          counter (and returns `[]`), run a lexical `assemble()`, then `assert counter == 0`; OR
+        - raise `SystemExit` / a custom `BaseException` subclass (NOT an `Exception`), which `except
+          Exception` does not catch, so a regression propagates and fails the test loudly.
+      The call-count sentinel is preferred (no reliance on exception-class subtleties).
+      **C3 (scope correction):** this criterion is scoped to the **vector/embedding path only**. The
+      graph-propagation co-path *does* run under lexical mode (lexical = "BM25 + graph, no embeddings",
+      per NOTE 2) — the test must NOT assert "no graph code runs". Reword any "no numpy/embedding code is
+      touched" phrasing to "the **vector/embedding** branch is never entered"; numpy-freeness is a
+      property of the vector path being gated off, not of the whole lexical pull path.
 - [ ] **(CONCERN 3) End-to-end SubconsciousMemory test**: a BM25-only `SubconsciousMemory` (built with
       the default no-`retrieval_mode` constructor) resolves its internal assembler to
       `_effective_mode == "lexical"`, and `inject_context()` returns query-dependent sets across
@@ -523,10 +588,18 @@ bridge in scope; `ContextAssembler`/`SubconsciousMemory` are imported directly b
 - [ ] **(IMPLEMENTATION NOTE 3)** A zero-BM25-hit query (no lexical overlap with the corpus) degrades
       to the documented composite fallback without crashing; documented in the `"lexical"` docstring
       and mode table.
+- [ ] **(CONCERN C1) Cold-index observability + backfill recovery**: lexical mode with an empty BM25
+      index emits the cold-index `logger.warning` (asserted on the captured log record) when it degrades
+      to composite; and a backfill-recovery test proves that re-saving existing records (the documented
+      one-liner) restores query-dependent BM25 retrieval. Cold-index silent degradation is observable,
+      not invisible.
 - [ ] `"composite"` unchanged for opt-in callers; existing hybrid (BM25+embedding) behavior and
       P@10 do not regress.
 - [ ] Docs updated: recipe guide no longer claims query-relevance for query-blind configs;
       context-assembler mode table reflects new resolution; "returned unchanged" corrected.
+- [ ] **(CONCERN N1)** Docs explicitly flag that the embedding-only (no `BM25Field`) configuration is
+      itself query-blind composite under `"auto"` — query-sensitivity requires a `BM25Field`. The
+      honesty pass closes the *new* query-blind hole as well as the existing default-model one.
 - [ ] Full suite green on Redis and Valkey (`scripts/ci-local.sh`); no Redis-module commands introduced.
 - [ ] Tests pass (`/do-test`)
 - [ ] Documentation updated (`/do-docs`)
@@ -581,6 +654,11 @@ bridge in scope; `ContextAssembler`/`SubconsciousMemory` are imported directly b
 - **(BLOCKER 1, MANDATORY)** Gate the vector branch in `_pull_path_hybrid` (`:1255-1266`) on
   `if self._embedding_field is not None:` with `vector_results = []` pre-init — move both the
   `QueryBuilder` import and the `_get_vector_scores` call inside the gate. Currently unconditional.
+- **(CONCERN C1, MANDATORY)** Add cold-index observability: when lexical mode resolves its BM25 search
+  to zero hits (the `:1268-1273` zero-hit→composite fallback branch), emit a single `logger.warning`
+  naming the model and stating that the index may be empty (re-save existing records to backfill; see
+  NOTE 4). This is the only runtime signal a user gets that a copied recipe is silently query-blind.
+  One warning per `assemble()`, on the exception/zero-hit branch only — not per-query spam.
 - SubconsciousMemory wiring (resolved Q1): no change — keep the no-`retrieval_mode` constructor; rely
   on improved `"auto"` (BM25-default model now resolves to `"lexical"` automatically).
 
@@ -605,8 +683,9 @@ bridge in scope; `ContextAssembler`/`SubconsciousMemory` are imported directly b
 - Apply IMPLEMENTATION NOTE 2 ("BM25 + graph, no embeddings" wording everywhere lexical is described),
   NOTE 3 (zero-hit→composite fallback in docstring + mode table), NOTE 4 (prominent reindex caveat +
   backfill one-liner in recipe guide and quickstart), NOTE 5 (emergent-mode behavior under no-kwarg
-  `"auto"`, incl. the `lexical → hybrid` flip), and the terminology nit (query-sensitive vs
-  query-relevant).
+  `"auto"`, incl. the `lexical → hybrid` flip), CONCERN N1 (explicitly flag that embedding-only/no-BM25
+  is itself query-blind composite — query-sensitivity requires a `BM25Field`), and the terminology nit
+  (query-sensitive vs query-relevant).
 
 ### 4. P@10 regression + lexical unit tests
 - **Task ID**: build-tests
@@ -628,6 +707,12 @@ bridge in scope; `ContextAssembler`/`SubconsciousMemory` are imported directly b
 - **(IMPLEMENTATION NOTE 3)** Add the zero-BM25-hit test: a query with no lexical overlap with the
   corpus degrades to the documented composite fallback (composite entered) without crashing — the
   gap the keyword-rich RETR-1 fixture does not cover.
+- **(CONCERN C1)** Add the cold-index backfill-recovery test: with a BM25-declaring model whose index
+  is empty, assert lexical degrades to composite AND emits the cold-index warning (assert on the
+  captured log record); then re-save the records and assert query-dependent BM25 retrieval is restored.
+- **(C2)** The vector-branch-never-called test MUST use a call-count sentinel (or a `BaseException`
+  the warn-only `try/except` cannot swallow), NOT a monkeypatched `raise AssertionError` — the gate's
+  `except Exception` would swallow an `AssertionError` and silently pass a regressed test.
 
 ### 5. Final validation
 - **Task ID**: validate-all
@@ -676,6 +761,19 @@ detached appendix). This table is the index; the load-bearing text lives in the 
 | NOTE 4 | Reindex/backfill caveat must be prominent (existing records re-saved to populate BM25 index) | Docs honesty bullet; Step 3; Documentation checklist (recipe + quickstart) |
 | NOTE 5 | Emergent-mode behavior under no-kwarg `"auto"` (incl. `lexical → hybrid` flip) — document it | Docs honesty bullet; Step 3; Documentation checklist |
 | Nit | Prefer "query-sensitive" over "query-relevant" for composite-vs-lexical contrasts | Docs honesty bullet; Documentation checklist |
+
+### Fresh re-critique pass (READY TO BUILD, 0 blockers, 4 concerns + 1 nit) — embedded
+
+A second re-critique returned **READY TO BUILD** with 0 blockers and 4 concerns (C1–C4) + 1 nit (N1),
+each carrying an Implementation Note. These are folded into their natural homes (this is the index):
+
+| Item | Concern | Embedded in |
+|------|---------|-------------|
+| C1 | Cold-index silent degradation needs observability + a backfill-recovery test (empty BM25 index is indistinguishable from a no-match query; both silently → query-blind composite) | Technical Approach › Pull-path dispatch (cold-index `logger.warning`); Step 1; Test Impact (backfill-recovery test); Step 4; Success Criteria |
+| C2 | Vector-branch test is unfalsifiable — `raise AssertionError` is swallowed by the warn-only `except Exception`; use a call-count sentinel or `BaseException` | Success Criteria (vector-branch test); Risk 1; Step 4 |
+| C3 | "no numpy / vector-branch-never-called" must be scoped to the **vector path only** — the graph co-path runs under lexical | Success Criteria (vector-branch test); Risk 1 |
+| C4 | Closed-set mode validation narrows the input contract — acknowledge as a deliberate beta-acceptable break (flag in PR/changelog) | Technical Approach › Mode resolution (Contract-narrowing acknowledgment); Architectural Impact › Interface changes |
+| N1 | Docs honesty pass must flag the embedding-only path that re-introduces the query-blind bug (query-sensitivity requires `BM25Field`) | Technical Approach › Docs honesty (embedding-only-still-query-blind bullet); Step 3; Documentation checklist; Success Criteria |
 
 ---
 
