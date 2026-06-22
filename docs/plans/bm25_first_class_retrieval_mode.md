@@ -698,8 +698,8 @@ bridge in scope; `ContextAssembler`/`SubconsciousMemory` are imported directly b
   `len==200`/`20`/`20`-relevant before measuring; distinct-set fraction `>= 0.95`).
 - Add lexical mode resolution test (`"auto"`+BM25-only → `_effective_mode == "lexical"`).
 - Add the BLOCKER 2 dispatch test (`_pull_path` routes lexical → `_pull_path_hybrid`, not composite).
-- Add the BLOCKER 1 vector-branch-never-called test (monkeypatch `_get_vector_scores` to raise;
-  assert never called in lexical mode).
+- Add the BLOCKER 1 vector-branch-never-called test (assert `_get_vector_scores` is never called in
+  lexical mode). **Use the C2 test design below — a call-count sentinel, NOT `raise AssertionError`.**
 - Add the end-to-end SubconsciousMemory→lexical test (default constructor, query-dependent sets).
 - Add the loud-failure test (explicit `"lexical"` without `BM25Field` raises `QueryException`).
 - **(IMPLEMENTATION NOTE 1)** Add the unknown/typo'd-mode test: a bogus `retrieval_mode` value raises
@@ -774,6 +774,26 @@ each carrying an Implementation Note. These are folded into their natural homes 
 | C3 | "no numpy / vector-branch-never-called" must be scoped to the **vector path only** — the graph co-path runs under lexical | Success Criteria (vector-branch test); Risk 1 |
 | C4 | Closed-set mode validation narrows the input contract — acknowledge as a deliberate beta-acceptable break (flag in PR/changelog) | Technical Approach › Mode resolution (Contract-narrowing acknowledgment); Architectural Impact › Interface changes |
 | N1 | Docs honesty pass must flag the embedding-only path that re-introduces the query-blind bug (query-sensitivity requires `BM25Field`) | Technical Approach › Docs honesty (embedding-only-still-query-blind bullet); Step 3; Documentation checklist; Success Criteria |
+
+### Final re-critique pass (READY TO BUILD — 0 blockers) — verdict of record
+
+A third (final) re-critique returned **READY TO BUILD with 0 blockers**, plus non-blocking concerns and
+a nit. Key outcomes, recorded so reviewers can see the plan has settled:
+
+- **The two original BLOCKERs (BLOCKER 1 vector-branch gate; BLOCKER 2 lexical dispatch entry) were
+  re-verified as real against current `main` and their fixes are already in the plan body** — confirmed
+  present in Technical Approach › `_get_vector_scores` gate and › Pull-path dispatch, Step 1, the
+  Success Criteria, and the Critique Results table. No re-architecting required.
+- **Source/plan consistency re-confirmed:** as of the plan baseline, `context_assembler.py`'s `"auto"`
+  resolver still has no `"lexical"` branch and a silent `else → "composite"` fall-through (the NOTE 1 /
+  C4 gap); `_pull_path` still routes only `"hybrid"` (BLOCKER 2); and `_get_vector_scores` is still
+  called unconditionally inside the warn-only `try/except` (BLOCKER 1). The plan's as-is descriptions
+  match the code exactly, and no commit has touched the cited files since the baseline SHA — the
+  file:line references remain valid.
+- The non-blocking concerns + nit from this pass are subsumed by the concerns already embedded above
+  (closed-set validation, cold-index observability, falsifiable vector-branch test, vector-path scope,
+  contract-narrowing acknowledgment, embedding-only honesty, query-sensitive terminology). No new
+  open questions were introduced; the plan needs no further revision cycle and is build-ready.
 
 ---
 
