@@ -50,13 +50,23 @@ stop claiming query-relevance for query-blind configurations.
 
 ## Freshness Check
 
-**Baseline commit:** `5c33ca990048fe9b23e732a40a08f18c7549a6fc`
+**Baseline commit:** `5c33ca990048fe9b23e732a40a08f18c7549a6fc` (the pre-implementation `main` baseline
+this plan was authored against).
 **Issue filed at:** 2026-06-11T05:20:26Z
 **Disposition:** Minor drift
 
+**IMPLEMENTED-STATE NOTE (this revision):** The fix has since been **built and committed** on
+`session/bm25_first_class_retrieval_mode` (`da3dfee..07ae1e6`). The references below describe the
+*pre-implementation baseline* code (the problem state) and remain accurate as the description of what
+the bug looked like before the fix. They are retained as the historical record of the defect; the
+*as-built* anchors for the fixed code are listed in the "Implementation status — verdict of record"
+section near the end of this plan (`context_assembler.py:937-977` resolver+closed-set guard,
+`:1165-1176` lexical dispatch, `:1299-1310` vector gate, `:1312-1322` cold-index WARNING). Do not read
+the baseline line numbers below as the current line numbers of the fixed file.
+
 The issue body's line citations were written pre-#419. The upstream-change-notice comment
 (2026-06-12) flagged that #419 rewrote the token-budget region and shifted the cited lines.
-A full re-read of current `main` produced corrected, verified references:
+A full re-read of the pre-implementation `main` baseline produced corrected, verified references:
 
 **File:line references re-verified (post-#419, all confirmed present):**
 - `src/popoto/recipes/context_assembler.py:926-932` — `"auto"` resolution: `"hybrid"` iff
@@ -103,11 +113,14 @@ A full re-read of current `main` produced corrected, verified references:
 (#397, investigation). None is an active competing plan for the defaults/gating change. No overlap blocker.
 
 **Notes:** The single most important freshness finding is architectural, not a line number:
-`_pull_path_hybrid` is **already signal-tolerant**. It collects BM25, vector, and graph signals
-independently and fuses whichever are non-empty, bailing to composite only when *both* BM25 and
-vector are empty. A BM25-only model would run through this path correctly today — `vector_results`
-would simply be `[]`. **The fix is therefore primarily in the mode-resolution gate (`__init__`),
-not the pull path.** This substantially reduces the implementation surface.
+`_pull_path_hybrid` was **already signal-tolerant** at baseline. It collects BM25, vector, and graph
+signals independently and fuses whichever are non-empty, bailing to composite only when *both* BM25 and
+vector are empty. A BM25-only model runs through this path with `vector_results == []`. **The fix was
+therefore concentrated in the mode-resolution gate (`__init__`) plus the dispatch entry and the
+vector-branch gate**, which kept the implementation surface small. As built, the changes are: the
+`"auto"`/closed-set resolver (`context_assembler.py:937-977`), the lexical dispatch entry
+(`:1165-1176`), the `if self._embedding_field is not None:` vector gate (`:1299-1310`), and the
+cold-index `logger.warning` on the zero-hit fallback (`:1312-1322`).
 
 ## Prior Art
 
@@ -301,20 +314,25 @@ Recipe Quick Start (with `BM25Field`) → `SubconsciousMemory.inject_context(mes
     and the mode table, and covered by a dedicated test (feed a query with no lexical overlap; assert
     the documented composite fallback occurs without crashing). The keyword-rich RETR-1 fixture will
     essentially never hit this path, so it does NOT cover this gap — the dedicated test is required.
-  - **Cold-index silent degradation — add observability (CONCERN C1):** the zero-BM25-hit→composite
-    fallback above is *indistinguishable at runtime* from the far more dangerous **cold-index** case:
-    a model that declares `BM25Field` but whose index is empty because existing records were never
-    re-saved after the field was added (NOTE 4). In both cases `BM25Field.search()` returns `[]` and
-    lexical silently degrades to query-blind composite — exactly the #409 bug, re-introduced invisibly
-    for users who copy the new recipe onto an existing corpus. **Mandatory:** when lexical mode resolves
-    its BM25 search to zero hits, emit a single `logger.warning` (or `logger.info`, builder's call —
-    warning preferred) at the lexical pull-path that names the model and signals the degradation, e.g.
-    `"lexical retrieval for {model}: BM25 returned 0 hits — query has no lexical overlap OR the BM25
-    index is empty (re-save existing records to backfill; see recipe reindex caveat). Falling back to
-    composite (query-blind)."` This is the only runtime signal a user gets that their copy-pasted recipe
-    is silently query-blind. Do NOT make it per-query-spammy beyond a single warning per assemble()
-    call (it fires only on the zero-hit branch, which is already the exception path). Cross-reference
-    the reindex/backfill caveat (NOTE 4) in the message so the log points at the fix.
+  - **Cold-index silent degradation — observability (CONCERN C1) — IMPLEMENTED as WARNING:** the
+    zero-BM25-hit→composite fallback above is *indistinguishable at runtime* from the far more dangerous
+    **cold-index** case: a model that declares `BM25Field` but whose index is empty because existing
+    records were never re-saved after the field was added (NOTE 4). In both cases `BM25Field.search()`
+    returns `[]` and lexical silently degrades to query-blind composite — exactly the #409 bug,
+    re-introduced invisibly for users who copy the new recipe onto an existing corpus. **Mandatory and
+    now built as a `logger.warning` (not debug, not "builder's call"):** when lexical mode resolves its
+    BM25 search to zero hits, the zero-hit fallback emits a single `logger.warning` that names the model
+    and signals the degradation. The committed message (`context_assembler.py:1315-1322`) is:
+    `"lexical retrieval for %s: BM25 returned 0 hits — the query has no lexical overlap OR the BM25
+    index is empty (re-save existing records to backfill the index; see the recipe reindex caveat).
+    Falling back to composite (query-blind)."` with `self.model_class.__name__` as the `%s` arg. This is
+    the only runtime signal a user gets that their copy-pasted recipe is silently query-blind, so it
+    MUST be a WARNING (the original critique-blocker noted a generic `logger.debug` here was insufficient
+    — debug is the wrong level for "your retrieval is silently broken"). It fires once per `assemble()`,
+    only on the zero-hit branch (already the exception path), so it is not per-query spam. The
+    reindex/backfill caveat (NOTE 4) is cross-referenced in the message so the log points at the fix.
+    The cold-index test asserts this WARNING on the captured log record (model name + `re-save` pointer
+    present), not the old debug text — see Test Impact (cold-index backfill-recovery test).
 - **`_get_vector_scores` gate — MANDATORY code change, not "verify/optional" (BLOCKER 1)**: The
   current `_pull_path_hybrid` (`:1255-1266`) calls `_qb._get_vector_scores(...)` **unconditionally**
   inside a warn-only `try/except`; it is NOT gated on `self._embedding_field`. As written today, a
@@ -419,13 +437,16 @@ Recipe Quick Start (with `BM25Field`) → `SubconsciousMemory.inject_context(mes
   guard. Existing hybrid (both-fields) assertions must still pass unchanged. Also add: the
   unknown/typo'd-mode raises `QueryException` test (IMPLEMENTATION NOTE 1) and the zero-BM25-hit
   composite-fallback test (IMPLEMENTATION NOTE 3).
-- **(CONCERN C1) Cold-index backfill-recovery test** (in `tests/test_context_assembler_hybrid.py` or
-  the integration test): build a BM25-declaring model, save records **before** asserting nothing, then
-  simulate the cold-index condition (records present but BM25 index empty — e.g. construct the scenario
-  the recipe-onto-existing-corpus upgrade produces) and assert two things: (1) lexical retrieval
-  degrades to composite **and emits the cold-index warning** (assert on the captured log record, not
-  silent), and (2) after **re-saving** the records (the documented backfill one-liner), the same query
-  now returns query-dependent BM25 results — proving the documented recovery path actually recovers.
+- **(CONCERN C1) Cold-index backfill-recovery test — IMPLEMENTED** in
+  `tests/test_retrieval_quality_regression.py::TestColdIndexRecovery`: build a BM25-declaring model
+  (`RegressionMemory`), save records, then simulate the cold-index condition (records present but the
+  BM25 index keys deleted — the scenario the recipe-onto-existing-corpus upgrade produces) and assert
+  two things: (1) lexical retrieval degrades to composite **and emits the cold-index `logger.WARNING`**
+  — the test captures at `logging.WARNING` on `POPOTO.ContextAssembler` and asserts the record's
+  `getMessage()` contains `"BM25 returned 0 hits"`, the model name (`"RegressionMemory"`), and the
+  `"re-save"` reindex pointer (NOT the old generic debug text); and (2) after **re-saving** the records
+  (the documented backfill one-liner), the same query now returns query-dependent BM25 results —
+  proving the documented recovery path actually recovers. Validated: both tests pass.
   This is the test that makes the NOTE 4 caveat and the C1 observability load-bearing rather than
   aspirational.
 - `tests/test_subconscious_memory_integration.py` — UPDATE: the documented-default model now has a
@@ -775,25 +796,53 @@ each carrying an Implementation Note. These are folded into their natural homes 
 | C4 | Closed-set mode validation narrows the input contract — acknowledge as a deliberate beta-acceptable break (flag in PR/changelog) | Technical Approach › Mode resolution (Contract-narrowing acknowledgment); Architectural Impact › Interface changes |
 | N1 | Docs honesty pass must flag the embedding-only path that re-introduces the query-blind bug (query-sensitivity requires `BM25Field`) | Technical Approach › Docs honesty (embedding-only-still-query-blind bullet); Step 3; Documentation checklist; Success Criteria |
 
-### Final re-critique pass (READY TO BUILD — 0 blockers) — verdict of record
+### Implementation status (revision after CRITIQUE NEEDS REVISION) — verdict of record
 
-A third (final) re-critique returned **READY TO BUILD with 0 blockers**, plus non-blocking concerns and
-a nit. Key outcomes, recorded so reviewers can see the plan has settled:
+**The implementation described by this plan has already been built and committed on the working branch**
+`session/bm25_first_class_retrieval_mode` (commits `da3dfee..07ae1e6`). The lexical mode resolution,
+the closed-set `_VALID_MODES` validation, the lexical pull-path dispatch entry, the vector-branch gate,
+the cold-index observability WARNING, and the regression-test suite are all present in
+`src/popoto/recipes/context_assembler.py` and `tests/test_retrieval_quality_regression.py`. The
+Technical Approach above therefore describes the **as-built** state; sections phrased imperatively
+("Add…", "Wrap…") name the change that was applied, each mapped to committed code at the line anchors
+given. An earlier version of this section asserted the blockers were "still broken / re-verified against
+main" — that was **incorrect** and is corrected here: they are implemented.
 
-- **The two original BLOCKERs (BLOCKER 1 vector-branch gate; BLOCKER 2 lexical dispatch entry) were
-  re-verified as real against current `main` and their fixes are already in the plan body** — confirmed
-  present in Technical Approach › `_get_vector_scores` gate and › Pull-path dispatch, Step 1, the
-  Success Criteria, and the Critique Results table. No re-architecting required.
-- **Source/plan consistency re-confirmed:** as of the plan baseline, `context_assembler.py`'s `"auto"`
-  resolver still has no `"lexical"` branch and a silent `else → "composite"` fall-through (the NOTE 1 /
-  C4 gap); `_pull_path` still routes only `"hybrid"` (BLOCKER 2); and `_get_vector_scores` is still
-  called unconditionally inside the warn-only `try/except` (BLOCKER 1). The plan's as-is descriptions
-  match the code exactly, and no commit has touched the cited files since the baseline SHA — the
-  file:line references remain valid.
-- The non-blocking concerns + nit from this pass are subsumed by the concerns already embedded above
-  (closed-set validation, cold-index observability, falsifiable vector-branch test, vector-path scope,
-  contract-narrowing acknowledgment, embedding-only honesty, query-sensitive terminology). No new
-  open questions were introduced; the plan needs no further revision cycle and is build-ready.
+A CRITIQUE pass returned **NEEDS REVISION** with two blockers, both resolved in this revision:
+
+- **CRITIQUE BLOCKER A — cold-index observability mandated but not built.** The plan required a
+  `logger.warning` (named model + reindex pointer) at the zero-BM25-hit fallback as the only runtime
+  signal against silent query-blind degradation. The code emitted only a generic `logger.debug`, and the
+  cold-index test asserted that weak debug message — so the test passed while the safeguard was absent.
+  **Resolved:** the fallback now emits a `logger.warning` naming the model and pointing at the
+  reindex/backfill remedy (`context_assembler.py:1315-1322`); the cold-index test asserts the WARNING
+  with the model name + `re-save` pointer
+  (`tests/test_retrieval_quality_regression.py::TestColdIndexRecovery::test_cold_index_falls_back_to_composite`).
+  Validated: the `TestColdIndexRecovery` tests pass against the worktree code. See Technical Approach ›
+  Pull-path dispatch › cold-index observability (now specified as WARNING, not "builder's call").
+
+- **CRITIQUE BLOCKER B — plan's "verdict of record" falsified code state.** This section and the
+  Freshness Check asserted BLOCKER 1, BLOCKER 2, and the closed-set gap were "still broken" while all
+  three were already implemented on this branch. **Resolved:** this section, the Freshness Check, and the
+  Technical Approach are corrected to past tense reflecting the implemented state, and stale line
+  references are refreshed against the committed code (anchors below).
+
+**As-built confirmation (verified by reading the committed worktree code):**
+- `"auto"` resolver has the `"lexical"` branch (BM25-only → lexical) plus a closed-set `_VALID_MODES`
+  guard that raises `QueryException` on any unrecognised mode — no silent `else → "composite"`
+  fall-through (`context_assembler.py:937-977`).
+- `_pull_path` routes `"lexical"` → `_pull_path_hybrid` (`context_assembler.py:1165-1176`).
+- The vector branch (`_get_vector_scores` + `QueryBuilder` import) is gated on
+  `if self._embedding_field is not None:` with `vector_results = []` pre-init
+  (`context_assembler.py:1299-1310`); a numpy-free lexical run never touches vector code.
+- The zero-BM25-hit fallback emits the cold-index `logger.warning` before degrading to composite
+  (`context_assembler.py:1312-1322`).
+
+The non-blocking concerns + nit from the earlier critique passes remain addressed by the embedded
+concerns above (closed-set validation, cold-index observability, falsifiable vector-branch test,
+vector-path scope, contract-narrowing acknowledgment, embedding-only honesty, query-sensitive
+terminology). No new open questions; with both critique blockers resolved the plan is consistent with
+the committed code and ready for re-critique.
 
 ---
 
