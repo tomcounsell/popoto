@@ -1313,11 +1313,15 @@ class ContextAssembler:
 
         if not keyword_results and not vector_results:
             logger.warning(
-                "lexical retrieval for %s: BM25 returned 0 hits — the query has "
-                "no lexical overlap OR the BM25 index is empty (re-save existing "
-                "records to backfill the index; see the recipe reindex caveat). "
-                "Falling back to composite (query-blind).",
+                "%s retrieval for %s collected no query signal — BM25 returned 0 "
+                "hits%s (query has no lexical overlap OR the BM25 index is empty; "
+                "re-save existing records to backfill the index — see the recipe "
+                "reindex caveat). Falling back to composite (query-blind).",
+                self._effective_mode,
                 self.model_class.__name__,
+                " and the vector search returned none"
+                if self._embedding_field is not None
+                else "",
             )
             return self._pull_path_composite(query_cues, filters)
 
