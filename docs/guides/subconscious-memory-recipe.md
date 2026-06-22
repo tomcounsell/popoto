@@ -2,7 +2,12 @@
 
 > **New to Agent Memory?** Start with the [Quickstart Guide](agent-memory-quickstart.md) for a progressive adoption path.
 
-Automatic memory injection and extraction around every LLM turn. The agent's memory works silently -- assembling relevant context before each call and saving new observations after each response -- without the application needing to manage memory explicitly.
+Automatic memory injection and extraction around every LLM turn. The agent's memory works silently -- assembling context before each call and saving new observations after each response -- without the application needing to manage memory explicitly.
+
+!!! note "Retrieval mode determines query-sensitivity"
+    Whether retrieved memories are selected by query text depends on which fields are on your model. With `BM25Field` only, retrieval is **query-sensitive** (lexical mode). With both `BM25Field` and `EmbeddingField`, retrieval is **query-sensitive** (hybrid mode). With neither field, retrieval is **query-blind** (composite mode) — memories are ranked by importance/confidence scores, not by relevance to the user's query. See [ContextAssembler retrieval modes](../features/context-assembler.md#pull-path-modes-retrieval_mode) for details.
+
+    `SubconsciousMemory` uses `retrieval_mode='auto'` — the effective mode is determined by which fields are on the model at init time. Adding or removing `BM25Field`/`EmbeddingField` changes the effective mode without any change at the `SubconsciousMemory` call site. Adding `EmbeddingField` to a BM25-only model silently flips `lexical → hybrid`.
 
 ## Architecture
 
@@ -30,7 +35,7 @@ Agent response
 ```python
 from popoto import (
     Model, AutoKeyField, KeyField, StringField, FloatField,
-    DecayingSortedField, ConfidenceField,
+    DecayingSortedField, ConfidenceField, BM25Field,
     WriteFilterMixin, AccessTrackerMixin,
 )
 from popoto.recipes.subconscious_memory import SubconsciousMemory
@@ -46,6 +51,7 @@ class Memory(WriteFilterMixin, AccessTrackerMixin, Model):
         partition_by="agent_id",
     )
     confidence = ConfidenceField(initial_confidence=0.5)
+    content_bm25 = BM25Field(source="content")  # keyword search index
 
     _wf_min_threshold = 0.1  # default after sweep 2026-04-17 (was 0.2)
     _wf_priority_threshold = 0.7
@@ -63,6 +69,19 @@ sm = SubconsciousMemory(
 )
 ```
 
+### Reindexing Existing Records
+
+`BM25Field` populates its keyword index via the `on_save()` hook. **New records are indexed automatically.** Existing records saved before `content_bm25` was added are not in the index and will not appear in BM25-driven retrieval.
+
+To backfill, re-save every record once:
+
+```python
+for memory in Memory.query.filter():
+    memory.save()
+```
+
+Run this once after adding `BM25Field` to an existing model. The operation is idempotent -- re-running it is safe.
+
 ## OpenAI SDK Integration
 
 Wire subconscious memory into a standard OpenAI chat completion call:
@@ -77,7 +96,8 @@ messages = [
     {"role": "user", "content": "What's our deployment strategy?"},
 ]
 
-# Pre-turn: inject relevant memories into messages
+# Pre-turn: inject memories into messages
+# (query-sensitive if BM25Field/EmbeddingField on model; query-blind composite otherwise)
 messages, assembly_result = sm.inject_context(messages)
 
 # Call the LLM (messages now include memory context in the system message)
@@ -103,7 +123,9 @@ sm.report_outcomes(assembly_result, outcome="acted")
 3. Appends the formatted context to the system message (creates one if absent)
 4. Returns the modified messages and an `AssemblyResult` for later outcome reporting
 
-If no relevant memories are found, messages are returned unchanged.
+If no memories are found (or all are filtered), messages are returned unchanged.
+
+The query cue is only meaningful in **query-sensitive** modes (lexical or hybrid, requiring `BM25Field`). In composite mode (no `BM25Field`, no `EmbeddingField`), the query cue is ignored and ranking is driven purely by importance/confidence scores.
 
 ### Post-turn: `extract_memories(response_text, importance)`
 

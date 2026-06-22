@@ -1,0 +1,1734 @@
+{
+  "records": [
+    {
+      "id": 186,
+      "topic": "documentation",
+      "content": "Memory about documentation: README and docs and wiki are important for documentation workflows.",
+      "importance": 0.826
+    },
+    {
+      "id": 55,
+      "topic": "authentication",
+      "content": "Memory about authentication: login and user are important for authentication workflows.",
+      "importance": 0.448
+    },
+    {
+      "id": 70,
+      "topic": "performance",
+      "content": "Memory about performance: memory and profile and slow are important for performance workflows.",
+      "importance": 0.943
+    },
+    {
+      "id": 94,
+      "topic": "testing",
+      "content": "Memory about testing: regression and mock and coverage are important for testing workflows.",
+      "importance": 0.596
+    },
+    {
+      "id": 31,
+      "topic": "database",
+      "content": "Memory about database: schema and index are important for database workflows.",
+      "importance": 0.544
+    },
+    {
+      "id": 8,
+      "topic": "deployment",
+      "content": "Memory about deployment: CI and pipeline are important for deployment workflows.",
+      "importance": 0.475
+    },
+    {
+      "id": 96,
+      "topic": "testing",
+      "content": "Memory about testing: integration and mock and coverage are important for testing workflows.",
+      "importance": 0.729
+    },
+    {
+      "id": 27,
+      "topic": "database",
+      "content": "Memory about database: index and row are important for database workflows.",
+      "importance": 0.857
+    },
+    {
+      "id": 155,
+      "topic": "scheduling",
+      "content": "Memory about scheduling: interval and job are important for scheduling workflows.",
+      "importance": 0.924
+    },
+    {
+      "id": 140,
+      "topic": "scheduling",
+      "content": "Memory about scheduling: queue and interval and scheduler are important for scheduling workflows.",
+      "importance": 0.602
+    },
+    {
+      "id": 130,
+      "topic": "monitoring",
+      "content": "Memory about monitoring: uptime and metric are important for monitoring workflows.",
+      "importance": 0.867
+    },
+    {
+      "id": 175,
+      "topic": "networking",
+      "content": "Memory about networking: VPN and DNS are important for networking workflows.",
+      "importance": 0.858
+    },
+    {
+      "id": 33,
+      "topic": "database",
+      "content": "Memory about database: mysql and row and redis are important for database workflows.",
+      "importance": 0.477
+    },
+    {
+      "id": 26,
+      "topic": "database",
+      "content": "Memory about database: mysql and index and migration are important for database workflows.",
+      "importance": 0.495
+    },
+    {
+      "id": 68,
+      "topic": "performance",
+      "content": "Memory about performance: memory and cache are important for performance workflows.",
+      "importance": 0.563
+    },
+    {
+      "id": 57,
+      "topic": "authentication",
+      "content": "Memory about authentication: jwt and auth are important for authentication workflows.",
+      "importance": 0.965
+    },
+    {
+      "id": 150,
+      "topic": "scheduling",
+      "content": "Memory about scheduling: queue and batch are important for scheduling workflows.",
+      "importance": 0.843
+    },
+    {
+      "id": 196,
+      "topic": "documentation",
+      "content": "Memory about documentation: wiki and example and changelog are important for documentation workflows.",
+      "importance": 0.54
+    },
+    {
+      "id": 125,
+      "topic": "monitoring",
+      "content": "Memory about monitoring: alert and prometheus and uptime are important for monitoring workflows.",
+      "importance": 1.0
+    },
+    {
+      "id": 183,
+      "topic": "documentation",
+      "content": "Memory about documentation: tutorial and docstring are important for documentation workflows.",
+      "importance": 0.774
+    },
+    {
+      "id": 141,
+      "topic": "scheduling",
+      "content": "Memory about scheduling: celery and task and interval are important for scheduling workflows.",
+      "importance": 0.527
+    },
+    {
+      "id": 151,
+      "topic": "scheduling",
+      "content": "Memory about scheduling: batch and periodic and worker are important for scheduling workflows.",
+      "importance": 0.988
+    },
+    {
+      "id": 128,
+      "topic": "monitoring",
+      "content": "Memory about monitoring: dashboard and grafana are important for monitoring workflows.",
+      "importance": 0.802
+    },
+    {
+      "id": 164,
+      "topic": "networking",
+      "content": "Memory about networking: proxy and VPN are important for networking workflows.",
+      "importance": 0.796
+    },
+    {
+      "id": 82,
+      "topic": "testing",
+      "content": "Memory about testing: coverage and test are important for testing workflows.",
+      "importance": 0.915
+    },
+    {
+      "id": 189,
+      "topic": "documentation",
+      "content": "Memory about documentation: guide and comment are important for documentation workflows.",
+      "importance": 0.705
+    },
+    {
+      "id": 78,
+      "topic": "performance",
+      "content": "Memory about performance: fast and memory are important for performance workflows.",
+      "importance": 0.93
+    },
+    {
+      "id": 15,
+      "topic": "deployment",
+      "content": "Memory about deployment: rollout and pipeline and ship are important for deployment workflows.",
+      "importance": 0.811
+    },
+    {
+      "id": 152,
+      "topic": "scheduling",
+      "content": "Memory about scheduling: worker and queue are important for scheduling workflows.",
+      "importance": 0.617
+    },
+    {
+      "id": 148,
+      "topic": "scheduling",
+      "content": "Memory about scheduling: worker and batch and periodic are important for scheduling workflows.",
+      "importance": 0.538
+    },
+    {
+      "id": 195,
+      "topic": "documentation",
+      "content": "Memory about documentation: docstring and example and changelog are important for documentation workflows.",
+      "importance": 0.673
+    },
+    {
+      "id": 71,
+      "topic": "performance",
+      "content": "Memory about performance: throughput and benchmark are important for performance workflows.",
+      "importance": 0.898
+    },
+    {
+      "id": 85,
+      "topic": "testing",
+      "content": "Memory about testing: fixture and mock and unit are important for testing workflows.",
+      "importance": 0.98
+    },
+    {
+      "id": 115,
+      "topic": "api",
+      "content": "Memory about api: curl and json and headers are important for api workflows.",
+      "importance": 0.437
+    },
+    {
+      "id": 185,
+      "topic": "documentation",
+      "content": "Memory about documentation: comment and guide are important for documentation workflows.",
+      "importance": 0.929
+    },
+    {
+      "id": 99,
+      "topic": "testing",
+      "content": "Memory about testing: integration and unit and mock are important for testing workflows.",
+      "importance": 0.709
+    },
+    {
+      "id": 178,
+      "topic": "networking",
+      "content": "Memory about networking: socket and port and TLS are important for networking workflows.",
+      "importance": 0.593
+    },
+    {
+      "id": 92,
+      "topic": "testing",
+      "content": "Memory about testing: fixture and coverage are important for testing workflows.",
+      "importance": 0.442
+    },
+    {
+      "id": 169,
+      "topic": "networking",
+      "content": "Memory about networking: port and TCP are important for networking workflows.",
+      "importance": 0.727
+    },
+    {
+      "id": 0,
+      "topic": "deployment",
+      "content": "Memory about deployment: deploy and rollout are important for deployment workflows.",
+      "importance": 0.547
+    },
+    {
+      "id": 174,
+      "topic": "networking",
+      "content": "Memory about networking: TLS and VPN and DNS are important for networking workflows.",
+      "importance": 0.455
+    },
+    {
+      "id": 100,
+      "topic": "api",
+      "content": "Memory about api: REST and request and response are important for api workflows.",
+      "importance": 0.535
+    },
+    {
+      "id": 165,
+      "topic": "networking",
+      "content": "Memory about networking: proxy and firewall are important for networking workflows.",
+      "importance": 0.731
+    },
+    {
+      "id": 98,
+      "topic": "testing",
+      "content": "Memory about testing: assert and flaky and regression are important for testing workflows.",
+      "importance": 0.805
+    },
+    {
+      "id": 187,
+      "topic": "documentation",
+      "content": "Memory about documentation: tutorial and docs and changelog are important for documentation workflows.",
+      "importance": 0.456
+    },
+    {
+      "id": 132,
+      "topic": "monitoring",
+      "content": "Memory about monitoring: uptime and sentry and prometheus are important for monitoring workflows.",
+      "importance": 0.965
+    },
+    {
+      "id": 143,
+      "topic": "scheduling",
+      "content": "Memory about scheduling: job and queue are important for scheduling workflows.",
+      "importance": 0.832
+    },
+    {
+      "id": 154,
+      "topic": "scheduling",
+      "content": "Memory about scheduling: periodic and worker are important for scheduling workflows.",
+      "importance": 0.818
+    },
+    {
+      "id": 179,
+      "topic": "networking",
+      "content": "Memory about networking: firewall and socket are important for networking workflows.",
+      "importance": 0.647
+    },
+    {
+      "id": 171,
+      "topic": "networking",
+      "content": "Memory about networking: VPN and TLS are important for networking workflows.",
+      "importance": 0.663
+    },
+    {
+      "id": 90,
+      "topic": "testing",
+      "content": "Memory about testing: mock and test are important for testing workflows.",
+      "importance": 0.825
+    },
+    {
+      "id": 157,
+      "topic": "scheduling",
+      "content": "Memory about scheduling: worker and interval are important for scheduling workflows.",
+      "importance": 0.468
+    },
+    {
+      "id": 103,
+      "topic": "api",
+      "content": "Memory about api: headers and json are important for api workflows.",
+      "importance": 0.64
+    },
+    {
+      "id": 21,
+      "topic": "database",
+      "content": "Memory about database: row and table are important for database workflows.",
+      "importance": 0.455
+    },
+    {
+      "id": 47,
+      "topic": "authentication",
+      "content": "Memory about authentication: auth and credentials are important for authentication workflows.",
+      "importance": 0.885
+    },
+    {
+      "id": 173,
+      "topic": "networking",
+      "content": "Memory about networking: load balancer and TCP and DNS are important for networking workflows.",
+      "importance": 0.934
+    },
+    {
+      "id": 51,
+      "topic": "authentication",
+      "content": "Memory about authentication: jwt and password are important for authentication workflows.",
+      "importance": 0.956
+    },
+    {
+      "id": 199,
+      "topic": "documentation",
+      "content": "Memory about documentation: tutorial and docstring are important for documentation workflows.",
+      "importance": 0.922
+    },
+    {
+      "id": 52,
+      "topic": "authentication",
+      "content": "Memory about authentication: password and jwt and credentials are important for authentication workflows.",
+      "importance": 0.493
+    },
+    {
+      "id": 133,
+      "topic": "monitoring",
+      "content": "Memory about monitoring: metric and log are important for monitoring workflows.",
+      "importance": 0.461
+    },
+    {
+      "id": 66,
+      "topic": "performance",
+      "content": "Memory about performance: cpu and memory and latency are important for performance workflows.",
+      "importance": 0.801
+    },
+    {
+      "id": 10,
+      "topic": "deployment",
+      "content": "Memory about deployment: version and ship and release are important for deployment workflows.",
+      "importance": 0.427
+    },
+    {
+      "id": 69,
+      "topic": "performance",
+      "content": "Memory about performance: fast and optimization are important for performance workflows.",
+      "importance": 0.812
+    },
+    {
+      "id": 34,
+      "topic": "database",
+      "content": "Memory about database: row and redis and index are important for database workflows.",
+      "importance": 0.717
+    },
+    {
+      "id": 64,
+      "topic": "performance",
+      "content": "Memory about performance: cache and fast and throughput are important for performance workflows.",
+      "importance": 0.928
+    },
+    {
+      "id": 123,
+      "topic": "monitoring",
+      "content": "Memory about monitoring: observability and log and grafana are important for monitoring workflows.",
+      "importance": 0.596
+    },
+    {
+      "id": 146,
+      "topic": "scheduling",
+      "content": "Memory about scheduling: queue and worker and celery are important for scheduling workflows.",
+      "importance": 0.684
+    },
+    {
+      "id": 114,
+      "topic": "api",
+      "content": "Memory about api: request and REST are important for api workflows.",
+      "importance": 0.649
+    },
+    {
+      "id": 22,
+      "topic": "database",
+      "content": "Memory about database: mysql and redis are important for database workflows.",
+      "importance": 0.776
+    },
+    {
+      "id": 53,
+      "topic": "authentication",
+      "content": "Memory about authentication: oauth and login and user are important for authentication workflows.",
+      "importance": 0.849
+    },
+    {
+      "id": 41,
+      "topic": "authentication",
+      "content": "Memory about authentication: oauth and user and token are important for authentication workflows.",
+      "importance": 0.834
+    },
+    {
+      "id": 102,
+      "topic": "api",
+      "content": "Memory about api: postman and REST and json are important for api workflows.",
+      "importance": 0.649
+    },
+    {
+      "id": 156,
+      "topic": "scheduling",
+      "content": "Memory about scheduling: interval and batch and periodic are important for scheduling workflows.",
+      "importance": 0.604
+    },
+    {
+      "id": 16,
+      "topic": "deployment",
+      "content": "Memory about deployment: ship and deploy are important for deployment workflows.",
+      "importance": 0.883
+    },
+    {
+      "id": 145,
+      "topic": "scheduling",
+      "content": "Memory about scheduling: interval and cron and job are important for scheduling workflows.",
+      "importance": 0.577
+    },
+    {
+      "id": 74,
+      "topic": "performance",
+      "content": "Memory about performance: throughput and cache are important for performance workflows.",
+      "importance": 0.727
+    },
+    {
+      "id": 4,
+      "topic": "deployment",
+      "content": "Memory about deployment: ship and CI and rollout are important for deployment workflows.",
+      "importance": 0.886
+    },
+    {
+      "id": 126,
+      "topic": "monitoring",
+      "content": "Memory about monitoring: log and metric and alert are important for monitoring workflows.",
+      "importance": 0.853
+    },
+    {
+      "id": 190,
+      "topic": "documentation",
+      "content": "Memory about documentation: changelog and guide and tutorial are important for documentation workflows.",
+      "importance": 0.546
+    },
+    {
+      "id": 5,
+      "topic": "deployment",
+      "content": "Memory about deployment: production and docker are important for deployment workflows.",
+      "importance": 0.604
+    },
+    {
+      "id": 12,
+      "topic": "deployment",
+      "content": "Memory about deployment: docker and rollout are important for deployment workflows.",
+      "importance": 0.672
+    },
+    {
+      "id": 80,
+      "topic": "testing",
+      "content": "Memory about testing: coverage and test are important for testing workflows.",
+      "importance": 0.508
+    },
+    {
+      "id": 170,
+      "topic": "networking",
+      "content": "Memory about networking: VPN and firewall are important for networking workflows.",
+      "importance": 0.443
+    },
+    {
+      "id": 147,
+      "topic": "scheduling",
+      "content": "Memory about scheduling: scheduler and periodic and celery are important for scheduling workflows.",
+      "importance": 0.611
+    },
+    {
+      "id": 79,
+      "topic": "performance",
+      "content": "Memory about performance: cpu and cache and optimization are important for performance workflows.",
+      "importance": 0.919
+    },
+    {
+      "id": 24,
+      "topic": "database",
+      "content": "Memory about database: row and index and postgres are important for database workflows.",
+      "importance": 0.808
+    },
+    {
+      "id": 121,
+      "topic": "monitoring",
+      "content": "Memory about monitoring: sentry and alert are important for monitoring workflows.",
+      "importance": 0.45
+    },
+    {
+      "id": 28,
+      "topic": "database",
+      "content": "Memory about database: index and row are important for database workflows.",
+      "importance": 0.765
+    },
+    {
+      "id": 106,
+      "topic": "api",
+      "content": "Memory about api: REST and json are important for api workflows.",
+      "importance": 0.48
+    },
+    {
+      "id": 93,
+      "topic": "testing",
+      "content": "Memory about testing: flaky and fixture and unit are important for testing workflows.",
+      "importance": 0.832
+    },
+    {
+      "id": 29,
+      "topic": "database",
+      "content": "Memory about database: schema and redis are important for database workflows.",
+      "importance": 0.724
+    },
+    {
+      "id": 137,
+      "topic": "monitoring",
+      "content": "Memory about monitoring: dashboard and sentry and uptime are important for monitoring workflows.",
+      "importance": 0.84
+    },
+    {
+      "id": 63,
+      "topic": "performance",
+      "content": "Memory about performance: throughput and memory are important for performance workflows.",
+      "importance": 0.528
+    },
+    {
+      "id": 77,
+      "topic": "performance",
+      "content": "Memory about performance: fast and optimization are important for performance workflows.",
+      "importance": 0.809
+    },
+    {
+      "id": 6,
+      "topic": "deployment",
+      "content": "Memory about deployment: ship and kubernetes are important for deployment workflows.",
+      "importance": 0.461
+    },
+    {
+      "id": 87,
+      "topic": "testing",
+      "content": "Memory about testing: test and unit and mock are important for testing workflows.",
+      "importance": 0.507
+    },
+    {
+      "id": 72,
+      "topic": "performance",
+      "content": "Memory about performance: latency and fast are important for performance workflows.",
+      "importance": 0.863
+    },
+    {
+      "id": 1,
+      "topic": "deployment",
+      "content": "Memory about deployment: release and pipeline are important for deployment workflows.",
+      "importance": 0.452
+    },
+    {
+      "id": 35,
+      "topic": "database",
+      "content": "Memory about database: query and row and column are important for database workflows.",
+      "importance": 0.828
+    },
+    {
+      "id": 50,
+      "topic": "authentication",
+      "content": "Memory about authentication: oauth and jwt and login are important for authentication workflows.",
+      "importance": 0.499
+    },
+    {
+      "id": 180,
+      "topic": "documentation",
+      "content": "Memory about documentation: comment and changelog and docs are important for documentation workflows.",
+      "importance": 0.673
+    },
+    {
+      "id": 131,
+      "topic": "monitoring",
+      "content": "Memory about monitoring: trace and metric are important for monitoring workflows.",
+      "importance": 0.747
+    },
+    {
+      "id": 192,
+      "topic": "documentation",
+      "content": "Memory about documentation: README and comment are important for documentation workflows.",
+      "importance": 0.864
+    },
+    {
+      "id": 89,
+      "topic": "testing",
+      "content": "Memory about testing: coverage and regression and unit are important for testing workflows.",
+      "importance": 0.631
+    },
+    {
+      "id": 149,
+      "topic": "scheduling",
+      "content": "Memory about scheduling: celery and job are important for scheduling workflows.",
+      "importance": 0.846
+    },
+    {
+      "id": 107,
+      "topic": "api",
+      "content": "Memory about api: curl and postman and HTTP are important for api workflows.",
+      "importance": 0.97
+    },
+    {
+      "id": 45,
+      "topic": "authentication",
+      "content": "Memory about authentication: auth and oauth and user are important for authentication workflows.",
+      "importance": 0.514
+    },
+    {
+      "id": 129,
+      "topic": "monitoring",
+      "content": "Memory about monitoring: grafana and trace are important for monitoring workflows.",
+      "importance": 0.86
+    },
+    {
+      "id": 48,
+      "topic": "authentication",
+      "content": "Memory about authentication: login and user are important for authentication workflows.",
+      "importance": 0.902
+    },
+    {
+      "id": 30,
+      "topic": "database",
+      "content": "Memory about database: column and schema are important for database workflows.",
+      "importance": 0.693
+    },
+    {
+      "id": 13,
+      "topic": "deployment",
+      "content": "Memory about deployment: production and kubernetes and pipeline are important for deployment workflows.",
+      "importance": 0.526
+    },
+    {
+      "id": 139,
+      "topic": "monitoring",
+      "content": "Memory about monitoring: observability and log and metric are important for monitoring workflows.",
+      "importance": 0.567
+    },
+    {
+      "id": 109,
+      "topic": "api",
+      "content": "Memory about api: GraphQL and json and curl are important for api workflows.",
+      "importance": 0.556
+    },
+    {
+      "id": 49,
+      "topic": "authentication",
+      "content": "Memory about authentication: oauth and token are important for authentication workflows.",
+      "importance": 0.644
+    },
+    {
+      "id": 168,
+      "topic": "networking",
+      "content": "Memory about networking: load balancer and TCP and proxy are important for networking workflows.",
+      "importance": 0.954
+    },
+    {
+      "id": 122,
+      "topic": "monitoring",
+      "content": "Memory about monitoring: dashboard and grafana and uptime are important for monitoring workflows.",
+      "importance": 0.43
+    },
+    {
+      "id": 108,
+      "topic": "api",
+      "content": "Memory about api: postman and curl and headers are important for api workflows.",
+      "importance": 0.898
+    },
+    {
+      "id": 182,
+      "topic": "documentation",
+      "content": "Memory about documentation: tutorial and docs and guide are important for documentation workflows.",
+      "importance": 0.648
+    },
+    {
+      "id": 32,
+      "topic": "database",
+      "content": "Memory about database: column and mysql are important for database workflows.",
+      "importance": 0.451
+    },
+    {
+      "id": 88,
+      "topic": "testing",
+      "content": "Memory about testing: test and unit and coverage are important for testing workflows.",
+      "importance": 0.607
+    },
+    {
+      "id": 54,
+      "topic": "authentication",
+      "content": "Memory about authentication: login and credentials are important for authentication workflows.",
+      "importance": 0.702
+    },
+    {
+      "id": 176,
+      "topic": "networking",
+      "content": "Memory about networking: load balancer and SSL are important for networking workflows.",
+      "importance": 0.791
+    },
+    {
+      "id": 38,
+      "topic": "database",
+      "content": "Memory about database: column and query are important for database workflows.",
+      "importance": 0.404
+    },
+    {
+      "id": 153,
+      "topic": "scheduling",
+      "content": "Memory about scheduling: cron and periodic and task are important for scheduling workflows.",
+      "importance": 0.565
+    },
+    {
+      "id": 142,
+      "topic": "scheduling",
+      "content": "Memory about scheduling: celery and worker and periodic are important for scheduling workflows.",
+      "importance": 0.733
+    },
+    {
+      "id": 188,
+      "topic": "documentation",
+      "content": "Memory about documentation: guide and README are important for documentation workflows.",
+      "importance": 0.789
+    },
+    {
+      "id": 56,
+      "topic": "authentication",
+      "content": "Memory about authentication: auth and security are important for authentication workflows.",
+      "importance": 0.805
+    },
+    {
+      "id": 18,
+      "topic": "deployment",
+      "content": "Memory about deployment: ship and CI and docker are important for deployment workflows.",
+      "importance": 0.931
+    },
+    {
+      "id": 40,
+      "topic": "authentication",
+      "content": "Memory about authentication: auth and user and oauth are important for authentication workflows.",
+      "importance": 0.567
+    },
+    {
+      "id": 191,
+      "topic": "documentation",
+      "content": "Memory about documentation: changelog and wiki are important for documentation workflows.",
+      "importance": 0.953
+    },
+    {
+      "id": 119,
+      "topic": "api",
+      "content": "Memory about api: endpoint and headers and HTTP are important for api workflows.",
+      "importance": 0.801
+    },
+    {
+      "id": 2,
+      "topic": "deployment",
+      "content": "Memory about deployment: deploy and version and release are important for deployment workflows.",
+      "importance": 0.531
+    },
+    {
+      "id": 197,
+      "topic": "documentation",
+      "content": "Memory about documentation: docs and docstring and guide are important for documentation workflows.",
+      "importance": 0.823
+    },
+    {
+      "id": 117,
+      "topic": "api",
+      "content": "Memory about api: response and headers and curl are important for api workflows.",
+      "importance": 0.723
+    },
+    {
+      "id": 65,
+      "topic": "performance",
+      "content": "Memory about performance: slow and cache and profile are important for performance workflows.",
+      "importance": 0.9
+    },
+    {
+      "id": 118,
+      "topic": "api",
+      "content": "Memory about api: json and request are important for api workflows.",
+      "importance": 0.564
+    },
+    {
+      "id": 59,
+      "topic": "authentication",
+      "content": "Memory about authentication: security and user and session are important for authentication workflows.",
+      "importance": 0.961
+    },
+    {
+      "id": 193,
+      "topic": "documentation",
+      "content": "Memory about documentation: docstring and tutorial and comment are important for documentation workflows.",
+      "importance": 0.892
+    },
+    {
+      "id": 127,
+      "topic": "monitoring",
+      "content": "Memory about monitoring: log and alert are important for monitoring workflows.",
+      "importance": 0.773
+    },
+    {
+      "id": 61,
+      "topic": "performance",
+      "content": "Memory about performance: slow and profile are important for performance workflows.",
+      "importance": 0.59
+    },
+    {
+      "id": 194,
+      "topic": "documentation",
+      "content": "Memory about documentation: comment and guide and markdown are important for documentation workflows.",
+      "importance": 0.668
+    },
+    {
+      "id": 181,
+      "topic": "documentation",
+      "content": "Memory about documentation: comment and docstring and README are important for documentation workflows.",
+      "importance": 0.982
+    },
+    {
+      "id": 44,
+      "topic": "authentication",
+      "content": "Memory about authentication: login and auth and security are important for authentication workflows.",
+      "importance": 0.642
+    },
+    {
+      "id": 43,
+      "topic": "authentication",
+      "content": "Memory about authentication: jwt and session are important for authentication workflows.",
+      "importance": 0.654
+    },
+    {
+      "id": 46,
+      "topic": "authentication",
+      "content": "Memory about authentication: token and jwt and security are important for authentication workflows.",
+      "importance": 0.567
+    },
+    {
+      "id": 144,
+      "topic": "scheduling",
+      "content": "Memory about scheduling: periodic and queue and interval are important for scheduling workflows.",
+      "importance": 0.788
+    },
+    {
+      "id": 105,
+      "topic": "api",
+      "content": "Memory about api: GraphQL and curl are important for api workflows.",
+      "importance": 0.679
+    },
+    {
+      "id": 135,
+      "topic": "monitoring",
+      "content": "Memory about monitoring: observability and metric and uptime are important for monitoring workflows.",
+      "importance": 0.408
+    },
+    {
+      "id": 62,
+      "topic": "performance",
+      "content": "Memory about performance: latency and profile are important for performance workflows.",
+      "importance": 0.773
+    },
+    {
+      "id": 37,
+      "topic": "database",
+      "content": "Memory about database: mysql and schema are important for database workflows.",
+      "importance": 0.413
+    },
+    {
+      "id": 110,
+      "topic": "api",
+      "content": "Memory about api: response and curl are important for api workflows.",
+      "importance": 0.691
+    },
+    {
+      "id": 95,
+      "topic": "testing",
+      "content": "Memory about testing: regression and integration and pytest are important for testing workflows.",
+      "importance": 0.652
+    },
+    {
+      "id": 91,
+      "topic": "testing",
+      "content": "Memory about testing: regression and flaky are important for testing workflows.",
+      "importance": 0.812
+    },
+    {
+      "id": 75,
+      "topic": "performance",
+      "content": "Memory about performance: cpu and memory and cache are important for performance workflows.",
+      "importance": 0.658
+    },
+    {
+      "id": 14,
+      "topic": "deployment",
+      "content": "Memory about deployment: release and production and ship are important for deployment workflows.",
+      "importance": 0.498
+    },
+    {
+      "id": 83,
+      "topic": "testing",
+      "content": "Memory about testing: pytest and assert are important for testing workflows.",
+      "importance": 0.61
+    },
+    {
+      "id": 11,
+      "topic": "deployment",
+      "content": "Memory about deployment: rollout and release are important for deployment workflows.",
+      "importance": 0.913
+    },
+    {
+      "id": 7,
+      "topic": "deployment",
+      "content": "Memory about deployment: release and kubernetes and pipeline are important for deployment workflows.",
+      "importance": 0.762
+    },
+    {
+      "id": 76,
+      "topic": "performance",
+      "content": "Memory about performance: slow and fast are important for performance workflows.",
+      "importance": 0.939
+    },
+    {
+      "id": 42,
+      "topic": "authentication",
+      "content": "Memory about authentication: oauth and credentials and jwt are important for authentication workflows.",
+      "importance": 0.514
+    },
+    {
+      "id": 113,
+      "topic": "api",
+      "content": "Memory about api: GraphQL and postman are important for api workflows.",
+      "importance": 0.539
+    },
+    {
+      "id": 163,
+      "topic": "networking",
+      "content": "Memory about networking: TLS and TCP are important for networking workflows.",
+      "importance": 0.969
+    },
+    {
+      "id": 162,
+      "topic": "networking",
+      "content": "Memory about networking: VPN and port and TLS are important for networking workflows.",
+      "importance": 0.741
+    },
+    {
+      "id": 198,
+      "topic": "documentation",
+      "content": "Memory about documentation: changelog and markdown and guide are important for documentation workflows.",
+      "importance": 0.979
+    },
+    {
+      "id": 111,
+      "topic": "api",
+      "content": "Memory about api: response and json are important for api workflows.",
+      "importance": 0.446
+    },
+    {
+      "id": 23,
+      "topic": "database",
+      "content": "Memory about database: column and mysql and migration are important for database workflows.",
+      "importance": 0.629
+    },
+    {
+      "id": 58,
+      "topic": "authentication",
+      "content": "Memory about authentication: security and login are important for authentication workflows.",
+      "importance": 0.772
+    },
+    {
+      "id": 73,
+      "topic": "performance",
+      "content": "Memory about performance: cache and profile and benchmark are important for performance workflows.",
+      "importance": 0.737
+    },
+    {
+      "id": 161,
+      "topic": "networking",
+      "content": "Memory about networking: TLS and proxy and port are important for networking workflows.",
+      "importance": 0.67
+    },
+    {
+      "id": 60,
+      "topic": "performance",
+      "content": "Memory about performance: fast and optimization are important for performance workflows.",
+      "importance": 0.559
+    },
+    {
+      "id": 17,
+      "topic": "deployment",
+      "content": "Memory about deployment: rollout and release and ship are important for deployment workflows.",
+      "importance": 0.948
+    },
+    {
+      "id": 158,
+      "topic": "scheduling",
+      "content": "Memory about scheduling: scheduler and interval are important for scheduling workflows.",
+      "importance": 0.444
+    },
+    {
+      "id": 9,
+      "topic": "deployment",
+      "content": "Memory about deployment: release and pipeline and rollout are important for deployment workflows.",
+      "importance": 0.898
+    },
+    {
+      "id": 138,
+      "topic": "monitoring",
+      "content": "Memory about monitoring: uptime and prometheus and grafana are important for monitoring workflows.",
+      "importance": 0.679
+    },
+    {
+      "id": 124,
+      "topic": "monitoring",
+      "content": "Memory about monitoring: trace and sentry and uptime are important for monitoring workflows.",
+      "importance": 0.901
+    },
+    {
+      "id": 160,
+      "topic": "networking",
+      "content": "Memory about networking: TCP and proxy and TLS are important for networking workflows.",
+      "importance": 0.735
+    },
+    {
+      "id": 81,
+      "topic": "testing",
+      "content": "Memory about testing: coverage and pytest and mock are important for testing workflows.",
+      "importance": 0.496
+    },
+    {
+      "id": 97,
+      "topic": "testing",
+      "content": "Memory about testing: mock and flaky are important for testing workflows.",
+      "importance": 0.526
+    },
+    {
+      "id": 136,
+      "topic": "monitoring",
+      "content": "Memory about monitoring: grafana and metric and sentry are important for monitoring workflows.",
+      "importance": 0.976
+    },
+    {
+      "id": 172,
+      "topic": "networking",
+      "content": "Memory about networking: VPN and port and TLS are important for networking workflows.",
+      "importance": 0.7
+    },
+    {
+      "id": 84,
+      "topic": "testing",
+      "content": "Memory about testing: pytest and test are important for testing workflows.",
+      "importance": 0.796
+    },
+    {
+      "id": 20,
+      "topic": "database",
+      "content": "Memory about database: column and migration and row are important for database workflows.",
+      "importance": 0.617
+    },
+    {
+      "id": 166,
+      "topic": "networking",
+      "content": "Memory about networking: DNS and port are important for networking workflows.",
+      "importance": 0.67
+    },
+    {
+      "id": 101,
+      "topic": "api",
+      "content": "Memory about api: GraphQL and endpoint are important for api workflows.",
+      "importance": 0.428
+    },
+    {
+      "id": 177,
+      "topic": "networking",
+      "content": "Memory about networking: firewall and port and load balancer are important for networking workflows.",
+      "importance": 0.981
+    },
+    {
+      "id": 159,
+      "topic": "scheduling",
+      "content": "Memory about scheduling: task and batch are important for scheduling workflows.",
+      "importance": 0.887
+    },
+    {
+      "id": 86,
+      "topic": "testing",
+      "content": "Memory about testing: fixture and regression and coverage are important for testing workflows.",
+      "importance": 0.808
+    },
+    {
+      "id": 67,
+      "topic": "performance",
+      "content": "Memory about performance: throughput and cache and slow are important for performance workflows.",
+      "importance": 0.469
+    },
+    {
+      "id": 120,
+      "topic": "monitoring",
+      "content": "Memory about monitoring: dashboard and grafana and uptime are important for monitoring workflows.",
+      "importance": 0.988
+    },
+    {
+      "id": 19,
+      "topic": "deployment",
+      "content": "Memory about deployment: production and rollout and version are important for deployment workflows.",
+      "importance": 0.548
+    },
+    {
+      "id": 39,
+      "topic": "database",
+      "content": "Memory about database: query and mysql are important for database workflows.",
+      "importance": 0.943
+    },
+    {
+      "id": 167,
+      "topic": "networking",
+      "content": "Memory about networking: VPN and DNS and proxy are important for networking workflows.",
+      "importance": 0.573
+    },
+    {
+      "id": 104,
+      "topic": "api",
+      "content": "Memory about api: endpoint and REST are important for api workflows.",
+      "importance": 0.867
+    },
+    {
+      "id": 36,
+      "topic": "database",
+      "content": "Memory about database: schema and table and row are important for database workflows.",
+      "importance": 0.473
+    },
+    {
+      "id": 184,
+      "topic": "documentation",
+      "content": "Memory about documentation: guide and docs and wiki are important for documentation workflows.",
+      "importance": 0.56
+    },
+    {
+      "id": 3,
+      "topic": "deployment",
+      "content": "Memory about deployment: pipeline and ship are important for deployment workflows.",
+      "importance": 0.83
+    },
+    {
+      "id": 116,
+      "topic": "api",
+      "content": "Memory about api: headers and endpoint and postman are important for api workflows.",
+      "importance": 0.686
+    },
+    {
+      "id": 134,
+      "topic": "monitoring",
+      "content": "Memory about monitoring: uptime and metric and alert are important for monitoring workflows.",
+      "importance": 0.608
+    },
+    {
+      "id": 25,
+      "topic": "database",
+      "content": "Memory about database: row and index are important for database workflows.",
+      "importance": 0.861
+    },
+    {
+      "id": 112,
+      "topic": "api",
+      "content": "Memory about api: request and response and HTTP are important for api workflows.",
+      "importance": 0.592
+    }
+  ],
+  "queries": [
+    {
+      "query_text": "docker",
+      "topic": "deployment",
+      "relevant_ids": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19
+      ]
+    },
+    {
+      "query_text": "CI",
+      "topic": "deployment",
+      "relevant_ids": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19
+      ]
+    },
+    {
+      "query_text": "index postgres",
+      "topic": "database",
+      "relevant_ids": [
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39
+      ]
+    },
+    {
+      "query_text": "query table",
+      "topic": "database",
+      "relevant_ids": [
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39
+      ]
+    },
+    {
+      "query_text": "oauth session",
+      "topic": "authentication",
+      "relevant_ids": [
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59
+      ]
+    },
+    {
+      "query_text": "session",
+      "topic": "authentication",
+      "relevant_ids": [
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59
+      ]
+    },
+    {
+      "query_text": "latency benchmark",
+      "topic": "performance",
+      "relevant_ids": [
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79
+      ]
+    },
+    {
+      "query_text": "optimization throughput",
+      "topic": "performance",
+      "relevant_ids": [
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79
+      ]
+    },
+    {
+      "query_text": "unit pytest",
+      "topic": "testing",
+      "relevant_ids": [
+        80,
+        81,
+        82,
+        83,
+        84,
+        85,
+        86,
+        87,
+        88,
+        89,
+        90,
+        91,
+        92,
+        93,
+        94,
+        95,
+        96,
+        97,
+        98,
+        99
+      ]
+    },
+    {
+      "query_text": "test",
+      "topic": "testing",
+      "relevant_ids": [
+        80,
+        81,
+        82,
+        83,
+        84,
+        85,
+        86,
+        87,
+        88,
+        89,
+        90,
+        91,
+        92,
+        93,
+        94,
+        95,
+        96,
+        97,
+        98,
+        99
+      ]
+    },
+    {
+      "query_text": "request GraphQL",
+      "topic": "api",
+      "relevant_ids": [
+        100,
+        101,
+        102,
+        103,
+        104,
+        105,
+        106,
+        107,
+        108,
+        109,
+        110,
+        111,
+        112,
+        113,
+        114,
+        115,
+        116,
+        117,
+        118,
+        119
+      ]
+    },
+    {
+      "query_text": "REST",
+      "topic": "api",
+      "relevant_ids": [
+        100,
+        101,
+        102,
+        103,
+        104,
+        105,
+        106,
+        107,
+        108,
+        109,
+        110,
+        111,
+        112,
+        113,
+        114,
+        115,
+        116,
+        117,
+        118,
+        119
+      ]
+    },
+    {
+      "query_text": "uptime",
+      "topic": "monitoring",
+      "relevant_ids": [
+        120,
+        121,
+        122,
+        123,
+        124,
+        125,
+        126,
+        127,
+        128,
+        129,
+        130,
+        131,
+        132,
+        133,
+        134,
+        135,
+        136,
+        137,
+        138,
+        139
+      ]
+    },
+    {
+      "query_text": "log",
+      "topic": "monitoring",
+      "relevant_ids": [
+        120,
+        121,
+        122,
+        123,
+        124,
+        125,
+        126,
+        127,
+        128,
+        129,
+        130,
+        131,
+        132,
+        133,
+        134,
+        135,
+        136,
+        137,
+        138,
+        139
+      ]
+    },
+    {
+      "query_text": "task cron",
+      "topic": "scheduling",
+      "relevant_ids": [
+        140,
+        141,
+        142,
+        143,
+        144,
+        145,
+        146,
+        147,
+        148,
+        149,
+        150,
+        151,
+        152,
+        153,
+        154,
+        155,
+        156,
+        157,
+        158,
+        159
+      ]
+    },
+    {
+      "query_text": "task batch",
+      "topic": "scheduling",
+      "relevant_ids": [
+        140,
+        141,
+        142,
+        143,
+        144,
+        145,
+        146,
+        147,
+        148,
+        149,
+        150,
+        151,
+        152,
+        153,
+        154,
+        155,
+        156,
+        157,
+        158,
+        159
+      ]
+    },
+    {
+      "query_text": "firewall TCP",
+      "topic": "networking",
+      "relevant_ids": [
+        160,
+        161,
+        162,
+        163,
+        164,
+        165,
+        166,
+        167,
+        168,
+        169,
+        170,
+        171,
+        172,
+        173,
+        174,
+        175,
+        176,
+        177,
+        178,
+        179
+      ]
+    },
+    {
+      "query_text": "firewall",
+      "topic": "networking",
+      "relevant_ids": [
+        160,
+        161,
+        162,
+        163,
+        164,
+        165,
+        166,
+        167,
+        168,
+        169,
+        170,
+        171,
+        172,
+        173,
+        174,
+        175,
+        176,
+        177,
+        178,
+        179
+      ]
+    },
+    {
+      "query_text": "docstring",
+      "topic": "documentation",
+      "relevant_ids": [
+        180,
+        181,
+        182,
+        183,
+        184,
+        185,
+        186,
+        187,
+        188,
+        189,
+        190,
+        191,
+        192,
+        193,
+        194,
+        195,
+        196,
+        197,
+        198,
+        199
+      ]
+    },
+    {
+      "query_text": "example",
+      "topic": "documentation",
+      "relevant_ids": [
+        180,
+        181,
+        182,
+        183,
+        184,
+        185,
+        186,
+        187,
+        188,
+        189,
+        190,
+        191,
+        192,
+        193,
+        194,
+        195,
+        196,
+        197,
+        198,
+        199
+      ]
+    }
+  ],
+  "metadata": {
+    "seed": 42,
+    "num_records": 200,
+    "num_topics": 10,
+    "records_per_topic": 20,
+    "num_queries": 20,
+    "relevant_per_query": 20
+  }
+}

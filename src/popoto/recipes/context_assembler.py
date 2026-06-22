@@ -62,7 +62,6 @@ Example:
 
 import json
 import logging
-import math
 import re
 import statistics
 import time
@@ -923,13 +922,36 @@ class ContextAssembler:
                 self._embedding_field = f
                 self._embedding_field_name = name
 
-        # Resolve effective retrieval mode
-        if retrieval_mode == "auto":
-            self._effective_mode = (
-                "hybrid"
-                if (self._bm25_field is not None and self._embedding_field is not None)
-                else "composite"
+        # Resolve effective retrieval mode.
+        #
+        # Emergent-mode behavior: under "auto", declaring or removing a
+        # BM25Field or EmbeddingField on the model changes the retrieval mode
+        # without any code change at the call site.
+        #   - BM25Field + EmbeddingField  → "hybrid"
+        #   - BM25Field only              → "lexical"  (query-sensitive via BM25
+        #                                               + graph propagation, no
+        #                                               embeddings)
+        #   - neither                     → "composite" (query-blind)
+        # Adding an EmbeddingField to a BM25-only model flips lexical → hybrid
+        # automatically.
+        _VALID_MODES = {"auto", "lexical", "hybrid", "composite"}
+        if retrieval_mode not in _VALID_MODES:
+            from ..exceptions import QueryException
+
+            raise QueryException(
+                f"retrieval_mode={retrieval_mode!r} is not a recognised mode. "
+                f"Allowed values: {sorted(_VALID_MODES)}"
             )
+
+        if retrieval_mode == "auto":
+            if self._bm25_field is not None and self._embedding_field is not None:
+                self._effective_mode = "hybrid"
+            elif self._bm25_field is not None:
+                # BM25-only: query-sensitive lexical retrieval (BM25 + graph, no embeddings)
+                self._effective_mode = "lexical"
+            else:
+                # No BM25 and no embedding → composite (unchanged, incl. embedding-only)
+                self._effective_mode = "composite"
         elif retrieval_mode == "hybrid":
             if self._bm25_field is None or self._embedding_field is None:
                 from ..exceptions import QueryException
@@ -944,6 +966,15 @@ class ContextAssembler:
                     f"on {model_class.__name__}"
                 )
             self._effective_mode = "hybrid"
+        elif retrieval_mode == "lexical":
+            if self._bm25_field is None:
+                from ..exceptions import QueryException
+
+                raise QueryException(
+                    f"retrieval_mode='lexical' requires BM25Field "
+                    f"on {model_class.__name__}"
+                )
+            self._effective_mode = "lexical"
         else:
             self._effective_mode = "composite"
 
@@ -1118,7 +1149,7 @@ class ContextAssembler:
             tokens = self._token_counter(serialized)
             if not isinstance(tokens, int) or isinstance(tokens, bool) or tokens < 0:
                 raise TypeError(
-                    f"token_counter returned {tokens!r}; " "expected a non-negative int"
+                    f"token_counter returned {tokens!r}; expected a non-negative int"
                 )
         except Exception as e:
             logger.warning(
@@ -1138,6 +1169,11 @@ class ContextAssembler:
             Tuple of (selected_records, all_candidates).
         """
         if self._effective_mode == "hybrid":
+            return self._pull_path_hybrid(query_cues, filters)
+        elif self._effective_mode == "lexical":
+            # Lexical mode (BM25 + graph, no embeddings) routes through the shared
+            # hybrid body. Because _embedding_field is None in lexical mode, the
+            # vector branch is gated off inside _pull_path_hybrid.
             return self._pull_path_hybrid(query_cues, filters)
         return self._pull_path_composite(query_cues, filters)
 
@@ -1212,11 +1248,16 @@ class ContextAssembler:
         return candidates, all_candidates
 
     def _pull_path_hybrid(self, query_cues, filters):
-        """Hybrid pull path: BM25 (lexical) + vector (semantic) + graph via RRF.
+        """Shared pull path for "hybrid" and "lexical" modes: BM25 + graph via RRF.
 
-        Collects up to three ranked signals then fuses them with
-        ``QueryBuilder.fuse()`` (RRF, k=RRF_K). Falls back to the composite
-        path when both lexical and vector signals are empty.
+        In "hybrid" mode collects BM25 (lexical), vector (semantic), and graph
+        signals then fuses them with ``QueryBuilder.fuse()`` (RRF, k=RRF_K).
+
+        In "lexical" mode (BM25 + graph, no embeddings) the vector branch is
+        skipped because ``self._embedding_field is None`` — no numpy required.
+
+        Falls back to the composite path when both lexical and vector signals
+        are empty (e.g. zero-BM25-hit queries degrade to composite, by design).
 
         Returns:
             Tuple of (selected_records, all_candidates).
@@ -1252,23 +1293,35 @@ class ContextAssembler:
         except Exception as e:
             logger.warning("BM25 search failed in hybrid path: %s", e)
 
-        # --- Vector semantic retrieval (raw scored tuples, not hydrated) ---
-        try:
-            from ..models.query import QueryBuilder as _QueryBuilder
+        # --- Vector semantic retrieval (only when an EmbeddingField is configured) ---
+        # In "lexical" mode _embedding_field is None, so this branch is skipped
+        # entirely — no numpy import, no embedding-provider call.
+        if self._embedding_field is not None:
+            try:
+                from ..models.query import QueryBuilder as _QueryBuilder
 
-            _q = self.model_class.query
-            if filters:
-                _qb = _q.filter(**filters)
-            else:
-                _qb = _QueryBuilder(_q)
-            vector_results = _qb._get_vector_scores(query_text, limit=candidate_limit)
-        except Exception as e:
-            logger.warning("Vector search failed in hybrid path: %s", e)
+                _q = self.model_class.query
+                if filters:
+                    _qb = _q.filter(**filters)
+                else:
+                    _qb = _QueryBuilder(_q)
+                vector_results = _qb._get_vector_scores(
+                    query_text, limit=candidate_limit
+                )
+            except Exception as e:
+                logger.warning("Vector search failed in hybrid path: %s", e)
 
         if not keyword_results and not vector_results:
-            logger.debug(
-                "Hybrid path: no BM25 or vector signal collected, "
-                "falling back to composite"
+            logger.warning(
+                "%s retrieval for %s collected no query signal — BM25 returned 0 "
+                "hits%s (query has no lexical overlap OR the BM25 index is empty; "
+                "re-save existing records to backfill the index — see the recipe "
+                "reindex caveat). Falling back to composite (query-blind).",
+                self._effective_mode,
+                self.model_class.__name__,
+                " and the vector search returned none"
+                if self._embedding_field is not None
+                else "",
             )
             return self._pull_path_composite(query_cues, filters)
 
