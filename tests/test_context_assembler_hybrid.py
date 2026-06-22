@@ -122,13 +122,14 @@ class TestAutoModeCapabilityDetection:
         )
         assert assembler._effective_mode == "composite"
 
-    def test_auto_selects_composite_when_embedding_absent(self):
+    def test_auto_selects_lexical_when_embedding_absent(self):
+        """BM25-only model (no EmbeddingField) should resolve to 'lexical' under auto."""
         assembler = ContextAssembler(
             model_class=BM25OnlyMemory,
             score_weights={"relevance": 1.0},
             retrieval_mode="auto",
         )
-        assert assembler._effective_mode == "composite"
+        assert assembler._effective_mode == "lexical"
 
     def test_auto_selects_composite_when_neither_field_present(self):
         assembler = ContextAssembler(
@@ -470,6 +471,155 @@ class TestGetVectorScores:
 # ---------------------------------------------------------------------------
 # 8. constants
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# 9. lexical mode — new first-class retrieval mode
+# ---------------------------------------------------------------------------
+
+
+class TestLexicalMode:
+    """Tests for the new 'lexical' retrieval mode (BM25 + graph, no embeddings)."""
+
+    def test_explicit_lexical_mode_on_bm25_model(self):
+        """Explicit retrieval_mode='lexical' on a model with BM25Field must not raise."""
+        assembler = ContextAssembler(
+            model_class=BM25OnlyMemory,
+            score_weights={"relevance": 1.0},
+            retrieval_mode="lexical",
+        )
+        assert assembler._effective_mode == "lexical"
+
+    def test_explicit_lexical_raises_without_bm25(self):
+        """Explicit retrieval_mode='lexical' on a model without BM25Field must raise QueryException."""
+        with pytest.raises(QueryException, match="BM25Field"):
+            ContextAssembler(
+                model_class=CompositeOnlyMemory,
+                score_weights={"relevance": 1.0},
+                retrieval_mode="lexical",
+            )
+
+    def test_explicit_lexical_raises_when_only_embedding_field(self):
+        """Explicit 'lexical' on embedding-only model (no BM25Field) must raise."""
+        with pytest.raises(QueryException, match="BM25Field"):
+            ContextAssembler(
+                model_class=EmbeddingOnlyMemory,
+                score_weights={"relevance": 1.0},
+                retrieval_mode="lexical",
+            )
+
+    def test_unknown_mode_raises_query_exception(self):
+        """An unknown retrieval_mode string must raise QueryException (no silent fallback)."""
+        with pytest.raises(QueryException, match="not a recognised mode"):
+            ContextAssembler(
+                model_class=CompositeOnlyMemory,
+                score_weights={"relevance": 1.0},
+                retrieval_mode="lexcal",  # typo
+            )
+
+    def test_lexical_mode_dispatches_to_pull_path_hybrid(self):
+        """(BLOCKER 2) _pull_path must route 'lexical' mode to _pull_path_hybrid,
+        NOT to _pull_path_composite."""
+        assembler = ContextAssembler(
+            model_class=BM25OnlyMemory,
+            score_weights={"relevance": 1.0},
+            retrieval_mode="lexical",
+        )
+        assert assembler._effective_mode == "lexical"
+        with (
+            patch.object(
+                assembler, "_pull_path_hybrid", return_value=([], [])
+            ) as mock_hybrid,
+            patch.object(
+                assembler, "_pull_path_composite", return_value=([], [])
+            ) as mock_composite,
+        ):
+            assembler.assemble(query_cues={"topic": "test"})
+            mock_hybrid.assert_called_once()
+            mock_composite.assert_not_called()
+
+    def test_vector_branch_never_called_in_lexical_mode(self):
+        """(BLOCKER 1) In lexical mode, _get_vector_scores must NEVER be called.
+        The embedding_field guard must prevent any numpy/provider code from running."""
+        assembler = ContextAssembler(
+            model_class=BM25OnlyMemory,
+            score_weights={"relevance": 1.0},
+            retrieval_mode="lexical",
+        )
+        assert assembler._embedding_field is None, "lexical mode requires no EmbeddingField"
+
+        with (
+            patch(
+                "src.popoto.fields.bm25_field.BM25Field.search",
+                return_value=[],
+            ),
+            patch(
+                "src.popoto.models.query.QueryBuilder._get_vector_scores",
+                side_effect=AssertionError("vector branch must not run in lexical mode"),
+            ),
+        ):
+            # If the vector branch is called, the side_effect will raise AssertionError
+            # and the test will fail — proving the gate holds.
+            result = assembler.assemble(query_cues={"topic": "test"})
+            assert isinstance(result.records, list)
+
+    def test_lexical_mode_does_not_call_composite_on_bm25_results(self):
+        """(BLOCKER 2 dispatch test) When BM25 returns results in lexical mode,
+        _pull_path_composite must NOT be entered."""
+        _flush()
+        assembler = ContextAssembler(
+            model_class=BM25OnlyMemory,
+            score_weights={"relevance": 1.0},
+            retrieval_mode="lexical",
+        )
+        mock_bm25_results = [("BM25OnlyMemory:1", 0.9), ("BM25OnlyMemory:2", 0.8)]
+        with (
+            patch(
+                "src.popoto.fields.bm25_field.BM25Field.search",
+                return_value=mock_bm25_results,
+            ),
+            patch.object(
+                assembler, "_pull_path_composite", return_value=([], [])
+            ) as mock_composite,
+            patch.object(assembler.model_class.query.__class__, "fuse", return_value=[], create=True),
+        ):
+            assembler.assemble(query_cues={"topic": "test"})
+            mock_composite.assert_not_called()
+
+    def test_lexical_zero_bm25_hits_falls_back_to_composite(self):
+        """When BM25 returns zero hits in lexical mode, the path degrades to composite."""
+        _flush()
+        assembler = ContextAssembler(
+            model_class=BM25OnlyMemory,
+            score_weights={"relevance": 1.0},
+            retrieval_mode="lexical",
+        )
+        with (
+            patch(
+                "src.popoto.fields.bm25_field.BM25Field.search",
+                return_value=[],  # zero BM25 hits
+            ),
+            patch.object(
+                assembler, "_pull_path_composite", return_value=([], [])
+            ) as mock_composite,
+        ):
+            result = assembler.assemble(query_cues={"topic": "zzz flurble xyzzy gibberish"})
+            # Zero BM25 hits → should fall back to composite (by design)
+            mock_composite.assert_called_once()
+            assert isinstance(result.records, list)
+
+    def test_auto_lexical_empty_db_returns_list(self):
+        """BM25-only model with 'auto' resolving to 'lexical' must return
+        a list (empty) when DB is empty, not raise."""
+        _flush()
+        assembler = ContextAssembler(
+            model_class=BM25OnlyMemory,
+            score_weights={"relevance": 1.0},
+            retrieval_mode="auto",
+        )
+        assert assembler._effective_mode == "lexical"
+        result = assembler.assemble(query_cues={"topic": "deployment"})
+        assert isinstance(result.records, list)
 
 
 class TestConstants:

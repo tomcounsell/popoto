@@ -12,33 +12,53 @@ Retrieval-to-injection bridge — assembles LLM-ready context within token budge
 
 ### Pull Path Modes (`retrieval_mode`)
 
-The pull path supports three modes controlled by the `retrieval_mode` constructor parameter:
+The pull path supports four modes controlled by the `retrieval_mode` constructor parameter:
 
 | Mode | Behaviour | When to use |
 |------|-----------|-------------|
-| `"auto"` *(default)* | Detects `BM25Field` + `EmbeddingField` on the model; uses `"hybrid"` if both present, `"composite"` otherwise | Most callers — no configuration needed |
-| `"hybrid"` | BM25 (lexical) + vector (semantic) fused via RRF (k=60), optional CoOccurrence graph expansion | Models with both `BM25Field` and `EmbeddingField` configured |
-| `"composite"` | Original `CompositeScoreQuery` weighted-sum path (pre-v1.7 behaviour) | Backwards-compatible override; when `score_weights` drive all ranking |
+| `"auto"` *(default)* | Detects fields on the model: both `BM25Field` + `EmbeddingField` → `"hybrid"`; `BM25Field` only → `"lexical"`; neither → `"composite"` | Most callers — no configuration needed |
+| `"lexical"` | BM25 + graph propagation (no embeddings, no numpy required) fused via RRF (k=60) | Models with `BM25Field` but no `EmbeddingField`; zero-dep query-sensitive retrieval |
+| `"hybrid"` | BM25 (lexical) + vector (semantic) + graph fused via RRF (k=60) | Models with both `BM25Field` and `EmbeddingField` configured |
+| `"composite"` | Original `CompositeScoreQuery` weighted-sum path — **query-blind** (takes no query-text input; ranks by score indexes only) | Backwards-compatible override; when `score_weights` drive all ranking |
 
-`retrieval_mode="hybrid"` raises `QueryException` at init if `BM25Field` or `EmbeddingField` is absent from the model.
+**Emergent mode under `"auto"`:** the effective retrieval mode is determined by which fields are declared on the model at init time. Declaring or removing `BM25Field`/`EmbeddingField` changes the effective mode without any change at the `ContextAssembler` call site. For example: adding `EmbeddingField` to a BM25-only model silently flips `lexical → hybrid`.
+
+**Zero-hit fallback:** when BM25 returns zero matches (e.g. a query with no lexical overlap with the corpus), the lexical and hybrid paths degrade to `"composite"` ranking — query-blind, but no crash. Document this at your call site if queries are expected to have no keyword overlap.
+
+`retrieval_mode="lexical"` raises `QueryException` at init if `BM25Field` is absent. `retrieval_mode="hybrid"` raises `QueryException` at init if `BM25Field` or `EmbeddingField` is absent. Any unrecognised mode string raises `QueryException` immediately.
 
 ```python
+# Lexical mode — auto-detected when only BM25Field is on the model (no EmbeddingField)
+assembler = ContextAssembler(
+    model_class=Memory,  # has BM25Field, no EmbeddingField
+    score_weights={"relevance": 0.6},  # ignored in lexical pull path
+    max_items=10,
+)
+# retrieval_mode defaults to "auto"; resolves to "lexical" (BM25 + graph, no embeddings)
+
 # Hybrid mode — auto-detected when BM25Field + EmbeddingField are on the model
 assembler = ContextAssembler(
-    model_class=Memory,
+    model_class=Memory,  # has BM25Field AND EmbeddingField
     score_weights={"relevance": 0.6},  # ignored in hybrid pull path
     max_items=10,
 )
-# retrieval_mode defaults to "auto"; resolves to "hybrid" if both fields present
+# retrieval_mode defaults to "auto"; resolves to "hybrid"
 
-# Force composite path (pre-v1.7 behaviour)
+# Force composite path (pre-v1.7 behaviour, query-blind)
 assembler = ContextAssembler(
     model_class=Memory,
     score_weights={"relevance": 0.6, "confidence": 0.3},
     retrieval_mode="composite",
 )
 
-# Force hybrid explicitly (raises QueryException if fields absent)
+# Force lexical explicitly (raises QueryException if BM25Field absent)
+assembler = ContextAssembler(
+    model_class=Memory,
+    score_weights={},
+    retrieval_mode="lexical",
+)
+
+# Force hybrid explicitly (raises QueryException if either field absent)
 assembler = ContextAssembler(
     model_class=Memory,
     score_weights={},
@@ -55,7 +75,7 @@ assembler = ContextAssembler(
 | ConfidenceField | Score index + competitive suppression |
 | CoOccurrenceField | Pull-path graph expansion (both paths) |
 | ExistenceFilter | Pull-path pre-check (skip if absent) |
-| BM25Field | Hybrid pull-path: lexical signal for RRF |
+| BM25Field | Lexical and hybrid pull-paths: keyword-search signal for RRF (BM25 + graph, no embeddings) |
 | EmbeddingField | Hybrid pull-path: vector signal for RRF |
 | AccessTrackerMixin | on_read post-effect tracking |
 | ObservationProtocol | on_read / on_surfaced dispatch |
