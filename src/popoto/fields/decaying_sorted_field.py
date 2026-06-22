@@ -83,7 +83,11 @@ for i = 1, #members, 2 do
     local elapsed_days = math.max((now - last_updated) / 86400, 0.01)
 
     -- Power-law decay: base_score * elapsed^(-decay_rate)
-    local decayed = base_score * math.pow(elapsed_days, -decay_rate)
+    -- Sign-preserving: math.pow only takes non-negative base, so split sign
+    -- from magnitude. Positive-base output is bitwise unchanged.
+    local sign = base_score < 0 and -1 or 1
+    local mag = math.abs(base_score)
+    local decayed = sign * mag * math.pow(elapsed_days, -decay_rate)
 
     table.insert(scored, {member, decayed})
 end
