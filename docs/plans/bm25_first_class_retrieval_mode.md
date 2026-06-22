@@ -245,6 +245,11 @@ Recipe Quick Start (with `BM25Field`) → `SubconsciousMemory.inject_context(mes
     message mirroring the `"hybrid"` guard: `"retrieval_mode='lexical' requires BM25Field on {model}"`.
   - `"hybrid"`: unchanged (still requires both fields; loud guard preserved).
   - `"composite"`: unchanged.
+  - **Closed-set validation (IMPLEMENTATION NOTE 1, MANDATORY):** the resolver must accept only
+    `{"auto", "lexical", "hybrid", "composite"}`. Any other value (a typo like `"lexcal"`/`"compsite"`,
+    or an unknown mode) must `raise QueryException` naming the bad value and the allowed set — it must
+    **not** fall through an `else` branch to `"composite"`, which would silently reproduce a query-blind
+    result for what the caller believes is a valid mode. Add a unit test asserting an unknown mode raises.
   - **Embedding-only (no BM25) under `"auto"` (resolved Q3): explicitly out of scope.** An
     `EmbeddingField`-only model continues to resolve to `"composite"` (query-blind) exactly as today.
     BM25-only is the stated target of #409; relaxing `"auto"` to route embedding-only models to a
@@ -270,6 +275,19 @@ Recipe Quick Start (with `BM25Field`) → `SubconsciousMemory.inject_context(mes
   documented. (`_pull_path_lexical` as a separate method is rejected: it would duplicate the
   ExistenceFilter pre-check, graph-seeding, and RRF fusion for no behavioral gain now that the
   vector branch is gated.)
+  - **"lexical" = "BM25 + graph, no embeddings", NOT "BM25 only" (IMPLEMENTATION NOTE 2):** because
+    lexical routes through `_pull_path_hybrid`, it fuses BM25 **and** graph propagation; only the
+    vector/embedding branch is gated off. Every description of `"lexical"` — the inline docstring, the
+    `docs/features/context-assembler.md` mode table row, the recipe guide, any code comment — must say
+    **"BM25 + graph, no embeddings"**, not "BM25 only". Keep the "no `EmbeddingField` / no numpy
+    required" framing (that part is correct).
+  - **Zero-BM25-hit queries fall back to composite — document + test (IMPLEMENTATION NOTE 3):** when
+    `BM25Field.search()` returns zero hits and there are no vector results, the path bails to
+    `_pull_path_composite` (`:1268-1273`), which is query-blind. This is by design (a no-keyword-match
+    query degrades to importance-ranked composite). It MUST be documented in the `"lexical"` docstring
+    and the mode table, and covered by a dedicated test (feed a query with no lexical overlap; assert
+    the documented composite fallback occurs without crashing). The keyword-rich RETR-1 fixture will
+    essentially never hit this path, so it does NOT cover this gap — the dedicated test is required.
 - **`_get_vector_scores` gate — MANDATORY code change, not "verify/optional" (BLOCKER 1)**: The
   current `_pull_path_hybrid` (`:1255-1266`) calls `_qb._get_vector_scores(...)` **unconditionally**
   inside a warn-only `try/except`; it is NOT gated on `self._embedding_field`. As written today, a
@@ -313,7 +331,27 @@ Recipe Quick Start (with `BM25Field`) → `SubconsciousMemory.inject_context(mes
 - **Docs honesty**: Reword `subconscious-memory-recipe.md:5,13,80,101,106` so query-relevance is
   only claimed for query-sensitive modes; correct the "returned unchanged" claim (in composite it
   is effectively unreachable). Update the `docs/features/context-assembler.md:17-23` mode table
-  with the `"lexical"` row and revised `"auto"` rules.
+  with the `"lexical"` row and revised `"auto"` rules. The mode table and recipe guide must also
+  carry: the IMPLEMENTATION NOTE 2 wording ("BM25 + graph, no embeddings"), the IMPLEMENTATION
+  NOTE 3 zero-hit→composite fallback, the IMPLEMENTATION NOTE 4 reindex caveat, and the
+  IMPLEMENTATION NOTE 5 emergent-mode behavior (see below).
+- **Reindex/migration caveat — make it prominent (IMPLEMENTATION NOTE 4):** adding `BM25Field` to a
+  model does **not** retroactively index already-stored records — the BM25 index for a field stays
+  empty until each record is re-saved (the `on_save` hook builds it). A user copying the new recipe
+  model on top of an existing corpus gets an empty BM25 index and degraded (composite, per NOTE 3)
+  retrieval until every record is re-saved. State this prominently in the recipe guide AND the
+  quickstart (not a footnote), with the backfill one-liner pattern: iterate existing instances and
+  call `.save()` on each to populate the index. (Risk 3 already gestures at this — elevate it.)
+- **Emergent-mode behavior under no-kwarg "auto" — document it (IMPLEMENTATION NOTE 5):** because
+  `SubconsciousMemory` builds the assembler with no `retrieval_mode`, the effective mode is emergent
+  from the model's declared fields: a BM25-only model is `"lexical"`; adding an `EmbeddingField`
+  silently flips it `lexical → hybrid`; removing all search fields flips it to query-blind
+  `"composite"`. This is intended but surprising if undocumented. Document it in the recipe guide and
+  the context-assembler mode table; call out the `lexical → hybrid` flip on adding embeddings
+  explicitly so it is not a debugging surprise.
+- **Terminology nit (fold in opportunistically):** prefer the precise term "query-sensitive" over
+  "query-relevant" when contrasting composite vs lexical — composite takes no query input at all,
+  so it is not merely "less relevant".
 
 ## Failure Path Test Strategy
 
@@ -340,7 +378,9 @@ Recipe Quick Start (with `BM25Field`) → `SubconsciousMemory.inject_context(mes
 
 - `tests/test_context_assembler_hybrid.py` — UPDATE: add cases for `_effective_mode` resolution
   with BM25-only models (`"auto"` → `"lexical"`) and the `"lexical"` explicit mode + its loud-failure
-  guard. Existing hybrid (both-fields) assertions must still pass unchanged.
+  guard. Existing hybrid (both-fields) assertions must still pass unchanged. Also add: the
+  unknown/typo'd-mode raises `QueryException` test (IMPLEMENTATION NOTE 1) and the zero-BM25-hit
+  composite-fallback test (IMPLEMENTATION NOTE 3).
 - `tests/test_subconscious_memory_integration.py` — UPDATE: the documented-default model now has a
   `BM25Field`; any assertion pinned to composite behavior for the default model must be revised. Add
   query-sensitivity assertions (distinct sets per query).
@@ -433,13 +473,16 @@ bridge in scope; `ContextAssembler`/`SubconsciousMemory` are imported directly b
 ## Documentation
 
 ### Feature Documentation
-- [ ] Update `docs/features/context-assembler.md` mode table (`:17-23`): add the `"lexical"` row,
-      revise `"auto"` resolution rules, update the `"hybrid"` exception note.
+- [ ] Update `docs/features/context-assembler.md` mode table (`:17-23`): add the `"lexical"` row
+      (described as "BM25 + graph, no embeddings" — NOTE 2), revise `"auto"` resolution rules, update
+      the `"hybrid"` exception note, document the zero-hit→composite fallback (NOTE 3) and the
+      emergent-mode behavior under no-kwarg `"auto"` incl. the `lexical → hybrid` flip (NOTE 5).
 - [ ] Update `docs/guides/subconscious-memory-recipe.md`: add `BM25Field` to the Quick Start model;
-      reword the overpromising claims at `:5,13,80,101,106`; note reindexing for existing models.
+      reword the overpromising claims at `:5,13,80,101,106` (prefer "query-sensitive" — nit); add the
+      prominent reindex/backfill caveat (NOTE 4); document emergent-mode behavior (NOTE 5).
 - [ ] Update `docs/guides/agent-memory-quickstart.md`: add `BM25Field` to the recipe-feeding levels
       (Level 2+) so the progressive path is query-sensitive; keep Level 6 EmbeddingField as the
-      semantic upgrade.
+      semantic upgrade; carry the reindex caveat (NOTE 4).
 
 ### External Documentation Site
 - [ ] `mkdocs build --strict` passes (run via `scripts/ci-local.sh docs`).
@@ -474,6 +517,12 @@ bridge in scope; `ContextAssembler`/`SubconsciousMemory` are imported directly b
       achieves mean P@10 ≥ 0.5 (with `max_tokens` pinned ample/unset).
 - [ ] Explicit `retrieval_mode="lexical"` on a model without `BM25Field` raises `QueryException`
       (loud, no silent fallback); explicit `"hybrid"` still requires both fields.
+- [ ] **(IMPLEMENTATION NOTE 1)** An unknown/typo'd `retrieval_mode` value raises `QueryException`
+      naming the bad value and the allowed set `{"auto","lexical","hybrid","composite"}` — no silent
+      fall-through to `"composite"`.
+- [ ] **(IMPLEMENTATION NOTE 3)** A zero-BM25-hit query (no lexical overlap with the corpus) degrades
+      to the documented composite fallback without crashing; documented in the `"lexical"` docstring
+      and mode table.
 - [ ] `"composite"` unchanged for opt-in callers; existing hybrid (BM25+embedding) behavior and
       P@10 do not regress.
 - [ ] Docs updated: recipe guide no longer claims query-relevance for query-blind configs;
@@ -523,6 +572,9 @@ bridge in scope; `ContextAssembler`/`SubconsciousMemory` are imported directly b
   so BM25-present (no embedding) → `"lexical"`, both → `"hybrid"`, neither → `"composite"`
   (embedding-only stays `"composite"` — resolved Q3, do not change).
 - Add loud `QueryException` guard for explicit `"lexical"` without `BM25Field`.
+- **(IMPLEMENTATION NOTE 1, MANDATORY)** Closed-set mode validation: accept only
+  `{"auto", "lexical", "hybrid", "composite"}`; any other value raises `QueryException` (name the
+  bad value + allowed set). No `else` fall-through to `"composite"`.
 - **(BLOCKER 2, MANDATORY)** Add the `elif self._effective_mode == "lexical": return
   self._pull_path_hybrid(...)` dispatch entry in `_pull_path` (`:1134-1142`) before the composite
   fallthrough. Without it, lexical silently regresses to composite.
@@ -550,6 +602,11 @@ bridge in scope; `ContextAssembler`/`SubconsciousMemory` are imported directly b
 - **Agent Type**: documentarian
 - **Parallel**: false
 - Reword overpromise claims; add `"lexical"` row and revised `"auto"` rules to the mode table.
+- Apply IMPLEMENTATION NOTE 2 ("BM25 + graph, no embeddings" wording everywhere lexical is described),
+  NOTE 3 (zero-hit→composite fallback in docstring + mode table), NOTE 4 (prominent reindex caveat +
+  backfill one-liner in recipe guide and quickstart), NOTE 5 (emergent-mode behavior under no-kwarg
+  `"auto"`, incl. the `lexical → hybrid` flip), and the terminology nit (query-sensitive vs
+  query-relevant).
 
 ### 4. P@10 regression + lexical unit tests
 - **Task ID**: build-tests
@@ -566,6 +623,11 @@ bridge in scope; `ContextAssembler`/`SubconsciousMemory` are imported directly b
   assert never called in lexical mode).
 - Add the end-to-end SubconsciousMemory→lexical test (default constructor, query-dependent sets).
 - Add the loud-failure test (explicit `"lexical"` without `BM25Field` raises `QueryException`).
+- **(IMPLEMENTATION NOTE 1)** Add the unknown/typo'd-mode test: a bogus `retrieval_mode` value raises
+  `QueryException` (no silent fall-through to composite).
+- **(IMPLEMENTATION NOTE 3)** Add the zero-BM25-hit test: a query with no lexical overlap with the
+  corpus degrades to the documented composite fallback (composite entered) without crashing — the
+  gap the keyword-rich RETR-1 fixture does not cover.
 
 ### 5. Final validation
 - **Task ID**: validate-all
@@ -600,63 +662,20 @@ bridge in scope; `ContextAssembler`/`SubconsciousMemory` are imported directly b
 
 ---
 
-## Implementation Notes (Re-Critique READY TO BUILD — non-blocking)
+## Implementation Notes (Re-Critique READY TO BUILD — now embedded in the plan body)
 
-The re-critique returned **READY TO BUILD** with 0 blockers. The following 5 concerns + 1 nit
-are not blockers but the builder **must** address each one (or consciously document why not) during
-the build. They are folded here so they are visible at build time.
+The re-critique returned **READY TO BUILD** with 0 blockers. Its 5 concerns + 1 nit have been
+**embedded into the relevant plan sections** so the builder encounters each one in context (not as a
+detached appendix). This table is the index; the load-bearing text lives in the sections cited.
 
-1. **Closed-set mode validation (mode resolution, `context_assembler.py:926-948`).**
-   The current `"auto"`/explicit-mode resolution still has an `else` that silently maps any unknown or
-   typo'd `retrieval_mode` string (e.g. `"lexcal"`, `"compsite"`) to `"composite"`. This swallows
-   caller error and reproduces a query-blind result for what the caller believes is a valid mode.
-   **Action:** add closed-set validation — the resolver must accept only
-   `{"auto", "lexical", "hybrid", "composite"}` and `raise QueryException` on any other value
-   (message naming the bad value and the allowed set). Do **not** let an unknown string fall through to
-   the `"composite"` branch. Add a unit test asserting an unknown mode raises.
-
-2. **"lexical" docstring/text = "BM25 + graph, no embeddings", not "BM25 only".**
-   The lexical pull path routes through `_pull_path_hybrid`, which fuses BM25 **and** graph propagation
-   (only the vector/embedding branch is gated off). Calling lexical "BM25 only" in the docstring, the
-   `context-assembler.md` mode table, or any code comment is inaccurate.
-   **Action:** describe `"lexical"` as **"BM25 + graph, no embeddings"** everywhere it is documented
-   (inline docstring, `docs/features/context-assembler.md` mode table row, recipe guide). Keep the
-   "no `EmbeddingField` / no numpy required" framing — that part is correct.
-
-3. **Zero-BM25-hit queries silently fall back to composite.**
-   When `BM25Field.search()` returns zero hits and there are no vector results, the hybrid/lexical path
-   bails to `_pull_path_composite` (`:1268-1273`) — which is query-blind. The keyword-rich RETR-1 P@10
-   fixture will essentially never hit this path, so it will **not** catch a regression here.
-   **Action:** (a) document this zero-hit fallback behavior explicitly in the `"lexical"` docstring and
-   the mode table (a no-keyword-match query degrades to importance-ranked composite, by design);
-   (b) add a dedicated test for the zero-hit path — feed a query with no lexical overlap with the corpus
-   and assert the documented fallback occurs (composite entered) rather than a crash, while confirming
-   genuine distinct real queries still differ (the RETR-1 distinct-set criterion already covers the
-   non-zero case). This is the gap the keyword-rich fixture leaves uncovered.
-
-4. **Reindex burden is real and currently understated — migration caveat.**
-   Adding `BM25Field` to a model does **not** retroactively index already-stored records; the BM25 index
-   for a field is empty until each record is re-saved (the `on_save` hook builds it). A user who copies
-   the new recipe model on top of an existing corpus gets an empty BM25 index and degraded (composite,
-   per note 3) retrieval until every record is re-saved.
-   **Action:** add an explicit migration/reindex caveat in the recipe guide and the quickstart
-   (`Risk 3`/Docs honesty pass already gesture at this — make it prominent, not a footnote): state that
-   existing records must be re-saved to populate the BM25 index, and give the one-liner pattern
-   (iterate existing instances and `.save()` them) so users can backfill.
-
-5. **No-kwarg "auto" makes retrieval mode emergent from declared fields — document it.**
-   Because `SubconsciousMemory` builds the assembler with no `retrieval_mode` (relies on `"auto"`), the
-   effective mode is **emergent from the model's declared fields**: a BM25-only model is `"lexical"`, and
-   later adding an `EmbeddingField` silently flips it `lexical → hybrid` (and removing all search fields
-   flips it to query-blind `composite`). This is intended behavior but surprising if undocumented.
-   **Action:** document this emergent-mode behavior in the recipe guide and the context-assembler mode
-   table: under no-kwarg `"auto"`, declaring/removing `BM25Field`/`EmbeddingField` changes the retrieval
-   mode without any code change at the call site. Note the `lexical → hybrid` flip on adding embeddings
-   explicitly so it is not a debugging surprise.
-
-**Nit (fold in opportunistically):** wherever the new behavior is described, prefer the precise term
-"query-sensitive" over "query-relevant" for composite-vs-lexical contrasts — composite is not just
-less relevant, it takes no query input at all.
+| Note | Concern | Embedded in |
+|------|---------|-------------|
+| NOTE 1 | Closed-set mode validation — unknown/typo'd `retrieval_mode` must raise, no `else`→`composite` fall-through | Technical Approach › Mode resolution; Step 1; Test Impact; Success Criteria |
+| NOTE 2 | `"lexical"` = "BM25 + graph, no embeddings" (not "BM25 only") in all docs/docstrings | Technical Approach › Pull-path dispatch; Docs honesty bullet; Step 3; Documentation checklist |
+| NOTE 3 | Zero-BM25-hit queries fall back to composite — document + dedicated test | Technical Approach › Pull-path dispatch; Test Impact; Step 4; Success Criteria |
+| NOTE 4 | Reindex/backfill caveat must be prominent (existing records re-saved to populate BM25 index) | Docs honesty bullet; Step 3; Documentation checklist (recipe + quickstart) |
+| NOTE 5 | Emergent-mode behavior under no-kwarg `"auto"` (incl. `lexical → hybrid` flip) — document it | Docs honesty bullet; Step 3; Documentation checklist |
+| Nit | Prefer "query-sensitive" over "query-relevant" for composite-vs-lexical contrasts | Docs honesty bullet; Documentation checklist |
 
 ---
 
