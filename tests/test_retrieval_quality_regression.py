@@ -62,6 +62,7 @@ def load_fixture():
 
 class RegressionMemory(Model):
     """BM25-only model — no EmbeddingField so auto mode resolves to lexical."""
+
     content = Field()
     content_bm25 = BM25Field(source="content")
     topic = Field()
@@ -231,8 +232,12 @@ class TestColdIndexRecovery:
     def test_cold_index_falls_back_to_composite(self, caplog):
         """Clearing BM25 index keys triggers the lexical -> composite fallback path.
 
-        The fallback is logged at DEBUG level by the assembler. We verify the
-        fallback happens (result is a list) and that the log message appears.
+        The cold-index degradation MUST be observable: it is logged at WARNING
+        level, naming the model and pointing at the reindex/backfill remedy. This
+        is the only runtime signal a user gets that their copied recipe is
+        silently query-blind (CONCERN C1). We verify the fallback happens (result
+        is a list) and that the WARNING with the model name + reindex pointer
+        appears.
         """
         _flush()
         data = load_fixture()
@@ -251,8 +256,8 @@ class TestColdIndexRecovery:
             retrieval_mode="lexical",
         )
 
-        # Run with caplog capturing DEBUG messages from the assembler logger
-        with caplog.at_level(logging.DEBUG, logger="POPOTO.ContextAssembler"):
+        # Run with caplog capturing WARNING messages from the assembler logger
+        with caplog.at_level(logging.WARNING, logger="POPOTO.ContextAssembler"):
             result = assembler.assemble(query_cues={"topic": "CI pipeline"})
 
         # Result must still be a list (graceful degradation, no crash)
@@ -260,15 +265,19 @@ class TestColdIndexRecovery:
             "Cold-index fallback must return a list, not raise"
         )
 
-        # The cold-index debug message must appear in the logs
-        cold_index_messages = [
-            r.message for r in caplog.records
-            if "no BM25 or vector signal collected" in r.message
-            or "falling back to composite" in r.message
+        # The cold-index WARNING must appear, name the model, and point at the
+        # reindex/backfill remedy (CONCERN C1 — observability is mandatory).
+        cold_index_warnings = [
+            r.getMessage()
+            for r in caplog.records
+            if r.levelno == logging.WARNING
+            and "BM25 returned 0 hits" in r.getMessage()
+            and "RegressionMemory" in r.getMessage()
+            and "re-save" in r.getMessage()
         ]
-        assert len(cold_index_messages) > 0, (
-            "Expected a debug/warning message about BM25 returning no results "
-            "and falling back to composite, but none was logged. "
+        assert len(cold_index_warnings) > 0, (
+            "Expected a WARNING naming the model and pointing at the reindex "
+            "backfill remedy when BM25 returns no results, but none was logged. "
             f"All log messages: {[r.message for r in caplog.records]}"
         )
 
@@ -345,12 +354,8 @@ class TestEndToEndLexicalRetrieval:
         assert assembler._effective_mode == "lexical"
 
         # Run two topically distinct queries and verify they return different sets
-        result_database = assembler.assemble(
-            query_cues={"topic": "index postgres"}
-        )
-        result_testing = assembler.assemble(
-            query_cues={"topic": "unit pytest"}
-        )
+        result_database = assembler.assemble(query_cues={"topic": "index postgres"})
+        result_testing = assembler.assemble(query_cues={"topic": "unit pytest"})
 
         ids_database = frozenset(
             int(r.record_id) for r in result_database.records if r.record_id

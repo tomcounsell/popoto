@@ -937,6 +937,7 @@ class ContextAssembler:
         _VALID_MODES = {"auto", "lexical", "hybrid", "composite"}
         if retrieval_mode not in _VALID_MODES:
             from ..exceptions import QueryException
+
             raise QueryException(
                 f"retrieval_mode={retrieval_mode!r} is not a recognised mode. "
                 f"Allowed values: {sorted(_VALID_MODES)}"
@@ -968,6 +969,7 @@ class ContextAssembler:
         elif retrieval_mode == "lexical":
             if self._bm25_field is None:
                 from ..exceptions import QueryException
+
                 raise QueryException(
                     f"retrieval_mode='lexical' requires BM25Field "
                     f"on {model_class.__name__}"
@@ -1310,9 +1312,12 @@ class ContextAssembler:
                 logger.warning("Vector search failed in hybrid path: %s", e)
 
         if not keyword_results and not vector_results:
-            logger.debug(
-                "Hybrid/lexical path: no BM25 or vector signal collected, "
-                "falling back to composite"
+            logger.warning(
+                "lexical retrieval for %s: BM25 returned 0 hits — the query has "
+                "no lexical overlap OR the BM25 index is empty (re-save existing "
+                "records to backfill the index; see the recipe reindex caveat). "
+                "Falling back to composite (query-blind).",
+                self.model_class.__name__,
             )
             return self._pull_path_composite(query_cues, filters)
 
