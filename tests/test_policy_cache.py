@@ -17,6 +17,8 @@ import asyncio
 import json
 import os
 import sys
+import time
+from decimal import Decimal
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
@@ -584,3 +586,414 @@ class TestPolicyCache:
         ).all()
         assert len(results) >= 1
         assert results[0].action_type == "crystal_action"
+
+
+# ---------------------------------------------------------------------------
+# Q-value Storage-Slot Separation: Regression + Round-Trip Tests
+# Issue #410: PolicyCache Q-value / Decay-Timestamp Storage-Slot Separation
+# ---------------------------------------------------------------------------
+
+
+class TestQValueStorageSlotSeparation:
+    """Regression tests for #410: Q-value stored in model hash, decay timestamp
+    stored in ZSET score.  These tests verify the two slots stay independent."""
+
+    def setup_method(self):
+        """Clean up before each test."""
+        _clean_all()
+
+    def teardown_method(self):
+        """Clean up after each test."""
+        _clean_all()
+
+    # -------------------------------------------------------------------------
+    # 1. Save-after-learn: Q survives save()
+    # -------------------------------------------------------------------------
+
+    def test_q_value_survives_save(self):
+        """Q-value written by update_q_value survives a subsequent save()."""
+        fp = compute_fingerprint({"task": "survives_save"})
+        policy = PolicyEntry(
+            agent_id="agent-sv",
+            state_fingerprint=fp,
+            state_features={"task": "survives_save"},
+            action_type="compile",
+            action_spec={},
+        )
+        policy.save()
+        initialize_q_value(policy, initial_q=0.0)
+
+        # Learn some Q
+        update_q_value(policy, reward=2.0, max_future_q=0.0)
+        # current_q=0, alpha=0.1, reward=2.0 -> new_q=0.2
+
+        # Reload and mutate an unrelated field, then save again
+        reloaded = PolicyEntry.query.filter(
+            agent_id="agent-sv",
+            state_fingerprint=fp,
+            action_type="compile",
+        ).first()
+        assert reloaded is not None
+
+        reloaded.action_spec = {"updated": True}
+        reloaded.save()
+
+        # Reload again — q_value must not be overwritten
+        after_save = PolicyEntry.query.filter(
+            agent_id="agent-sv",
+            state_fingerprint=fp,
+            action_type="compile",
+        ).first()
+        assert after_save is not None
+        assert isinstance(after_save.q_value, Decimal)
+        assert abs(float(after_save.q_value) - 0.2) < 0.001, (
+            f"Expected q_value ~0.2 after save(), got {after_save.q_value}"
+        )
+
+    # -------------------------------------------------------------------------
+    # 2. Touch-after-learn: Q survives touch()
+    # -------------------------------------------------------------------------
+
+    def test_q_value_survives_touch(self):
+        """Q-value survives touch('expected_value') — touch only updates ZSET timestamp."""
+        fp = compute_fingerprint({"task": "survives_touch"})
+        policy = PolicyEntry(
+            agent_id="agent-touch",
+            state_fingerprint=fp,
+            state_features={"task": "survives_touch"},
+            action_type="deploy",
+            action_spec={},
+        )
+        policy.save()
+        initialize_q_value(policy, initial_q=0.0)
+        update_q_value(policy, reward=1.5)
+        # new_q = 0 + 0.1 * 1.5 = 0.15
+
+        # Touch the decay field (refreshes ZSET timestamp, must NOT change hash)
+        policy.touch("expected_value")
+
+        # Reload and verify q_value is unchanged
+        reloaded = PolicyEntry.query.filter(
+            agent_id="agent-touch",
+            state_fingerprint=fp,
+            action_type="deploy",
+        ).first()
+        assert reloaded is not None
+        assert isinstance(reloaded.q_value, Decimal)
+        assert abs(float(reloaded.q_value) - 0.15) < 0.001, (
+            f"Expected q_value ~0.15 after touch(), got {reloaded.q_value}"
+        )
+
+    # -------------------------------------------------------------------------
+    # 3. "acted" outcome: Q survives ObservationProtocol acted handler
+    # -------------------------------------------------------------------------
+
+    def test_q_value_survives_acted_outcome(self):
+        """Q-value survives ObservationProtocol 'acted' handler (which touches
+        DecayingSortedFields)."""
+        fp = compute_fingerprint({"task": "survives_acted"})
+        policy = PolicyEntry(
+            agent_id="agent-acted",
+            state_fingerprint=fp,
+            state_features={"task": "survives_acted"},
+            action_type="observe_and_act",
+            action_spec={},
+        )
+        policy.save()
+        initialize_q_value(policy, initial_q=0.0)
+        update_q_value(policy, reward=3.0)
+        # new_q = 0 + 0.1 * 3.0 = 0.3
+
+        # Apply "acted" outcome — this touches all DecayingSortedFields via
+        # _apply_acted(), which must NOT overwrite the q_value hash slot
+        pk = policy.db_key.redis_key
+        ObservationProtocol.on_context_used([policy], {pk: "acted"})
+
+        # Reload and verify q_value survived
+        reloaded = PolicyEntry.query.filter(
+            agent_id="agent-acted",
+            state_fingerprint=fp,
+            action_type="observe_and_act",
+        ).first()
+        assert reloaded is not None
+        assert isinstance(reloaded.q_value, Decimal)
+        assert abs(float(reloaded.q_value) - 0.3) < 0.001, (
+            f"Expected q_value ~0.3 after acted, got {reloaded.q_value}"
+        )
+
+    # -------------------------------------------------------------------------
+    # 4. Lua<->Python encoding round-trip
+    # -------------------------------------------------------------------------
+
+    def test_q_value_encoding_round_trip(self):
+        """Q written by Lua (update_q_value) reads back via Python as Decimal
+        with the correct value."""
+        test_cases = [
+            # (initial_q, reward, max_future_q, expected_new_q)
+            # new_q = current_q + alpha * (reward + gamma * max_future_q - current_q)
+            (0.0, 0.0, 0.0, 0.0),       # Zero stays zero
+            (0.0, 5.0, 0.0, 0.5),       # 0 + 0.1 * 5.0
+            (0.0, -1.5, 0.0, -0.15),    # Negative reward -> negative Q
+            (0.0, 0.25, 0.0, 0.025),    # Fractional precision
+        ]
+
+        for idx, (initial_q, reward, max_future_q, expected_q) in enumerate(test_cases):
+            fp = compute_fingerprint({"task": f"roundtrip_{idx}"})
+            policy = PolicyEntry(
+                agent_id="agent-rt",
+                state_fingerprint=fp,
+                state_features={"task": f"roundtrip_{idx}"},
+                action_type=f"action_{idx}",
+                action_spec={},
+            )
+            policy.save()
+            initialize_q_value(policy, initial_q=initial_q)
+
+            if reward != 0.0 or max_future_q != 0.0:
+                update_q_value(policy, reward=reward, max_future_q=max_future_q)
+
+            reloaded = PolicyEntry.query.filter(
+                agent_id="agent-rt",
+                state_fingerprint=fp,
+                action_type=f"action_{idx}",
+            ).first()
+            assert reloaded is not None, f"Case {idx}: policy not found"
+            assert isinstance(reloaded.q_value, Decimal), (
+                f"Case {idx}: expected Decimal, got {type(reloaded.q_value)}"
+            )
+            assert abs(float(reloaded.q_value) - expected_q) < 0.001, (
+                f"Case {idx}: expected q_value ~{expected_q}, got {reloaded.q_value}"
+            )
+
+    # -------------------------------------------------------------------------
+    # 5. Negative-base ranking
+    # -------------------------------------------------------------------------
+
+    def test_negative_q_value_ranking(self):
+        """Negative Q ranks below positive Q of equal recency; zero Q ranks
+        below positive Q but above (i.e. less negative than) negative Q."""
+        agent = "agent-rank"
+        state_fp = compute_fingerprint({"task": "ranking_test"})
+
+        # Create 3 policies with same recency but different q_values
+        q_configs = [
+            ("action-neg", -0.4),
+            ("action-zero", 0.0),
+            ("action-pos", 0.6),
+        ]
+        for action, q_val in q_configs:
+            fp = compute_fingerprint({"task": "ranking_test", "action": action})
+            policy = PolicyEntry(
+                agent_id=agent,
+                state_fingerprint=fp,
+                state_features={"task": "ranking_test"},
+                action_type=action,
+                action_spec={},
+                q_value=Decimal(str(q_val)),
+            )
+            policy.save()
+
+        # Query top by decay for this agent
+        results = PolicyEntry.query.filter(agent_id=agent).top_by_decay(
+            "expected_value", n=10
+        )
+        assert len(results) == 3
+
+        action_order = [r.action_type for r in results]
+        pos_idx = action_order.index("action-pos")
+        zero_idx = action_order.index("action-zero")
+        neg_idx = action_order.index("action-neg")
+
+        assert pos_idx < neg_idx, (
+            f"Positive Q must rank above negative Q. Got order: {action_order}"
+        )
+        # zero Q with base_score=0.0 → decayed_score = 0 * decay = 0
+        # neg Q with base_score=-0.4 → decayed_score < 0
+        # So zero should rank above negative
+        assert zero_idx < neg_idx, (
+            f"Zero Q must rank above negative Q. Got order: {action_order}"
+        )
+
+    # -------------------------------------------------------------------------
+    # 6. Rank derives from stored Q, not 1.0 fallback
+    # -------------------------------------------------------------------------
+
+    def test_rank_derives_from_stored_q_value(self):
+        """Decayed rank derives from stored q_value, not a silent 1.0 fallback."""
+        agent = "agent-q-rank"
+        configs = [
+            ("high-q-action", 0.6),
+            ("low-q-action", 0.2),
+        ]
+        for action, q_val in configs:
+            fp = compute_fingerprint({"task": "q_rank", "action": action})
+            policy = PolicyEntry(
+                agent_id=agent,
+                state_fingerprint=fp,
+                state_features={"task": "q_rank"},
+                action_type=action,
+                action_spec={},
+                q_value=Decimal(str(q_val)),
+            )
+            policy.save()
+
+        results = PolicyEntry.query.filter(agent_id=agent).top_by_decay(
+            "expected_value", n=10
+        )
+        assert len(results) == 2
+
+        first_action = results[0].action_type
+        assert first_action == "high-q-action", (
+            f"Expected high-q-action first, got {first_action}. "
+            "If both ranked the same, the 1.0 fallback may have been used."
+        )
+
+    # -------------------------------------------------------------------------
+    # 7. Race-3 interleaving tests
+    # -------------------------------------------------------------------------
+
+    def test_td_update_then_save_q_survives(self):
+        """After TD update, saving with unrelated field change does not reset
+        q_value (Race 3 Order 1: save → update_q_value → reload → save)."""
+        fp = compute_fingerprint({"task": "race3_order1"})
+        policy = PolicyEntry(
+            agent_id="agent-race3a",
+            state_fingerprint=fp,
+            state_features={"task": "race3_order1"},
+            action_type="race_action",
+            action_spec={"v": 1},
+        )
+        policy.save()
+        initialize_q_value(policy, initial_q=0.0)
+
+        # TD update writes q_value to hash via Lua
+        update_q_value(policy, reward=1.0)
+        # expected new_q = 0.1
+
+        # Reload, mutate unrelated field, save again
+        reloaded = PolicyEntry.query.filter(
+            agent_id="agent-race3a",
+            state_fingerprint=fp,
+            action_type="race_action",
+        ).first()
+        assert reloaded is not None
+
+        reloaded.action_spec = {"v": 2}
+        reloaded.save()
+
+        # Verify q_value survived the second save
+        after = PolicyEntry.query.filter(
+            agent_id="agent-race3a",
+            state_fingerprint=fp,
+            action_type="race_action",
+        ).first()
+        assert after is not None
+        assert isinstance(after.q_value, Decimal)
+        assert abs(float(after.q_value) - 0.1) < 0.001, (
+            f"Race 3 Order 1: expected q_value ~0.1, got {after.q_value}"
+        )
+
+    def test_save_then_td_then_save_no_reset(self):
+        """save → td_update → reload → save(unrelated mutation) preserves the
+        TD-written Q (Race 3 Order 2)."""
+        fp = compute_fingerprint({"task": "race3_order2"})
+        policy = PolicyEntry(
+            agent_id="agent-race3b",
+            state_fingerprint=fp,
+            state_features={"task": "race3_order2"},
+            action_type="race_action_b",
+            action_spec={"v": 1},
+        )
+        # First save establishes the record
+        policy.save()
+        initialize_q_value(policy, initial_q=0.0)
+
+        # TD update (Lua writes q_value into hash)
+        update_q_value(policy, reward=2.0)
+        # expected new_q = 0 + 0.1 * 2.0 = 0.2
+
+        # Reload, mutate unrelated field, save
+        reloaded = PolicyEntry.query.filter(
+            agent_id="agent-race3b",
+            state_fingerprint=fp,
+            action_type="race_action_b",
+        ).first()
+        assert reloaded is not None
+
+        reloaded.action_spec = {"v": 3}
+        reloaded.save()
+
+        # Final reload — TD Q must persist
+        final = PolicyEntry.query.filter(
+            agent_id="agent-race3b",
+            state_fingerprint=fp,
+            action_type="race_action_b",
+        ).first()
+        assert final is not None
+        assert isinstance(final.q_value, Decimal)
+        assert abs(float(final.q_value) - 0.2) < 0.001, (
+            f"Race 3 Order 2: expected q_value ~0.2, got {final.q_value}"
+        )
+
+    # -------------------------------------------------------------------------
+    # 8. Edge cases
+    # -------------------------------------------------------------------------
+
+    def test_td_update_nil_q_treated_as_zero(self):
+        """TD update on an instance with no prior q_value initialization treats
+        current Q as 0 (default field value acts as zero baseline)."""
+        fp = compute_fingerprint({"task": "nil_q"})
+        policy = PolicyEntry(
+            agent_id="agent-nil",
+            state_fingerprint=fp,
+            state_features={"task": "nil_q"},
+            action_type="nil_action",
+            action_spec={},
+            # q_value not set → uses DecimalField default=Decimal("0")
+        )
+        policy.save()
+
+        # Do NOT call initialize_q_value — rely on default
+        reward = 4.0
+        td_error = update_q_value(policy, reward=reward, max_future_q=0.0)
+
+        # With current_q=0 (from Decimal default in hash): td_error = reward = 4.0
+        # new_q = 0 + alpha * 4.0 = 0.4
+        assert abs(td_error - reward) < 0.001, (
+            f"Expected td_error={reward} when current_q=0, got {td_error}"
+        )
+
+        reloaded = PolicyEntry.query.filter(
+            agent_id="agent-nil",
+            state_fingerprint=fp,
+            action_type="nil_action",
+        ).first()
+        assert reloaded is not None
+        expected_new_q = 0.1 * reward  # alpha=0.1, current_q=0
+        assert abs(float(reloaded.q_value) - expected_new_q) < 0.001, (
+            f"Expected q_value ~{expected_new_q}, got {reloaded.q_value}"
+        )
+
+    def test_decay_rank_with_missing_q_value(self):
+        """A PolicyEntry with no explicit q_value still decay-ranks (base 1.0
+        fallback path in Lua — no error raised, entry appears in results)."""
+        fp = compute_fingerprint({"task": "no_q_rank"})
+        policy = PolicyEntry(
+            agent_id="agent-noq",
+            state_fingerprint=fp,
+            state_features={"task": "no_q_rank"},
+            action_type="no_q_action",
+            action_spec={},
+            # q_value not set — default Decimal("0") will be stored
+        )
+        policy.save()
+
+        # Should not raise; entry must appear in results
+        results = PolicyEntry.query.filter(agent_id="agent-noq").top_by_decay(
+            "expected_value", n=10
+        )
+        assert len(results) >= 1, (
+            "Expected at least one result even with default q_value"
+        )
+        found_actions = [r.action_type for r in results]
+        assert "no_q_action" in found_actions
