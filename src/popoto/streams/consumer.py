@@ -1,14 +1,15 @@
 """StreamConsumer — Redis Streams consumer group framework for Popoto.
 
 This module provides a consumer group abstraction over Redis Streams, handling
-the XREADGROUP/XACK/XCLAIM/XPENDING lifecycle so application code only needs
+the XREADGROUP/XACK/XAUTOCLAIM/XPENDING lifecycle so application code only needs
 to supply a handler function.
 
 Design:
     - Async-first: core logic uses ``redis.asyncio`` via ``get_async_redis_db()``
     - Sync wrappers (``run_sync``, ``process_batch_sync``) use ``asyncio.run()``
     - Dead-letter: entries exceeding ``max_retries`` are moved to ``dead:{stream_key}``
-    - Recovery: ``XCLAIM`` reclaims entries from crashed consumers after idle timeout
+    - Recovery: ``XAUTOCLAIM`` reclaims crashed-consumer entries and re-delivers them
+      through decode → handler → XACK (at-least-once; handlers must be idempotent)
     - No Redis modules — only core Streams commands (Valkey compatible)
 
 Redis Commands Used:
@@ -16,8 +17,9 @@ Redis Commands Used:
     - XREADGROUP — read new entries for this consumer
     - XACK — acknowledge processed entries
     - XPENDING — inspect pending entries for recovery/dead-letter decisions
-    - XCLAIM — reclaim entries from idle consumers
+    - XAUTOCLAIM — atomically reclaim idle entries from crashed consumers
     - XADD — write to dead-letter stream
+    - HGET / HINCRBY / HDEL — per-entry handler-attempt counter (_hattempts hash)
 
 Example:
     async def my_handler(entries):
@@ -61,8 +63,10 @@ class StreamConsumer:
             tuples. All field values are decoded to str.
         batch_size: Number of entries to read per XREADGROUP call. Default 50.
         block_ms: XREADGROUP BLOCK timeout in milliseconds. Default 5000.
-        max_retries: Delivery count threshold before dead-lettering. Default 3.
-        claim_timeout_ms: XCLAIM idle timeout in milliseconds. Default 180000
+        max_retries: Handler-invocation count threshold before dead-lettering.
+            Default 3. Counts only actual handler calls, not claim cycles that
+            skip the handler (e.g. dead-letter checks).
+        claim_timeout_ms: XAUTOCLAIM idle timeout in milliseconds. Default 180000
             (3 minutes).
         dead_letter_max_length: Optional MAXLEN for the dead-letter stream.
             Defaults to None (unbounded unless set).
@@ -92,6 +96,9 @@ class StreamConsumer:
 
         self._running = False
         self._group_ensured = False
+        # Cursor for XAUTOCLAIM — advances across cycles so we don't always
+        # restart from the beginning of the PEL. Reset to b'0-0' each full pass.
+        self._xclaim_cursor: bytes = b"0-0"
 
     async def _ensure_group(self) -> None:
         """Create the consumer group if it does not already exist.
@@ -129,23 +136,95 @@ class StreamConsumer:
 
         self._group_ensured = True
 
+    async def _decode_entries(self, entries: List[Tuple]) -> List[Tuple[str, dict]]:
+        """Decode raw Redis entry bytes to str for handler consumption.
+
+        Args:
+            entries: List of (entry_id, fields_dict) tuples with bytes values.
+
+        Returns:
+            List of (decoded_id, decoded_fields) tuples with str values.
+        """
+        decoded_entries: List[Tuple[str, dict]] = []
+        for entry_id, fields in entries:
+            decoded_id = (
+                entry_id.decode("utf-8") if isinstance(entry_id, bytes) else entry_id
+            )
+            decoded_fields = {}
+            for k, v in fields.items():
+                key = k.decode("utf-8") if isinstance(k, bytes) else k
+                val = v.decode("utf-8") if isinstance(v, bytes) else v
+                decoded_fields[key] = val
+            decoded_entries.append((decoded_id, decoded_fields))
+        return decoded_entries
+
+    async def _process_entries(
+        self,
+        entries: List[Tuple],
+        redis,
+        ack_stream_key: Optional[str] = None,
+        ack_group_name: Optional[str] = None,
+    ) -> int:
+        """Decode, invoke handler, and XACK a batch of entries.
+
+        Shared helper used by both the XREADGROUP (new entries) path and the
+        XAUTOCLAIM (reclaimed entries) path. The caller is responsible for
+        passing the correct ``entries`` list; this method handles decode,
+        handler dispatch, and ACK.
+
+        The XACK uses the original bytes entry IDs (not the decoded str IDs)
+        so that the exact bytes returned by Redis are echoed back, avoiding
+        any encoding mismatch.
+
+        Args:
+            entries: Raw list of (entry_id, fields_dict) tuples as returned by
+                XREADGROUP or XAUTOCLAIM. May contain bytes keys/values.
+            redis: Active async Redis client.
+            ack_stream_key: Stream key to XACK against. Defaults to
+                ``self.stream_key``.
+            ack_group_name: Consumer group name for XACK. Defaults to
+                ``self.group_name``.
+
+        Returns:
+            int: Number of entries successfully handled and ACKed.
+        """
+        if not entries:
+            return 0
+
+        stream_key = ack_stream_key if ack_stream_key is not None else self.stream_key
+        group_name = ack_group_name if ack_group_name is not None else self.group_name
+
+        decoded_entries = await self._decode_entries(entries)
+
+        # Invoke handler — intentionally outside any broad except so that a
+        # handler exception propagates and the entries remain pending (not ACKed).
+        await self.handler(decoded_entries)
+
+        # Preserve original bytes IDs for XACK
+        entry_ids = [eid for eid, _ in entries]
+        await redis.xack(stream_key, group_name, *entry_ids)
+
+        return len(entries)
+
     async def process_batch(self) -> int:
         """Execute one processing cycle: read, handle, and acknowledge entries.
 
         Performs the following steps:
         1. Ensure consumer group exists (cached after first call)
-        2. Reclaim/dead-letter pending entries from crashed consumers
+        2. Reclaim/dead-letter pending entries from crashed consumers via XAUTOCLAIM
         3. Read new entries via XREADGROUP
         4. Invoke handler with decoded entries
         5. XACK processed entries
 
         Returns:
-            int: Number of entries successfully processed in this batch.
+            int: Total number of entries handled in this cycle (new + reclaimed).
+                 New entries and reclaimed entries are both counted. The split is
+                 logged at DEBUG level.
         """
         await self._ensure_group()
 
-        # Reclaim pending entries from crashed consumers
-        await self._claim_pending()
+        # Reclaim pending entries from crashed consumers; count reclaimed
+        reclaimed_count = await self._claim_pending()
 
         # Read new entries
         redis = await get_async_redis_db()
@@ -158,39 +237,32 @@ class StreamConsumer:
         )
 
         if not response:
-            return 0
+            logger.debug(
+                "process_batch: 0 new + %d reclaimed from '%s'",
+                reclaimed_count,
+                self.stream_key,
+            )
+            return reclaimed_count
 
         # response format: [(stream_key, [(entry_id, fields), ...])]
         entries = response[0][1] if response else []
         if not entries:
-            return 0
-
-        # Decode bytes to str for all entry fields
-        decoded_entries: List[Tuple[str, dict]] = []
-        for entry_id, fields in entries:
-            decoded_id = (
-                entry_id.decode("utf-8") if isinstance(entry_id, bytes) else entry_id
+            logger.debug(
+                "process_batch: 0 new + %d reclaimed from '%s'",
+                reclaimed_count,
+                self.stream_key,
             )
-            decoded_fields = {}
-            for k, v in fields.items():
-                key = k.decode("utf-8") if isinstance(k, bytes) else k
-                val = v.decode("utf-8") if isinstance(v, bytes) else v
-                decoded_fields[key] = val
-            decoded_entries.append((decoded_id, decoded_fields))
+            return reclaimed_count
 
-        # Invoke handler
-        await self.handler(decoded_entries)
-
-        # ACK all entries
-        entry_ids = [eid for eid, _ in entries]
-        await redis.xack(self.stream_key, self.group_name, *entry_ids)
+        new_count = await self._process_entries(entries, redis)
 
         logger.debug(
-            "Processed and ACKed %d entries from '%s'",
-            len(entries),
+            "process_batch: %d new + %d reclaimed from '%s'",
+            new_count,
+            reclaimed_count,
             self.stream_key,
         )
-        return len(entries)
+        return new_count + reclaimed_count
 
     async def run(self) -> None:
         """Blocking loop that continuously processes batches until stopped.
@@ -229,99 +301,199 @@ class StreamConsumer:
             self.consumer_name,
         )
 
-    async def _claim_pending(self) -> None:
-        """Reclaim entries from crashed consumers and dead-letter failed entries.
+    async def _claim_pending(self) -> int:
+        """Reclaim idle entries from crashed consumers and dead-letter failed entries.
 
-        Uses XPENDING to find entries that have been idle longer than
-        ``claim_timeout_ms``. Entries that have exceeded ``max_retries``
-        delivery attempts are moved to the dead-letter stream. Others
-        are reclaimed via XCLAIM for reprocessing by this consumer.
+        Uses XAUTOCLAIM to atomically find entries that have been idle longer
+        than ``claim_timeout_ms`` and re-deliver them through the full
+        decode → handler → XACK pipeline, restoring at-least-once semantics for
+        entries that were claimed by a crashed consumer. The cursor advances
+        across cycles (stored in ``self._xclaim_cursor``) so that a large PEL
+        is processed incrementally at ``batch_size`` entries per cycle rather
+        than in a single unbounded scan.
+
+        Dead-letter gating uses an explicit handler-attempt counter stored in a
+        Redis hash at ``_hattempts:{stream_key}:{group_name}``. The counter is
+        incremented once per actual handler invocation, NOT per XAUTOCLAIM
+        claim cycle. This decouples dead-lettering from XAUTOCLAIM delivery
+        count inflation. The threshold is ``>= max_retries`` handler
+        invocations: the entry is dead-lettered after exactly ``max_retries``
+        handler calls.
+
+        Entries deleted from the stream but still in the PEL (returned as
+        ``deleted_message_ids`` by XAUTOCLAIM) are XACKed immediately without
+        touching the handler.
+
+        Returns:
+            int: Number of reclaimed entries that were successfully delivered to
+                 the handler and ACKed in this cycle (excludes dead-lettered and
+                 deleted entries).
         """
         redis = await get_async_redis_db()
+        n_reclaimed = 0
+        n_dead_lettered = 0
 
         try:
-            # Get summary of pending entries for this group
-            pending_summary = await redis.xpending(self.stream_key, self.group_name)
-
-            # pending_summary: {
-            #   'pending': count, 'min': id, 'max': id,
-            #   'consumers': [{'name': ..., 'pending': ...}, ...]
-            # }
-            pending_count = pending_summary.get("pending", 0)
-            if not pending_count:
-                return
-
-            # Get detailed info on pending entries
-            pending_entries = await redis.xpending_range(
+            # XAUTOCLAIM returns a 3-tuple in redis-py 8:
+            #   (next_cursor, claimed_messages, deleted_message_ids)
+            # claimed_messages: [(entry_id, {field: value}), ...]
+            # deleted_message_ids: [entry_id, ...] — entries trimmed/deleted from
+            #   the stream but still in the PEL; XACK them, never feed to handler.
+            next_cursor, claimed_messages, deleted_message_ids = await redis.xautoclaim(
                 self.stream_key,
                 self.group_name,
-                min="-",
-                max="+",
+                self.consumer_name,
+                min_idle_time=self.claim_timeout_ms,
                 count=self.batch_size,
+                start_id=self._xclaim_cursor,
+                justid=False,
             )
 
-            for entry_info in pending_entries:
-                entry_id = entry_info.get("message_id", b"")
-                if isinstance(entry_id, bytes):
-                    entry_id = entry_id.decode("utf-8")
+            # Advance (or reset) the cursor for the next cycle
+            self._xclaim_cursor = next_cursor
 
-                idle_time = entry_info.get("time_since_delivered", 0)
-                delivery_count = entry_info.get("times_delivered", 0)
+            # XACK deleted entries immediately — they have no field data and
+            # must not be passed to the handler or decode step.
+            if deleted_message_ids:
+                await redis.xack(self.stream_key, self.group_name, *deleted_message_ids)
+                logger.debug(
+                    "ACKed %d deleted PEL entries from stream '%s'",
+                    len(deleted_message_ids),
+                    self.stream_key,
+                )
+                # Clean up handler-attempt counters for deleted entries
+                deleted_ids_str = [
+                    eid.decode("utf-8") if isinstance(eid, bytes) else eid
+                    for eid in deleted_message_ids
+                ]
+                if deleted_ids_str:
+                    hattempts_key = f"_hattempts:{self.stream_key}:{self.group_name}"
+                    await redis.hdel(hattempts_key, *deleted_ids_str)
 
-                # Skip entries that haven't been idle long enough
-                if idle_time < self.claim_timeout_ms:
-                    continue
+            if not claimed_messages:
+                logger.info(
+                    "Reclaim cycle: %d reclaimed, %d dead-lettered from '%s'",
+                    n_reclaimed,
+                    n_dead_lettered,
+                    self.stream_key,
+                )
+                return 0
 
-                if delivery_count > self.max_retries:
-                    # Dead-letter this entry
-                    # Read the entry data first via XCLAIM so we have the fields
-                    claimed = await redis.xclaim(
+            # Handler-attempt counter: Redis hash at _hattempts:{stream_key}:{group_name}
+            # Maps entry_id -> number of times the handler has been called for it.
+            # Incremented here (before calling the handler) so that each claim
+            # cycle that reaches the handler counts as one real attempt.
+            # The gate is: if current_attempts >= max_retries → dead-letter;
+            # else → increment counter → redeliver.
+            # This is decoupled from XAUTOCLAIM's times_delivered, which is
+            # inflated by claim cycles that never call the handler.
+            hattempts_key = f"_hattempts:{self.stream_key}:{self.group_name}"
+
+            # Fetch xpending_range for actual_delivery_count metadata in dead-letter.
+            # NOT used for the gate decision — only for failure_count metadata.
+            delivery_counts: dict[str, int] = {}
+            try:
+                pending_entries = await redis.xpending_range(
+                    self.stream_key,
+                    self.group_name,
+                    min="-",
+                    max="+",
+                    count=self.batch_size,
+                )
+                for entry_info in pending_entries:
+                    eid = entry_info.get("message_id", b"")
+                    if isinstance(eid, bytes):
+                        eid = eid.decode("utf-8")
+                    delivery_counts[eid] = entry_info.get("times_delivered", 0)
+            except Exception as e:
+                logger.warning(
+                    "Could not fetch xpending_range for delivery counts "
+                    "on stream '%s': %s — using 0 as fallback",
+                    self.stream_key,
+                    e,
+                )
+
+            # Separate entries to dead-letter from entries to redeliver.
+            # Gate on handler-attempt counter (not times_delivered from XPENDING).
+            to_redeliver: List[Tuple] = []
+            to_redeliver_ids: List[str] = []
+            for entry_id_bytes, fields in claimed_messages:
+                entry_id_str = (
+                    entry_id_bytes.decode("utf-8")
+                    if isinstance(entry_id_bytes, bytes)
+                    else entry_id_bytes
+                )
+                # Read current handler-attempt count from Redis hash
+                raw_count = await redis.hget(hattempts_key, entry_id_str)
+                handler_attempts = int(raw_count) if raw_count is not None else 0
+
+                if handler_attempts >= self.max_retries:
+                    # Handler has been called max_retries times — dead-letter now.
+                    # Use times_delivered from XPENDING for failure_count metadata.
+                    actual_delivery_count = delivery_counts.get(entry_id_str, 0)
+                    decoded_fields: dict = {}
+                    for k, v in fields.items():
+                        key = k.decode("utf-8") if isinstance(k, bytes) else k
+                        val = v.decode("utf-8") if isinstance(v, bytes) else v
+                        decoded_fields[key] = val
+
+                    await self._dead_letter(
                         self.stream_key,
                         self.group_name,
-                        self.consumer_name,
-                        min_idle_time=0,
-                        message_ids=[entry_id],
+                        entry_id_str,
+                        decoded_fields,
+                        f"Exceeded max_retries ({self.max_retries})",
+                        actual_delivery_count=actual_delivery_count,
                     )
-                    if claimed:
-                        claimed_id, claimed_fields = claimed[0]
-                        if isinstance(claimed_id, bytes):
-                            claimed_id = claimed_id.decode("utf-8")
-                        # Decode fields for dead-letter metadata
-                        decoded_fields = {}
-                        for k, v in claimed_fields.items():
-                            key = k.decode("utf-8") if isinstance(k, bytes) else k
-                            val = v.decode("utf-8") if isinstance(v, bytes) else v
-                            decoded_fields[key] = val
-
-                        await self._dead_letter(
-                            self.stream_key,
-                            self.group_name,
-                            claimed_id,
-                            decoded_fields,
-                            f"Exceeded max_retries ({self.max_retries})",
-                        )
+                    # Clean up the handler-attempt counter for dead-lettered entry
+                    await redis.hdel(hattempts_key, entry_id_str)
+                    n_dead_lettered += 1
                 else:
-                    # Reclaim for reprocessing
-                    await redis.xclaim(
-                        self.stream_key,
-                        self.group_name,
-                        self.consumer_name,
-                        min_idle_time=self.claim_timeout_ms,
-                        message_ids=[entry_id],
-                    )
-                    logger.debug(
-                        "Claimed pending entry '%s' from stream '%s'",
-                        entry_id,
-                        self.stream_key,
-                    )
+                    # Increment handler-attempt counter before redelivery.
+                    # Counter persists across process_batch_sync() calls (Redis-backed).
+                    await redis.hincrby(hattempts_key, entry_id_str, 1)
+                    to_redeliver.append((entry_id_bytes, fields))
+                    to_redeliver_ids.append(entry_id_str)
+
+            # to_redeliver is fully populated inside the try block; capture it
+            # so _process_entries can be called outside the broad except.
 
         except Exception as e:
-            # Don't crash the consumer loop on claim errors
+            # Don't crash the consumer loop on claim errors. Handler exceptions
+            # are intentionally excluded — they are raised by _process_entries
+            # AFTER this block, so they propagate to the caller unchanged,
+            # leaving the entries pending for the next cycle.
             logger.warning(
                 "Error during _claim_pending for stream '%s': %s",
                 self.stream_key,
                 e,
             )
+            return 0
+
+        # Deliver reclaimed entries to the handler via the shared helper.
+        # Called OUTSIDE the broad except above so that a handler exception
+        # propagates to process_batch() and leaves the entries pending
+        # (not ACKed), ensuring they are retried on the next claim cycle.
+        # The reclaimed entry IDs form a SEPARATE id list from the `>`
+        # XREADGROUP batch — their XACK goes to the same stream/group but
+        # must be issued independently.
+        if to_redeliver:
+            n_reclaimed = await self._process_entries(to_redeliver, redis)
+            # On successful redelivery, clean up handler-attempt counters.
+            # If _process_entries raises (handler exception), the entries stay
+            # pending and the counter remains incremented — correct, because the
+            # handler was actually called and failed.
+            if to_redeliver_ids:
+                hattempts_key = f"_hattempts:{self.stream_key}:{self.group_name}"
+                await redis.hdel(hattempts_key, *to_redeliver_ids)
+
+        logger.info(
+            "Reclaim cycle: %d reclaimed, %d dead-lettered from '%s'",
+            n_reclaimed,
+            n_dead_lettered,
+            self.stream_key,
+        )
+        return n_reclaimed
 
     async def _dead_letter(
         self,
@@ -330,6 +502,7 @@ class StreamConsumer:
         entry_id: str,
         entry_data: dict,
         error_msg: str,
+        actual_delivery_count: Optional[int] = None,
     ) -> None:
         """Move a failed entry to the dead-letter stream.
 
@@ -342,15 +515,26 @@ class StreamConsumer:
             entry_id: The original entry ID.
             entry_data: The original entry fields (already decoded to str).
             error_msg: Description of why the entry was dead-lettered.
+            actual_delivery_count: The real handler-invocation count for this
+                entry at the time of dead-lettering. If None, falls back to
+                ``self.max_retries`` for backward compatibility.
         """
         redis = await get_async_redis_db()
         dead_letter_key = f"dead:{stream_key}"
+
+        # Use the actual delivery count so the metadata reflects reality,
+        # not the configured threshold.
+        failure_count = (
+            actual_delivery_count
+            if actual_delivery_count is not None
+            else self.max_retries
+        )
 
         # Build dead-letter entry with original data plus metadata
         dead_entry = dict(entry_data)
         dead_entry["original_stream"] = stream_key
         dead_entry["original_id"] = entry_id
-        dead_entry["failure_count"] = str(self.max_retries)
+        dead_entry["failure_count"] = str(failure_count)
         dead_entry["last_error"] = error_msg
         dead_entry["dead_letter_ts"] = str(time.time())
 
