@@ -1795,6 +1795,10 @@ class Query:
     def all(self, **kwargs) -> list:
         """Return all instances, with optional ``order_by``, ``limit``, and ``values``.
 
+        Non-tracking by design: Query.all() does not fire _fire_on_read(). This asymmetry
+        vs QueryBuilder.filter().all() is intentional — see QueryBuilder.no_track() for the
+        explicit opt-out.
+
         Fetches every object tracked in the Model's class set. For large datasets,
         consider using `filter()` with appropriate constraints or `count()` to
         first assess the result size.
