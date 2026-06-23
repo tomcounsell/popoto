@@ -154,6 +154,15 @@ a single hydration pass so the corpus is loaded once.
   - `Query.get()` / `Query.get_many()` — **no change** (Decision 2; lifecycle never calls
     them).
   - `MemoryLifecycle`'s internal iterators switch to `.no_track()` reads — internal only.
+  - **`MemoryLifecycle.TICK_BATCH_SIZE` is REMOVED (public-API break).** It is a documented,
+    public class attribute (`memory_lifecycle.py:341`, `TICK_BATCH_SIZE: int = 100`, referenced
+    in the `tick()` docstring) that callers could read or override. The single-pass refactor
+    deletes it (Decision 3). This is a breaking interface change for any code that sets/reads
+    it; acceptable because the substrate/system layers are in maintainer-sanctioned beta where
+    breaking changes are permitted (2026-06-11 remediation decisions), the attribute only ever
+    sliced an already-fully-hydrated list (no streaming benefit), and no in-repo caller sets it
+    except the one test that is rewritten (Test Impact). Document the removal in the release
+    notes / changelog when the implementation PR lands.
 - **Coupling**: slightly *decreases* — lifecycle no longer implicitly writes into the
   AccessTracker index as a side effect of maintenance.
 - **Data ownership**: unchanged. AccessTracker still owns staged/confirmed/meta keys;
@@ -248,7 +257,16 @@ tier. **Guard:** immediately before `record.delete()` in the forget branch, re-r
 record's authoritative tier from Redis (a single `HGET`/attr read on the live key, cheap and
 already in the per-record budget) and skip the delete if the tier is now `semantic` or the
 key no longer exists. This restores the freshness the per-pass re-hydration used to provide,
-scoped to the one decision that is destructive. The existing per-record try/except still
+scoped to the one decision that is destructive.
+
+*Key-identity / TOCTOU note:* the guard read and the subsequent `record.delete()` MUST target
+the **same key identity** — read the tier from (and delete) the live `record.db_key` /
+`record._redis_key` of the in-memory object, not a recomputed or re-resolved key. Because
+promotion mutates the key (`migrate_key=True`), a stale snapshot could otherwise check tier on
+the old key while delete resolves a different one; binding both operations to the same key
+identity (and treating "key absent" as skip-delete) closes that window. Promotions performed
+*this* tick are already excluded via the in-pass promoted-set (intra-tick guard above), so the
+re-read only needs to defend against *concurrent* ticks. The existing per-record try/except still
 catches a key deleted by a concurrent tick mid-delete (idempotent no-op). The plan no longer
 claims "no new race" — it claims the guard closes the window the snapshot would otherwise
 widen.
@@ -265,9 +283,39 @@ pipeline is passed, the `EXPIRE` rides the same pipeline as the `RPUSH`; otherwi
 second direct call (fire-and-forget, same as today's `RPUSH`).
 Constant: `_staged_ttl_seconds = 86400` on `AccessTrackerMixin`, documented in the
 `on_read()` docstring as a magic-number tuning knob.
-**Correctness:** because no entries are dropped, `confirm_access()`'s `access_count` and
-`last_accessed` (which reads `staged[#staged]`, the newest) are provably unchanged. A
-regression test asserts confirm semantics are identical with and without the TTL.
+
+**Correctness — bounded by an explicit TTL contract.** `confirm_access()`'s `access_count`
+(`HINCRBY access_count, #staged`) and `last_accessed` (`staged[#staged]`, the newest) are
+unchanged **provided every staged read is confirmed within `_staged_ttl_seconds` of being
+staged.** This is NOT unconditional: `EXPIRE` is refreshed only by `on_read()`, so a record
+read once and then confirmed *after* `_staged_ttl_seconds` elapses with no intervening read
+finds an empty (expired) staged key — the `CONFIRM_ACCESS_LUA` `#staged == 0` branch returns
+0, so that genuine read is **silently dropped** (no `HINCRBY`, no `last_accessed` update). The
+read signal `_default_should_promote` depends on is lost for that record.
+
+This is the deliberate, accepted trade-off of TTL-only bounding (the alternative, an `LTRIM`
+cap, corrupts `access_count` for *every* heavily-read record — strictly worse; see Concern 1).
+It is therefore a **documented hard contract / invariant of `AccessTrackerMixin`**:
+
+> **Staged-read TTL contract:** Applications MUST call `confirm_access()` within
+> `_staged_ttl_seconds` (default 24h) of staging reads via `on_read()`. Reads left
+> unconfirmed past the TTL window are permanently dropped from `access_count` /
+> `last_accessed` by design. Set `_staged_ttl_seconds` higher if a longer stage→confirm
+> cadence is required.
+
+*Observability (lightweight):* so silent drops are diagnosable, `confirm_access()` should
+surface the expired/empty-staged case rather than swallowing it — when the Lua returns 0 (the
+`#staged == 0` branch), emit a single `logger.debug` (the module already has a
+`POPOTO.AccessTracker` logger) noting the staged key was empty/expired at confirm time. Keep it
+to a debug log line (optionally a process-local counter); do NOT build a metrics subsystem.
+This is a one-line addition, not a deliverable in its own right.
+
+This contract is documented in BOTH the `on_read()` and `confirm_access()` docstrings (see
+Inline Documentation) and is pinned by the cross-TTL-boundary regression test (Test Impact)
+which asserts the *drop* is the contracted behavior, not a bug. The regression test that
+confirms count/`last_accessed` parity with-vs-without the TTL therefore holds **only within
+the TTL window** — it confirms the cadence < TTL case, and the boundary test confirms the
+cadence > TTL case.
 
 ## Failure Path Test Strategy
 
@@ -307,8 +355,16 @@ regression test asserts confirm semantics are identical with and without the TTL
   hot path where a pipeline is passed in and executed) — asserts the EXPIRE rides the same
   pipeline as the RPUSH, so the pipelined branch cannot silently leave the staged list
   unbounded; (b) `confirm_access()` `access_count` and `last_accessed` are
-  **identical** with and without the TTL across `> _max_access_log` reads (Concern 1
-  regression — proves the bound does not corrupt the count).
+  **identical** with and without the TTL across `> _max_access_log` reads **confirmed within
+  the TTL window** (Concern 1 regression — proves the bound does not corrupt the count for the
+  contracted cadence); (c) **cross-TTL-boundary contract test** (BLOCKER): `on_read()` a
+  record once, force the staged key to expire past `_staged_ttl_seconds` (use a test subclass
+  with a tiny `_staged_ttl_seconds` + `time.sleep`, OR deterministically `DEL`/`PEXPIRE` the
+  staged key to simulate expiry without a real sleep), then `confirm_access()` and **assert the
+  expired read was dropped**: `access_count` unchanged from its pre-read value, `last_accessed`
+  not updated (the `CONFIRM_ACCESS_LUA` `#staged == 0` branch returned 0). This asserts the
+  documented TTL contract (Technical Approach §4) as deliberate behavior, pinning the semantics
+  so the build implements the drop knowingly rather than treating it as a regression.
 - `tests/test_memory_lifecycle.py` — UPDATE/ADD: (a) `tick()` over a seeded
   `AccessTrackerMixin` corpus produces 0 staged delta (`$AT:*:staged:*` key count and total
   staged length identical before/after); (b) single-pass hydration (instrumented `HGETALL`
@@ -355,10 +411,14 @@ regression test asserts confirm semantics are identical with and without the TTL
 `access_count` (Concern 1) or get a wrong `last_accessed`.
 **Mitigation:** The bound is **TTL only, no cap** (Decision 1) — `EXPIRE` drops *no*
 entries while the list is live, so `confirm_access()`'s `HINCRBY access_count, #staged` and
-`HSET last_accessed, staged[#staged]` are provably unchanged. The only effect is that an
-abandoned (never-confirmed) staged list evaporates after `_staged_ttl_seconds`, which by
-definition was never going to be confirmed. Regression test asserts count/last_accessed are
-identical with and without the TTL.
+`HSET last_accessed, staged[#staged]` are unchanged **for any confirm that happens within
+`_staged_ttl_seconds` of staging** (the documented TTL contract, Technical Approach §4). The
+one residual effect: a staged list confirmed *after* the TTL elapsed (or never confirmed)
+has expired, so those reads are dropped from the count — by design and contractually
+required, not silently. This is strictly narrower than a cap, which corrupts the count for
+every heavily-read record unconditionally. Two regression tests pin this: (a) count /
+last_accessed identical with-vs-without TTL when cadence < TTL; (b) the cross-TTL-boundary
+test asserts the post-TTL read is dropped (the contract), not recorded.
 
 ### Risk 2: Single-pass refactor changes promote/forget decisions (intra-tick)
 **Impact:** A promoted record gets forget-evaluated in the same tick, or a non-semantic
@@ -450,7 +510,11 @@ architecture; popoto has no `.mcp.json` / bridge.)
 - [ ] `mkdocs build --strict` passes (docs gate in `scripts/ci-local.sh docs`).
 
 ### Inline Documentation
-- [ ] Docstrings: `on_read()` documents the staged TTL and `_staged_ttl_seconds`;
+- [ ] Docstrings: `on_read()` documents the staged TTL, `_staged_ttl_seconds`, AND the
+      **staged-read TTL contract** (reads must be confirmed within the window or they are
+      dropped); `confirm_access()` docstring documents the **same contract from the confirm
+      side** — a staged key that expired before confirm contributes 0 to `access_count` and
+      does not update `last_accessed` (the `#staged == 0` Lua branch), and this is by design.
       `tick()`/`_iter_*` docstrings updated to reflect single-pass + non-tracking + the
       re-check-tier-before-delete guard; `Query.all()` docstring notes it is non-tracking
       by design (no `Query.get()/get_many()` change).
@@ -465,7 +529,10 @@ architecture; popoto has no `.mcp.json` / bridge.)
 - [ ] Staged lists carry a refreshed TTL (`_staged_ttl_seconds`) on **both** the direct and
       the pipelined `on_read()` paths (the pipelined path is the hot path and must not leave the
       staged list unbounded); `confirm_access()` `access_count`/`last_accessed` are **identical**
-      with and without the TTL (Concern 1 regression test).
+      with and without the TTL **when confirmed within the TTL window** (Concern 1 regression test).
+- [ ] Staged-read TTL contract pinned: a read confirmed **after** the staged key expired past
+      `_staged_ttl_seconds` is dropped (`access_count` unchanged, `last_accessed` not updated) —
+      asserted as deliberate contract behavior, not a bug (cross-TTL-boundary test, BLOCKER).
 - [ ] Promote/forget decisions unchanged on a fixture corpus with known cohorts (parity test).
 - [ ] Concurrent-tick guard: a record promoted-to-semantic between snapshot and delete is
       NOT forgotten (Concern 2 test).
@@ -526,7 +593,11 @@ The lead agent orchestrates; it does not build directly.
   `_staged_ttl_seconds` class constant on `AccessTrackerMixin` with a docstring.
 - Do **not** modify `Query.get()/get_many()` (Decision 2). Add a one-line docstring note on
   `Query.all()` recording that it is non-tracking by design.
-- Update docstrings.
+- Add a lightweight `logger.debug` in `confirm_access()` when the Lua returns 0 (staged key
+  empty/expired at confirm) so silent TTL-boundary drops are diagnosable (Concern — keep to a
+  debug line, no metrics subsystem).
+- Update docstrings (including the staged-read TTL contract on both `on_read()` and
+  `confirm_access()`).
 
 ### 2. Non-tracking single-pass tick()
 - **Task ID**: build-lifecycle
@@ -540,7 +611,9 @@ The lead agent orchestrates; it does not build directly.
 - Collapse the two `.all()` hydrations into a single non-tracking hydration of the corpus;
   evaluate promote (episodic subset) and forget (non-promoted non-semantic) over that one pass.
 - Add the **re-check-tier-before-delete guard** (Concern 2): re-read tier/existence from
-  Redis immediately before `record.delete()`, skip if now-semantic or gone.
+  Redis immediately before `record.delete()`, skip if now-semantic or gone. The guard read and
+  the delete must bind to the **same key identity** (the in-memory object's live key), since
+  promotion mutates the key — see Technical Approach §3 TOCTOU note.
 - Remove `TICK_BATCH_SIZE` entirely (Decision 3) and its slicing/docstring references;
   preserve the semantic-exemption ordering and per-record try/except.
 
@@ -555,8 +628,12 @@ The lead agent orchestrates; it does not build directly.
   TTL-present-on-pipelined-read test (assert the staged key has a TTL after an `on_read()` that
   rides a passed-in pipeline — the hot path — so the pipelined branch cannot silently stay
   unbounded, Concern from critique); confirm_access count/last_accessed parity with-vs-without
-  TTL test (Concern 1); concurrent-tick re-check-before-delete guard test (Concern 2); empty-
-  corpus and predicate-raises tests. (No `get()/get_many()` opt-out test — Decision 2.)
+  TTL test confirmed within the TTL window (Concern 1); **cross-TTL-boundary contract test
+  (BLOCKER)**: read once, expire the staged key past `_staged_ttl_seconds`, confirm, assert the
+  expired read is dropped (`access_count` unchanged, `last_accessed` not updated) — pins the
+  documented TTL contract as intended behavior; concurrent-tick re-check-before-delete guard
+  test binding to the same key identity (Concern 2); empty-corpus and predicate-raises tests.
+  (No `get()/get_many()` opt-out test — Decision 2.)
 - **Rewrite** `test_tick_batch_pagination` → single-pass full-corpus test (drop the
   `TICK_BATCH_SIZE = 100` line; assert 200 records promote in one pass). See Test Impact.
 
@@ -566,7 +643,9 @@ The lead agent orchestrates; it does not build directly.
 - **Assigned To**: tick-docs
 - **Agent Type**: documentarian
 - **Parallel**: false
-- Update `docs/features/agent-memory.md`, `docs/query.md`; verify `mkdocs build --strict`.
+- Update `docs/features/agent-memory.md` (incl. the **staged-read TTL contract**: reads must
+  be confirmed within `_staged_ttl_seconds` or they are dropped from `access_count`),
+  `docs/query.md`; verify `mkdocs build --strict`.
 
 ### 5. Final Validation
 - **Task ID**: validate-all
@@ -587,7 +666,7 @@ The lead agent orchestrates; it does not build directly.
 | Lifecycle uses no_track | `grep -c "no_track" src/popoto/recipes/memory_lifecycle.py` | output > 0 |
 | No class-level guard introduced | `grep -c "_track_reads *= *False" src/popoto/recipes/memory_lifecycle.py` | output == 0 |
 | Staged list TTL-bounded in on_read | `grep -ci "expire" src/popoto/fields/access_tracker.py` | output > 0 |
-| No LTRIM cap added to on_read | `grep -n "ltrim" src/popoto/fields/access_tracker.py` | only the pre-existing confirmed-log LTRIM (line ~47), none in on_read |
+| No LTRIM cap added to on_read | `grep -in "ltrim" src/popoto/fields/access_tracker.py` | exactly ONE match — the pre-existing confirmed-log `LTRIM` in `CONFIRM_ACCESS_LUA` (line ~47); zero matches inside `on_read()`. (Case-insensitive `-i` is required: the source uses uppercase `LTRIM`, so the earlier lowercase-only `grep "ltrim"` matched nothing and passed vacuously.) |
 | TICK_BATCH_SIZE removed | `grep -c "TICK_BATCH_SIZE" src/popoto/recipes/memory_lifecycle.py` | output == 0 |
 | No Redis-module commands added | see the Valkey-safety grep below the table (pipes can't render inside a markdown table cell) | exit 1 / 0 matches |
 | Docs build | `mkdocs build --strict` | exit code 0 |
@@ -636,8 +715,13 @@ revision resolves all of them. Summary of dispositions:
 `on_read()` will `EXPIRE` the staged key with `_staged_ttl_seconds` (refreshed on every
 read) and will **not** apply an `LTRIM` cap. Rationale: a cap silently corrupts
 `access_count` (Concern 1) because `confirm_access()` sums `#staged` *after* the cap dropped
-entries; a TTL bounds storage for read-but-never-confirmed records without altering any
-count. A continuously-read-and-confirmed record is already bounded by the confirmed-log cap
+entries — for *every* record read more than the cap between confirmations; a TTL bounds
+storage for read-but-never-confirmed records and only ever drops reads that violate the
+documented stage→confirm cadence (the TTL contract; see Technical Approach §4). Within the
+contract (cadence < `_staged_ttl_seconds`) the count math is unchanged; the boundary case
+where confirm lags the TTL is an accepted, documented, and tested loss — strictly narrower
+than the cap's unconditional corruption. A continuously-read-and-confirmed record is already
+bounded by the confirmed-log cap
 (`_max_access_log = 100`) and by `confirm_access()` deleting the staged key (`DEL KEYS[1]`,
 `access_tracker.py:50`). The only unbounded case the issue (PERF-6) actually describes is a
 record read but **never confirmed** — exactly what a TTL self-cleans.
@@ -664,3 +748,30 @@ The constant only slices an already-fully-hydrated list and provides no streamin
 The single-pass refactor removes the slicing; the constant is removed entirely (and any
 docstring/reference to it). A true streaming iterator is an out-of-scope rabbit hole at the
 20k target. If streaming is ever built, the constant returns with the iterator that uses it.
+
+### Revision 3 (final, build-ready) — TTL boundary honesty + nits
+
+A 3rd-pass review found the TTL-only design's count-parity claim was overstated and surfaced
+four nits. Resolutions:
+
+- **BLOCKER — TTL under-counts when confirm cadence exceeds `_staged_ttl_seconds`.** The
+  "provably unchanged" count claim only holds when confirm happens within the TTL window; a
+  read confirmed >24h later (no intervening read) hits an expired staged key and is silently
+  dropped from `access_count`/`last_accessed`. Resolved by (a) downgrading the language to
+  "unchanged PROVIDED confirm cadence < `_staged_ttl_seconds`" and elevating the window to an
+  explicit **staged-read TTL contract** documented in design rationale (Technical Approach §4,
+  Decision 1, Risk 1) and in both the `on_read()` and `confirm_access()` docstring bullets; and
+  (b) adding a **cross-TTL-boundary regression test** that expires the staged key, confirms, and
+  asserts the drop is the contracted behavior. TTL-only is retained (a cap is strictly worse —
+  Concern 1); the plan is now honest about and tests the boundary. (No LTRIM/count cap.)
+- **Nit 1 — `TICK_BATCH_SIZE` removal is a public-API break.** Now called out in Architectural
+  Impact → Interface changes (documented public attribute `memory_lifecycle.py:341`; breaking
+  but acceptable under beta + no real callers).
+- **Nit 2 — guard key-identity/TOCTOU.** Technical Approach §3 and Step 2 now require the
+  re-check read and the delete to bind to the **same key identity** (promotion mutates the key).
+- **Nit 3 — observability of silent drops.** `confirm_access()` emits a `logger.debug` when the
+  Lua returns 0 (empty/expired staged key) so TTL-boundary drops are diagnosable — lightweight,
+  no metrics subsystem (Technical Approach §4, Step 1).
+- **Nit 4 — vacuous LTRIM grep.** The Verification "No LTRIM cap" check is now case-insensitive
+  (`grep -in`); the source uses uppercase `LTRIM`, so the old lowercase-only form matched nothing
+  and passed vacuously. Expected: exactly one match (the LUA confirmed-log), none in `on_read()`.
