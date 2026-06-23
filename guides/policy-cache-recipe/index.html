@@ -1546,6 +1546,34 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Q-Value Updates">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#storage-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Storage architecture
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#negative-q-values" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Negative Q-values
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2304,6 +2332,34 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Q-Value Updates">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#storage-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Storage architecture
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#negative-q-values" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Negative Q-values
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2354,31 +2410,30 @@
 </blockquote>
 <p>A reference recipe composing all shipped Popoto memory primitives into an RL-style action selection cache. Agents accumulate state-action-outcome events; a crystallization handler detects repeated successful patterns and creates PolicyEntry records. Agents query policies for action selection, and outcomes update Q-values via temporal difference learning.</p>
 <h2 id="quick-start">Quick Start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes.policy_cache</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">PolicyEntry</span><span class="p">,</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">compute_fingerprint</span><span class="p">,</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">update_q_value</span><span class="p">,</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">initialize_q_value</span><span class="p">,</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">crystallization_handler</span><span class="p">,</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">temporal_discovery_handler</span><span class="p">,</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="p">)</span>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="c1"># Create a policy entry</span>
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="n">fp</span> <span class="o">=</span> <span class="n">compute_fingerprint</span><span class="p">({</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy&quot;</span><span class="p">,</span> <span class="s2">&quot;env&quot;</span><span class="p">:</span> <span class="s2">&quot;staging&quot;</span><span class="p">})</span>
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="n">policy</span> <span class="o">=</span> <span class="n">PolicyEntry</span><span class="p">(</span>
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    <span class="n">state_fingerprint</span><span class="o">=</span><span class="n">fp</span><span class="p">,</span>
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    <span class="n">state_features</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy&quot;</span><span class="p">,</span> <span class="s2">&quot;env&quot;</span><span class="p">:</span> <span class="s2">&quot;staging&quot;</span><span class="p">},</span>
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    <span class="n">action_type</span><span class="o">=</span><span class="s2">&quot;run_playbook&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    <span class="n">action_spec</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;playbook&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy.yml&quot;</span><span class="p">},</span>
-<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="p">)</span>
-<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="n">policy</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
-<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>
-<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="c1"># Set initial Q-value (overrides DecayingSortedField timestamp)</span>
-<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="n">initialize_q_value</span><span class="p">(</span><span class="n">policy</span><span class="p">,</span> <span class="n">initial_q</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
-<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>
-<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="c1"># Update Q-value after observing a reward</span>
-<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a><span class="n">td_error</span> <span class="o">=</span> <span class="n">update_q_value</span><span class="p">(</span><span class="n">policy</span><span class="p">,</span> <span class="n">reward</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">decimal</span><span class="w"> </span><span class="kn">import</span> <span class="n">Decimal</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes.policy_cache</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">PolicyEntry</span><span class="p">,</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">compute_fingerprint</span><span class="p">,</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">update_q_value</span><span class="p">,</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">crystallization_handler</span><span class="p">,</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">temporal_discovery_handler</span><span class="p">,</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="p">)</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="c1"># Create a policy entry with an initial Q-value</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="n">fp</span> <span class="o">=</span> <span class="n">compute_fingerprint</span><span class="p">({</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy&quot;</span><span class="p">,</span> <span class="s2">&quot;env&quot;</span><span class="p">:</span> <span class="s2">&quot;staging&quot;</span><span class="p">})</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="n">policy</span> <span class="o">=</span> <span class="n">PolicyEntry</span><span class="p">(</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    <span class="n">state_fingerprint</span><span class="o">=</span><span class="n">fp</span><span class="p">,</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    <span class="n">state_features</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy&quot;</span><span class="p">,</span> <span class="s2">&quot;env&quot;</span><span class="p">:</span> <span class="s2">&quot;staging&quot;</span><span class="p">},</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    <span class="n">action_type</span><span class="o">=</span><span class="s2">&quot;run_playbook&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>    <span class="n">action_spec</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;playbook&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy.yml&quot;</span><span class="p">},</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>    <span class="n">q_value</span><span class="o">=</span><span class="n">Decimal</span><span class="p">(</span><span class="s2">&quot;0.5&quot;</span><span class="p">),</span>  <span class="c1"># seed initial Q-value at construction</span>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="p">)</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="n">policy</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>  <span class="c1"># persists both model fields and q_value in one round-trip</span>
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="c1"># Update Q-value after observing a reward</span>
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="n">td_error</span> <span class="o">=</span> <span class="n">update_q_value</span><span class="p">(</span><span class="n">policy</span><span class="p">,</span> <span class="n">reward</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
 </code></pre></div>
 <h2 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h2>
 <p>PolicyEntry composes these primitives:</p>
@@ -2399,8 +2454,12 @@
 <td>Agent partitioning, state fingerprinting, action type</td>
 </tr>
 <tr>
-<td><code>DecayingSortedField</code></td>
-<td>Q-value storage with temporal decay</td>
+<td><code>DecimalField</code> (<code>q_value</code>)</td>
+<td>Learned Q-value stored in the model hash</td>
+</tr>
+<tr>
+<td><code>DecayingSortedField</code> (<code>expected_value</code>)</td>
+<td>Pure recency clock; uses <code>q_value</code> as base magnitude via <code>base_score_field</code></td>
 </tr>
 <tr>
 <td><code>ConfidenceField</code></td>
@@ -2465,6 +2524,15 @@
 <li><strong>gamma</strong> (discount factor): Importance of future rewards (default: 0.95)</li>
 <li>Returns TD error (positive = better than expected)</li>
 </ul>
+<h3 id="storage-architecture">Storage architecture<a class="headerlink" href="#storage-architecture" title="Permanent link">&para;</a></h3>
+<p>Q-values live in two separate slots that never overwrite each other:</p>
+<ul>
+<li><strong><code>q_value</code> (model hash)</strong> — the learned value. Updated by <code>update_q_value()</code> via <code>HGET</code>/<code>HSET</code> on the model hash key. A <code>save()</code> or <code>touch()</code> on the instance does not reset it.</li>
+<li><strong><code>expected_value</code> (sorted set)</strong> — a pure recency/decay clock. Its score is the decay-weighted access timestamp multiplied by the <code>q_value</code> magnitude. Writing a new TD estimate via <code>update_q_value()</code> does not disturb this clock.</li>
+</ul>
+<p>This separation means <code>Q(s,a)</code> survives every access pattern — <code>save()</code>, <code>touch()</code>, and <code>"acted"</code> outcome resolution — intact.</p>
+<h3 id="negative-q-values">Negative Q-values<a class="headerlink" href="#negative-q-values" title="Permanent link">&para;</a></h3>
+<p><code>DecayingSortedField</code> includes a sign-preserving guard in its decay Lua script: negative Q-values retain their sign through the decay calculation. Policies that have been penalized remain penalized after aging.</p>
 <h2 id="tuning-constants">Tuning Constants<a class="headerlink" href="#tuning-constants" title="Permanent link">&para;</a></h2>
 <p>All numeric constants have been validated via parameter sweep (<a href="../tuning-magic-numbers/">tuning guide</a>):</p>
 <table>

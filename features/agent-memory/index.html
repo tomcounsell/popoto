@@ -6289,35 +6289,37 @@
 <p>For the full guide with architecture diagrams, tuning advice, and design rationale, see <a href="../../guides/policy-cache-recipe/">PolicyCache Recipe</a>.</p>
 <p>Shipped in <a href="https://github.com/tomcounsell/popoto/pull/239">PR #239</a>.</p>
 <h3 id="basic-usage_9">Basic usage<a class="headerlink" href="#basic-usage_9" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-40-1" name="__codelineno-40-1" href="#__codelineno-40-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes.policy_cache</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-<a id="__codelineno-40-2" name="__codelineno-40-2" href="#__codelineno-40-2"></a>    <span class="n">PolicyEntry</span><span class="p">,</span> <span class="n">compute_fingerprint</span><span class="p">,</span> <span class="n">update_q_value</span><span class="p">,</span>
-<a id="__codelineno-40-3" name="__codelineno-40-3" href="#__codelineno-40-3"></a>    <span class="n">initialize_q_value</span><span class="p">,</span> <span class="n">crystallization_handler</span><span class="p">,</span>
-<a id="__codelineno-40-4" name="__codelineno-40-4" href="#__codelineno-40-4"></a><span class="p">)</span>
-<a id="__codelineno-40-5" name="__codelineno-40-5" href="#__codelineno-40-5"></a>
-<a id="__codelineno-40-6" name="__codelineno-40-6" href="#__codelineno-40-6"></a><span class="c1"># Create a policy directly</span>
-<a id="__codelineno-40-7" name="__codelineno-40-7" href="#__codelineno-40-7"></a><span class="n">fp</span> <span class="o">=</span> <span class="n">compute_fingerprint</span><span class="p">({</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy&quot;</span><span class="p">,</span> <span class="s2">&quot;env&quot;</span><span class="p">:</span> <span class="s2">&quot;staging&quot;</span><span class="p">})</span>
-<a id="__codelineno-40-8" name="__codelineno-40-8" href="#__codelineno-40-8"></a><span class="n">policy</span> <span class="o">=</span> <span class="n">PolicyEntry</span><span class="p">(</span>
-<a id="__codelineno-40-9" name="__codelineno-40-9" href="#__codelineno-40-9"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">,</span>
-<a id="__codelineno-40-10" name="__codelineno-40-10" href="#__codelineno-40-10"></a>    <span class="n">state_fingerprint</span><span class="o">=</span><span class="n">fp</span><span class="p">,</span>
-<a id="__codelineno-40-11" name="__codelineno-40-11" href="#__codelineno-40-11"></a>    <span class="n">state_features</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy&quot;</span><span class="p">,</span> <span class="s2">&quot;env&quot;</span><span class="p">:</span> <span class="s2">&quot;staging&quot;</span><span class="p">},</span>
-<a id="__codelineno-40-12" name="__codelineno-40-12" href="#__codelineno-40-12"></a>    <span class="n">action_type</span><span class="o">=</span><span class="s2">&quot;run_playbook&quot;</span><span class="p">,</span>
-<a id="__codelineno-40-13" name="__codelineno-40-13" href="#__codelineno-40-13"></a>    <span class="n">action_spec</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;playbook&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy.yml&quot;</span><span class="p">},</span>
-<a id="__codelineno-40-14" name="__codelineno-40-14" href="#__codelineno-40-14"></a><span class="p">)</span>
-<a id="__codelineno-40-15" name="__codelineno-40-15" href="#__codelineno-40-15"></a><span class="n">policy</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
-<a id="__codelineno-40-16" name="__codelineno-40-16" href="#__codelineno-40-16"></a>
-<a id="__codelineno-40-17" name="__codelineno-40-17" href="#__codelineno-40-17"></a><span class="c1"># Initialize and update Q-value via temporal difference learning</span>
-<a id="__codelineno-40-18" name="__codelineno-40-18" href="#__codelineno-40-18"></a><span class="n">initialize_q_value</span><span class="p">(</span><span class="n">policy</span><span class="p">,</span> <span class="n">initial_q</span><span class="o">=</span><span class="mf">0.0</span><span class="p">)</span>
-<a id="__codelineno-40-19" name="__codelineno-40-19" href="#__codelineno-40-19"></a><span class="n">td_error</span> <span class="o">=</span> <span class="n">update_q_value</span><span class="p">(</span><span class="n">policy</span><span class="p">,</span> <span class="n">reward</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
-<a id="__codelineno-40-20" name="__codelineno-40-20" href="#__codelineno-40-20"></a>
-<a id="__codelineno-40-21" name="__codelineno-40-21" href="#__codelineno-40-21"></a><span class="c1"># Or let crystallization detect patterns automatically</span>
-<a id="__codelineno-40-22" name="__codelineno-40-22" href="#__codelineno-40-22"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.streams</span><span class="w"> </span><span class="kn">import</span> <span class="n">StreamConsumer</span>
-<a id="__codelineno-40-23" name="__codelineno-40-23" href="#__codelineno-40-23"></a>
-<a id="__codelineno-40-24" name="__codelineno-40-24" href="#__codelineno-40-24"></a><span class="n">consumer</span> <span class="o">=</span> <span class="n">StreamConsumer</span><span class="p">(</span>
-<a id="__codelineno-40-25" name="__codelineno-40-25" href="#__codelineno-40-25"></a>    <span class="n">stream_key</span><span class="o">=</span><span class="s2">&quot;stream:policy_mutations&quot;</span><span class="p">,</span>
-<a id="__codelineno-40-26" name="__codelineno-40-26" href="#__codelineno-40-26"></a>    <span class="n">group_name</span><span class="o">=</span><span class="s2">&quot;crystallizer&quot;</span><span class="p">,</span>
-<a id="__codelineno-40-27" name="__codelineno-40-27" href="#__codelineno-40-27"></a>    <span class="n">consumer_name</span><span class="o">=</span><span class="s2">&quot;worker-1&quot;</span><span class="p">,</span>
-<a id="__codelineno-40-28" name="__codelineno-40-28" href="#__codelineno-40-28"></a>    <span class="n">handler</span><span class="o">=</span><span class="n">crystallization_handler</span><span class="p">,</span>
-<a id="__codelineno-40-29" name="__codelineno-40-29" href="#__codelineno-40-29"></a><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-40-1" name="__codelineno-40-1" href="#__codelineno-40-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">decimal</span><span class="w"> </span><span class="kn">import</span> <span class="n">Decimal</span>
+<a id="__codelineno-40-2" name="__codelineno-40-2" href="#__codelineno-40-2"></a>
+<a id="__codelineno-40-3" name="__codelineno-40-3" href="#__codelineno-40-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes.policy_cache</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<a id="__codelineno-40-4" name="__codelineno-40-4" href="#__codelineno-40-4"></a>    <span class="n">PolicyEntry</span><span class="p">,</span> <span class="n">compute_fingerprint</span><span class="p">,</span> <span class="n">update_q_value</span><span class="p">,</span>
+<a id="__codelineno-40-5" name="__codelineno-40-5" href="#__codelineno-40-5"></a>    <span class="n">crystallization_handler</span><span class="p">,</span>
+<a id="__codelineno-40-6" name="__codelineno-40-6" href="#__codelineno-40-6"></a><span class="p">)</span>
+<a id="__codelineno-40-7" name="__codelineno-40-7" href="#__codelineno-40-7"></a>
+<a id="__codelineno-40-8" name="__codelineno-40-8" href="#__codelineno-40-8"></a><span class="c1"># Create a policy directly — seed q_value at construction</span>
+<a id="__codelineno-40-9" name="__codelineno-40-9" href="#__codelineno-40-9"></a><span class="n">fp</span> <span class="o">=</span> <span class="n">compute_fingerprint</span><span class="p">({</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy&quot;</span><span class="p">,</span> <span class="s2">&quot;env&quot;</span><span class="p">:</span> <span class="s2">&quot;staging&quot;</span><span class="p">})</span>
+<a id="__codelineno-40-10" name="__codelineno-40-10" href="#__codelineno-40-10"></a><span class="n">policy</span> <span class="o">=</span> <span class="n">PolicyEntry</span><span class="p">(</span>
+<a id="__codelineno-40-11" name="__codelineno-40-11" href="#__codelineno-40-11"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">,</span>
+<a id="__codelineno-40-12" name="__codelineno-40-12" href="#__codelineno-40-12"></a>    <span class="n">state_fingerprint</span><span class="o">=</span><span class="n">fp</span><span class="p">,</span>
+<a id="__codelineno-40-13" name="__codelineno-40-13" href="#__codelineno-40-13"></a>    <span class="n">state_features</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy&quot;</span><span class="p">,</span> <span class="s2">&quot;env&quot;</span><span class="p">:</span> <span class="s2">&quot;staging&quot;</span><span class="p">},</span>
+<a id="__codelineno-40-14" name="__codelineno-40-14" href="#__codelineno-40-14"></a>    <span class="n">action_type</span><span class="o">=</span><span class="s2">&quot;run_playbook&quot;</span><span class="p">,</span>
+<a id="__codelineno-40-15" name="__codelineno-40-15" href="#__codelineno-40-15"></a>    <span class="n">action_spec</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;playbook&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy.yml&quot;</span><span class="p">},</span>
+<a id="__codelineno-40-16" name="__codelineno-40-16" href="#__codelineno-40-16"></a>    <span class="n">q_value</span><span class="o">=</span><span class="n">Decimal</span><span class="p">(</span><span class="s2">&quot;0.0&quot;</span><span class="p">),</span>  <span class="c1"># q_value lives in the model hash, not the ZSET score</span>
+<a id="__codelineno-40-17" name="__codelineno-40-17" href="#__codelineno-40-17"></a><span class="p">)</span>
+<a id="__codelineno-40-18" name="__codelineno-40-18" href="#__codelineno-40-18"></a><span class="n">policy</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>  <span class="c1"># persists both model fields and q_value in one round-trip</span>
+<a id="__codelineno-40-19" name="__codelineno-40-19" href="#__codelineno-40-19"></a>
+<a id="__codelineno-40-20" name="__codelineno-40-20" href="#__codelineno-40-20"></a><span class="c1"># Update Q-value via temporal difference learning</span>
+<a id="__codelineno-40-21" name="__codelineno-40-21" href="#__codelineno-40-21"></a><span class="n">td_error</span> <span class="o">=</span> <span class="n">update_q_value</span><span class="p">(</span><span class="n">policy</span><span class="p">,</span> <span class="n">reward</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
+<a id="__codelineno-40-22" name="__codelineno-40-22" href="#__codelineno-40-22"></a>
+<a id="__codelineno-40-23" name="__codelineno-40-23" href="#__codelineno-40-23"></a><span class="c1"># Or let crystallization detect patterns automatically</span>
+<a id="__codelineno-40-24" name="__codelineno-40-24" href="#__codelineno-40-24"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.streams</span><span class="w"> </span><span class="kn">import</span> <span class="n">StreamConsumer</span>
+<a id="__codelineno-40-25" name="__codelineno-40-25" href="#__codelineno-40-25"></a>
+<a id="__codelineno-40-26" name="__codelineno-40-26" href="#__codelineno-40-26"></a><span class="n">consumer</span> <span class="o">=</span> <span class="n">StreamConsumer</span><span class="p">(</span>
+<a id="__codelineno-40-27" name="__codelineno-40-27" href="#__codelineno-40-27"></a>    <span class="n">stream_key</span><span class="o">=</span><span class="s2">&quot;stream:policy_mutations&quot;</span><span class="p">,</span>
+<a id="__codelineno-40-28" name="__codelineno-40-28" href="#__codelineno-40-28"></a>    <span class="n">group_name</span><span class="o">=</span><span class="s2">&quot;crystallizer&quot;</span><span class="p">,</span>
+<a id="__codelineno-40-29" name="__codelineno-40-29" href="#__codelineno-40-29"></a>    <span class="n">consumer_name</span><span class="o">=</span><span class="s2">&quot;worker-1&quot;</span><span class="p">,</span>
+<a id="__codelineno-40-30" name="__codelineno-40-30" href="#__codelineno-40-30"></a>    <span class="n">handler</span><span class="o">=</span><span class="n">crystallization_handler</span><span class="p">,</span>
+<a id="__codelineno-40-31" name="__codelineno-40-31" href="#__codelineno-40-31"></a><span class="p">)</span>
 </code></pre></div>
 <h3 id="policyentry-model">PolicyEntry model<a class="headerlink" href="#policyentry-model" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-41-1" name="__codelineno-41-1" href="#__codelineno-41-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">PolicyEntry</span><span class="p">(</span><span class="n">EventStreamMixin</span><span class="p">,</span> <span class="n">AccessTrackerMixin</span><span class="p">,</span> <span class="n">PredictionLedgerMixin</span><span class="p">,</span> <span class="n">Model</span><span class="p">):</span>
@@ -6327,16 +6329,18 @@
 <a id="__codelineno-41-5" name="__codelineno-41-5" href="#__codelineno-41-5"></a>    <span class="n">state_features</span> <span class="o">=</span> <span class="n">Field</span><span class="p">()</span>                      <span class="c1"># JSON dict</span>
 <a id="__codelineno-41-6" name="__codelineno-41-6" href="#__codelineno-41-6"></a>    <span class="n">action_type</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
 <a id="__codelineno-41-7" name="__codelineno-41-7" href="#__codelineno-41-7"></a>    <span class="n">action_spec</span> <span class="o">=</span> <span class="n">Field</span><span class="p">()</span>                         <span class="c1"># JSON dict</span>
-<a id="__codelineno-41-8" name="__codelineno-41-8" href="#__codelineno-41-8"></a>    <span class="n">expected_value</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span>
-<a id="__codelineno-41-9" name="__codelineno-41-9" href="#__codelineno-41-9"></a>        <span class="n">partition_by</span><span class="o">=</span><span class="s2">&quot;agent_id&quot;</span><span class="p">,</span>
-<a id="__codelineno-41-10" name="__codelineno-41-10" href="#__codelineno-41-10"></a>    <span class="p">)</span>
-<a id="__codelineno-41-11" name="__codelineno-41-11" href="#__codelineno-41-11"></a>    <span class="n">confidence</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="p">(</span><span class="n">initial_confidence</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
-<a id="__codelineno-41-12" name="__codelineno-41-12" href="#__codelineno-41-12"></a>    <span class="n">related_policies</span> <span class="o">=</span> <span class="n">CoOccurrenceField</span><span class="p">(</span><span class="n">symmetric</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">max_edges</span><span class="o">=</span><span class="mi">100</span><span class="p">)</span>
-<a id="__codelineno-41-13" name="__codelineno-41-13" href="#__codelineno-41-13"></a>    <span class="n">bloom</span> <span class="o">=</span> <span class="n">ExistenceFilter</span><span class="p">(</span>
-<a id="__codelineno-41-14" name="__codelineno-41-14" href="#__codelineno-41-14"></a>        <span class="n">error_rate</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span>
-<a id="__codelineno-41-15" name="__codelineno-41-15" href="#__codelineno-41-15"></a>        <span class="n">capacity</span><span class="o">=</span><span class="mi">100_000</span><span class="p">,</span>
-<a id="__codelineno-41-16" name="__codelineno-41-16" href="#__codelineno-41-16"></a>        <span class="n">fingerprint_fn</span><span class="o">=</span><span class="k">lambda</span> <span class="n">inst</span><span class="p">:</span> <span class="n">inst</span><span class="o">.</span><span class="n">state_fingerprint</span><span class="p">,</span>
-<a id="__codelineno-41-17" name="__codelineno-41-17" href="#__codelineno-41-17"></a>    <span class="p">)</span>
+<a id="__codelineno-41-8" name="__codelineno-41-8" href="#__codelineno-41-8"></a>    <span class="n">q_value</span> <span class="o">=</span> <span class="n">DecimalField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="n">Decimal</span><span class="p">(</span><span class="s2">&quot;0&quot;</span><span class="p">))</span>
+<a id="__codelineno-41-9" name="__codelineno-41-9" href="#__codelineno-41-9"></a>    <span class="n">expected_value</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span>
+<a id="__codelineno-41-10" name="__codelineno-41-10" href="#__codelineno-41-10"></a>        <span class="n">partition_by</span><span class="o">=</span><span class="s2">&quot;agent_id&quot;</span><span class="p">,</span>
+<a id="__codelineno-41-11" name="__codelineno-41-11" href="#__codelineno-41-11"></a>        <span class="n">base_score_field</span><span class="o">=</span><span class="s2">&quot;q_value&quot;</span><span class="p">,</span>
+<a id="__codelineno-41-12" name="__codelineno-41-12" href="#__codelineno-41-12"></a>    <span class="p">)</span>
+<a id="__codelineno-41-13" name="__codelineno-41-13" href="#__codelineno-41-13"></a>    <span class="n">confidence</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="p">(</span><span class="n">initial_confidence</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
+<a id="__codelineno-41-14" name="__codelineno-41-14" href="#__codelineno-41-14"></a>    <span class="n">related_policies</span> <span class="o">=</span> <span class="n">CoOccurrenceField</span><span class="p">(</span><span class="n">symmetric</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">max_edges</span><span class="o">=</span><span class="mi">100</span><span class="p">)</span>
+<a id="__codelineno-41-15" name="__codelineno-41-15" href="#__codelineno-41-15"></a>    <span class="n">bloom</span> <span class="o">=</span> <span class="n">ExistenceFilter</span><span class="p">(</span>
+<a id="__codelineno-41-16" name="__codelineno-41-16" href="#__codelineno-41-16"></a>        <span class="n">error_rate</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span>
+<a id="__codelineno-41-17" name="__codelineno-41-17" href="#__codelineno-41-17"></a>        <span class="n">capacity</span><span class="o">=</span><span class="mi">100_000</span><span class="p">,</span>
+<a id="__codelineno-41-18" name="__codelineno-41-18" href="#__codelineno-41-18"></a>        <span class="n">fingerprint_fn</span><span class="o">=</span><span class="k">lambda</span> <span class="n">inst</span><span class="p">:</span> <span class="n">inst</span><span class="o">.</span><span class="n">state_fingerprint</span><span class="p">,</span>
+<a id="__codelineno-41-19" name="__codelineno-41-19" href="#__codelineno-41-19"></a>    <span class="p">)</span>
 </code></pre></div>
 <p>WriteFilterMixin is intentionally excluded — the crystallization handler IS the write gate (Wilson CI &gt; 0.6 threshold).</p>
 <h3 id="key-functions">Key functions<a class="headerlink" href="#key-functions" title="Permanent link">&para;</a></h3>
@@ -6358,7 +6362,7 @@
 </tr>
 <tr>
 <td><code>initialize_q_value(instance, initial_q=0.0)</code></td>
-<td>Set initial Q-value (overrides timestamp from save)</td>
+<td>Set initial <code>q_value</code> in the model hash and save (no timestamp override)</td>
 </tr>
 <tr>
 <td><code>wilson_ci_lower(successes, total, z=1.96)</code></td>
