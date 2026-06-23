@@ -3492,8 +3492,8 @@
 <a id="__codelineno-14-18" name="__codelineno-14-18" href="#__codelineno-14-18"></a>
 <a id="__codelineno-14-19" name="__codelineno-14-19" href="#__codelineno-14-19"></a><span class="sd">    Built-in features:</span>
 <a id="__codelineno-14-20" name="__codelineno-14-20" href="#__codelineno-14-20"></a><span class="sd">      - Consumer group auto-creation (XGROUP CREATE ... MKSTREAM)</span>
-<a id="__codelineno-14-21" name="__codelineno-14-21" href="#__codelineno-14-21"></a><span class="sd">      - Exactly-once processing via XACK after handler success</span>
-<a id="__codelineno-14-22" name="__codelineno-14-22" href="#__codelineno-14-22"></a><span class="sd">      - Dead-letter queue for failed entries (XCLAIM after timeout)</span>
+<a id="__codelineno-14-21" name="__codelineno-14-21" href="#__codelineno-14-21"></a><span class="sd">      - At-least-once processing; exactly-once requires idempotent handlers.</span>
+<a id="__codelineno-14-22" name="__codelineno-14-22" href="#__codelineno-14-22"></a><span class="sd">      - Dead-letter queue for failed entries (XAUTOCLAIM after idle timeout)</span>
 <a id="__codelineno-14-23" name="__codelineno-14-23" href="#__codelineno-14-23"></a><span class="sd">      - Backpressure: configurable max pending entries</span>
 <a id="__codelineno-14-24" name="__codelineno-14-24" href="#__codelineno-14-24"></a><span class="sd">    &quot;&quot;&quot;</span>
 <a id="__codelineno-14-25" name="__codelineno-14-25" href="#__codelineno-14-25"></a>    <span class="n">batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">50</span>
@@ -3504,7 +3504,7 @@
 <p><strong>Synergy tests:</strong>
 - StreamConsumer + EventStreamMixin (Step 6): End-to-end test — save records → verify they appear in stream → consumer processes them → verify XACK. Test: 1000 concurrent saves → verify zero lost entries.
 - StreamConsumer + all write-path primitives (Steps 1-6, 9): Full pipeline test — records with WriteFilter gating, ConfidenceField updates, CoOccurrence strengthening, and PredictionLedger resolutions all producing stream entries → consumer processes all entry types correctly.</p>
-<p><strong>Measurable agent improvement:</strong> Not directly agent-facing — this is infrastructure for Step 11. Measure: processing throughput (entries/sec), end-to-end latency (write → consumer acknowledgment), and reliability (zero lost entries under crash recovery via XCLAIM).</p>
+<p><strong>Measurable agent improvement:</strong> Not directly agent-facing — this is infrastructure for Step 11. Measure: processing throughput (entries/sec), end-to-end latency (write → consumer acknowledgment), and reliability (zero lost entries under crash recovery via XAUTOCLAIM).</p>
 <p><strong>Issues:</strong> ~3 (consumer group framework, dead-letter handling, integration tests with Steps 6+9)</p>
 <hr />
 <h2 id="step-11-policycache-model-pattern-learned-action-selection-shipped">Step 11: PolicyCache Model Pattern — Learned Action Selection ✅ Shipped<a class="headerlink" href="#step-11-policycache-model-pattern-learned-action-selection-shipped" title="Permanent link">&para;</a></h2>

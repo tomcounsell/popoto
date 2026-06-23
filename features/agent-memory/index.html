@@ -1912,10 +1912,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#xclaim-recovery" class="md-nav__link">
+  <a href="#xautoclaim-recovery" class="md-nav__link">
     <span class="md-ellipsis">
       
-        XCLAIM recovery
+        XAUTOCLAIM recovery
       
     </span>
   </a>
@@ -4365,10 +4365,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#xclaim-recovery" class="md-nav__link">
+  <a href="#xautoclaim-recovery" class="md-nav__link">
     <span class="md-ellipsis">
       
-        XCLAIM recovery
+        XAUTOCLAIM recovery
       
     </span>
   </a>
@@ -6130,7 +6130,7 @@
 <li><strong>Pipeline support</strong>: All operations accept an optional <code>pipeline</code> parameter</li>
 </ul>
 <h2 id="streamconsumer">StreamConsumer<a class="headerlink" href="#streamconsumer" title="Permanent link">&para;</a></h2>
-<p>A Redis Streams consumer group framework for background processing. Manages consumer group creation, batch reading, acknowledgment, dead-letter handling, and pending entry recovery via XCLAIM.</p>
+<p>A Redis Streams consumer group framework for background processing. Manages consumer group creation, batch reading, acknowledgment, dead-letter handling, and pending entry recovery via XAUTOCLAIM.</p>
 <p>Shipped in <a href="https://github.com/tomcounsell/popoto/pull/238">PR #238</a>.</p>
 <h3 id="basic-usage_8">Basic usage<a class="headerlink" href="#basic-usage_8" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.streams</span><span class="w"> </span><span class="kn">import</span> <span class="n">StreamConsumer</span>
@@ -6208,13 +6208,13 @@
 <td><code>max_retries</code></td>
 <td><code>int</code></td>
 <td><code>3</code></td>
-<td>Delivery count threshold before dead-lettering.</td>
+<td>Handler invocation threshold before dead-lettering.</td>
 </tr>
 <tr>
 <td><code>claim_timeout_ms</code></td>
 <td><code>int</code></td>
 <td><code>180_000</code></td>
-<td>XCLAIM idle timeout (3 minutes). Entries idle longer are reclaimed.</td>
+<td>XAUTOCLAIM idle timeout (3 minutes). Entries idle longer are reclaimed.</td>
 </tr>
 <tr>
 <td><code>dead_letter_max_length</code></td>
@@ -6225,7 +6225,7 @@
 </tbody>
 </table>
 <h3 id="dead-letter-handling">Dead-letter handling<a class="headerlink" href="#dead-letter-handling" title="Permanent link">&para;</a></h3>
-<p>Entries that fail processing more than <code>max_retries</code> times (tracked via XPENDING delivery count) are moved to <code>dead:{stream_key}</code> with metadata:</p>
+<p>Entries that fail processing more than <code>max_retries</code> times (tracked via handler invocation counter) are moved to <code>dead:{stream_key}</code> with metadata:</p>
 <table>
 <thead>
 <tr>
@@ -6256,8 +6256,10 @@
 </tr>
 </tbody>
 </table>
-<h3 id="xclaim-recovery">XCLAIM recovery<a class="headerlink" href="#xclaim-recovery" title="Permanent link">&para;</a></h3>
-<p>On each <code>process_batch()</code> call, the consumer checks for pending entries from crashed consumers. Entries idle longer than <code>claim_timeout_ms</code> are reclaimed via XCLAIM for reprocessing. Entries exceeding <code>max_retries</code> are dead-lettered instead.</p>
+<h3 id="xautoclaim-recovery">XAUTOCLAIM recovery<a class="headerlink" href="#xautoclaim-recovery" title="Permanent link">&para;</a></h3>
+<p>On each <code>process_batch()</code> call, the consumer checks for pending entries from crashed consumers. Entries idle longer than <code>claim_timeout_ms</code> are reclaimed via <code>XAUTOCLAIM</code> and re-delivered through the full decode → handler → XACK pipeline, restoring at-least-once delivery semantics. Handlers must be idempotent because a reclaimed entry may have been partially processed by the crashed consumer. Entries exceeding <code>max_retries</code> handler invocations are dead-lettered instead.</p>
+<p><code>process_batch()</code> returns the total number of entries handled in the cycle — both new entries and reclaimed entries are counted (new + reclaimed).</p>
+<p>The <code>failure_count</code> field in dead-letter entries records the server-side delivery count (XPENDING <code>times_delivered</code>) at the time the entry was dead-lettered. This value may exceed the number of handler invocations because XAUTOCLAIM claim cycles increment <code>times_delivered</code> independently of handler execution.</p>
 <h3 id="graceful-shutdown">Graceful shutdown<a class="headerlink" href="#graceful-shutdown" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a><span class="n">consumer</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span>  <span class="c1"># exits run() after current batch completes</span>
 </code></pre></div>
