@@ -1,5 +1,5 @@
 ---
-status: Planning
+status: Ready
 type: bug
 appetite: Medium
 owner: valor
@@ -404,14 +404,24 @@ The lead agent orchestrates; it does not build directly.
 
 ## Critique Results
 
-<!-- Populated by /do-plan-critique (war room). Leave empty until critique is run. -->
+Critique run 2026-06-23 (SDLC pipeline, in-session war-room — 3 critic lenses: concurrency-correctness, acceptance-completeness, adversarial-risk). Plan judged fundamentally sound; findings are build-steering refinements, no re-plan blockers.
+
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
+| Major | concurrency | Dead-letter gating needs `times_delivered`, which `xpending_range` returns (consumer.py:269) but XAUTOCLAIM does **not** return; XAUTOCLAIM's 3-tuple `(cursor, entries, deleted_ids)` arity is a runtime-shape risk on a beta-but-shipped class. | Resolves Open Q1 → use XPENDING+XCLAIM | Keep the existing XPENDING-driven loop; **add the handler call** in the reclaim branch. XCLAIM (no JUSTID) returns full field data, so no second read needed. |
+| Major | concurrency | Off-by-one in retry gating: must yield **exactly `max_retries`** real handler calls before dead-letter. | build-core + build-tests | Read `delivery_count` from `xpending_range`; check the dead-letter threshold **before** invoking the handler; pin the exact operator with a count-asserting test written first (TDD). |
+| Major | risk | The broad `except Exception` in `_claim_pending` (consumer.py:318) would swallow a redelivery handler exception as a "claim error" and, because the per-entry loop is inside the try, block reclaim of batch-mates for that cycle. | build-core | Per-entry error isolation: a raising redelivery handler leaves **that** entry pending/retriable and does not abort the loop or get logged-and-dropped. Failure-path test required (already in plan). |
+| Major | risk | Infinite-redelivery risk if the reclaim that feeds the handler uses JUSTID (counter never rises → never dead-letters). | build-core | The redelivery reclaim **must increment** `times_delivered` (no JUSTID). JUSTID only for pure ownership probes never followed by a handler call. Guarded by the always-raising dead-letter test. |
+| Minor | risk | `failure_count` must use the `delivery_count` observed from `xpending_range`, not a value re-read after the fetch-XCLAIM (which would itself be inflated). | build-core | Capture `delivery_count` from the pending-range entry and pass it through to `_dead_letter` (consumer.py:353). |
+| Minor | risk | Shared decode helper must tolerate `(id, None)` entries (an entry XDEL'd from the stream but still in a PEL is returned with `None` fields by XCLAIM/XAUTOCLAIM). | build-core | Guard the decode helper against `None`/empty field data; skip or dead-letter rather than crash. |
+| Minor | completeness | The two existing dead-letter tests do not strictly break **if** the builder checks the threshold before the handler call (past-threshold entries dead-letter without a handler call). They would break under a handler-before-threshold ordering. | build-tests | Rewrite both to drive dead-lettering via **real handler failures** (the plan's instinct is correct and safe regardless of ordering). |
 
 ---
 
 ## Open Questions
 
-1. **Redelivery mechanism:** Adopt **XAUTOCLAIM** (single atomic reclaim-and-fetch pass, replacing the XPENDING+XCLAIM loop) as the preferred implementation, or keep the existing XPENDING+XCLAIM structure and just wire the returned field data into the handler path? XAUTOCLAIM is cleaner and confirmed available, but is a larger change to a beta but shipped class. (Plan recommends XAUTOCLAIM; builder may fall back if it proves awkward.)
-2. **Poison-message follow-up:** File the dropped batch-blast-radius concern as its own issue now (so the No-Go tag is a real `[SEPARATE-SLUG #NNN]`), or leave it as a carried note from the issue's "Dropped" bucket?
-3. **Crash test form:** Is a deterministic in-process crash simulation sufficient for the regression test, or do you want the multiprocess SIGKILL PoC reproduced verbatim in CI (slower, occasionally flaky under spawn)?
+_All three resolved during the 2026-06-23 critique (see Critique Results)._
+
+1. **Redelivery mechanism:** ✅ RESOLVED → **XPENDING+XCLAIM**, not XAUTOCLAIM. The dead-letter gating requires `times_delivered` (available from `xpending_range`, already read at consumer.py:269; XAUTOCLAIM does not return it), and XAUTOCLAIM's version-dependent 3-tuple arity is an unnecessary runtime risk on a beta-but-shipped class. The minimal, lower-risk fix keeps the existing XPENDING loop and adds the handler→XACK call in the reclaim branch (XCLAIM without JUSTID already returns full field data).
+2. **Poison-message follow-up:** ✅ RESOLVED → file a one-line follow-up issue during build so the No-Go tag becomes a real `[SEPARATE-SLUG #NNN]` (low cost, keeps the out-of-scope boundary auditable).
+3. **Crash test form:** ✅ RESOLVED → **deterministic in-process simulation** (deliver to a "crashed" consumer via raw XREADGROUP, run the StreamConsumer with `claim_timeout_ms=0`), matching the existing dead-letter tests' pattern. The multiprocess SIGKILL PoC is a welcome bonus but not required (issue says "multi-process or simulated-crash variant acceptable").
