@@ -424,20 +424,6 @@ def _get_redis_key(instance) -> str:
     return redis_key
 
 
-def _get_sortedset_key(instance) -> str:
-    """Get the sorted set key for the expected_value field.
-
-    Note: Accesses ``instance._meta.fields`` which is a Popoto internal.
-    If the ``_meta`` structure changes in a future Popoto release, this
-    will need updating. The test_q_value_update test validates the key
-    format implicitly.
-    """
-    field = instance._meta.fields["expected_value"]
-    return field.__class__.get_partitioned_sortedset_db_key(
-        instance, "expected_value"
-    ).redis_key
-
-
 # ---------------------------------------------------------------------------
 # StreamConsumer Handlers
 # ---------------------------------------------------------------------------
