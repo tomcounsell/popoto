@@ -27,9 +27,21 @@ policy = PolicyEntry(
     state_features={"task": "deploy", "env": "staging"},
     action_type="run_playbook",
     action_spec={"playbook": "deploy.yml"},
+    q_value=Decimal("0.5"),  # optional: seed initial Q-value at construction
 )
 policy.save()
 ```
+
+#### Q-value and recency clock: two separate storage slots
+
+`PolicyEntry` separates learned value from access recency:
+
+| Field | Storage | Role |
+|-------|---------|------|
+| `q_value` | Model hash (`DecimalField`) | Learned Q-value; updated by TD(0) |
+| `expected_value` | Sorted set (score) | Pure recency clock; decays with time |
+
+`expected_value` is a `DecayingSortedField(partition_by="agent_id", base_score_field="q_value")`. The sorted-set score is the decay-weighted access timestamp; `q_value` supplies the base magnitude. Because the two slots are independent, a `save()`, `touch()`, or `"acted"` outcome that refreshes the decay clock does not overwrite the Q-value, and a TD update to `q_value` does not alter the recency clock.
 
 ### Crystallization Handler
 
@@ -47,7 +59,7 @@ consumer = StreamConsumer(
 )
 ```
 
-The handler counts events with the same `(state_fingerprint, action_type)`. When the count exceeds `MIN_EVENTS_FOR_CRYSTALLIZATION` and the Wilson CI lower bound exceeds `WILSON_CI_THRESHOLD`, a PolicyEntry is crystallized.
+The handler counts events with the same `(state_fingerprint, action_type)`. When the count exceeds `MIN_EVENTS_FOR_CRYSTALLIZATION` and the Wilson CI lower bound exceeds `WILSON_CI_THRESHOLD`, a `PolicyEntry` is crystallized. The Wilson CI lower bound is passed as `q_value` at construction — a single `save()` persists both the model fields and the initial Q-value. No separate `initialize_q_value` call is needed.
 
 ### Q-Value Updates
 

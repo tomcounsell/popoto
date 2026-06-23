@@ -193,7 +193,14 @@ class PolicyEntry(EventStreamMixin, AccessTrackerMixin, PredictionLedgerMixin, M
         state_features: Original state feature dict (JSON-serializable).
         action_type: Category of the action (e.g., "run_playbook").
         action_spec: Full action specification dict (JSON-serializable).
-        expected_value: Q-value with temporal decay, partitioned by agent.
+        q_value: Learned Q-value stored as a DecimalField in the model hash.
+            Survives save(), touch(), and "acted" outcomes unchanged.
+            Updated atomically by update_q_value() via TD(0) Lua script.
+        expected_value: Pure recency clock implemented as a DecayingSortedField
+            with base_score_field="q_value". The sorted-set score is the
+            decay-weighted access timestamp; q_value supplies the base
+            magnitude. These two storage slots are independent — writing
+            one does not overwrite the other.
         confidence: Bayesian confidence growing with successful outcomes.
         related_policies: Weighted co-occurrence graph between policies.
         bloom: Bloom filter for fast state_fingerprint pre-checks.
@@ -345,8 +352,11 @@ def update_q_value(
 
         Q(s,a) ← Q(s,a) + α [r + γ max Q(s',a') - Q(s,a)]
 
-    The Q-value is stored in the model hash (not in the sorted set score),
-    keeping it independent from the decay timestamp used by expected_value.
+    The Q-value is stored as a DecimalField in the model hash (HGET/HSET on
+    the ``q_value`` field). This is independent of the ``expected_value``
+    sorted-set score, which is a pure recency/decay clock. Updating the
+    Q-value does not alter the decay timestamp, and a save() or touch() call
+    does not reset the Q-value.
 
     Args:
         instance: A saved PolicyEntry instance.
@@ -381,9 +391,15 @@ def update_q_value(
 def initialize_q_value(instance, initial_q: float = 0.0) -> None:
     """Set the initial Q-value for a PolicyEntry.
 
-    Writes the initial Q-value into the q_value field on the model hash.
-    The decay timestamp in the sorted set is left unchanged — these two
-    storage slots are now separate.
+    Writes ``initial_q`` into the ``q_value`` DecimalField on the model hash
+    and calls ``save()``. The ``expected_value`` sorted-set score (the recency
+    decay clock) is left unchanged — the two storage slots are independent.
+
+    Use this when you want to seed a freshly-constructed PolicyEntry with a
+    specific starting Q before any TD updates. The crystallization handler
+    instead passes ``q_value`` at construction so only one ``save()`` is
+    needed; calling ``initialize_q_value`` afterward is redundant in that
+    path.
 
     Args:
         instance: A saved PolicyEntry instance.
