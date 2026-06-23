@@ -1064,9 +1064,13 @@ Entries that fail processing more than `max_retries` times (tracked via XPENDING
 | `last_error` | Error description |
 | `dead_letter_ts` | Timestamp when dead-lettered |
 
-### XCLAIM recovery
+### XAUTOCLAIM recovery
 
-On each `process_batch()` call, the consumer checks for pending entries from crashed consumers. Entries idle longer than `claim_timeout_ms` are reclaimed via XCLAIM for reprocessing. Entries exceeding `max_retries` are dead-lettered instead.
+On each `process_batch()` call, the consumer checks for pending entries from crashed consumers. Entries idle longer than `claim_timeout_ms` are reclaimed via `XAUTOCLAIM` and re-delivered through the full decode → handler → XACK pipeline, restoring at-least-once delivery semantics. Handlers must be idempotent because a reclaimed entry may have been partially processed by the crashed consumer. Entries exceeding `max_retries` handler invocations are dead-lettered instead.
+
+`process_batch()` returns the total number of entries handled in the cycle — both new entries and reclaimed entries are counted (new + reclaimed).
+
+The `failure_count` field in dead-letter entries records the number of delivery attempts (handler invocations) at the time the entry was dead-lettered.
 
 ### Graceful shutdown
 

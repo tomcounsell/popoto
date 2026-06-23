@@ -1,14 +1,15 @@
 """StreamConsumer — Redis Streams consumer group framework for Popoto.
 
 This module provides a consumer group abstraction over Redis Streams, handling
-the XREADGROUP/XACK/XCLAIM/XPENDING lifecycle so application code only needs
+the XREADGROUP/XACK/XAUTOCLAIM/XPENDING lifecycle so application code only needs
 to supply a handler function.
 
 Design:
     - Async-first: core logic uses ``redis.asyncio`` via ``get_async_redis_db()``
     - Sync wrappers (``run_sync``, ``process_batch_sync``) use ``asyncio.run()``
     - Dead-letter: entries exceeding ``max_retries`` are moved to ``dead:{stream_key}``
-    - Recovery: ``XAUTOCLAIM`` reclaims entries from crashed consumers after idle timeout
+    - Recovery: ``XAUTOCLAIM`` reclaims crashed-consumer entries and re-delivers them
+      through decode → handler → XACK (at-least-once; handlers must be idempotent)
     - No Redis modules — only core Streams commands (Valkey compatible)
 
 Redis Commands Used:
@@ -305,10 +306,12 @@ class StreamConsumer:
         """Reclaim idle entries from crashed consumers and dead-letter failed entries.
 
         Uses XAUTOCLAIM to atomically find entries that have been idle longer
-        than ``claim_timeout_ms`` and transfer them to this consumer's PEL. The
-        cursor advances across cycles (stored in ``self._xclaim_cursor``) so that
-        a large PEL is processed incrementally at ``batch_size`` entries per cycle
-        rather than in a single unbounded scan.
+        than ``claim_timeout_ms`` and re-deliver them through the full
+        decode → handler → XACK pipeline, restoring at-least-once semantics for
+        entries that were claimed by a crashed consumer. The cursor advances
+        across cycles (stored in ``self._xclaim_cursor``) so that a large PEL
+        is processed incrementally at ``batch_size`` entries per cycle rather
+        than in a single unbounded scan.
 
         Dead-letter gating uses an explicit handler-attempt counter
         (``times_delivered`` from XPENDING) rather than the XAUTOCLAIM
