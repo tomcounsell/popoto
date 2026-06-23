@@ -290,40 +290,42 @@ class TestHandlerException:
 
 class TestDeadLetter:
     def test_entries_exceeding_max_retries_are_dead_lettered(self):
-        """Entries that exceed max_retries delivery events are moved to dead-letter.
+        """Entries that exceed max_retries handler invocations are moved to dead-letter.
 
-        Uses the real consumer claim cycle (XAUTOCLAIM) to bump the delivery
-        counter, rather than manual XCLAIM inflation. Dead-lettering fires when
-        times_delivered >= max_retries. With max_retries=2 and claim_timeout_ms=0,
-        a single reclaim cycle (times_delivered: 1 initial + 1 xautoclaim = 2)
-        triggers dead-letter on the next cycle.
+        Uses the real consumer claim cycle (XAUTOCLAIM) to redeliver entries
+        to a failing handler. Dead-lettering fires when the handler-attempt
+        counter >= max_retries. With max_retries=2 and a handler that always
+        raises, 2 handler invocations trigger dead-lettering on the next cycle.
         """
         _xadd_entries(STREAM_KEY, 1)
         POPOTO_REDIS_DB.xgroup_create(STREAM_KEY, "dl_group", id="0", mkstream=True)
-        # Initial delivery: times_delivered = 1
+        # Initial delivery: entry enters PEL
         POPOTO_REDIS_DB.xreadgroup(
             "dl_group", "crashed-worker", {STREAM_KEY: ">"}, count=1
         )
 
-        async def noop_handler(entries):
-            pass
+        async def always_failing_handler(entries):
+            raise RuntimeError("Always fails")
 
         consumer = StreamConsumer(
             stream_key=STREAM_KEY,
             group_name="dl_group",
             consumer_name="recovery-worker",
-            handler=noop_handler,
+            handler=always_failing_handler,
             max_retries=2,
             claim_timeout_ms=0,
             block_ms=100,
         )
 
-        # Run until dead-lettered (at most max_retries + 2 cycles)
-        for _ in range(5):
+        # Run until dead-lettered (max_retries handler calls + 1 dead-letter cycle)
+        for _ in range(6):
             dead_entries = POPOTO_REDIS_DB.xrange(DEAD_LETTER_KEY)
             if dead_entries:
                 break
-            consumer.process_batch_sync()
+            try:
+                consumer.process_batch_sync()
+            except RuntimeError:
+                pass  # expected when handler fails during redelivery
 
         # Check that the dead-letter stream has the entry
         dead_entries = POPOTO_REDIS_DB.xrange(DEAD_LETTER_KEY)
@@ -346,19 +348,21 @@ class TestDeadLetter:
 
         for i in range(n_entries):
             _xadd_entries(STREAM_KEY, 1, prefix=f"dl_max_{i}")
-            # Initial delivery: times_delivered = 1
+            # Initial delivery: entry enters PEL
             POPOTO_REDIS_DB.xreadgroup(
                 "dl_max_group", "crashed", {STREAM_KEY: ">"}, count=1
             )
 
-        async def noop_handler(entries):
-            pass
+        # Must use a failing handler — successful delivery ACKs entries without
+        # dead-lettering them, so max_length would never be exercised.
+        async def always_failing_handler(entries):
+            raise RuntimeError("Always fails")
 
         consumer = StreamConsumer(
             stream_key=STREAM_KEY,
             group_name="dl_max_group",
             consumer_name="recovery",
-            handler=noop_handler,
+            handler=always_failing_handler,
             max_retries=1,
             claim_timeout_ms=0,
             block_ms=100,
@@ -366,11 +370,15 @@ class TestDeadLetter:
         )
 
         # Run until all entries are cleared from XPENDING
-        for _ in range(n_entries + 3):
+        # With max_retries=1: 1 handler call per entry, then dead-letter on next cycle
+        for _ in range(n_entries * 3 + 3):
             pending = POPOTO_REDIS_DB.xpending(STREAM_KEY, "dl_max_group")
             if pending["pending"] == 0:
                 break
-            consumer.process_batch_sync()
+            try:
+                consumer.process_batch_sync()
+            except RuntimeError:
+                pass
 
         dead_entries = POPOTO_REDIS_DB.xrange(DEAD_LETTER_KEY)
         # With approximate trimming, may be slightly over, but should be bounded
@@ -755,40 +763,38 @@ class TestXClaimRedelivery:
 
 
 class TestDeadLetterThreshold:
-    """Tests for dead-letter gating based on XPENDING times_delivered.
+    """Tests for dead-letter gating based on actual handler invocations.
 
-    The dead-letter gate fires when times_delivered >= max_retries. The
-    times_delivered counter is incremented by: initial XREADGROUP delivery +
-    each XAUTOCLAIM reclaim cycle. It is NOT limited to handler invocations.
+    The dead-letter gate fires when the handler-attempt counter >= max_retries.
+    The counter is incremented once per actual handler invocation, NOT per
+    XAUTOCLAIM claim cycle. This decouples dead-lettering from claim-cycle
+    inflation and ensures max_retries is the exact number of handler calls
+    before dead-lettering.
     """
 
     @pytest.mark.parametrize("max_retries_val", [1, 2, 3, 5])
-    def test_dead_letter_after_exactly_max_retries_delivery_events(
+    def test_dead_letter_after_exactly_max_retries_handler_invocations(
         self, max_retries_val
     ):
-        """Entry is dead-lettered after exactly max_retries total delivery events.
+        """Entry is dead-lettered after exactly max_retries handler invocations.
 
-        BLOCKER-2 verification: dead-lettering is based on times_delivered from
-        XPENDING, which counts the initial xreadgroup delivery + each xautoclaim
-        reclaim. With max_retries=N: after 1 initial delivery + (N-1) xautoclaim
-        cycles, times_delivered reaches N and the entry is dead-lettered.
-
-        This test pumps the entry through enough claim cycles to trigger
-        dead-lettering, then verifies it appears in dead:{stream_key}.
+        BLOCKER-2 verification: dead-lettering is gated on actual handler
+        invocations, not XAUTOCLAIM claim cycles. With max_retries=N:
+        exactly N handler calls occur before the entry is dead-lettered.
+        handler.call_count == max_retries is the acceptance criterion.
         """
         group = f"dl_threshold_group_{max_retries_val}"
         _xadd_entries(STREAM_KEY, 1, prefix=f"thresh_{max_retries_val}")
 
-        # Initial delivery (times_delivered = 1)
+        # Initial delivery (entry enters PEL)
         POPOTO_REDIS_DB.xgroup_create(STREAM_KEY, group, id="0", mkstream=True)
         POPOTO_REDIS_DB.xreadgroup(group, "crashed", {STREAM_KEY: ">"}, count=1)
 
-        # Run reclaim cycles until dead-lettered. Each process_batch_sync call
-        # invokes xautoclaim which bumps times_delivered by 1. We need
-        # (max_retries_val - 1) additional increments to reach the threshold.
-        # Use max_retries=max_retries_val and claim_timeout_ms=0 so xautoclaim
-        # always finds the entry eligible.
+        # Track actual handler invocations
+        handler_call_count = {"n": 0}
+
         async def always_failing_handler(entries):
+            handler_call_count["n"] += len(entries)
             raise RuntimeError("Always fails")
 
         consumer = StreamConsumer(
@@ -801,8 +807,8 @@ class TestDeadLetterThreshold:
             block_ms=100,
         )
 
-        # Run at most max_retries_val + 2 cycles to avoid infinite loop
-        for _ in range(max_retries_val + 2):
+        # Run enough cycles — need max_retries_val handler calls + 1 cycle to dead-letter
+        for _ in range(max_retries_val + 3):
             dead_entries = POPOTO_REDIS_DB.xrange(DEAD_LETTER_KEY)
             if dead_entries:
                 break
@@ -813,8 +819,14 @@ class TestDeadLetterThreshold:
 
         dead_entries = POPOTO_REDIS_DB.xrange(DEAD_LETTER_KEY)
         assert len(dead_entries) >= 1, (
-            f"Expected entry in dead-letter after {max_retries_val} delivery "
-            f"events, but found none"
+            f"Expected entry in dead-letter after {max_retries_val} handler "
+            f"invocations, but found none"
+        )
+
+        # THE KEY ASSERTION: handler was called exactly max_retries times
+        assert handler_call_count["n"] == max_retries_val, (
+            f"Expected exactly {max_retries_val} handler calls before dead-lettering, "
+            f"but got {handler_call_count['n']}"
         )
 
         # Entry is gone from XPENDING after dead-lettering
@@ -824,12 +836,14 @@ class TestDeadLetterThreshold:
             f"still pending: {pending['pending']}"
         )
 
-    def test_dead_letter_failure_count_equals_actual_delivery_count(self):
-        """Dead-letter metadata has failure_count equal to actual times_delivered.
+    def test_dead_letter_failure_count_reflects_xpending_delivery_count(self):
+        """Dead-letter metadata has failure_count from XPENDING times_delivered.
 
-        The failure_count stored in dead:{stream_key} must reflect the real
-        delivery count, not the configured max_retries threshold. These differ
-        when the entry is claimed multiple times before dead-lettering.
+        The failure_count stored in dead:{stream_key} reflects the real Redis
+        delivery count (from XPENDING), not the configured max_retries threshold
+        or the handler-attempt counter. This means failure_count >= max_retries
+        when dead-lettered (since XAUTOCLAIM may inflate times_delivered beyond
+        the handler-attempt count).
         """
         group = "dl_fc_group"
         max_retries = 2
@@ -839,25 +853,30 @@ class TestDeadLetterThreshold:
         # Initial delivery: times_delivered = 1
         POPOTO_REDIS_DB.xreadgroup(group, "crashed", {STREAM_KEY: ">"}, count=1)
 
-        async def noop_handler(entries):
-            pass
+        # Must use a failing handler — successful delivery ACKs the entry and
+        # cleans up the handler-attempt counter, so dead-lettering never triggers.
+        async def always_failing_handler(entries):
+            raise RuntimeError("Always fails")
 
         consumer = StreamConsumer(
             stream_key=STREAM_KEY,
             group_name=group,
             consumer_name="recovery",
-            handler=noop_handler,
+            handler=always_failing_handler,
             max_retries=max_retries,
             claim_timeout_ms=0,
             block_ms=100,
         )
 
         # Run enough cycles to trigger dead-lettering
-        for _ in range(max_retries + 2):
+        for _ in range(max_retries + 3):
             dead_entries = POPOTO_REDIS_DB.xrange(DEAD_LETTER_KEY)
             if dead_entries:
                 break
-            consumer.process_batch_sync()
+            try:
+                consumer.process_batch_sync()
+            except RuntimeError:
+                pass
 
         dead_entries = POPOTO_REDIS_DB.xrange(DEAD_LETTER_KEY)
         assert len(dead_entries) >= 1
@@ -865,9 +884,8 @@ class TestDeadLetterThreshold:
         _, dead_fields = dead_entries[0]
         stored_failure_count = int(dead_fields[b"failure_count"])
 
-        # failure_count must be >= max_retries (the actual delivery count when
-        # dead-lettered may be exactly max_retries or higher, depending on how
-        # many xautoclaim cycles ran before the threshold was reached)
+        # failure_count reflects XPENDING times_delivered, which is >= max_retries
+        # (XAUTOCLAIM may inflate times_delivered beyond the handler-attempt count)
         assert stored_failure_count >= max_retries, (
             f"failure_count {stored_failure_count} should be >= max_retries "
             f"{max_retries}"
