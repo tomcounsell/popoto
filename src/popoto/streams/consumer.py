@@ -19,6 +19,7 @@ Redis Commands Used:
     - XPENDING — inspect pending entries for recovery/dead-letter decisions
     - XAUTOCLAIM — atomically reclaim idle entries from crashed consumers
     - XADD — write to dead-letter stream
+    - HGET / HINCRBY / HDEL — per-entry handler-attempt counter (_hattempts hash)
 
 Example:
     async def my_handler(entries):

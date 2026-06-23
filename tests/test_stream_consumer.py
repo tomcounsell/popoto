@@ -901,40 +901,48 @@ class TestDeadLetterThreshold:
         """Dead-letter stream respects max_length with entries from real failure cycles."""
         group = "dl_maxlen_group"
         n_entries = 5
-        max_retries = 1  # dead-letter quickly (after 1 xautoclaim)
+        max_retries = 1  # dead-letter quickly (after 1 handler attempt)
+        dead_letter_max_length = 3
 
         POPOTO_REDIS_DB.xgroup_create(STREAM_KEY, group, id="0", mkstream=True)
 
         for i in range(n_entries):
             _xadd_entries(STREAM_KEY, 1, prefix=f"maxlen_{i}")
-            # Initial delivery
+            # Initial delivery — simulate crashed consumer that never ACKs
             POPOTO_REDIS_DB.xreadgroup(group, "crashed", {STREAM_KEY: ">"}, count=1)
 
-        async def noop_handler(entries):
-            pass
+        async def always_failing_handler(entries):
+            raise RuntimeError("Always fails — drives dead-lettering")
 
         consumer = StreamConsumer(
             stream_key=STREAM_KEY,
             group_name=group,
             consumer_name="recovery",
-            handler=noop_handler,
+            handler=always_failing_handler,
             max_retries=max_retries,
             claim_timeout_ms=0,
             block_ms=100,
-            dead_letter_max_length=3,
+            dead_letter_max_length=dead_letter_max_length,
         )
 
         # Run until all entries are dead-lettered (multiple cycles needed)
-        for _ in range(n_entries + 3):
+        for _ in range(n_entries * 3 + 5):
+            dead_entries = POPOTO_REDIS_DB.xrange(DEAD_LETTER_KEY)
             pending = POPOTO_REDIS_DB.xpending(STREAM_KEY, group)
-            if pending["pending"] == 0:
+            if len(dead_entries) >= n_entries or pending["pending"] == 0:
                 break
-            consumer.process_batch_sync()
+            try:
+                consumer.process_batch_sync()
+            except RuntimeError:
+                pass
 
         dead_entries = POPOTO_REDIS_DB.xrange(DEAD_LETTER_KEY)
-        # With approximate MAXLEN trimming, length may be slightly above 3 but
-        # should be bounded well below n_entries=5 if trimming is working
-        assert len(dead_entries) <= n_entries, (
+        # Entries ARE actually dead-lettered (not vacuously zero)
+        assert len(dead_entries) >= 1, (
+            f"Expected entries to be dead-lettered, got {len(dead_entries)}"
+        )
+        # MAXLEN trimming keeps the stream bounded
+        assert len(dead_entries) <= dead_letter_max_length + 2, (
             f"Dead-letter stream has {len(dead_entries)} entries, "
-            f"expected <= {n_entries}"
+            f"expected at most {dead_letter_max_length + 2} (approximate MAXLEN)"
         )

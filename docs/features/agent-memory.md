@@ -1070,7 +1070,7 @@ On each `process_batch()` call, the consumer checks for pending entries from cra
 
 `process_batch()` returns the total number of entries handled in the cycle — both new entries and reclaimed entries are counted (new + reclaimed).
 
-The `failure_count` field in dead-letter entries records the number of delivery attempts (handler invocations) at the time the entry was dead-lettered.
+The `failure_count` field in dead-letter entries records the server-side delivery count (XPENDING `times_delivered`) at the time the entry was dead-lettered. This value may exceed the number of handler invocations because XAUTOCLAIM claim cycles increment `times_delivered` independently of handler execution.
 
 ### Graceful shutdown
 
