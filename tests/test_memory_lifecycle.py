@@ -16,11 +16,6 @@ Coverage:
 - AccessTrackerMixin absence degrades gracefully
 """
 
-import sys
-import os
-import time
-import threading
-
 import pytest
 
 # Test models use AccessTrackerMixin for realistic lifecycle behavior
@@ -33,8 +28,6 @@ from src.popoto.exceptions import ModelException
 from src.popoto.recipes.memory_lifecycle import (
     LifecycleState,
     MemoryLifecycle,
-    _default_should_forget,
-    _default_should_promote,
 )
 
 # ---------------------------------------------------------------------------
@@ -346,17 +339,16 @@ def test_empty_corpus_tick(lifecycle):
 
 
 # ---------------------------------------------------------------------------
-# Batch pagination tests
+# Large corpus single-pass tests
 # ---------------------------------------------------------------------------
 
 
-def test_tick_batch_pagination():
-    """200 records paginate correctly across two TICK_BATCH_SIZE=100 batches."""
+def test_tick_large_corpus():
+    """200 records are all promoted in a single tick() pass."""
     lifecycle = MemoryLifecycle(
         model_class=TrackedMemory,
         importance_field="relevance",
     )
-    lifecycle.TICK_BATCH_SIZE = 100
     lifecycle.PROMOTION_ACCESS_COUNT = 1
     lifecycle.PROMOTION_CONFIDENCE_THRESHOLD = 0.0
     lifecycle.PROMOTION_MIN_AGE_SECONDS = 0.0
