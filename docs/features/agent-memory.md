@@ -1113,12 +1113,14 @@ Shipped in [PR #239](https://github.com/tomcounsell/popoto/pull/239).
 ### Basic usage
 
 ```python
+from decimal import Decimal
+
 from popoto.recipes.policy_cache import (
     PolicyEntry, compute_fingerprint, update_q_value,
-    initialize_q_value, crystallization_handler,
+    crystallization_handler,
 )
 
-# Create a policy directly
+# Create a policy directly — seed q_value at construction
 fp = compute_fingerprint({"task": "deploy", "env": "staging"})
 policy = PolicyEntry(
     agent_id="agent-1",
@@ -1126,11 +1128,11 @@ policy = PolicyEntry(
     state_features={"task": "deploy", "env": "staging"},
     action_type="run_playbook",
     action_spec={"playbook": "deploy.yml"},
+    q_value=Decimal("0.0"),  # q_value lives in the model hash, not the ZSET score
 )
-policy.save()
+policy.save()  # persists both model fields and q_value in one round-trip
 
-# Initialize and update Q-value via temporal difference learning
-initialize_q_value(policy, initial_q=0.0)
+# Update Q-value via temporal difference learning
 td_error = update_q_value(policy, reward=1.0)
 
 # Or let crystallization detect patterns automatically
@@ -1154,8 +1156,10 @@ class PolicyEntry(EventStreamMixin, AccessTrackerMixin, PredictionLedgerMixin, M
     state_features = Field()                      # JSON dict
     action_type = KeyField()
     action_spec = Field()                         # JSON dict
+    q_value = DecimalField(default=Decimal("0"))
     expected_value = DecayingSortedField(
         partition_by="agent_id",
+        base_score_field="q_value",
     )
     confidence = ConfidenceField(initial_confidence=0.5)
     related_policies = CoOccurrenceField(symmetric=True, max_edges=100)
@@ -1174,7 +1178,7 @@ WriteFilterMixin is intentionally excluded — the crystallization handler IS th
 |----------|-------------|
 | `compute_fingerprint(features, include_fields=None, include_timestamp=False)` | SHA-256 hash (16 hex chars) of state features |
 | `update_q_value(instance, reward, max_future_q=0.0, alpha=0.1, gamma=0.95)` | Atomic TD(0) Q-value update via Lua script |
-| `initialize_q_value(instance, initial_q=0.0)` | Set initial Q-value (overrides timestamp from save) |
+| `initialize_q_value(instance, initial_q=0.0)` | Set initial `q_value` in the model hash and save (no timestamp override) |
 | `wilson_ci_lower(successes, total, z=1.96)` | Wilson score confidence interval lower bound |
 | `chi_squared_uniform(observed, expected_per_bucket)` | Chi-squared test against uniform distribution |
 | `crystallization_handler(entries)` | StreamConsumer handler for pattern detection |

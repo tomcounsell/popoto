@@ -56,6 +56,7 @@ import json
 import logging
 import math
 import time
+from decimal import Decimal
 
 
 from ..fields.access_tracker import AccessTrackerMixin
@@ -67,7 +68,7 @@ from ..fields.event_stream import EventStreamMixin
 from ..fields.existence_filter import ExistenceFilter
 from ..fields.field import Field
 from ..fields.prediction_ledger import PredictionLedgerMixin
-from ..fields.shortcuts import AutoKeyField, KeyField
+from ..fields.shortcuts import AutoKeyField, DecimalField, KeyField
 from ..models.base import Model
 from ..redis_db import POPOTO_REDIS_DB
 
@@ -131,28 +132,43 @@ If the test statistic exceeds the critical value, the null hypothesis
 
 TD_UPDATE_LUA = """
 -- td_update.lua: Temporal difference Q-value update
--- KEYS[1] = DecayingSortedField sorted set key
+-- KEYS[1] = model hash key (instance redis_key, e.g. PolicyEntry:agent-1:fp:action)
 -- ARGV[1] = reward (float)
 -- ARGV[2] = alpha (learning rate)
 -- ARGV[3] = gamma (discount factor)
 -- ARGV[4] = max_future_q (float)
--- ARGV[5] = member key (instance redis_key)
+--
+-- Q-value is stored in the model hash under field "q_value" as a
+-- cmsgpack-encoded __Decimal__ tagged dict (byte-interchangeable with
+-- Python msgpack encoding of Decimal).
 --
 -- Returns: td_error as string
 
-local current_q = tonumber(redis.call('ZSCORE', KEYS[1], ARGV[5]))
-if current_q == nil then
-    current_q = 0
-end
+local hash_key = KEYS[1]
 local reward = tonumber(ARGV[1])
 local alpha = tonumber(ARGV[2])
 local gamma = tonumber(ARGV[3])
 local max_future_q = tonumber(ARGV[4])
 
+-- Read current Q from model hash
+local current_q = 0
+local raw = redis.call('HGET', hash_key, 'q_value')
+if raw then
+    local ok, decoded = pcall(cmsgpack.unpack, raw)
+    if ok and type(decoded) == 'number' then
+        current_q = decoded
+    elseif ok and type(decoded) == 'table' and decoded['as_encodable'] then
+        -- __Decimal__ tagged dict encoding
+        current_q = tonumber(decoded['as_encodable']) or 0
+    end
+end
+
 local td_error = reward + gamma * max_future_q - current_q
 local new_q = current_q + alpha * td_error
 
-redis.call('ZADD', KEYS[1], new_q, ARGV[5])
+-- Write new Q as __Decimal__ tagged dict (byte-interchangeable with Python msgpack Decimal)
+local encoded = cmsgpack.pack({['__Decimal__']=true, ['as_encodable']=tostring(new_q)})
+redis.call('HSET', hash_key, 'q_value', encoded)
 return tostring(td_error)
 """
 
@@ -177,7 +193,14 @@ class PolicyEntry(EventStreamMixin, AccessTrackerMixin, PredictionLedgerMixin, M
         state_features: Original state feature dict (JSON-serializable).
         action_type: Category of the action (e.g., "run_playbook").
         action_spec: Full action specification dict (JSON-serializable).
-        expected_value: Q-value with temporal decay, partitioned by agent.
+        q_value: Learned Q-value stored as a DecimalField in the model hash.
+            Survives save(), touch(), and "acted" outcomes unchanged.
+            Updated atomically by update_q_value() via TD(0) Lua script.
+        expected_value: Pure recency clock implemented as a DecayingSortedField
+            with base_score_field="q_value". The sorted-set score is the
+            decay-weighted access timestamp; q_value supplies the base
+            magnitude. These two storage slots are independent — writing
+            one does not overwrite the other.
         confidence: Bayesian confidence growing with successful outcomes.
         related_policies: Weighted co-occurrence graph between policies.
         bloom: Bloom filter for fast state_fingerprint pre-checks.
@@ -200,8 +223,10 @@ class PolicyEntry(EventStreamMixin, AccessTrackerMixin, PredictionLedgerMixin, M
     action_type = KeyField()
     action_spec = Field()  # JSON dict
 
+    q_value = DecimalField(default=Decimal("0"))
     expected_value = DecayingSortedField(
         partition_by="agent_id",
+        base_score_field="q_value",
     )
     confidence = ConfidenceField(initial_confidence=0.5)
     related_policies = CoOccurrenceField(symmetric=True, max_edges=100)
@@ -322,10 +347,16 @@ def update_q_value(
 ) -> float:
     """Update a PolicyEntry's Q-value via temporal difference learning.
 
-    Atomically updates the expected_value (Q-value) in the sorted set
-    using the TD(0) update rule:
+    Atomically updates the q_value field in the model hash using the TD(0)
+    update rule:
 
         Q(s,a) ← Q(s,a) + α [r + γ max Q(s',a') - Q(s,a)]
+
+    The Q-value is stored as a DecimalField in the model hash (HGET/HSET on
+    the ``q_value`` field). This is independent of the ``expected_value``
+    sorted-set score, which is a pure recency/decay clock. Updating the
+    Q-value does not alter the decay timestamp, and a save() or touch() call
+    does not reset the Q-value.
 
     Args:
         instance: A saved PolicyEntry instance.
@@ -343,27 +374,32 @@ def update_q_value(
         ValueError: If the instance has no redis_key (unsaved).
     """
     redis_key = _get_redis_key(instance)
-    sortedset_key = _get_sortedset_key(instance)
 
     td_error = POPOTO_REDIS_DB.eval(
         TD_UPDATE_LUA,
         1,  # num keys
-        sortedset_key,  # KEYS[1]
+        redis_key,  # KEYS[1] — model hash key
         str(reward),  # ARGV[1]
         str(alpha),  # ARGV[2]
         str(gamma),  # ARGV[3]
         str(max_future_q),  # ARGV[4]
-        redis_key,  # ARGV[5]
     )
 
     return float(td_error)
 
 
 def initialize_q_value(instance, initial_q: float = 0.0) -> None:
-    """Set the initial Q-value for a PolicyEntry in the sorted set.
+    """Set the initial Q-value for a PolicyEntry.
 
-    After save(), DecayingSortedField stores the current timestamp as score.
-    This function overrides that with the desired initial Q-value.
+    Writes ``initial_q`` into the ``q_value`` DecimalField on the model hash
+    and calls ``save()``. The ``expected_value`` sorted-set score (the recency
+    decay clock) is left unchanged — the two storage slots are independent.
+
+    Use this when you want to seed a freshly-constructed PolicyEntry with a
+    specific starting Q before any TD updates. The crystallization handler
+    instead passes ``q_value`` at construction so only one ``save()`` is
+    needed; calling ``initialize_q_value`` afterward is redundant in that
+    path.
 
     Args:
         instance: A saved PolicyEntry instance.
@@ -372,9 +408,9 @@ def initialize_q_value(instance, initial_q: float = 0.0) -> None:
     Raises:
         ValueError: If the instance is unsaved.
     """
-    redis_key = _get_redis_key(instance)
-    sortedset_key = _get_sortedset_key(instance)
-    POPOTO_REDIS_DB.zadd(sortedset_key, {redis_key: initial_q})
+    _get_redis_key(instance)  # raises if unsaved
+    instance.q_value = Decimal(str(initial_q))
+    instance.save()
 
 
 def _get_redis_key(instance) -> str:
@@ -386,20 +422,6 @@ def _get_redis_key(instance) -> str:
         except Exception:
             raise ValueError("Cannot operate on unsaved PolicyEntry")
     return redis_key
-
-
-def _get_sortedset_key(instance) -> str:
-    """Get the sorted set key for the expected_value field.
-
-    Note: Accesses ``instance._meta.fields`` which is a Popoto internal.
-    If the ``_meta`` structure changes in a future Popoto release, this
-    will need updating. The test_q_value_update test validates the key
-    format implicitly.
-    """
-    field = instance._meta.fields["expected_value"]
-    return field.__class__.get_partitioned_sortedset_db_key(
-        instance, "expected_value"
-    ).redis_key
 
 
 # ---------------------------------------------------------------------------
@@ -496,20 +518,17 @@ async def crystallization_handler(entries):
         except (json.JSONDecodeError, TypeError):
             action_spec = {}
 
+        # q_value is stored separately from the decay timestamp — pass it
+        # at construction so it is persisted by the same save() call.
         policy = PolicyEntry(
             agent_id=agent_id,
             state_fingerprint=fp,
             state_features=state_features,
             action_type=action,
             action_spec=action_spec,
+            q_value=Decimal(str(ci_lower)),
         )
         policy.save()
-
-        # Initialize Q-value (overrides timestamp set by DecayingSortedField)
-        try:
-            initialize_q_value(policy, initial_q=ci_lower)
-        except Exception as e:
-            logger.warning("Failed to set initial Q-value for %s: %s", fp, e)
 
         logger.info(
             "Crystallized PolicyEntry: fp=%s action=%s ci=%.3f (n=%d)",

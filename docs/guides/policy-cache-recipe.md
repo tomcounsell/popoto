@@ -7,16 +7,17 @@ A reference recipe composing all shipped Popoto memory primitives into an RL-sty
 ## Quick Start
 
 ```python
+from decimal import Decimal
+
 from popoto.recipes.policy_cache import (
     PolicyEntry,
     compute_fingerprint,
     update_q_value,
-    initialize_q_value,
     crystallization_handler,
     temporal_discovery_handler,
 )
 
-# Create a policy entry
+# Create a policy entry with an initial Q-value
 fp = compute_fingerprint({"task": "deploy", "env": "staging"})
 policy = PolicyEntry(
     agent_id="agent-1",
@@ -24,11 +25,9 @@ policy = PolicyEntry(
     state_features={"task": "deploy", "env": "staging"},
     action_type="run_playbook",
     action_spec={"playbook": "deploy.yml"},
+    q_value=Decimal("0.5"),  # seed initial Q-value at construction
 )
-policy.save()
-
-# Set initial Q-value (overrides DecayingSortedField timestamp)
-initialize_q_value(policy, initial_q=0.5)
+policy.save()  # persists both model fields and q_value in one round-trip
 
 # Update Q-value after observing a reward
 td_error = update_q_value(policy, reward=1.0)
@@ -42,7 +41,8 @@ PolicyEntry composes these primitives:
 |-----------|-------------------|
 | `AutoKeyField` | Unique entry ID |
 | `KeyField` | Agent partitioning, state fingerprinting, action type |
-| `DecayingSortedField` | Q-value storage with temporal decay |
+| `DecimalField` (`q_value`) | Learned Q-value stored in the model hash |
+| `DecayingSortedField` (`expected_value`) | Pure recency clock; uses `q_value` as base magnitude via `base_score_field` |
 | `ConfidenceField` | Capped-evidence confidence from outcome history |
 | `CoOccurrenceField` | Weighted graph between related policies |
 | `ExistenceFilter` | Bloom filter for fast state lookup |
@@ -94,6 +94,19 @@ Q(s,a) <- Q(s,a) + alpha * [reward + gamma * max_Q(s',a') - Q(s,a)]
 - **alpha** (learning rate): How much new information overrides old (default: 0.1)
 - **gamma** (discount factor): Importance of future rewards (default: 0.95)
 - Returns TD error (positive = better than expected)
+
+### Storage architecture
+
+Q-values live in two separate slots that never overwrite each other:
+
+- **`q_value` (model hash)** — the learned value. Updated by `update_q_value()` via `HGET`/`HSET` on the model hash key. A `save()` or `touch()` on the instance does not reset it.
+- **`expected_value` (sorted set)** — a pure recency/decay clock. Its score is the decay-weighted access timestamp multiplied by the `q_value` magnitude. Writing a new TD estimate via `update_q_value()` does not disturb this clock.
+
+This separation means `Q(s,a)` survives every access pattern — `save()`, `touch()`, and `"acted"` outcome resolution — intact.
+
+### Negative Q-values
+
+`DecayingSortedField` includes a sign-preserving guard in its decay Lua script: negative Q-values retain their sign through the decay calculation. Policies that have been penalized remain penalized after aging.
 
 ## Tuning Constants
 
