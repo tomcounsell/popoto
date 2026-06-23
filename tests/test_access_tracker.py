@@ -710,6 +710,100 @@ class TestPartitionInteraction:
         assert len(results_after) == 2
 
 
+# --- TTL / staged-key expiry tests ---
+
+
+class TestStagedTTL:
+    """Test that on_read() sets a TTL on the staged key."""
+
+    def setup_method(self):
+        TrackedItem.delete_all()
+        redis = popoto.get_redis()
+        for key in redis.scan_iter("$AT:*"):
+            redis.delete(key)
+
+    def teardown_method(self):
+        TrackedItem.delete_all()
+        redis = popoto.get_redis()
+        for key in redis.scan_iter("$AT:*"):
+            redis.delete(key)
+
+    def test_on_read_sets_ttl(self):
+        """on_read() applies a TTL to the staged key."""
+        item = TrackedItem.create(name="ttl_test")
+        item.on_read()
+
+        redis = popoto.get_redis()
+        staged_key = f"$AT:TrackedItem:staged:{item.db_key.redis_key}"
+        ttl = redis.ttl(staged_key)
+        # TTL should be positive and roughly equal to _staged_ttl_seconds (86400)
+        assert ttl > 0
+        assert ttl <= TrackedItem._staged_ttl_seconds
+
+    def test_on_read_pipeline_sets_ttl(self):
+        """on_read() with a pipeline also sets the TTL on the staged key."""
+        item = TrackedItem.create(name="ttl_pipe_test")
+        pipe = popoto.get_redis().pipeline()
+        item.on_read(pipeline=pipe)
+        pipe.execute()
+
+        redis = popoto.get_redis()
+        staged_key = f"$AT:TrackedItem:staged:{item.db_key.redis_key}"
+        ttl = redis.ttl(staged_key)
+        assert ttl > 0
+        assert ttl <= TrackedItem._staged_ttl_seconds
+
+    def test_multiple_on_reads_refresh_ttl(self):
+        """Repeated on_read() calls keep refreshing the TTL."""
+        item = TrackedItem.create(name="ttl_refresh")
+        item.on_read()
+        item.on_read()
+        item.on_read()
+
+        redis = popoto.get_redis()
+        staged_key = f"$AT:TrackedItem:staged:{item.db_key.redis_key}"
+        ttl = redis.ttl(staged_key)
+        # TTL should be near-full after the last on_read refresh
+        assert ttl > 0
+        assert ttl <= TrackedItem._staged_ttl_seconds
+
+    def test_confirm_on_empty_staging_emits_debug(self, caplog):
+        """confirm_access() on empty/expired staging emits a DEBUG log."""
+        import logging
+
+        item = TrackedItem.create(name="ttl_debug_log")
+        # Do NOT call on_read() — staged key is empty
+        with caplog.at_level(logging.DEBUG, logger="POPOTO.AccessTracker"):
+            count = item.confirm_access()
+
+        assert count == 0
+        assert any(
+            "staged key empty/expired" in r.message and "TTL contract" in r.message
+            for r in caplog.records
+        )
+
+    def test_staged_ttl_default_value(self):
+        """_staged_ttl_seconds defaults to 86400 (24h)."""
+        assert TrackedItem._staged_ttl_seconds == 86400
+
+    def test_staged_ttl_custom_value(self):
+        """Subclasses can override _staged_ttl_seconds."""
+
+        class ShortTTLItem(AccessTrackerMixin, popoto.Model):
+            _staged_ttl_seconds = 300  # 5 minutes
+            name = popoto.UniqueKeyField()
+
+        ShortTTLItem.delete_all()
+        item = ShortTTLItem.create(name="short_ttl")
+        item.on_read()
+
+        redis = popoto.get_redis()
+        staged_key = f"$AT:ShortTTLItem:staged:{item.db_key.redis_key}"
+        ttl = redis.ttl(staged_key)
+        assert 0 < ttl <= 300
+        ShortTTLItem.delete_all()
+
+
 # --- Export tests ---
 
 

@@ -65,6 +65,10 @@ class AccessTrackerMixin:
             Older entries are trimmed on confirm. Default 100.
         _track_reads: Whether to automatically track reads from queries.
             Default True.
+        _staged_ttl_seconds: TTL applied to the staging list on every on_read()
+            call. Default 86400 (24h). Magic-number tuning knob — increase if
+            your stage→confirm cadence exceeds 24h. See on_read() docstring for
+            the staged-read TTL contract.
 
     Note: Attributes are prefixed with underscore to avoid conflict with
     Popoto's ModelBase metaclass, which requires public attributes to be Fields.
@@ -72,6 +76,9 @@ class AccessTrackerMixin:
 
     _max_access_log = 100
     _track_reads = True
+    _staged_ttl_seconds: int = (
+        86400  # 24h — magic-number tuning knob; see on_read() docstring
+    )
 
     def _at_key(self, kind):
         """Build an access tracker Redis key.
@@ -89,18 +96,33 @@ class AccessTrackerMixin:
     def on_read(self, pipeline=None):
         """Record a read access by staging a timestamp.
 
-        Appends the current timestamp to the staging list. This is a cheap
-        operation suitable for fire-and-forget use from query hooks.
+        Appends the current timestamp to the staging list and refreshes the
+        TTL on the staged key. This is a cheap operation suitable for
+        fire-and-forget use from query hooks.
+
+        Staged-read TTL contract:
+            Applications MUST call ``confirm_access()`` within
+            ``_staged_ttl_seconds`` (default 24h) of staging reads via
+            ``on_read()``. Reads left unconfirmed past the TTL window are
+            permanently dropped from ``access_count`` / ``last_accessed`` by
+            design. Set ``_staged_ttl_seconds`` higher if a longer
+            stage→confirm cadence is required. The ``_staged_ttl_seconds``
+            constant is a magic-number tuning knob — it is not user-facing
+            configuration.
 
         Args:
-            pipeline: Optional Redis pipeline for batch operations.
+            pipeline: Optional Redis pipeline for batch operations. When
+                provided, the RPUSH and EXPIRE are queued in the same pipeline
+                call so they execute atomically.
         """
         ts = str(time.time())
         staged_key = self._at_key("staged")
         if pipeline:
             pipeline.rpush(staged_key, ts)
+            pipeline.expire(staged_key, self._staged_ttl_seconds)
         else:
             POPOTO_REDIS_DB.rpush(staged_key, ts)
+            POPOTO_REDIS_DB.expire(staged_key, self._staged_ttl_seconds)
 
     def confirm_access(self, pipeline=None):
         """Atomically promote staged reads to the confirmed access log.
@@ -111,12 +133,19 @@ class AccessTrackerMixin:
         3. Update access_count and last_accessed in the meta hash
         4. Delete the staging list
 
+        TTL contract (confirm side):
+            A staged key that expired before confirm contributes 0 to
+            ``access_count`` and does not update ``last_accessed`` — this is
+            by design (see on_read() staged-read TTL contract). When this
+            happens a DEBUG log is emitted.
+
         Args:
             pipeline: Optional Redis pipeline (not used for Lua eval,
                 reserved for future use).
 
         Returns:
-            int: Number of staged reads that were promoted.
+            int: Number of staged reads that were promoted (0 if the staged
+                key was empty or had already expired).
 
         Raises:
             TypeError: If the model instance has not been saved to Redis.
@@ -144,7 +173,13 @@ class AccessTrackerMixin:
             meta_key,
             str(self._max_access_log),
         )
-        return int(count)
+        count = int(count)
+        if count == 0:
+            logger.debug(
+                "AccessTracker: staged key empty/expired at confirm for %s — read dropped (TTL contract)",
+                self.db_key,
+            )
+        return count
 
     def discard_staged_access(self, pipeline=None):
         """Discard all staged reads without affecting confirmed data.
