@@ -54,6 +54,18 @@ rework of composite scoring and tier scans is **deferred** — the maintainer se
 memory scale target (2026-06-11) at which O(N) ticks are acceptable. This issue is about
 `tick()`'s self-pollution and gratuitous double work, not a general performance rewrite.
 
+**Why single-pass hydration stays in scope for THIS bug (not scope-creep).** Single-pass is
+not a speculative performance optimization — it is the *mechanism* that satisfies the issue's
+own acceptance criterion "each record hydrated at most once per tick." The double hydration is
+the literal cause of the double tracking: today `_iter_tier` and `_iter_non_semantic` each call
+`.all()`, and each tracked `.all()` fires a staged read per hydrated record, so the corpus is
+both hydrated twice *and* staged twice per tick. Collapsing to one pass is therefore the minimal
+change that removes the duplicate hydration the issue explicitly calls out; suppressing tracking
+(`.no_track()`) on a *still-doubled* hydration would leave the "hydrated at most once" criterion
+unmet. The two changes are coupled by the bug, not bundled for convenience. (It *could* in
+principle be split into a separate slug, but doing so would leave this issue's acceptance
+criterion only half-met, so it is kept here.)
+
 ## Freshness Check
 
 **Baseline commit:** `a46006607606ca8b828c18c924410d620bee187e`
@@ -291,7 +303,10 @@ regression test asserts confirm semantics are identical with and without the TTL
   (e.g. `len(staged) == 5` after 5 reads, line ~106). Because the bound is **TTL only, no
   cap** (Decision 1), staged lengths are unchanged → these stay green. Add NEW tests:
   (a) staged key has a TTL set/refreshed after `on_read()` (`TTL key` in range, `> 0`,
-  `≤ _staged_ttl_seconds`); (b) `confirm_access()` `access_count` and `last_accessed` are
+  `≤ _staged_ttl_seconds`); (a2) staged key has a TTL after a **pipelined** `on_read()` (the
+  hot path where a pipeline is passed in and executed) — asserts the EXPIRE rides the same
+  pipeline as the RPUSH, so the pipelined branch cannot silently leave the staged list
+  unbounded; (b) `confirm_access()` `access_count` and `last_accessed` are
   **identical** with and without the TTL across `> _max_access_log` reads (Concern 1
   regression — proves the bound does not corrupt the count).
 - `tests/test_memory_lifecycle.py` — UPDATE/ADD: (a) `tick()` over a seeded
@@ -303,6 +318,18 @@ regression test asserts confirm semantics are identical with and without the TTL
   tier in Redis directly, or monkeypatch the corpus to be stale), assert the forget pass
   re-reads tier and does NOT delete the now-semantic record.
 - No new test on `Query.get()/get_many()` (Decision 2 — those paths are unchanged).
+- `tests/test_memory_lifecycle.py::test_tick_batch_pagination` (`:353`) — **REWRITE, do not
+  delete.** This test sets `lifecycle.TICK_BATCH_SIZE = 100` (`:359`) and is built around the
+  batch-pagination semantics that the single-pass refactor eliminates (Decision 3 removes
+  `TICK_BATCH_SIZE` entirely). The valuable assertion it carries — *a 200-record corpus is
+  fully and correctly promoted in one `tick()`* — is preserved and now exercises **single-pass
+  hydration** instead of batch pagination: drop the `lifecycle.TICK_BATCH_SIZE = 100` line,
+  rename the test to `test_tick_single_pass_full_corpus` (or keep the name but update the
+  docstring to "200 records promote correctly in a single hydration pass"), and keep the
+  remaining body unchanged (seed 200 episodic records, `tick()`, assert `promoted == 200`,
+  assert 0 remain episodic and 200 are semantic). Rewriting (not deleting) keeps full-corpus
+  coverage while removing the dependency on the deleted constant. This is the only test that
+  references `TICK_BATCH_SIZE`.
 - No tests deleted. No public behavior of `Query.all()` / `Query.get()` / `Query.get_many()`
   changes.
 
@@ -435,9 +462,10 @@ architecture; popoto has no `.mcp.json` / bridge.)
       after (regression test in `tests/test_memory_lifecycle.py`).
 - [ ] Each record is hydrated at most once per `tick()` (instrumented query/`HGETALL` count
       ≤ corpus size in the test).
-- [ ] Staged lists carry a refreshed TTL (`_staged_ttl_seconds`); `confirm_access()`
-      `access_count`/`last_accessed` are **identical** with and without the TTL (Concern 1
-      regression test).
+- [ ] Staged lists carry a refreshed TTL (`_staged_ttl_seconds`) on **both** the direct and
+      the pipelined `on_read()` paths (the pipelined path is the hot path and must not leave the
+      staged list unbounded); `confirm_access()` `access_count`/`last_accessed` are **identical**
+      with and without the TTL (Concern 1 regression test).
 - [ ] Promote/forget decisions unchanged on a fixture corpus with known cohorts (parity test).
 - [ ] Concurrent-tick guard: a record promoted-to-semantic between snapshot and delete is
       NOT forgotten (Concern 2 test).
@@ -523,9 +551,14 @@ The lead agent orchestrates; it does not build directly.
 - **Agent Type**: test-engineer
 - **Parallel**: false
 - 0-staged-delta tick test; single-pass hydration count test; promote/forget parity test;
-  staged-TTL-present test; confirm_access count/last_accessed parity with-vs-without TTL test
-  (Concern 1); concurrent-tick re-check-before-delete guard test (Concern 2); empty-corpus
-  and predicate-raises tests. (No `get()/get_many()` opt-out test — Decision 2.)
+  staged-TTL-present test (assert the staged key has a TTL after a plain `on_read()`); staged-
+  TTL-present-on-pipelined-read test (assert the staged key has a TTL after an `on_read()` that
+  rides a passed-in pipeline — the hot path — so the pipelined branch cannot silently stay
+  unbounded, Concern from critique); confirm_access count/last_accessed parity with-vs-without
+  TTL test (Concern 1); concurrent-tick re-check-before-delete guard test (Concern 2); empty-
+  corpus and predicate-raises tests. (No `get()/get_many()` opt-out test — Decision 2.)
+- **Rewrite** `test_tick_batch_pagination` → single-pass full-corpus test (drop the
+  `TICK_BATCH_SIZE = 100` line; assert 200 records promote in one pass). See Test Impact.
 
 ### 4. Documentation
 - **Task ID**: document-feature
@@ -541,7 +574,9 @@ The lead agent orchestrates; it does not build directly.
 - **Assigned To**: tick-validator
 - **Agent Type**: validator
 - **Parallel**: false
-- Run full suite; verify every success criterion; grep for Redis-module commands; report.
+- Run full suite; verify every success criterion; run the Valkey-safety grep from the
+  Verification section (the `grep -E '\b(BF|CMS|...)\.[A-Z]'` form — NOT the `\|` form, which
+  matches nothing under `-E` and passes vacuously); report.
 
 ## Verification
 
@@ -554,8 +589,20 @@ The lead agent orchestrates; it does not build directly.
 | Staged list TTL-bounded in on_read | `grep -ci "expire" src/popoto/fields/access_tracker.py` | output > 0 |
 | No LTRIM cap added to on_read | `grep -n "ltrim" src/popoto/fields/access_tracker.py` | only the pre-existing confirmed-log LTRIM (line ~47), none in on_read |
 | TICK_BATCH_SIZE removed | `grep -c "TICK_BATCH_SIZE" src/popoto/recipes/memory_lifecycle.py` | output == 0 |
-| No Redis-module commands added | `grep -rniE "BF\.\|CMS\.\|TOPK\.\|CF\.\|FT\.\|TS\.\|JSON\." src/popoto/recipes/memory_lifecycle.py src/popoto/fields/access_tracker.py` | match count == 0 |
+| No Redis-module commands added | see the Valkey-safety grep below the table (pipes can't render inside a markdown table cell) | exit 1 / 0 matches |
 | Docs build | `mkdocs build --strict` | exit code 0 |
+
+**Valkey-safety grep** (kept outside the table so the `|` alternation is literal and copy-pasteable
+— under `grep -E` you write `a|b`, NOT `a\|b`; the earlier `\|` form never matched and passed
+vacuously). The pattern anchors on a word boundary and an uppercase command suffix so it catches
+real module commands (`BF.ADD`, `JSON.SET`, `FT.SEARCH`) without flagging prose like "lifecycle"
+or "FT" inside identifiers:
+
+```bash
+grep -rnE '\b(BF|CMS|TOPK|CF|FT|TS|JSON)\.[A-Z]' \
+  src/popoto/recipes/memory_lifecycle.py src/popoto/fields/access_tracker.py
+# Expected: no output, exit 1 (zero matches). Verified clean against the current worktree.
+```
 
 ## Critique Results
 
