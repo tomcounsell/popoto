@@ -1003,7 +1003,7 @@ For temporal and band-grouped aggregations via `error_summary(group_by=...)`, se
 
 ## StreamConsumer
 
-A Redis Streams consumer group framework for background processing. Manages consumer group creation, batch reading, acknowledgment, dead-letter handling, and pending entry recovery via XCLAIM.
+A Redis Streams consumer group framework for background processing. Manages consumer group creation, batch reading, acknowledgment, dead-letter handling, and pending entry recovery via XAUTOCLAIM.
 
 Shipped in [PR #238](https://github.com/tomcounsell/popoto/pull/238).
 
@@ -1048,13 +1048,13 @@ count = consumer.process_batch_sync()  # single batch
 | `handler` | `Callable` | *required* | Async function receiving `list[(entry_id, fields_dict)]`. All values decoded to str. |
 | `batch_size` | `int` | `50` | XREADGROUP COUNT — entries per batch. |
 | `block_ms` | `int` | `5000` | XREADGROUP BLOCK timeout in milliseconds. |
-| `max_retries` | `int` | `3` | Delivery count threshold before dead-lettering. |
-| `claim_timeout_ms` | `int` | `180_000` | XCLAIM idle timeout (3 minutes). Entries idle longer are reclaimed. |
+| `max_retries` | `int` | `3` | Handler invocation threshold before dead-lettering. |
+| `claim_timeout_ms` | `int` | `180_000` | XAUTOCLAIM idle timeout (3 minutes). Entries idle longer are reclaimed. |
 | `dead_letter_max_length` | `int` | `None` | Optional MAXLEN for the dead-letter stream. |
 
 ### Dead-letter handling
 
-Entries that fail processing more than `max_retries` times (tracked via XPENDING delivery count) are moved to `dead:{stream_key}` with metadata:
+Entries that fail processing more than `max_retries` times (tracked via handler invocation counter) are moved to `dead:{stream_key}` with metadata:
 
 | Field | Description |
 |-------|-------------|
