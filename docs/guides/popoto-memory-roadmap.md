@@ -678,8 +678,8 @@ class StreamConsumer:
     
     Built-in features:
       - Consumer group auto-creation (XGROUP CREATE ... MKSTREAM)
-      - Exactly-once processing via XACK after handler success
-      - Dead-letter queue for failed entries (XCLAIM after timeout)
+      - At-least-once processing; exactly-once requires idempotent handlers.
+      - Dead-letter queue for failed entries (XAUTOCLAIM after timeout)
       - Backpressure: configurable max pending entries
     """
     batch_size: int = 50
@@ -693,7 +693,7 @@ This is a **generic Redis Streams consumer** — the compaction/pattern-extracti
 - StreamConsumer + EventStreamMixin (Step 6): End-to-end test — save records → verify they appear in stream → consumer processes them → verify XACK. Test: 1000 concurrent saves → verify zero lost entries.
 - StreamConsumer + all write-path primitives (Steps 1-6, 9): Full pipeline test — records with WriteFilter gating, ConfidenceField updates, CoOccurrence strengthening, and PredictionLedger resolutions all producing stream entries → consumer processes all entry types correctly.
 
-**Measurable agent improvement:** Not directly agent-facing — this is infrastructure for Step 11. Measure: processing throughput (entries/sec), end-to-end latency (write → consumer acknowledgment), and reliability (zero lost entries under crash recovery via XCLAIM).
+**Measurable agent improvement:** Not directly agent-facing — this is infrastructure for Step 11. Measure: processing throughput (entries/sec), end-to-end latency (write → consumer acknowledgment), and reliability (zero lost entries under crash recovery via XAUTOCLAIM).
 
 **Issues:** ~3 (consumer group framework, dead-letter handling, integration tests with Steps 6+9)
 

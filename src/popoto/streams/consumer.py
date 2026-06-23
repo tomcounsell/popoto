@@ -301,8 +301,18 @@ class StreamConsumer:
           - Transfer ownership to this consumer
           - Return full field data for immediate redelivery
 
-        The cursor is advanced across cycles (stored in ``_autoclaim_cursor``)
-        so no single cycle drains the entire PEL.
+        XAUTOCLAIM returns a 3-tuple: ``(next_cursor, claimed_messages,
+        deleted_message_ids)``.  Each claimed entry is decoded and passed
+        through the handler, exactly as a newly-read entry would be, and then
+        XACKed on success.
+
+        **At-least-once delivery:** a reclaimed entry may be delivered more
+        than once if the consumer crashes between handler invocation and XACK.
+        Handlers MUST be idempotent.
+
+        The cursor is advanced across cycles (stored in ``_autoclaim_cursor``,
+        per-cycle cap = ``batch_size``) so no single cycle drains the entire
+        PEL.
 
         Dead-lettering gate: an explicit handler-attempt counter is incremented
         once per ``await self.handler(...)`` redelivery invocation. Dead-letter

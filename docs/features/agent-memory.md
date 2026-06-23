@@ -1003,7 +1003,7 @@ For temporal and band-grouped aggregations via `error_summary(group_by=...)`, se
 
 ## StreamConsumer
 
-A Redis Streams consumer group framework for background processing. Manages consumer group creation, batch reading, acknowledgment, dead-letter handling, and pending entry recovery via XCLAIM.
+A Redis Streams consumer group framework for background processing. Manages consumer group creation, batch reading, acknowledgment, dead-letter handling, and pending entry recovery via XAUTOCLAIM.
 
 Shipped in [PR #238](https://github.com/tomcounsell/popoto/pull/238).
 
@@ -1049,7 +1049,7 @@ count = consumer.process_batch_sync()  # single batch
 | `batch_size` | `int` | `50` | XREADGROUP COUNT — entries per batch. |
 | `block_ms` | `int` | `5000` | XREADGROUP BLOCK timeout in milliseconds. |
 | `max_retries` | `int` | `3` | Delivery count threshold before dead-lettering. |
-| `claim_timeout_ms` | `int` | `180_000` | XCLAIM idle timeout (3 minutes). Entries idle longer are reclaimed. |
+| `claim_timeout_ms` | `int` | `180_000` | XAUTOCLAIM idle timeout (3 minutes). Entries idle longer are reclaimed. |
 | `dead_letter_max_length` | `int` | `None` | Optional MAXLEN for the dead-letter stream. |
 
 ### Dead-letter handling
@@ -1064,9 +1064,11 @@ Entries that fail processing more than `max_retries` times (tracked via XPENDING
 | `last_error` | Error description |
 | `dead_letter_ts` | Timestamp when dead-lettered |
 
-### XCLAIM recovery
+### XAUTOCLAIM recovery
 
-On each `process_batch()` call, the consumer checks for pending entries from crashed consumers. Entries idle longer than `claim_timeout_ms` are reclaimed via XCLAIM for reprocessing. Entries exceeding `max_retries` are dead-lettered instead.
+On each `process_batch()` call, the consumer checks for pending entries from crashed consumers. Entries idle longer than `claim_timeout_ms` are reclaimed via XAUTOCLAIM, decoded, and re-delivered to the handler — providing **at-least-once delivery**. Handlers must be idempotent because a crash between handler invocation and XACK can cause the same entry to be redelivered. Entries exceeding `max_retries` are dead-lettered instead.
+
+`process_batch()` returns a `Tuple[int, int]` — `(new_count, reclaimed_count)` — where `new_count` is the number of freshly-read entries processed and `reclaimed_count` is the number of reclaimed entries redelivered in that batch.
 
 ### Graceful shutdown
 
