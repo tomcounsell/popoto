@@ -578,6 +578,74 @@ The lead agent orchestrates; it does not build directly.
   - Agent Type: documentarian
   - Resume: true
 
+## Implementation Notes
+
+These are the latest critique's open concerns (READY TO BUILD — **0 blockers**, 5 concerns,
+1 nit), pulled inline so the builder sees them at the step they affect. Each note is a
+build-awareness item, NOT a design change — every decision below is already settled
+(Decisions 1–3, Revision 3). Do not re-architect; implement as written and treat these as
+the checklist of subtle points the critique flagged.
+
+- **IN-1 — Non-pipelined `on_read()` has a transient TTL gap (belt-and-suspenders
+  awareness).** Maps to **Step 1 (build-access-tracker)**. On the *pipelined* hot path the
+  `RPUSH` + `EXPIRE` ride the same redis-py pipeline (`transaction=True`), so they apply
+  atomically and the staged key is never momentarily un-TTL'd. On the *non-pipelined* branch
+  the `EXPIRE` is a second direct call after the `RPUSH`; additionally, because
+  `confirm_access()` does `DEL` of the staged key, a subsequent non-pipelined `on_read()` that
+  re-creates the staged key has a brief instant where the key exists without a TTL until the
+  following `EXPIRE` lands. This is **self-healing** — the very next `on_read()` refreshes the
+  TTL, and `confirm_access()` does not depend on the TTL being present — so no fix is required.
+  Just be aware: do the `EXPIRE` immediately after the `RPUSH` in both branches; do not gate it
+  behind any condition that could skip it. The pipelined-path TTL-present test (Step 3) pins the
+  atomic case; the plain-path TTL-present test pins the self-healing case.
+
+- **IN-2 — Promote/delete guard must bind to a single key identity under concurrency.**
+  Maps to **Step 2 (build-lifecycle)**, Technical Approach §3 TOCTOU note. The
+  re-check-tier-before-delete guard MUST read the tier from, and issue the `delete()` against,
+  the **same live key identity** of the in-memory object (`record.db_key` /
+  `record._redis_key`) — never a recomputed/re-resolved key. Promotion mutates the key
+  (`migrate_key=True`), so a stale snapshot could otherwise check tier on the old key while the
+  delete resolves a different one. Treat "key absent" as skip-delete. Promotions performed
+  *this* tick are already excluded via the in-pass promoted-set (intra-tick guard); the re-read
+  defends only against *concurrent* ticks. The existing per-record try/except still absorbs a
+  mid-delete concurrent removal as an idempotent no-op.
+
+- **IN-3 — Silent-expiry observability is in scope but minimal.** Maps to **Step 1
+  (build-access-tracker)**, Technical Approach §4. When `CONFIRM_ACCESS_LUA` returns 0 (the
+  `#staged == 0` branch — staged key empty/expired at confirm), emit a single `logger.debug`
+  on the existing `POPOTO.AccessTracker` logger so TTL-boundary drops are diagnosable. Keep it
+  to one debug line (optionally a process-local counter). Do **NOT** build a metrics subsystem
+  — that is explicitly over-scope.
+
+- **IN-4 — Cross-TTL-boundary drop is contracted behavior, not a bug to "fix."** Maps to
+  **Step 3 (build-tests)** and the docstrings in **Step 1**. A read confirmed *after* the
+  staged key expired past `_staged_ttl_seconds` (with no intervening read to refresh the TTL)
+  is **silently dropped** from `access_count` / `last_accessed` — this is the deliberate,
+  accepted trade-off of TTL-only bounding (a cap would be strictly worse; see Concern 1 /
+  Decision 1). The builder must implement the drop **knowingly**: the cross-TTL-boundary
+  regression test asserts the drop as the contracted behavior, and both `on_read()` and
+  `confirm_access()` docstrings state the staged-read TTL contract. Do not add compensating
+  logic to "recover" the dropped read — that would reintroduce the unbounded case.
+
+- **IN-5 — `TICK_BATCH_SIZE` removal: verify it is truly not load-bearing.** Maps to
+  **Step 2 (build-lifecycle)**, Decision 3, Architectural Impact → Interface changes. Before
+  deleting the constant, **grep the whole repo** (not just `memory_lifecycle.py`) for any
+  external reference: `grep -rn "TICK_BATCH_SIZE" .` — the plan asserts the only references are
+  the definition (`memory_lifecycle.py:341`), its slicing/docstring use, and the one test
+  (`test_tick_batch_pagination`, rewritten in Step 3). If the grep surfaces any *other*
+  caller (docs, examples, downstream recipe), surface it before deleting — the removal is a
+  documented public-API break (acceptable under beta) but must not silently strand a real
+  reference. Document the removal in the release notes / changelog when the implementation PR
+  lands.
+
+- **NIT — vacuous greps in Verification.** Maps to **Step 5 (validate-all)** and the
+  Verification table. Two checks were previously vacuous and are already corrected in this
+  plan; the validator must use the corrected forms: the "No LTRIM cap" check is
+  case-insensitive (`grep -in`, source uses uppercase `LTRIM` → expect exactly one match, the
+  Lua confirmed-log, none in `on_read()`), and the Valkey-safety grep uses `grep -E 'a|b'`
+  (NOT `a\|b`, which never matches under `-E` and passes vacuously). Run them as written in the
+  Verification section; do not revert to the lowercase / backslash-pipe forms.
+
 ## Step by Step Tasks
 
 ### 1. Bound staged lists + extend opt-out
@@ -775,3 +843,20 @@ four nits. Resolutions:
 - **Nit 4 — vacuous LTRIM grep.** The Verification "No LTRIM cap" check is now case-insensitive
   (`grep -in`); the source uses uppercase `LTRIM`, so the old lowercase-only form matched nothing
   and passed vacuously. Expected: exactly one match (the LUA confirmed-log), none in `on_read()`.
+
+### Revision 4 (final pre-build polish) — critique READY-WITH-CONCERNS items embedded inline
+
+The final critique returned **READY TO BUILD with concerns — 0 blockers**, 5 concerns + 1 nit.
+No design changes were warranted (all decisions remain as settled in Decisions 1–3 and Revision
+3). This pass embeds those 5 concerns + 1 nit as a consolidated **`## Implementation Notes`**
+section (IN-1…IN-5 + NIT) placed immediately before Step by Step Tasks, each mapped to the
+concrete build step it affects, so the builder sees them inline:
+
+- **IN-1** (non-pipelined `on_read()` transient TTL gap — self-healing, belt-and-suspenders) → Step 1.
+- **IN-2** (promote/delete guard same-key-identity under concurrency) → Step 2.
+- **IN-3** (silent-expiry observability — one `logger.debug`, no metrics subsystem) → Step 1.
+- **IN-4** (cross-TTL-boundary drop is contracted behavior, implement knowingly) → Steps 1 & 3.
+- **IN-5** (`TICK_BATCH_SIZE` removal — repo-wide grep to confirm not load-bearing) → Step 2.
+- **NIT** (corrected non-vacuous LTRIM / Valkey-safety greps) → Step 5.
+
+Status remains **Ready**, `revision_applied: true`, **0 unresolved blockers** — build-ready.
