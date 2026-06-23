@@ -343,7 +343,7 @@ class StreamConsumer:
                     self.consumer_name,
                     min_idle_time=self.claim_timeout_ms,
                     count=self.batch_size,
-                    start=self._xclaim_cursor,
+                    start_id=self._xclaim_cursor,
                     justid=False,
                 )
             )
@@ -438,26 +438,30 @@ class StreamConsumer:
                 else:
                     to_redeliver.append((entry_id_bytes, fields))
 
-            # Deliver reclaimed entries to the handler via the shared helper.
-            # The reclaimed entry IDs form a SEPARATE id list from the `>`
-            # XREADGROUP batch — their XACK goes to the same stream/group but
-            # must be issued independently so a failure here does not ACK the
-            # new-entries batch (and vice versa).
-            if to_redeliver:
-                # _process_entries is intentionally NOT inside the broad
-                # except below — a handler exception must propagate so the
-                # entries remain pending and are retried on the next cycle.
-                n_reclaimed = await self._process_entries(to_redeliver, redis)
+            # to_redeliver is fully populated inside the try block; capture it
+            # so _process_entries can be called outside the broad except.
 
         except Exception as e:
-            # Don't crash the consumer loop on claim errors; handler exceptions
-            # are intentionally excluded (they propagate before reaching here).
+            # Don't crash the consumer loop on claim errors. Handler exceptions
+            # are intentionally excluded — they are raised by _process_entries
+            # AFTER this block, so they propagate to the caller unchanged,
+            # leaving the entries pending for the next cycle.
             logger.warning(
                 "Error during _claim_pending for stream '%s': %s",
                 self.stream_key,
                 e,
             )
             return 0
+
+        # Deliver reclaimed entries to the handler via the shared helper.
+        # Called OUTSIDE the broad except above so that a handler exception
+        # propagates to process_batch() and leaves the entries pending
+        # (not ACKed), ensuring they are retried on the next claim cycle.
+        # The reclaimed entry IDs form a SEPARATE id list from the `>`
+        # XREADGROUP batch — their XACK goes to the same stream/group but
+        # must be issued independently.
+        if to_redeliver:
+            n_reclaimed = await self._process_entries(to_redeliver, redis)
 
         logger.info(
             "Reclaim cycle: %d reclaimed, %d dead-lettered from '%s'",
