@@ -1113,12 +1113,14 @@ Shipped in [PR #239](https://github.com/tomcounsell/popoto/pull/239).
 ### Basic usage
 
 ```python
+from decimal import Decimal
+
 from popoto.recipes.policy_cache import (
     PolicyEntry, compute_fingerprint, update_q_value,
-    initialize_q_value, crystallization_handler,
+    crystallization_handler,
 )
 
-# Create a policy directly
+# Create a policy directly — seed q_value at construction
 fp = compute_fingerprint({"task": "deploy", "env": "staging"})
 policy = PolicyEntry(
     agent_id="agent-1",
@@ -1126,11 +1128,11 @@ policy = PolicyEntry(
     state_features={"task": "deploy", "env": "staging"},
     action_type="run_playbook",
     action_spec={"playbook": "deploy.yml"},
+    q_value=Decimal("0.0"),  # q_value lives in the model hash, not the ZSET score
 )
-policy.save()
+policy.save()  # persists both model fields and q_value in one round-trip
 
-# Initialize and update Q-value via temporal difference learning
-initialize_q_value(policy, initial_q=0.0)
+# Update Q-value via temporal difference learning
 td_error = update_q_value(policy, reward=1.0)
 
 # Or let crystallization detect patterns automatically
