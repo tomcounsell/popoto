@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `LifecycleState` dataclass — return type for `assess()`
   - Custom `should_promote` and `should_forget` callables — injectable for application-specific policies
   - `partition_filters` — scope each lifecycle instance to a sub-partition (e.g. per-agent)
-  - Six tuning constants (`PROMOTION_ACCESS_COUNT`, `PROMOTION_CONFIDENCE_THRESHOLD`, `PROMOTION_MIN_AGE_SECONDS`, `FORGET_IMPORTANCE_FLOOR`, `FORGET_IDLE_SECONDS`, `TICK_BATCH_SIZE`) registered in `Defaults` and the Tier 5 benchmark sweep grid
+  - Five tuning constants (`PROMOTION_ACCESS_COUNT`, `PROMOTION_CONFIDENCE_THRESHOLD`, `PROMOTION_MIN_AGE_SECONDS`, `FORGET_IMPORTANCE_FLOOR`, `FORGET_IDLE_SECONDS`) registered in `Defaults` and the Tier 5 benchmark sweep grid
 - **`LifecycleState`** exported from `popoto.recipes`
 - **Tier 5 benchmark sweep grid** (`TIER5_SWEEPS` in `tests/benchmarks/run_sweeps.py`) — five lifecycle constants with sweep ranges for tuning against LoCoMo + LongMemEval-S
 - **`docs/benchmarks/memory_lifecycle_baseline.md`** — pre-lifecycle retrieval baseline and sweep grid documentation
