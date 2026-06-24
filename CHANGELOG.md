@@ -45,6 +45,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The default `pubsub` mode degrades to the on-disk `_version` check (never back to the stale-cache bug) if the subscriber thread cannot start, and the listener self-heals via lazy respawn after a connection drop.
   - Single-process **results** are unchanged in all modes; the default adds one daemon listener thread, one Valkey connection, and one loopback `PUBLISH` per write per model class. Set `POPOTO_EMBEDDING_INVALIDATION=none` for zero overhead. See [EmbeddingField → Multi-Worker Deployments](https://popoto.io/fields/#embeddingfield).
 
+### Removed
+
+- **`MemoryLifecycle.TICK_BATCH_SIZE`** — removed in #413 (single-pass refactor eliminated batch scanning; the constant was never registered in `Defaults` and was always an internal implementation detail). Public-API break acceptable under beta.
+
 ## [1.7.1] - 2026-06-15
 
 ### Fixed

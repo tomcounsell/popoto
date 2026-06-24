@@ -538,38 +538,6 @@ class MemoryLifecycle:
     # Internal passes
     # -------------------------------------------------------------------
 
-    def _iter_tier(self, tier: str):
-        """Yield all records in a given tier using a non-tracking query.
-
-        Uses KeyField filter to enumerate records with the given tier value.
-        Reads are non-tracking (no on_read() side-effects) to avoid inflating
-        access counters during lifecycle housekeeping.
-        Yields individual model instances.
-        """
-        filters = {self.tier_field: tier, **self.partition_filters}
-        all_records = self.model_class.query.filter(**filters).no_track().all()
-        yield from all_records
-
-    def _iter_non_semantic(self):
-        """Yield all non-semantic records (episodic and any other non-protected tier).
-
-        Loads all records in a single non-tracking query and filters out
-        semantics in-process.  Reads are non-tracking (no on_read()
-        side-effects) to avoid inflating access counters during lifecycle
-        housekeeping.
-        """
-        filters = {**self.partition_filters}
-        all_records = (
-            self.model_class.query.filter(**filters).no_track().all()
-            if filters
-            else self.model_class.query.all()
-        )
-
-        for record in all_records:
-            tier = _get_tier(record, self.tier_field)
-            if tier != "semantic":
-                yield record
-
     def _tick_pass(self) -> Tuple[int, int]:
         """Single-pass hydration: promote then forget, loading all non-semantic records once.
 

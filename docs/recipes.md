@@ -503,7 +503,7 @@ lifecycle.tick()  # only touches agent-1's records
 
 ### Tuning the thresholds
 
-The six magic-number constants are class attributes:
+The five magic-number constants are class attributes:
 
 ```python
 # Inspect defaults
@@ -512,7 +512,6 @@ print(MemoryLifecycle.PROMOTION_CONFIDENCE_THRESHOLD)  # 0.6
 print(MemoryLifecycle.PROMOTION_MIN_AGE_SECONDS)       # 300.0
 print(MemoryLifecycle.FORGET_IMPORTANCE_FLOOR)         # 0.1
 print(MemoryLifecycle.FORGET_IDLE_SECONDS)             # 86400.0
-print(MemoryLifecycle.TICK_BATCH_SIZE)                 # 100
 
 # Override for a specific instance
 lifecycle.PROMOTION_ACCESS_COUNT = 5
