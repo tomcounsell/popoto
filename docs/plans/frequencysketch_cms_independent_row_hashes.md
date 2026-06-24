@@ -98,7 +98,7 @@ bignum-masking flaw in the first by enforcing the real Lua 2^53 ceiling.
 - **Method**: prototype (Python models of candidate Lua hashes; 20k same-length tokens; row-0-collision → extra-row-match measurement; Zipf bound check)
 - **Finding**: Candidates A/B (`h1 + r·h2 (+ r²)` double-hash) are **bit-for-bit identical pairwise** and only marginally better than the bug (the `r²` term cancels in a colliding pair's difference). **The dominant root cause is the composite `width=2000 = 2⁴·5³`**: shared small factors with row indices constrain `(r·Δh) mod 2000` to sub-lattices, inflating cross-row collisions. Switching to **prime `width=2003`** plus a per-row independent polynomial reached gold-standard independence.
 - **Confidence**: high (matched a truly-random "gold" baseline)
-- **Impact on plan**: Width must change `2000 → 2003` (prime) — this is the single biggest fix. Per-row hashes must be independent polynomials, not seed-only or double-hash variants.
+- **Impact on plan**: The **causal** decorrelator is the per-row *independent polynomial* (distinct moduli/multipliers per row) — that is what removes the affine-seed collapse, and it does so at *any* width (see the composite-width isolation in Success Criteria). Switching the default `width` `2000 → 2003` (prime) is a complementary **statistical improvement** that removes the sub-lattice correlation a composite width still permits; it is not, on its own, the fix. (This phrasing is deliberately aligned with Risk 2 / Resolved Decision 3, which establish the polynomial — not the prime width — as causal.)
 
 ### spike-2: Is the winning construction Lua-double-safe (strict 2^53 ceiling)?
 - **Assumption**: "The constants from spike-1 are expressible in Redis Lua 5.1 without exceeding the 2^53 exact-integer ceiling before any modulo."
@@ -214,6 +214,20 @@ not scope.
 - The three scripts must stay byte-identical in the hash block. A unit test EVALs all three
   on the same token and asserts the computed columns agree (single source of truth).
 - The `tokenize()` lowercasing and the `CMS_INCR_LUA` empty-token fallback path are unchanged.
+- **Empty-token behavior (re-critique concern, low severity — documented, no guard):** When
+  the hashed `item` is the empty string (a directly-empty fingerprint reaching the
+  `CMS_INCR_LUA` fallback), the per-row byte loop runs zero iterations, so each row's column
+  is just the seed reduced by width: `col = (row + 1) % w`. This maps every empty token to
+  the **same fixed set of cells**, one deterministic cell per row. It is NOT the affine
+  all-rows-collapse bug — because the seed `h = row + 1` differs per row, the empty-token
+  cells are *distinct across rows* (cols 1,2,3,…,7 for `w > 7`), so the depth-min still has 7
+  independent slots; the only effect is that all empty tokens share those slots with each
+  other. **Severity is low:** no public wrapper emits a raw empty token — `get_frequency`/
+  `on_save` go through `tokenize()`, and reach is limited to a *directly*-empty fingerprint
+  via the fallback. No code guard is added (the cheap fix — e.g. salting the empty case — is
+  unnecessary while no public path can emit empty tokens). If a future public path can emit
+  empty tokens, revisit with a one-line seed perturbation. Build need not change code for this;
+  it is recorded so a reviewer does not mistake the fixed empty-token cells for a regression.
 
 ## Failure Path Test Strategy
 
@@ -304,6 +318,15 @@ refers to Popoto's cognitive primitives, not a Telegram agent.)
 
 ### Feature Documentation
 - [ ] Update `docs/features/existence-filter.md`: change the `width` default in the Parameters table from `2000` to `2003` (line ~88); optionally add a one-line note that row hashes are independent polynomials with a prime default width so the standard CMS error bound holds.
+- [ ] **REQUIRED (re-critique concern — the width/hash change is user-facing):** Add an
+  explicit **drop-and-rebuild upgrade paragraph** to `docs/features/existence-filter.md`.
+  The `2000 → 2003` default and the new per-row polynomial family mean existing `$FS:*`
+  Redis/Valkey hashes are now keyed under a different hash construction; they are NOT
+  migrated. State plainly: the substrate layer is beta, there is **no migration shim**, and
+  any FrequencySketch persisted before this change will return **stale counts** until the
+  underlying `$FS:{Class}:{field}` hash is deleted (`DEL`) and the sketch rebuilt from
+  source events. This must be a visible upgrade note, not a footnote — it is the only
+  user-facing consequence of the fix.
 - [ ] No `docs/features/README.md` index change (entry already exists).
 
 ### External Documentation Site
@@ -324,6 +347,12 @@ refers to Popoto's cognitive primitives, not a Telegram agent.)
 ## Success Criteria
 
 - [ ] **Row independence:** For ≥3,000 random same-length tokens at `width=2003, depth=7`, row-0-colliding pairs show mean extra-row matches ≈ `6/width` and **zero** pairs collide in all 7 rows (current code: 100% all-or-none). Verified via a test EVALing the live Lua.
+- [ ] **Causality isolation (polynomial, not prime width):** Repeat the row-independence
+  check at a deliberately **composite** `width=2000` (the old broken default). The per-row
+  independent polynomial must STILL show **zero** all-7-row collisions (mean extra-row
+  matches ≈ `6/2000`), proving the decorrelation comes from the independent per-row family —
+  not from the prime width. (The prime width is a complementary statistical improvement; this
+  criterion prevents misattributing the fix to the width change. See spike-1 Impact / Risk 2.)
 - [ ] **Error bound restored (seed-robust):** On a Zipf workload (≈100k events, ≈10k
   distinct same-length tokens), the fraction of items with `estimate > true + eN/width`
   stays below `e^(−depth) ≈ 0.091%`. Because this fraction is itself a random variable in
@@ -399,6 +428,10 @@ The lead agent orchestrates; it does not build directly.
 - **Agent Type**: test-engineer
 - **Parallel**: true
 - Add `test_rows_not_all_or_none`: EVAL the live `CMS_INCR`/query hashing for ≥3,000 same-length tokens at width=2003, depth=7; assert zero pairs collide in all 7 rows and mean extra-row matches ≈ 6/width (loose tolerance).
+- Add `test_independence_at_composite_width` (re-critique causality isolation): repeat the
+  same all-7-row check at a **composite** `width=2000` and assert **zero** all-7-row
+  collisions. This proves the independent per-row polynomial — not the prime width — is the
+  causal decorrelator. (If this passed only at prime width, the fix would be misattributed.)
 - Add `test_three_scripts_agree`: increment a token via `CMS_INCR_LUA` and (separately, fresh key) via `CMS_INCR_MULTI_LUA`; `CMS_QUERY_LUA` reads back ≥ n in both; assert the columns the three scripts hit are identical for the same token.
 - Add `test_zipf_error_bound`: build a Zipf workload (sized for test speed — e.g. ≥10k events; document the chosen N and the corresponding `eN/w` bound). Run across **≥3 fixed RNG seeds** (parametrize), assert the **worst-case** bound-violation fraction across seeds is below `e^(−depth) ≈ 0.091%`, and assert **zero undercounts** on every seed. A single-seed run is insufficient — the violation fraction is seed-dependent.
 - Add `test_depth_guard`: assert `FrequencySketch(..., depth=8)` and `depth=0` each raise `ValueError` at construction, and that the message names the valid 1..7 range.
@@ -424,6 +457,10 @@ The lead agent orchestrates; it does not build directly.
 - **Agent Type**: documentarian
 - **Parallel**: false
 - Update `docs/features/existence-filter.md` Parameters table (`width` default 2003) and add the independent-rows note.
+- **Add the REQUIRED drop-and-rebuild upgrade paragraph** (re-critique concern): existing
+  `$FS:*` sketches are not migrated; beta substrate, no shim; pre-change sketches return
+  stale counts until the `$FS:{Class}:{field}` hash is `DEL`'d and rebuilt. Make it a
+  visible upgrade note.
 - Run `scripts/ci-local.sh docs` (mkdocs --strict).
 
 ### 5. Final Validation
@@ -460,6 +497,9 @@ The lead agent orchestrates; it does not build directly.
 | Supporting | Verification | Bloom anti-criterion grepped only the `BLOOM_` variable name — a Bloom *body* edit (SETBIT/GETBIT/combine line) would pass undetected. | Verification table | Added a line-range `diff` of the whole Bloom block (lines 80-194) against `main` as the authoritative anti-criterion, plus a broader body-token grep. |
 | Supporting | Math | Single-seed Zipf run is not robust; the violation fraction is a seed-dependent random variable, and the per-row theoretical ceiling is `e/width ≈ 0.136%` while the depth-7 min target is `e^(−7) ≈ 0.091%`. | Success Criteria (Error bound), test_zipf_error_bound | Test now parametrizes ≥3 fixed seeds and asserts the worst-case fraction < 0.091%; criterion documents the e/W vs e^(−depth) relationship and that 0.091% (not the spike's lucky 0%) is the threshold. |
 | Supporting | Docs | Module docstring at `existence_filter.py:16-17` (Kirsch–Mitzenmacher double-hashing) would remain attributed to CMS — re-documenting the removed bug. | Inline Documentation, task build-cms-hash, Verification table | Added task to scope the K-M sentence to Bloom only and add a per-row-polynomial sentence for CMS; verification greps the module header for "polynomial". |
+| Concern (re-critique) | Reach | Empty-token (directly-empty fingerprint via `CMS_INCR_LUA` fallback) maps to a fixed set of collision cells across rows, since the per-row seed `h = row + 1` with an empty byte loop yields a deterministic `col = (row+1) % w` per row. Low severity: no public wrapper exposes raw empty tokens, and reach is limited to a directly-empty fingerprint. | Technical Approach (empty-token note), task build-cms-hash | Documented the behavior in Technical Approach; no code guard added (the seed already differs per row, so the empty-token cells are distinct across rows, not all-collapsed). Cheap guard noted as optional only if a future public path can emit empty tokens. |
+| Concern (re-critique) | Docs | width default change `2000 → 2003` is user-facing and under-communicated — readers upgrading will not learn that old `$FS:*` sketches are now keyed under a different family/width and must be rebuilt. | Documentation (Feature Documentation), task document-feature | Documentation task now MUST add an explicit drop-and-rebuild upgrade paragraph to `docs/features/existence-filter.md` (substrate is beta; old sketches produce stale counts until deleted+rebuilt; no migration shim). |
+| Concern (re-critique) | Math/Causality | spike-1's "single biggest fix" wording for the `2000 → 2003` width change contradicts Risk 2 / resolved-decision 3, which hold that the per-row *independent polynomial* (not the prime width) is what removes the affine collapse at any width. The wording overstates width as the causal fix. | Spike Results (spike-1 Impact), plus an independence-at-composite-width assertion | Softened spike-1 wording: prime width is a statistical *improvement*, the independent per-row polynomial is the *causal* decorrelator. Added a success-criterion / test assertion that independence holds at a deliberately *composite* width (e.g. 2000) to isolate causality (polynomial, not prime width). |
 
 ---
 
