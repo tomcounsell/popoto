@@ -13,9 +13,13 @@ Design:
     instance. They only maintain probabilistic indexes via on_save() hooks. This
     follows the same pattern as SortedFieldMixin maintaining a sorted set index.
 
-    Hash functions use the Kirschner-Mitzenmacher double hashing optimization:
+    Hash functions:
+    ExistenceFilter uses the Kirsch–Mitzenmacher double hashing optimization:
     h_i(x) = (h1(x) + i * h2(x)) mod m, where h1 is DJB2 and h2 is FNV-1.
-    Two hash functions simulate k independent ones with identical guarantees.
+    Two hash functions simulate k independent Bloom-row hashes.
+    FrequencySketch uses independent per-row polynomial hashes: each of the
+    depth rows has its own prime multiplier and modulus, forming a practically
+    pairwise-independent family that restores the standard CMS error bound.
 
     Tokenization:
     On save, fingerprint strings are automatically tokenized into individual words.
