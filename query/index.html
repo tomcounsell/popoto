@@ -3741,7 +3741,7 @@ complex queries dynamically or when you prefer a fluent interface style.</p>
 </tr>
 <tr>
 <td><code>no_track()</code></td>
-<td>Suppress <code>on_read()</code> tracking for <code>AccessTrackerMixin</code> models</td>
+<td>Suppress <code>on_read()</code> staging for <code>AccessTrackerMixin</code> models — use for internal operations (reindex, migration, lifecycle ticks) that should not count as reads</td>
 </tr>
 <tr>
 <td><code>top_by_decay(field_name, n)</code></td>

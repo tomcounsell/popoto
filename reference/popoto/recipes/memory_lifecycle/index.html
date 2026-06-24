@@ -2138,17 +2138,6 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#popoto.recipes.memory_lifecycle.MemoryLifecycle.TICK_BATCH_SIZE" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        TICK_BATCH_SIZE
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
   <a href="#popoto.recipes.memory_lifecycle.MemoryLifecycle.tag_new" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2406,8 +2395,7 @@ print(state.tier, state.promotion_eligible, state.forget_eligible)
 
               <details class="mkdocstrings-source">
                 <summary>Source code in <code>src/popoto/recipes/memory_lifecycle.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-74">74</a></span>
-<span class="normal"><a href="#__codelineno-0-75">75</a></span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-75">75</a></span>
 <span class="normal"><a href="#__codelineno-0-76">76</a></span>
 <span class="normal"><a href="#__codelineno-0-77">77</a></span>
 <span class="normal"><a href="#__codelineno-0-78">78</a></span>
@@ -2424,25 +2412,26 @@ print(state.tier, state.promotion_eligible, state.forget_eligible)
 <span class="normal"><a href="#__codelineno-0-89">89</a></span>
 <span class="normal"><a href="#__codelineno-0-90">90</a></span>
 <span class="normal"><a href="#__codelineno-0-91">91</a></span>
-<span class="normal"><a href="#__codelineno-0-92">92</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-74" name="__codelineno-0-74"></a><span class="nd">@dataclass</span>
-<a id="__codelineno-0-75" name="__codelineno-0-75"></a><span class="k">class</span><span class="w"> </span><span class="nc">LifecycleState</span><span class="p">:</span>
-<a id="__codelineno-0-76" name="__codelineno-0-76"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Snapshot of a record&#39;s lifecycle status.</span>
-<a id="__codelineno-0-77" name="__codelineno-0-77"></a>
-<a id="__codelineno-0-78" name="__codelineno-0-78"></a><span class="sd">    Attributes:</span>
-<a id="__codelineno-0-79" name="__codelineno-0-79"></a><span class="sd">        tier: Current tier string (&quot;episodic&quot;, &quot;semantic&quot;, etc.).</span>
-<a id="__codelineno-0-80" name="__codelineno-0-80"></a><span class="sd">        access_count: Total confirmed read accesses (0 if no AccessTrackerMixin).</span>
-<a id="__codelineno-0-81" name="__codelineno-0-81"></a><span class="sd">        last_accessed: Unix timestamp of most recent confirmed access, or None.</span>
-<a id="__codelineno-0-82" name="__codelineno-0-82"></a><span class="sd">        importance_score: Current importance score from the importance_field.</span>
-<a id="__codelineno-0-83" name="__codelineno-0-83"></a><span class="sd">        promotion_eligible: Whether this record meets all promotion criteria.</span>
-<a id="__codelineno-0-84" name="__codelineno-0-84"></a><span class="sd">        forget_eligible: Whether this record meets all auto-forget criteria.</span>
-<a id="__codelineno-0-85" name="__codelineno-0-85"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-86" name="__codelineno-0-86"></a>
-<a id="__codelineno-0-87" name="__codelineno-0-87"></a>    <span class="n">tier</span><span class="p">:</span> <span class="nb">str</span>
-<a id="__codelineno-0-88" name="__codelineno-0-88"></a>    <span class="n">access_count</span><span class="p">:</span> <span class="nb">int</span>
-<a id="__codelineno-0-89" name="__codelineno-0-89"></a>    <span class="n">last_accessed</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span>
-<a id="__codelineno-0-90" name="__codelineno-0-90"></a>    <span class="n">importance_score</span><span class="p">:</span> <span class="nb">float</span>
-<a id="__codelineno-0-91" name="__codelineno-0-91"></a>    <span class="n">promotion_eligible</span><span class="p">:</span> <span class="nb">bool</span>
-<a id="__codelineno-0-92" name="__codelineno-0-92"></a>    <span class="n">forget_eligible</span><span class="p">:</span> <span class="nb">bool</span>
+<span class="normal"><a href="#__codelineno-0-92">92</a></span>
+<span class="normal"><a href="#__codelineno-0-93">93</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-75" name="__codelineno-0-75"></a><span class="nd">@dataclass</span>
+<a id="__codelineno-0-76" name="__codelineno-0-76"></a><span class="k">class</span><span class="w"> </span><span class="nc">LifecycleState</span><span class="p">:</span>
+<a id="__codelineno-0-77" name="__codelineno-0-77"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Snapshot of a record&#39;s lifecycle status.</span>
+<a id="__codelineno-0-78" name="__codelineno-0-78"></a>
+<a id="__codelineno-0-79" name="__codelineno-0-79"></a><span class="sd">    Attributes:</span>
+<a id="__codelineno-0-80" name="__codelineno-0-80"></a><span class="sd">        tier: Current tier string (&quot;episodic&quot;, &quot;semantic&quot;, etc.).</span>
+<a id="__codelineno-0-81" name="__codelineno-0-81"></a><span class="sd">        access_count: Total confirmed read accesses (0 if no AccessTrackerMixin).</span>
+<a id="__codelineno-0-82" name="__codelineno-0-82"></a><span class="sd">        last_accessed: Unix timestamp of most recent confirmed access, or None.</span>
+<a id="__codelineno-0-83" name="__codelineno-0-83"></a><span class="sd">        importance_score: Current importance score from the importance_field.</span>
+<a id="__codelineno-0-84" name="__codelineno-0-84"></a><span class="sd">        promotion_eligible: Whether this record meets all promotion criteria.</span>
+<a id="__codelineno-0-85" name="__codelineno-0-85"></a><span class="sd">        forget_eligible: Whether this record meets all auto-forget criteria.</span>
+<a id="__codelineno-0-86" name="__codelineno-0-86"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-87" name="__codelineno-0-87"></a>
+<a id="__codelineno-0-88" name="__codelineno-0-88"></a>    <span class="n">tier</span><span class="p">:</span> <span class="nb">str</span>
+<a id="__codelineno-0-89" name="__codelineno-0-89"></a>    <span class="n">access_count</span><span class="p">:</span> <span class="nb">int</span>
+<a id="__codelineno-0-90" name="__codelineno-0-90"></a>    <span class="n">last_accessed</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span>
+<a id="__codelineno-0-91" name="__codelineno-0-91"></a>    <span class="n">importance_score</span><span class="p">:</span> <span class="nb">float</span>
+<a id="__codelineno-0-92" name="__codelineno-0-92"></a>    <span class="n">promotion_eligible</span><span class="p">:</span> <span class="nb">bool</span>
+<a id="__codelineno-0-93" name="__codelineno-0-93"></a>    <span class="n">forget_eligible</span><span class="p">:</span> <span class="nb">bool</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -2650,8 +2639,7 @@ state = lifecycle.assess(record)
 
               <details class="mkdocstrings-source">
                 <summary>Source code in <code>src/popoto/recipes/memory_lifecycle.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-257">257</a></span>
-<span class="normal"><a href="#__codelineno-0-258">258</a></span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-258">258</a></span>
 <span class="normal"><a href="#__codelineno-0-259">259</a></span>
 <span class="normal"><a href="#__codelineno-0-260">260</a></span>
 <span class="normal"><a href="#__codelineno-0-261">261</a></span>
@@ -3057,216 +3045,219 @@ state = lifecycle.assess(record)
 <span class="normal"><a href="#__codelineno-0-661">661</a></span>
 <span class="normal"><a href="#__codelineno-0-662">662</a></span>
 <span class="normal"><a href="#__codelineno-0-663">663</a></span>
-<span class="normal"><a href="#__codelineno-0-664">664</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-257" name="__codelineno-0-257"></a><span class="k">class</span><span class="w"> </span><span class="nc">MemoryLifecycle</span><span class="p">:</span>
-<a id="__codelineno-0-258" name="__codelineno-0-258"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Policy layer orchestrating memory tier transitions and auto-forget.</span>
-<a id="__codelineno-0-259" name="__codelineno-0-259"></a>
-<a id="__codelineno-0-260" name="__codelineno-0-260"></a><span class="sd">    Composes existing Popoto decay primitives — does not replace them.</span>
-<a id="__codelineno-0-261" name="__codelineno-0-261"></a>
-<a id="__codelineno-0-262" name="__codelineno-0-262"></a><span class="sd">    The two tiers are &quot;episodic&quot; (default for new memories) and &quot;semantic&quot;</span>
-<a id="__codelineno-0-263" name="__codelineno-0-263"></a><span class="sd">    (consolidated, protected from auto-forget). A &quot;working&quot; tier can be added</span>
-<a id="__codelineno-0-264" name="__codelineno-0-264"></a><span class="sd">    in v2 if benchmarks show benefit.</span>
-<a id="__codelineno-0-265" name="__codelineno-0-265"></a>
-<a id="__codelineno-0-266" name="__codelineno-0-266"></a><span class="sd">    Class-level constants are tuning parameters for the benchmark sweep grid</span>
-<a id="__codelineno-0-267" name="__codelineno-0-267"></a><span class="sd">    (see feedback_magic_numbers.md). They are NOT user-configurable init params.</span>
-<a id="__codelineno-0-268" name="__codelineno-0-268"></a>
-<a id="__codelineno-0-269" name="__codelineno-0-269"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-270" name="__codelineno-0-270"></a><span class="sd">        model_class: The Popoto Model class whose records to manage.</span>
-<a id="__codelineno-0-271" name="__codelineno-0-271"></a><span class="sd">        importance_field: Name of a SortedFieldMixin field used as importance</span>
-<a id="__codelineno-0-272" name="__codelineno-0-272"></a><span class="sd">            signal. Must be present on the model. Validated at init time.</span>
-<a id="__codelineno-0-273" name="__codelineno-0-273"></a><span class="sd">        tier_field: Name of the field carrying the tier partition value.</span>
-<a id="__codelineno-0-274" name="__codelineno-0-274"></a><span class="sd">            Defaults to &quot;tier&quot;. Must be a KeyField to enable filter queries.</span>
-<a id="__codelineno-0-275" name="__codelineno-0-275"></a><span class="sd">        should_promote: Optional callable(record, lifecycle) → Optional[str].</span>
-<a id="__codelineno-0-276" name="__codelineno-0-276"></a><span class="sd">            Returns the new tier string, or None to skip. Defaults to</span>
-<a id="__codelineno-0-277" name="__codelineno-0-277"></a><span class="sd">            _default_should_promote.</span>
-<a id="__codelineno-0-278" name="__codelineno-0-278"></a><span class="sd">        should_forget: Optional callable(record, lifecycle) → bool.</span>
-<a id="__codelineno-0-279" name="__codelineno-0-279"></a><span class="sd">            Returns True to hard-delete the record. Defaults to</span>
-<a id="__codelineno-0-280" name="__codelineno-0-280"></a><span class="sd">            _default_should_forget.</span>
-<a id="__codelineno-0-281" name="__codelineno-0-281"></a><span class="sd">        partition_filters: Optional dict of extra filter kwargs passed to</span>
-<a id="__codelineno-0-282" name="__codelineno-0-282"></a><span class="sd">            all query.filter() calls. Useful for multi-agent setups where</span>
-<a id="__codelineno-0-283" name="__codelineno-0-283"></a><span class="sd">            each lifecycle instance manages a sub-partition (e.g. agent_id).</span>
-<a id="__codelineno-0-284" name="__codelineno-0-284"></a>
-<a id="__codelineno-0-285" name="__codelineno-0-285"></a><span class="sd">    Raises:</span>
-<a id="__codelineno-0-286" name="__codelineno-0-286"></a><span class="sd">        ModelException: If importance_field or tier_field is not found on</span>
-<a id="__codelineno-0-287" name="__codelineno-0-287"></a><span class="sd">            model_class, or if importance_field is not a SortedFieldMixin.</span>
-<a id="__codelineno-0-288" name="__codelineno-0-288"></a>
-<a id="__codelineno-0-289" name="__codelineno-0-289"></a><span class="sd">    Example::</span>
-<a id="__codelineno-0-290" name="__codelineno-0-290"></a>
-<a id="__codelineno-0-291" name="__codelineno-0-291"></a><span class="sd">        lifecycle = MemoryLifecycle(</span>
-<a id="__codelineno-0-292" name="__codelineno-0-292"></a><span class="sd">            model_class=Memory,</span>
-<a id="__codelineno-0-293" name="__codelineno-0-293"></a><span class="sd">            importance_field=&quot;relevance&quot;,</span>
-<a id="__codelineno-0-294" name="__codelineno-0-294"></a><span class="sd">        )</span>
-<a id="__codelineno-0-295" name="__codelineno-0-295"></a><span class="sd">        lifecycle.tag_new(record)</span>
-<a id="__codelineno-0-296" name="__codelineno-0-296"></a><span class="sd">        lifecycle.tick()</span>
-<a id="__codelineno-0-297" name="__codelineno-0-297"></a><span class="sd">        state = lifecycle.assess(record)</span>
-<a id="__codelineno-0-298" name="__codelineno-0-298"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-299" name="__codelineno-0-299"></a>
-<a id="__codelineno-0-300" name="__codelineno-0-300"></a>    <span class="c1"># --- Magic-number tuning constants (benchmark sweep grid parameters) ---</span>
-<a id="__codelineno-0-301" name="__codelineno-0-301"></a>    <span class="c1"># These are resolved via __getattr__ at runtime so that:</span>
-<a id="__codelineno-0-302" name="__codelineno-0-302"></a>    <span class="c1"># (a) apply_overrides() in tests/benchmarks/overrides.py can patch</span>
-<a id="__codelineno-0-303" name="__codelineno-0-303"></a>    <span class="c1">#     Defaults.LIFECYCLE_* and have those patches observed by instances</span>
-<a id="__codelineno-0-304" name="__codelineno-0-304"></a>    <span class="c1">#     during the sweep (the bug fixed here — class-body assignment</span>
-<a id="__codelineno-0-305" name="__codelineno-0-305"></a>    <span class="c1">#     froze values at import time).</span>
-<a id="__codelineno-0-306" name="__codelineno-0-306"></a>    <span class="c1"># (b) Tests that need custom per-instance values can set instance</span>
-<a id="__codelineno-0-307" name="__codelineno-0-307"></a>    <span class="c1">#     attributes directly (e.g. ``lifecycle.PROMOTION_ACCESS_COUNT = 1``);</span>
-<a id="__codelineno-0-308" name="__codelineno-0-308"></a>    <span class="c1">#     __getattr__ is only called when the attribute is NOT found in the</span>
-<a id="__codelineno-0-309" name="__codelineno-0-309"></a>    <span class="c1">#     instance __dict__, so instance-dict assignments take priority.</span>
-<a id="__codelineno-0-310" name="__codelineno-0-310"></a>    <span class="c1">#</span>
-<a id="__codelineno-0-311" name="__codelineno-0-311"></a>    <span class="c1"># Attribute names and their Defaults.LIFECYCLE_* counterparts:</span>
-<a id="__codelineno-0-312" name="__codelineno-0-312"></a>    <span class="n">_LIFECYCLE_ATTRS</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-313" name="__codelineno-0-313"></a>        <span class="s2">&quot;PROMOTION_ACCESS_COUNT&quot;</span><span class="p">:</span> <span class="s2">&quot;LIFECYCLE_PROMOTION_ACCESS_COUNT&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-314" name="__codelineno-0-314"></a>        <span class="s2">&quot;PROMOTION_CONFIDENCE_THRESHOLD&quot;</span><span class="p">:</span> <span class="s2">&quot;LIFECYCLE_PROMOTION_CONFIDENCE_THRESHOLD&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-315" name="__codelineno-0-315"></a>        <span class="s2">&quot;PROMOTION_MIN_AGE_SECONDS&quot;</span><span class="p">:</span> <span class="s2">&quot;LIFECYCLE_PROMOTION_MIN_AGE_SECONDS&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-316" name="__codelineno-0-316"></a>        <span class="s2">&quot;FORGET_IMPORTANCE_FLOOR&quot;</span><span class="p">:</span> <span class="s2">&quot;LIFECYCLE_FORGET_IMPORTANCE_FLOOR&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-317" name="__codelineno-0-317"></a>        <span class="s2">&quot;FORGET_IDLE_SECONDS&quot;</span><span class="p">:</span> <span class="s2">&quot;LIFECYCLE_FORGET_IDLE_SECONDS&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-318" name="__codelineno-0-318"></a>    <span class="p">}</span>
-<a id="__codelineno-0-319" name="__codelineno-0-319"></a>
-<a id="__codelineno-0-320" name="__codelineno-0-320"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__getattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
-<a id="__codelineno-0-321" name="__codelineno-0-321"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Resolve LIFECYCLE_* threshold attributes from Defaults at access time.</span>
-<a id="__codelineno-0-322" name="__codelineno-0-322"></a>
-<a id="__codelineno-0-323" name="__codelineno-0-323"></a><span class="sd">        Called only when ``name`` is not found in the instance __dict__ or</span>
-<a id="__codelineno-0-324" name="__codelineno-0-324"></a><span class="sd">        the class __dict__ (i.e. not set as an instance attribute and not a</span>
-<a id="__codelineno-0-325" name="__codelineno-0-325"></a><span class="sd">        regular class attribute). This ensures:</span>
-<a id="__codelineno-0-326" name="__codelineno-0-326"></a>
-<a id="__codelineno-0-327" name="__codelineno-0-327"></a><span class="sd">        - apply_overrides(Defaults.LIFECYCLE_*) is observed by all lifecycle</span>
-<a id="__codelineno-0-328" name="__codelineno-0-328"></a><span class="sd">          instances that have not set a local override.</span>
-<a id="__codelineno-0-329" name="__codelineno-0-329"></a><span class="sd">        - Per-instance overrides (``lifecycle.PROMOTION_ACCESS_COUNT = N``)</span>
-<a id="__codelineno-0-330" name="__codelineno-0-330"></a><span class="sd">          still work because instance-dict lookup precedes __getattr__.</span>
-<a id="__codelineno-0-331" name="__codelineno-0-331"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-332" name="__codelineno-0-332"></a>        <span class="n">defaults_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_LIFECYCLE_ATTRS</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
-<a id="__codelineno-0-333" name="__codelineno-0-333"></a>        <span class="k">if</span> <span class="n">defaults_key</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-334" name="__codelineno-0-334"></a>            <span class="kn">from</span><span class="w"> </span><span class="nn">..fields.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">Defaults</span>
-<a id="__codelineno-0-335" name="__codelineno-0-335"></a>
-<a id="__codelineno-0-336" name="__codelineno-0-336"></a>            <span class="k">return</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">Defaults</span><span class="p">,</span> <span class="n">defaults_key</span><span class="p">)</span>
-<a id="__codelineno-0-337" name="__codelineno-0-337"></a>        <span class="k">raise</span> <span class="ne">AttributeError</span><span class="p">(</span>
-<a id="__codelineno-0-338" name="__codelineno-0-338"></a>            <span class="sa">f</span><span class="s2">&quot;&#39;</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">&#39; object has no attribute &#39;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&#39;&quot;</span>
-<a id="__codelineno-0-339" name="__codelineno-0-339"></a>        <span class="p">)</span>
-<a id="__codelineno-0-340" name="__codelineno-0-340"></a>
-<a id="__codelineno-0-341" name="__codelineno-0-341"></a>    <span class="n">TICK_BATCH_SIZE</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span>
-<a id="__codelineno-0-342" name="__codelineno-0-342"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Records per tick scan page (paginated iteration).&quot;&quot;&quot;</span>
+<span class="normal"><a href="#__codelineno-0-664">664</a></span>
+<span class="normal"><a href="#__codelineno-0-665">665</a></span>
+<span class="normal"><a href="#__codelineno-0-666">666</a></span>
+<span class="normal"><a href="#__codelineno-0-667">667</a></span>
+<span class="normal"><a href="#__codelineno-0-668">668</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-258" name="__codelineno-0-258"></a><span class="k">class</span><span class="w"> </span><span class="nc">MemoryLifecycle</span><span class="p">:</span>
+<a id="__codelineno-0-259" name="__codelineno-0-259"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Policy layer orchestrating memory tier transitions and auto-forget.</span>
+<a id="__codelineno-0-260" name="__codelineno-0-260"></a>
+<a id="__codelineno-0-261" name="__codelineno-0-261"></a><span class="sd">    Composes existing Popoto decay primitives — does not replace them.</span>
+<a id="__codelineno-0-262" name="__codelineno-0-262"></a>
+<a id="__codelineno-0-263" name="__codelineno-0-263"></a><span class="sd">    The two tiers are &quot;episodic&quot; (default for new memories) and &quot;semantic&quot;</span>
+<a id="__codelineno-0-264" name="__codelineno-0-264"></a><span class="sd">    (consolidated, protected from auto-forget). A &quot;working&quot; tier can be added</span>
+<a id="__codelineno-0-265" name="__codelineno-0-265"></a><span class="sd">    in v2 if benchmarks show benefit.</span>
+<a id="__codelineno-0-266" name="__codelineno-0-266"></a>
+<a id="__codelineno-0-267" name="__codelineno-0-267"></a><span class="sd">    Class-level constants are tuning parameters for the benchmark sweep grid</span>
+<a id="__codelineno-0-268" name="__codelineno-0-268"></a><span class="sd">    (see feedback_magic_numbers.md). They are NOT user-configurable init params.</span>
+<a id="__codelineno-0-269" name="__codelineno-0-269"></a>
+<a id="__codelineno-0-270" name="__codelineno-0-270"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-271" name="__codelineno-0-271"></a><span class="sd">        model_class: The Popoto Model class whose records to manage.</span>
+<a id="__codelineno-0-272" name="__codelineno-0-272"></a><span class="sd">        importance_field: Name of a SortedFieldMixin field used as importance</span>
+<a id="__codelineno-0-273" name="__codelineno-0-273"></a><span class="sd">            signal. Must be present on the model. Validated at init time.</span>
+<a id="__codelineno-0-274" name="__codelineno-0-274"></a><span class="sd">        tier_field: Name of the field carrying the tier partition value.</span>
+<a id="__codelineno-0-275" name="__codelineno-0-275"></a><span class="sd">            Defaults to &quot;tier&quot;. Must be a KeyField to enable filter queries.</span>
+<a id="__codelineno-0-276" name="__codelineno-0-276"></a><span class="sd">        should_promote: Optional callable(record, lifecycle) → Optional[str].</span>
+<a id="__codelineno-0-277" name="__codelineno-0-277"></a><span class="sd">            Returns the new tier string, or None to skip. Defaults to</span>
+<a id="__codelineno-0-278" name="__codelineno-0-278"></a><span class="sd">            _default_should_promote.</span>
+<a id="__codelineno-0-279" name="__codelineno-0-279"></a><span class="sd">        should_forget: Optional callable(record, lifecycle) → bool.</span>
+<a id="__codelineno-0-280" name="__codelineno-0-280"></a><span class="sd">            Returns True to hard-delete the record. Defaults to</span>
+<a id="__codelineno-0-281" name="__codelineno-0-281"></a><span class="sd">            _default_should_forget.</span>
+<a id="__codelineno-0-282" name="__codelineno-0-282"></a><span class="sd">        partition_filters: Optional dict of extra filter kwargs passed to</span>
+<a id="__codelineno-0-283" name="__codelineno-0-283"></a><span class="sd">            all query.filter() calls. Useful for multi-agent setups where</span>
+<a id="__codelineno-0-284" name="__codelineno-0-284"></a><span class="sd">            each lifecycle instance manages a sub-partition (e.g. agent_id).</span>
+<a id="__codelineno-0-285" name="__codelineno-0-285"></a>
+<a id="__codelineno-0-286" name="__codelineno-0-286"></a><span class="sd">    Raises:</span>
+<a id="__codelineno-0-287" name="__codelineno-0-287"></a><span class="sd">        ModelException: If importance_field or tier_field is not found on</span>
+<a id="__codelineno-0-288" name="__codelineno-0-288"></a><span class="sd">            model_class, or if importance_field is not a SortedFieldMixin.</span>
+<a id="__codelineno-0-289" name="__codelineno-0-289"></a>
+<a id="__codelineno-0-290" name="__codelineno-0-290"></a><span class="sd">    Example::</span>
+<a id="__codelineno-0-291" name="__codelineno-0-291"></a>
+<a id="__codelineno-0-292" name="__codelineno-0-292"></a><span class="sd">        lifecycle = MemoryLifecycle(</span>
+<a id="__codelineno-0-293" name="__codelineno-0-293"></a><span class="sd">            model_class=Memory,</span>
+<a id="__codelineno-0-294" name="__codelineno-0-294"></a><span class="sd">            importance_field=&quot;relevance&quot;,</span>
+<a id="__codelineno-0-295" name="__codelineno-0-295"></a><span class="sd">        )</span>
+<a id="__codelineno-0-296" name="__codelineno-0-296"></a><span class="sd">        lifecycle.tag_new(record)</span>
+<a id="__codelineno-0-297" name="__codelineno-0-297"></a><span class="sd">        lifecycle.tick()</span>
+<a id="__codelineno-0-298" name="__codelineno-0-298"></a><span class="sd">        state = lifecycle.assess(record)</span>
+<a id="__codelineno-0-299" name="__codelineno-0-299"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-300" name="__codelineno-0-300"></a>
+<a id="__codelineno-0-301" name="__codelineno-0-301"></a>    <span class="c1"># --- Magic-number tuning constants (benchmark sweep grid parameters) ---</span>
+<a id="__codelineno-0-302" name="__codelineno-0-302"></a>    <span class="c1"># These are resolved via __getattr__ at runtime so that:</span>
+<a id="__codelineno-0-303" name="__codelineno-0-303"></a>    <span class="c1"># (a) apply_overrides() in tests/benchmarks/overrides.py can patch</span>
+<a id="__codelineno-0-304" name="__codelineno-0-304"></a>    <span class="c1">#     Defaults.LIFECYCLE_* and have those patches observed by instances</span>
+<a id="__codelineno-0-305" name="__codelineno-0-305"></a>    <span class="c1">#     during the sweep (the bug fixed here — class-body assignment</span>
+<a id="__codelineno-0-306" name="__codelineno-0-306"></a>    <span class="c1">#     froze values at import time).</span>
+<a id="__codelineno-0-307" name="__codelineno-0-307"></a>    <span class="c1"># (b) Tests that need custom per-instance values can set instance</span>
+<a id="__codelineno-0-308" name="__codelineno-0-308"></a>    <span class="c1">#     attributes directly (e.g. ``lifecycle.PROMOTION_ACCESS_COUNT = 1``);</span>
+<a id="__codelineno-0-309" name="__codelineno-0-309"></a>    <span class="c1">#     __getattr__ is only called when the attribute is NOT found in the</span>
+<a id="__codelineno-0-310" name="__codelineno-0-310"></a>    <span class="c1">#     instance __dict__, so instance-dict assignments take priority.</span>
+<a id="__codelineno-0-311" name="__codelineno-0-311"></a>    <span class="c1">#</span>
+<a id="__codelineno-0-312" name="__codelineno-0-312"></a>    <span class="c1"># Attribute names and their Defaults.LIFECYCLE_* counterparts:</span>
+<a id="__codelineno-0-313" name="__codelineno-0-313"></a>    <span class="n">_LIFECYCLE_ATTRS</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-0-314" name="__codelineno-0-314"></a>        <span class="s2">&quot;PROMOTION_ACCESS_COUNT&quot;</span><span class="p">:</span> <span class="s2">&quot;LIFECYCLE_PROMOTION_ACCESS_COUNT&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-315" name="__codelineno-0-315"></a>        <span class="s2">&quot;PROMOTION_CONFIDENCE_THRESHOLD&quot;</span><span class="p">:</span> <span class="s2">&quot;LIFECYCLE_PROMOTION_CONFIDENCE_THRESHOLD&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-316" name="__codelineno-0-316"></a>        <span class="s2">&quot;PROMOTION_MIN_AGE_SECONDS&quot;</span><span class="p">:</span> <span class="s2">&quot;LIFECYCLE_PROMOTION_MIN_AGE_SECONDS&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-317" name="__codelineno-0-317"></a>        <span class="s2">&quot;FORGET_IMPORTANCE_FLOOR&quot;</span><span class="p">:</span> <span class="s2">&quot;LIFECYCLE_FORGET_IMPORTANCE_FLOOR&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-318" name="__codelineno-0-318"></a>        <span class="s2">&quot;FORGET_IDLE_SECONDS&quot;</span><span class="p">:</span> <span class="s2">&quot;LIFECYCLE_FORGET_IDLE_SECONDS&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-319" name="__codelineno-0-319"></a>    <span class="p">}</span>
+<a id="__codelineno-0-320" name="__codelineno-0-320"></a>
+<a id="__codelineno-0-321" name="__codelineno-0-321"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__getattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+<a id="__codelineno-0-322" name="__codelineno-0-322"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Resolve LIFECYCLE_* threshold attributes from Defaults at access time.</span>
+<a id="__codelineno-0-323" name="__codelineno-0-323"></a>
+<a id="__codelineno-0-324" name="__codelineno-0-324"></a><span class="sd">        Called only when ``name`` is not found in the instance __dict__ or</span>
+<a id="__codelineno-0-325" name="__codelineno-0-325"></a><span class="sd">        the class __dict__ (i.e. not set as an instance attribute and not a</span>
+<a id="__codelineno-0-326" name="__codelineno-0-326"></a><span class="sd">        regular class attribute). This ensures:</span>
+<a id="__codelineno-0-327" name="__codelineno-0-327"></a>
+<a id="__codelineno-0-328" name="__codelineno-0-328"></a><span class="sd">        - apply_overrides(Defaults.LIFECYCLE_*) is observed by all lifecycle</span>
+<a id="__codelineno-0-329" name="__codelineno-0-329"></a><span class="sd">          instances that have not set a local override.</span>
+<a id="__codelineno-0-330" name="__codelineno-0-330"></a><span class="sd">        - Per-instance overrides (``lifecycle.PROMOTION_ACCESS_COUNT = N``)</span>
+<a id="__codelineno-0-331" name="__codelineno-0-331"></a><span class="sd">          still work because instance-dict lookup precedes __getattr__.</span>
+<a id="__codelineno-0-332" name="__codelineno-0-332"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-333" name="__codelineno-0-333"></a>        <span class="n">defaults_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_LIFECYCLE_ATTRS</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+<a id="__codelineno-0-334" name="__codelineno-0-334"></a>        <span class="k">if</span> <span class="n">defaults_key</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-335" name="__codelineno-0-335"></a>            <span class="kn">from</span><span class="w"> </span><span class="nn">..fields.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">Defaults</span>
+<a id="__codelineno-0-336" name="__codelineno-0-336"></a>
+<a id="__codelineno-0-337" name="__codelineno-0-337"></a>            <span class="k">return</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">Defaults</span><span class="p">,</span> <span class="n">defaults_key</span><span class="p">)</span>
+<a id="__codelineno-0-338" name="__codelineno-0-338"></a>        <span class="k">raise</span> <span class="ne">AttributeError</span><span class="p">(</span>
+<a id="__codelineno-0-339" name="__codelineno-0-339"></a>            <span class="sa">f</span><span class="s2">&quot;&#39;</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">&#39; object has no attribute &#39;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&#39;&quot;</span>
+<a id="__codelineno-0-340" name="__codelineno-0-340"></a>        <span class="p">)</span>
+<a id="__codelineno-0-341" name="__codelineno-0-341"></a>
+<a id="__codelineno-0-342" name="__codelineno-0-342"></a>    <span class="c1"># -------------------------------------------------------------------</span>
 <a id="__codelineno-0-343" name="__codelineno-0-343"></a>
-<a id="__codelineno-0-344" name="__codelineno-0-344"></a>    <span class="c1"># -------------------------------------------------------------------</span>
-<a id="__codelineno-0-345" name="__codelineno-0-345"></a>
-<a id="__codelineno-0-346" name="__codelineno-0-346"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
-<a id="__codelineno-0-347" name="__codelineno-0-347"></a>        <span class="bp">self</span><span class="p">,</span>
-<a id="__codelineno-0-348" name="__codelineno-0-348"></a>        <span class="n">model_class</span><span class="p">,</span>
-<a id="__codelineno-0-349" name="__codelineno-0-349"></a>        <span class="n">importance_field</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<a id="__codelineno-0-350" name="__codelineno-0-350"></a>        <span class="n">tier_field</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;tier&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-351" name="__codelineno-0-351"></a>        <span class="n">should_promote</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Callable</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-352" name="__codelineno-0-352"></a>        <span class="n">should_forget</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Callable</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-353" name="__codelineno-0-353"></a>        <span class="n">partition_filters</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-354" name="__codelineno-0-354"></a>    <span class="p">):</span>
-<a id="__codelineno-0-355" name="__codelineno-0-355"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span> <span class="o">=</span> <span class="n">model_class</span>
-<a id="__codelineno-0-356" name="__codelineno-0-356"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">importance_field</span> <span class="o">=</span> <span class="n">importance_field</span>
-<a id="__codelineno-0-357" name="__codelineno-0-357"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span> <span class="o">=</span> <span class="n">tier_field</span>
-<a id="__codelineno-0-358" name="__codelineno-0-358"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_should_promote</span> <span class="o">=</span> <span class="n">should_promote</span> <span class="ow">or</span> <span class="n">_default_should_promote</span>
-<a id="__codelineno-0-359" name="__codelineno-0-359"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_should_forget</span> <span class="o">=</span> <span class="n">should_forget</span> <span class="ow">or</span> <span class="n">_default_should_forget</span>
-<a id="__codelineno-0-360" name="__codelineno-0-360"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">partition_filters</span> <span class="o">=</span> <span class="n">partition_filters</span> <span class="ow">or</span> <span class="p">{}</span>
-<a id="__codelineno-0-361" name="__codelineno-0-361"></a>
-<a id="__codelineno-0-362" name="__codelineno-0-362"></a>        <span class="c1"># --- Capability detection ---</span>
-<a id="__codelineno-0-363" name="__codelineno-0-363"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_validate_fields</span><span class="p">()</span>
-<a id="__codelineno-0-364" name="__codelineno-0-364"></a>
-<a id="__codelineno-0-365" name="__codelineno-0-365"></a>        <span class="c1"># Detect AccessTrackerMixin (soft dependency — degrades gracefully)</span>
-<a id="__codelineno-0-366" name="__codelineno-0-366"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..fields.access_tracker</span><span class="w"> </span><span class="kn">import</span> <span class="n">AccessTrackerMixin</span>
-<a id="__codelineno-0-367" name="__codelineno-0-367"></a>
-<a id="__codelineno-0-368" name="__codelineno-0-368"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_has_access_tracker</span> <span class="o">=</span> <span class="nb">issubclass</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">AccessTrackerMixin</span><span class="p">)</span>
-<a id="__codelineno-0-369" name="__codelineno-0-369"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_has_access_tracker</span><span class="p">:</span>
-<a id="__codelineno-0-370" name="__codelineno-0-370"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-371" name="__codelineno-0-371"></a>                <span class="s2">&quot;MemoryLifecycle: model </span><span class="si">%s</span><span class="s2"> does not use AccessTrackerMixin. &quot;</span>
-<a id="__codelineno-0-372" name="__codelineno-0-372"></a>                <span class="s2">&quot;access_count will default to 0 and last_accessed to creation time. &quot;</span>
-<a id="__codelineno-0-373" name="__codelineno-0-373"></a>                <span class="s2">&quot;Add AccessTrackerMixin for best lifecycle results.&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-374" name="__codelineno-0-374"></a>                <span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
-<a id="__codelineno-0-375" name="__codelineno-0-375"></a>            <span class="p">)</span>
-<a id="__codelineno-0-376" name="__codelineno-0-376"></a>
-<a id="__codelineno-0-377" name="__codelineno-0-377"></a>        <span class="c1"># Detect ConfidenceField (soft dependency)</span>
-<a id="__codelineno-0-378" name="__codelineno-0-378"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..fields.confidence_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConfidenceField</span>
-<a id="__codelineno-0-379" name="__codelineno-0-379"></a>
-<a id="__codelineno-0-380" name="__codelineno-0-380"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_confidence_field</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
-<a id="__codelineno-0-381" name="__codelineno-0-381"></a>        <span class="k">for</span> <span class="n">fname</span><span class="p">,</span> <span class="n">field</span> <span class="ow">in</span> <span class="n">model_class</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-<a id="__codelineno-0-382" name="__codelineno-0-382"></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">ConfidenceField</span><span class="p">):</span>
-<a id="__codelineno-0-383" name="__codelineno-0-383"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">_confidence_field</span> <span class="o">=</span> <span class="n">fname</span>
-<a id="__codelineno-0-384" name="__codelineno-0-384"></a>                <span class="k">break</span>
-<a id="__codelineno-0-385" name="__codelineno-0-385"></a>
-<a id="__codelineno-0-386" name="__codelineno-0-386"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_validate_fields</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-387" name="__codelineno-0-387"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Validate that required fields exist on the model class.</span>
-<a id="__codelineno-0-388" name="__codelineno-0-388"></a>
-<a id="__codelineno-0-389" name="__codelineno-0-389"></a><span class="sd">        Raises:</span>
-<a id="__codelineno-0-390" name="__codelineno-0-390"></a><span class="sd">            ModelException: If importance_field or tier_field is missing or wrong type.</span>
-<a id="__codelineno-0-391" name="__codelineno-0-391"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-392" name="__codelineno-0-392"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..fields.sorted_field_mixin</span><span class="w"> </span><span class="kn">import</span> <span class="n">SortedFieldMixin</span>
+<a id="__codelineno-0-344" name="__codelineno-0-344"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+<a id="__codelineno-0-345" name="__codelineno-0-345"></a>        <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-0-346" name="__codelineno-0-346"></a>        <span class="n">model_class</span><span class="p">,</span>
+<a id="__codelineno-0-347" name="__codelineno-0-347"></a>        <span class="n">importance_field</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-348" name="__codelineno-0-348"></a>        <span class="n">tier_field</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;tier&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-349" name="__codelineno-0-349"></a>        <span class="n">should_promote</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Callable</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-350" name="__codelineno-0-350"></a>        <span class="n">should_forget</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Callable</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-351" name="__codelineno-0-351"></a>        <span class="n">partition_filters</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-352" name="__codelineno-0-352"></a>    <span class="p">):</span>
+<a id="__codelineno-0-353" name="__codelineno-0-353"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span> <span class="o">=</span> <span class="n">model_class</span>
+<a id="__codelineno-0-354" name="__codelineno-0-354"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">importance_field</span> <span class="o">=</span> <span class="n">importance_field</span>
+<a id="__codelineno-0-355" name="__codelineno-0-355"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span> <span class="o">=</span> <span class="n">tier_field</span>
+<a id="__codelineno-0-356" name="__codelineno-0-356"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_should_promote</span> <span class="o">=</span> <span class="n">should_promote</span> <span class="ow">or</span> <span class="n">_default_should_promote</span>
+<a id="__codelineno-0-357" name="__codelineno-0-357"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_should_forget</span> <span class="o">=</span> <span class="n">should_forget</span> <span class="ow">or</span> <span class="n">_default_should_forget</span>
+<a id="__codelineno-0-358" name="__codelineno-0-358"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">partition_filters</span> <span class="o">=</span> <span class="n">partition_filters</span> <span class="ow">or</span> <span class="p">{}</span>
+<a id="__codelineno-0-359" name="__codelineno-0-359"></a>
+<a id="__codelineno-0-360" name="__codelineno-0-360"></a>        <span class="c1"># --- Capability detection ---</span>
+<a id="__codelineno-0-361" name="__codelineno-0-361"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_validate_fields</span><span class="p">()</span>
+<a id="__codelineno-0-362" name="__codelineno-0-362"></a>
+<a id="__codelineno-0-363" name="__codelineno-0-363"></a>        <span class="c1"># Detect AccessTrackerMixin (soft dependency — degrades gracefully)</span>
+<a id="__codelineno-0-364" name="__codelineno-0-364"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..fields.access_tracker</span><span class="w"> </span><span class="kn">import</span> <span class="n">AccessTrackerMixin</span>
+<a id="__codelineno-0-365" name="__codelineno-0-365"></a>
+<a id="__codelineno-0-366" name="__codelineno-0-366"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_has_access_tracker</span> <span class="o">=</span> <span class="nb">issubclass</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">AccessTrackerMixin</span><span class="p">)</span>
+<a id="__codelineno-0-367" name="__codelineno-0-367"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_has_access_tracker</span><span class="p">:</span>
+<a id="__codelineno-0-368" name="__codelineno-0-368"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="__codelineno-0-369" name="__codelineno-0-369"></a>                <span class="s2">&quot;MemoryLifecycle: model </span><span class="si">%s</span><span class="s2"> does not use AccessTrackerMixin. &quot;</span>
+<a id="__codelineno-0-370" name="__codelineno-0-370"></a>                <span class="s2">&quot;access_count will default to 0 and last_accessed to creation time. &quot;</span>
+<a id="__codelineno-0-371" name="__codelineno-0-371"></a>                <span class="s2">&quot;Add AccessTrackerMixin for best lifecycle results.&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-372" name="__codelineno-0-372"></a>                <span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+<a id="__codelineno-0-373" name="__codelineno-0-373"></a>            <span class="p">)</span>
+<a id="__codelineno-0-374" name="__codelineno-0-374"></a>
+<a id="__codelineno-0-375" name="__codelineno-0-375"></a>        <span class="c1"># Detect ConfidenceField (soft dependency)</span>
+<a id="__codelineno-0-376" name="__codelineno-0-376"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..fields.confidence_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConfidenceField</span>
+<a id="__codelineno-0-377" name="__codelineno-0-377"></a>
+<a id="__codelineno-0-378" name="__codelineno-0-378"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_confidence_field</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-379" name="__codelineno-0-379"></a>        <span class="k">for</span> <span class="n">fname</span><span class="p">,</span> <span class="n">field</span> <span class="ow">in</span> <span class="n">model_class</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+<a id="__codelineno-0-380" name="__codelineno-0-380"></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">ConfidenceField</span><span class="p">):</span>
+<a id="__codelineno-0-381" name="__codelineno-0-381"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">_confidence_field</span> <span class="o">=</span> <span class="n">fname</span>
+<a id="__codelineno-0-382" name="__codelineno-0-382"></a>                <span class="k">break</span>
+<a id="__codelineno-0-383" name="__codelineno-0-383"></a>
+<a id="__codelineno-0-384" name="__codelineno-0-384"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_validate_fields</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-385" name="__codelineno-0-385"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Validate that required fields exist on the model class.</span>
+<a id="__codelineno-0-386" name="__codelineno-0-386"></a>
+<a id="__codelineno-0-387" name="__codelineno-0-387"></a><span class="sd">        Raises:</span>
+<a id="__codelineno-0-388" name="__codelineno-0-388"></a><span class="sd">            ModelException: If importance_field or tier_field is missing or wrong type.</span>
+<a id="__codelineno-0-389" name="__codelineno-0-389"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-390" name="__codelineno-0-390"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..fields.sorted_field_mixin</span><span class="w"> </span><span class="kn">import</span> <span class="n">SortedFieldMixin</span>
+<a id="__codelineno-0-391" name="__codelineno-0-391"></a>
+<a id="__codelineno-0-392" name="__codelineno-0-392"></a>        <span class="n">fields</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span>
 <a id="__codelineno-0-393" name="__codelineno-0-393"></a>
-<a id="__codelineno-0-394" name="__codelineno-0-394"></a>        <span class="n">fields</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span>
-<a id="__codelineno-0-395" name="__codelineno-0-395"></a>
-<a id="__codelineno-0-396" name="__codelineno-0-396"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">importance_field</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">fields</span><span class="p">:</span>
-<a id="__codelineno-0-397" name="__codelineno-0-397"></a>            <span class="k">raise</span> <span class="n">ModelException</span><span class="p">(</span>
-<a id="__codelineno-0-398" name="__codelineno-0-398"></a>                <span class="sa">f</span><span class="s2">&quot;MemoryLifecycle: importance_field &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">importance_field</span><span class="si">}</span><span class="s2">&#39; &quot;</span>
-<a id="__codelineno-0-399" name="__codelineno-0-399"></a>                <span class="sa">f</span><span class="s2">&quot;not found on </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">. &quot;</span>
-<a id="__codelineno-0-400" name="__codelineno-0-400"></a>                <span class="sa">f</span><span class="s2">&quot;Available fields: </span><span class="si">{</span><span class="nb">list</span><span class="p">(</span><span class="n">fields</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span><span class="si">}</span><span class="s2">&quot;</span>
-<a id="__codelineno-0-401" name="__codelineno-0-401"></a>            <span class="p">)</span>
-<a id="__codelineno-0-402" name="__codelineno-0-402"></a>
-<a id="__codelineno-0-403" name="__codelineno-0-403"></a>        <span class="n">importance_f</span> <span class="o">=</span> <span class="n">fields</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">importance_field</span><span class="p">]</span>
-<a id="__codelineno-0-404" name="__codelineno-0-404"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">importance_f</span><span class="p">,</span> <span class="n">SortedFieldMixin</span><span class="p">):</span>
-<a id="__codelineno-0-405" name="__codelineno-0-405"></a>            <span class="k">raise</span> <span class="n">ModelException</span><span class="p">(</span>
-<a id="__codelineno-0-406" name="__codelineno-0-406"></a>                <span class="sa">f</span><span class="s2">&quot;MemoryLifecycle: importance_field &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">importance_field</span><span class="si">}</span><span class="s2">&#39; &quot;</span>
-<a id="__codelineno-0-407" name="__codelineno-0-407"></a>                <span class="sa">f</span><span class="s2">&quot;must be a SortedFieldMixin subclass (e.g. DecayingSortedField). &quot;</span>
-<a id="__codelineno-0-408" name="__codelineno-0-408"></a>                <span class="sa">f</span><span class="s2">&quot;Got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">importance_f</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">.&quot;</span>
-<a id="__codelineno-0-409" name="__codelineno-0-409"></a>            <span class="p">)</span>
-<a id="__codelineno-0-410" name="__codelineno-0-410"></a>
-<a id="__codelineno-0-411" name="__codelineno-0-411"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">fields</span><span class="p">:</span>
-<a id="__codelineno-0-412" name="__codelineno-0-412"></a>            <span class="k">raise</span> <span class="n">ModelException</span><span class="p">(</span>
-<a id="__codelineno-0-413" name="__codelineno-0-413"></a>                <span class="sa">f</span><span class="s2">&quot;MemoryLifecycle: tier_field &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="si">}</span><span class="s2">&#39; &quot;</span>
-<a id="__codelineno-0-414" name="__codelineno-0-414"></a>                <span class="sa">f</span><span class="s2">&quot;not found on </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">. &quot;</span>
-<a id="__codelineno-0-415" name="__codelineno-0-415"></a>                <span class="sa">f</span><span class="s2">&quot;Available fields: </span><span class="si">{</span><span class="nb">list</span><span class="p">(</span><span class="n">fields</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span><span class="si">}</span><span class="s2">&quot;</span>
-<a id="__codelineno-0-416" name="__codelineno-0-416"></a>            <span class="p">)</span>
-<a id="__codelineno-0-417" name="__codelineno-0-417"></a>
+<a id="__codelineno-0-394" name="__codelineno-0-394"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">importance_field</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">fields</span><span class="p">:</span>
+<a id="__codelineno-0-395" name="__codelineno-0-395"></a>            <span class="k">raise</span> <span class="n">ModelException</span><span class="p">(</span>
+<a id="__codelineno-0-396" name="__codelineno-0-396"></a>                <span class="sa">f</span><span class="s2">&quot;MemoryLifecycle: importance_field &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">importance_field</span><span class="si">}</span><span class="s2">&#39; &quot;</span>
+<a id="__codelineno-0-397" name="__codelineno-0-397"></a>                <span class="sa">f</span><span class="s2">&quot;not found on </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">. &quot;</span>
+<a id="__codelineno-0-398" name="__codelineno-0-398"></a>                <span class="sa">f</span><span class="s2">&quot;Available fields: </span><span class="si">{</span><span class="nb">list</span><span class="p">(</span><span class="n">fields</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-399" name="__codelineno-0-399"></a>            <span class="p">)</span>
+<a id="__codelineno-0-400" name="__codelineno-0-400"></a>
+<a id="__codelineno-0-401" name="__codelineno-0-401"></a>        <span class="n">importance_f</span> <span class="o">=</span> <span class="n">fields</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">importance_field</span><span class="p">]</span>
+<a id="__codelineno-0-402" name="__codelineno-0-402"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">importance_f</span><span class="p">,</span> <span class="n">SortedFieldMixin</span><span class="p">):</span>
+<a id="__codelineno-0-403" name="__codelineno-0-403"></a>            <span class="k">raise</span> <span class="n">ModelException</span><span class="p">(</span>
+<a id="__codelineno-0-404" name="__codelineno-0-404"></a>                <span class="sa">f</span><span class="s2">&quot;MemoryLifecycle: importance_field &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">importance_field</span><span class="si">}</span><span class="s2">&#39; &quot;</span>
+<a id="__codelineno-0-405" name="__codelineno-0-405"></a>                <span class="sa">f</span><span class="s2">&quot;must be a SortedFieldMixin subclass (e.g. DecayingSortedField). &quot;</span>
+<a id="__codelineno-0-406" name="__codelineno-0-406"></a>                <span class="sa">f</span><span class="s2">&quot;Got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">importance_f</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">.&quot;</span>
+<a id="__codelineno-0-407" name="__codelineno-0-407"></a>            <span class="p">)</span>
+<a id="__codelineno-0-408" name="__codelineno-0-408"></a>
+<a id="__codelineno-0-409" name="__codelineno-0-409"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">fields</span><span class="p">:</span>
+<a id="__codelineno-0-410" name="__codelineno-0-410"></a>            <span class="k">raise</span> <span class="n">ModelException</span><span class="p">(</span>
+<a id="__codelineno-0-411" name="__codelineno-0-411"></a>                <span class="sa">f</span><span class="s2">&quot;MemoryLifecycle: tier_field &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="si">}</span><span class="s2">&#39; &quot;</span>
+<a id="__codelineno-0-412" name="__codelineno-0-412"></a>                <span class="sa">f</span><span class="s2">&quot;not found on </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">. &quot;</span>
+<a id="__codelineno-0-413" name="__codelineno-0-413"></a>                <span class="sa">f</span><span class="s2">&quot;Available fields: </span><span class="si">{</span><span class="nb">list</span><span class="p">(</span><span class="n">fields</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-414" name="__codelineno-0-414"></a>            <span class="p">)</span>
+<a id="__codelineno-0-415" name="__codelineno-0-415"></a>
+<a id="__codelineno-0-416" name="__codelineno-0-416"></a>    <span class="c1"># -------------------------------------------------------------------</span>
+<a id="__codelineno-0-417" name="__codelineno-0-417"></a>    <span class="c1"># Public API</span>
 <a id="__codelineno-0-418" name="__codelineno-0-418"></a>    <span class="c1"># -------------------------------------------------------------------</span>
-<a id="__codelineno-0-419" name="__codelineno-0-419"></a>    <span class="c1"># Public API</span>
-<a id="__codelineno-0-420" name="__codelineno-0-420"></a>    <span class="c1"># -------------------------------------------------------------------</span>
-<a id="__codelineno-0-421" name="__codelineno-0-421"></a>
-<a id="__codelineno-0-422" name="__codelineno-0-422"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">tag_new</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">record</span><span class="p">,</span> <span class="n">tier</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;episodic&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-423" name="__codelineno-0-423"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Set the tier field on a newly created memory record.</span>
-<a id="__codelineno-0-424" name="__codelineno-0-424"></a>
-<a id="__codelineno-0-425" name="__codelineno-0-425"></a><span class="sd">        Call this after record.save() to assign the starting tier.</span>
-<a id="__codelineno-0-426" name="__codelineno-0-426"></a><span class="sd">        Idempotent — safe to call on already-tiered records (overwrites).</span>
-<a id="__codelineno-0-427" name="__codelineno-0-427"></a>
-<a id="__codelineno-0-428" name="__codelineno-0-428"></a><span class="sd">        When the tier_field is a KeyField, the tier value is part of the Redis</span>
-<a id="__codelineno-0-429" name="__codelineno-0-429"></a><span class="sd">        key identity. Changing it on an already-saved record requires</span>
-<a id="__codelineno-0-430" name="__codelineno-0-430"></a><span class="sd">        migrate_key=True (key migration). tag_new() handles this automatically.</span>
-<a id="__codelineno-0-431" name="__codelineno-0-431"></a>
-<a id="__codelineno-0-432" name="__codelineno-0-432"></a><span class="sd">        Args:</span>
-<a id="__codelineno-0-433" name="__codelineno-0-433"></a><span class="sd">            record: A saved Popoto model instance.</span>
-<a id="__codelineno-0-434" name="__codelineno-0-434"></a><span class="sd">            tier: Tier string to assign. Defaults to &quot;episodic&quot;.</span>
-<a id="__codelineno-0-435" name="__codelineno-0-435"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-436" name="__codelineno-0-436"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..fields.key_field_mixin</span><span class="w"> </span><span class="kn">import</span> <span class="n">KeyFieldMixin</span>
+<a id="__codelineno-0-419" name="__codelineno-0-419"></a>
+<a id="__codelineno-0-420" name="__codelineno-0-420"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">tag_new</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">record</span><span class="p">,</span> <span class="n">tier</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;episodic&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-421" name="__codelineno-0-421"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Set the tier field on a newly created memory record.</span>
+<a id="__codelineno-0-422" name="__codelineno-0-422"></a>
+<a id="__codelineno-0-423" name="__codelineno-0-423"></a><span class="sd">        Call this after record.save() to assign the starting tier.</span>
+<a id="__codelineno-0-424" name="__codelineno-0-424"></a><span class="sd">        Idempotent — safe to call on already-tiered records (overwrites).</span>
+<a id="__codelineno-0-425" name="__codelineno-0-425"></a>
+<a id="__codelineno-0-426" name="__codelineno-0-426"></a><span class="sd">        When the tier_field is a KeyField, the tier value is part of the Redis</span>
+<a id="__codelineno-0-427" name="__codelineno-0-427"></a><span class="sd">        key identity. Changing it on an already-saved record requires</span>
+<a id="__codelineno-0-428" name="__codelineno-0-428"></a><span class="sd">        migrate_key=True (key migration). tag_new() handles this automatically.</span>
+<a id="__codelineno-0-429" name="__codelineno-0-429"></a>
+<a id="__codelineno-0-430" name="__codelineno-0-430"></a><span class="sd">        Args:</span>
+<a id="__codelineno-0-431" name="__codelineno-0-431"></a><span class="sd">            record: A saved Popoto model instance.</span>
+<a id="__codelineno-0-432" name="__codelineno-0-432"></a><span class="sd">            tier: Tier string to assign. Defaults to &quot;episodic&quot;.</span>
+<a id="__codelineno-0-433" name="__codelineno-0-433"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-434" name="__codelineno-0-434"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..fields.key_field_mixin</span><span class="w"> </span><span class="kn">import</span> <span class="n">KeyFieldMixin</span>
+<a id="__codelineno-0-435" name="__codelineno-0-435"></a>
+<a id="__codelineno-0-436" name="__codelineno-0-436"></a>        <span class="nb">setattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">,</span> <span class="n">tier</span><span class="p">)</span>
 <a id="__codelineno-0-437" name="__codelineno-0-437"></a>
-<a id="__codelineno-0-438" name="__codelineno-0-438"></a>        <span class="nb">setattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">,</span> <span class="n">tier</span><span class="p">)</span>
-<a id="__codelineno-0-439" name="__codelineno-0-439"></a>
-<a id="__codelineno-0-440" name="__codelineno-0-440"></a>        <span class="c1"># Determine if tier_field is a KeyField (requires migrate_key=True when changing)</span>
-<a id="__codelineno-0-441" name="__codelineno-0-441"></a>        <span class="n">field</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="n">record</span><span class="p">)</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">)</span>
-<a id="__codelineno-0-442" name="__codelineno-0-442"></a>        <span class="n">is_key_field</span> <span class="o">=</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">KeyFieldMixin</span><span class="p">)</span>
-<a id="__codelineno-0-443" name="__codelineno-0-443"></a>
-<a id="__codelineno-0-444" name="__codelineno-0-444"></a>        <span class="n">saved_values</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;_saved_field_values&quot;</span><span class="p">,</span> <span class="p">{})</span>
-<a id="__codelineno-0-445" name="__codelineno-0-445"></a>        <span class="n">tier_changed</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-446" name="__codelineno-0-446"></a>            <span class="n">is_key_field</span> <span class="ow">and</span> <span class="n">saved_values</span> <span class="ow">and</span> <span class="n">saved_values</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">)</span> <span class="o">!=</span> <span class="n">tier</span>
-<a id="__codelineno-0-447" name="__codelineno-0-447"></a>        <span class="p">)</span>
-<a id="__codelineno-0-448" name="__codelineno-0-448"></a>
-<a id="__codelineno-0-449" name="__codelineno-0-449"></a>        <span class="k">if</span> <span class="n">tier_changed</span><span class="p">:</span>
-<a id="__codelineno-0-450" name="__codelineno-0-450"></a>            <span class="n">record</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">migrate_key</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-0-451" name="__codelineno-0-451"></a>        <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-452" name="__codelineno-0-452"></a>            <span class="n">record</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
-<a id="__codelineno-0-453" name="__codelineno-0-453"></a>
-<a id="__codelineno-0-454" name="__codelineno-0-454"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
-<a id="__codelineno-0-455" name="__codelineno-0-455"></a>            <span class="s2">&quot;tag_new: </span><span class="si">%s</span><span class="s2">.</span><span class="si">%s</span><span class="s2"> = </span><span class="si">%r</span><span class="s2">&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-456" name="__codelineno-0-456"></a>            <span class="nb">type</span><span class="p">(</span><span class="n">record</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
-<a id="__codelineno-0-457" name="__codelineno-0-457"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">,</span>
-<a id="__codelineno-0-458" name="__codelineno-0-458"></a>            <span class="n">tier</span><span class="p">,</span>
-<a id="__codelineno-0-459" name="__codelineno-0-459"></a>        <span class="p">)</span>
-<a id="__codelineno-0-460" name="__codelineno-0-460"></a>
-<a id="__codelineno-0-461" name="__codelineno-0-461"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">tick</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
-<a id="__codelineno-0-462" name="__codelineno-0-462"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Run one lifecycle pass: promote eligible records and forget stale ones.</span>
-<a id="__codelineno-0-463" name="__codelineno-0-463"></a>
-<a id="__codelineno-0-464" name="__codelineno-0-464"></a><span class="sd">        Scans episodic records in batches of TICK_BATCH_SIZE, promotes eligible</span>
-<a id="__codelineno-0-465" name="__codelineno-0-465"></a><span class="sd">        records to semantic, then scans all non-semantic records and forgets</span>
-<a id="__codelineno-0-466" name="__codelineno-0-466"></a><span class="sd">        those below the importance floor + idle threshold.</span>
+<a id="__codelineno-0-438" name="__codelineno-0-438"></a>        <span class="c1"># Determine if tier_field is a KeyField (requires migrate_key=True when changing)</span>
+<a id="__codelineno-0-439" name="__codelineno-0-439"></a>        <span class="n">field</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="n">record</span><span class="p">)</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">)</span>
+<a id="__codelineno-0-440" name="__codelineno-0-440"></a>        <span class="n">is_key_field</span> <span class="o">=</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">KeyFieldMixin</span><span class="p">)</span>
+<a id="__codelineno-0-441" name="__codelineno-0-441"></a>
+<a id="__codelineno-0-442" name="__codelineno-0-442"></a>        <span class="n">saved_values</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;_saved_field_values&quot;</span><span class="p">,</span> <span class="p">{})</span>
+<a id="__codelineno-0-443" name="__codelineno-0-443"></a>        <span class="n">tier_changed</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-0-444" name="__codelineno-0-444"></a>            <span class="n">is_key_field</span> <span class="ow">and</span> <span class="n">saved_values</span> <span class="ow">and</span> <span class="n">saved_values</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">)</span> <span class="o">!=</span> <span class="n">tier</span>
+<a id="__codelineno-0-445" name="__codelineno-0-445"></a>        <span class="p">)</span>
+<a id="__codelineno-0-446" name="__codelineno-0-446"></a>
+<a id="__codelineno-0-447" name="__codelineno-0-447"></a>        <span class="k">if</span> <span class="n">tier_changed</span><span class="p">:</span>
+<a id="__codelineno-0-448" name="__codelineno-0-448"></a>            <span class="n">record</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">migrate_key</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-449" name="__codelineno-0-449"></a>        <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-450" name="__codelineno-0-450"></a>            <span class="n">record</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<a id="__codelineno-0-451" name="__codelineno-0-451"></a>
+<a id="__codelineno-0-452" name="__codelineno-0-452"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+<a id="__codelineno-0-453" name="__codelineno-0-453"></a>            <span class="s2">&quot;tag_new: </span><span class="si">%s</span><span class="s2">.</span><span class="si">%s</span><span class="s2"> = </span><span class="si">%r</span><span class="s2">&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-454" name="__codelineno-0-454"></a>            <span class="nb">type</span><span class="p">(</span><span class="n">record</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+<a id="__codelineno-0-455" name="__codelineno-0-455"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">,</span>
+<a id="__codelineno-0-456" name="__codelineno-0-456"></a>            <span class="n">tier</span><span class="p">,</span>
+<a id="__codelineno-0-457" name="__codelineno-0-457"></a>        <span class="p">)</span>
+<a id="__codelineno-0-458" name="__codelineno-0-458"></a>
+<a id="__codelineno-0-459" name="__codelineno-0-459"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">tick</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<a id="__codelineno-0-460" name="__codelineno-0-460"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Run one lifecycle pass: promote eligible records and forget stale ones.</span>
+<a id="__codelineno-0-461" name="__codelineno-0-461"></a>
+<a id="__codelineno-0-462" name="__codelineno-0-462"></a><span class="sd">        Loads all non-semantic records in a single non-tracking pass, evaluates</span>
+<a id="__codelineno-0-463" name="__codelineno-0-463"></a><span class="sd">        promotion eligibility on the episodic subset, then evaluates forget</span>
+<a id="__codelineno-0-464" name="__codelineno-0-464"></a><span class="sd">        eligibility on records that were not promoted this pass.  The</span>
+<a id="__codelineno-0-465" name="__codelineno-0-465"></a><span class="sd">        re-check-tier guard re-reads the authoritative tier from Redis</span>
+<a id="__codelineno-0-466" name="__codelineno-0-466"></a><span class="sd">        immediately before deletion to prevent concurrent promotion races.</span>
 <a id="__codelineno-0-467" name="__codelineno-0-467"></a>
 <a id="__codelineno-0-468" name="__codelineno-0-468"></a><span class="sd">        Safe to run concurrently — promotion and deletion are idempotent at the</span>
 <a id="__codelineno-0-469" name="__codelineno-0-469"></a><span class="sd">        record level. Worst case: two concurrent ticks both promote the same</span>
@@ -3280,191 +3271,195 @@ state = lifecycle.assess(record)
 <a id="__codelineno-0-477" name="__codelineno-0-477"></a><span class="sd">                duration_ms (float): Wall time for this tick in milliseconds.</span>
 <a id="__codelineno-0-478" name="__codelineno-0-478"></a><span class="sd">        &quot;&quot;&quot;</span>
 <a id="__codelineno-0-479" name="__codelineno-0-479"></a>        <span class="n">start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
-<a id="__codelineno-0-480" name="__codelineno-0-480"></a>        <span class="n">promoted</span> <span class="o">=</span> <span class="mi">0</span>
-<a id="__codelineno-0-481" name="__codelineno-0-481"></a>        <span class="n">forgotten</span> <span class="o">=</span> <span class="mi">0</span>
-<a id="__codelineno-0-482" name="__codelineno-0-482"></a>
-<a id="__codelineno-0-483" name="__codelineno-0-483"></a>        <span class="c1"># --- Phase 1: Promote episodic → semantic ---</span>
-<a id="__codelineno-0-484" name="__codelineno-0-484"></a>        <span class="n">promoted</span><span class="p">,</span> <span class="n">forgotten_in_promote</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_promote_pass</span><span class="p">()</span>
-<a id="__codelineno-0-485" name="__codelineno-0-485"></a>        <span class="n">forgotten</span> <span class="o">+=</span> <span class="n">forgotten_in_promote</span>
-<a id="__codelineno-0-486" name="__codelineno-0-486"></a>
-<a id="__codelineno-0-487" name="__codelineno-0-487"></a>        <span class="c1"># --- Phase 2: Forget low-importance idle records (non-semantic) ---</span>
-<a id="__codelineno-0-488" name="__codelineno-0-488"></a>        <span class="n">forgotten</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_forget_pass</span><span class="p">()</span>
-<a id="__codelineno-0-489" name="__codelineno-0-489"></a>
-<a id="__codelineno-0-490" name="__codelineno-0-490"></a>        <span class="n">duration_ms</span> <span class="o">=</span> <span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start</span><span class="p">)</span> <span class="o">*</span> <span class="mi">1000</span>
-<a id="__codelineno-0-491" name="__codelineno-0-491"></a>        <span class="n">summary</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-492" name="__codelineno-0-492"></a>            <span class="s2">&quot;promoted&quot;</span><span class="p">:</span> <span class="n">promoted</span><span class="p">,</span>
-<a id="__codelineno-0-493" name="__codelineno-0-493"></a>            <span class="s2">&quot;forgotten&quot;</span><span class="p">:</span> <span class="n">forgotten</span><span class="p">,</span>
-<a id="__codelineno-0-494" name="__codelineno-0-494"></a>            <span class="s2">&quot;duration_ms&quot;</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="n">duration_ms</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span>
-<a id="__codelineno-0-495" name="__codelineno-0-495"></a>        <span class="p">}</span>
-<a id="__codelineno-0-496" name="__codelineno-0-496"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
-<a id="__codelineno-0-497" name="__codelineno-0-497"></a>            <span class="s2">&quot;tick() complete: promoted=</span><span class="si">%d</span><span class="s2"> forgotten=</span><span class="si">%d</span><span class="s2"> duration_ms=</span><span class="si">%.1f</span><span class="s2">&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-498" name="__codelineno-0-498"></a>            <span class="n">promoted</span><span class="p">,</span>
-<a id="__codelineno-0-499" name="__codelineno-0-499"></a>            <span class="n">forgotten</span><span class="p">,</span>
-<a id="__codelineno-0-500" name="__codelineno-0-500"></a>            <span class="n">duration_ms</span><span class="p">,</span>
-<a id="__codelineno-0-501" name="__codelineno-0-501"></a>        <span class="p">)</span>
-<a id="__codelineno-0-502" name="__codelineno-0-502"></a>        <span class="k">return</span> <span class="n">summary</span>
+<a id="__codelineno-0-480" name="__codelineno-0-480"></a>
+<a id="__codelineno-0-481" name="__codelineno-0-481"></a>        <span class="c1"># Single-pass: load all non-semantic records once, promote then forget</span>
+<a id="__codelineno-0-482" name="__codelineno-0-482"></a>        <span class="n">promoted</span><span class="p">,</span> <span class="n">forgotten</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tick_pass</span><span class="p">()</span>
+<a id="__codelineno-0-483" name="__codelineno-0-483"></a>
+<a id="__codelineno-0-484" name="__codelineno-0-484"></a>        <span class="n">duration_ms</span> <span class="o">=</span> <span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start</span><span class="p">)</span> <span class="o">*</span> <span class="mi">1000</span>
+<a id="__codelineno-0-485" name="__codelineno-0-485"></a>        <span class="n">summary</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-0-486" name="__codelineno-0-486"></a>            <span class="s2">&quot;promoted&quot;</span><span class="p">:</span> <span class="n">promoted</span><span class="p">,</span>
+<a id="__codelineno-0-487" name="__codelineno-0-487"></a>            <span class="s2">&quot;forgotten&quot;</span><span class="p">:</span> <span class="n">forgotten</span><span class="p">,</span>
+<a id="__codelineno-0-488" name="__codelineno-0-488"></a>            <span class="s2">&quot;duration_ms&quot;</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="n">duration_ms</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span>
+<a id="__codelineno-0-489" name="__codelineno-0-489"></a>        <span class="p">}</span>
+<a id="__codelineno-0-490" name="__codelineno-0-490"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+<a id="__codelineno-0-491" name="__codelineno-0-491"></a>            <span class="s2">&quot;tick() complete: promoted=</span><span class="si">%d</span><span class="s2"> forgotten=</span><span class="si">%d</span><span class="s2"> duration_ms=</span><span class="si">%.1f</span><span class="s2">&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-492" name="__codelineno-0-492"></a>            <span class="n">promoted</span><span class="p">,</span>
+<a id="__codelineno-0-493" name="__codelineno-0-493"></a>            <span class="n">forgotten</span><span class="p">,</span>
+<a id="__codelineno-0-494" name="__codelineno-0-494"></a>            <span class="n">duration_ms</span><span class="p">,</span>
+<a id="__codelineno-0-495" name="__codelineno-0-495"></a>        <span class="p">)</span>
+<a id="__codelineno-0-496" name="__codelineno-0-496"></a>        <span class="k">return</span> <span class="n">summary</span>
+<a id="__codelineno-0-497" name="__codelineno-0-497"></a>
+<a id="__codelineno-0-498" name="__codelineno-0-498"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">assess</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">record</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">LifecycleState</span><span class="p">:</span>
+<a id="__codelineno-0-499" name="__codelineno-0-499"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the current lifecycle state of a record.</span>
+<a id="__codelineno-0-500" name="__codelineno-0-500"></a>
+<a id="__codelineno-0-501" name="__codelineno-0-501"></a><span class="sd">        Args:</span>
+<a id="__codelineno-0-502" name="__codelineno-0-502"></a><span class="sd">            record: A saved Popoto model instance.</span>
 <a id="__codelineno-0-503" name="__codelineno-0-503"></a>
-<a id="__codelineno-0-504" name="__codelineno-0-504"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">assess</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">record</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">LifecycleState</span><span class="p">:</span>
-<a id="__codelineno-0-505" name="__codelineno-0-505"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the current lifecycle state of a record.</span>
-<a id="__codelineno-0-506" name="__codelineno-0-506"></a>
-<a id="__codelineno-0-507" name="__codelineno-0-507"></a><span class="sd">        Args:</span>
-<a id="__codelineno-0-508" name="__codelineno-0-508"></a><span class="sd">            record: A saved Popoto model instance.</span>
-<a id="__codelineno-0-509" name="__codelineno-0-509"></a>
-<a id="__codelineno-0-510" name="__codelineno-0-510"></a><span class="sd">        Returns:</span>
-<a id="__codelineno-0-511" name="__codelineno-0-511"></a><span class="sd">            LifecycleState with tier, access_count, last_accessed,</span>
-<a id="__codelineno-0-512" name="__codelineno-0-512"></a><span class="sd">            importance_score, promotion_eligible, and forget_eligible.</span>
-<a id="__codelineno-0-513" name="__codelineno-0-513"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-514" name="__codelineno-0-514"></a>        <span class="n">tier</span> <span class="o">=</span> <span class="n">_get_tier</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">)</span>
-<a id="__codelineno-0-515" name="__codelineno-0-515"></a>        <span class="n">access_count</span> <span class="o">=</span> <span class="n">_get_access_count</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>
-<a id="__codelineno-0-516" name="__codelineno-0-516"></a>        <span class="n">last_accessed</span> <span class="o">=</span> <span class="n">_get_last_accessed</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>
-<a id="__codelineno-0-517" name="__codelineno-0-517"></a>        <span class="n">importance_score</span> <span class="o">=</span> <span class="n">_get_importance_score</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">importance_field</span><span class="p">)</span>
-<a id="__codelineno-0-518" name="__codelineno-0-518"></a>
-<a id="__codelineno-0-519" name="__codelineno-0-519"></a>        <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-520" name="__codelineno-0-520"></a>            <span class="n">promotion_eligible</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_promote</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
-<a id="__codelineno-0-521" name="__codelineno-0-521"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
-<a id="__codelineno-0-522" name="__codelineno-0-522"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-523" name="__codelineno-0-523"></a>                <span class="s2">&quot;assess(): should_promote raised </span><span class="si">%s</span><span class="s2"> — defaulting to False&quot;</span><span class="p">,</span> <span class="n">exc</span>
-<a id="__codelineno-0-524" name="__codelineno-0-524"></a>            <span class="p">)</span>
-<a id="__codelineno-0-525" name="__codelineno-0-525"></a>            <span class="n">promotion_eligible</span> <span class="o">=</span> <span class="kc">False</span>
-<a id="__codelineno-0-526" name="__codelineno-0-526"></a>
-<a id="__codelineno-0-527" name="__codelineno-0-527"></a>        <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-528" name="__codelineno-0-528"></a>            <span class="n">forget_eligible</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_forget</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span>
-<a id="__codelineno-0-529" name="__codelineno-0-529"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
-<a id="__codelineno-0-530" name="__codelineno-0-530"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-531" name="__codelineno-0-531"></a>                <span class="s2">&quot;assess(): should_forget raised </span><span class="si">%s</span><span class="s2"> — defaulting to False&quot;</span><span class="p">,</span> <span class="n">exc</span>
-<a id="__codelineno-0-532" name="__codelineno-0-532"></a>            <span class="p">)</span>
-<a id="__codelineno-0-533" name="__codelineno-0-533"></a>            <span class="n">forget_eligible</span> <span class="o">=</span> <span class="kc">False</span>
-<a id="__codelineno-0-534" name="__codelineno-0-534"></a>
-<a id="__codelineno-0-535" name="__codelineno-0-535"></a>        <span class="k">return</span> <span class="n">LifecycleState</span><span class="p">(</span>
-<a id="__codelineno-0-536" name="__codelineno-0-536"></a>            <span class="n">tier</span><span class="o">=</span><span class="n">tier</span><span class="p">,</span>
-<a id="__codelineno-0-537" name="__codelineno-0-537"></a>            <span class="n">access_count</span><span class="o">=</span><span class="n">access_count</span><span class="p">,</span>
-<a id="__codelineno-0-538" name="__codelineno-0-538"></a>            <span class="n">last_accessed</span><span class="o">=</span><span class="n">last_accessed</span><span class="p">,</span>
-<a id="__codelineno-0-539" name="__codelineno-0-539"></a>            <span class="n">importance_score</span><span class="o">=</span><span class="n">importance_score</span><span class="p">,</span>
-<a id="__codelineno-0-540" name="__codelineno-0-540"></a>            <span class="n">promotion_eligible</span><span class="o">=</span><span class="n">promotion_eligible</span><span class="p">,</span>
-<a id="__codelineno-0-541" name="__codelineno-0-541"></a>            <span class="n">forget_eligible</span><span class="o">=</span><span class="n">forget_eligible</span><span class="p">,</span>
-<a id="__codelineno-0-542" name="__codelineno-0-542"></a>        <span class="p">)</span>
-<a id="__codelineno-0-543" name="__codelineno-0-543"></a>
-<a id="__codelineno-0-544" name="__codelineno-0-544"></a>    <span class="c1"># -------------------------------------------------------------------</span>
-<a id="__codelineno-0-545" name="__codelineno-0-545"></a>    <span class="c1"># Internal passes</span>
-<a id="__codelineno-0-546" name="__codelineno-0-546"></a>    <span class="c1"># -------------------------------------------------------------------</span>
-<a id="__codelineno-0-547" name="__codelineno-0-547"></a>
-<a id="__codelineno-0-548" name="__codelineno-0-548"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_iter_tier</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tier</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
-<a id="__codelineno-0-549" name="__codelineno-0-549"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Yield all records in a given tier, paginated by TICK_BATCH_SIZE.</span>
+<a id="__codelineno-0-504" name="__codelineno-0-504"></a><span class="sd">        Returns:</span>
+<a id="__codelineno-0-505" name="__codelineno-0-505"></a><span class="sd">            LifecycleState with tier, access_count, last_accessed,</span>
+<a id="__codelineno-0-506" name="__codelineno-0-506"></a><span class="sd">            importance_score, promotion_eligible, and forget_eligible.</span>
+<a id="__codelineno-0-507" name="__codelineno-0-507"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-508" name="__codelineno-0-508"></a>        <span class="n">tier</span> <span class="o">=</span> <span class="n">_get_tier</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">)</span>
+<a id="__codelineno-0-509" name="__codelineno-0-509"></a>        <span class="n">access_count</span> <span class="o">=</span> <span class="n">_get_access_count</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>
+<a id="__codelineno-0-510" name="__codelineno-0-510"></a>        <span class="n">last_accessed</span> <span class="o">=</span> <span class="n">_get_last_accessed</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>
+<a id="__codelineno-0-511" name="__codelineno-0-511"></a>        <span class="n">importance_score</span> <span class="o">=</span> <span class="n">_get_importance_score</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">importance_field</span><span class="p">)</span>
+<a id="__codelineno-0-512" name="__codelineno-0-512"></a>
+<a id="__codelineno-0-513" name="__codelineno-0-513"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-514" name="__codelineno-0-514"></a>            <span class="n">promotion_eligible</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_promote</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+<a id="__codelineno-0-515" name="__codelineno-0-515"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+<a id="__codelineno-0-516" name="__codelineno-0-516"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="__codelineno-0-517" name="__codelineno-0-517"></a>                <span class="s2">&quot;assess(): should_promote raised </span><span class="si">%s</span><span class="s2"> — defaulting to False&quot;</span><span class="p">,</span> <span class="n">exc</span>
+<a id="__codelineno-0-518" name="__codelineno-0-518"></a>            <span class="p">)</span>
+<a id="__codelineno-0-519" name="__codelineno-0-519"></a>            <span class="n">promotion_eligible</span> <span class="o">=</span> <span class="kc">False</span>
+<a id="__codelineno-0-520" name="__codelineno-0-520"></a>
+<a id="__codelineno-0-521" name="__codelineno-0-521"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-522" name="__codelineno-0-522"></a>            <span class="n">forget_eligible</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_forget</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span>
+<a id="__codelineno-0-523" name="__codelineno-0-523"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+<a id="__codelineno-0-524" name="__codelineno-0-524"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="__codelineno-0-525" name="__codelineno-0-525"></a>                <span class="s2">&quot;assess(): should_forget raised </span><span class="si">%s</span><span class="s2"> — defaulting to False&quot;</span><span class="p">,</span> <span class="n">exc</span>
+<a id="__codelineno-0-526" name="__codelineno-0-526"></a>            <span class="p">)</span>
+<a id="__codelineno-0-527" name="__codelineno-0-527"></a>            <span class="n">forget_eligible</span> <span class="o">=</span> <span class="kc">False</span>
+<a id="__codelineno-0-528" name="__codelineno-0-528"></a>
+<a id="__codelineno-0-529" name="__codelineno-0-529"></a>        <span class="k">return</span> <span class="n">LifecycleState</span><span class="p">(</span>
+<a id="__codelineno-0-530" name="__codelineno-0-530"></a>            <span class="n">tier</span><span class="o">=</span><span class="n">tier</span><span class="p">,</span>
+<a id="__codelineno-0-531" name="__codelineno-0-531"></a>            <span class="n">access_count</span><span class="o">=</span><span class="n">access_count</span><span class="p">,</span>
+<a id="__codelineno-0-532" name="__codelineno-0-532"></a>            <span class="n">last_accessed</span><span class="o">=</span><span class="n">last_accessed</span><span class="p">,</span>
+<a id="__codelineno-0-533" name="__codelineno-0-533"></a>            <span class="n">importance_score</span><span class="o">=</span><span class="n">importance_score</span><span class="p">,</span>
+<a id="__codelineno-0-534" name="__codelineno-0-534"></a>            <span class="n">promotion_eligible</span><span class="o">=</span><span class="n">promotion_eligible</span><span class="p">,</span>
+<a id="__codelineno-0-535" name="__codelineno-0-535"></a>            <span class="n">forget_eligible</span><span class="o">=</span><span class="n">forget_eligible</span><span class="p">,</span>
+<a id="__codelineno-0-536" name="__codelineno-0-536"></a>        <span class="p">)</span>
+<a id="__codelineno-0-537" name="__codelineno-0-537"></a>
+<a id="__codelineno-0-538" name="__codelineno-0-538"></a>    <span class="c1"># -------------------------------------------------------------------</span>
+<a id="__codelineno-0-539" name="__codelineno-0-539"></a>    <span class="c1"># Internal passes</span>
+<a id="__codelineno-0-540" name="__codelineno-0-540"></a>    <span class="c1"># -------------------------------------------------------------------</span>
+<a id="__codelineno-0-541" name="__codelineno-0-541"></a>
+<a id="__codelineno-0-542" name="__codelineno-0-542"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_tick_pass</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
+<a id="__codelineno-0-543" name="__codelineno-0-543"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Single-pass hydration: promote then forget, loading all non-semantic records once.</span>
+<a id="__codelineno-0-544" name="__codelineno-0-544"></a>
+<a id="__codelineno-0-545" name="__codelineno-0-545"></a><span class="sd">        Loads all non-semantic records using a single non-tracking query.</span>
+<a id="__codelineno-0-546" name="__codelineno-0-546"></a><span class="sd">        Evaluates promotion eligibility on the episodic subset, tracking which</span>
+<a id="__codelineno-0-547" name="__codelineno-0-547"></a><span class="sd">        records were promoted.  Then evaluates forget eligibility on records</span>
+<a id="__codelineno-0-548" name="__codelineno-0-548"></a><span class="sd">        that were NOT promoted this pass, using a re-check-tier guard</span>
+<a id="__codelineno-0-549" name="__codelineno-0-549"></a><span class="sd">        immediately before deletion to prevent concurrent promotion races.</span>
 <a id="__codelineno-0-550" name="__codelineno-0-550"></a>
-<a id="__codelineno-0-551" name="__codelineno-0-551"></a><span class="sd">        Uses KeyField filter to enumerate records with the given tier value.</span>
-<a id="__codelineno-0-552" name="__codelineno-0-552"></a><span class="sd">        Yields individual model instances.</span>
+<a id="__codelineno-0-551" name="__codelineno-0-551"></a><span class="sd">        Returns:</span>
+<a id="__codelineno-0-552" name="__codelineno-0-552"></a><span class="sd">            Tuple (promoted_count, forgotten_count).</span>
 <a id="__codelineno-0-553" name="__codelineno-0-553"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-554" name="__codelineno-0-554"></a>        <span class="n">filters</span> <span class="o">=</span> <span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">:</span> <span class="n">tier</span><span class="p">,</span> <span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">partition_filters</span><span class="p">}</span>
-<a id="__codelineno-0-555" name="__codelineno-0-555"></a>        <span class="n">all_records</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">**</span><span class="n">filters</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
-<a id="__codelineno-0-556" name="__codelineno-0-556"></a>
-<a id="__codelineno-0-557" name="__codelineno-0-557"></a>        <span class="c1"># Batch iteration</span>
-<a id="__codelineno-0-558" name="__codelineno-0-558"></a>        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">all_records</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">TICK_BATCH_SIZE</span><span class="p">):</span>
-<a id="__codelineno-0-559" name="__codelineno-0-559"></a>            <span class="n">batch</span> <span class="o">=</span> <span class="n">all_records</span><span class="p">[</span><span class="n">i</span> <span class="p">:</span> <span class="n">i</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">TICK_BATCH_SIZE</span><span class="p">]</span>
-<a id="__codelineno-0-560" name="__codelineno-0-560"></a>            <span class="k">yield from</span> <span class="n">batch</span>
+<a id="__codelineno-0-554" name="__codelineno-0-554"></a>        <span class="c1"># Load all non-semantic records once (non-tracking — no on_read() side-effects)</span>
+<a id="__codelineno-0-555" name="__codelineno-0-555"></a>        <span class="n">filters</span> <span class="o">=</span> <span class="p">{</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">partition_filters</span><span class="p">}</span>
+<a id="__codelineno-0-556" name="__codelineno-0-556"></a>        <span class="n">all_non_semantic</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-0-557" name="__codelineno-0-557"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">**</span><span class="n">filters</span><span class="p">)</span><span class="o">.</span><span class="n">no_track</span><span class="p">()</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
+<a id="__codelineno-0-558" name="__codelineno-0-558"></a>            <span class="k">if</span> <span class="n">filters</span>
+<a id="__codelineno-0-559" name="__codelineno-0-559"></a>            <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
+<a id="__codelineno-0-560" name="__codelineno-0-560"></a>        <span class="p">)</span>
 <a id="__codelineno-0-561" name="__codelineno-0-561"></a>
-<a id="__codelineno-0-562" name="__codelineno-0-562"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_iter_non_semantic</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<a id="__codelineno-0-563" name="__codelineno-0-563"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Yield all non-semantic records (episodic and any other non-protected tier).</span>
-<a id="__codelineno-0-564" name="__codelineno-0-564"></a>
-<a id="__codelineno-0-565" name="__codelineno-0-565"></a><span class="sd">        Enumerates all records for the model class and filters out semantics.</span>
-<a id="__codelineno-0-566" name="__codelineno-0-566"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-567" name="__codelineno-0-567"></a>        <span class="n">filters</span> <span class="o">=</span> <span class="p">{</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">partition_filters</span><span class="p">}</span>
-<a id="__codelineno-0-568" name="__codelineno-0-568"></a>        <span class="n">all_records</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-569" name="__codelineno-0-569"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">**</span><span class="n">filters</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
-<a id="__codelineno-0-570" name="__codelineno-0-570"></a>            <span class="k">if</span> <span class="n">filters</span>
-<a id="__codelineno-0-571" name="__codelineno-0-571"></a>            <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
-<a id="__codelineno-0-572" name="__codelineno-0-572"></a>        <span class="p">)</span>
-<a id="__codelineno-0-573" name="__codelineno-0-573"></a>
-<a id="__codelineno-0-574" name="__codelineno-0-574"></a>        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">all_records</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">TICK_BATCH_SIZE</span><span class="p">):</span>
-<a id="__codelineno-0-575" name="__codelineno-0-575"></a>            <span class="n">batch</span> <span class="o">=</span> <span class="n">all_records</span><span class="p">[</span><span class="n">i</span> <span class="p">:</span> <span class="n">i</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">TICK_BATCH_SIZE</span><span class="p">]</span>
-<a id="__codelineno-0-576" name="__codelineno-0-576"></a>            <span class="k">for</span> <span class="n">record</span> <span class="ow">in</span> <span class="n">batch</span><span class="p">:</span>
-<a id="__codelineno-0-577" name="__codelineno-0-577"></a>                <span class="n">tier</span> <span class="o">=</span> <span class="n">_get_tier</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">)</span>
-<a id="__codelineno-0-578" name="__codelineno-0-578"></a>                <span class="k">if</span> <span class="n">tier</span> <span class="o">!=</span> <span class="s2">&quot;semantic&quot;</span><span class="p">:</span>
-<a id="__codelineno-0-579" name="__codelineno-0-579"></a>                    <span class="k">yield</span> <span class="n">record</span>
-<a id="__codelineno-0-580" name="__codelineno-0-580"></a>
-<a id="__codelineno-0-581" name="__codelineno-0-581"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_promote_pass</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
-<a id="__codelineno-0-582" name="__codelineno-0-582"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Scan episodic records, promote eligible ones.</span>
+<a id="__codelineno-0-562" name="__codelineno-0-562"></a>        <span class="c1"># Filter to non-semantic in-process</span>
+<a id="__codelineno-0-563" name="__codelineno-0-563"></a>        <span class="n">non_semantic_records</span> <span class="o">=</span> <span class="p">[</span>
+<a id="__codelineno-0-564" name="__codelineno-0-564"></a>            <span class="n">r</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">all_non_semantic</span> <span class="k">if</span> <span class="n">_get_tier</span><span class="p">(</span><span class="n">r</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">)</span> <span class="o">!=</span> <span class="s2">&quot;semantic&quot;</span>
+<a id="__codelineno-0-565" name="__codelineno-0-565"></a>        <span class="p">]</span>
+<a id="__codelineno-0-566" name="__codelineno-0-566"></a>
+<a id="__codelineno-0-567" name="__codelineno-0-567"></a>        <span class="n">promoted</span> <span class="o">=</span> <span class="mi">0</span>
+<a id="__codelineno-0-568" name="__codelineno-0-568"></a>        <span class="n">promoted_this_pass</span><span class="p">:</span> <span class="nb">set</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+<a id="__codelineno-0-569" name="__codelineno-0-569"></a>
+<a id="__codelineno-0-570" name="__codelineno-0-570"></a>        <span class="c1"># --- Phase 1: Promote episodic → semantic ---</span>
+<a id="__codelineno-0-571" name="__codelineno-0-571"></a>        <span class="k">for</span> <span class="n">record</span> <span class="ow">in</span> <span class="n">non_semantic_records</span><span class="p">:</span>
+<a id="__codelineno-0-572" name="__codelineno-0-572"></a>            <span class="k">if</span> <span class="n">_get_tier</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">)</span> <span class="o">!=</span> <span class="s2">&quot;episodic&quot;</span><span class="p">:</span>
+<a id="__codelineno-0-573" name="__codelineno-0-573"></a>                <span class="k">continue</span>
+<a id="__codelineno-0-574" name="__codelineno-0-574"></a>            <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-575" name="__codelineno-0-575"></a>                <span class="n">new_tier</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_promote</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span>
+<a id="__codelineno-0-576" name="__codelineno-0-576"></a>            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+<a id="__codelineno-0-577" name="__codelineno-0-577"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="__codelineno-0-578" name="__codelineno-0-578"></a>                    <span class="s2">&quot;tick() should_promote raised for </span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2"> — skipping&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-579" name="__codelineno-0-579"></a>                    <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;_redis_key&quot;</span><span class="p">,</span> <span class="s2">&quot;?&quot;</span><span class="p">),</span>
+<a id="__codelineno-0-580" name="__codelineno-0-580"></a>                    <span class="n">exc</span><span class="p">,</span>
+<a id="__codelineno-0-581" name="__codelineno-0-581"></a>                <span class="p">)</span>
+<a id="__codelineno-0-582" name="__codelineno-0-582"></a>                <span class="k">continue</span>
 <a id="__codelineno-0-583" name="__codelineno-0-583"></a>
-<a id="__codelineno-0-584" name="__codelineno-0-584"></a><span class="sd">        Returns:</span>
-<a id="__codelineno-0-585" name="__codelineno-0-585"></a><span class="sd">            Tuple (promoted_count, forgotten_count).</span>
-<a id="__codelineno-0-586" name="__codelineno-0-586"></a><span class="sd">            forgotten_count is always 0 in this pass (reserved for future use).</span>
-<a id="__codelineno-0-587" name="__codelineno-0-587"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-588" name="__codelineno-0-588"></a>        <span class="n">promoted</span> <span class="o">=</span> <span class="mi">0</span>
-<a id="__codelineno-0-589" name="__codelineno-0-589"></a>        <span class="k">for</span> <span class="n">record</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_iter_tier</span><span class="p">(</span><span class="s2">&quot;episodic&quot;</span><span class="p">):</span>
-<a id="__codelineno-0-590" name="__codelineno-0-590"></a>            <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-591" name="__codelineno-0-591"></a>                <span class="n">new_tier</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_promote</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span>
-<a id="__codelineno-0-592" name="__codelineno-0-592"></a>            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
-<a id="__codelineno-0-593" name="__codelineno-0-593"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-594" name="__codelineno-0-594"></a>                    <span class="s2">&quot;tick() should_promote raised for </span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2"> — skipping&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-595" name="__codelineno-0-595"></a>                    <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;_redis_key&quot;</span><span class="p">,</span> <span class="s2">&quot;?&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-596" name="__codelineno-0-596"></a>                    <span class="n">exc</span><span class="p">,</span>
-<a id="__codelineno-0-597" name="__codelineno-0-597"></a>                <span class="p">)</span>
-<a id="__codelineno-0-598" name="__codelineno-0-598"></a>                <span class="k">continue</span>
-<a id="__codelineno-0-599" name="__codelineno-0-599"></a>
-<a id="__codelineno-0-600" name="__codelineno-0-600"></a>            <span class="k">if</span> <span class="n">new_tier</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-601" name="__codelineno-0-601"></a>                <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-602" name="__codelineno-0-602"></a>                    <span class="n">old_key</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;_redis_key&quot;</span><span class="p">,</span> <span class="s2">&quot;?&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-603" name="__codelineno-0-603"></a>                    <span class="nb">setattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">,</span> <span class="n">new_tier</span><span class="p">)</span>
-<a id="__codelineno-0-604" name="__codelineno-0-604"></a>                    <span class="c1"># migrate_key=True is required when tier_field is a KeyField,</span>
-<a id="__codelineno-0-605" name="__codelineno-0-605"></a>                    <span class="c1"># because the tier value is part of the Redis key identity.</span>
-<a id="__codelineno-0-606" name="__codelineno-0-606"></a>                    <span class="n">record</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">migrate_key</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-0-607" name="__codelineno-0-607"></a>                    <span class="n">promoted</span> <span class="o">+=</span> <span class="mi">1</span>
-<a id="__codelineno-0-608" name="__codelineno-0-608"></a>                    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
-<a id="__codelineno-0-609" name="__codelineno-0-609"></a>                        <span class="s2">&quot;promoted </span><span class="si">%s</span><span class="s2"> → </span><span class="si">%s</span><span class="s2"> (new key: </span><span class="si">%s</span><span class="s2">)&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-610" name="__codelineno-0-610"></a>                        <span class="n">old_key</span><span class="p">,</span>
-<a id="__codelineno-0-611" name="__codelineno-0-611"></a>                        <span class="n">new_tier</span><span class="p">,</span>
-<a id="__codelineno-0-612" name="__codelineno-0-612"></a>                        <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;_redis_key&quot;</span><span class="p">,</span> <span class="s2">&quot;?&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-613" name="__codelineno-0-613"></a>                    <span class="p">)</span>
-<a id="__codelineno-0-614" name="__codelineno-0-614"></a>                <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
-<a id="__codelineno-0-615" name="__codelineno-0-615"></a>                    <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-616" name="__codelineno-0-616"></a>                        <span class="s2">&quot;tick() promotion save failed for </span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2"> — skipping&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-617" name="__codelineno-0-617"></a>                        <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;_redis_key&quot;</span><span class="p">,</span> <span class="s2">&quot;?&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-618" name="__codelineno-0-618"></a>                        <span class="n">exc</span><span class="p">,</span>
-<a id="__codelineno-0-619" name="__codelineno-0-619"></a>                    <span class="p">)</span>
+<a id="__codelineno-0-584" name="__codelineno-0-584"></a>            <span class="k">if</span> <span class="n">new_tier</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-585" name="__codelineno-0-585"></a>                <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-586" name="__codelineno-0-586"></a>                    <span class="n">old_key</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;_redis_key&quot;</span><span class="p">,</span> <span class="s2">&quot;?&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-587" name="__codelineno-0-587"></a>                    <span class="nb">setattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">,</span> <span class="n">new_tier</span><span class="p">)</span>
+<a id="__codelineno-0-588" name="__codelineno-0-588"></a>                    <span class="c1"># migrate_key=True is required when tier_field is a KeyField,</span>
+<a id="__codelineno-0-589" name="__codelineno-0-589"></a>                    <span class="c1"># because the tier value is part of the Redis key identity.</span>
+<a id="__codelineno-0-590" name="__codelineno-0-590"></a>                    <span class="n">record</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">migrate_key</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-591" name="__codelineno-0-591"></a>                    <span class="n">promoted_this_pass</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="nb">id</span><span class="p">(</span><span class="n">record</span><span class="p">))</span>
+<a id="__codelineno-0-592" name="__codelineno-0-592"></a>                    <span class="n">promoted</span> <span class="o">+=</span> <span class="mi">1</span>
+<a id="__codelineno-0-593" name="__codelineno-0-593"></a>                    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+<a id="__codelineno-0-594" name="__codelineno-0-594"></a>                        <span class="s2">&quot;promoted </span><span class="si">%s</span><span class="s2"> → </span><span class="si">%s</span><span class="s2"> (new key: </span><span class="si">%s</span><span class="s2">)&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-595" name="__codelineno-0-595"></a>                        <span class="n">old_key</span><span class="p">,</span>
+<a id="__codelineno-0-596" name="__codelineno-0-596"></a>                        <span class="n">new_tier</span><span class="p">,</span>
+<a id="__codelineno-0-597" name="__codelineno-0-597"></a>                        <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;_redis_key&quot;</span><span class="p">,</span> <span class="s2">&quot;?&quot;</span><span class="p">),</span>
+<a id="__codelineno-0-598" name="__codelineno-0-598"></a>                    <span class="p">)</span>
+<a id="__codelineno-0-599" name="__codelineno-0-599"></a>                <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+<a id="__codelineno-0-600" name="__codelineno-0-600"></a>                    <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="__codelineno-0-601" name="__codelineno-0-601"></a>                        <span class="s2">&quot;tick() promotion save failed for </span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2"> — skipping&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-602" name="__codelineno-0-602"></a>                        <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;_redis_key&quot;</span><span class="p">,</span> <span class="s2">&quot;?&quot;</span><span class="p">),</span>
+<a id="__codelineno-0-603" name="__codelineno-0-603"></a>                        <span class="n">exc</span><span class="p">,</span>
+<a id="__codelineno-0-604" name="__codelineno-0-604"></a>                    <span class="p">)</span>
+<a id="__codelineno-0-605" name="__codelineno-0-605"></a>
+<a id="__codelineno-0-606" name="__codelineno-0-606"></a>        <span class="c1"># --- Phase 2: Forget low-importance idle records (not promoted this pass) ---</span>
+<a id="__codelineno-0-607" name="__codelineno-0-607"></a>        <span class="n">forgotten</span> <span class="o">=</span> <span class="mi">0</span>
+<a id="__codelineno-0-608" name="__codelineno-0-608"></a>        <span class="k">for</span> <span class="n">record</span> <span class="ow">in</span> <span class="n">non_semantic_records</span><span class="p">:</span>
+<a id="__codelineno-0-609" name="__codelineno-0-609"></a>            <span class="k">if</span> <span class="nb">id</span><span class="p">(</span><span class="n">record</span><span class="p">)</span> <span class="ow">in</span> <span class="n">promoted_this_pass</span><span class="p">:</span>
+<a id="__codelineno-0-610" name="__codelineno-0-610"></a>                <span class="k">continue</span>
+<a id="__codelineno-0-611" name="__codelineno-0-611"></a>            <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-612" name="__codelineno-0-612"></a>                <span class="n">should</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_forget</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span>
+<a id="__codelineno-0-613" name="__codelineno-0-613"></a>            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+<a id="__codelineno-0-614" name="__codelineno-0-614"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="__codelineno-0-615" name="__codelineno-0-615"></a>                    <span class="s2">&quot;tick() should_forget raised for </span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2"> — skipping&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-616" name="__codelineno-0-616"></a>                    <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;_redis_key&quot;</span><span class="p">,</span> <span class="s2">&quot;?&quot;</span><span class="p">),</span>
+<a id="__codelineno-0-617" name="__codelineno-0-617"></a>                    <span class="n">exc</span><span class="p">,</span>
+<a id="__codelineno-0-618" name="__codelineno-0-618"></a>                <span class="p">)</span>
+<a id="__codelineno-0-619" name="__codelineno-0-619"></a>                <span class="k">continue</span>
 <a id="__codelineno-0-620" name="__codelineno-0-620"></a>
-<a id="__codelineno-0-621" name="__codelineno-0-621"></a>        <span class="k">return</span> <span class="n">promoted</span><span class="p">,</span> <span class="mi">0</span>
-<a id="__codelineno-0-622" name="__codelineno-0-622"></a>
-<a id="__codelineno-0-623" name="__codelineno-0-623"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_forget_pass</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-<a id="__codelineno-0-624" name="__codelineno-0-624"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Scan non-semantic records, delete eligible ones.</span>
-<a id="__codelineno-0-625" name="__codelineno-0-625"></a>
-<a id="__codelineno-0-626" name="__codelineno-0-626"></a><span class="sd">        Returns:</span>
-<a id="__codelineno-0-627" name="__codelineno-0-627"></a><span class="sd">            Number of records deleted.</span>
-<a id="__codelineno-0-628" name="__codelineno-0-628"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-629" name="__codelineno-0-629"></a>        <span class="n">forgotten</span> <span class="o">=</span> <span class="mi">0</span>
-<a id="__codelineno-0-630" name="__codelineno-0-630"></a>        <span class="k">for</span> <span class="n">record</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_iter_non_semantic</span><span class="p">():</span>
-<a id="__codelineno-0-631" name="__codelineno-0-631"></a>            <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-632" name="__codelineno-0-632"></a>                <span class="n">should</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_forget</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span>
-<a id="__codelineno-0-633" name="__codelineno-0-633"></a>            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
-<a id="__codelineno-0-634" name="__codelineno-0-634"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-635" name="__codelineno-0-635"></a>                    <span class="s2">&quot;tick() should_forget raised for </span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2"> — skipping&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-636" name="__codelineno-0-636"></a>                    <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;_redis_key&quot;</span><span class="p">,</span> <span class="s2">&quot;?&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-637" name="__codelineno-0-637"></a>                    <span class="n">exc</span><span class="p">,</span>
-<a id="__codelineno-0-638" name="__codelineno-0-638"></a>                <span class="p">)</span>
-<a id="__codelineno-0-639" name="__codelineno-0-639"></a>                <span class="k">continue</span>
-<a id="__codelineno-0-640" name="__codelineno-0-640"></a>
-<a id="__codelineno-0-641" name="__codelineno-0-641"></a>            <span class="k">if</span> <span class="n">should</span><span class="p">:</span>
-<a id="__codelineno-0-642" name="__codelineno-0-642"></a>                <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-643" name="__codelineno-0-643"></a>                    <span class="n">record</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
-<a id="__codelineno-0-644" name="__codelineno-0-644"></a>                    <span class="n">forgotten</span> <span class="o">+=</span> <span class="mi">1</span>
-<a id="__codelineno-0-645" name="__codelineno-0-645"></a>                    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
-<a id="__codelineno-0-646" name="__codelineno-0-646"></a>                        <span class="s2">&quot;forgotten (deleted) </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-647" name="__codelineno-0-647"></a>                        <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;_redis_key&quot;</span><span class="p">,</span> <span class="s2">&quot;?&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-648" name="__codelineno-0-648"></a>                    <span class="p">)</span>
-<a id="__codelineno-0-649" name="__codelineno-0-649"></a>                <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
-<a id="__codelineno-0-650" name="__codelineno-0-650"></a>                    <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-651" name="__codelineno-0-651"></a>                        <span class="s2">&quot;tick() delete failed for </span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2"> — skipping&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-652" name="__codelineno-0-652"></a>                        <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;_redis_key&quot;</span><span class="p">,</span> <span class="s2">&quot;?&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-653" name="__codelineno-0-653"></a>                        <span class="n">exc</span><span class="p">,</span>
-<a id="__codelineno-0-654" name="__codelineno-0-654"></a>                    <span class="p">)</span>
-<a id="__codelineno-0-655" name="__codelineno-0-655"></a>
-<a id="__codelineno-0-656" name="__codelineno-0-656"></a>        <span class="k">return</span> <span class="n">forgotten</span>
-<a id="__codelineno-0-657" name="__codelineno-0-657"></a>
-<a id="__codelineno-0-658" name="__codelineno-0-658"></a>    <span class="c1"># -------------------------------------------------------------------</span>
-<a id="__codelineno-0-659" name="__codelineno-0-659"></a>    <span class="c1"># Convenience: all() fallback for models without partition filters</span>
-<a id="__codelineno-0-660" name="__codelineno-0-660"></a>    <span class="c1"># -------------------------------------------------------------------</span>
+<a id="__codelineno-0-621" name="__codelineno-0-621"></a>            <span class="k">if</span> <span class="n">should</span><span class="p">:</span>
+<a id="__codelineno-0-622" name="__codelineno-0-622"></a>                <span class="c1"># Re-check-tier guard: re-read the authoritative tier from Redis</span>
+<a id="__codelineno-0-623" name="__codelineno-0-623"></a>                <span class="c1"># before deleting to avoid racing with a concurrent promotion.</span>
+<a id="__codelineno-0-624" name="__codelineno-0-624"></a>                <span class="c1"># Use the same key identity that was resolved at hydration time.</span>
+<a id="__codelineno-0-625" name="__codelineno-0-625"></a>                <span class="n">live_key</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;_redis_key&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-0-626" name="__codelineno-0-626"></a>                <span class="k">if</span> <span class="n">live_key</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-627" name="__codelineno-0-627"></a>                    <span class="k">continue</span>
+<a id="__codelineno-0-628" name="__codelineno-0-628"></a>                <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-629" name="__codelineno-0-629"></a>                    <span class="n">raw_tier</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">hget</span><span class="p">(</span><span class="n">live_key</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">)</span>
+<a id="__codelineno-0-630" name="__codelineno-0-630"></a>                <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+<a id="__codelineno-0-631" name="__codelineno-0-631"></a>                    <span class="n">raw_tier</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-632" name="__codelineno-0-632"></a>
+<a id="__codelineno-0-633" name="__codelineno-0-633"></a>                <span class="k">if</span> <span class="n">raw_tier</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-634" name="__codelineno-0-634"></a>                    <span class="c1"># Key no longer exists — skip delete</span>
+<a id="__codelineno-0-635" name="__codelineno-0-635"></a>                    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;forget guard: key absent, skipping </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">live_key</span><span class="p">)</span>
+<a id="__codelineno-0-636" name="__codelineno-0-636"></a>                    <span class="k">continue</span>
+<a id="__codelineno-0-637" name="__codelineno-0-637"></a>
+<a id="__codelineno-0-638" name="__codelineno-0-638"></a>                <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-639" name="__codelineno-0-639"></a>                    <span class="n">live_tier</span> <span class="o">=</span> <span class="n">decode_lazy_field</span><span class="p">(</span><span class="n">raw_tier</span><span class="p">)</span>
+<a id="__codelineno-0-640" name="__codelineno-0-640"></a>                <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+<a id="__codelineno-0-641" name="__codelineno-0-641"></a>                    <span class="n">live_tier</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-642" name="__codelineno-0-642"></a>
+<a id="__codelineno-0-643" name="__codelineno-0-643"></a>                <span class="k">if</span> <span class="n">live_tier</span> <span class="o">==</span> <span class="s2">&quot;semantic&quot;</span><span class="p">:</span>
+<a id="__codelineno-0-644" name="__codelineno-0-644"></a>                    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+<a id="__codelineno-0-645" name="__codelineno-0-645"></a>                        <span class="s2">&quot;forget guard: tier is now semantic, skipping </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">live_key</span>
+<a id="__codelineno-0-646" name="__codelineno-0-646"></a>                    <span class="p">)</span>
+<a id="__codelineno-0-647" name="__codelineno-0-647"></a>                    <span class="k">continue</span>
+<a id="__codelineno-0-648" name="__codelineno-0-648"></a>
+<a id="__codelineno-0-649" name="__codelineno-0-649"></a>                <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-650" name="__codelineno-0-650"></a>                    <span class="n">record</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
+<a id="__codelineno-0-651" name="__codelineno-0-651"></a>                    <span class="n">forgotten</span> <span class="o">+=</span> <span class="mi">1</span>
+<a id="__codelineno-0-652" name="__codelineno-0-652"></a>                    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;forgotten (deleted) </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">live_key</span><span class="p">)</span>
+<a id="__codelineno-0-653" name="__codelineno-0-653"></a>                <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+<a id="__codelineno-0-654" name="__codelineno-0-654"></a>                    <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="__codelineno-0-655" name="__codelineno-0-655"></a>                        <span class="s2">&quot;tick() delete failed for </span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2"> — skipping&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-656" name="__codelineno-0-656"></a>                        <span class="n">live_key</span><span class="p">,</span>
+<a id="__codelineno-0-657" name="__codelineno-0-657"></a>                        <span class="n">exc</span><span class="p">,</span>
+<a id="__codelineno-0-658" name="__codelineno-0-658"></a>                    <span class="p">)</span>
+<a id="__codelineno-0-659" name="__codelineno-0-659"></a>
+<a id="__codelineno-0-660" name="__codelineno-0-660"></a>        <span class="k">return</span> <span class="n">promoted</span><span class="p">,</span> <span class="n">forgotten</span>
 <a id="__codelineno-0-661" name="__codelineno-0-661"></a>
-<a id="__codelineno-0-662" name="__codelineno-0-662"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_get_all_records</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
-<a id="__codelineno-0-663" name="__codelineno-0-663"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Return all records for this model class.&quot;&quot;&quot;</span>
-<a id="__codelineno-0-664" name="__codelineno-0-664"></a>        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
+<a id="__codelineno-0-662" name="__codelineno-0-662"></a>    <span class="c1"># -------------------------------------------------------------------</span>
+<a id="__codelineno-0-663" name="__codelineno-0-663"></a>    <span class="c1"># Convenience: all() fallback for models without partition filters</span>
+<a id="__codelineno-0-664" name="__codelineno-0-664"></a>    <span class="c1"># -------------------------------------------------------------------</span>
+<a id="__codelineno-0-665" name="__codelineno-0-665"></a>
+<a id="__codelineno-0-666" name="__codelineno-0-666"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_get_all_records</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
+<a id="__codelineno-0-667" name="__codelineno-0-667"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Return all records for this model class.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-668" name="__codelineno-0-668"></a>        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -3477,29 +3472,6 @@ state = lifecycle.assess(record)
 
 
 
-
-<div class="doc doc-object doc-attribute">
-
-
-
-<h4 id="popoto.recipes.memory_lifecycle.MemoryLifecycle.TICK_BATCH_SIZE" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">TICK_BATCH_SIZE</span> <span class="o">=</span> <span class="mi">100</span></code>
-
-  <span class="doc doc-labels">
-      <small class="doc doc-label doc-label-class-attribute"><code>class-attribute</code></small>
-      <small class="doc doc-label doc-label-instance-attribute"><code>instance-attribute</code></small>
-  </span>
-
-<a href="#popoto.recipes.memory_lifecycle.MemoryLifecycle.TICK_BATCH_SIZE" class="headerlink" title="Permanent link">&para;</a></h4>
-
-
-    <div class="doc doc-contents ">
-
-        <p>Records per tick scan page (paginated iteration).</p>
-
-    </div>
-
-</div>
 
 
 
@@ -3571,7 +3543,9 @@ migrate_key=True (key migration). tag_new() handles this automatically.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/recipes/memory_lifecycle.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-422">422</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-420">420</a></span>
+<span class="normal"><a href="#__codelineno-0-421">421</a></span>
+<span class="normal"><a href="#__codelineno-0-422">422</a></span>
 <span class="normal"><a href="#__codelineno-0-423">423</a></span>
 <span class="normal"><a href="#__codelineno-0-424">424</a></span>
 <span class="normal"><a href="#__codelineno-0-425">425</a></span>
@@ -3606,46 +3580,44 @@ migrate_key=True (key migration). tag_new() handles this automatically.</p>
 <span class="normal"><a href="#__codelineno-0-454">454</a></span>
 <span class="normal"><a href="#__codelineno-0-455">455</a></span>
 <span class="normal"><a href="#__codelineno-0-456">456</a></span>
-<span class="normal"><a href="#__codelineno-0-457">457</a></span>
-<span class="normal"><a href="#__codelineno-0-458">458</a></span>
-<span class="normal"><a href="#__codelineno-0-459">459</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-422" name="__codelineno-0-422"></a><span class="k">def</span><span class="w"> </span><span class="nf">tag_new</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">record</span><span class="p">,</span> <span class="n">tier</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;episodic&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-423" name="__codelineno-0-423"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Set the tier field on a newly created memory record.</span>
-<a id="__codelineno-0-424" name="__codelineno-0-424"></a>
-<a id="__codelineno-0-425" name="__codelineno-0-425"></a><span class="sd">    Call this after record.save() to assign the starting tier.</span>
-<a id="__codelineno-0-426" name="__codelineno-0-426"></a><span class="sd">    Idempotent — safe to call on already-tiered records (overwrites).</span>
-<a id="__codelineno-0-427" name="__codelineno-0-427"></a>
-<a id="__codelineno-0-428" name="__codelineno-0-428"></a><span class="sd">    When the tier_field is a KeyField, the tier value is part of the Redis</span>
-<a id="__codelineno-0-429" name="__codelineno-0-429"></a><span class="sd">    key identity. Changing it on an already-saved record requires</span>
-<a id="__codelineno-0-430" name="__codelineno-0-430"></a><span class="sd">    migrate_key=True (key migration). tag_new() handles this automatically.</span>
-<a id="__codelineno-0-431" name="__codelineno-0-431"></a>
-<a id="__codelineno-0-432" name="__codelineno-0-432"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-433" name="__codelineno-0-433"></a><span class="sd">        record: A saved Popoto model instance.</span>
-<a id="__codelineno-0-434" name="__codelineno-0-434"></a><span class="sd">        tier: Tier string to assign. Defaults to &quot;episodic&quot;.</span>
-<a id="__codelineno-0-435" name="__codelineno-0-435"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-436" name="__codelineno-0-436"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">..fields.key_field_mixin</span><span class="w"> </span><span class="kn">import</span> <span class="n">KeyFieldMixin</span>
+<span class="normal"><a href="#__codelineno-0-457">457</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-420" name="__codelineno-0-420"></a><span class="k">def</span><span class="w"> </span><span class="nf">tag_new</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">record</span><span class="p">,</span> <span class="n">tier</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;episodic&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-421" name="__codelineno-0-421"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Set the tier field on a newly created memory record.</span>
+<a id="__codelineno-0-422" name="__codelineno-0-422"></a>
+<a id="__codelineno-0-423" name="__codelineno-0-423"></a><span class="sd">    Call this after record.save() to assign the starting tier.</span>
+<a id="__codelineno-0-424" name="__codelineno-0-424"></a><span class="sd">    Idempotent — safe to call on already-tiered records (overwrites).</span>
+<a id="__codelineno-0-425" name="__codelineno-0-425"></a>
+<a id="__codelineno-0-426" name="__codelineno-0-426"></a><span class="sd">    When the tier_field is a KeyField, the tier value is part of the Redis</span>
+<a id="__codelineno-0-427" name="__codelineno-0-427"></a><span class="sd">    key identity. Changing it on an already-saved record requires</span>
+<a id="__codelineno-0-428" name="__codelineno-0-428"></a><span class="sd">    migrate_key=True (key migration). tag_new() handles this automatically.</span>
+<a id="__codelineno-0-429" name="__codelineno-0-429"></a>
+<a id="__codelineno-0-430" name="__codelineno-0-430"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-431" name="__codelineno-0-431"></a><span class="sd">        record: A saved Popoto model instance.</span>
+<a id="__codelineno-0-432" name="__codelineno-0-432"></a><span class="sd">        tier: Tier string to assign. Defaults to &quot;episodic&quot;.</span>
+<a id="__codelineno-0-433" name="__codelineno-0-433"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-434" name="__codelineno-0-434"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">..fields.key_field_mixin</span><span class="w"> </span><span class="kn">import</span> <span class="n">KeyFieldMixin</span>
+<a id="__codelineno-0-435" name="__codelineno-0-435"></a>
+<a id="__codelineno-0-436" name="__codelineno-0-436"></a>    <span class="nb">setattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">,</span> <span class="n">tier</span><span class="p">)</span>
 <a id="__codelineno-0-437" name="__codelineno-0-437"></a>
-<a id="__codelineno-0-438" name="__codelineno-0-438"></a>    <span class="nb">setattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">,</span> <span class="n">tier</span><span class="p">)</span>
-<a id="__codelineno-0-439" name="__codelineno-0-439"></a>
-<a id="__codelineno-0-440" name="__codelineno-0-440"></a>    <span class="c1"># Determine if tier_field is a KeyField (requires migrate_key=True when changing)</span>
-<a id="__codelineno-0-441" name="__codelineno-0-441"></a>    <span class="n">field</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="n">record</span><span class="p">)</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">)</span>
-<a id="__codelineno-0-442" name="__codelineno-0-442"></a>    <span class="n">is_key_field</span> <span class="o">=</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">KeyFieldMixin</span><span class="p">)</span>
-<a id="__codelineno-0-443" name="__codelineno-0-443"></a>
-<a id="__codelineno-0-444" name="__codelineno-0-444"></a>    <span class="n">saved_values</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;_saved_field_values&quot;</span><span class="p">,</span> <span class="p">{})</span>
-<a id="__codelineno-0-445" name="__codelineno-0-445"></a>    <span class="n">tier_changed</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-446" name="__codelineno-0-446"></a>        <span class="n">is_key_field</span> <span class="ow">and</span> <span class="n">saved_values</span> <span class="ow">and</span> <span class="n">saved_values</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">)</span> <span class="o">!=</span> <span class="n">tier</span>
-<a id="__codelineno-0-447" name="__codelineno-0-447"></a>    <span class="p">)</span>
-<a id="__codelineno-0-448" name="__codelineno-0-448"></a>
-<a id="__codelineno-0-449" name="__codelineno-0-449"></a>    <span class="k">if</span> <span class="n">tier_changed</span><span class="p">:</span>
-<a id="__codelineno-0-450" name="__codelineno-0-450"></a>        <span class="n">record</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">migrate_key</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-0-451" name="__codelineno-0-451"></a>    <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-452" name="__codelineno-0-452"></a>        <span class="n">record</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
-<a id="__codelineno-0-453" name="__codelineno-0-453"></a>
-<a id="__codelineno-0-454" name="__codelineno-0-454"></a>    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
-<a id="__codelineno-0-455" name="__codelineno-0-455"></a>        <span class="s2">&quot;tag_new: </span><span class="si">%s</span><span class="s2">.</span><span class="si">%s</span><span class="s2"> = </span><span class="si">%r</span><span class="s2">&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-456" name="__codelineno-0-456"></a>        <span class="nb">type</span><span class="p">(</span><span class="n">record</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
-<a id="__codelineno-0-457" name="__codelineno-0-457"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">,</span>
-<a id="__codelineno-0-458" name="__codelineno-0-458"></a>        <span class="n">tier</span><span class="p">,</span>
-<a id="__codelineno-0-459" name="__codelineno-0-459"></a>    <span class="p">)</span>
+<a id="__codelineno-0-438" name="__codelineno-0-438"></a>    <span class="c1"># Determine if tier_field is a KeyField (requires migrate_key=True when changing)</span>
+<a id="__codelineno-0-439" name="__codelineno-0-439"></a>    <span class="n">field</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="n">record</span><span class="p">)</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">)</span>
+<a id="__codelineno-0-440" name="__codelineno-0-440"></a>    <span class="n">is_key_field</span> <span class="o">=</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">KeyFieldMixin</span><span class="p">)</span>
+<a id="__codelineno-0-441" name="__codelineno-0-441"></a>
+<a id="__codelineno-0-442" name="__codelineno-0-442"></a>    <span class="n">saved_values</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;_saved_field_values&quot;</span><span class="p">,</span> <span class="p">{})</span>
+<a id="__codelineno-0-443" name="__codelineno-0-443"></a>    <span class="n">tier_changed</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-0-444" name="__codelineno-0-444"></a>        <span class="n">is_key_field</span> <span class="ow">and</span> <span class="n">saved_values</span> <span class="ow">and</span> <span class="n">saved_values</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">)</span> <span class="o">!=</span> <span class="n">tier</span>
+<a id="__codelineno-0-445" name="__codelineno-0-445"></a>    <span class="p">)</span>
+<a id="__codelineno-0-446" name="__codelineno-0-446"></a>
+<a id="__codelineno-0-447" name="__codelineno-0-447"></a>    <span class="k">if</span> <span class="n">tier_changed</span><span class="p">:</span>
+<a id="__codelineno-0-448" name="__codelineno-0-448"></a>        <span class="n">record</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">migrate_key</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-449" name="__codelineno-0-449"></a>    <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-450" name="__codelineno-0-450"></a>        <span class="n">record</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<a id="__codelineno-0-451" name="__codelineno-0-451"></a>
+<a id="__codelineno-0-452" name="__codelineno-0-452"></a>    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+<a id="__codelineno-0-453" name="__codelineno-0-453"></a>        <span class="s2">&quot;tag_new: </span><span class="si">%s</span><span class="s2">.</span><span class="si">%s</span><span class="s2"> = </span><span class="si">%r</span><span class="s2">&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-454" name="__codelineno-0-454"></a>        <span class="nb">type</span><span class="p">(</span><span class="n">record</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+<a id="__codelineno-0-455" name="__codelineno-0-455"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">,</span>
+<a id="__codelineno-0-456" name="__codelineno-0-456"></a>        <span class="n">tier</span><span class="p">,</span>
+<a id="__codelineno-0-457" name="__codelineno-0-457"></a>    <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -3664,9 +3636,11 @@ migrate_key=True (key migration). tag_new() handles this automatically.</p>
     <div class="doc doc-contents ">
 
         <p>Run one lifecycle pass: promote eligible records and forget stale ones.</p>
-<p>Scans episodic records in batches of TICK_BATCH_SIZE, promotes eligible
-records to semantic, then scans all non-semantic records and forgets
-those below the importance floor + idle threshold.</p>
+<p>Loads all non-semantic records in a single non-tracking pass, evaluates
+promotion eligibility on the episodic subset, then evaluates forget
+eligibility on records that were not promoted this pass.  The
+re-check-tier guard re-reads the authoritative tier from Redis
+immediately before deletion to prevent concurrent promotion races.</p>
 <p>Safe to run concurrently — promotion and deletion are idempotent at the
 record level. Worst case: two concurrent ticks both promote the same
 record (second write is a no-op) or both delete the same record
@@ -3701,7 +3675,9 @@ duration_ms (float): Wall time for this tick in milliseconds.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/recipes/memory_lifecycle.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-461">461</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-459">459</a></span>
+<span class="normal"><a href="#__codelineno-0-460">460</a></span>
+<span class="normal"><a href="#__codelineno-0-461">461</a></span>
 <span class="normal"><a href="#__codelineno-0-462">462</a></span>
 <span class="normal"><a href="#__codelineno-0-463">463</a></span>
 <span class="normal"><a href="#__codelineno-0-464">464</a></span>
@@ -3736,18 +3712,14 @@ duration_ms (float): Wall time for this tick in milliseconds.</p>
 <span class="normal"><a href="#__codelineno-0-493">493</a></span>
 <span class="normal"><a href="#__codelineno-0-494">494</a></span>
 <span class="normal"><a href="#__codelineno-0-495">495</a></span>
-<span class="normal"><a href="#__codelineno-0-496">496</a></span>
-<span class="normal"><a href="#__codelineno-0-497">497</a></span>
-<span class="normal"><a href="#__codelineno-0-498">498</a></span>
-<span class="normal"><a href="#__codelineno-0-499">499</a></span>
-<span class="normal"><a href="#__codelineno-0-500">500</a></span>
-<span class="normal"><a href="#__codelineno-0-501">501</a></span>
-<span class="normal"><a href="#__codelineno-0-502">502</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-461" name="__codelineno-0-461"></a><span class="k">def</span><span class="w"> </span><span class="nf">tick</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
-<a id="__codelineno-0-462" name="__codelineno-0-462"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Run one lifecycle pass: promote eligible records and forget stale ones.</span>
-<a id="__codelineno-0-463" name="__codelineno-0-463"></a>
-<a id="__codelineno-0-464" name="__codelineno-0-464"></a><span class="sd">    Scans episodic records in batches of TICK_BATCH_SIZE, promotes eligible</span>
-<a id="__codelineno-0-465" name="__codelineno-0-465"></a><span class="sd">    records to semantic, then scans all non-semantic records and forgets</span>
-<a id="__codelineno-0-466" name="__codelineno-0-466"></a><span class="sd">    those below the importance floor + idle threshold.</span>
+<span class="normal"><a href="#__codelineno-0-496">496</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-459" name="__codelineno-0-459"></a><span class="k">def</span><span class="w"> </span><span class="nf">tick</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<a id="__codelineno-0-460" name="__codelineno-0-460"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Run one lifecycle pass: promote eligible records and forget stale ones.</span>
+<a id="__codelineno-0-461" name="__codelineno-0-461"></a>
+<a id="__codelineno-0-462" name="__codelineno-0-462"></a><span class="sd">    Loads all non-semantic records in a single non-tracking pass, evaluates</span>
+<a id="__codelineno-0-463" name="__codelineno-0-463"></a><span class="sd">    promotion eligibility on the episodic subset, then evaluates forget</span>
+<a id="__codelineno-0-464" name="__codelineno-0-464"></a><span class="sd">    eligibility on records that were not promoted this pass.  The</span>
+<a id="__codelineno-0-465" name="__codelineno-0-465"></a><span class="sd">    re-check-tier guard re-reads the authoritative tier from Redis</span>
+<a id="__codelineno-0-466" name="__codelineno-0-466"></a><span class="sd">    immediately before deletion to prevent concurrent promotion races.</span>
 <a id="__codelineno-0-467" name="__codelineno-0-467"></a>
 <a id="__codelineno-0-468" name="__codelineno-0-468"></a><span class="sd">    Safe to run concurrently — promotion and deletion are idempotent at the</span>
 <a id="__codelineno-0-469" name="__codelineno-0-469"></a><span class="sd">    record level. Worst case: two concurrent ticks both promote the same</span>
@@ -3761,29 +3733,23 @@ duration_ms (float): Wall time for this tick in milliseconds.</p>
 <a id="__codelineno-0-477" name="__codelineno-0-477"></a><span class="sd">            duration_ms (float): Wall time for this tick in milliseconds.</span>
 <a id="__codelineno-0-478" name="__codelineno-0-478"></a><span class="sd">    &quot;&quot;&quot;</span>
 <a id="__codelineno-0-479" name="__codelineno-0-479"></a>    <span class="n">start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
-<a id="__codelineno-0-480" name="__codelineno-0-480"></a>    <span class="n">promoted</span> <span class="o">=</span> <span class="mi">0</span>
-<a id="__codelineno-0-481" name="__codelineno-0-481"></a>    <span class="n">forgotten</span> <span class="o">=</span> <span class="mi">0</span>
-<a id="__codelineno-0-482" name="__codelineno-0-482"></a>
-<a id="__codelineno-0-483" name="__codelineno-0-483"></a>    <span class="c1"># --- Phase 1: Promote episodic → semantic ---</span>
-<a id="__codelineno-0-484" name="__codelineno-0-484"></a>    <span class="n">promoted</span><span class="p">,</span> <span class="n">forgotten_in_promote</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_promote_pass</span><span class="p">()</span>
-<a id="__codelineno-0-485" name="__codelineno-0-485"></a>    <span class="n">forgotten</span> <span class="o">+=</span> <span class="n">forgotten_in_promote</span>
-<a id="__codelineno-0-486" name="__codelineno-0-486"></a>
-<a id="__codelineno-0-487" name="__codelineno-0-487"></a>    <span class="c1"># --- Phase 2: Forget low-importance idle records (non-semantic) ---</span>
-<a id="__codelineno-0-488" name="__codelineno-0-488"></a>    <span class="n">forgotten</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_forget_pass</span><span class="p">()</span>
-<a id="__codelineno-0-489" name="__codelineno-0-489"></a>
-<a id="__codelineno-0-490" name="__codelineno-0-490"></a>    <span class="n">duration_ms</span> <span class="o">=</span> <span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start</span><span class="p">)</span> <span class="o">*</span> <span class="mi">1000</span>
-<a id="__codelineno-0-491" name="__codelineno-0-491"></a>    <span class="n">summary</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-492" name="__codelineno-0-492"></a>        <span class="s2">&quot;promoted&quot;</span><span class="p">:</span> <span class="n">promoted</span><span class="p">,</span>
-<a id="__codelineno-0-493" name="__codelineno-0-493"></a>        <span class="s2">&quot;forgotten&quot;</span><span class="p">:</span> <span class="n">forgotten</span><span class="p">,</span>
-<a id="__codelineno-0-494" name="__codelineno-0-494"></a>        <span class="s2">&quot;duration_ms&quot;</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="n">duration_ms</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span>
-<a id="__codelineno-0-495" name="__codelineno-0-495"></a>    <span class="p">}</span>
-<a id="__codelineno-0-496" name="__codelineno-0-496"></a>    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
-<a id="__codelineno-0-497" name="__codelineno-0-497"></a>        <span class="s2">&quot;tick() complete: promoted=</span><span class="si">%d</span><span class="s2"> forgotten=</span><span class="si">%d</span><span class="s2"> duration_ms=</span><span class="si">%.1f</span><span class="s2">&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-498" name="__codelineno-0-498"></a>        <span class="n">promoted</span><span class="p">,</span>
-<a id="__codelineno-0-499" name="__codelineno-0-499"></a>        <span class="n">forgotten</span><span class="p">,</span>
-<a id="__codelineno-0-500" name="__codelineno-0-500"></a>        <span class="n">duration_ms</span><span class="p">,</span>
-<a id="__codelineno-0-501" name="__codelineno-0-501"></a>    <span class="p">)</span>
-<a id="__codelineno-0-502" name="__codelineno-0-502"></a>    <span class="k">return</span> <span class="n">summary</span>
+<a id="__codelineno-0-480" name="__codelineno-0-480"></a>
+<a id="__codelineno-0-481" name="__codelineno-0-481"></a>    <span class="c1"># Single-pass: load all non-semantic records once, promote then forget</span>
+<a id="__codelineno-0-482" name="__codelineno-0-482"></a>    <span class="n">promoted</span><span class="p">,</span> <span class="n">forgotten</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tick_pass</span><span class="p">()</span>
+<a id="__codelineno-0-483" name="__codelineno-0-483"></a>
+<a id="__codelineno-0-484" name="__codelineno-0-484"></a>    <span class="n">duration_ms</span> <span class="o">=</span> <span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start</span><span class="p">)</span> <span class="o">*</span> <span class="mi">1000</span>
+<a id="__codelineno-0-485" name="__codelineno-0-485"></a>    <span class="n">summary</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-0-486" name="__codelineno-0-486"></a>        <span class="s2">&quot;promoted&quot;</span><span class="p">:</span> <span class="n">promoted</span><span class="p">,</span>
+<a id="__codelineno-0-487" name="__codelineno-0-487"></a>        <span class="s2">&quot;forgotten&quot;</span><span class="p">:</span> <span class="n">forgotten</span><span class="p">,</span>
+<a id="__codelineno-0-488" name="__codelineno-0-488"></a>        <span class="s2">&quot;duration_ms&quot;</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="n">duration_ms</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span>
+<a id="__codelineno-0-489" name="__codelineno-0-489"></a>    <span class="p">}</span>
+<a id="__codelineno-0-490" name="__codelineno-0-490"></a>    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+<a id="__codelineno-0-491" name="__codelineno-0-491"></a>        <span class="s2">&quot;tick() complete: promoted=</span><span class="si">%d</span><span class="s2"> forgotten=</span><span class="si">%d</span><span class="s2"> duration_ms=</span><span class="si">%.1f</span><span class="s2">&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-492" name="__codelineno-0-492"></a>        <span class="n">promoted</span><span class="p">,</span>
+<a id="__codelineno-0-493" name="__codelineno-0-493"></a>        <span class="n">forgotten</span><span class="p">,</span>
+<a id="__codelineno-0-494" name="__codelineno-0-494"></a>        <span class="n">duration_ms</span><span class="p">,</span>
+<a id="__codelineno-0-495" name="__codelineno-0-495"></a>    <span class="p">)</span>
+<a id="__codelineno-0-496" name="__codelineno-0-496"></a>    <span class="k">return</span> <span class="n">summary</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -3879,7 +3845,13 @@ duration_ms (float): Wall time for this tick in milliseconds.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/recipes/memory_lifecycle.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-504">504</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-498">498</a></span>
+<span class="normal"><a href="#__codelineno-0-499">499</a></span>
+<span class="normal"><a href="#__codelineno-0-500">500</a></span>
+<span class="normal"><a href="#__codelineno-0-501">501</a></span>
+<span class="normal"><a href="#__codelineno-0-502">502</a></span>
+<span class="normal"><a href="#__codelineno-0-503">503</a></span>
+<span class="normal"><a href="#__codelineno-0-504">504</a></span>
 <span class="normal"><a href="#__codelineno-0-505">505</a></span>
 <span class="normal"><a href="#__codelineno-0-506">506</a></span>
 <span class="normal"><a href="#__codelineno-0-507">507</a></span>
@@ -3911,51 +3883,45 @@ duration_ms (float): Wall time for this tick in milliseconds.</p>
 <span class="normal"><a href="#__codelineno-0-533">533</a></span>
 <span class="normal"><a href="#__codelineno-0-534">534</a></span>
 <span class="normal"><a href="#__codelineno-0-535">535</a></span>
-<span class="normal"><a href="#__codelineno-0-536">536</a></span>
-<span class="normal"><a href="#__codelineno-0-537">537</a></span>
-<span class="normal"><a href="#__codelineno-0-538">538</a></span>
-<span class="normal"><a href="#__codelineno-0-539">539</a></span>
-<span class="normal"><a href="#__codelineno-0-540">540</a></span>
-<span class="normal"><a href="#__codelineno-0-541">541</a></span>
-<span class="normal"><a href="#__codelineno-0-542">542</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-504" name="__codelineno-0-504"></a><span class="k">def</span><span class="w"> </span><span class="nf">assess</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">record</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">LifecycleState</span><span class="p">:</span>
-<a id="__codelineno-0-505" name="__codelineno-0-505"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the current lifecycle state of a record.</span>
-<a id="__codelineno-0-506" name="__codelineno-0-506"></a>
-<a id="__codelineno-0-507" name="__codelineno-0-507"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-508" name="__codelineno-0-508"></a><span class="sd">        record: A saved Popoto model instance.</span>
-<a id="__codelineno-0-509" name="__codelineno-0-509"></a>
-<a id="__codelineno-0-510" name="__codelineno-0-510"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-511" name="__codelineno-0-511"></a><span class="sd">        LifecycleState with tier, access_count, last_accessed,</span>
-<a id="__codelineno-0-512" name="__codelineno-0-512"></a><span class="sd">        importance_score, promotion_eligible, and forget_eligible.</span>
-<a id="__codelineno-0-513" name="__codelineno-0-513"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-514" name="__codelineno-0-514"></a>    <span class="n">tier</span> <span class="o">=</span> <span class="n">_get_tier</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">)</span>
-<a id="__codelineno-0-515" name="__codelineno-0-515"></a>    <span class="n">access_count</span> <span class="o">=</span> <span class="n">_get_access_count</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>
-<a id="__codelineno-0-516" name="__codelineno-0-516"></a>    <span class="n">last_accessed</span> <span class="o">=</span> <span class="n">_get_last_accessed</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>
-<a id="__codelineno-0-517" name="__codelineno-0-517"></a>    <span class="n">importance_score</span> <span class="o">=</span> <span class="n">_get_importance_score</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">importance_field</span><span class="p">)</span>
-<a id="__codelineno-0-518" name="__codelineno-0-518"></a>
-<a id="__codelineno-0-519" name="__codelineno-0-519"></a>    <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-520" name="__codelineno-0-520"></a>        <span class="n">promotion_eligible</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_promote</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
-<a id="__codelineno-0-521" name="__codelineno-0-521"></a>    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
-<a id="__codelineno-0-522" name="__codelineno-0-522"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-523" name="__codelineno-0-523"></a>            <span class="s2">&quot;assess(): should_promote raised </span><span class="si">%s</span><span class="s2"> — defaulting to False&quot;</span><span class="p">,</span> <span class="n">exc</span>
-<a id="__codelineno-0-524" name="__codelineno-0-524"></a>        <span class="p">)</span>
-<a id="__codelineno-0-525" name="__codelineno-0-525"></a>        <span class="n">promotion_eligible</span> <span class="o">=</span> <span class="kc">False</span>
-<a id="__codelineno-0-526" name="__codelineno-0-526"></a>
-<a id="__codelineno-0-527" name="__codelineno-0-527"></a>    <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-528" name="__codelineno-0-528"></a>        <span class="n">forget_eligible</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_forget</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span>
-<a id="__codelineno-0-529" name="__codelineno-0-529"></a>    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
-<a id="__codelineno-0-530" name="__codelineno-0-530"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-531" name="__codelineno-0-531"></a>            <span class="s2">&quot;assess(): should_forget raised </span><span class="si">%s</span><span class="s2"> — defaulting to False&quot;</span><span class="p">,</span> <span class="n">exc</span>
-<a id="__codelineno-0-532" name="__codelineno-0-532"></a>        <span class="p">)</span>
-<a id="__codelineno-0-533" name="__codelineno-0-533"></a>        <span class="n">forget_eligible</span> <span class="o">=</span> <span class="kc">False</span>
-<a id="__codelineno-0-534" name="__codelineno-0-534"></a>
-<a id="__codelineno-0-535" name="__codelineno-0-535"></a>    <span class="k">return</span> <span class="n">LifecycleState</span><span class="p">(</span>
-<a id="__codelineno-0-536" name="__codelineno-0-536"></a>        <span class="n">tier</span><span class="o">=</span><span class="n">tier</span><span class="p">,</span>
-<a id="__codelineno-0-537" name="__codelineno-0-537"></a>        <span class="n">access_count</span><span class="o">=</span><span class="n">access_count</span><span class="p">,</span>
-<a id="__codelineno-0-538" name="__codelineno-0-538"></a>        <span class="n">last_accessed</span><span class="o">=</span><span class="n">last_accessed</span><span class="p">,</span>
-<a id="__codelineno-0-539" name="__codelineno-0-539"></a>        <span class="n">importance_score</span><span class="o">=</span><span class="n">importance_score</span><span class="p">,</span>
-<a id="__codelineno-0-540" name="__codelineno-0-540"></a>        <span class="n">promotion_eligible</span><span class="o">=</span><span class="n">promotion_eligible</span><span class="p">,</span>
-<a id="__codelineno-0-541" name="__codelineno-0-541"></a>        <span class="n">forget_eligible</span><span class="o">=</span><span class="n">forget_eligible</span><span class="p">,</span>
-<a id="__codelineno-0-542" name="__codelineno-0-542"></a>    <span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-536">536</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-498" name="__codelineno-0-498"></a><span class="k">def</span><span class="w"> </span><span class="nf">assess</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">record</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">LifecycleState</span><span class="p">:</span>
+<a id="__codelineno-0-499" name="__codelineno-0-499"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the current lifecycle state of a record.</span>
+<a id="__codelineno-0-500" name="__codelineno-0-500"></a>
+<a id="__codelineno-0-501" name="__codelineno-0-501"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-502" name="__codelineno-0-502"></a><span class="sd">        record: A saved Popoto model instance.</span>
+<a id="__codelineno-0-503" name="__codelineno-0-503"></a>
+<a id="__codelineno-0-504" name="__codelineno-0-504"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-505" name="__codelineno-0-505"></a><span class="sd">        LifecycleState with tier, access_count, last_accessed,</span>
+<a id="__codelineno-0-506" name="__codelineno-0-506"></a><span class="sd">        importance_score, promotion_eligible, and forget_eligible.</span>
+<a id="__codelineno-0-507" name="__codelineno-0-507"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-508" name="__codelineno-0-508"></a>    <span class="n">tier</span> <span class="o">=</span> <span class="n">_get_tier</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">)</span>
+<a id="__codelineno-0-509" name="__codelineno-0-509"></a>    <span class="n">access_count</span> <span class="o">=</span> <span class="n">_get_access_count</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>
+<a id="__codelineno-0-510" name="__codelineno-0-510"></a>    <span class="n">last_accessed</span> <span class="o">=</span> <span class="n">_get_last_accessed</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>
+<a id="__codelineno-0-511" name="__codelineno-0-511"></a>    <span class="n">importance_score</span> <span class="o">=</span> <span class="n">_get_importance_score</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">importance_field</span><span class="p">)</span>
+<a id="__codelineno-0-512" name="__codelineno-0-512"></a>
+<a id="__codelineno-0-513" name="__codelineno-0-513"></a>    <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-514" name="__codelineno-0-514"></a>        <span class="n">promotion_eligible</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_promote</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+<a id="__codelineno-0-515" name="__codelineno-0-515"></a>    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+<a id="__codelineno-0-516" name="__codelineno-0-516"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="__codelineno-0-517" name="__codelineno-0-517"></a>            <span class="s2">&quot;assess(): should_promote raised </span><span class="si">%s</span><span class="s2"> — defaulting to False&quot;</span><span class="p">,</span> <span class="n">exc</span>
+<a id="__codelineno-0-518" name="__codelineno-0-518"></a>        <span class="p">)</span>
+<a id="__codelineno-0-519" name="__codelineno-0-519"></a>        <span class="n">promotion_eligible</span> <span class="o">=</span> <span class="kc">False</span>
+<a id="__codelineno-0-520" name="__codelineno-0-520"></a>
+<a id="__codelineno-0-521" name="__codelineno-0-521"></a>    <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-522" name="__codelineno-0-522"></a>        <span class="n">forget_eligible</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_forget</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span>
+<a id="__codelineno-0-523" name="__codelineno-0-523"></a>    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+<a id="__codelineno-0-524" name="__codelineno-0-524"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="__codelineno-0-525" name="__codelineno-0-525"></a>            <span class="s2">&quot;assess(): should_forget raised </span><span class="si">%s</span><span class="s2"> — defaulting to False&quot;</span><span class="p">,</span> <span class="n">exc</span>
+<a id="__codelineno-0-526" name="__codelineno-0-526"></a>        <span class="p">)</span>
+<a id="__codelineno-0-527" name="__codelineno-0-527"></a>        <span class="n">forget_eligible</span> <span class="o">=</span> <span class="kc">False</span>
+<a id="__codelineno-0-528" name="__codelineno-0-528"></a>
+<a id="__codelineno-0-529" name="__codelineno-0-529"></a>    <span class="k">return</span> <span class="n">LifecycleState</span><span class="p">(</span>
+<a id="__codelineno-0-530" name="__codelineno-0-530"></a>        <span class="n">tier</span><span class="o">=</span><span class="n">tier</span><span class="p">,</span>
+<a id="__codelineno-0-531" name="__codelineno-0-531"></a>        <span class="n">access_count</span><span class="o">=</span><span class="n">access_count</span><span class="p">,</span>
+<a id="__codelineno-0-532" name="__codelineno-0-532"></a>        <span class="n">last_accessed</span><span class="o">=</span><span class="n">last_accessed</span><span class="p">,</span>
+<a id="__codelineno-0-533" name="__codelineno-0-533"></a>        <span class="n">importance_score</span><span class="o">=</span><span class="n">importance_score</span><span class="p">,</span>
+<a id="__codelineno-0-534" name="__codelineno-0-534"></a>        <span class="n">promotion_eligible</span><span class="o">=</span><span class="n">promotion_eligible</span><span class="p">,</span>
+<a id="__codelineno-0-535" name="__codelineno-0-535"></a>        <span class="n">forget_eligible</span><span class="o">=</span><span class="n">forget_eligible</span><span class="p">,</span>
+<a id="__codelineno-0-536" name="__codelineno-0-536"></a>    <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

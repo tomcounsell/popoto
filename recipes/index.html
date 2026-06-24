@@ -3215,18 +3215,17 @@ hold simultaneously:</p>
 <a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="n">lifecycle</span><span class="o">.</span><span class="n">tick</span><span class="p">()</span>  <span class="c1"># only touches agent-1&#39;s records</span>
 </code></pre></div>
 <h3 id="tuning-the-thresholds">Tuning the thresholds<a class="headerlink" href="#tuning-the-thresholds" title="Permanent link">&para;</a></h3>
-<p>The six magic-number constants are class attributes:</p>
+<p>The five magic-number constants are class attributes:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="c1"># Inspect defaults</span>
 <a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">MemoryLifecycle</span><span class="o">.</span><span class="n">PROMOTION_ACCESS_COUNT</span><span class="p">)</span>          <span class="c1"># 3</span>
 <a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="nb">print</span><span class="p">(</span><span class="n">MemoryLifecycle</span><span class="o">.</span><span class="n">PROMOTION_CONFIDENCE_THRESHOLD</span><span class="p">)</span>  <span class="c1"># 0.6</span>
 <a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="nb">print</span><span class="p">(</span><span class="n">MemoryLifecycle</span><span class="o">.</span><span class="n">PROMOTION_MIN_AGE_SECONDS</span><span class="p">)</span>       <span class="c1"># 300.0</span>
 <a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="nb">print</span><span class="p">(</span><span class="n">MemoryLifecycle</span><span class="o">.</span><span class="n">FORGET_IMPORTANCE_FLOOR</span><span class="p">)</span>         <span class="c1"># 0.1</span>
 <a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">MemoryLifecycle</span><span class="o">.</span><span class="n">FORGET_IDLE_SECONDS</span><span class="p">)</span>             <span class="c1"># 86400.0</span>
-<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="nb">print</span><span class="p">(</span><span class="n">MemoryLifecycle</span><span class="o">.</span><span class="n">TICK_BATCH_SIZE</span><span class="p">)</span>                 <span class="c1"># 100</span>
-<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a>
-<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a><span class="c1"># Override for a specific instance</span>
-<a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a><span class="n">lifecycle</span><span class="o">.</span><span class="n">PROMOTION_ACCESS_COUNT</span> <span class="o">=</span> <span class="mi">5</span>
-<a id="__codelineno-17-11" name="__codelineno-17-11" href="#__codelineno-17-11"></a><span class="n">lifecycle</span><span class="o">.</span><span class="n">FORGET_IDLE_SECONDS</span> <span class="o">=</span> <span class="mf">43200.0</span>  <span class="c1"># 12 hours</span>
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="c1"># Override for a specific instance</span>
+<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a><span class="n">lifecycle</span><span class="o">.</span><span class="n">PROMOTION_ACCESS_COUNT</span> <span class="o">=</span> <span class="mi">5</span>
+<a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a><span class="n">lifecycle</span><span class="o">.</span><span class="n">FORGET_IDLE_SECONDS</span> <span class="o">=</span> <span class="mf">43200.0</span>  <span class="c1"># 12 hours</span>
 </code></pre></div>
 <p>Systematic tuning is done via the Tier 5 benchmark sweep:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_sweeps<span class="w"> </span>--tier<span class="w"> </span><span class="m">5</span>

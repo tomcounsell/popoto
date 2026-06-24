@@ -1193,6 +1193,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#staged-read-ttl-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Staged-read TTL contract
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#suppressing-tracking-for-bulk-operations" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2210,6 +2221,17 @@
     <span class="md-ellipsis">
       
         Two tiers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#non-tracking-reads" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Non-tracking reads
       
     </span>
   </a>
@@ -3646,6 +3668,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#staged-read-ttl-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Staged-read TTL contract
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#suppressing-tracking-for-bulk-operations" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4670,6 +4703,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#non-tracking-reads" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Non-tracking reads
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#usage" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5173,13 +5217,35 @@
 <td><code>True</code></td>
 <td>Set to <code>False</code> to disable automatic <code>on_read()</code> from queries.</td>
 </tr>
+<tr>
+<td><code>_staged_ttl_seconds</code></td>
+<td><code>int</code></td>
+<td><code>86400</code></td>
+<td>TTL applied to the staged list on every <code>on_read()</code> call (24h default). Magic-number tuning knob — increase if your stage→confirm cadence exceeds 24h.</td>
+</tr>
 </tbody>
 </table>
+<h3 id="staged-read-ttl-contract">Staged-read TTL contract<a class="headerlink" href="#staged-read-ttl-contract" title="Permanent link">&para;</a></h3>
+<p>Staged reads self-expire after <code>_staged_ttl_seconds</code> (default 24h). This bounds
+Redis memory for records that are read but <strong>never confirmed</strong> without truncating
+the count for records that confirm within the window.</p>
+<p><strong>Contract:</strong> Call <code>confirm_access()</code> within <code>_staged_ttl_seconds</code> of staging reads
+via <code>on_read()</code>. Reads left unconfirmed past the TTL window are <strong>permanently dropped</strong>
+from <code>access_count</code> / <code>last_accessed</code> by design — the <code>CONFIRM_ACCESS_LUA</code> script
+finds an empty staged key and returns 0. Set <code>_staged_ttl_seconds</code> higher if your
+agent's stage→confirm cadence exceeds 24h.</p>
 <h3 id="suppressing-tracking-for-bulk-operations">Suppressing tracking for bulk operations<a class="headerlink" href="#suppressing-tracking-for-bulk-operations" title="Permanent link">&para;</a></h3>
-<p>Use <code>no_track()</code> on the query builder to prevent <code>on_read()</code> from firing during internal operations like reindexing or migration:</p>
+<p>Use <code>no_track()</code> on the query builder to prevent <code>on_read()</code> from firing during
+internal operations like reindexing, migration, or lifecycle ticks:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="c1"># These reads won&#39;t be tracked</span>
 <a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">no_track</span><span class="p">()</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
 </code></pre></div>
+<p><code>MemoryLifecycle.tick()</code> uses <code>.no_track()</code> automatically — a periodic tick
+produces <strong>zero</strong> new staged entries and does not inflate access-frequency signals.</p>
+<p>Note: <code>Model.query.all()</code> (without <code>.filter()</code>) is non-tracking by design and
+does not call <code>on_read()</code>. The tracking path is the <code>QueryBuilder</code>
+(<code>.filter().all()</code>); chain <code>.no_track()</code> there for any internal sweep that
+should not count as a user-originated read.</p>
 <h3 id="delete-cleanup">Delete cleanup<a class="headerlink" href="#delete-cleanup" title="Permanent link">&para;</a></h3>
 <p>When a tracked model instance is deleted, all three AccessTracker Redis keys (staged, access_log, meta) are automatically removed.</p>
 <h3 id="redis-key-patterns">Redis key patterns<a class="headerlink" href="#redis-key-patterns" title="Permanent link">&para;</a></h3>
@@ -6750,6 +6816,15 @@ a coherent memory lifecycle: episodic → semantic consolidation, continuous dec
 <li><strong>episodic</strong> — default for new memories; specific events; subject to promotion and forget</li>
 <li><strong>semantic</strong> — consolidated facts; decontextualized; protected from auto-forget</li>
 </ul>
+<h3 id="non-tracking-reads">Non-tracking reads<a class="headerlink" href="#non-tracking-reads" title="Permanent link">&para;</a></h3>
+<p><code>tick()</code> reads the corpus through a <strong>non-tracking</strong> query path: every internal
+read uses <code>.no_track()</code> so that a tick produces <strong>zero</strong> new <code>AccessTracker</code>
+staged entries. The access-frequency signal therefore reflects only genuine
+application reads, not maintenance sweeps.</p>
+<p>A single pass hydrates the corpus once; promote-eligibility and forget-eligibility
+are evaluated over that same in-memory snapshot. Before any <code>record.delete()</code> the
+record's authoritative tier is re-read from Redis — if the tier is now <code>"semantic"</code>
+(promoted by a concurrent tick) or the key no longer exists, the delete is skipped.</p>
 <h3 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-51-1" name="__codelineno-51-1" href="#__codelineno-51-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes</span><span class="w"> </span><span class="kn">import</span> <span class="n">MemoryLifecycle</span>
 <a id="__codelineno-51-2" name="__codelineno-51-2" href="#__codelineno-51-2"></a>
@@ -6761,7 +6836,7 @@ a coherent memory lifecycle: episodic → semantic consolidation, continuous dec
 <a id="__codelineno-51-8" name="__codelineno-51-8" href="#__codelineno-51-8"></a><span class="c1"># Tag new memories</span>
 <a id="__codelineno-51-9" name="__codelineno-51-9" href="#__codelineno-51-9"></a><span class="n">lifecycle</span><span class="o">.</span><span class="n">tag_new</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>  <span class="c1"># assigns tier = &quot;episodic&quot;</span>
 <a id="__codelineno-51-10" name="__codelineno-51-10" href="#__codelineno-51-10"></a>
-<a id="__codelineno-51-11" name="__codelineno-51-11" href="#__codelineno-51-11"></a><span class="c1"># Periodic consolidation pass</span>
+<a id="__codelineno-51-11" name="__codelineno-51-11" href="#__codelineno-51-11"></a><span class="c1"># Periodic consolidation pass (non-tracking — zero staged AccessTracker entries)</span>
 <a id="__codelineno-51-12" name="__codelineno-51-12" href="#__codelineno-51-12"></a><span class="n">summary</span> <span class="o">=</span> <span class="n">lifecycle</span><span class="o">.</span><span class="n">tick</span><span class="p">()</span>
 <a id="__codelineno-51-13" name="__codelineno-51-13" href="#__codelineno-51-13"></a><span class="c1"># {&quot;promoted&quot;: 2, &quot;forgotten&quot;: 5, &quot;duration_ms&quot;: 8.3}</span>
 <a id="__codelineno-51-14" name="__codelineno-51-14" href="#__codelineno-51-14"></a>
