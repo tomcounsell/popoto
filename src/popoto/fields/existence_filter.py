@@ -202,15 +202,19 @@ local key = KEYS[1]
 local item = ARGV[1]
 local w = tonumber(ARGV[2])
 local d = tonumber(ARGV[3])
-local LARGE_MOD = 4503599627370496  -- 2^52, safe for Lua doubles
+-- Per-row independent polynomial hashes: max intermediate < 2^49, safe for Lua doubles
+local P = {16777259, 16777289, 16777291, 16777331, 16777333, 16777337, 16777381}
+local M = {33554467, 33554473, 33554501, 33554503, 33554509, 33554519, 33554527}
 
 for row = 0, d - 1 do
-    local h = 5381 + row * 16777619
+    local pr = P[row + 1]
+    local mr = M[row + 1]
+    local h = row + 1            -- distinct seed per row
     for i = 1, #item do
-        h = ((h * 33) + string.byte(item, i)) % LARGE_MOD
+        h = (h * mr + string.byte(item, i)) % pr
     end
-    h = h % w
-    redis.call('HINCRBY', key, row .. ':' .. h, 1)
+    local col = h % w
+    redis.call('HINCRBY', key, row .. ':' .. col, 1)
 end
 return 1
 """
@@ -219,18 +223,22 @@ CMS_INCR_MULTI_LUA = """
 local key = KEYS[1]
 local w = tonumber(ARGV[1])
 local d = tonumber(ARGV[2])
-local LARGE_MOD = 4503599627370496  -- 2^52, safe for Lua doubles
+-- Per-row independent polynomial hashes: max intermediate < 2^49, safe for Lua doubles
+local P = {16777259, 16777289, 16777291, 16777331, 16777333, 16777337, 16777381}
+local M = {33554467, 33554473, 33554501, 33554503, 33554509, 33554519, 33554527}
 
 -- Loop over all tokens passed as ARGV[3..N]
 for t = 3, #ARGV do
     local item = ARGV[t]
     for row = 0, d - 1 do
-        local h = 5381 + row * 16777619
+        local pr = P[row + 1]
+        local mr = M[row + 1]
+        local h = row + 1            -- distinct seed per row
         for i = 1, #item do
-            h = ((h * 33) + string.byte(item, i)) % LARGE_MOD
+            h = (h * mr + string.byte(item, i)) % pr
         end
-        h = h % w
-        redis.call('HINCRBY', key, row .. ':' .. h, 1)
+        local col = h % w
+        redis.call('HINCRBY', key, row .. ':' .. col, 1)
     end
 end
 return 1
@@ -241,16 +249,20 @@ local key = KEYS[1]
 local item = ARGV[1]
 local w = tonumber(ARGV[2])
 local d = tonumber(ARGV[3])
-local LARGE_MOD = 4503599627370496  -- 2^52, safe for Lua doubles
+-- Per-row independent polynomial hashes: max intermediate < 2^49, safe for Lua doubles
+local P = {16777259, 16777289, 16777291, 16777331, 16777333, 16777337, 16777381}
+local M = {33554467, 33554473, 33554501, 33554503, 33554509, 33554519, 33554527}
 
 local min_count = nil
 for row = 0, d - 1 do
-    local h = 5381 + row * 16777619
+    local pr = P[row + 1]
+    local mr = M[row + 1]
+    local h = row + 1            -- distinct seed per row
     for i = 1, #item do
-        h = ((h * 33) + string.byte(item, i)) % LARGE_MOD
+        h = (h * mr + string.byte(item, i)) % pr
     end
-    h = h % w
-    local val = tonumber(redis.call('HGET', key, row .. ':' .. h)) or 0
+    local col = h % w
+    local val = tonumber(redis.call('HGET', key, row .. ':' .. col)) or 0
     if min_count == nil or val < min_count then
         min_count = val
     end
@@ -592,7 +604,7 @@ class FrequencySketch(Field):
     depends on width and depth parameters.
 
     Args:
-        width: Number of counters per row. Default 2000.
+        width: Number of counters per row. Default 2003 (prime, minimises hash collision).
         depth: Number of hash functions (rows). Default 7.
         fingerprint_fn: Callable that takes a model instance and returns a
             string fingerprint. This is required -- there is no default.
@@ -616,15 +628,21 @@ class FrequencySketch(Field):
     """
 
     # Override Field defaults -- FrequencySketch does not store a value
+    MAX_DEPTH = 7
     type: type = str
     null: bool = True
     default = None
 
     def __init__(self, **kwargs):
-        self.width = kwargs.pop("width", 2000)
+        self.width = kwargs.pop("width", 2003)
         self.depth = kwargs.pop("depth", 7)
         self.fingerprint_fn = kwargs.pop("fingerprint_fn", None)
         super().__init__(**kwargs)
+        if not (1 <= self.depth <= self.MAX_DEPTH):
+            raise ValueError(
+                f"FrequencySketch depth must be between 1 and {self.MAX_DEPTH}, got {self.depth}. "
+                f"The P/M hash tables have {self.MAX_DEPTH} entries."
+            )
 
     def _compute_fingerprint(self, model_instance):
         """Compute fingerprint string from a model instance.
