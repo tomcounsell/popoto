@@ -631,6 +631,68 @@ def test_tick_produces_zero_staged_entries():
     )
 
 
+def test_tick_produces_zero_staged_entries_with_partition_filters():
+    """tick() with partition_filters exercises the .filter(...).no_track().all() path.
+
+    This test is the non-vacuous companion to test_tick_produces_zero_staged_entries.
+    The existing test uses no partition_filters, so _tick_pass takes the bare
+    query.all() branch — which was already non-tracking before PR #429.
+
+    THIS test supplies partition_filters={"tier": "episodic"} so _tick_pass
+    takes the `.filter(**filters).no_track().all()` branch — the actual code
+    added by this PR.  It MUST FAIL if .no_track() is removed from that branch
+    (that is the whole point: it pins the fix).
+
+    Acceptance criterion: tick() over a partition-filtered AccessTrackerMixin
+    corpus stages 0 new entries.
+    """
+    import popoto as popoto_pkg
+
+    redis = popoto_pkg.get_redis()
+
+    # partition_filters forces _tick_pass into the .filter(**filters).no_track().all()
+    # branch — the new code path added by this PR.
+    lifecycle = MemoryLifecycle(
+        model_class=TrackedMemory,
+        importance_field="relevance",
+        partition_filters={"tier": "episodic"},
+    )
+    lifecycle.PROMOTION_ACCESS_COUNT = 999  # nothing promotes
+    lifecycle.FORGET_IMPORTANCE_FLOOR = 0.0  # nothing forgets
+
+    # Seed 10 episodic records with confirmed accesses
+    for _ in range(10):
+        r = TrackedMemory(tier="episodic")
+        r.save()
+        r.on_read()
+        r.confirm_access()
+
+    # Flush all staged keys produced by the seeding above
+    for key in redis.scan_iter("$AT:TrackedMemory:staged:*"):
+        redis.delete(key)
+
+    # Capture baseline before tick
+    staged_before = list(redis.scan_iter("$AT:TrackedMemory:staged:*"))
+    total_len_before = sum(redis.llen(k) for k in staged_before)
+
+    lifecycle.tick()
+
+    staged_after = list(redis.scan_iter("$AT:TrackedMemory:staged:*"))
+    total_len_after = sum(redis.llen(k) for k in staged_after)
+
+    assert len(staged_after) == len(staged_before), (
+        f"tick() with partition_filters created "
+        f"{len(staged_after) - len(staged_before)} new staged keys "
+        f"(expected 0) — remove .no_track() from the 'if filters' branch "
+        f"in _tick_pass() to reproduce"
+    )
+    assert total_len_after == total_len_before, (
+        f"tick() with partition_filters appended "
+        f"{total_len_after - total_len_before} new staged entries "
+        f"(expected 0) — .no_track() is missing from the filtered branch"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Single-pass hydration: corpus loaded at most once per tick
 # ---------------------------------------------------------------------------

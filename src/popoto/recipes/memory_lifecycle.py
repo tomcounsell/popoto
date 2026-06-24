@@ -61,6 +61,7 @@ from datetime import datetime, timezone
 from typing import Callable, Optional, Tuple
 
 from ..exceptions import ModelException
+from ..models.encoding import decode_lazy_field
 from ..redis_db import POPOTO_REDIS_DB
 
 logger = logging.getLogger("POPOTO.MemoryLifecycle")
@@ -633,8 +634,6 @@ class MemoryLifecycle:
                     # Key no longer exists — skip delete
                     logger.debug("forget guard: key absent, skipping %s", live_key)
                     continue
-
-                from ..models.encoding import decode_lazy_field
 
                 try:
                     live_tier = decode_lazy_field(raw_tier)
