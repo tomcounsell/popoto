@@ -300,15 +300,37 @@ Staged reads are not yet "real" — they represent candidate accesses. Your appl
 |-----------|------|---------|-------------|
 | `_max_access_log` | `int` | `100` | Maximum timestamps kept in the confirmed access log. Older entries trimmed on confirm. |
 | `_track_reads` | `bool` | `True` | Set to `False` to disable automatic `on_read()` from queries. |
+| `_staged_ttl_seconds` | `int` | `86400` | TTL applied to the staged list on every `on_read()` call (24h default). Magic-number tuning knob — increase if your stage→confirm cadence exceeds 24h. |
+
+### Staged-read TTL contract
+
+Staged reads self-expire after `_staged_ttl_seconds` (default 24h). This bounds
+Redis memory for records that are read but **never confirmed** without truncating
+the count for records that confirm within the window.
+
+**Contract:** Call `confirm_access()` within `_staged_ttl_seconds` of staging reads
+via `on_read()`. Reads left unconfirmed past the TTL window are **permanently dropped**
+from `access_count` / `last_accessed` by design — the `CONFIRM_ACCESS_LUA` script
+finds an empty staged key and returns 0. Set `_staged_ttl_seconds` higher if your
+agent's stage→confirm cadence exceeds 24h.
 
 ### Suppressing tracking for bulk operations
 
-Use `no_track()` on the query builder to prevent `on_read()` from firing during internal operations like reindexing or migration:
+Use `no_track()` on the query builder to prevent `on_read()` from firing during
+internal operations like reindexing, migration, or lifecycle ticks:
 
 ```python
 # These reads won't be tracked
 Memory.query.filter(agent_id="agent-1").no_track().all()
 ```
+
+`MemoryLifecycle.tick()` uses `.no_track()` automatically — a periodic tick
+produces **zero** new staged entries and does not inflate access-frequency signals.
+
+Note: `Model.query.all()` (without `.filter()`) is non-tracking by design and
+does not call `on_read()`. The tracking path is the `QueryBuilder`
+(`.filter().all()`); chain `.no_track()` there for any internal sweep that
+should not count as a user-originated read.
 
 ### Delete cleanup
 
@@ -1455,6 +1477,18 @@ It composes on top of `DecayingSortedField`, `ConfidenceField`, and
 - **episodic** — default for new memories; specific events; subject to promotion and forget
 - **semantic** — consolidated facts; decontextualized; protected from auto-forget
 
+### Non-tracking reads
+
+`tick()` reads the corpus through a **non-tracking** query path: every internal
+read uses `.no_track()` so that a tick produces **zero** new `AccessTracker`
+staged entries. The access-frequency signal therefore reflects only genuine
+application reads, not maintenance sweeps.
+
+A single pass hydrates the corpus once; promote-eligibility and forget-eligibility
+are evaluated over that same in-memory snapshot. Before any `record.delete()` the
+record's authoritative tier is re-read from Redis — if the tier is now `"semantic"`
+(promoted by a concurrent tick) or the key no longer exists, the delete is skipped.
+
 ### Usage
 
 ```python
@@ -1468,7 +1502,7 @@ lifecycle = MemoryLifecycle(
 # Tag new memories
 lifecycle.tag_new(record)  # assigns tier = "episodic"
 
-# Periodic consolidation pass
+# Periodic consolidation pass (non-tracking — zero staged AccessTracker entries)
 summary = lifecycle.tick()
 # {"promoted": 2, "forgotten": 5, "duration_ms": 8.3}
 

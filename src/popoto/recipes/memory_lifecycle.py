@@ -61,6 +61,7 @@ from datetime import datetime, timezone
 from typing import Callable, Optional, Tuple
 
 from ..exceptions import ModelException
+from ..models.encoding import decode_lazy_field
 from ..redis_db import POPOTO_REDIS_DB
 
 logger = logging.getLogger("POPOTO.MemoryLifecycle")
@@ -338,9 +339,6 @@ class MemoryLifecycle:
             f"'{type(self).__name__}' object has no attribute '{name}'"
         )
 
-    TICK_BATCH_SIZE: int = 100
-    """Records per tick scan page (paginated iteration)."""
-
     # -------------------------------------------------------------------
 
     def __init__(
@@ -461,9 +459,11 @@ class MemoryLifecycle:
     def tick(self) -> dict:
         """Run one lifecycle pass: promote eligible records and forget stale ones.
 
-        Scans episodic records in batches of TICK_BATCH_SIZE, promotes eligible
-        records to semantic, then scans all non-semantic records and forgets
-        those below the importance floor + idle threshold.
+        Loads all non-semantic records in a single non-tracking pass, evaluates
+        promotion eligibility on the episodic subset, then evaluates forget
+        eligibility on records that were not promoted this pass.  The
+        re-check-tier guard re-reads the authoritative tier from Redis
+        immediately before deletion to prevent concurrent promotion races.
 
         Safe to run concurrently — promotion and deletion are idempotent at the
         record level. Worst case: two concurrent ticks both promote the same
@@ -477,15 +477,9 @@ class MemoryLifecycle:
                 duration_ms (float): Wall time for this tick in milliseconds.
         """
         start = time.time()
-        promoted = 0
-        forgotten = 0
 
-        # --- Phase 1: Promote episodic → semantic ---
-        promoted, forgotten_in_promote = self._promote_pass()
-        forgotten += forgotten_in_promote
-
-        # --- Phase 2: Forget low-importance idle records (non-semantic) ---
-        forgotten += self._forget_pass()
+        # Single-pass: load all non-semantic records once, promote then forget
+        promoted, forgotten = self._tick_pass()
 
         duration_ms = (time.time() - start) * 1000
         summary = {
@@ -545,48 +539,38 @@ class MemoryLifecycle:
     # Internal passes
     # -------------------------------------------------------------------
 
-    def _iter_tier(self, tier: str):
-        """Yield all records in a given tier, paginated by TICK_BATCH_SIZE.
+    def _tick_pass(self) -> Tuple[int, int]:
+        """Single-pass hydration: promote then forget, loading all non-semantic records once.
 
-        Uses KeyField filter to enumerate records with the given tier value.
-        Yields individual model instances.
+        Loads all non-semantic records using a single non-tracking query.
+        Evaluates promotion eligibility on the episodic subset, tracking which
+        records were promoted.  Then evaluates forget eligibility on records
+        that were NOT promoted this pass, using a re-check-tier guard
+        immediately before deletion to prevent concurrent promotion races.
+
+        Returns:
+            Tuple (promoted_count, forgotten_count).
         """
-        filters = {self.tier_field: tier, **self.partition_filters}
-        all_records = self.model_class.query.filter(**filters).all()
-
-        # Batch iteration
-        for i in range(0, len(all_records), self.TICK_BATCH_SIZE):
-            batch = all_records[i : i + self.TICK_BATCH_SIZE]
-            yield from batch
-
-    def _iter_non_semantic(self):
-        """Yield all non-semantic records (episodic and any other non-protected tier).
-
-        Enumerates all records for the model class and filters out semantics.
-        """
+        # Load all non-semantic records once (non-tracking — no on_read() side-effects)
         filters = {**self.partition_filters}
-        all_records = (
-            self.model_class.query.filter(**filters).all()
+        all_non_semantic = (
+            self.model_class.query.filter(**filters).no_track().all()
             if filters
             else self.model_class.query.all()
         )
 
-        for i in range(0, len(all_records), self.TICK_BATCH_SIZE):
-            batch = all_records[i : i + self.TICK_BATCH_SIZE]
-            for record in batch:
-                tier = _get_tier(record, self.tier_field)
-                if tier != "semantic":
-                    yield record
+        # Filter to non-semantic in-process
+        non_semantic_records = [
+            r for r in all_non_semantic if _get_tier(r, self.tier_field) != "semantic"
+        ]
 
-    def _promote_pass(self) -> Tuple[int, int]:
-        """Scan episodic records, promote eligible ones.
-
-        Returns:
-            Tuple (promoted_count, forgotten_count).
-            forgotten_count is always 0 in this pass (reserved for future use).
-        """
         promoted = 0
-        for record in self._iter_tier("episodic"):
+        promoted_this_pass: set = set()
+
+        # --- Phase 1: Promote episodic → semantic ---
+        for record in non_semantic_records:
+            if _get_tier(record, self.tier_field) != "episodic":
+                continue
             try:
                 new_tier = self._should_promote(record, self)
             except Exception as exc:
@@ -604,6 +588,7 @@ class MemoryLifecycle:
                     # migrate_key=True is required when tier_field is a KeyField,
                     # because the tier value is part of the Redis key identity.
                     record.save(migrate_key=True)
+                    promoted_this_pass.add(id(record))
                     promoted += 1
                     logger.debug(
                         "promoted %s → %s (new key: %s)",
@@ -618,16 +603,11 @@ class MemoryLifecycle:
                         exc,
                     )
 
-        return promoted, 0
-
-    def _forget_pass(self) -> int:
-        """Scan non-semantic records, delete eligible ones.
-
-        Returns:
-            Number of records deleted.
-        """
+        # --- Phase 2: Forget low-importance idle records (not promoted this pass) ---
         forgotten = 0
-        for record in self._iter_non_semantic():
+        for record in non_semantic_records:
+            if id(record) in promoted_this_pass:
+                continue
             try:
                 should = self._should_forget(record, self)
             except Exception as exc:
@@ -639,21 +619,45 @@ class MemoryLifecycle:
                 continue
 
             if should:
+                # Re-check-tier guard: re-read the authoritative tier from Redis
+                # before deleting to avoid racing with a concurrent promotion.
+                # Use the same key identity that was resolved at hydration time.
+                live_key = getattr(record, "_redis_key", None)
+                if live_key is None:
+                    continue
+                try:
+                    raw_tier = POPOTO_REDIS_DB.hget(live_key, self.tier_field)
+                except Exception:
+                    raw_tier = None
+
+                if raw_tier is None:
+                    # Key no longer exists — skip delete
+                    logger.debug("forget guard: key absent, skipping %s", live_key)
+                    continue
+
+                try:
+                    live_tier = decode_lazy_field(raw_tier)
+                except Exception:
+                    live_tier = None
+
+                if live_tier == "semantic":
+                    logger.debug(
+                        "forget guard: tier is now semantic, skipping %s", live_key
+                    )
+                    continue
+
                 try:
                     record.delete()
                     forgotten += 1
-                    logger.debug(
-                        "forgotten (deleted) %s",
-                        getattr(record, "_redis_key", "?"),
-                    )
+                    logger.debug("forgotten (deleted) %s", live_key)
                 except Exception as exc:
                     logger.warning(
                         "tick() delete failed for %s: %s — skipping",
-                        getattr(record, "_redis_key", "?"),
+                        live_key,
                         exc,
                     )
 
-        return forgotten
+        return promoted, forgotten
 
     # -------------------------------------------------------------------
     # Convenience: all() fallback for models without partition filters

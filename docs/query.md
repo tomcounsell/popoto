@@ -269,7 +269,7 @@ The `QueryBuilder` returned by `filter()` supports these chainable methods:
 | `limit(n)` | Set maximum number of results |
 | `values(*fields)` | Return dicts with specified fields instead of model instances |
 | `computed_sort(fn, reverse)` | Sort by a Python key function (applied after fetch, before limit) |
-| `no_track()` | Suppress `on_read()` tracking for `AccessTrackerMixin` models |
+| `no_track()` | Suppress `on_read()` staging for `AccessTrackerMixin` models — use for internal operations (reindex, migration, lifecycle ticks) that should not count as reads |
 | `top_by_decay(field_name, n)` | Return top-N by time-decayed score ([API ref](reference/popoto/models/query.md)) |
 | `composite_score(indexes, limit, temperature)` | Return top-K by weighted composite of multiple sorted indexes ([API ref](reference/popoto/models/query.md)) |
 | `semantic_search(query_text, indexes, limit)` | Return top-K by semantic similarity, optionally combined with sorted indexes ([API ref](reference/popoto/models/query.md)) |

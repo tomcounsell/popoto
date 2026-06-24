@@ -710,6 +710,194 @@ class TestPartitionInteraction:
         assert len(results_after) == 2
 
 
+# --- TTL / staged-key expiry tests ---
+
+
+class TestStagedTTL:
+    """Test that on_read() sets a TTL on the staged key."""
+
+    def setup_method(self):
+        TrackedItem.delete_all()
+        redis = popoto.get_redis()
+        for key in redis.scan_iter("$AT:*"):
+            redis.delete(key)
+
+    def teardown_method(self):
+        TrackedItem.delete_all()
+        redis = popoto.get_redis()
+        for key in redis.scan_iter("$AT:*"):
+            redis.delete(key)
+
+    def test_on_read_sets_ttl(self):
+        """on_read() applies a TTL to the staged key."""
+        item = TrackedItem.create(name="ttl_test")
+        item.on_read()
+
+        redis = popoto.get_redis()
+        staged_key = f"$AT:TrackedItem:staged:{item.db_key.redis_key}"
+        ttl = redis.ttl(staged_key)
+        # TTL should be positive and roughly equal to _staged_ttl_seconds (86400)
+        assert ttl > 0
+        assert ttl <= TrackedItem._staged_ttl_seconds
+
+    def test_on_read_pipeline_sets_ttl(self):
+        """on_read() with a pipeline also sets the TTL on the staged key."""
+        item = TrackedItem.create(name="ttl_pipe_test")
+        pipe = popoto.get_redis().pipeline()
+        item.on_read(pipeline=pipe)
+        pipe.execute()
+
+        redis = popoto.get_redis()
+        staged_key = f"$AT:TrackedItem:staged:{item.db_key.redis_key}"
+        ttl = redis.ttl(staged_key)
+        assert ttl > 0
+        assert ttl <= TrackedItem._staged_ttl_seconds
+
+    def test_multiple_on_reads_refresh_ttl(self):
+        """Repeated on_read() calls keep refreshing the TTL."""
+        item = TrackedItem.create(name="ttl_refresh")
+        item.on_read()
+        item.on_read()
+        item.on_read()
+
+        redis = popoto.get_redis()
+        staged_key = f"$AT:TrackedItem:staged:{item.db_key.redis_key}"
+        ttl = redis.ttl(staged_key)
+        # TTL should be near-full after the last on_read refresh
+        assert ttl > 0
+        assert ttl <= TrackedItem._staged_ttl_seconds
+
+    def test_confirm_on_empty_staging_emits_debug(self, caplog):
+        """confirm_access() on empty/expired staging emits a DEBUG log."""
+        import logging
+
+        item = TrackedItem.create(name="ttl_debug_log")
+        # Do NOT call on_read() — staged key is empty
+        with caplog.at_level(logging.DEBUG, logger="POPOTO.AccessTracker"):
+            count = item.confirm_access()
+
+        assert count == 0
+        assert any(
+            "staged key empty/expired" in r.message and "TTL contract" in r.message
+            for r in caplog.records
+        )
+
+    def test_staged_ttl_default_value(self):
+        """_staged_ttl_seconds defaults to 86400 (24h)."""
+        assert TrackedItem._staged_ttl_seconds == 86400
+
+    def test_staged_ttl_custom_value(self):
+        """Subclasses can override _staged_ttl_seconds."""
+
+        class ShortTTLItem(AccessTrackerMixin, popoto.Model):
+            _staged_ttl_seconds = 300  # 5 minutes
+            name = popoto.UniqueKeyField()
+
+        ShortTTLItem.delete_all()
+        item = ShortTTLItem.create(name="short_ttl")
+        item.on_read()
+
+        redis = popoto.get_redis()
+        staged_key = f"$AT:ShortTTLItem:staged:{item.db_key.redis_key}"
+        ttl = redis.ttl(staged_key)
+        assert 0 < ttl <= 300
+        ShortTTLItem.delete_all()
+
+
+# --- Cross-TTL-boundary contract tests ---
+
+
+class TestCrossTTLBoundary:
+    """Verify the staged-read TTL contract: reads confirmed after the staged key
+    expires are dropped from access_count / last_accessed.  This is deliberate
+    contracted behavior, not a bug (Decision 1 / IN-4).
+    """
+
+    def setup_method(self):
+        TrackedItem.delete_all()
+        redis = popoto.get_redis()
+        for key in redis.scan_iter("$AT:*"):
+            redis.delete(key)
+
+    def teardown_method(self):
+        TrackedItem.delete_all()
+        redis = popoto.get_redis()
+        for key in redis.scan_iter("$AT:*"):
+            redis.delete(key)
+
+    def test_confirm_after_staged_key_expires_drops_read(self):
+        """A read confirmed after _staged_ttl_seconds is silently dropped.
+
+        BLOCKER per plan (cross-TTL-boundary contract test, IN-4):
+        on_read() once, forcibly expire the staged key (simulating elapsed TTL
+        without a real sleep), then confirm_access() and assert the read was
+        dropped — access_count unchanged, last_accessed not updated.
+        """
+        item = TrackedItem.create(name="ttl_boundary_test")
+        initial_count = item.access_count
+        assert initial_count == 0
+
+        # Stage a read
+        item.on_read()
+
+        # Force-expire the staged key (simulates TTL elapsing — deterministic)
+        redis = popoto.get_redis()
+        staged_key = f"$AT:TrackedItem:staged:{item.db_key.redis_key}"
+        redis.delete(staged_key)
+
+        # Confirm — staged key is gone, Lua #staged == 0 branch returns 0
+        count = item.confirm_access()
+        assert count == 0, "Expected 0 from confirm_access() when staged key expired"
+
+        # access_count and last_accessed must be unchanged (read was dropped)
+        assert item.access_count == initial_count, (
+            f"access_count changed from {initial_count} to {item.access_count} "
+            "— dropped read must not increment the count"
+        )
+        assert item.last_accessed is None, (
+            "last_accessed should remain None when the staged read was dropped"
+        )
+
+    def test_confirm_within_ttl_window_counts_normally(self):
+        """A read confirmed within the TTL window is counted normally.
+
+        Counterpart test: within the TTL window, confirm_access() works
+        correctly — no corruption from the TTL mechanism.
+        """
+        item = TrackedItem.create(name="ttl_within_window")
+        initial_count = item.access_count
+
+        item.on_read()
+        # Staged key is live — confirm immediately (well within TTL)
+        count = item.confirm_access()
+        assert count == 1
+
+        assert item.access_count == initial_count + 1
+        assert item.last_accessed is not None
+
+    def test_count_parity_with_and_without_forced_ttl(self):
+        """access_count is identical for two items when both confirm within
+        the TTL window, proving the TTL mechanism does not corrupt the count.
+
+        Regression for Concern 1: TTL-only bound must not corrupt access_count
+        for records that confirm within the window.
+        """
+        item_a = TrackedItem.create(name="parity_a")
+        item_b = TrackedItem.create(name="parity_b")
+
+        # Stage 5 reads on each and confirm
+        for _ in range(5):
+            item_a.on_read()
+            item_b.on_read()
+        item_a.confirm_access()
+        item_b.confirm_access()
+
+        assert item_a.access_count == 5
+        assert item_b.access_count == 5
+        assert item_a.last_accessed is not None
+        assert item_b.last_accessed is not None
+
+
 # --- Export tests ---
 
 

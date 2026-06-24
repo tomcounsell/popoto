@@ -16,11 +16,6 @@ Coverage:
 - AccessTrackerMixin absence degrades gracefully
 """
 
-import sys
-import os
-import time
-import threading
-
 import pytest
 
 # Test models use AccessTrackerMixin for realistic lifecycle behavior
@@ -33,8 +28,6 @@ from src.popoto.exceptions import ModelException
 from src.popoto.recipes.memory_lifecycle import (
     LifecycleState,
     MemoryLifecycle,
-    _default_should_forget,
-    _default_should_promote,
 )
 
 # ---------------------------------------------------------------------------
@@ -346,17 +339,16 @@ def test_empty_corpus_tick(lifecycle):
 
 
 # ---------------------------------------------------------------------------
-# Batch pagination tests
+# Large corpus single-pass tests
 # ---------------------------------------------------------------------------
 
 
-def test_tick_batch_pagination():
-    """200 records paginate correctly across two TICK_BATCH_SIZE=100 batches."""
+def test_tick_large_corpus():
+    """200 records are all promoted in a single tick() pass."""
     lifecycle = MemoryLifecycle(
         model_class=TrackedMemory,
         importance_field="relevance",
     )
-    lifecycle.TICK_BATCH_SIZE = 100
     lifecycle.PROMOTION_ACCESS_COUNT = 1
     lifecycle.PROMOTION_CONFIDENCE_THRESHOLD = 0.0
     lifecycle.PROMOTION_MIN_AGE_SECONDS = 0.0
@@ -586,3 +578,226 @@ def test_tick_returns_dict_with_expected_keys(lifecycle):
     assert isinstance(summary["promoted"], int)
     assert isinstance(summary["forgotten"], int)
     assert isinstance(summary["duration_ms"], float)
+
+
+# ---------------------------------------------------------------------------
+# Non-tracking reads: tick() must produce 0 new staged AccessTracker entries
+# ---------------------------------------------------------------------------
+
+
+def test_tick_produces_zero_staged_entries():
+    """tick() over an AccessTrackerMixin corpus stages 0 new entries.
+
+    This is the primary acceptance criterion for #413: a tick() pass must
+    leave the AccessTracker staged-key count and total staged-list length
+    identical before and after.
+    """
+    import popoto as popoto_pkg
+
+    redis = popoto_pkg.get_redis()
+
+    lifecycle = MemoryLifecycle(
+        model_class=TrackedMemory,
+        importance_field="relevance",
+    )
+    lifecycle.PROMOTION_ACCESS_COUNT = 999  # nothing promotes
+    lifecycle.FORGET_IMPORTANCE_FLOOR = 0.0  # nothing forgets
+
+    # Seed 10 episodic records with confirmed accesses
+    for _ in range(10):
+        r = TrackedMemory(tier="episodic")
+        r.save()
+        r.on_read()
+        r.confirm_access()
+
+    # Flush all staged keys that were produced by the seeding above
+    for key in redis.scan_iter("$AT:TrackedMemory:staged:*"):
+        redis.delete(key)
+
+    # Capture staged-key count and total staged-list length before tick
+    staged_before = list(redis.scan_iter("$AT:TrackedMemory:staged:*"))
+    total_len_before = sum(redis.llen(k) for k in staged_before)
+
+    lifecycle.tick()
+
+    staged_after = list(redis.scan_iter("$AT:TrackedMemory:staged:*"))
+    total_len_after = sum(redis.llen(k) for k in staged_after)
+
+    assert len(staged_after) == len(staged_before), (
+        f"tick() created {len(staged_after) - len(staged_before)} new staged keys"
+    )
+    assert total_len_after == total_len_before, (
+        f"tick() appended {total_len_after - total_len_before} new staged entries"
+    )
+
+
+def test_tick_produces_zero_staged_entries_with_partition_filters():
+    """tick() with partition_filters exercises the .filter(...).no_track().all() path.
+
+    This test is the non-vacuous companion to test_tick_produces_zero_staged_entries.
+    The existing test uses no partition_filters, so _tick_pass takes the bare
+    query.all() branch — which was already non-tracking before PR #429.
+
+    THIS test supplies partition_filters={"tier": "episodic"} so _tick_pass
+    takes the `.filter(**filters).no_track().all()` branch — the actual code
+    added by this PR.  It MUST FAIL if .no_track() is removed from that branch
+    (that is the whole point: it pins the fix).
+
+    Acceptance criterion: tick() over a partition-filtered AccessTrackerMixin
+    corpus stages 0 new entries.
+    """
+    import popoto as popoto_pkg
+
+    redis = popoto_pkg.get_redis()
+
+    # partition_filters forces _tick_pass into the .filter(**filters).no_track().all()
+    # branch — the new code path added by this PR.
+    lifecycle = MemoryLifecycle(
+        model_class=TrackedMemory,
+        importance_field="relevance",
+        partition_filters={"tier": "episodic"},
+    )
+    lifecycle.PROMOTION_ACCESS_COUNT = 999  # nothing promotes
+    lifecycle.FORGET_IMPORTANCE_FLOOR = 0.0  # nothing forgets
+
+    # Seed 10 episodic records with confirmed accesses
+    for _ in range(10):
+        r = TrackedMemory(tier="episodic")
+        r.save()
+        r.on_read()
+        r.confirm_access()
+
+    # Flush all staged keys produced by the seeding above
+    for key in redis.scan_iter("$AT:TrackedMemory:staged:*"):
+        redis.delete(key)
+
+    # Capture baseline before tick
+    staged_before = list(redis.scan_iter("$AT:TrackedMemory:staged:*"))
+    total_len_before = sum(redis.llen(k) for k in staged_before)
+
+    lifecycle.tick()
+
+    staged_after = list(redis.scan_iter("$AT:TrackedMemory:staged:*"))
+    total_len_after = sum(redis.llen(k) for k in staged_after)
+
+    assert len(staged_after) == len(staged_before), (
+        f"tick() with partition_filters created "
+        f"{len(staged_after) - len(staged_before)} new staged keys "
+        f"(expected 0) — remove .no_track() from the 'if filters' branch "
+        f"in _tick_pass() to reproduce"
+    )
+    assert total_len_after == total_len_before, (
+        f"tick() with partition_filters appended "
+        f"{total_len_after - total_len_before} new staged entries "
+        f"(expected 0) — .no_track() is missing from the filtered branch"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Single-pass hydration: corpus loaded at most once per tick
+# ---------------------------------------------------------------------------
+
+
+def test_tick_single_pass_hydration():
+    """200 records are all promoted in a single-pass tick() (no batch slicing).
+
+    Formerly test_tick_batch_pagination — now verifies that the single-pass
+    refactor handles a 200-record corpus correctly, replacing the removed
+    TICK_BATCH_SIZE pagination.
+    """
+    lifecycle = MemoryLifecycle(
+        model_class=TrackedMemory,
+        importance_field="relevance",
+    )
+    lifecycle.PROMOTION_ACCESS_COUNT = 1
+    lifecycle.PROMOTION_CONFIDENCE_THRESHOLD = 0.0
+    lifecycle.PROMOTION_MIN_AGE_SECONDS = 0.0
+    lifecycle.FORGET_IMPORTANCE_FLOOR = 0.0  # Never forget
+
+    for _ in range(200):
+        r = TrackedMemory(tier="episodic")
+        r.save()
+        r.on_read()
+        r.confirm_access()
+
+    summary = lifecycle.tick()
+    assert summary["promoted"] == 200
+
+    remaining_episodic = TrackedMemory.query.filter(tier="episodic").all()
+    assert len(remaining_episodic) == 0
+
+    semantic_records = TrackedMemory.query.filter(tier="semantic").all()
+    assert len(semantic_records) == 200
+
+
+# ---------------------------------------------------------------------------
+# Concurrent-tick re-check-tier-before-delete guard
+# ---------------------------------------------------------------------------
+
+
+def test_forget_guard_skips_record_promoted_to_semantic():
+    """Re-check-tier guard: a record promoted-to-semantic between snapshot and
+    delete is NOT forgotten.
+
+    Simulates a concurrent promotion by flipping the tier directly in Redis
+    (monkeypatching the stale in-memory snapshot), then asserting that the
+    forget pass skips the delete.
+    """
+    import msgpack
+    import popoto as popoto_pkg
+
+    redis = popoto_pkg.get_redis()
+
+    lifecycle = MemoryLifecycle(
+        model_class=TrackedMemory,
+        importance_field="relevance",
+    )
+    # Tune so record would normally be forgotten (zero importance, zero idle)
+    lifecycle.FORGET_IMPORTANCE_FLOOR = 1.1   # floor above max importance
+    lifecycle.FORGET_IDLE_SECONDS = 0.0
+
+    record = TrackedMemory(tier="episodic")
+    record.save()
+    live_key = record._redis_key
+
+    # Simulate a concurrent promotion: directly set tier to "semantic" in Redis
+    # before tick() runs its forget evaluation.  The stale in-memory snapshot
+    # still says "episodic", but the guard re-reads from Redis and should skip.
+    encoded_semantic = msgpack.packb("semantic")
+    redis.hset(live_key, "tier", encoded_semantic)
+
+    # Run tick — should NOT delete the record (guard detects tier == semantic)
+    lifecycle.tick()
+
+    # Record must still exist (not deleted)
+    assert redis.exists(live_key), (
+        "Re-check-tier guard failed: record was deleted despite tier being semantic in Redis"
+    )
+
+
+def test_forget_guard_skips_absent_key():
+    """Re-check-tier guard: a record already deleted (key absent) is skipped
+    without raising an exception.
+    """
+    import popoto as popoto_pkg
+
+    redis = popoto_pkg.get_redis()
+
+    lifecycle = MemoryLifecycle(
+        model_class=TrackedMemory,
+        importance_field="relevance",
+    )
+    lifecycle.FORGET_IMPORTANCE_FLOOR = 1.1  # everything would be forgotten
+    lifecycle.FORGET_IDLE_SECONDS = 0.0
+
+    record = TrackedMemory(tier="episodic")
+    record.save()
+    live_key = record._redis_key
+
+    # Simulate concurrent deletion: remove the key before tick() runs forget
+    redis.delete(live_key)
+
+    # tick() should complete without raising and forgotten count should be 0
+    # (skip-delete because key is absent — NOT a double-delete error)
+    summary = lifecycle.tick()
+    assert summary["forgotten"] == 0
