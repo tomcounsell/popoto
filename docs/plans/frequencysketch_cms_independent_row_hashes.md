@@ -1,11 +1,12 @@
 ---
-status: Planning
+status: Ready
 type: bug
 appetite: Small
 owner: valor
 created: 2026-06-24
 tracking: https://github.com/tomcounsell/popoto/issues/414
 last_comment_id:
+revision_applied: true
 ---
 
 # FrequencySketch: independent per-row hashes (restore the depth-7 CMS error bound)
@@ -201,11 +202,15 @@ not scope.
   ```
   Drop the `LARGE_MOD = 2^52` constant (no longer used). `w` (width) remains a runtime
   ARGV so user-supplied non-prime widths still work — but the **default** is now prime.
-- Keep `depth` ≤ 7 covered by the 7-entry `P`/`M` tables. **Guard**: if a user passes
-  `depth > 7`, the tables would index `nil`. Decide and implement one of: (a) cap/validate
-  `depth ≤ 7` in `__init__` with a clear `ValueError`, or (b) generate `P`/`M` for arbitrary
-  depth. Recommended: **(a)** — defaults are experimental-tuning constants, not user config;
-  a validation error is honest and cheap. (See Open Question 1.)
+- **`depth` guard (resolved — single behavior):** the 7-entry `P`/`M` tables cap usable
+  depth at 7. `FrequencySketch.__init__` validates `1 <= depth <= 7` and raises
+  `ValueError` if violated. This is the ONLY accepted behavior — no capping/clamping, no
+  arbitrary-depth `P`/`M` generation. Rationale: a `depth > 7` save would otherwise index a
+  `nil` table entry and trigger a Lua arithmetic error **mid-`on_save()`** — after some rows
+  have already been `HINCRBY`'d — leaving a partially-persisted sketch. A fail-fast
+  `ValueError` at construction time eliminates that partial-persistence window entirely.
+  Defaults are experimental-tuning constants, not user config, so a hard error is honest and
+  cheap. (Implemented at `existence_filter.py:667-671`: `if not 1 <= self.depth <= self.MAX_DEPTH: raise ValueError(...)`, with `MAX_DEPTH = 7`.)
 - The three scripts must stay byte-identical in the hash block. A unit test EVALs all three
   on the same token and asserts the computed columns agree (single source of truth).
 - The `tokenize()` lowercasing and the `CMS_INCR_LUA` empty-token fallback path are unchanged.
@@ -218,7 +223,7 @@ not scope.
 ### Empty/Invalid Input Handling
 - Empty fingerprint → `tokenize()` returns `[]` → `CMS_INCR_LUA` fallback increments `fingerprint.lower()` (existing behavior; covered by `test_empty_string_fingerprint`-style cases — confirm still green after the change).
 - `get_frequency` on never-seen token → must return a small integer ≥ 0 (existing `test_query_unseen_returns_zero`); the fix should *reduce* phantom counts but the test asserts exact 0 only on an empty sketch — keep that assertion.
-- `depth > 7` (table over-index) → must raise a clear error, not a cryptic Lua `nil` arithmetic error. Add a test asserting the chosen guard behavior.
+- `depth > 7` (or `depth < 1`) → `FrequencySketch.__init__` raises `ValueError` at construction time, **before any save** — so there is no cryptic Lua `nil` arithmetic error and, critically, no partial-persistence window (a mid-`on_save()` Lua failure could leave some rows incremented while later rows error out). Add a test asserting `ValueError` is raised for `depth=8` and `depth=0`, and that the message names the valid 1..7 range.
 
 ### Error State Rendering
 - No user-visible UI. The "error state" here is the *statistical* error bound; it is tested by the Zipf bound regression rather than a rendering path.
@@ -244,9 +249,12 @@ No CMS-related `xfail`/`pytest.xfail()` markers exist in the suite (grepped) —
 ## Risks
 
 ### Risk 1: A user passes `depth > 7` and over-indexes the 7-entry P/M tables
-**Impact:** Lua `nil` arithmetic error on save/query — a cryptic runtime failure.
-**Mitigation:** Validate `depth ≤ 7` in `FrequencySketch.__init__` and raise a clear
-`ValueError` (recommended), OR extend P/M. Add a test for the guard. (Open Question 1.)
+**Impact:** Without a guard, a `depth > 7` save indexes a `nil` `P`/`M` entry and raises a
+Lua arithmetic error **mid-`on_save()`** — after earlier rows are already `HINCRBY`'d —
+leaving a partially-persisted sketch (silent undercount on the missing rows).
+**Mitigation (resolved):** `FrequencySketch.__init__` validates `1 <= depth <= 7` and raises
+`ValueError` at construction time, before any save can run. Single behavior — not capping,
+not arbitrary-depth generation. A unit test asserts `ValueError` for `depth=8` and `depth=0`.
 
 ### Risk 2: A user passes a composite `width` and re-hits sub-lattice correlation
 **Impact:** Independence degrades for non-default composite widths (the `width=2000` failure mode).
@@ -302,18 +310,35 @@ refers to Popoto's cognitive primitives, not a Telegram agent.)
 - [ ] `mkdocs build --strict` must pass (run via `scripts/ci-local.sh docs`).
 
 ### Inline Documentation
-- [ ] Update the `FrequencySketch` docstring (`existence_filter.py:577-612`): default `width` 2000→2003; one sentence that rows use independent per-row polynomial hashes (so the depth-7 bound holds).
-- [ ] Add a Lua comment in each script naming the construction and the 2^53-safety invariant (max intermediate < 2^49).
+- [ ] Update the `FrequencySketch` docstring (`existence_filter.py:577-612`): default `width` 2000→2003; one sentence that rows use independent per-row polynomial hashes (so the depth-7 bound holds). (Already applied in the current source — confirm it matches.)
+- [ ] **Fix the stale module-level docstring at `existence_filter.py:16-17.** It currently
+  claims *"Hash functions use the Kirschner-Mitzenmacher double hashing optimization:
+  h_i(x) = (h1(x) + i·h2(x)) mod m … Two hash functions simulate k independent ones"* as
+  though it describes both fields. After this fix it is **true only for the Bloom filter**;
+  the CMS now uses an independent per-row polynomial family. Scope the Kirsch–Mitzenmacher
+  sentence explicitly to ExistenceFilter/Bloom, and add a sentence that FrequencySketch/CMS
+  uses per-row independent polynomial hashes (distinct prime multiplier + modulus per row).
+  Leaving this stale would re-document the exact bug being removed.
+- [ ] Add a Lua comment in each CMS script naming the construction and the 2^53-safety invariant (max intermediate < 2^49). (Already present in the current source — confirm.)
 
 ## Success Criteria
 
 - [ ] **Row independence:** For ≥3,000 random same-length tokens at `width=2003, depth=7`, row-0-colliding pairs show mean extra-row matches ≈ `6/width` and **zero** pairs collide in all 7 rows (current code: 100% all-or-none). Verified via a test EVALing the live Lua.
-- [ ] **Error bound restored:** On a Zipf workload (≈100k events, ≈10k distinct same-length tokens), fraction of items with `estimate > true + eN/width` is below `e^(−depth) ≈ 0.091%` (currently 6.67%).
+- [ ] **Error bound restored (seed-robust):** On a Zipf workload (≈100k events, ≈10k
+  distinct same-length tokens), the fraction of items with `estimate > true + eN/width`
+  stays below `e^(−depth) ≈ 0.091%`. Because this fraction is itself a random variable in
+  the data seed, the test must **fix the RNG seed** for determinism AND verify the bound
+  holds across **≥3 distinct seeds** (not a single lucky draw) — report the worst-case
+  fraction across seeds and assert *that* is < 0.091%. Note the relationship to the
+  per-column theoretical ceiling: the expected overcount mass per row is `eN/width`, i.e.
+  `e/width ≈ 0.136%` of N as the *per-row* error rate; the depth-7 min drives the
+  exceedance probability down to `e^(−7) ≈ 0.091%`. The spike measured 0.000% on its seed;
+  the acceptance threshold is the theory's 0.091%, not the spike's lucky 0% (currently 6.67%).
 - [ ] **Never-undercount preserved:** 0 undercounts across all queried items on the workload.
 - [ ] **Increment/query agreement:** a token incremented `n` times via both `CMS_INCR_LUA` and `CMS_INCR_MULTI_LUA` reads back ≥ `n` via `CMS_QUERY_LUA`; a unit test asserts all three scripts compute identical columns.
 - [ ] **No 2^52 overflow:** the `LARGE_MOD = 2^52` modulus is removed from all three CMS scripts; arithmetic stays Lua-double-safe.
 - [ ] **Regression test:** a suite test encodes the row-correlation check so the affine flaw can't silently return.
-- [ ] **depth guard:** passing `depth > 7` raises a clear error (or is supported) — chosen behavior is tested.
+- [ ] **depth guard:** `FrequencySketch(depth=8)` and `FrequencySketch(depth=0)` each raise `ValueError` at construction (single resolved behavior — never capped, never silently supported); both cases are tested.
 - [ ] **No Redis modules:** implementation stays pure Lua + Python; full suite passes against Redis.
 - [ ] Tests pass (`/do-test`).
 - [ ] Documentation updated (`/do-docs`).
@@ -361,8 +386,9 @@ The lead agent orchestrates; it does not build directly.
 - In `src/popoto/fields/existence_filter.py`, replace the per-row hash block in `CMS_INCR_LUA`, `CMS_INCR_MULTI_LUA`, and `CMS_QUERY_LUA` with the per-row polynomial using `P = {16777259, 16777289, 16777291, 16777331, 16777333, 16777337, 16777381}` and `M = {33554467, 33554473, 33554501, 33554503, 33554509, 33554519, 33554527}`; seed `h = row + 1`; `h = (h * M[row+1] + byte) % P[row+1]`; `col = h % w`. Keep the three blocks byte-identical.
 - Remove the `LARGE_MOD = 4503599627370496` line from all three CMS scripts (no longer referenced). Leave the Bloom scripts' `LARGE_MOD` untouched.
 - Change `FrequencySketch.__init__` default `width` from `2000` to `2003`.
-- Add a `depth` guard in `__init__` (recommended: `if self.depth > 7: raise ValueError(...)`) — implement per Open Question 1 resolution; default-safe behavior is to cap at 7.
+- Add a `depth` guard in `__init__`: `if not 1 <= self.depth <= self.MAX_DEPTH: raise ValueError(...)` with `MAX_DEPTH = 7`. This is the single resolved behavior — raise at construction time, never cap, never generate arbitrary-depth tables. Prevents a partial-persistence mid-`on_save()` Lua nil-index failure.
 - Update the `FrequencySketch` docstring (default width, independent-rows note) and add a Lua comment naming the family + the `< 2^49` safety invariant.
+- **Fix the stale module-level docstring at `existence_filter.py:16-17`**: scope the Kirsch–Mitzenmacher double-hashing sentence to ExistenceFilter/Bloom only, and add a sentence that FrequencySketch/CMS uses independent per-row polynomial hashes. (Otherwise the module header still documents the removed bug.)
 
 ### 2. Write CMS correctness + regression tests
 - **Task ID**: build-cms-tests
@@ -374,8 +400,8 @@ The lead agent orchestrates; it does not build directly.
 - **Parallel**: true
 - Add `test_rows_not_all_or_none`: EVAL the live `CMS_INCR`/query hashing for ≥3,000 same-length tokens at width=2003, depth=7; assert zero pairs collide in all 7 rows and mean extra-row matches ≈ 6/width (loose tolerance).
 - Add `test_three_scripts_agree`: increment a token via `CMS_INCR_LUA` and (separately, fresh key) via `CMS_INCR_MULTI_LUA`; `CMS_QUERY_LUA` reads back ≥ n in both; assert the columns the three scripts hit are identical for the same token.
-- Add `test_zipf_error_bound`: build a Zipf workload (sized for test speed — e.g. ≥10k events; document the chosen N and the corresponding `eN/w` bound), assert bound-violation fraction below threshold and **zero undercounts**.
-- Add `test_depth_guard`: assert chosen behavior for `depth > 7`.
+- Add `test_zipf_error_bound`: build a Zipf workload (sized for test speed — e.g. ≥10k events; document the chosen N and the corresponding `eN/w` bound). Run across **≥3 fixed RNG seeds** (parametrize), assert the **worst-case** bound-violation fraction across seeds is below `e^(−depth) ≈ 0.091%`, and assert **zero undercounts** on every seed. A single-seed run is insufficient — the violation fraction is seed-dependent.
+- Add `test_depth_guard`: assert `FrequencySketch(..., depth=8)` and `depth=0` each raise `ValueError` at construction, and that the message names the valid 1..7 range.
 - Update any test asserting `width == 2000` to `2003`.
 
 ### 3. Validate
@@ -385,7 +411,10 @@ The lead agent orchestrates; it does not build directly.
 - **Agent Type**: validator
 - **Parallel**: false
 - Run `pytest tests/test_existence_filter.py -q` and the full suite.
-- Confirm `LARGE_MOD`/`2^52` removed from all three CMS scripts; confirm Bloom Lua unchanged (`git diff` touches only CMS blocks + default + docstring).
+- Confirm `LARGE_MOD`/`2^52` absent from the CMS block (lines 196-255 → `grep -c` returns 0) AND the whole-file `4503599627370496` count is **exactly 4** (the surviving Bloom occurrences).
+- Confirm Bloom Lua **bodies** unchanged via the line-range diff anti-criterion (`diff` of lines 80-194 against `main` is empty), not just the `BLOOM_` name grep.
+- Confirm the module docstring (lines 16-17) no longer attributes double-hashing to CMS.
+- Confirm `FrequencySketch(depth=8)` / `depth=0` raise `ValueError`.
 - Confirm all Success Criteria checkboxes.
 
 ### 4. Documentation
@@ -412,33 +441,38 @@ The lead agent orchestrates; it does not build directly.
 | Tests pass | `pytest tests/test_existence_filter.py -q` | exit code 0 |
 | Full suite | `pytest -q` | exit code 0 |
 | Width default updated | `python -c "from src.popoto.fields.existence_filter import FrequencySketch as F; print(F().width)"` | output contains 2003 |
-| 2^52 modulus removed from CMS | `grep -n '4503599627370496' src/popoto/fields/existence_filter.py \| grep -i cms` | match count == 0 |
+| 2^52 modulus absent from CMS scripts | `sed -n '196,255p' src/popoto/fields/existence_filter.py \| grep -c '4503599627370496'` | `0` (CMS Lua block carries no `LARGE_MOD`) |
+| 2^52 modulus survives ONLY in the 4 Bloom scripts | `grep -c '4503599627370496' src/popoto/fields/existence_filter.py` | `4` (exactly the 4 Bloom occurrences at lines 88/112/139/164; any other count means CMS still has it OR a Bloom script was wrongly edited) |
 | Per-row prime moduli present | `grep -c '16777259' src/popoto/fields/existence_filter.py` | output > 0 |
+| Module docstring no longer claims CMS uses double-hashing | `sed -n '1,40p' src/popoto/fields/existence_filter.py \| grep -i 'polynomial'` | match count > 0 (CMS per-row polynomial described in the module header) |
+| depth guard raises ValueError | `python -c "from src.popoto.fields.existence_filter import FrequencySketch as F; F(fingerprint_fn=lambda x: '', depth=8)"` | exits non-zero with `ValueError` naming the 1..7 range |
 | No Redis modules | `grep -rniE 'CMS\.|BF\.|CF\.|TOPK\.' src/popoto/fields/existence_filter.py` | match count == 0 |
-| Bloom Lua untouched (anti-criterion) | `git diff main -- src/popoto/fields/existence_filter.py \| grep -E '^[-+]' \| grep -iE 'BLOOM_'` | match count == 0 |
+| Bloom Lua bodies untouched (anti-criterion) | `git diff main -- src/popoto/fields/existence_filter.py \| grep -nE '^[-+]' \| grep -i 'setbit\|getbit\|bloom_\|16777619\|h1\|h2'` | match count == 0 (catches Bloom *body* edits — SETBIT/GETBIT/combine logic — not just the `BLOOM_` variable name) |
+| Bloom script line range byte-identical to main | `diff <(git show main:src/popoto/fields/existence_filter.py \| sed -n '80,194p') <(sed -n '80,194p' src/popoto/fields/existence_filter.py)` | empty diff (whole Bloom block, lines 80-194, unchanged — the authoritative anti-criterion; the grep above is a fast cross-check. If line numbers drift, re-anchor on the `# Lua Scripts — Bloom Filter` header through the line before `CMS_INCR_LUA`.) |
 | Format clean | `python -m black --check src/popoto/fields/existence_filter.py tests/test_existence_filter.py` | exit code 0 |
 
 ## Critique Results
 
-<!-- Populated by /do-plan-critique (war room). Leave empty until critique is run. -->
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
+| Blocker | Verification | "2^52 removed from CMS" grep (`grep '4503599627370496' \| grep -i cms`) is tautological — returns 0 on fixed AND unfixed code (the constant line has no "cms" substring). | Verification table | Replaced with two scoped checks: CMS range 196-255 `grep -c` == 0, AND whole-file `grep -c` == exactly 4 (the surviving Bloom occurrences). Validate task updated to match. |
+| Blocker | Spec | `depth > 7` spec listed three incompatible behaviors ("cap" / "validate" / "raise") + an unverifiable "(or is supported)" clause; `depth=8` would trigger a Lua nil-arithmetic error mid-`save()` → partial-persistence risk. | Technical Approach, Risk 1, Failure Path, Success Criteria, task build-cms-hash, test_depth_guard | Resolved to ONE behavior: `__init__` raises `ValueError` for `depth ∉ [1,7]` at construction (impl. confirmed at `existence_filter.py:667-671`, `MAX_DEPTH=7`). No capping, no arbitrary-depth generation. Eliminates the partial-persistence window. |
+| Supporting | Verification | Bloom anti-criterion grepped only the `BLOOM_` variable name — a Bloom *body* edit (SETBIT/GETBIT/combine line) would pass undetected. | Verification table | Added a line-range `diff` of the whole Bloom block (lines 80-194) against `main` as the authoritative anti-criterion, plus a broader body-token grep. |
+| Supporting | Math | Single-seed Zipf run is not robust; the violation fraction is a seed-dependent random variable, and the per-row theoretical ceiling is `e/width ≈ 0.136%` while the depth-7 min target is `e^(−7) ≈ 0.091%`. | Success Criteria (Error bound), test_zipf_error_bound | Test now parametrizes ≥3 fixed seeds and asserts the worst-case fraction < 0.091%; criterion documents the e/W vs e^(−depth) relationship and that 0.091% (not the spike's lucky 0%) is the threshold. |
+| Supporting | Docs | Module docstring at `existence_filter.py:16-17` (Kirsch–Mitzenmacher double-hashing) would remain attributed to CMS — re-documenting the removed bug. | Inline Documentation, task build-cms-hash, Verification table | Added task to scope the K-M sentence to Bloom only and add a per-row-polynomial sentence for CMS; verification greps the module header for "polynomial". |
 
 ---
 
-## Open Questions
+## Resolved Decisions
 
-1. **`depth > 7` handling.** The 7-entry `P`/`M` tables cap usable depth at 7 (the
-   default). Preferred: validate `depth ≤ 7` in `__init__` and raise `ValueError`
-   (defaults are experimental-tuning constants, not user config). Acceptable alternative:
-   generate `P`/`M` for arbitrary depth from a deterministic prime sequence. **Default
-   assumption if unanswered: cap/validate at 7 with a clear error.** Is that acceptable, or
-   should arbitrary depth be supported?
-2. **Zipf test size.** The acceptance criterion cites 100k events / 10k vocab. A full-size
-   Zipf run may be slow in the unit suite. **Default assumption: scale down to the smallest
-   N that still exercises the bound meaningfully (documented in the test), with the full-size
-   run available as an opt-in/marked slow test.** Acceptable?
-3. **Non-default composite widths.** We keep `width` an honest passthrough (only the default
-   is prime). The independent per-row polynomial fixes the affine collapse at any width, but
-   prime widths are statistically best. **Default assumption: document "prime width
-   recommended" rather than silently snapping user widths to a prime.** Agree?
+*(Was "Open Questions" — all three resolved in this revision pass; recorded here for audit.)*
+
+1. **`depth > 7` handling — RESOLVED:** `__init__` raises `ValueError` for `depth ∉ [1,7]`.
+   Single behavior, not capping, not arbitrary-depth generation. (Blocker 2; impl. already
+   present at `existence_filter.py:667-671`.)
+2. **Zipf test size — RESOLVED:** Scale N down for suite speed (document chosen N + the
+   corresponding `eN/w` bound in the test), but parametrize across **≥3 fixed seeds** and
+   assert the worst-case bound-violation fraction < `e^(−depth) ≈ 0.091%`.
+3. **Non-default composite widths — RESOLVED:** `width` stays an honest passthrough; only the
+   default (2003) is prime. Document "prime width recommended"; do not silently snap user
+   widths to a prime (already done in the docstring at `existence_filter.py:622-628`).
