@@ -2703,14 +2703,14 @@
 <tr>
 <td><code>width</code></td>
 <td><code>int</code></td>
-<td><code>2000</code></td>
-<td>Number of counters per hash function</td>
+<td><code>2003</code></td>
+<td>Number of counters per hash function (prime recommended)</td>
 </tr>
 <tr>
 <td><code>depth</code></td>
 <td><code>int</code></td>
 <td><code>7</code></td>
-<td>Number of hash functions</td>
+<td>Number of hash functions (must be 1–7)</td>
 </tr>
 <tr>
 <td><code>fingerprint_fn</code></td>
@@ -2741,9 +2741,13 @@
 <h3 id="architecture_1">Architecture<a class="headerlink" href="#architecture_1" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Redis key pattern</strong>: <code>$FS:{ClassName}:{field_name}</code> (hash with counter rows)</li>
-<li><strong>Lua script</strong>: Computes d hash positions across rows, increments/queries counters atomically</li>
+<li><strong>Lua script</strong>: Each of the 7 rows uses an independent per-row polynomial hash (distinct prime multiplier and modulus per row), restoring the standard CMS error bound: <code>estimate ≤ true + (e/width)·N</code> with probability <code>≥ 1 − e^(−depth)</code>.</li>
 <li><strong>Estimate</strong>: Returns minimum across all rows (Count-Min property)</li>
 </ul>
+<div class="admonition note">
+<p class="admonition-title">Upgrade note (beta substrate — breaking change)</p>
+<p>The <code>2000 → 2003</code> default width change and the switch to per-row independent polynomial hashes mean <strong>existing <code>$FS:*</code> Redis/Valkey hashes are keyed under the old arithmetic and are NOT migrated</strong>. There is no migration shim — the substrate layer is beta and breaking the serialized sketch format is acceptable. Any <code>FrequencySketch</code> persisted before this change will return stale counts until the underlying <code>$FS:{Class}:{field}</code> key is deleted (<code>DEL $FS:YourClass:field_name</code>) and the sketch is rebuilt from source events (by re-saving the relevant model instances).</p>
+</div>
 <h2 id="batch-operations">Batch Operations<a class="headerlink" href="#batch-operations" title="Permanent link">&para;</a></h2>
 <p>When checking multiple keywords at once, use the batch methods to avoid per-keyword round-trips to Redis.</p>
 <h3 id="might_exist_batch">might_exist_batch()<a class="headerlink" href="#might_exist_batch" title="Permanent link">&para;</a></h3>

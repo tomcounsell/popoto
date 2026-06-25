@@ -7248,8 +7248,8 @@ count = Memory.freq.get_frequency(Memory, "kubernetes")
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `width` | `int` | `2000` | Number of counters per row. Higher = less overcounting. |
-| `depth` | `int` | `7` | Number of hash functions (rows). Higher = more accurate. |
+| `width` | `int` | `2003` | Number of counters per row (prime recommended). Higher = less overcounting. |
+| `depth` | `int` | `7` | Number of independent hash functions / rows (1–7). Higher = more accurate. |
 | `fingerprint_fn` | `Callable` | `None` | Takes a model instance, returns a string fingerprint. Falls back to `redis_key` if not set. |
 
 ### Methods
@@ -9019,8 +9019,8 @@ For example, saving a model with fingerprint `"kubernetes deployment guide"` add
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `width` | `int` | `2000` | Number of counters per hash function |
-| `depth` | `int` | `7` | Number of hash functions |
+| `width` | `int` | `2003` | Number of counters per hash function (prime recommended) |
+| `depth` | `int` | `7` | Number of hash functions (must be 1–7) |
 | `fingerprint_fn` | `callable` | `None` | Takes a model instance, returns a fingerprint string |
 
 ### Usage
@@ -9050,8 +9050,11 @@ count = Memory.freq.get_frequency(Memory, "kubernetes")  # ~2
 ### Architecture
 
 - **Redis key pattern**: `$FS:{ClassName}:{field_name}` (hash with counter rows)
-- **Lua script**: Computes d hash positions across rows, increments/queries counters atomically
+- **Lua script**: Each of the 7 rows uses an independent per-row polynomial hash (distinct prime multiplier and modulus per row), restoring the standard CMS error bound: `estimate ≤ true + (e/width)·N` with probability `≥ 1 − e^(−depth)`.
 - **Estimate**: Returns minimum across all rows (Count-Min property)
+
+!!! note "Upgrade note (beta substrate — breaking change)"
+    The `2000 → 2003` default width change and the switch to per-row independent polynomial hashes mean **existing `$FS:*` Redis/Valkey hashes are keyed under the old arithmetic and are NOT migrated**. There is no migration shim — the substrate layer is beta and breaking the serialized sketch format is acceptable. Any `FrequencySketch` persisted before this change will return stale counts until the underlying `$FS:{Class}:{field}` key is deleted (`DEL $FS:YourClass:field_name`) and the sketch is rebuilt from source events (by re-saving the relevant model instances).
 
 ## Batch Operations
 
