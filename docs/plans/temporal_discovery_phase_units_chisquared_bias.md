@@ -49,6 +49,17 @@ CyclicDecayField scoring (events clustered at a known recurring time produce a r
 peak at that time, asserted end-to-end through the Lua), and the discovery tests hold
 their nominal false-positive rate (≈ alpha) on uniform data at any n.
 
+**Scope decision (settled in this revision — see Resolved Decisions):** Only the
+equal-width `day_of_week` config is retained. Both `week_of_month` and `month_of_year`
+are **dropped unconditionally** — their fixed-period (`MONTHLY`=30d / `YEARLY`=365d)
+constants are irreparably misaligned with real calendar month/year lengths, so (a) there
+is no clean bucket→seconds-phase mapping for them and (b) no static per-bucket expected
+vector can match the calendar-dependent data-generating process (Feb=28/29, month mix
+shifts by year). Dropping them removes both critique blockers at the root and means the
+χ² fix reduces to keeping the existing equal-width `chi_squared_uniform` exactly as-is —
+no new `chi_squared(observed, expected_vector)` helper is added (it would have no live
+consumer). The only code change is the phase-units fix for `day_of_week`.
+
 ## Freshness Check
 
 **Baseline commit:** `3c5035dfafb612faa119111eb854cd240fa83a5b`
@@ -70,7 +81,7 @@ their nominal false-positive rate (≈ alpha) on uniform data at any n.
 
 **Active plans in `docs/plans/` overlapping this area:** `cyclic_decay_field.md` is the original CyclicDecayField *design* plan (the consumer), not a fix for this bug. No overlap — this plan touches the producer (`policy_cache.py`) and adds an end-to-end test; it does not change the (verified-exact) consumer math.
 
-**Notes:** Both bugs reproduced fresh on 2026-06-11 (FP rates 0.21/0.39/0.74/0.97; Thursday phase=1.7952 rad). Line numbers updated above; otherwise premises unchanged. Bug still present on the baseline commit.
+**Notes:** Both bugs reproduced fresh on 2026-06-11 (FP rates 0.21/0.39/0.74/0.97; Thursday phase=1.7952 rad). Line numbers updated above; otherwise premises unchanged. Bug still present on the baseline commit. The cited line numbers (622/593/614) carry ~3 lines of residual drift versus the current file (~625/595/611) — every citation also quotes the exact code string, so the build greps by string and lands correctly regardless of the precise line.
 
 ## Prior Art
 
@@ -90,12 +101,15 @@ specified by the issue.
 
 1. **Entry point:** `StreamConsumer` delivers a batch of `(entry_id, fields_dict)` tuples
    to `temporal_discovery_handler(entries)`. Each `fields["ts"]` is a unix-timestamp string.
-2. **Bucketing:** timestamps are collected (≥3 required) and binned by three configs:
+2. **Bucketing:** timestamps are collected (≥3 required) and binned by three configs *today*:
    `day_of_week` (7 buckets, period WEEKLY), `week_of_month` (4 buckets, period MONTHLY),
-   `month_of_year` (12 buckets, period YEARLY).
+   `month_of_year` (12 buckets, period YEARLY). **This plan removes the latter two**, leaving only
+   the equal-width `day_of_week`.
 3. **Significance test:** for each config, `chi_squared_uniform(buckets, expected)` is
    compared against `CHI_SQUARED_CRITICAL_VALUES[df]`. **Bug 2 lives here** — `expected`
-   is uniform but the buckets are unequal-width for week_of_month / month_of_year.
+   is uniform but the buckets are unequal-width for week_of_month / month_of_year. The fix is to
+   **delete those two configs**; `day_of_week`'s equal-width buckets make the uniform null correct,
+   so `chi_squared_uniform` stays unchanged.
 4. **Phase computation:** if significant, `peak_bucket = buckets.index(max(buckets))` and
    `phase = (peak_bucket / num_buckets) * 2π`. **Bug 1 lives here** — radians, not seconds.
 5. **Emission:** `(period, INITIAL_CYCLE_AMPLITUDE, phase)` appended to `discovered_cycles`,
@@ -147,23 +161,17 @@ Run all checks: `python scripts/check_prerequisites.py docs/plans/temporal_disco
 - **Phase in seconds, anchored to the period epoch.** Replace the radians computation with a
   seconds offset such that `cos(2π(now - phase)/period)` peaks when the cluster recurs. The
   offset is measured from the period's epoch anchor (the instant where `now mod period == 0`).
-- **Per-bucket expected counts for the χ² test.** Add a sibling `chi_squared(observed, expected_vector)`
-  accepting a per-bucket expected vector `E_i = n·p_i` derived from actual bucket widths, instead of a
-  single uniform `expected_per_bucket`. **Keep `chi_squared_uniform` intact** (it is imported and
-  tested in `tests/test_policy_cache.py:34,506,510,515`). This restores the nominal alpha.
-- **Sequence the keep/drop decision FIRST (build step 1, before touching the χ² helper).** The
-  per-bucket-vector machinery only has a consumer if at least one *unequal-width* config survives
-  (month_of_year). The disposition is settled in this plan (Open Q1 resolved below): **drop
-  week_of_month** outright (irreparable calendar/period misalignment, no clean seconds-phase
-  mapping), and **keep month_of_year contingent on the FP-rate gate**. Concretely:
-  - If month_of_year is **kept**, the `chi_squared(observed, expected_vector)` helper is required
-    (month_of_year is its sole non-uniform consumer) and is added.
-  - If month_of_year is **dropped** (fails the FP gate after the E_i fix), then day_of_week is the
-    sole surviving config and it is equal-width — meaning the per-bucket-vector helper would have
-    **no consumer**. In that case do NOT add `chi_squared`; day_of_week continues to use the
-    existing `chi_squared_uniform` unchanged. This avoids landing dead code.
-  This ordering (decide configs → then add only the helper that has a live consumer) is mandatory
-  so the build does not introduce an unused function.
+- **Drop the two unequal-width configs (`week_of_month`, `month_of_year`) unconditionally.**
+  Both bucket on calendar boundaries whose widths (6/7/7/10–11 days; 28–31 days) cannot be made to
+  match either their fixed-seconds period constant (so no clean seconds-phase mapping exists) or a
+  static per-bucket expected vector (so the χ² null cannot be repaired reproducibly — the true
+  per-month probability is calendar- and leap-year-dependent). Removing them eliminates the bias at
+  its source rather than papering over it with an approximation gated by a noisy FP test.
+- **Keep `chi_squared_uniform` exactly as-is; add NO new χ² helper.** With only the equal-width
+  `day_of_week` config surviving, the existing uniform test is correct for it (all `p_i = 1/7`).
+  There is no unequal-width consumer, so a `chi_squared(observed, expected_vector)` helper would be
+  dead code — it is therefore NOT added. `chi_squared_uniform` is imported and tested in
+  `tests/test_policy_cache.py:34,506,510,515` and stays untouched.
 - **End-to-end peak-timing test** crossing the producer→consumer boundary through real Lua.
 
 ### Flow
@@ -174,7 +182,7 @@ weekly period, demonstrably NOT at the epoch-aligned boundary**.
 
 ### Technical Approach
 
-**Bug 1 — phase in seconds (day_of_week / weekly, the salvageable case):**
+**Bug 1 — phase in seconds (day_of_week / weekly, the only retained config):**
 
 - The weekly period anchor: `now mod 604800 == 0` falls on **Thursday 1970-01-01 00:00 UTC**
   (epoch day 0 was a Thursday). `tm_wday` is Mon=0 … Sun=6, so Thursday is `tm_wday == 3`.
@@ -186,34 +194,34 @@ weekly period, demonstrably NOT at the epoch-aligned boundary**.
   at its 00:00 boundary. (The `- 3` rebases Monday-origin `tm_wday` onto the Thursday anchor;
   `% 7` and `% 604800` keep it in range.) Worked examples (verified):
   Thu(wday=3)→43200s (0.5d), Sun(wday=6)→302400s (3.5d), Mon(wday=0)→388800s (4.5d).
-- Generalize the same "bucket index → representative seconds offset within the period" idea for
-  any kept config: `phase = ((bucket_anchor_offset + bucket_midpoint_within_period) % period)`.
-  The plan must verify the anchor for each kept period against `time.gmtime(0)` rather than
-  assuming it.
+- Derive/verify the Thursday anchor from `time.gmtime(0).tm_wday == 3` in code rather than
+  hard-coding the constant `3`, so the assumption is self-checking. day_of_week is the only config
+  left, so no generalization to other periods is needed — the bucket→seconds mapping is the single
+  weekly formula above.
 
-**Bug 2 — correct expected counts:**
+**Bug 2 — correct null (resolved by dropping the biased configs, not by a new helper):**
 
-- Compute each bucket's true probability under uniform-in-time as `p_i = width_i / total_width`,
-  then `E_i = n * p_i`. For day_of_week all `p_i = 1/7` (already correct — equal-width). For
-  month_of_year, `p_i` reflects the real day-spans.
-- **Add a new `chi_squared(observed, expected_vector)` helper** taking a per-bucket expected
-  vector: `sum((o_i - E_i)^2 / E_i for i)` with per-element `E_i > 0` guards (terms where
-  `E_i <= 0` contribute 0, mirroring the existing `chi_squared_uniform` short-circuit).
-- **Keep `chi_squared_uniform` intact — do NOT retire it.** It is imported and exercised by
-  `tests/test_policy_cache.py` (import at line 34; called at lines 506, 510, 515 in
-  `test_chi_squared_uniform_basic` / `test_chi_squared_zero_expected`). Removing it would break
-  test collection. The new `chi_squared` is added *alongside* it. (Optionally, `chi_squared_uniform`
-  may be reimplemented as a one-line wrapper that calls `chi_squared` with a uniform vector — but
-  its name, signature, and behavior must be preserved exactly so the existing tests pass unchanged.)
-  The Valkey/grep gate is re-scoped to cover `tests/` as well as `src/` so any accidental removal
-  of the symbol surfaces (see Verification table).
-- The handler calls `chi_squared(buckets, expected_vector)` where `expected_vector = [n*p_i ...]`
-  for the kept configs; day_of_week's vector is `[n/7]*7` (numerically identical to today).
-- **Calendar caveat:** even per-bucket-probability buckets are only approximately uniform because
-  month lengths vary year to year and the `MONTHLY`/`YEARLY` period constants are fixed (30/365
-  days). The FP-rate test (≤0.10 at n=400) is the acceptance gate that decides whether the
-  approximation is good enough; if month_of_year still exceeds the bound after the E_i fix, it is
-  dropped alongside week_of_month.
+- The bias lived entirely in `week_of_month` and `month_of_year`: unequal-width calendar buckets
+  tested against a uniform expected count. **Both are dropped unconditionally** (see Key Elements
+  and Resolved Decisions), so the only surviving config, `day_of_week`, has genuinely equal-width
+  7-day buckets for which the uniform null is correct (`E_i = n/7` for all i — exactly what
+  `chi_squared_uniform` already computes).
+- **No new `chi_squared(observed, expected_vector)` helper is added.** With no unequal-width config
+  remaining there is no consumer for a per-bucket-vector test, so adding it would land dead code.
+  This eliminates the circular build dependency and the "unused helper" risk entirely.
+- **Keep `chi_squared_uniform` exactly as-is — do NOT retire or alter it.** It is imported and
+  exercised by `tests/test_policy_cache.py` (import at line 34; called at lines 506, 510, 515 in
+  `test_chi_squared_uniform_basic` / `test_chi_squared_zero_expected`). day_of_week continues to
+  use it unchanged. The Valkey/grep gate is re-scoped to cover `tests/` as well as `src/` so any
+  accidental removal of the symbol surfaces (see Verification table).
+- **Why not repair the calendar configs:** the true per-month probability is calendar- and
+  leap-year-dependent (Feb=28/29; the month mix shifts with the timestamp span), so no static
+  `p_i` vector matches the data-generating process, and `MONTHLY`/`YEARLY` are fixed seconds
+  constants with no clean calendar phase mapping. Repair would require either calendar-exact
+  variable periods (a separate feature; Lua can't do calendar math) or a per-window-derived
+  expected vector that is unverifiable without pinning the exact FP-test span. Dropping is the
+  correct, reproducible fix; a follow-up issue can scope calendar-accurate monthly/yearly cycles
+  if ever wanted.
 
 **Constants:** `INITIAL_CYCLE_AMPLITUDE`, `CHI_SQUARED_P_THRESHOLD`, and the critical-value table
 are experimental-tuning values (per project convention), not user config. No new config surface.
@@ -248,11 +256,12 @@ are experimental-tuning values (per project convention), not user config. No new
 - [ ] `tests/test_policy_cache.py::test_chi_squared_uniform_basic` and `::test_chi_squared_zero_expected`
   — KEEP unchanged. These import and call `chi_squared_uniform` (line 34 import; lines 506/510/515).
   **`chi_squared_uniform` MUST be preserved** — it is a tested public symbol, not handler-private.
-  The new `chi_squared(observed, expected_vector)` helper (added only if month_of_year survives) is
-  additive and needs its own unit tests (perfect-fit → 0; skewed → high; per-element zero-E_i guard).
+  No new χ² helper is added (the unequal-width configs that would have needed it are dropped), so
+  there are no new helper unit tests.
 
-No other existing tests are affected — the change is confined to `temporal_discovery_handler`,
-the χ² helper, and new tests. PolicyCache TD-learning tests do not touch this code path.
+No other existing tests are affected — the change is confined to `temporal_discovery_handler`
+(phase units + removal of two configs) and new tests. PolicyCache TD-learning tests do not touch
+this code path.
 
 ## Rabbit Holes
 
@@ -292,12 +301,15 @@ standard error over 500 trials is ≈0.0097) is small enough that the 0.05-vs-0.
 dominated — 100 trials (SE ≈0.022) was too coarse to separate ≈0.05 from the 0.10 ceiling reliably.
 The test is deterministic given the seed — record the observed rate in a comment.
 
-### Risk 3: month_of_year still biased after the E_i fix
-**Impact:** The per-bucket-probability correction may not fully restore alpha because real month
-lengths vary across years against the fixed 365-day YEARLY period.
-**Mitigation:** The FP-rate acceptance gate (≤0.10 at n=400) is applied to month_of_year too. If
-it fails, drop month_of_year (same disposition as week_of_month). The plan does not commit to
-keeping it sight-unseen.
+### Risk 3: dropping configs silently weakens discovery
+**Impact:** Removing `week_of_month` and `month_of_year` means monthly/yearly clustering is no
+longer auto-discovered.
+**Mitigation:** Those configs never worked — they fabricated cycles from noise (97–98% FP at
+n=400) and emitted radians phases that destroyed peak timing. Removing a detector that is wrong
+~98% of the time is a net improvement, not a regression. The (verified-correct) `day_of_week`
+weekly detection is retained. Calendar-accurate monthly/yearly discovery is captured as a possible
+follow-up (No-Gos) rather than shipped broken. The FP-rate sentinel on day_of_week guards against
+the refactor regressing the one config that does work.
 
 ## Race Conditions
 
@@ -307,9 +319,12 @@ writes a CyclicDecayField then reads it back single-threaded. Concurrency is not
 
 ## No-Gos (Out of Scope)
 
-- Nothing deferred — every relevant item is in scope for this plan. The week_of_month /
-  month_of_year keep-or-drop decision is resolved *within* this plan (see Resolved Decisions), not
-  punted to a follow-up.
+- **Calendar-accurate monthly/yearly cycle discovery.** `week_of_month` and `month_of_year` are
+  dropped (not repaired) because correct calendar-period detection needs variable periods and
+  calendar-aware phase math that CyclicDecayField's fixed-seconds Lua model does not support. If
+  monthly/yearly discovery is ever wanted, it is a separate feature with its own design — a
+  follow-up issue, not this bug fix. (The keep-or-drop decision itself is resolved *within* this
+  plan — see Resolved Decisions — only the future re-introduction is deferred.)
 
 ## Update System
 
@@ -325,9 +340,10 @@ handler. It is not exposed via MCP and the bridge does not call it.
 
 ### Feature Documentation
 - [ ] Update `docs/guides/policy-cache-recipe.md` temporal-discovery section to state phase is
-  emitted in **seconds** (matching CyclicDecayField), and document which configs are kept
-  (day_of_week, and month_of_year only if it passes the FP gate) and why week_of_month was
-  removed/changed.
+  emitted in **seconds** (matching CyclicDecayField), and document that only `day_of_week` (weekly)
+  discovery remains — both `week_of_month` and `month_of_year` were removed because their fixed
+  seconds-period constants cannot represent variable calendar periods (and fabricated cycles from
+  noise). Note calendar-accurate monthly/yearly discovery as a possible future feature.
 - [ ] Confirm `docs/features/cyclic-decay-field.md:32` ("Time offset in seconds") still accurately
   describes the contract — it does; verify no edit needed and note that the producer now honors it.
 
@@ -336,8 +352,10 @@ handler. It is not exposed via MCP and the bridge does not call it.
 
 ### Inline Documentation
 - [ ] Update `temporal_discovery_handler` docstring: phase units = seconds; describe the
-  bucket→seconds-offset mapping and the per-bucket-probability χ² correction.
-- [ ] Update the χ² helper docstring(s) for the new per-bucket-expected signature.
+  day-of-week→seconds-offset mapping (Thursday epoch anchor, midpoint centering) and note that the
+  calendar configs were removed (no χ² helper change).
+- [ ] No χ² helper signature change — `chi_squared_uniform` is unchanged, so its docstring is
+  untouched.
 
 ## Success Criteria
 
@@ -352,19 +370,27 @@ handler. It is not exposed via MCP and the bridge does not call it.
   the epoch boundary while the radians value stays at ≈5.4s, giving an unambiguous, large separation.
 - [ ] **Score-delta assertion at ≤3600s sweep resolution:** sweep `now` across one full weekly
   period (604800s) in steps of **≤3600s** and assert (a) `argmax(score)` lands in the Sunday window,
-  (b) the score at the correct-phase peak exceeds the score at the epoch boundary by a clear margin
-  (target Δ ≈ 2.0× the amplitude term separation — i.e. cos near +1 at the true peak vs cos near the
-  epoch boundary), and (c) the argmax is NOT within the Thursday/epoch-boundary window. This delta is
-  what a correct fix produces and the radians bug cannot.
+  (b) the score at the correct-phase peak exceeds the score at the epoch boundary (`now ≡ 0`) by a
+  concretely-defined margin, and (c) the argmax is NOT within the Thursday/epoch-boundary window.
+  **The margin is defined against the cosine model, not a vague multiplier:** for a Sunday-peak
+  cycle (`phase = 302400`, `period = 604800`, `amplitude = INITIAL_CYCLE_AMPLITUDE = 0.5`), the
+  resonance term at the true peak is `amplitude * cos(0) = +0.5`, and at the epoch boundary it is
+  `amplitude * cos(2π·302400/604800) = amplitude * cos(π) = -0.5`. Assert
+  `peak_score - boundary_score >= 0.9` (the analytic gap is `amplitude*(1 - cos(π)) = 2*amplitude = 1.0`;
+  0.9 leaves margin for the ≤3600s sweep granularity and the additive decay term, which is common
+  to both points and cancels). With the radians bug the emitted phase is ≈5.4s, making true-peak
+  and boundary scores nearly identical (gap ≈ 0), so this assertion fails loudly on the bug and
+  passes only on the fix.
 - [ ] **Producer/consumer phase unit agreed and asserted across the boundary** (one test crossing
   producer→Lua, not two independent unit tests).
-- [ ] **FP-rate test:** seeded Monte Carlo (≥500 trials, `random.Random(seed)`), uniform-random
-  timestamps at n=400 → monthly/relevant-config detection rate ≤ 0.10 (vs current 97–98%).
-- [ ] **day_of_week FP-rate is a regression sentinel, not a fix target:** day_of_week is equal-width
-  and already holds ≈alpha; assert its rate stays ≤0.10 at n=400 to catch a regression introduced by
-  the refactor — it is not expected to change.
-- [ ] Same FP bound holds at n=400 for (if kept) month_of_year — this IS the gate that decides
-  whether month_of_year survives.
+- [ ] **FP-rate test (day_of_week regression sentinel):** seeded Monte Carlo (≥500 trials,
+  `random.Random(seed)`), uniform-random timestamps at n=400 → day_of_week (WEEKLY) detection rate
+  ≤ 0.10. day_of_week is equal-width and already holds ≈alpha; this asserts the refactor did not
+  regress it. (`week_of_month`/`month_of_year` are dropped, so there is no monthly/yearly FP gate to
+  satisfy — the 97–98% spurious-monthly path is removed by deletion, the most direct possible fix.)
+- [ ] **Dropped configs no longer emit:** assert `temporal_discovery_handler` never returns a
+  `MONTHLY` or `YEARLY` cycle for any input (the configs are gone), and that no `week_of_month` /
+  `month_of_year` references remain in `policy_cache.py`.
 - [ ] **Regression:** the existing 20-Mondays-over-20-weeks case still detects WEEKLY; <3
   timestamps still returns `[]`; all-malformed `ts` returns `[]`; existing PolicyCache TD-learning
   tests unaffected.
@@ -383,8 +409,9 @@ The lead agent orchestrates; it never builds directly.
 
 - **Builder (discovery-fix)**
   - Name: discovery-builder
-  - Role: Fix phase units (seconds + epoch anchor) and the χ² expected-counts null in
-    `temporal_discovery_handler`; resolve week_of_month/month_of_year per Open Q1.
+  - Role: Fix phase units (seconds + Thursday epoch anchor) in `temporal_discovery_handler` and
+    remove the two biased configs (`week_of_month`, `month_of_year`) per Resolved Decisions #1.
+    Keep `chi_squared_uniform` unchanged; add no new χ² helper.
   - Agent Type: builder
   - Resume: true
 
@@ -416,22 +443,23 @@ The lead agent orchestrates; it never builds directly.
 - **Assigned To**: discovery-builder
 - **Agent Type**: builder
 - **Parallel**: false
-- **FIRST, settle the config set (sequencing requirement):** drop `week_of_month` outright
-  (irreparable calendar/period misalignment, no clean seconds-phase mapping). Then determine whether
-  `month_of_year` survives the FP gate (≤0.10 at n=400 after the E_i fix); the test builder produces
-  this measurement in step 2 — coordinate so the keep/drop is decided before finalizing the helper.
+- **Remove the two biased configs (no measurement needed — the drop is unconditional):** delete
+  the `week_of_month` and `month_of_year` entries from `bucket_configs`, leaving only `day_of_week`.
+  This is a flat decision (Resolved Decisions #1), not gated on any FP measurement, so there is no
+  step-1↔step-2 ordering dependency.
 - In `temporal_discovery_handler`, replace `phase = (peak_bucket / num_buckets) * 2 * math.pi`
-  with a **seconds** offset anchored to the period epoch (for weekly: Thursday anchor,
-  `phase = (((peak_wday - 3) % 7) * 86400 + 43200) % 604800`, midpoint-centered — see Technical
-  Approach); generalize to a bucket→representative-seconds-offset mapping for each kept config.
-  Derive/verify the period anchor from `time.gmtime(0)`, do not assume.
-- **Add a NEW `chi_squared(observed, expected_vector)` helper ONLY IF month_of_year is kept**
-  (it is the sole non-uniform consumer). `E_i = n * p_i` from real bucket widths, per-element
-  `E_i > 0` guard. **Do NOT remove or alter `chi_squared_uniform`** — it is imported and tested in
-  `tests/test_policy_cache.py` (line 34 import; lines 506/510/515). day_of_week keeps using
-  `chi_squared_uniform` (equal-width, numerically unchanged). If month_of_year is dropped, do NOT
-  add `chi_squared` (it would be dead code) — day_of_week alone needs only the existing helper.
-- Update the handler + helper docstrings (units = seconds; per-bucket null where applicable).
+  with a **seconds** offset anchored to the weekly epoch: Thursday anchor,
+  `phase = (((peak_wday - 3) % 7) * 86400 + 43200) % 604800`, midpoint-centered (see Technical
+  Approach). Derive/verify the Thursday anchor from `time.gmtime(0).tm_wday == 3` in code, do not
+  hard-code the `3` without the assertion. day_of_week is the only config, so no multi-period
+  generalization is required.
+- **Keep `chi_squared_uniform` exactly as-is; add NO new χ² helper.** day_of_week is equal-width,
+  so the existing uniform test is correct (`E_i = n/7`). A per-bucket-vector helper would have no
+  consumer and is therefore NOT added (avoids dead code). `chi_squared_uniform` is imported and
+  tested in `tests/test_policy_cache.py` (line 34 import; lines 506/510/515) — do not remove or
+  alter it.
+- Update the handler docstring (units = seconds; note that only day_of_week/weekly discovery
+  remains and why the calendar configs were removed).
 
 ### 2. Write tests (end-to-end phase + FP rate + regressions)
 - **Task ID**: build-discovery-tests
@@ -446,11 +474,12 @@ The lead agent orchestrates; it never builds directly.
   argmax within the Sunday window (correct phase ≈302400s), assert a clear score-delta between the
   true peak and the epoch boundary, and assert argmax is NOT in the Thursday/epoch-boundary window.
   Derive the Thursday epoch anchor from `time.gmtime(0)` in-test (self-checking).
-- Seeded Monte Carlo FP-rate tests (**≥500 trials**, dedicated `random.Random(seed)` generator) at
-  n=400 for each surviving config → detection rate ≤ 0.10. day_of_week is a **regression sentinel**
-  (already ≈alpha; assert it stays ≤0.10); month_of_year's measured rate is the **gate** that decides
-  whether it is kept (coordinate the keep/drop with step 1). Include the n=50/100/200/400 progression
-  as documentation in a comment.
+- Seeded Monte Carlo FP-rate test (**≥500 trials**, dedicated `random.Random(seed)` generator) at
+  n=400 for **day_of_week** → detection rate ≤ 0.10. This is a **regression sentinel** (day_of_week
+  is equal-width and already ≈alpha; assert the refactor did not regress it). There is no
+  month_of_year/week_of_month FP gate — those configs are deleted in step 1, so assert instead that
+  the handler never emits a MONTHLY or YEARLY cycle for any input. Include the n=50/100/200/400
+  progression as documentation in a comment.
 - Regression + failure-path tests: 20-Mondays weekly still detected; <3 → `[]`; all-malformed
   `ts` → `[]`; empty → `[]`.
 
@@ -462,9 +491,11 @@ The lead agent orchestrates; it never builds directly.
 - **Parallel**: false
 - Run `pytest tests/test_policy_cache.py -q` and the full suite.
 - Confirm FP-rate test is deterministic (run twice, same result) and inside the bound.
-- Valkey safety (src + tests): `grep -rn -E 'BF\.|CMS\.|CF\.|TOPK\.' src/popoto/recipes/policy_cache.py tests/test_policy_cache.py` → none.
+- Valkey safety (src + tests): `grep -rnE 'BF\.|CMS\.|CF\.|TOPK\.' src/popoto/recipes/policy_cache.py tests/test_policy_cache.py` → none.
 - Confirm `chi_squared_uniform` is still present and its two existing tests
   (`test_chi_squared_uniform_basic`, `test_chi_squared_zero_expected`) pass unchanged.
+- Confirm `week_of_month` and `month_of_year` are removed from `policy_cache.py`, and that no new
+  `chi_squared(` (vector) helper was added (no dead code).
 - Confirm the e2e test clusters on Sunday (not Thursday) and sweeps at ≤3600s; confirm FP test uses
   `random.Random` with ≥500 trials.
 - Report pass/fail against each Success Criterion.
@@ -498,7 +529,9 @@ The lead agent orchestrates; it never builds directly.
 | Lint clean | `python -m ruff check src/popoto/recipes/policy_cache.py` | exit code 0 |
 | No radians phase remains | `grep -n "2 \* math.pi\|2\*math.pi" src/popoto/recipes/policy_cache.py` | exit code 1 |
 | `chi_squared_uniform` preserved | `grep -rn "chi_squared_uniform" src/popoto/recipes/policy_cache.py tests/test_policy_cache.py` | symbol present in BOTH files (def in src, import+calls in tests) |
-| No Redis-module commands (src+tests) | `grep -rn -E 'BF\.\|CMS\.\|CF\.\|TOPK\.' src/popoto/recipes/policy_cache.py tests/test_policy_cache.py` | exit code 1 |
+| Biased configs removed | `grep -nE "week_of_month\|month_of_year" src/popoto/recipes/policy_cache.py` | exit code 1 (neither config remains) |
+| No dead χ² vector helper | `grep -n "def chi_squared(" src/popoto/recipes/policy_cache.py` | exit code 1 (only `chi_squared_uniform` exists) |
+| No Redis-module commands (src+tests) | `grep -rnE 'BF\.|CMS\.|CF\.|TOPK\.' src/popoto/recipes/policy_cache.py tests/test_policy_cache.py` | exit code 1 (correct ERE alternation — `\|` would be a literal pipe and vacuously pass) |
 | End-to-end phase test present | `grep -rn "CyclicDecayField" tests/test_policy_cache.py` | output contains CyclicDecayField |
 | FP-rate test present | `grep -rni "false.positive\|fp_rate\|monte" tests/test_policy_cache.py` | exit code 0 |
 | FP-rate uses ≥500 trials | `grep -rn "random.Random\|500\|range(500" tests/test_policy_cache.py` | output shows seeded Random + ≥500 trials |
@@ -515,18 +548,36 @@ The lead agent orchestrates; it never builds directly.
 | Concern | critique | ≥100 Monte Carlo trials too noisy for a 0.05-vs-0.10 gate. | Raised to **≥500 trials** with a dedicated seeded `random.Random(seed)`; documented SE math (≈0.0097 at 500 vs ≈0.022 at 100). | Risk 2, Success Criteria, build step 2, Verification. |
 | Nit | critique | Phase formula both dictated (Technical Approach) and posed as Open Q3. | Resolved: midpoint centering decided in-plan; Open Questions removed. | Technical Approach (Bug 1), Open Questions removed. |
 
+### Second critique round (after revision_applied)
+
+| Severity | Critic | Finding | Addressed By | Implementation Note |
+|----------|--------|---------|--------------|---------------------|
+| Blocker | critique (R&R + S&V) | `month_of_year`, if kept, would still emit the radians phase bug — the seconds-phase mapping was only fully specified for the weekly case; the FP gate doesn't test phase correctness, so a config could pass the gate and ship a mis-timed peak. | **Drop `month_of_year` unconditionally** (alongside `week_of_month`). With no calendar config kept there is no radians-phase path to fix and no phase-timing gate to add. | Problem (Scope decision), Key Elements, Technical Approach (Bug 1/2), build step 1, Resolved Decisions #1. |
+| Blocker | critique (R&R) | `month_of_year` `E_i = n·p_i` correction is non-reproducible: true per-month probability is calendar-/leap-dependent, and the plan never pinned the FP-test window, so the ≤0.10 gate is unverifiable as written. | **Drop `month_of_year` unconditionally.** No per-bucket-vector test, no FP window to pin. day_of_week is genuinely equal-width and uses the unchanged `chi_squared_uniform`. | Technical Approach (Bug 2 — "Why not repair"), Resolved Decisions #1, Risk 3. |
+| Concern | critique (S&V + H&C) | Circular dependency: build step 1 needed a month_of_year FP measurement that step 2 produces, but step 2 depends on step 1. | Eliminated — the config drop is unconditional (no measurement feeds it), so step 1 has no dependency on step 2's FP result. | build step 1 (rewritten), step 2. |
+| Concern | critique (H&C) | "kept iff FP gate / no dead code" invariant had no verification check. | Invariant removed (unconditional drop). Added Verification rows: configs removed (`grep week_of_month\|month_of_year` → exit 1) and no dead χ² vector helper (`grep "def chi_squared("` → exit 1). | Verification table, validate step 3. |
+| Concern | critique (R&R) | e2e score-delta margin "2.0× the amplitude term separation" was undefined/ambiguous. | Defined concretely against the cosine model: true peak `amplitude*cos(0)=+0.5`, epoch boundary `amplitude*cos(π)=-0.5`, assert `peak - boundary >= 0.9` (analytic gap 1.0). | Success Criteria (Score-delta assertion). |
+| Nit | critique (S&V) | Valkey grep regex `'BF\.\|CMS\.'` under `-E` matches a literal pipe → vacuously passes. | Fixed to unescaped ERE alternation `'BF\.|CMS\.|CF\.|TOPK\.'`. | Verification table, validate step 3. |
+| Nit | critique (H&C) | Freshness Check line citations have ~3-line residual drift (622/593/614 vs 625/595/611). | Mitigated by exact code-string quotes; line numbers noted as approximate. Build greps by string, not line. | Freshness Check (note added). |
+
 ---
 
 ## Resolved Decisions
 
 All prior Open Questions are resolved in this finalized plan:
 
-1. **Config set:** **drop `week_of_month`** (4 calendar "weeks" irreparably misaligned with the
-   fixed 30-day `MONTHLY` period; no clean seconds-phase mapping). **Keep `day_of_week`** (equal
-   7-day buckets, clean Thursday-anchored weekly cycle). **`month_of_year` is kept iff** it passes
-   the FP-rate gate (≤0.10 at n=400) after the `E_i = n·p_i` correction; dropped otherwise. The
-   keep/drop is sequenced before the χ² helper is finalized (build step 1) so no unused helper lands.
-2. **FP-rate gate:** tolerance ≤0.10 (vs nominal 0.05) over **≥500** seeded trials at n=400, using a
-   dedicated `random.Random(seed)` for determinism without disturbing global RNG state.
+1. **Config set:** **drop `week_of_month` AND `month_of_year` unconditionally.** Both bucket on
+   calendar boundaries (6/7/7/10–11-day "weeks"; 28–31-day months) whose widths cannot be reconciled
+   with their fixed-seconds period constants (`MONTHLY`=30d, `YEARLY`=365d) — there is no clean
+   seconds-phase mapping for them, and no static per-bucket expected vector can match the
+   calendar-/leap-dependent data-generating process (so the χ² null cannot be repaired reproducibly).
+   **Keep only `day_of_week`** (equal 7-day buckets, clean Thursday-anchored weekly cycle, correct
+   uniform null). The drop is flat — not gated on any FP measurement — which removes the build's
+   step-1↔step-2 circular dependency and the dead-helper risk. Calendar-accurate monthly/yearly
+   discovery, if ever wanted, is a separate future feature (see No-Gos).
+2. **FP-rate sentinel:** for the surviving `day_of_week` config, tolerance ≤0.10 (vs nominal 0.05)
+   over **≥500** seeded trials at n=400, using a dedicated `random.Random(seed)` for determinism
+   without disturbing global RNG state. This is a regression sentinel (day_of_week already ≈alpha),
+   not a keep/drop gate.
 3. **Phase centering:** **bucket midpoint** (e.g. mid-Sunday via the `+43200` half-day offset) as the
    most representative "when events cluster."
