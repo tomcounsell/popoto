@@ -910,9 +910,9 @@ class TestCMSRowIndependence:
                     for b in range(a + 1, len(group)):
                         colliding_pairs.append((group[a], group[b]))
 
-        assert len(colliding_pairs) >= 5, (
-            f"Need at least 5 colliding pairs to test; got {len(colliding_pairs)}"
-        )
+        assert (
+            len(colliding_pairs) >= 5
+        ), f"Need at least 5 colliding pairs to test; got {len(colliding_pairs)}"
 
         all_7_count = 0
         for i, j in colliding_pairs:
@@ -1016,12 +1016,12 @@ class TestCMSRowIndependence:
         count_single = r.eval(CMS_QUERY_LUA, 1, key_single, token, width, depth)
         count_multi = r.eval(CMS_QUERY_LUA, 1, key_multi, token, width, depth)
 
-        assert int(count_single) >= n, (
-            f"CMS_INCR_LUA + CMS_QUERY_LUA: got {count_single}, expected >= {n}"
-        )
-        assert int(count_multi) >= n, (
-            f"CMS_INCR_MULTI_LUA + CMS_QUERY_LUA: got {count_multi}, expected >= {n}"
-        )
+        assert (
+            int(count_single) >= n
+        ), f"CMS_INCR_LUA + CMS_QUERY_LUA: got {count_single}, expected >= {n}"
+        assert (
+            int(count_multi) >= n
+        ), f"CMS_INCR_MULTI_LUA + CMS_QUERY_LUA: got {count_multi}, expected >= {n}"
 
         # Columns must be identical: same cells incremented by both scripts
         cells_single = {k.decode(): v for k, v in r.hgetall(key_single).items()}
