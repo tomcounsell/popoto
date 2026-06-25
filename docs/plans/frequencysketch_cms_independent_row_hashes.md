@@ -1,5 +1,5 @@
 ---
-status: Ready
+status: docs_complete
 type: bug
 appetite: Small
 owner: valor
@@ -51,21 +51,17 @@ acceptable** — old sketches are simply rebuilt; no migration shim.
 
 **Baseline commit:** `a79d1cf3745480e7d1ea8fbcbf45f30a654c120e`
 **Issue filed at:** 2026-06-11T05:20:37Z
-**Disposition:** Unchanged
+**Disposition:** Fixed — PR #430 shipped 2026-06-25
 
-**File:line references re-verified:**
-- `src/popoto/fields/existence_filter.py:196-212` — `CMS_INCR_LUA` with `local h = 5381 + row * 16777619` and shared `h*33` loop — **still holds, verbatim**.
-- `src/popoto/fields/existence_filter.py:214-233` — `CMS_INCR_MULTI_LUA` repeats the construction — **still holds**.
-- `src/popoto/fields/existence_filter.py:235-255` — `CMS_QUERY_LUA` repeats the construction — **still holds**.
-- `src/popoto/fields/existence_filter.py:620-621` — defaults `width=2000, depth=7` — **still holds** (in `FrequencySketch.__init__`).
-- `src/popoto/fields/existence_filter.py:672-679` — `FrequencySketch.on_save` invokes the Lua via `tokenize()` + EVAL — **still holds**.
-- Bloom Lua (lines 91-96, 117-122, 141-146, 169-174) uses two structurally different base hashes (multipliers 33 and 16777619) — **confirmed**; this is the correct model the issue cites, and is out of scope.
+**File:line references post-fix (PR #430):**
+- `src/popoto/fields/existence_filter.py` — `CMS_INCR_LUA`, `CMS_INCR_MULTI_LUA`, `CMS_QUERY_LUA` now use independent per-row polynomial hash family (P/M tables, 7 prime entries each). The affine-seed construction (`5381 + row * 16777619`, shared `h*33` loop) is **removed**.
+- Default `width` changed `2000 → 2003` (prime) in `FrequencySketch.__init__`. `MAX_DEPTH = 7` class constant added. `depth` out of `[1, 7]` raises `ValueError`.
+- `LARGE_MOD = 2^52` removed from all three CMS scripts; Bloom scripts retain it (out of scope).
+- `FrequencySketch.on_save` and `tokenize()` flow — **unchanged**.
+- Bloom Lua (lines 91-96, 117-122, 141-146, 169-174) — **unchanged and out of scope**.
 
 **Cited sibling issues/PRs re-checked:**
 - #415, #416 (sibling MATH/audit findings) — still OPEN, unrelated code paths (temporal / co-occurrence). No interaction.
-
-**Commits on main since issue was filed (touching referenced files):**
-- `git log --since=2026-06-11 -- src/popoto/fields/existence_filter.py docs/features/existence-filter.md` returns **nothing**. The file is untouched since the audited revision.
 
 **Active plans in `docs/plans/` overlapping this area:** none. (`existence_filter.md`, `existence_filter_tokenization.md`, `batch-might-exist-selectivity.md` are all shipped/older and touch the Bloom side or tokenization, not the CMS row-hash family.)
 
