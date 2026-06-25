@@ -1,5 +1,5 @@
 ---
-status: Ready
+status: docs_complete
 type: bug
 appetite: Small
 owner: valor
@@ -51,21 +51,17 @@ acceptable** — old sketches are simply rebuilt; no migration shim.
 
 **Baseline commit:** `a79d1cf3745480e7d1ea8fbcbf45f30a654c120e`
 **Issue filed at:** 2026-06-11T05:20:37Z
-**Disposition:** Unchanged
+**Disposition:** Fixed — PR #430 shipped 2026-06-25
 
-**File:line references re-verified:**
-- `src/popoto/fields/existence_filter.py:196-212` — `CMS_INCR_LUA` with `local h = 5381 + row * 16777619` and shared `h*33` loop — **still holds, verbatim**.
-- `src/popoto/fields/existence_filter.py:214-233` — `CMS_INCR_MULTI_LUA` repeats the construction — **still holds**.
-- `src/popoto/fields/existence_filter.py:235-255` — `CMS_QUERY_LUA` repeats the construction — **still holds**.
-- `src/popoto/fields/existence_filter.py:620-621` — defaults `width=2000, depth=7` — **still holds** (in `FrequencySketch.__init__`).
-- `src/popoto/fields/existence_filter.py:672-679` — `FrequencySketch.on_save` invokes the Lua via `tokenize()` + EVAL — **still holds**.
-- Bloom Lua (lines 91-96, 117-122, 141-146, 169-174) uses two structurally different base hashes (multipliers 33 and 16777619) — **confirmed**; this is the correct model the issue cites, and is out of scope.
+**File:line references post-fix (PR #430):**
+- `src/popoto/fields/existence_filter.py` — `CMS_INCR_LUA`, `CMS_INCR_MULTI_LUA`, `CMS_QUERY_LUA` now use independent per-row polynomial hash family (P/M tables, 7 prime entries each). The affine-seed construction (`5381 + row * 16777619`, shared `h*33` loop) is **removed**.
+- Default `width` changed `2000 → 2003` (prime) in `FrequencySketch.__init__`. `MAX_DEPTH = 7` class constant added. `depth` out of `[1, 7]` raises `ValueError`.
+- `LARGE_MOD = 2^52` removed from all three CMS scripts; Bloom scripts retain it (out of scope).
+- `FrequencySketch.on_save` and `tokenize()` flow — **unchanged**.
+- Bloom Lua (lines 91-96, 117-122, 141-146, 169-174) — **unchanged and out of scope**.
 
 **Cited sibling issues/PRs re-checked:**
 - #415, #416 (sibling MATH/audit findings) — still OPEN, unrelated code paths (temporal / co-occurrence). No interaction.
-
-**Commits on main since issue was filed (touching referenced files):**
-- `git log --since=2026-06-11 -- src/popoto/fields/existence_filter.py docs/features/existence-filter.md` returns **nothing**. The file is untouched since the audited revision.
 
 **Active plans in `docs/plans/` overlapping this area:** none. (`existence_filter.md`, `existence_filter_tokenization.md`, `batch-might-exist-selectivity.md` are all shipped/older and touch the Bloom side or tokenization, not the CMS row-hash family.)
 
@@ -162,7 +158,7 @@ not scope.
 
 - **Single shared hash construction**: one canonical per-row polynomial family, used identically by `CMS_INCR_LUA`, `CMS_INCR_MULTI_LUA`, and `CMS_QUERY_LUA`. Define the constant arrays (`P`, `M`) inline in each script's Lua (Lua has no shared-include; keep the three copies byte-identical and assert agreement in a test).
 - **Prime width default**: `FrequencySketch.__init__` default `width = 2003` (prime), replacing `2000`. `depth = 7` unchanged.
-- **Lua-double-safe arithmetic**: per-row prime modulus `< 2^25`, per-row multiplier `< 2^25`; drop `% 2^52`. Every intermediate proven `< 2^49`.
+- **Lua-double-safe arithmetic**: per-row prime modulus `< 2^25`, per-row multiplier `< 2^25`; drop `% 2^52`. Every intermediate proven `≈ 2^49 (< 2^53)`.
 - **Regression test**: encodes the row-correlation check (same-length row-0-colliding tokens must NOT collide in all rows) so the affine flaw can't silently return.
 
 ### Flow
@@ -285,7 +281,7 @@ columns. This is an acceptance criterion in the issue.
 ### Risk 4: Spike-1 used Python bignums and masked the 2^53 ceiling
 **Impact:** A naive port of spike-1's billion-scale primes would overflow doubles in real Lua.
 **Mitigation:** Already caught by spike-2; the adopted constants are all `< 2^25` with max
-intermediate `< 2^49`. The build must use spike-2's constants, not spike-1's. A test should
+intermediate `≈ 2^49 (< 2^53)`. The build must use spike-2's constants, not spike-1's. A test should
 assert no counter position exceeds `width` and that increment/query agree on a long token
 (implicitly exercising the arithmetic on a real server).
 
@@ -342,7 +338,7 @@ refers to Popoto's cognitive primitives, not a Telegram agent.)
   sentence explicitly to ExistenceFilter/Bloom, and add a sentence that FrequencySketch/CMS
   uses per-row independent polynomial hashes (distinct prime multiplier + modulus per row).
   Leaving this stale would re-document the exact bug being removed.
-- [ ] Add a Lua comment in each CMS script naming the construction and the 2^53-safety invariant (max intermediate < 2^49). (Already present in the current source — confirm.)
+- [ ] Add a Lua comment in each CMS script naming the construction and the 2^53-safety invariant (max intermediate ≈ 2^49 (< 2^53)). (Already present in the current source — confirm.)
 
 ## Success Criteria
 
@@ -416,7 +412,7 @@ The lead agent orchestrates; it does not build directly.
 - Remove the `LARGE_MOD = 4503599627370496` line from all three CMS scripts (no longer referenced). Leave the Bloom scripts' `LARGE_MOD` untouched.
 - Change `FrequencySketch.__init__` default `width` from `2000` to `2003`.
 - Add a `depth` guard in `__init__`: `if not 1 <= self.depth <= self.MAX_DEPTH: raise ValueError(...)` with `MAX_DEPTH = 7`. This is the single resolved behavior — raise at construction time, never cap, never generate arbitrary-depth tables. Prevents a partial-persistence mid-`on_save()` Lua nil-index failure.
-- Update the `FrequencySketch` docstring (default width, independent-rows note) and add a Lua comment naming the family + the `< 2^49` safety invariant.
+- Update the `FrequencySketch` docstring (default width, independent-rows note) and add a Lua comment naming the family + the `≈ 2^49 (< 2^53)` safety invariant.
 - **Fix the stale module-level docstring at `existence_filter.py:16-17`**: scope the Kirsch–Mitzenmacher double-hashing sentence to ExistenceFilter/Bloom only, and add a sentence that FrequencySketch/CMS uses independent per-row polynomial hashes. (Otherwise the module header still documents the removed bug.)
 
 ### 2. Write CMS correctness + regression tests

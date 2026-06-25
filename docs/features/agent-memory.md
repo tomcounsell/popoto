@@ -895,8 +895,8 @@ count = Memory.freq.get_frequency(Memory, "kubernetes")
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `width` | `int` | `2000` | Number of counters per row. Higher = less overcounting. |
-| `depth` | `int` | `7` | Number of hash functions (rows). Higher = more accurate. |
+| `width` | `int` | `2003` | Number of counters per row (prime recommended). Higher = less overcounting. |
+| `depth` | `int` | `7` | Number of independent hash functions / rows (1–7). Higher = more accurate. |
 | `fingerprint_fn` | `Callable` | `None` | Takes a model instance, returns a string fingerprint. Falls back to `redis_key` if not set. |
 
 ### Methods

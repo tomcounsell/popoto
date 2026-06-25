@@ -17,6 +17,8 @@ Tests cover:
 - No Redis module dependencies — vanilla Redis/Valkey only
 """
 
+import math
+import random
 import sys
 import os
 
@@ -26,6 +28,9 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 import pytest  # noqa: E402
 from src import popoto  # noqa: E402
 from src.popoto.fields.existence_filter import (
+    CMS_INCR_LUA,
+    CMS_INCR_MULTI_LUA,
+    CMS_QUERY_LUA,
     ExistenceFilter,
     FrequencySketch,
     tokenize,
@@ -844,3 +849,309 @@ class TestMightExistCount:
             BloomModel, ["kubernetes", "terraform", "ansible"]
         )
         assert count == 1
+
+
+# ---------------------------------------------------------------------------
+# CMS hash-family fix regression tests (#414)
+# ---------------------------------------------------------------------------
+
+# Polynomial hash constants matching the fixed Lua scripts.
+# These P (prime moduli) and M (prime multipliers) form a practically
+# pairwise-independent hash family — one pair per CMS row.
+_CMS_P = [16777259, 16777289, 16777291, 16777331, 16777333, 16777337, 16777381]
+_CMS_M = [33554467, 33554473, 33554501, 33554503, 33554509, 33554519, 33554527]
+
+
+def _compute_columns(token: str, width: int, depth: int) -> list[int]:
+    """Python mirror of the fixed Lua CMS polynomial hash.
+
+    Seed: h = row + 1
+    Per-byte: h = (h * M[row] + byte) % P[row]
+    Column: col = h % width
+
+    Used by tests that verify the hash-family properties in pure Python
+    without going through Redis, so they remain fast and deterministic.
+    """
+    cols = []
+    for row in range(depth):
+        pr = _CMS_P[row]
+        mr = _CMS_M[row]
+        h = row + 1
+        for c in token.encode():
+            h = (h * mr + c) % pr
+        cols.append(h % width)
+    return cols
+
+
+class TestFrequencySketchCMSHashFamily:
+    """Regression tests for the CMS per-row independent polynomial hash fix (#414).
+
+    Before the fix, CMS used an affine seed  h = 5381 + row * 16777619 with a
+    shared multiplier (33).  Every token that collided in row-0 also collided in
+    ALL seven rows — destroying the independence that the standard CMS error bound
+    requires.
+
+    After the fix, each row uses its own prime modulus P[row] and prime multiplier
+    M[row].  Row hashes are practically pairwise-independent, restoring the
+    e^{-depth} exceedance probability.
+    """
+
+    def test_rows_not_all_or_none(self):
+        """Per-row independence: row-0 collisions should NOT propagate to all 7 rows.
+
+        With the old affine-seed approach, if two tokens hash to the same column in
+        row 0 they ALWAYS hash to the same column in every row (100% correlation).
+        With the new polynomial hashes the extra-row match probability per row is
+        approximately 1/width — effectively zero for pairs that just happen to share
+        a row-0 bucket.
+
+        Test parameters:
+            3000 9-char tokens, width=2003 (prime), depth=7
+        """
+        width, depth = 2003, 7
+        rng = random.Random(42)
+        chars = "abcdefghijklmnopqrstuvwxyz"
+        tokens = ["".join(rng.choices(chars, k=9)) for _ in range(3000)]
+
+        # Build a map: row-0 column -> list of full column vectors
+        col0_groups: dict[int, list[list[int]]] = {}
+        for tok in tokens:
+            cols = _compute_columns(tok, width, depth)
+            col0_groups.setdefault(cols[0], []).append(cols)
+
+        # Count pairs that collide in row 0 AND in ALL 7 rows
+        all7_collisions = 0
+        total_row0_pairs = 0
+        extra_row_matches = []  # count of matching rows beyond row-0 for each pair
+
+        for group in col0_groups.values():
+            if len(group) < 2:
+                continue
+            for i in range(len(group)):
+                for j in range(i + 1, len(group)):
+                    total_row0_pairs += 1
+                    matches_in_extra = sum(
+                        1 for r in range(1, depth) if group[i][r] == group[j][r]
+                    )
+                    extra_row_matches.append(matches_in_extra)
+                    if matches_in_extra == depth - 1:  # collide in all remaining rows
+                        all7_collisions += 1
+
+        # With independent hashes, zero all-7-row collisions is expected.
+        assert all7_collisions == 0, (
+            f"Found {all7_collisions} pairs colliding in all {depth} rows "
+            f"(out of {total_row0_pairs} row-0 colliding pairs). "
+            f"This indicates correlated row hashes — the affine-seed bug."
+        )
+
+        # Mean extra-row matches per pair should be near (depth-1)/width
+        if total_row0_pairs > 0:
+            mean_extra = sum(extra_row_matches) / total_row0_pairs
+            theory = (depth - 1) / width
+            # Allow 3x tolerance for statistical noise
+            assert mean_extra <= theory * 3 + 0.01, (
+                f"Mean extra-row match rate {mean_extra:.6f} is more than 3x the "
+                f"theoretical {theory:.6f}, suggesting row correlation."
+            )
+
+    def test_independence_at_composite_width(self):
+        """Row independence holds for composite width=2000 (not just prime widths).
+
+        The old bug was in the hash seed construction, not in the modular reduction.
+        Using a composite width proves the polynomial hash constants (not the prime
+        width) are responsible for the fix.
+
+        Test parameters:
+            3000 9-char tokens, width=2000 (composite), depth=7
+        """
+        width, depth = 2000, 7
+        rng = random.Random(99)
+        chars = "abcdefghijklmnopqrstuvwxyz"
+        tokens = ["".join(rng.choices(chars, k=9)) for _ in range(3000)]
+
+        col0_groups: dict[int, list[list[int]]] = {}
+        for tok in tokens:
+            cols = _compute_columns(tok, width, depth)
+            col0_groups.setdefault(cols[0], []).append(cols)
+
+        all7_collisions = 0
+        total_row0_pairs = 0
+        for group in col0_groups.values():
+            if len(group) < 2:
+                continue
+            for i in range(len(group)):
+                for j in range(i + 1, len(group)):
+                    total_row0_pairs += 1
+                    if all(group[i][r] == group[j][r] for r in range(1, depth)):
+                        all7_collisions += 1
+
+        assert all7_collisions == 0, (
+            f"Found {all7_collisions} all-{depth}-row collisions out of "
+            f"{total_row0_pairs} row-0 pairs (composite width={width}). "
+            f"Row hashes are not independent."
+        )
+
+    def test_three_scripts_agree(self):
+        """CMS_INCR_LUA, CMS_INCR_MULTI_LUA, and CMS_QUERY_LUA all compute the same columns.
+
+        Increment a token via CMS_INCR_LUA on one key and via CMS_INCR_MULTI_LUA on
+        another, then verify:
+          1. CMS_QUERY_LUA returns the same count (>= 1) for both keys.
+          2. The set of (row:col) hash fields written to Redis are identical,
+             proving all three scripts use the same polynomial arithmetic.
+        """
+        token = "agreement"
+        width, depth = 2003, 7
+        key_single = "$FS:test:cms_agree_single"
+        key_multi = "$FS:test:cms_agree_multi"
+
+        # Clean up before and after
+        POPOTO_REDIS_DB.delete(key_single, key_multi)
+        try:
+            # Increment via CMS_INCR_LUA (single-token path)
+            POPOTO_REDIS_DB.eval(CMS_INCR_LUA, 1, key_single, token, width, depth)
+
+            # Increment via CMS_INCR_MULTI_LUA (multi-token path, one token)
+            POPOTO_REDIS_DB.eval(CMS_INCR_MULTI_LUA, 1, key_multi, width, depth, token)
+
+            # Query both keys via CMS_QUERY_LUA
+            count_single = POPOTO_REDIS_DB.eval(
+                CMS_QUERY_LUA, 1, key_single, token, width, depth
+            )
+            count_multi = POPOTO_REDIS_DB.eval(
+                CMS_QUERY_LUA, 1, key_multi, token, width, depth
+            )
+
+            assert count_single >= 1, "CMS_INCR_LUA did not increment any counter"
+            assert count_multi >= 1, "CMS_INCR_MULTI_LUA did not increment any counter"
+            assert count_single == count_multi, (
+                f"CMS_INCR_LUA query={count_single} != "
+                f"CMS_INCR_MULTI_LUA query={count_multi}: "
+                f"scripts compute different columns for the same token."
+            )
+
+            # Verify the exact (row:col) fields written are identical
+            fields_single = set(POPOTO_REDIS_DB.hgetall(key_single).keys())
+            fields_multi = set(POPOTO_REDIS_DB.hgetall(key_multi).keys())
+            assert fields_single == fields_multi, (
+                f"Column fields differ between scripts.\n"
+                f"  CMS_INCR_LUA:       {sorted(fields_single)}\n"
+                f"  CMS_INCR_MULTI_LUA: {sorted(fields_multi)}"
+            )
+
+            # Cross-check: Python-computed columns must match what Redis stored
+            py_cols = _compute_columns(token, width, depth)
+            expected_fields = {
+                f"{row}:{col}".encode() for row, col in enumerate(py_cols)
+            }
+            assert fields_single == expected_fields, (
+                f"Redis columns don't match Python _compute_columns.\n"
+                f"  Redis:  {sorted(fields_single)}\n"
+                f"  Python: {sorted(expected_fields)}\n"
+                f"This means the Lua scripts have NOT been updated with the "
+                f"polynomial hash fix."
+            )
+        finally:
+            POPOTO_REDIS_DB.delete(key_single, key_multi)
+
+    @pytest.mark.parametrize("seed", [42, 123, 999])
+    def test_zipf_error_bound(self, seed):
+        """CMS error bound holds on a Zipf-1.2 workload (pure-Python simulation).
+
+        Parameters (see inline comments for derivation):
+            N      = 10 000 events
+            vocab  = 2 000 distinct tokens ("tok{i:04d}")
+            alpha  = 1.2  (Zipf exponent)
+            width  = 2003, depth = 7
+
+        Standard CMS bound: Pr[estimate > true + e*N/width] <= e^{-depth}
+            e*N/width  = e * 10000 / 2003 ~= 13.6
+            e^{-7}     ~= 0.091 %
+
+        The simulation drives _compute_columns (the Python mirror of the fixed Lua
+        arithmetic) rather than Redis, so the test runs in milliseconds and is
+        strictly deterministic for each seed.  The same arithmetic is exercised by
+        CMS_INCR_LUA / CMS_INCR_MULTI_LUA / CMS_QUERY_LUA in production.
+
+        Assertions:
+            - Zero undercounts (CMS never undercounts by design).
+            - Violation fraction < 0.091% (theoretical worst-case per seed).
+        """
+        # --- parameters ---
+        N = 10_000
+        vocab_size = 2_000
+        width, depth = 2003, 7
+        alpha = 1.2
+        # eN/width: the CMS additive error budget
+        additive_error = math.e * N / width  # ~13.6
+
+        # --- build Zipf distribution ---
+        # weights[i] ~ 1/(i+1)^alpha, normalised to a probability vector
+        rng = random.Random(seed)
+        raw_weights = [1.0 / ((i + 1) ** alpha) for i in range(vocab_size)]
+        total_weight = sum(raw_weights)
+        probs = [w / total_weight for w in raw_weights]
+
+        tokens = [f"tok{i:04d}" for i in range(vocab_size)]
+
+        # Numpy is optional; fall back to a manual weighted-sample implementation
+        try:
+            import numpy as np  # noqa: PLC0415
+
+            np_rng = np.random.default_rng(seed)
+            events = [tokens[i] for i in np_rng.choice(vocab_size, size=N, p=probs)]
+        except ImportError:
+            # Manual alias-method-free approximation: random.choices with weights
+            events = rng.choices(tokens, weights=raw_weights, k=N)
+
+        # --- compute true counts ---
+        true_counts: dict[str, int] = {}
+        for tok in events:
+            true_counts[tok] = true_counts.get(tok, 0) + 1
+
+        # --- simulate CMS in Python ---
+        cms: dict[tuple[int, int], int] = {}
+        for tok in events:
+            for row, col in enumerate(_compute_columns(tok, width, depth)):
+                key = (row, col)
+                cms[key] = cms.get(key, 0) + 1
+
+        # --- evaluate estimates ---
+        violations = 0
+        undercounts = 0
+        for tok in tokens:
+            true_c = true_counts.get(tok, 0)
+            cols = _compute_columns(tok, width, depth)
+            estimate = min(cms.get((row, col), 0) for row, col in enumerate(cols))
+            if estimate > true_c + additive_error:
+                violations += 1
+            if estimate < true_c:
+                undercounts += 1
+
+        violation_fraction = violations / vocab_size
+        theoretical_bound = math.exp(-depth)  # ~0.000912
+
+        assert undercounts == 0, (
+            f"Seed {seed}: CMS produced {undercounts} undercounts — impossible with "
+            f"correct hash arithmetic (CMS guarantees estimate >= true count)."
+        )
+        assert violation_fraction < theoretical_bound, (
+            f"Seed {seed}: violation fraction {violation_fraction:.4%} exceeds the "
+            f"theoretical CMS bound {theoretical_bound:.4%} (e^{{-{depth}}}). "
+            f"This indicates correlated row hashes (affine-seed regression)."
+        )
+
+    def test_depth_guard(self):
+        """FrequencySketch raises ValueError for depth outside 1..7.
+
+        The per-row P/M tables have exactly 7 entries.  Constructing a
+        FrequencySketch with depth outside [1, 7] must raise ValueError
+        naming both the lower (1) and upper (7) bounds.
+        """
+        # depth=8 exceeds the table size
+        with pytest.raises(ValueError, match=r"1.*7|7.*1"):
+            FrequencySketch(fingerprint_fn=lambda x: str(x), depth=8)
+
+        # depth=0 is below the minimum
+        with pytest.raises(ValueError, match=r"1.*7|7.*1"):
+            FrequencySketch(fingerprint_fn=lambda x: str(x), depth=0)
