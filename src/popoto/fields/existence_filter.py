@@ -202,7 +202,7 @@ local key = KEYS[1]
 local item = ARGV[1]
 local w = tonumber(ARGV[2])
 local d = tonumber(ARGV[3])
--- Per-row independent polynomial hashes: max intermediate < 2^49, safe for Lua doubles
+-- Per-row independent polynomial hashes: max intermediate ≈ 2^49 (< 2^53), safe for Lua doubles
 local P = {16777259, 16777289, 16777291, 16777331, 16777333, 16777337, 16777381}
 local M = {33554467, 33554473, 33554501, 33554503, 33554509, 33554519, 33554527}
 
@@ -223,7 +223,7 @@ CMS_INCR_MULTI_LUA = """
 local key = KEYS[1]
 local w = tonumber(ARGV[1])
 local d = tonumber(ARGV[2])
--- Per-row independent polynomial hashes: max intermediate < 2^49, safe for Lua doubles
+-- Per-row independent polynomial hashes: max intermediate ≈ 2^49 (< 2^53), safe for Lua doubles
 local P = {16777259, 16777289, 16777291, 16777331, 16777333, 16777337, 16777381}
 local M = {33554467, 33554473, 33554501, 33554503, 33554509, 33554519, 33554527}
 
@@ -249,7 +249,7 @@ local key = KEYS[1]
 local item = ARGV[1]
 local w = tonumber(ARGV[2])
 local d = tonumber(ARGV[3])
--- Per-row independent polynomial hashes: max intermediate < 2^49, safe for Lua doubles
+-- Per-row independent polynomial hashes: max intermediate ≈ 2^49 (< 2^53), safe for Lua doubles
 local P = {16777259, 16777289, 16777291, 16777331, 16777333, 16777337, 16777381}
 local M = {33554467, 33554473, 33554501, 33554503, 33554509, 33554519, 33554527}
 

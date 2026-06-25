@@ -162,7 +162,7 @@ not scope.
 
 - **Single shared hash construction**: one canonical per-row polynomial family, used identically by `CMS_INCR_LUA`, `CMS_INCR_MULTI_LUA`, and `CMS_QUERY_LUA`. Define the constant arrays (`P`, `M`) inline in each script's Lua (Lua has no shared-include; keep the three copies byte-identical and assert agreement in a test).
 - **Prime width default**: `FrequencySketch.__init__` default `width = 2003` (prime), replacing `2000`. `depth = 7` unchanged.
-- **Lua-double-safe arithmetic**: per-row prime modulus `< 2^25`, per-row multiplier `< 2^25`; drop `% 2^52`. Every intermediate proven `< 2^49`.
+- **Lua-double-safe arithmetic**: per-row prime modulus `< 2^25`, per-row multiplier `< 2^25`; drop `% 2^52`. Every intermediate proven `≈ 2^49 (< 2^53)`.
 - **Regression test**: encodes the row-correlation check (same-length row-0-colliding tokens must NOT collide in all rows) so the affine flaw can't silently return.
 
 ### Flow
@@ -285,7 +285,7 @@ columns. This is an acceptance criterion in the issue.
 ### Risk 4: Spike-1 used Python bignums and masked the 2^53 ceiling
 **Impact:** A naive port of spike-1's billion-scale primes would overflow doubles in real Lua.
 **Mitigation:** Already caught by spike-2; the adopted constants are all `< 2^25` with max
-intermediate `< 2^49`. The build must use spike-2's constants, not spike-1's. A test should
+intermediate `≈ 2^49 (< 2^53)`. The build must use spike-2's constants, not spike-1's. A test should
 assert no counter position exceeds `width` and that increment/query agree on a long token
 (implicitly exercising the arithmetic on a real server).
 
@@ -342,7 +342,7 @@ refers to Popoto's cognitive primitives, not a Telegram agent.)
   sentence explicitly to ExistenceFilter/Bloom, and add a sentence that FrequencySketch/CMS
   uses per-row independent polynomial hashes (distinct prime multiplier + modulus per row).
   Leaving this stale would re-document the exact bug being removed.
-- [ ] Add a Lua comment in each CMS script naming the construction and the 2^53-safety invariant (max intermediate < 2^49). (Already present in the current source — confirm.)
+- [ ] Add a Lua comment in each CMS script naming the construction and the 2^53-safety invariant (max intermediate ≈ 2^49 (< 2^53)). (Already present in the current source — confirm.)
 
 ## Success Criteria
 
@@ -416,7 +416,7 @@ The lead agent orchestrates; it does not build directly.
 - Remove the `LARGE_MOD = 4503599627370496` line from all three CMS scripts (no longer referenced). Leave the Bloom scripts' `LARGE_MOD` untouched.
 - Change `FrequencySketch.__init__` default `width` from `2000` to `2003`.
 - Add a `depth` guard in `__init__`: `if not 1 <= self.depth <= self.MAX_DEPTH: raise ValueError(...)` with `MAX_DEPTH = 7`. This is the single resolved behavior — raise at construction time, never cap, never generate arbitrary-depth tables. Prevents a partial-persistence mid-`on_save()` Lua nil-index failure.
-- Update the `FrequencySketch` docstring (default width, independent-rows note) and add a Lua comment naming the family + the `< 2^49` safety invariant.
+- Update the `FrequencySketch` docstring (default width, independent-rows note) and add a Lua comment naming the family + the `≈ 2^49 (< 2^53)` safety invariant.
 - **Fix the stale module-level docstring at `existence_filter.py:16-17`**: scope the Kirsch–Mitzenmacher double-hashing sentence to ExistenceFilter/Bloom only, and add a sentence that FrequencySketch/CMS uses independent per-row polynomial hashes. (Otherwise the module header still documents the removed bug.)
 
 ### 2. Write CMS correctness + regression tests
