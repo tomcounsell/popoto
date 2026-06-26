@@ -195,6 +195,26 @@ end
 return result
 """
 
+# Lua script: atomic strengthen with upper-bound clamp.
+# Reads the current edge weight, adds delta, clamps at cap, writes back.
+# Atomic read-then-write prevents concurrent strengthen() races on the
+# same edge (Redis/Valkey single-threaded EVAL).
+# KEYS[1] = source ZSET key
+# ARGV[1] = target_pk
+# ARGV[2] = delta
+# ARGV[3] = cap
+STRENGTHEN_CLAMP_LUA = """
+local zset_key = KEYS[1]
+local target = ARGV[1]
+local existing = redis.call('ZSCORE', zset_key, target)
+local old = tonumber(existing) or 0
+local delta = tonumber(ARGV[2])
+local cap = tonumber(ARGV[3])
+local new_weight = math.min(old + delta, cap)
+redis.call('ZADD', zset_key, new_weight, target)
+return tostring(new_weight)
+"""
+
 
 class CoOccurrenceField(Field):
     """A field that maintains weighted association edges between model instances.
@@ -347,7 +367,12 @@ class CoOccurrenceField(Field):
     ):
         """Increase the weight of an existing edge.
 
-        Uses ZINCRBY to atomically increment the edge weight.
+        Uses an atomic Lua script (STRENGTHEN_CLAMP_LUA) to read the
+        current weight, add delta, and clamp at
+        ``Defaults.CO_OCCURRENCE_WEIGHT_CAP`` so stored weights can never
+        exceed the cap. This guarantees the per-hop contraction invariant
+        used by ``propagate()`` (``decay_per_hop * effective_edge_weight``
+        stays <= ``decay_per_hop * cap`` < 1 at default config).
 
         Args:
             model_class: The Model class.
@@ -357,7 +382,8 @@ class CoOccurrenceField(Field):
             pipeline: Optional Redis pipeline.
 
         Returns:
-            float: The new weight after increment.
+            float: The new (clamped) weight after increment, or None when
+                called with a pipeline (execution deferred).
 
         Raises:
             ValueError: If delta <= 0.
@@ -368,13 +394,28 @@ class CoOccurrenceField(Field):
         source_pk = str(source_pk)
         target_pk = str(target_pk)
 
+        cap = Defaults.CO_OCCURRENCE_WEIGHT_CAP
         source_key = self.get_edge_key(model_class, source_pk)
         db = pipeline if pipeline else POPOTO_REDIS_DB
-        new_weight = db.zincrby(source_key, delta, target_pk)
+        new_weight = db.eval(
+            STRENGTHEN_CLAMP_LUA,
+            1,
+            source_key,
+            target_pk,
+            str(delta),
+            str(cap),
+        )
 
         if self.symmetric:
             target_key = self.get_edge_key(model_class, target_pk)
-            db.zincrby(target_key, delta, source_pk)
+            db.eval(
+                STRENGTHEN_CLAMP_LUA,
+                1,
+                target_key,
+                source_pk,
+                str(delta),
+                str(cap),
+            )
 
         # EventStreamMixin: log strengthen event
         from .event_stream import EventStreamMixin
