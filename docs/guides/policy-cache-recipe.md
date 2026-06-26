@@ -77,11 +77,13 @@ consumer = StreamConsumer(
 
 The `temporal_discovery_handler` identifies cyclical patterns in event timestamps:
 
-- **Day of week** (7 buckets) — weekly patterns
-- **Week of month** (4 buckets) — monthly patterns
-- **Month of year** (12 buckets) — yearly patterns
+- **Day of week** (7 equal-width buckets) — weekly patterns
 
-Uses chi-squared test against uniform distribution. Significant clusters (p < 0.05) are returned as `(period, amplitude, phase)` tuples suitable for `CyclicDecayField`.
+Only weekly discovery remains. The previous `week_of_month` (4 buckets) and `month_of_year` (12 buckets) configs were removed because calendar periods (month, year) have variable-length buckets — a fixed seconds-period constant (the `TemporalPeriod.MONTHLY`/`YEARLY` constants) cannot represent them, and the equal-width uniform chi-squared null was biased, fabricating cycles from noise (97-98% false-positive rate at n=400). `day_of_week` has 7 equal-width buckets so the uniform expectation `E_i = n/7` holds.
+
+Uses the chi-squared test against the uniform distribution. Significant weekly clusters (p < 0.05) are returned as `(period, amplitude, phase)` tuples suitable for `CyclicDecayField`. The `phase` is emitted in **seconds** — a midpoint offset of the peak weekday from the Thursday weekly epoch anchor (1970-01-01 00:00 UTC, which was a Thursday) — matching the `CyclicDecayField` cycle-tuple contract that documents `phase` as a time offset in seconds.
+
+Calendar-accurate monthly or yearly discovery (e.g. via variable-length bucketing or a per-bucket-vector chi-squared statistic) is a possible future feature; no such helper ships today.
 
 ## Q-Value Updates
 
