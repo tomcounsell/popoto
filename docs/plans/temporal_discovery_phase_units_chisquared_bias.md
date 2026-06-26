@@ -189,15 +189,18 @@ weekly period, demonstrably NOT at the epoch-aligned boundary**.
 - Map the peak weekday to a seconds offset from the anchor, centered at the weekday's midpoint.
   **This is the resolved convention (formerly Open Q3, now decided): center at the bucket
   midpoint**, the most representative "when events cluster":
-  `phase = (((peak_wday - 3) % 7) * 86400 + 43200) % 604800`
-  where `43200 = 0.5 * 86400` centers the cosine peak at mid-day of the peak weekday rather than
-  at its 00:00 boundary. (The `- 3` rebases Monday-origin `tm_wday` onto the Thursday anchor;
-  `% 7` and `% 604800` keep it in range.) Worked examples (verified):
-  Thu(wday=3)→43200s (0.5d), Sun(wday=6)→302400s (3.5d), Mon(wday=0)→388800s (4.5d).
-- Derive/verify the Thursday anchor from `time.gmtime(0).tm_wday == 3` in code rather than
-  hard-coding the constant `3`, so the assumption is self-checking. day_of_week is the only config
-  left, so no generalization to other periods is needed — the bucket→seconds mapping is the single
-  weekly formula above.
+  `phase = (((peak_bucket - 3) % 7) * 86400 + 43200) % 604800`
+  **Use the existing code variable `peak_bucket` directly** — for day_of_week the bucket index *is*
+  the weekday (`bucket_fn` returns `tm_wday`), so `peak_bucket == tm_wday` of the peak day. Do NOT
+  introduce a separate `peak_wday` name; add a comment noting the identity. `43200 = 0.5 * 86400`
+  centers the cosine peak at mid-day of the peak weekday rather than at its 00:00 boundary. (The
+  `- 3` rebases Monday-origin `tm_wday` onto the Thursday anchor; `% 7` and `% 604800` keep it in
+  range.) Worked examples (verified):
+  Thu(bucket=3)→43200s (0.5d), Sun(bucket=6)→302400s (3.5d), Mon(bucket=0)→388800s (4.5d).
+- Derive/verify the Thursday anchor by asserting `time.gmtime(0).tm_wday == 3` in code rather than
+  silently hard-coding the constant `3`, so the assumption is self-checking. day_of_week is the only
+  config left, so no generalization to other periods is needed — the bucket→seconds mapping is the
+  single weekly formula above.
 
 **Bug 2 — correct null (resolved by dropping the biased configs, not by a new helper):**
 
@@ -286,11 +289,13 @@ checking only "phase is in seconds range" would miss.
 **Mitigation:** The end-to-end test asserts the *actual peak location* by evaluating the real Lua
 score across a ≤3600s-resolution sweep of `now` values over one full weekly period and checking the
 argmax falls within the correct weekday window — and explicitly asserts the peak is NOT at the epoch
-boundary, via a score-delta margin. **The cluster is on Sunday, not Thursday**, precisely because the
-epoch boundary is itself a Thursday (`time.gmtime(0).tm_wday == 3`): a Sunday cluster's correct phase
-(302400s) is 3.5 days from the epoch boundary, so the off-by-anchor and radians failures both move the
-argmax far enough to be caught. Derive the Thursday epoch anchor from `time.gmtime(0)` in the test
-rather than hard-coding, so the assumption is self-checking.
+boundary, via a score-delta margin (`peak - boundary >= 0.9`). **The swept member uses `base_score = 0`
+and no pressure** so the score is pure resonance — otherwise the `now`-dependent decay term dominates
+and breaks the assertion (see Success Criteria for the simulation). **The cluster is on Sunday, not
+Thursday**, precisely because the epoch boundary is itself a Thursday (`time.gmtime(0).tm_wday == 3`):
+a Sunday cluster's correct phase (302400s) is 3.5 days from the epoch boundary, so the off-by-anchor
+and radians failures both move the argmax far enough to be caught. Derive the Thursday epoch anchor
+from `time.gmtime(0)` in the test rather than hard-coding, so the assumption is self-checking.
 
 ### Risk 2: Monte Carlo FP-rate test is flaky in CI
 **Impact:** Intermittent failures erode trust and block merges.
@@ -368,19 +373,29 @@ handler. It is not exposed via MCP and the bridge does not call it.
   Sunday bucket, ~1.8s for Thursday) both fall inside/adjacent to the same epoch-boundary window —
   the bug would be undetectable. A Sunday cluster puts the correct peak 3.5 days (302400s) away from
   the epoch boundary while the radians value stays at ≈5.4s, giving an unambiguous, large separation.
-- [ ] **Score-delta assertion at ≤3600s sweep resolution:** sweep `now` across one full weekly
-  period (604800s) in steps of **≤3600s** and assert (a) `argmax(score)` lands in the Sunday window,
-  (b) the score at the correct-phase peak exceeds the score at the epoch boundary (`now ≡ 0`) by a
-  concretely-defined margin, and (c) the argmax is NOT within the Thursday/epoch-boundary window.
-  **The margin is defined against the cosine model, not a vague multiplier:** for a Sunday-peak
-  cycle (`phase = 302400`, `period = 604800`, `amplitude = INITIAL_CYCLE_AMPLITUDE = 0.5`), the
-  resonance term at the true peak is `amplitude * cos(0) = +0.5`, and at the epoch boundary it is
-  `amplitude * cos(2π·302400/604800) = amplitude * cos(π) = -0.5`. Assert
-  `peak_score - boundary_score >= 0.9` (the analytic gap is `amplitude*(1 - cos(π)) = 2*amplitude = 1.0`;
-  0.9 leaves margin for the ≤3600s sweep granularity and the additive decay term, which is common
-  to both points and cancels). With the radians bug the emitted phase is ≈5.4s, making true-peak
-  and boundary scores nearly identical (gap ≈ 0), so this assertion fails loudly on the bug and
-  passes only on the fix.
+- [ ] **Score-delta assertion at ≤3600s sweep resolution (isolate pure resonance):** sweep `now`
+  across one full weekly period (604800s) in steps of **≤3600s** and assert (a) `argmax(score)` lands
+  in the Sunday window, (b) the score at the correct-phase peak exceeds the score at the epoch
+  boundary (`now ≡ 0`) by a concretely-defined margin, and (c) the argmax is NOT within the
+  Thursday/epoch-boundary window.
+  **CRITICAL — the decay term does NOT cancel across the sweep, so the test MUST zero it out.** The
+  effective Lua score is `decayed + cyclic + pressure` where
+  `decayed = base_score * max((now - last_updated)/86400, 0.01)^(-decay_rate)`. Because `now` varies
+  across the sweep, `decayed` varies too (and *explodes* near `now = last_updated` where elapsed_days
+  hits the 0.01 floor), so it does NOT cancel between the peak and boundary points. With the default
+  `base_score = 1.0`, the boundary point near `now=0` wins on the decay spike (simulated:
+  `peak - boundary = -8.47`, argmax at `now=0`) — the test would FAIL against a *correct* fix.
+  **Fix: construct the swept member so `base_score = 0`** (set the companion `base_score_field` value
+  to 0, and use no `pressure_rate`), making `decayed = 0` and `pressure = 0` so the score is **pure
+  resonance** `amplitude * cos(2π(now - phase)/period)`.
+  **The margin is then defined against the cosine model:** for a Sunday-peak cycle (`phase = 302400`,
+  `period = 604800`, `amplitude = INITIAL_CYCLE_AMPLITUDE = 0.5`), the resonance at the true peak is
+  `amplitude * cos(0) = +0.5` and at the epoch boundary `amplitude * cos(π) = -0.5`. Assert
+  `peak_score - boundary_score >= 0.9` (analytic gap `amplitude*(1 - cos(π)) = 2*amplitude = 1.0`; 0.9
+  leaves margin for the ≤3600s sweep granularity). **Verified by simulation:** with `base_score = 0`,
+  peak=+0.5, boundary=-0.5, delta=1.0, argmax exactly at `now=302400` (inside the Sunday window). With
+  the radians bug the emitted phase is ≈5.4s, making true-peak and boundary scores nearly identical
+  (gap ≈ 0), so this assertion fails loudly on the bug and passes only on the fix.
 - [ ] **Producer/consumer phase unit agreed and asserted across the boundary** (one test crossing
   producer→Lua, not two independent unit tests).
 - [ ] **FP-rate test (day_of_week regression sentinel):** seeded Monte Carlo (≥500 trials,
@@ -449,10 +464,11 @@ The lead agent orchestrates; it never builds directly.
   step-1↔step-2 ordering dependency.
 - In `temporal_discovery_handler`, replace `phase = (peak_bucket / num_buckets) * 2 * math.pi`
   with a **seconds** offset anchored to the weekly epoch: Thursday anchor,
-  `phase = (((peak_wday - 3) % 7) * 86400 + 43200) % 604800`, midpoint-centered (see Technical
-  Approach). Derive/verify the Thursday anchor from `time.gmtime(0).tm_wday == 3` in code, do not
-  hard-code the `3` without the assertion. day_of_week is the only config, so no multi-period
-  generalization is required.
+  `phase = (((peak_bucket - 3) % 7) * 86400 + 43200) % 604800`, midpoint-centered (see Technical
+  Approach). Reuse the existing `peak_bucket` variable (it equals the peak `tm_wday` for day_of_week;
+  add a comment). Assert `time.gmtime(0).tm_wday == 3` in code so the Thursday anchor is
+  self-checking; do not hard-code the `3` without the assertion. day_of_week is the only config, so
+  no multi-period generalization is required.
 - **Keep `chi_squared_uniform` exactly as-is; add NO new χ² helper.** day_of_week is equal-width,
   so the existing uniform test is correct (`E_i = n/7`). A per-bucket-vector helper would have no
   consumer and is therefore NOT added (avoids dead code). `chi_squared_uniform` is imported and
@@ -471,9 +487,13 @@ The lead agent orchestrates; it never builds directly.
 - End-to-end peak-timing test: cluster events on **Sundays** (NOT Thursdays — epoch boundary is a
   Thursday, which would mask the bug) → emit cycle → install on a `CyclicDecayField` → evaluate the
   real Lua score across `now` over one full weekly period at **≤3600s sweep resolution** → assert
-  argmax within the Sunday window (correct phase ≈302400s), assert a clear score-delta between the
-  true peak and the epoch boundary, and assert argmax is NOT in the Thursday/epoch-boundary window.
-  Derive the Thursday epoch anchor from `time.gmtime(0)` in-test (self-checking).
+  argmax within the Sunday window (correct phase ≈302400s), assert `peak_score - boundary_score >= 0.9`,
+  and assert argmax is NOT in the Thursday/epoch-boundary window.
+  **The swept member MUST have `base_score = 0` and no pressure** (set the `base_score_field` companion
+  value to 0; leave `pressure_rate=0.0`) so the decay and pressure terms vanish and the score is pure
+  resonance — otherwise the `now`-dependent decay term dominates and the assertion fails against a
+  correct fix (simulated `peak - boundary = -8.47` with the default `base_score=1.0`). Derive the
+  Thursday epoch anchor from `time.gmtime(0).tm_wday == 3` in-test (self-checking).
 - Seeded Monte Carlo FP-rate test (**≥500 trials**, dedicated `random.Random(seed)` generator) at
   n=400 for **day_of_week** → detection rate ≤ 0.10. This is a **regression sentinel** (day_of_week
   is equal-width and already ≈alpha; assert the refactor did not regress it). There is no
@@ -531,6 +551,7 @@ The lead agent orchestrates; it never builds directly.
 | `chi_squared_uniform` preserved | `grep -rn "chi_squared_uniform" src/popoto/recipes/policy_cache.py tests/test_policy_cache.py` | symbol present in BOTH files (def in src, import+calls in tests) |
 | Biased configs removed | `grep -nE "week_of_month\|month_of_year" src/popoto/recipes/policy_cache.py` | exit code 1 (neither config remains) |
 | No dead χ² vector helper | `grep -n "def chi_squared(" src/popoto/recipes/policy_cache.py` | exit code 1 (only `chi_squared_uniform` exists) |
+| No orphaned MONTHLY/YEARLY consumers | `grep -rnE 'TemporalPeriod\.(MONTHLY|YEARLY)' src/` | exit code 1 after the two config lines are deleted (spot-checked pre-build: only those two lines reference them) |
 | No Redis-module commands (src+tests) | `grep -rnE 'BF\.|CMS\.|CF\.|TOPK\.' src/popoto/recipes/policy_cache.py tests/test_policy_cache.py` | exit code 1 (correct ERE alternation — `\|` would be a literal pipe and vacuously pass) |
 | End-to-end phase test present | `grep -rn "CyclicDecayField" tests/test_policy_cache.py` | output contains CyclicDecayField |
 | FP-rate test present | `grep -rni "false.positive\|fp_rate\|monte" tests/test_policy_cache.py` | exit code 0 |
@@ -541,7 +562,7 @@ The lead agent orchestrates; it never builds directly.
 
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
-| Blocker | critique | FALSE PREMISE: plan said `chi_squared_uniform` is handler-only and could be retired, but it is imported and called in `tests/test_policy_cache.py:34,506,510,515`; retiring it breaks test collection. | Keep `chi_squared_uniform` intact; add a NEW `chi_squared(observed, expected_vector)` alongside it. Re-scoped grep/Valkey gate to include `tests/`. | Technical Approach (Bug 2), Key Elements, Test Impact, Verification table, build step 1. |
+| Blocker | critique | FALSE PREMISE: plan said `chi_squared_uniform` is handler-only and could be retired, but it is imported and called in `tests/test_policy_cache.py:34,506,510,515`; retiring it breaks test collection. | Keep `chi_squared_uniform` intact. **[SUPERSEDED by 2nd round — the "add a NEW `chi_squared` helper" remedy was reversed: the second round drops the unequal-width configs entirely, so NO new helper is added. `chi_squared_uniform` is still preserved exactly as-is.]** Re-scoped grep/Valkey gate to include `tests/`. | Technical Approach (Bug 2), Key Elements, Test Impact, Verification table, build step 1. |
 | Blocker | critique | E2E test as designed cannot detect the radians bug: epoch (now=0) is Thursday, so a Thursday cluster's correct phase (43200s) and the radians-bug phase both fall in the same epoch-boundary window. | Cluster on **Sunday** (correct phase 302400s, 3.5d from epoch boundary; radians value ≈5.4s). Assert argmax-in-Sunday-window + score-delta + NOT-at-epoch-boundary, sweeping `now` at ≤3600s resolution. | Success Criteria, Risk 1, build step 2. Verified `time.gmtime(0).tm_wday==3` and Sunday phase math. |
 | Concern | critique | `E_i = n*p_i` machinery may have no consumer if day_of_week is the sole surviving config. | Sequence the keep/drop decision FIRST (build step 1); add `chi_squared` ONLY IF month_of_year survives, else day_of_week uses existing `chi_squared_uniform` — no dead code. | Key Elements (sequencing), build step 1. |
 | Concern | critique | day_of_week FP-rate criterion contradicts the diagnosis (it's already ≈alpha). | Reframed as a **regression sentinel** (assert stays ≤0.10), not a fix target. | Success Criteria. |
@@ -559,6 +580,15 @@ The lead agent orchestrates; it never builds directly.
 | Concern | critique (R&R) | e2e score-delta margin "2.0× the amplitude term separation" was undefined/ambiguous. | Defined concretely against the cosine model: true peak `amplitude*cos(0)=+0.5`, epoch boundary `amplitude*cos(π)=-0.5`, assert `peak - boundary >= 0.9` (analytic gap 1.0). | Success Criteria (Score-delta assertion). |
 | Nit | critique (S&V) | Valkey grep regex `'BF\.\|CMS\.'` under `-E` matches a literal pipe → vacuously passes. | Fixed to unescaped ERE alternation `'BF\.|CMS\.|CF\.|TOPK\.'`. | Verification table, validate step 3. |
 | Nit | critique (H&C) | Freshness Check line citations have ~3-line residual drift (622/593/614 vs 625/595/611). | Mitigated by exact code-string quotes; line numbers noted as approximate. Build greps by string, not line. | Freshness Check (note added). |
+
+### Third critique round (after 2nd revision)
+
+| Severity | Critic | Finding | Addressed By | Implementation Note |
+|----------|--------|---------|--------------|---------------------|
+| Blocker | critique (R&R, driver-verified) | The e2e score-delta assertion's claim that "the decay term cancels" is FALSE: `decayed = base_score * elapsed_days^(-decay_rate)` is evaluated at different `now`, so it does not cancel and explodes near `now=0`. Simulated `peak - boundary = -8.47` with default `base_score=1.0`; argmax lands at `now=0`, not Sunday — the test fails against a correct fix. | Build the swept member with **`base_score = 0`** (companion `base_score_field` value = 0, no pressure) so the score is pure resonance. Verified: peak=+0.5, boundary=-0.5, delta=1.0, argmax=302400 (Sunday window). | Success Criteria (Score-delta assertion), build step 2. |
+| Concern | critique (all 3) | Phase formula used undefined `peak_wday`; the code variable is `peak_bucket` (identity holds only because day_of_week's bucket_fn returns `tm_wday`). | Use `peak_bucket` directly with a comment noting the identity; assert `time.gmtime(0).tm_wday == 3`. | Technical Approach (Bug 1), build step 1. |
+| Concern | critique (S&V) | "No regression" for dropped MONTHLY/YEARLY configs not verified against downstream consumers. | Spot-checked `grep -rnE 'TemporalPeriod\.(MONTHLY|YEARLY)' src/` → only the two deleted config lines; added it as a Verification row. | Verification table. |
+| Nit | critique (H&C) | Stale first-round Critique Results row still said "add a NEW chi_squared helper," reversed by round 2. | Annotated that row as SUPERSEDED. | Critique Results (first-round row). |
 
 ---
 
