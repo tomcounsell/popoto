@@ -228,6 +228,17 @@ class CoOccurrenceField(Field):
     Uses per-PK Redis sorted sets to store weighted edges to other PKs.
     Supports symmetric (bidirectional) and asymmetric (unidirectional) modes.
 
+    Edge weights are clamped at ``Defaults.CO_OCCURRENCE_WEIGHT_CAP``
+    (default 1.0) on every ``strengthen()`` write via an atomic Lua script,
+    and a read-time ``min(edge_weight, cap)`` in the propagation BFS
+    handles pre-existing over-cap stored weights as defense-in-depth. This
+    guarantees the per-hop contraction invariant used by ``propagate()``:
+    ``decay_per_hop * effective_edge_weight <= decay_per_hop * cap < 1``
+    (at default config, 0.5 * 1.0 = 0.5 < 1), so activation decays
+    monotonically with hop count and the BFS threshold reliably terminates
+    the walk. A runtime guard in ``propagate()`` raises ``ValueError`` if
+    ``cap * decay_per_hop >= 1.0`` to catch future misconfiguration.
+
     Args:
         symmetric: If True, edges are bidirectional. Default True.
         max_edges: Maximum edges per PK. Lowest-weight edges pruned when exceeded.
