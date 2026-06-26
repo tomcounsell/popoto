@@ -54,7 +54,6 @@ Example:
 import hashlib
 import json
 import logging
-import math
 import time
 from decimal import Decimal
 
@@ -109,9 +108,9 @@ or weaken over time via CyclicDecayField entrainment."""
 
 # Critical values for chi-squared test at p=0.05 for common degrees of freedom.
 # df = number_of_buckets - 1
-# NOTE: This table only covers df values used by the built-in bucket configs
-# (day_of_week=7, week_of_month=4, month_of_year=12) plus two common extras
-# (quarters=3, hours=24). If you add custom bucket configs with different
+# NOTE: The built-in bucket config is day_of_week (df=6). The remaining entries
+# (quarters=3, weeks-in-month=4, months-of-year=12, hours-of-day=24) cover
+# common custom bucket counts. If you add custom bucket configs with different
 # bucket counts, extend this table with the appropriate critical value.
 # Unlisted df values are silently skipped by temporal_discovery_handler.
 CHI_SQUARED_CRITICAL_VALUES = {
@@ -542,10 +541,23 @@ async def crystallization_handler(entries):
 async def temporal_discovery_handler(entries):
     """StreamConsumer handler that discovers cyclical patterns from event timestamps.
 
-    Buckets event timestamps by day-of-week (7 buckets), week-of-month
-    (4 buckets), and month-of-year (12 buckets). Performs chi-squared test
-    against uniform distribution. Significant clusters (p < 0.05) are
-    logged as discovered temporal patterns.
+    Buckets event timestamps by day-of-week (7 equal-width buckets) and
+    performs a chi-squared test against the uniform distribution. Significant
+    weekly clusters (p < 0.05) are logged as discovered temporal patterns.
+
+    Only day_of_week/weekly discovery remains. The previous calendar-bucket
+    configs (week-within-month, 4 buckets; month-of-year, 12 buckets) were
+    removed because calendar periods (month, year) have variable-length
+    buckets — a fixed seconds-period constant (TemporalPeriod.MONTHLY/YEARLY)
+    cannot represent them, and the equal-width uniform chi-squared null was
+    biased, fabricating cycles from noise.
+
+    The chi_squared_uniform helper is unchanged: day_of_week has 7 equal-width
+    buckets so E_i = n/7 is a correct uniform expectation. No per-bucket-vector
+    chi-squared helper is added (it would have no consumer).
+
+    Phase units are SECONDS, a midpoint offset from the Thursday weekly epoch
+    anchor (see ``phase`` computation below), not radians.
 
     This handler identifies WHEN events tend to occur, which can be used
     to add cycles to CyclicDecayField instances in application code.
@@ -558,8 +570,9 @@ async def temporal_discovery_handler(entries):
         entries: List of (entry_id, fields_dict) tuples from StreamConsumer.
 
     Returns:
-        list: Discovered cycles as (period, amplitude, phase) tuples.
-            Empty list if no significant patterns found.
+        list: Discovered cycles as (period, amplitude, phase) tuples where
+            ``phase`` is a seconds offset within the 604800s week. Empty
+            list if no significant patterns found.
     """
     if not entries:
         return []
@@ -581,24 +594,18 @@ async def temporal_discovery_handler(entries):
     discovered_cycles = []
 
     # Bucket definitions: (name, num_buckets, period_constant, bucket_fn)
+    # Only day_of_week survives. The calendar-bucket configs (week-within-month,
+    # 4 buckets; month-of-year, 12 buckets) were removed: calendar periods have
+    # variable-length buckets, so a fixed-seconds period constant cannot
+    # represent them and the equal-width uniform chi-squared null was biased
+    # (fabricating cycles from noise). day_of_week has 7 equal-width buckets
+    # so the uniform test holds.
     bucket_configs = [
         (
             "day_of_week",
             7,
             TemporalPeriod.WEEKLY,
             lambda ts: time.gmtime(ts).tm_wday,
-        ),
-        (
-            "week_of_month",
-            4,
-            TemporalPeriod.MONTHLY,
-            lambda ts: min(time.gmtime(ts).tm_mday // 7, 3),
-        ),
-        (
-            "month_of_year",
-            12,
-            TemporalPeriod.YEARLY,
-            lambda ts: time.gmtime(ts).tm_mon - 1,
         ),
     ]
 
@@ -620,9 +627,23 @@ async def temporal_discovery_handler(entries):
             continue
 
         if chi2 > critical:
-            # Find the peak bucket for phase calculation
+            # Find the peak bucket for phase calculation.
+            # For day_of_week the bucket index IS the weekday: bucket_fn
+            # returns tm_wday (Mon=0..Sun=6), so peak_bucket == tm_wday of
+            # the peak day.
             peak_bucket = buckets.index(max(buckets))
-            phase = (peak_bucket / num_buckets) * 2 * math.pi
+            # Phase in SECONDS: midpoint offset of the peak weekday from the
+            # weekly epoch anchor.  The anchor is 1970-01-01 00:00 UTC, which
+            # was a Thursday (tm_wday==3).  Self-check the anchor so the magic
+            # 3 below is never silently wrong.
+            assert time.gmtime(0).tm_wday == 3, (
+                "epoch 1970-01-01 must be Thursday (tm_wday==3)"
+            )
+            # Map the peak weekday to a seconds offset from the Thursday
+            # anchor, centered at the weekday's midpoint (43200 = 0.5 day).
+            # Worked examples: Thu(bkt=3)->43200s, Sun(bkt=6)->302400s,
+            # Mon(bkt=0)->388800s.
+            phase = (((peak_bucket - 3) % 7) * 86400 + 43200) % 604800
 
             cycle = (period, INITIAL_CYCLE_AMPLITUDE, phase)
             discovered_cycles.append(cycle)
