@@ -611,6 +611,18 @@ class CoOccurrenceField(Field):
         """
         if decay_per_hop is _UNSET:
             decay_per_hop = Defaults.CO_OCCURRENCE_DECAY_PER_HOP
+        # Runtime contraction guard: enforces cap * decay_per_hop < 1 so
+        # that each hop strictly decays activation. Fires on
+        # misconfiguration only (e.g. a future constants sweep raises
+        # decay_per_hop above 1/cap); under current defaults
+        # (1.0 * 0.5 = 0.5 < 1) this never raises.
+        if Defaults.CO_OCCURRENCE_WEIGHT_CAP * decay_per_hop >= 1.0:
+            raise ValueError(
+                f"Contraction invariant violated: CO_OCCURRENCE_WEIGHT_CAP "
+                f"({Defaults.CO_OCCURRENCE_WEIGHT_CAP}) * decay_per_hop "
+                f"({decay_per_hop}) >= 1.0; propagation would amplify "
+                f"instead of decay. Lower the cap or decay_per_hop."
+            )
         if not seed_pks:
             return {}
 
