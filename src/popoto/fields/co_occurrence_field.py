@@ -110,6 +110,7 @@ return removed
 # ARGV[3] = decay per hop
 # ARGV[4] = threshold (minimum weight to continue propagation)
 # ARGV[5] = max edges per node to consider
+# ARGV[6] = weight cap (defense-in-depth: clamps pre-existing over-cap edges)
 PROPAGATE_BFS_LUA = """
 local key_prefix = KEYS[1]
 local seeds = cjson.decode(ARGV[1])
@@ -117,6 +118,7 @@ local max_depth = tonumber(ARGV[2])
 local decay_per_hop = tonumber(ARGV[3])
 local threshold = tonumber(ARGV[4])
 local max_per_node = tonumber(ARGV[5])
+local cap = tonumber(ARGV[6])
 
 -- Result table: pk -> max_weight
 local results = {}
@@ -166,7 +168,11 @@ while head <= #queue do
             for i = 1, #neighbors, 2 do
                 local neighbor_pk = neighbors[i]
                 local edge_weight = tonumber(neighbors[i + 1])
-                local propagated_weight = weight * decay_per_hop * edge_weight
+                -- Defense-in-depth: clamp pre-existing over-cap stored
+                -- weights so the contraction invariant holds for any
+                -- reachable weight, not just newly-written ones.
+                local effective_weight = math.min(edge_weight, cap)
+                local propagated_weight = weight * decay_per_hop * effective_weight
 
                 if propagated_weight >= threshold then
                     -- Update result with max weight
@@ -571,6 +577,12 @@ class CoOccurrenceField(Field):
         decay at each hop. When the same PK is reached via multiple paths,
         the maximum weight is kept.
 
+        Edge weights are clamped at ``Defaults.CO_OCCURRENCE_WEIGHT_CAP``
+        at read time (defense-in-depth) so pre-existing over-cap stored
+        weights cannot amplify propagation. A runtime guard raises
+        ``ValueError`` if ``cap * decay_per_hop >= 1.0`` (misconfiguration
+        that would amplify instead of decay).
+
         Args:
             model_class: The Model class.
             seed_pks: List of starting primary keys.
@@ -582,6 +594,10 @@ class CoOccurrenceField(Field):
         Returns:
             dict[str, float]: Mapping of discovered PKs to their propagated
                 weights. Seeds are not included in results (except for depth=0).
+
+        Raises:
+            ValueError: If ``CO_OCCURRENCE_WEIGHT_CAP * decay_per_hop >= 1.0``
+                (contraction invariant violated; propagation would amplify).
         """
         if decay_per_hop is _UNSET:
             decay_per_hop = Defaults.CO_OCCURRENCE_DECAY_PER_HOP
@@ -604,6 +620,7 @@ class CoOccurrenceField(Field):
             str(decay_per_hop),
             str(threshold),
             str(self.max_edges),
+            str(Defaults.CO_OCCURRENCE_WEIGHT_CAP),
         )
 
         # Parse flat array [pk1, weight1, pk2, weight2, ...]
