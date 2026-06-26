@@ -2510,11 +2510,11 @@
 <h2 id="temporal-discovery">Temporal Discovery<a class="headerlink" href="#temporal-discovery" title="Permanent link">&para;</a></h2>
 <p>The <code>temporal_discovery_handler</code> identifies cyclical patterns in event timestamps:</p>
 <ul>
-<li><strong>Day of week</strong> (7 buckets) — weekly patterns</li>
-<li><strong>Week of month</strong> (4 buckets) — monthly patterns</li>
-<li><strong>Month of year</strong> (12 buckets) — yearly patterns</li>
+<li><strong>Day of week</strong> (7 equal-width buckets) — weekly patterns</li>
 </ul>
-<p>Uses chi-squared test against uniform distribution. Significant clusters (p &lt; 0.05) are returned as <code>(period, amplitude, phase)</code> tuples suitable for <code>CyclicDecayField</code>.</p>
+<p>Only weekly discovery remains. The previous <code>week_of_month</code> (4 buckets) and <code>month_of_year</code> (12 buckets) configs were removed because calendar periods (month, year) have variable-length buckets — a fixed seconds-period constant (the <code>TemporalPeriod.MONTHLY</code>/<code>YEARLY</code> constants) cannot represent them, and the equal-width uniform chi-squared null was biased, fabricating cycles from noise (97-98% false-positive rate at n=400). <code>day_of_week</code> has 7 equal-width buckets so the uniform expectation <code>E_i = n/7</code> holds.</p>
+<p>Uses the chi-squared test against the uniform distribution. Significant weekly clusters (p &lt; 0.05) are returned as <code>(period, amplitude, phase)</code> tuples suitable for <code>CyclicDecayField</code>. The <code>phase</code> is emitted in <strong>seconds</strong> — a midpoint offset of the peak weekday from the Thursday weekly epoch anchor (1970-01-01 00:00 UTC, which was a Thursday) — matching the <code>CyclicDecayField</code> cycle-tuple contract that documents <code>phase</code> as a time offset in seconds.</p>
+<p>Calendar-accurate monthly or yearly discovery (e.g. via variable-length bucketing or a per-bucket-vector chi-squared statistic) is a possible future feature; no such helper ships today.</p>
 <h2 id="q-value-updates">Q-Value Updates<a class="headerlink" href="#q-value-updates" title="Permanent link">&para;</a></h2>
 <p>The <code>update_q_value</code> function performs atomic TD(0) updates via Lua script:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>Q(s,a) &lt;- Q(s,a) + alpha * [reward + gamma * max_Q(s&#39;,a&#39;) - Q(s,a)]
