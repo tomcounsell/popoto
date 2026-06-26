@@ -1,11 +1,12 @@
 ---
-status: Planning
+status: Ready
 type: bug
 appetite: Small
 owner: Claude Code
 created: 2026-06-26
 tracking: https://github.com/tomcounsell/popoto/issues/416
 last_comment_id:
+revision_applied: true
 ---
 
 # CoOccurrenceField: clamp edge weights to guarantee per-hop contraction
@@ -93,14 +94,15 @@ No prerequisites — this work has no external dependencies. Requires only a run
 
 ### Key Elements
 
-- **Weight cap constant**: `CO_OCCURRENCE_WEIGHT_CAP = 1.0` in `constants.py`, alongside the existing `CO_OCCURRENCE_*` swept constants. At the default `decay_per_hop = 0.5`, any `edge_weight <= 1.0` gives per-hop transfer `<= 0.5 < 1` — a strict contraction. The cap is an experimental-tuning value, not user-facing config.
+- **Weight cap constant**: `CO_OCCURRENCE_WEIGHT_CAP = 1.0` in `constants.py`, alongside the existing `CO_OCCURRENCE_*` swept constants. At the default `decay_per_hop = 0.5`, any `edge_weight <= 1.0` gives per-hop transfer `<= 0.5 < 1` — a strict contraction. The cap is an experimental-tuning value, not user-facing config. The value 1.0 is tighter than the theoretical maximum (`1 / decay_per_hop = 2.0`) — this headroom is intentional so that small upward adjustments to `decay_per_hop` do not silently violate the invariant.
+- **Runtime contraction guard in `propagate()`**: at the top of `propagate()` (before the Lua `EVAL`), check `if Defaults.CO_OCCURRENCE_WEIGHT_CAP * decay_per_hop >= 1.0: raise ValueError(...)`. This enforces the contraction invariant at runtime regardless of how the constants are set — if a future sweep moves `decay_per_hop` above `1 / cap`, the guard fires loudly instead of silently re-introducing amplification. The check is a single float multiply + compare; cost is negligible (one Python comparison per `propagate()` call, vs. a blocking Lua BFS).
 - **Clamp at write (`strengthen()`)**: replace the raw `ZINCRBY` with a small Lua script (`STRENGTHEN_CLAMP_LUA`) that does `min(old + delta, cap)` atomically. The symmetric mirror gets the same treatment. This ensures all newly-written weights are <= cap.
 - **Defense-in-depth at read (`PROPAGATE_BFS_LUA`)**: apply `min(edge_weight, cap)` when reading edge weights in the BFS. This handles pre-existing over-cap weights immediately, without requiring a one-time migration — the contraction guarantee holds for any reachable stored weight.
 - **`link()` validation**: validate `initial_weight <= cap` in `link()` so new edges cannot start above the cap. The existing `LINK_WITH_PRUNE_LUA` already uses NX semantics, so this is a parameter check only.
 
 ### Flow
 
-`strengthen()` call -> Lua `EVAL` (read current weight, add delta, clamp at cap, write back) -> clamped weight returned -> `propagate()` reads edge -> `min(edge_weight, cap)` in Lua BFS -> contraction guaranteed -> threshold pruning terminates BFS -> bounded result set
+`strengthen()` call -> Lua `EVAL` (read current weight, add delta, clamp at cap, write back) -> clamped weight returned -> `propagate()` call -> runtime guard checks `cap * decay_per_hop < 1` (raises `ValueError` if violated) -> Lua BFS reads edge -> `min(edge_weight, cap)` in Lua BFS -> contraction guaranteed -> threshold pruning terminates BFS -> bounded result set
 
 ### Technical Approach
 
@@ -140,7 +142,21 @@ where `cap` is passed as `ARGV[6]` (new parameter). This guarantees contraction 
 
 **`link()` validation:** add `if initial_weight > cap: raise ValueError(...)` in `link()`. The existing `LINK_WITH_PRUNE_LUA` is unchanged (it already uses NX, so it never overwrites an existing weight).
 
-**Cap constant placement:** `CO_OCCURRENCE_WEIGHT_CAP = 1.0` in the `Defaults` class in `constants.py`, in the `CoOccurrenceField` section alongside `CO_OCCURRENCE_DECAY_FACTOR`, `CO_OCCURRENCE_INITIAL_WEIGHT`, and `CO_OCCURRENCE_DECAY_PER_HOP`. Comment notes the swept-tuning context and the contraction invariant: `cap <= 1 / decay_per_hop` ensures contraction.
+**Runtime contraction guard in `propagate()`:** at the top of the method body (before loading/calling the Lua script), add:
+
+```python
+if Defaults.CO_OCCURRENCE_WEIGHT_CAP * decay_per_hop >= 1.0:
+    raise ValueError(
+        f"Contraction invariant violated: CO_OCCURRENCE_WEIGHT_CAP "
+        f"({Defaults.CO_OCCURRENCE_WEIGHT_CAP}) * decay_per_hop "
+        f"({decay_per_hop}) >= 1.0; propagation would amplify instead of decay. "
+        f"Lower the cap or decay_per_hop."
+    )
+```
+
+This catches the case where a future constants sweep moves `decay_per_hop` above `1 / cap` without a matching cap adjustment. The guard is the runtime backstop for the invariant the No-Go section describes; the cap value itself (1.0) is tighter than the theoretical maximum (2.0 at the default `decay_per_hop = 0.5`), so the guard will not fire under any current configuration — it only fires on misconfiguration.
+
+**Cap constant placement:** `CO_OCCURRENCE_WEIGHT_CAP = 1.0` in the `Defaults` class in `constants.py`, in the `CoOccurrenceField` section alongside `CO_OCCURRENCE_DECAY_FACTOR`, `CO_OCCURRENCE_INITIAL_WEIGHT`, and `CO_OCCURRENCE_DECAY_PER_HOP`. Comment notes the swept-tuning context and the contraction invariant: `cap * decay_per_hop < 1` ensures per-hop transfer < 1. The value 1.0 is chosen with intentional headroom below the theoretical maximum `1 / decay_per_hop = 2.0` so small `decay_per_hop` adjustments do not silently break contraction; the runtime guard in `propagate()` backstops the invariant if either constant is later changed.
 
 ## Failure Path Test Strategy
 
@@ -148,6 +164,7 @@ where `cap` is passed as `ARGV[6]` (new parameter). This guarantees contraction 
 - [ ] No `except Exception: pass` blocks in scope. The `propagate()` call in `context_assembler.py` is already wrapped in `try/except Exception` (lines 1226-1240, 1331-1345) which logs and continues — this is existing behavior, not new, and is appropriate for a non-critical retrieval boost.
 - [ ] `strengthen()` raises `ValueError` for `delta <= 0` (existing) — verify it still does after the Lua change.
 - [ ] `link()` raises `ValueError` for `initial_weight > cap` (new) — test this.
+- [ ] `propagate()` raises `ValueError` when `cap * decay_per_hop >= 1.0` (new runtime guard) — test both the raise case (misconfiguration) and the no-raise case (defaults).
 
 ### Empty/Invalid Input Handling
 - [ ] `strengthen()` on a nonexistent edge (no existing ZSET member) — Lua script handles `nil` from `ZSCORE` by defaulting to 0, then `min(0 + delta, cap) = delta` (assuming delta <= cap). Test this edge case.
@@ -181,6 +198,8 @@ All existing tests use weights <= 1.0 (the cap), so no existing test assertions 
 **Impact:** Pre-existing over-cap weights would violate the contraction invariant if the read-path `min()` were missing.
 **Mitigation:** The read-path `min(edge_weight, cap)` in `PROPAGATE_BFS_LUA` guarantees the invariant for any stored weight, including pre-existing over-cap ones. No migration required. The substrate layer is beta, so over-cap weights in existing deployments are expected to be clamped lazily.
 
+**Residual bias — ZREVRANGE neighbor selection (acknowledged, not fixed in this plan):** The read-path `min()` clamps the *propagation math* but not the *neighbor selection* at `co_occurrence_field.py:164`. `ZREVRANGE zset_key 0 max_per_node - 1 WITHSCORES` ranks neighbors by raw stored score, not by `min(score, cap)`. For a node with more than `max_per_node` neighbors, if some pre-existing edges have raw scores above the cap, those edges occupy selection slots disproportionate to their *effective* weight — a neighbor at raw score 2.5 (effective 1.0) ranks above a neighbor at raw score 0.9 (effective 0.9), even though their effective weights are nearly equal. This biases *which* neighbors the BFS visits when `max_per_node` truncation fires, but does not violate the contraction invariant (visited neighbors still propagate with `min(edge_weight, cap)`). The bias self-corrects as over-cap edges are lazily clamped on their next `strengthen()` call. A one-time migration that clamps all existing ZSET scores in-place would eliminate the residual immediately, but was dropped to avoid operational complexity for a beta-layer fix. If the bias is observed to materially distort retrieval ranking in practice, a follow-up issue should file a migration (`ZADD XX` overwrite with `min(score, cap)` per ZSET, pipelined). This plan documents the residual rather than fixing it.
+
 ### Risk 2: `strengthen()` Lua script changes return value semantics
 **Impact:** Callers expecting the raw `ZINCRBY` result (unbounded) would see a different value after clamping.
 **Mitigation:** The return value is still a float weight — just bounded. The only caller in `src/` is `context_assembler.py` which does not inspect the return value of `strengthen()`. Tests verify the new clamped return value.
@@ -203,8 +222,9 @@ No other concurrency concerns — `propagate()` is read-only, `link()` already u
 ## No-Gos (Out of Scope)
 
 - [SEPARATE-SLUG #416-CONC-7] CONC-7 (symmetric `link()` two-EVAL race) — same file, different invariant. The issue explicitly drops it: "file separately if pursued."
-- [EXTERNAL] Sweeping `CO_OCCURRENCE_WEIGHT_CAP` across multiple values — the cap is derived from the existing `decay_per_hop` constant (`cap <= 1 / decay_per_hop`), not an independently tuned parameter. A sweep would require simultaneously retuning `decay_per_hop` and is out of scope for a bug fix.
+- [EXTERNAL] Sweeping `CO_OCCURRENCE_WEIGHT_CAP` across multiple values — the cap is chosen with intentional headroom below the theoretical maximum `1 / decay_per_hop` (1.0 vs 2.0 at the default `decay_per_hop = 0.5`). It is not an independently tuned parameter; a sweep would require simultaneously retuning `decay_per_hop` and is out of scope for a bug fix. The runtime guard in `propagate()` enforces the invariant `cap * decay_per_hop < 1` if either constant is later changed, so the "derived" relationship is enforced at runtime rather than left as a comment-only claim.
 - [EXTERNAL] Wiring `weaken_all()` into a recipe (time-based forgetting) — the issue notes zero callers but fixing that is a separate policy decision, not a contraction-invariant fix.
+- [SEPARATE-ISSUE] One-time migration to clamp all pre-existing over-cap ZSET scores in-place — dropped in favor of read-time `min()` + lazy clamp on next write. The residual `ZREVRANGE` selection bias (see Risk 1) is documented as a known limitation. If it materializes as a ranking distortion in practice, file a follow-up issue for the migration.
 
 ## Update System
 
@@ -221,7 +241,9 @@ No agent integration required — this is a substrate-layer (CoOccurrenceField) 
   - The weight cap (`CO_OCCURRENCE_WEIGHT_CAP = 1.0`) and the contraction guarantee
   - That `strengthen()` now clamps at the cap (behavioral change from unbounded `ZINCRBY`)
   - That `propagate()` applies `min(edge_weight, cap)` as defense-in-depth
-  - The relationship between cap and `decay_per_hop` (cap <= 1 / decay_per_hop ensures contraction)
+  - The runtime contraction guard in `propagate()` (`cap * decay_per_hop >= 1.0` raises `ValueError`)
+  - The relationship between cap and `decay_per_hop` (cap is chosen with headroom below `1 / decay_per_hop`; the runtime guard enforces the invariant)
+  - The residual `ZREVRANGE` selection bias for pre-existing over-cap weights as a known limitation (neighbor ranking uses raw stored score, not effective clamped score; self-corrects as over-cap edges are lazily clamped on next `strengthen()`; migration path noted for a follow-up issue if it materializes as a ranking distortion)
 - [ ] Verify docs build passes (`mkdocs build --strict`)
 
 ### External Documentation Site
@@ -229,10 +251,11 @@ No agent integration required — this is a substrate-layer (CoOccurrenceField) 
 
 ### Inline Documentation
 - [ ] Update `strengthen()` docstring to note the clamp behavior
-- [ ] Update `propagate()` docstring to note the read-time `min()` defense
-- [ ] Update `CoOccurrenceField` class docstring to mention the weight cap
+- [ ] Update `propagate()` docstring to note the read-time `min()` defense and the runtime contraction guard
+- [ ] Update `CoOccurrenceField` class docstring to mention the weight cap and the contraction invariant
 - [ ] Comment on `STRENGTHEN_CLAMP_LUA` explaining the atomic clamp
 - [ ] Comment on the `min()` line in `PROPAGATE_BFS_LUA` explaining the defense-in-depth
+- [ ] Comment on the runtime guard in `propagate()` explaining that it enforces `cap * decay_per_hop < 1` and fires on misconfiguration, not under current defaults
 
 ## Success Criteria
 
@@ -240,8 +263,10 @@ No agent integration required — this is a substrate-layer (CoOccurrenceField) 
 - [ ] The chain reproduction from the issue (5-node chain `a-b-c-d-e`, all edges at weight 2.5) returns `b >= c >= d >= e` after the fix (currently `b: 1.95, c: 2.44, d: 1.95, e: 2.44`).
 - [ ] On the 10k-node / 40k-edge graph with all edges maximally strengthened, depth-6 single-seed `propagate()` plateaus like the healthy graph (expansion count stops growing once activation crosses the threshold), instead of visiting 9,999 nodes with 20,142 expansions.
 - [ ] Semantics for pre-existing over-cap stored weights are decided (read-time `min()` in propagate + lazy clamp on next strengthen), implemented, and covered by a test.
+- [ ] Runtime contraction guard in `propagate()` raises `ValueError` when `CO_OCCURRENCE_WEIGHT_CAP * decay_per_hop >= 1.0`, covered by a test that passes at defaults and a test that raises on misconfiguration.
+- [ ] The residual `ZREVRANGE` selection bias for pre-existing over-cap weights (neighbor ranking by raw score, not effective clamped score) is documented in `docs/features/co-occurrence-field.md` as a known limitation with a migration path noted for a follow-up issue if it materializes as a ranking distortion.
 - [ ] Regression test added exercising strengthen-past-the-cap + propagate; passes against both Redis and Valkey (no module commands introduced).
-- [ ] `docs/features/co-occurrence-field.md` updated to state the weight bound and the contraction guarantee.
+- [ ] `docs/features/co-occurrence-field.md` updated to state the weight bound, the contraction guarantee, and the runtime guard.
 - [ ] Tests pass (`/do-test`)
 - [ ] Documentation updated (`/do-docs`)
 - [ ] No `except Exception: pass` blocks introduced in touched files
@@ -327,6 +352,18 @@ No agent integration required — this is a substrate-layer (CoOccurrenceField) 
 - Add `if initial_weight > Defaults.CO_OCCURRENCE_WEIGHT_CAP: raise ValueError(...)` in `link()`
 - Add a test that `link()` with `initial_weight > cap` raises `ValueError`
 
+### 4b. Add runtime contraction guard in propagate()
+- **Task ID**: build-runtime-guard
+- **Depends On**: build-constant
+- **Validates**: `tests/test_co_occurrence_field.py::TestPropagate` (existing tests pass), new guard test
+- **Assigned To**: clamp-builder
+- **Agent Type**: builder
+- **Parallel**: true
+- At the top of `propagate()` in `co_occurrence_field.py` (after `decay_per_hop` is resolved to its default, before the Lua `EVAL`), add: `if Defaults.CO_OCCURRENCE_WEIGHT_CAP * decay_per_hop >= 1.0: raise ValueError(...)` with a message naming both constants and explaining that propagation would amplify instead of decay
+- The guard fires on misconfiguration (e.g. `decay_per_hop` raised above `1/cap` in a future sweep) — it will NOT fire under any current configuration (`1.0 * 0.5 = 0.5 < 1`)
+- Add a test that `propagate()` with a `decay_per_hop` that violates `cap * decay_per_hop < 1` raises `ValueError` (e.g. `decay_per_hop=1.5` with `cap=1.0` -> `1.5 >= 1.0` -> raises)
+- Add a test that `propagate()` with the default `decay_per_hop=0.5` and `cap=1.0` does NOT raise (regression guard against false positives)
+
 ### 5. Write new tests
 - **Task ID**: build-tests
 - **Depends On**: build-strengthen-clamp, build-propagate-defense, build-link-validation
@@ -341,6 +378,8 @@ No agent integration required — this is a substrate-layer (CoOccurrenceField) 
 - `test_propagate_read_time_min_for_overcap_weights`: manually `ZADD` a weight above cap, propagate, verify the effective weight is clamped (activation <= decay_per_hop * cap)
 - `test_link_rejects_overcap_initial_weight`: `link()` with `initial_weight > cap` raises `ValueError`
 - `test_strengthen_nonexistent_edge_clamps`: `strengthen()` on a nonexistent edge creates it at `min(delta, cap)`
+- `test_propagate_guard_raises_on_invariant_violation`: `propagate()` with `decay_per_hop=1.5` (so `cap * decay_per_hop = 1.5 >= 1.0`) raises `ValueError`
+- `test_propagate_guard_passes_at_defaults`: `propagate()` with default `decay_per_hop=0.5` and `cap=1.0` does NOT raise (regression guard)
 
 ### 6. Update documentation
 - **Task ID**: document-feature
@@ -351,8 +390,9 @@ No agent integration required — this is a substrate-layer (CoOccurrenceField) 
 - Update `docs/features/co-occurrence-field.md`:
   - Add `CO_OCCURRENCE_WEIGHT_CAP` to the Parameters section (note: experimental tuning constant, not user config)
   - Update `strengthen()` section to note the clamp: "Weights are clamped at `CO_OCCURRENCE_WEIGHT_CAP` (default 1.0) to guarantee per-hop contraction during propagation."
-  - Update `propagate()` section to note the contraction guarantee: "Per-hop transfer is always <= `decay_per_hop` because edge weights are clamped. The BFS threshold reliably terminates the walk."
-  - Add a "Contraction Guarantee" subsection explaining the invariant: `cap <= 1 / decay_per_hop` ensures `decay_per_hop * edge_weight <= 1`
+  - Update `propagate()` section to note the contraction guarantee: "Per-hop transfer is always <= `decay_per_hop` because edge weights are clamped. The BFS threshold reliably terminates the walk. A runtime guard raises `ValueError` if `cap * decay_per_hop >= 1.0`."
+  - Add a "Contraction Guarantee" subsection explaining the invariant: the cap is chosen with headroom below `1 / decay_per_hop`, and the runtime guard in `propagate()` enforces `cap * decay_per_hop < 1` at call time
+  - Add a "Known Limitation: Neighbor Selection Bias" subsection documenting the residual `ZREVRANGE` ranking bias for pre-existing over-cap weights: neighbor selection at line 164 ranks by raw stored score, not effective clamped score; this biases *which* neighbors are visited when `max_per_node` truncation fires, but does not violate the contraction invariant; self-corrects as over-cap edges are lazily clamped on next `strengthen()`; a one-time migration is the fix path if the bias materializes as a ranking distortion
 - Update inline docstrings (strengthen, propagate, CoOccurrenceField class)
 
 ### 7. Final validation
@@ -381,6 +421,7 @@ No agent integration required — this is a substrate-layer (CoOccurrenceField) 
 | Strengthen uses Lua clamp | `grep -c 'STRENGTHEN_CLAMP_LUA' src/popoto/fields/co_occurrence_field.py` | output > 0 |
 | Propagate has read-time min | `grep -c 'math.min(edge_weight' src/popoto/fields/co_occurrence_field.py` | output > 0 |
 | Link validates initial_weight | `grep -c 'initial_weight.*CO_OCCURRENCE_WEIGHT_CAP' src/popoto/fields/co_occurrence_field.py` | output > 0 |
+| Runtime guard in propagate | `grep -c 'CO_OCCURRENCE_WEIGHT_CAP.*decay_per_hop' src/popoto/fields/co_occurrence_field.py` | output > 0 |
 | Docs updated | `grep -c 'CO_OCCURRENCE_WEIGHT_CAP\|contraction\|clamp' docs/features/co-occurrence-field.md` | output > 0 |
 | Docs build | `mkdocs build --strict` | exit code 0 |
 | No unclamped zincrby remains | `grep -c 'zincrby' src/popoto/fields/co_occurrence_field.py` | match count == 0 |
@@ -389,12 +430,13 @@ No agent integration required — this is a substrate-layer (CoOccurrenceField) 
 
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
-| | | | | |
+| Concern | war-room | ZREVRANGE neighbor selection bias persists for pre-existing over-cap weights — read-path `min()` clamps propagation math but not `max_per_node` truncation ranking at line 164, which sorts on raw un-clamped scores. | Risk 1 + No-Gos | Documented as a residual bias in Risk 1 (self-corrects as over-cap edges are lazily clamped on next `strengthen()`). One-time migration explicitly dropped in No-Gos with a note to file a follow-up if the bias materializes as a ranking distortion. |
+| Concern | war-room | Cap (1.0) is not derived from `decay_per_hop` (0.5) as the No-Go claims; no runtime guard enforces the contraction invariant. | Solution (runtime guard) + No-Gos + Open Question 1 | Added runtime guard `if cap * decay_per_hop >= 1.0: raise ValueError(...)` at top of `propagate()` (new task build-runtime-guard). Reconciled No-Go text: the cap is chosen with headroom below `1/decay_per_hop`, and the invariant is enforced at runtime by the guard, not by comment-only reasoning. Open Question 1 closed as decided (1.0 with runtime guard backstop). |
 
 ---
 
 ## Open Questions
 
-1. **Cap value choice**: The plan uses `CO_OCCURRENCE_WEIGHT_CAP = 1.0` because at the default `decay_per_hop = 0.5`, this gives per-hop transfer `<= 0.5` (a strong contraction). A lower cap (e.g. 0.5) would give an even stronger contraction but would saturate edges faster, reducing the dynamic range of `strengthen()`. Is 1.0 the right default, or should it be tighter?
+1. **Cap value choice — DECIDED**: `CO_OCCURRENCE_WEIGHT_CAP = 1.0`. At the default `decay_per_hop = 0.5`, this gives per-hop transfer `<= 0.5` (a strong contraction). The value is tighter than the theoretical maximum `1 / decay_per_hop = 2.0`, leaving intentional headroom so small upward adjustments to `decay_per_hop` do not silently violate the invariant. A lower cap (e.g. 0.5) would saturate edges faster and reduce the dynamic range of `strengthen()`; 1.0 balances contraction strength against dynamic range. The runtime guard in `propagate()` (`cap * decay_per_hop >= 1.0 -> ValueError`) is the backstop if either constant is later changed. Closed during the revision pass addressing the critique concern that the cap was not actually derived from `decay_per_hop` and no guard enforced the invariant.
 
-2. **Asymptotic vs hard clamp**: The plan uses a hard clamp `min(old + delta, cap)` for simplicity and testability. The asymptotic variant `w += delta * (cap - w)` preserves ordering among saturated edges without exact saturation. Is the hard clamp acceptable, or is the asymptotic variant preferred for the agent-memory use case where distinguishing heavily-used edges matters?
+2. **Asymptotic vs hard clamp — DECIDED**: Hard clamp `min(old + delta, cap)` for simplicity and testability. The asymptotic variant `w += delta * (cap - w)` preserves ordering among saturated edges without exact saturation, but adds testing complexity (harder to assert exact values) for marginal benefit at the current scale. This remains the chosen approach; no change from the initial plan.
