@@ -330,7 +330,9 @@ class CoOccurrenceField(Field):
             float: The weight of the edge (existing weight if already linked).
 
         Raises:
-            ValueError: If source_pk == target_pk (no self-loops).
+            ValueError: If source_pk == target_pk (no self-loops), or if
+                ``initial_weight`` exceeds ``Defaults.CO_OCCURRENCE_WEIGHT_CAP``
+                (would violate the contraction invariant).
         """
         if initial_weight is _UNSET:
             initial_weight = Defaults.CO_OCCURRENCE_INITIAL_WEIGHT
@@ -339,6 +341,14 @@ class CoOccurrenceField(Field):
 
         if source_pk == target_pk:
             raise ValueError("Cannot link a PK to itself (no self-loops)")
+        if initial_weight > Defaults.CO_OCCURRENCE_WEIGHT_CAP:
+            raise ValueError(
+                f"initial_weight ({initial_weight}) exceeds "
+                f"CO_OCCURRENCE_WEIGHT_CAP "
+                f"({Defaults.CO_OCCURRENCE_WEIGHT_CAP}); edges above the "
+                f"cap violate the per-hop contraction invariant used by "
+                f"propagate()."
+            )
 
         source_key = self.get_edge_key(model_class, source_pk)
         result = POPOTO_REDIS_DB.eval(
