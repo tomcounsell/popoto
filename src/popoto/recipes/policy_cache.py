@@ -548,9 +548,9 @@ async def temporal_discovery_handler(entries):
     Only day_of_week/weekly discovery remains. The previous calendar-bucket
     configs (week-within-month, 4 buckets; month-of-year, 12 buckets) were
     removed because calendar periods (month, year) have variable-length
-    buckets — a fixed seconds-period constant (TemporalPeriod.MONTHLY/YEARLY)
-    cannot represent them, and the equal-width uniform chi-squared null was
-    biased, fabricating cycles from noise.
+    buckets — a fixed seconds-period constant (the monthly/yearly period
+    constants) cannot represent them, and the equal-width uniform chi-squared
+    null was biased, fabricating cycles from noise.
 
     The chi_squared_uniform helper is unchanged: day_of_week has 7 equal-width
     buckets so E_i = n/7 is a correct uniform expectation. No per-bucket-vector
