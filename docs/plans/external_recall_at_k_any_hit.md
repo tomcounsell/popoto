@@ -1,5 +1,5 @@
 ---
-status: Planning
+status: Ready
 type: bug
 appetite: Small
 owner: Valor Engels
@@ -185,7 +185,7 @@ No race conditions identified — `recall_at_k` is a pure, synchronous, single-t
 
 ## No-Gos (Out of Scope)
 
-- [ORDERED] Report regeneration must wait for PR #436 (LongMemEval-S adapter fix) to merge so the regenerated retrieved_ids use the corrected adapter. If #436 is already merged at build time, regenerate in this PR; otherwise regenerate in a follow-up commit once it lands.
+- [ORDERED] Report regeneration must wait for PR #436 (LongMemEval-S adapter fix) to merge so the regenerated retrieved_ids use the corrected adapter. **Decision:** merge #436 first, then build #433 off updated main and regenerate the report **in this PR** (not a follow-up).
 - [SEPARATE-SLUG #434] LoCoMo adapter uses the same metric path and will inherit the any-hit fix automatically, but its adapter is broken (0 items) and is tracked separately. No LoCoMo regeneration here.
 - [SEPARATE-SLUG #437] Hybrid BM25+vector retrieval mode (the apples-to-apples comparison against the agentmemory reference) is a separate enhancement.
 
@@ -267,8 +267,8 @@ Small fix — solo builder + validator.
 - **Assigned To**: metric-builder
 - **Agent Type**: builder
 - **Parallel**: false
-- If #436 is merged and dataset present: run `python -m tests.benchmarks.run_external --dataset longmemeval-s`, commit the new `.json`/`.md`, repoint `*_latest` symlinks to `longmemeval_s_20260629`.
-- If #436 not merged: skip and note for follow-up commit.
+- #436 merges first (decided), so build #433 off updated main: run `python -m tests.benchmarks.run_external --dataset longmemeval-s`, commit the new `.json`/`.md`, repoint `*_latest` symlinks to `longmemeval_s_20260629`.
+- Verify the regenerated artifact has `R@5 ≈ 0.952` and `MRR ≤ R@5`.
 
 ### 4. Validation
 - **Task ID**: validate-all
@@ -297,7 +297,7 @@ Small fix — solo builder + validator.
 
 ---
 
-## Open Questions
+## Resolved Decisions
 
-1. **Retain `fractional_recall_at_k`?** The issue's AC treats it as optional ("If retained..."). I recommend keeping it as a separate, tested function (cheap, preserves multi-evidence math for future analysis, sanctioned by the AC). Alternative: drop it entirely (no current consumer) to avoid unused code. Confirm retain vs. drop.
-2. **Regenerate in this PR or as a follow-up?** Regeneration is correct only against the merged #436 adapter. Recommendation: merge #436 first, then regenerate in this PR. If you'd rather land the metric fix immediately, regeneration becomes a follow-up commit. Confirm ordering.
+1. **Retain `fractional_recall_at_k`** as a separate, clearly named, tested function (confirmed 2026-06-29). Headline `recall_at_k` is any-hit; fractional math preserved for future per-evidence analysis.
+2. **Merge #436 first, regenerate in this PR** (confirmed 2026-06-29). Build #433 off updated main after #436 lands; the corrected report artifact ships within this PR, not a follow-up.
