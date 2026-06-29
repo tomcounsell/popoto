@@ -92,23 +92,27 @@ def _download_dataset() -> Path:
 def _parse_record(record: dict, idx: int) -> BenchmarkItem:
     """Parse one record from the LongMemEval-S JSON format.
 
-    LongMemEval-S format (longmemeval_s_cleaned.json):
+    LongMemEval-S format (longmemeval_s_cleaned.json), real schema as
+    published by xiaowu0162/longmemeval-cleaned:
     {
         "question_id": "...",
+        "question_type": "...",
         "question": "...",
+        "question_date": "...",
         "answer": "...",
-        "evidence_session_id": "...",  # may be a list or str
-        "conversation_history": [
-            {
-                "session_id": "...",
-                "turns": [
-                    {"role": "user"|"assistant", "content": "..."},
-                    ...
-                ]
-            },
+        "answer_session_ids": ["session_id", ...],   # ground truth
+        "haystack_dates": ["...", ...],               # parallel to sessions
+        "haystack_session_ids": ["session_id", ...],  # parallel to sessions
+        "haystack_sessions": [                         # parallel to ids
+            [ {"role": "user"|"assistant", "content": "..."}, ... ],
             ...
         ]
     }
+
+    ``haystack_sessions`` and ``haystack_session_ids`` are parallel arrays:
+    session ``haystack_sessions[i]`` has id ``haystack_session_ids[i]``.
+    Ground truth ``answer_session_ids`` are a subset of
+    ``haystack_session_ids`` (verified: all 500 questions match).
 
     Args:
         record: Raw dict from the JSON file.
@@ -120,7 +124,7 @@ def _parse_record(record: dict, idx: int) -> BenchmarkItem:
     Raises:
         ValueError: If required fields are missing.
     """
-    required = ["question", "conversation_history"]
+    required = ["question", "haystack_sessions", "haystack_session_ids"]
     for field in required:
         if field not in record:
             raise ValueError(
@@ -129,19 +133,25 @@ def _parse_record(record: dict, idx: int) -> BenchmarkItem:
 
     question_id = record.get("question_id", str(idx))
     query = record["question"]
-    raw_history = record["conversation_history"]
+    sessions = record["haystack_sessions"]
+    session_ids = record["haystack_session_ids"]
 
-    if not isinstance(raw_history, list):
+    if not isinstance(sessions, list):
         raise ValueError(
-            f"LongMemEval-S record[{idx}] 'conversation_history' must be a list, "
-            f"got {type(raw_history).__name__}"
+            f"LongMemEval-S record[{idx}] 'haystack_sessions' must be a list, "
+            f"got {type(sessions).__name__}"
+        )
+    if not isinstance(session_ids, list) or len(session_ids) != len(sessions):
+        raise ValueError(
+            f"LongMemEval-S record[{idx}] 'haystack_session_ids' "
+            f"({len(session_ids) if isinstance(session_ids, list) else 'n/a'}) "
+            f"must be a list parallel to 'haystack_sessions' ({len(sessions)})"
         )
 
-    # Flatten session list into a list of turns with session_id metadata
+    # Flatten parallel session arrays into a list of turns with session_id
+    # metadata. Each session is itself a list of {role, content} turn dicts.
     history = []
-    for session in raw_history:
-        session_id = session.get("session_id", "")
-        turns = session.get("turns", [])
+    for session_id, turns in zip(session_ids, sessions):
         for turn_idx, turn in enumerate(turns):
             history.append(
                 {
@@ -152,8 +162,8 @@ def _parse_record(record: dict, idx: int) -> BenchmarkItem:
                 }
             )
 
-    # Ground truth: evidence_session_id identifies the relevant session
-    raw_evidence = record.get("evidence_session_id", "")
+    # Ground truth: answer_session_ids identify the relevant session(s)
+    raw_evidence = record.get("answer_session_ids", [])
     if isinstance(raw_evidence, list):
         relevant_ids = set(raw_evidence)
     elif raw_evidence:
