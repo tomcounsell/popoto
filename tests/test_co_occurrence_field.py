@@ -37,6 +37,7 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 import pytest
 from src import popoto
 from src.popoto.fields.co_occurrence_field import CoOccurrenceField
+from src.popoto.fields.constants import Defaults
 from src.popoto.fields.decaying_sorted_field import DecayingSortedField
 from src.popoto.fields.access_tracker import AccessTrackerMixin
 from src.popoto.fields.confidence_field import ConfidenceField
@@ -201,6 +202,17 @@ class TestLink:
         # Should keep original weight (0.2), not overwrite with 0.9
         assert abs(linked[0][1] - 0.2) < 1e-9
 
+    def test_link_rejects_overcap_initial_weight(self):
+        """link() with initial_weight > CO_OCCURRENCE_WEIGHT_CAP raises ValueError."""
+        field = CoOcItem._meta.fields["associations"]
+        with pytest.raises(ValueError, match="CO_OCCURRENCE_WEIGHT_CAP"):
+            field.link(
+                CoOcItem,
+                "pk_a",
+                "pk_b",
+                initial_weight=Defaults.CO_OCCURRENCE_WEIGHT_CAP + 0.5,
+            )
+
 
 # --- Strengthen Tests ---
 
@@ -235,6 +247,56 @@ class TestStrengthen:
         field = CoOcItem._meta.fields["associations"]
         with pytest.raises(ValueError, match="delta must be > 0"):
             field.strengthen(CoOcItem, "pk_a", "pk_b", delta=0)
+
+    def test_strengthen_clamps_at_cap(self):
+        """Repeated strengthen() never lets the stored weight exceed the cap."""
+        field = CoOcItem._meta.fields["associations"]
+        field.link(CoOcItem, "pk_a", "pk_b", initial_weight=0.1)
+
+        cap = Defaults.CO_OCCURRENCE_WEIGHT_CAP
+        # 0.1 + 50 * 0.05 = 2.6 >> cap=1.0
+        last = 0.1
+        for _ in range(50):
+            last = field.strengthen(CoOcItem, "pk_a", "pk_b", delta=0.05)
+            assert last <= cap + 1e-9, f"weight {last} exceeded cap {cap}"
+
+        # At saturation the returned weight equals the cap.
+        assert abs(last - cap) < 1e-9
+
+        # Read back from the ZSET to confirm the stored score matches.
+        linked = field.get_linked(CoOcItem, "pk_a", min_weight=0.0)
+        assert abs(linked[0][1] - cap) < 1e-9
+
+    def test_strengthen_clamp_symmetric(self):
+        """Symmetric strengthen() clamps both directions at the cap."""
+        field = CoOcItem._meta.fields["associations"]
+        field.link(CoOcItem, "pk_a", "pk_b", initial_weight=0.1)
+
+        cap = Defaults.CO_OCCURRENCE_WEIGHT_CAP
+        for _ in range(50):
+            field.strengthen(CoOcItem, "pk_a", "pk_b", delta=0.05)
+
+        forward = field.get_linked(CoOcItem, "pk_a", min_weight=0.0)
+        reverse = field.get_linked(CoOcItem, "pk_b", min_weight=0.0)
+        assert abs(forward[0][1] - cap) < 1e-9
+        assert abs(reverse[0][1] - cap) < 1e-9
+
+    def test_strengthen_nonexistent_edge_clamps(self):
+        """strengthen() on a missing edge creates it at min(delta, cap)."""
+        field = CoOcItem._meta.fields["associations"]
+        cap = Defaults.CO_OCCURRENCE_WEIGHT_CAP
+
+        # delta <= cap: edge created at delta.
+        w_small = field.strengthen(CoOcItem, "pk_a", "pk_b", delta=0.05)
+        assert abs(w_small - 0.05) < 1e-9
+        linked = field.get_linked(CoOcItem, "pk_a", min_weight=0.0)
+        assert abs(linked[0][1] - 0.05) < 1e-9
+
+        # delta > cap: edge created at cap.
+        w_big = field.strengthen(CoOcItem, "pk_c", "pk_d", delta=cap + 0.5)
+        assert abs(w_big - cap) < 1e-9
+        linked_big = field.get_linked(CoOcItem, "pk_c", min_weight=0.0)
+        assert abs(linked_big[0][1] - cap) < 1e-9
 
 
 # --- Unlink Tests ---
@@ -449,6 +511,94 @@ class TestPropagate:
             CoOcItem, ["orphan"], depth=2
         )
         assert scores == {}
+
+    def test_propagate_monotonic_with_strengthened_edges(self):
+        """5-node chain a-b-c-d-e with all edges at cap: activation is
+        monotonically non-increasing in hop count and never exceeds 1.0.
+
+        This is the issue's reproduction — currently fails with
+        b:1.95, c:2.44, d:1.95, e:2.44 (non-monotonic, > 1.0).
+        """
+        field = CoOcItem._meta.fields["associations"]
+        chain = ["a", "b", "c", "d", "e"]
+        for i in range(len(chain) - 1):
+            field.link(CoOcItem, chain[i], chain[i + 1], initial_weight=0.1)
+            # Strengthen each edge to cap (1.0).
+            for _ in range(50):
+                field.strengthen(CoOcItem, chain[i], chain[i + 1], delta=0.05)
+
+        scores = field.propagate(
+            CoOcItem, ["a"], depth=4, decay_per_hop=0.5, threshold=0.01
+        )
+
+        b, c, d, e = scores["b"], scores["c"], scores["d"], scores["e"]
+        # All activations <= 1.0 (the seed weight).
+        assert b <= 1.0 + 1e-9
+        assert c <= 1.0 + 1e-9
+        assert d <= 1.0 + 1e-9
+        assert e <= 1.0 + 1e-9
+        # Monotonically non-increasing in hop count.
+        assert b >= c - 1e-9
+        assert c >= d - 1e-9
+        assert d >= e - 1e-9
+
+    def test_propagate_threshold_terminates_strengthened_graph(self):
+        """On a strengthened chain, threshold pruning fires before the
+        far end is reached, so the result set is smaller than the graph."""
+        field = CoOcItem._meta.fields["associations"]
+        chain = ["a", "b", "c", "d", "e", "f", "g"]
+        for i in range(len(chain) - 1):
+            field.link(CoOcItem, chain[i], chain[i + 1], initial_weight=0.1)
+            for _ in range(50):
+                field.strengthen(CoOcItem, chain[i], chain[i + 1], delta=0.05)
+
+        # decay 0.5 per hop, threshold 0.05:
+        #   b=0.5, c=0.25, d=0.125, e=0.0625 (>= 0.05, kept)
+        #   f=0.03125 (< 0.05, pruned), g never reached.
+        scores = field.propagate(
+            CoOcItem, ["a"], depth=6, decay_per_hop=0.5, threshold=0.05
+        )
+
+        total_non_seed = len(chain) - 1
+        assert len(scores) < total_non_seed
+        assert "f" not in scores
+        assert "g" not in scores
+        # The near end is still reached.
+        assert "b" in scores
+
+    def test_propagate_read_time_min_for_overcap_weights(self):
+        """A manually-ZADDed over-cap stored weight is clamped at read time,
+        so propagated activation <= decay_per_hop * cap (not decay_per_hop * raw)."""
+        field = CoOcItem._meta.fields["associations"]
+        # Bypass link()/strengthen() to inject a raw over-cap score.
+        source_key = field.get_edge_key(CoOcItem, "a")
+        POPOTO_REDIS_DB.zadd(source_key, {"b": 2.5})
+
+        scores = field.propagate(
+            CoOcItem, ["a"], depth=1, decay_per_hop=0.5, threshold=0.01
+        )
+
+        cap = Defaults.CO_OCCURRENCE_WEIGHT_CAP
+        # Effective weight = min(2.5, 1.0) = 1.0; propagated = 1.0 * 0.5 * 1.0 = 0.5.
+        # Without the read-time clamp it would be 1.0 * 0.5 * 2.5 = 1.25.
+        assert "b" in scores
+        assert scores["b"] <= 0.5 * cap + 1e-6
+        assert abs(scores["b"] - 0.5 * cap) < 1e-6
+
+    def test_propagate_guard_raises_on_invariant_violation(self):
+        """propagate() raises ValueError when cap * decay_per_hop >= 1.0."""
+        field = CoOcItem._meta.fields["associations"]
+        field.link(CoOcItem, "a", "b", initial_weight=0.5)
+        with pytest.raises(ValueError, match="Contraction invariant"):
+            field.propagate(CoOcItem, ["a"], depth=2, decay_per_hop=1.5)
+
+    def test_propagate_guard_passes_at_defaults(self):
+        """propagate() at default cap=1.0 and decay_per_hop=0.5 does not raise."""
+        field = CoOcItem._meta.fields["associations"]
+        field.link(CoOcItem, "a", "b", initial_weight=0.5)
+        # Should complete normally without ValueError.
+        scores = field.propagate(CoOcItem, ["a"], depth=2)
+        assert "b" in scores
 
 
 # --- On Delete Tests ---

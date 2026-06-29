@@ -84,6 +84,14 @@ class Defaults:
     CO_OCCURRENCE_DECAY_FACTOR = 0.95  # empirically inert (sweep 2026-04-20, variance=0.0) — family scenario never calls weaken_all()
     CO_OCCURRENCE_INITIAL_WEIGHT = 0.1  # sweep 2026-04-20 variance=0.144; best 0.01 but curve has noise cliff, 0.1 is safer default for new users
     CO_OCCURRENCE_DECAY_PER_HOP = 0.5  # best from sweep 2026-04-20, variance=0.112, prior=0.5 (stable, smooth peak at 0.5)
+    # Upper bound on stored edge weights. Contraction invariant:
+    #   cap * CO_OCCURRENCE_DECAY_PER_HOP < 1  ->  per-hop transfer < 1
+    # so propagation decays rather than amplifies. The value 1.0 has
+    # intentional headroom below the theoretical maximum
+    # 1 / CO_OCCURRENCE_DECAY_PER_HOP = 2.0; a runtime guard in
+    # CoOccurrenceField.propagate() backstops the invariant if either
+    # constant is later changed.
+    CO_OCCURRENCE_WEIGHT_CAP = 1.0
 
     # -- PredictionLedgerMixin (fields/prediction_ledger.py) ------------------
     # Issue #362 added PredictionLedgerFamilyScenario. PL_AUTO_RESOLVE_
@@ -151,11 +159,15 @@ class Defaults:
     # These are tuning constants fed into the benchmarks/run_sweeps.py
     # TIER5_SWEEPS grid and tuned against the LoCoMo + LongMemEval-S harness
     # established in issue #394. Not yet swept; initial values set by design.
-    LIFECYCLE_PROMOTION_ACCESS_COUNT = 3       # accesses before episodic→semantic eligible
+    LIFECYCLE_PROMOTION_ACCESS_COUNT = 3  # accesses before episodic→semantic eligible
     LIFECYCLE_PROMOTION_CONFIDENCE_THRESHOLD = 0.6  # confidence floor for promotion
-    LIFECYCLE_PROMOTION_MIN_AGE_SECONDS = 300.0  # 5 min — prevents burst-access promotion
-    LIFECYCLE_FORGET_IMPORTANCE_FLOOR = 0.1    # importance below this → eligible for forget
-    LIFECYCLE_FORGET_IDLE_SECONDS = 86400.0    # 24 h idle → eligible for forget
+    LIFECYCLE_PROMOTION_MIN_AGE_SECONDS = (
+        300.0  # 5 min — prevents burst-access promotion
+    )
+    LIFECYCLE_FORGET_IMPORTANCE_FLOOR = (
+        0.1  # importance below this → eligible for forget
+    )
+    LIFECYCLE_FORGET_IDLE_SECONDS = 86400.0  # 24 h idle → eligible for forget
 
 
 class TemporalPeriod:

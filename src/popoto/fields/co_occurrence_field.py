@@ -110,6 +110,7 @@ return removed
 # ARGV[3] = decay per hop
 # ARGV[4] = threshold (minimum weight to continue propagation)
 # ARGV[5] = max edges per node to consider
+# ARGV[6] = weight cap (defense-in-depth: clamps pre-existing over-cap edges)
 PROPAGATE_BFS_LUA = """
 local key_prefix = KEYS[1]
 local seeds = cjson.decode(ARGV[1])
@@ -117,6 +118,7 @@ local max_depth = tonumber(ARGV[2])
 local decay_per_hop = tonumber(ARGV[3])
 local threshold = tonumber(ARGV[4])
 local max_per_node = tonumber(ARGV[5])
+local cap = tonumber(ARGV[6])
 
 -- Result table: pk -> max_weight
 local results = {}
@@ -166,7 +168,11 @@ while head <= #queue do
             for i = 1, #neighbors, 2 do
                 local neighbor_pk = neighbors[i]
                 local edge_weight = tonumber(neighbors[i + 1])
-                local propagated_weight = weight * decay_per_hop * edge_weight
+                -- Defense-in-depth: clamp pre-existing over-cap stored
+                -- weights so the contraction invariant holds for any
+                -- reachable weight, not just newly-written ones.
+                local effective_weight = math.min(edge_weight, cap)
+                local propagated_weight = weight * decay_per_hop * effective_weight
 
                 if propagated_weight >= threshold then
                     -- Update result with max weight
@@ -195,12 +201,43 @@ end
 return result
 """
 
+# Lua script: atomic strengthen with upper-bound clamp.
+# Reads the current edge weight, adds delta, clamps at cap, writes back.
+# Atomic read-then-write prevents concurrent strengthen() races on the
+# same edge (Redis/Valkey single-threaded EVAL).
+# KEYS[1] = source ZSET key
+# ARGV[1] = target_pk
+# ARGV[2] = delta
+# ARGV[3] = cap
+STRENGTHEN_CLAMP_LUA = """
+local zset_key = KEYS[1]
+local target = ARGV[1]
+local existing = redis.call('ZSCORE', zset_key, target)
+local old = tonumber(existing) or 0
+local delta = tonumber(ARGV[2])
+local cap = tonumber(ARGV[3])
+local new_weight = math.min(old + delta, cap)
+redis.call('ZADD', zset_key, new_weight, target)
+return tostring(new_weight)
+"""
+
 
 class CoOccurrenceField(Field):
     """A field that maintains weighted association edges between model instances.
 
     Uses per-PK Redis sorted sets to store weighted edges to other PKs.
     Supports symmetric (bidirectional) and asymmetric (unidirectional) modes.
+
+    Edge weights are clamped at ``Defaults.CO_OCCURRENCE_WEIGHT_CAP``
+    (default 1.0) on every ``strengthen()`` write via an atomic Lua script,
+    and a read-time ``min(edge_weight, cap)`` in the propagation BFS
+    handles pre-existing over-cap stored weights as defense-in-depth. This
+    guarantees the per-hop contraction invariant used by ``propagate()``:
+    ``decay_per_hop * effective_edge_weight <= decay_per_hop * cap < 1``
+    (at default config, 0.5 * 1.0 = 0.5 < 1), so activation decays
+    monotonically with hop count and the BFS threshold reliably terminates
+    the walk. A runtime guard in ``propagate()`` raises ``ValueError`` if
+    ``cap * decay_per_hop >= 1.0`` to catch future misconfiguration.
 
     Args:
         symmetric: If True, edges are bidirectional. Default True.
@@ -304,7 +341,9 @@ class CoOccurrenceField(Field):
             float: The weight of the edge (existing weight if already linked).
 
         Raises:
-            ValueError: If source_pk == target_pk (no self-loops).
+            ValueError: If source_pk == target_pk (no self-loops), or if
+                ``initial_weight`` exceeds ``Defaults.CO_OCCURRENCE_WEIGHT_CAP``
+                (would violate the contraction invariant).
         """
         if initial_weight is _UNSET:
             initial_weight = Defaults.CO_OCCURRENCE_INITIAL_WEIGHT
@@ -313,6 +352,14 @@ class CoOccurrenceField(Field):
 
         if source_pk == target_pk:
             raise ValueError("Cannot link a PK to itself (no self-loops)")
+        if initial_weight > Defaults.CO_OCCURRENCE_WEIGHT_CAP:
+            raise ValueError(
+                f"initial_weight ({initial_weight}) exceeds "
+                f"CO_OCCURRENCE_WEIGHT_CAP "
+                f"({Defaults.CO_OCCURRENCE_WEIGHT_CAP}); edges above the "
+                f"cap violate the per-hop contraction invariant used by "
+                f"propagate()."
+            )
 
         source_key = self.get_edge_key(model_class, source_pk)
         result = POPOTO_REDIS_DB.eval(
@@ -347,7 +394,12 @@ class CoOccurrenceField(Field):
     ):
         """Increase the weight of an existing edge.
 
-        Uses ZINCRBY to atomically increment the edge weight.
+        Uses an atomic Lua script (STRENGTHEN_CLAMP_LUA) to read the
+        current weight, add delta, and clamp at
+        ``Defaults.CO_OCCURRENCE_WEIGHT_CAP`` so stored weights can never
+        exceed the cap. This guarantees the per-hop contraction invariant
+        used by ``propagate()`` (``decay_per_hop * effective_edge_weight``
+        stays <= ``decay_per_hop * cap`` < 1 at default config).
 
         Args:
             model_class: The Model class.
@@ -357,7 +409,8 @@ class CoOccurrenceField(Field):
             pipeline: Optional Redis pipeline.
 
         Returns:
-            float: The new weight after increment.
+            float: The new (clamped) weight after increment, or None when
+                called with a pipeline (execution deferred).
 
         Raises:
             ValueError: If delta <= 0.
@@ -368,13 +421,28 @@ class CoOccurrenceField(Field):
         source_pk = str(source_pk)
         target_pk = str(target_pk)
 
+        cap = Defaults.CO_OCCURRENCE_WEIGHT_CAP
         source_key = self.get_edge_key(model_class, source_pk)
         db = pipeline if pipeline else POPOTO_REDIS_DB
-        new_weight = db.zincrby(source_key, delta, target_pk)
+        new_weight = db.eval(
+            STRENGTHEN_CLAMP_LUA,
+            1,
+            source_key,
+            target_pk,
+            str(delta),
+            str(cap),
+        )
 
         if self.symmetric:
             target_key = self.get_edge_key(model_class, target_pk)
-            db.zincrby(target_key, delta, source_pk)
+            db.eval(
+                STRENGTHEN_CLAMP_LUA,
+                1,
+                target_key,
+                source_pk,
+                str(delta),
+                str(cap),
+            )
 
         # EventStreamMixin: log strengthen event
         from .event_stream import EventStreamMixin
@@ -530,6 +598,12 @@ class CoOccurrenceField(Field):
         decay at each hop. When the same PK is reached via multiple paths,
         the maximum weight is kept.
 
+        Edge weights are clamped at ``Defaults.CO_OCCURRENCE_WEIGHT_CAP``
+        at read time (defense-in-depth) so pre-existing over-cap stored
+        weights cannot amplify propagation. A runtime guard raises
+        ``ValueError`` if ``cap * decay_per_hop >= 1.0`` (misconfiguration
+        that would amplify instead of decay).
+
         Args:
             model_class: The Model class.
             seed_pks: List of starting primary keys.
@@ -541,9 +615,25 @@ class CoOccurrenceField(Field):
         Returns:
             dict[str, float]: Mapping of discovered PKs to their propagated
                 weights. Seeds are not included in results (except for depth=0).
+
+        Raises:
+            ValueError: If ``CO_OCCURRENCE_WEIGHT_CAP * decay_per_hop >= 1.0``
+                (contraction invariant violated; propagation would amplify).
         """
         if decay_per_hop is _UNSET:
             decay_per_hop = Defaults.CO_OCCURRENCE_DECAY_PER_HOP
+        # Runtime contraction guard: enforces cap * decay_per_hop < 1 so
+        # that each hop strictly decays activation. Fires on
+        # misconfiguration only (e.g. a future constants sweep raises
+        # decay_per_hop above 1/cap); under current defaults
+        # (1.0 * 0.5 = 0.5 < 1) this never raises.
+        if Defaults.CO_OCCURRENCE_WEIGHT_CAP * decay_per_hop >= 1.0:
+            raise ValueError(
+                f"Contraction invariant violated: CO_OCCURRENCE_WEIGHT_CAP "
+                f"({Defaults.CO_OCCURRENCE_WEIGHT_CAP}) * decay_per_hop "
+                f"({decay_per_hop}) >= 1.0; propagation would amplify "
+                f"instead of decay. Lower the cap or decay_per_hop."
+            )
         if not seed_pks:
             return {}
 
@@ -563,6 +653,7 @@ class CoOccurrenceField(Field):
             str(decay_per_hop),
             str(threshold),
             str(self.max_edges),
+            str(Defaults.CO_OCCURRENCE_WEIGHT_CAP),
         )
 
         # Parse flat array [pk1, weight1, pk2, weight2, ...]

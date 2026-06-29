@@ -59,6 +59,9 @@ class TestDefaultsSync:
             "CO_OCCURRENCE_DECAY_FACTOR",
             "CO_OCCURRENCE_INITIAL_WEIGHT",
             "CO_OCCURRENCE_DECAY_PER_HOP",
+            # Derived contraction-invariant cap, not a swept constant (#416);
+            # referenced only via Defaults.CO_OCCURRENCE_WEIGHT_CAP.
+            "CO_OCCURRENCE_WEIGHT_CAP",
             "PL_CONFIDENCE_ERROR_THRESHOLD",
             "PL_CONFIDENCE_LOW_SIGNAL",
             "PL_AUTO_RESOLVE_ACTED",
