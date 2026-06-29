@@ -108,14 +108,49 @@ def calibration_error(
 
 
 def recall_at_k(retrieved: List[str], relevant: set, k: int) -> float:
-    """Compute recall@k — fraction of relevant items found in top-k results.
+    """Compute recall@k as an any-hit hit-rate.
 
-    For queries with a single relevant item (e.g. LongMemEval-S, LoCoMo),
-    this is equivalent to a hit-rate: 1.0 if the relevant item appears in
-    top-k, 0.0 otherwise.
+    Returns 1.0 if *any* relevant item appears in the top-k results, else 0.0.
+    This is the standard hit-rate definition used by published memory
+    benchmarks (LongMemEval-S, LoCoMo) and by the external reference numbers
+    this harness compares against.
 
-    For queries with multiple relevant items, this is the fraction of
-    relevant items that appear in top-k (capped at 1.0 when |relevant| > k).
+    Any-hit recall — not fractional recall — is the correct headline metric
+    here for two reasons: (1) it is directly comparable to the external
+    reference hit-rates, and (2) it preserves the invariant
+    ``MRR <= recall_at_k`` for any single result, since a first relevant item
+    at rank r contributes 1/r <= 1 to MRR but a full 1.0 to an any-hit. The
+    datasets carry *multi-evidence* ground truth (a question may have 2-6
+    relevant sessions), so fractional recall would deflate a rank-1 hit to
+    1/|relevant| and break that invariant. Use :func:`fractional_recall_at_k`
+    when the proportion of relevant items found is genuinely wanted.
+
+    Args:
+        retrieved: Ordered list of retrieved item IDs.
+        relevant: Set of relevant item IDs (ground truth).
+        k: Number of top results to evaluate.
+
+    Returns:
+        1.0 if at least one relevant item is in the top-k, else 0.0. Returns
+        0.0 if k <= 0, retrieved is empty, or relevant is empty.
+    """
+    if k <= 0 or not retrieved or not relevant:
+        return 0.0
+    hits = sum(1 for item in retrieved[:k] if item in relevant)
+    return 1.0 if hits > 0 else 0.0
+
+
+def fractional_recall_at_k(retrieved: List[str], relevant: set, k: int) -> float:
+    """Compute fractional recall@k — proportion of relevant items in top-k.
+
+    Returns ``(# relevant items found in top-k) / (total # relevant items)``,
+    capped at 1.0. Unlike :func:`recall_at_k` (any-hit hit-rate), this rewards
+    finding *more* of a multi-evidence ground-truth set: a rank-1 hit on a
+    2-evidence question scores 0.5 here but 1.0 under :func:`recall_at_k`.
+
+    This is NOT the headline benchmark metric — it is not comparable to the
+    external any-hit reference numbers and does not preserve ``MRR <= recall``.
+    It is retained for per-evidence coverage analysis.
 
     Args:
         retrieved: Ordered list of retrieved item IDs.
@@ -128,8 +163,7 @@ def recall_at_k(retrieved: List[str], relevant: set, k: int) -> float:
     """
     if k <= 0 or not retrieved or not relevant:
         return 0.0
-    top_k = retrieved[:k]
-    hits = sum(1 for item in top_k if item in relevant)
+    hits = sum(1 for item in retrieved[:k] if item in relevant)
     return min(1.0, hits / len(relevant))
 
 
