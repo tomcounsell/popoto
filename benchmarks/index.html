@@ -2486,7 +2486,7 @@ the relevant memory given a natural-language query. It supports two datasets:</p
 <tbody>
 <tr>
 <td><strong>Recall@K</strong></td>
-<td>Fraction of relevant items found in top-K retrieved results. For single-relevant-item queries, this is a hit-rate: 1 if the correct session/turn appears in top-K, else 0.</td>
+<td>Any-hit hit-rate: 1.0 if <strong>any</strong> relevant session/turn appears in the top-K retrieved results, else 0.0. This is the definition used by the published reference numbers and preserves the invariant MRR ≤ Recall@K. (A fractional variant — proportion of multi-evidence items found — is available as <code>fractional_recall_at_k</code> for per-evidence coverage analysis, but is not the headline metric.)</td>
 </tr>
 <tr>
 <td><strong>MRR</strong></td>
