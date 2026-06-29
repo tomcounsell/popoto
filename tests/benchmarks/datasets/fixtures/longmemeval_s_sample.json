@@ -1,91 +1,158 @@
 [
   {
-    "question_id": "lme_001",
-    "question": "What did the user say about their vacation plans in session alpha?",
-    "answer": "The user mentioned they plan to visit Paris in the summer.",
-    "question_type": "episodic",
-    "evidence_session_id": "session_alpha",
-    "conversation_history": [
-      {
-        "session_id": "session_alpha",
-        "turns": [
-          {"role": "user", "content": "I'm planning to visit Paris this summer."},
-          {"role": "assistant", "content": "That sounds wonderful! Paris is beautiful in summer."},
-          {"role": "user", "content": "I've always wanted to see the Eiffel Tower."},
-          {"role": "assistant", "content": "You'll love it. The views from the top are incredible."}
-        ]
-      },
-      {
-        "session_id": "session_beta",
-        "turns": [
-          {"role": "user", "content": "Can you recommend a good recipe for pasta?"},
-          {"role": "assistant", "content": "Sure! Here's a simple carbonara recipe."}
-        ]
-      },
-      {
-        "session_id": "session_gamma",
-        "turns": [
-          {"role": "user", "content": "How do I fix a leaky faucet?"},
-          {"role": "assistant", "content": "First, turn off the water supply valve under the sink."}
-        ]
-      }
+    "question_id": "e47becba",
+    "question_type": "single-session-user",
+    "question": "What degree did I graduate with?",
+    "question_date": "2023/05/30 (Tue) 23:40",
+    "answer": "Business Administration",
+    "answer_session_ids": [
+      "answer_280352e9"
+    ],
+    "haystack_dates": [
+      "2023/05/20 (Sat) 02:21",
+      "2023/05/20 (Sat) 02:57",
+      "2023/05/30 (Tue) 17:27"
+    ],
+    "haystack_session_ids": [
+      "sharegpt_yywfIrx_0",
+      "85a1be56_1",
+      "answer_280352e9"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": "The farmer needs to transport a fox, a chicken, and some grain across a river using a boat. The fox cannot be left alone with the chicken, and the chicken cannot be left alone with the grain. The boat"
+        },
+        {
+          "role": "assistant",
+          "content": "To solve this puzzle, the farmer can follow these steps:\n\n1. First, the farmer should take the chicken across the river using the boat.\n2. Next, the farmer should go back to the original side of the r"
+        }
+      ],
+      [
+        {
+          "role": "user",
+          "content": "I'm trying to stay on top of my fitness goals and was wondering if you could recommend some workouts that can help me increase my step count. By the way, I've been tracking my progress with my new Fit"
+        },
+        {
+          "role": "assistant",
+          "content": "Congratulations on taking the first step (pun intended!) towards a healthier lifestyle! I'm happy to help you with workout recommendations to increase your step count.\n\nFirstly, kudos on investing in "
+        }
+      ],
+      [
+        {
+          "role": "user",
+          "content": "I'm trying to organize my life a bit better, can you recommend some task management apps that can help me prioritize my work and personal tasks? I've been using a planner, but I think I need something"
+        },
+        {
+          "role": "assistant",
+          "content": "Making the leap from a planner to a digital task management system! Congratulations on taking the first step towards streamlining your productivity. There are many excellent task management apps out t"
+        }
+      ]
     ]
   },
   {
-    "question_id": "lme_002",
-    "question": "Which programming language did the user say they were learning?",
-    "answer": "The user mentioned they were learning Python.",
-    "question_type": "factual",
-    "evidence_session_id": "session_coding",
-    "conversation_history": [
-      {
-        "session_id": "session_intro",
-        "turns": [
-          {"role": "user", "content": "Hello, nice to meet you."},
-          {"role": "assistant", "content": "Hello! Nice to meet you too. How can I help?"}
-        ]
-      },
-      {
-        "session_id": "session_coding",
-        "turns": [
-          {"role": "user", "content": "I've been learning Python for the past month."},
-          {"role": "assistant", "content": "Python is a great language for beginners!"},
-          {"role": "user", "content": "I'm working through a machine learning tutorial."},
-          {"role": "assistant", "content": "That's excellent. Which library are you using?"}
-        ]
-      },
-      {
-        "session_id": "session_other",
-        "turns": [
-          {"role": "user", "content": "What's the weather like today?"},
-          {"role": "assistant", "content": "I don't have real-time weather data, but I can help you find it."}
-        ]
-      }
+    "question_id": "118b2229",
+    "question_type": "single-session-user",
+    "question": "How long is my daily commute to work?",
+    "question_date": "2023/05/30 (Tue) 20:36",
+    "answer": "45 minutes each way",
+    "answer_session_ids": [
+      "answer_40a90d51"
+    ],
+    "haystack_dates": [
+      "2023/05/20 (Sat) 03:29",
+      "2023/05/20 (Sat) 07:48",
+      "2023/05/22 (Mon) 21:18"
+    ],
+    "haystack_session_ids": [
+      "db73b7e4_4",
+      "sharegpt_5V5H2HN_0",
+      "answer_40a90d51"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": "I'm looking for some advice on how to take care of my leather boots. I've been wearing my new boots almost daily since January 15th, and I want to make sure they last long. Do you have any tips on how"
+        },
+        {
+          "role": "assistant",
+          "content": "Congratulations on your new boots! Taking good care of them will indeed help them last longer and look great for years to come. Conditioning is an essential part of leather boot maintenance, and I'd b"
+        }
+      ],
+      [
+        {
+          "role": "user",
+          "content": "Pretend you are an internationally acclaimed interior designer and artist. You have a wonderful sense of color and design. You're not pretentious at all. You really love helping people pick colors. pe"
+        },
+        {
+          "role": "assistant",
+          "content": "Hello there! As an internationally acclaimed interior designer and artist, I am delighted to have the opportunity to help you with your color and design choices. I'm not at all pretentious - I believe"
+        }
+      ],
+      [
+        {
+          "role": "user",
+          "content": "I'm looking for some new fiction audiobook recommendations. I've been enjoying audiobooks a lot lately, especially during my daily commute."
+        },
+        {
+          "role": "assistant",
+          "content": "Audiobooks are a great way to make the most of your commute time! I'd be happy to recommend some fantastic fiction audiobooks across various genres. Here are a few suggestions:\n\n**Mystery/Thriller**\n\n"
+        }
+      ]
     ]
   },
   {
-    "question_id": "lme_003",
-    "question": "What medical condition did the user mention in session health?",
-    "answer": "The user mentioned they have a mild allergy to pollen.",
-    "question_type": "personal",
-    "evidence_session_id": "session_health",
-    "conversation_history": [
-      {
-        "session_id": "session_health",
-        "turns": [
-          {"role": "user", "content": "I have a mild allergy to pollen that flares up in spring."},
-          {"role": "assistant", "content": "That's quite common. Antihistamines can help with seasonal allergies."},
-          {"role": "user", "content": "Yes, I take cetirizine during allergy season."},
-          {"role": "assistant", "content": "That's an effective option. Make sure to take it consistently."}
-        ]
-      },
-      {
-        "session_id": "session_unrelated",
-        "turns": [
-          {"role": "user", "content": "Tell me about the history of jazz music."},
-          {"role": "assistant", "content": "Jazz originated in New Orleans in the early 20th century."}
-        ]
-      }
+    "question_id": "51a45a95",
+    "question_type": "single-session-user",
+    "question": "Where did I redeem a $5 coupon on coffee creamer?",
+    "question_date": "2023/05/30 (Tue) 20:42",
+    "answer": "Target",
+    "answer_session_ids": [
+      "answer_d61669c7"
+    ],
+    "haystack_dates": [
+      "2023/05/20 (Sat) 06:13",
+      "2023/05/20 (Sat) 09:49",
+      "2023/05/29 (Mon) 13:28"
+    ],
+    "haystack_session_ids": [
+      "sharegpt_9MbC1u2_0",
+      "ultrachat_122409",
+      "answer_d61669c7"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": "from 1539 to 1542 this spaniard traveled widely throughout the southeastern region of north america"
+        },
+        {
+          "role": "assistant",
+          "content": "It sounds like you are referring to the Spanish conquistador Hernando de Soto. De Soto led an expedition through what is now the southeastern United States from 1539 to 1542. He was the first European"
+        }
+      ],
+      [
+        {
+          "role": "user",
+          "content": "What are some effective communication strategies for managing conflict in friendships?"
+        },
+        {
+          "role": "assistant",
+          "content": "1. Active listening: listen to your friend's concerns without interrupting or judging, and acknowledge their feelings.\n\n2. Use \"I\" statements: focus on how the situation is making you feel, rather tha"
+        }
+      ],
+      [
+        {
+          "role": "user",
+          "content": "I'm trying to organize my coupons and receipts, do you have any tips on the best way to do that?"
+        },
+        {
+          "role": "assistant",
+          "content": "The eternal quest for coupon and receipt organization! I'm happy to help. Here are some tips to help you tame the chaos:\n\n**Coupon Organization:**\n\n1. **Coupon Binder:** Invest in a three-ring binder "
+        }
+      ]
     ]
   }
 ]
