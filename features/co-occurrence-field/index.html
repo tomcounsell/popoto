@@ -1317,6 +1317,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#contraction-guarantee" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Contraction Guarantee
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-limitation-neighbor-selection-bias" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known Limitation: Neighbor Selection Bias
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#cleanup-on-delete" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2512,6 +2534,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#contraction-guarantee" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Contraction Guarantee
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-limitation-neighbor-selection-bias" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known Limitation: Neighbor Selection Bias
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#cleanup-on-delete" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2630,6 +2674,12 @@
 <td><code>0.95</code></td>
 <td>Default multiplicative decay factor for <code>weaken_all()</code></td>
 </tr>
+<tr>
+<td><code>CO_OCCURRENCE_WEIGHT_CAP</code></td>
+<td>float</td>
+<td><code>1.0</code></td>
+<td>Upper bound on stored edge weights (experimental tuning constant in <code>Defaults</code>, not user config). Clamped on every <code>strengthen()</code> write and applied as a read-time <code>min(edge_weight, cap)</code> in the propagation BFS. Chosen with headroom below <code>1 / decay_per_hop = 2.0</code> so that <code>cap * decay_per_hop &lt; 1</code> guarantees per-hop contraction during propagation.</td>
+</tr>
 </tbody>
 </table>
 <h2 id="redis-key-pattern">Redis Key Pattern<a class="headerlink" href="#redis-key-pattern" title="Permanent link">&para;</a></h2>
@@ -2671,12 +2721,14 @@
 <li>Idempotent: linking an already-linked pair keeps the original weight</li>
 </ul>
 <h3 id="strengthenmodel_class-source_pk-target_pk-delta005-pipelinenone"><code>strengthen(model_class, source_pk, target_pk, delta=0.05, pipeline=None)</code><a class="headerlink" href="#strengthenmodel_class-source_pk-target_pk-delta005-pipelinenone" title="Permanent link">&para;</a></h3>
-<p>Increase the weight of an existing edge via atomic ZINCRBY.</p>
+<p>Increase the weight of an existing edge via atomic Lua script.</p>
+<p>Weights are clamped at <code>CO_OCCURRENCE_WEIGHT_CAP</code> (default 1.0) to guarantee per-hop contraction during propagation. The clamp is applied atomically via a Lua script (<code>STRENGTHEN_CLAMP_LUA</code>) that reads the current weight, adds delta, and writes back <code>min(old + delta, cap)</code> in a single <code>EVAL</code> — preventing concurrent <code>strengthen()</code> races on the same edge.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">new_weight</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">strengthen</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="n">pk_a</span><span class="p">,</span> <span class="n">pk_b</span><span class="p">,</span> <span class="n">delta</span><span class="o">=</span><span class="mf">0.1</span><span class="p">)</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="c1"># Returns the new weight after increment</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="c1"># Returns the new weight after increment and clamp</span>
 </code></pre></div>
 <ul>
 <li>Raises <code>ValueError</code> if <code>delta &lt;= 0</code></li>
+<li>Returned weight is the clamped value, never exceeding <code>CO_OCCURRENCE_WEIGHT_CAP</code></li>
 </ul>
 <h3 id="unlinkmodel_class-source_pk-target_pk-pipelinenone"><code>unlink(model_class, source_pk, target_pk, pipeline=None)</code><a class="headerlink" href="#unlinkmodel_class-source_pk-target_pk-pipelinenone" title="Permanent link">&para;</a></h3>
 <p>Remove an edge. If symmetric, removes both directions.</p>
@@ -2697,6 +2749,7 @@
 </code></pre></div>
 <h3 id="propagatemodel_class-seed_pks-depth2-decay_per_hop05-threshold001"><code>propagate(model_class, seed_pks, depth=2, decay_per_hop=0.5, threshold=0.01)</code><a class="headerlink" href="#propagatemodel_class-seed_pks-depth2-decay_per_hop05-threshold001" title="Permanent link">&para;</a></h3>
 <p>BFS graph propagation with exponential weight decay per hop. Uses a server-side Lua script for efficiency.</p>
+<p>Per-hop transfer is always &lt;= <code>decay_per_hop</code> because edge weights are clamped. The BFS threshold reliably terminates the walk. A runtime guard raises <code>ValueError</code> if <code>cap * decay_per_hop &gt;= 1.0</code>. A read-time <code>min(edge_weight, cap)</code> in the Lua BFS handles pre-existing over-cap weights as defense-in-depth.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">scores</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">propagate</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="p">[</span><span class="n">pk_a</span><span class="p">],</span> <span class="n">depth</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">decay_per_hop</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
 <a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="c1"># Returns: {&quot;pk_b&quot;: 0.4, &quot;pk_c&quot;: 0.08, ...}</span>
 </code></pre></div>
@@ -2704,9 +2757,32 @@
 <li>When same PK reached via multiple paths, uses <code>max(weight)</code></li>
 <li><code>depth=0</code> returns seeds only with weight 1.0</li>
 <li>Seeds are excluded from results (except depth=0)</li>
+<li>Raises <code>ValueError</code> if <code>CO_OCCURRENCE_WEIGHT_CAP * decay_per_hop &gt;= 1.0</code> (contraction invariant violated; would amplify instead of decay)</li>
 </ul>
 <h2 id="edge-pruning">Edge Pruning<a class="headerlink" href="#edge-pruning" title="Permanent link">&para;</a></h2>
 <p>When <code>max_edges</code> is exceeded during <code>link()</code>, the lowest-weight edges are atomically pruned using a Lua script. This prevents unbounded memory growth.</p>
+<h2 id="contraction-guarantee">Contraction Guarantee<a class="headerlink" href="#contraction-guarantee" title="Permanent link">&para;</a></h2>
+<p><code>propagate()</code> implements spreading activation: at each BFS hop, activation is multiplied by <code>decay_per_hop * effective_edge_weight</code>. For propagation to decay (rather than amplify) with hop count, the per-hop transfer factor must be strictly less than 1:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>decay_per_hop * effective_edge_weight &lt; 1
+</code></pre></div>
+<p><code>CO_OCCURRENCE_WEIGHT_CAP</code> enforces this invariant by bounding <code>effective_edge_weight &lt;= cap</code>. The cap is chosen with intentional headroom below the theoretical maximum <code>1 / decay_per_hop</code>:</p>
+<ul>
+<li>Default <code>decay_per_hop = 0.5</code> -&gt; theoretical max cap = <code>1 / 0.5 = 2.0</code></li>
+<li>Actual <code>CO_OCCURRENCE_WEIGHT_CAP = 1.0</code> (2x headroom)</li>
+</ul>
+<p>At default config, <code>cap * decay_per_hop = 1.0 * 0.5 = 0.5 &lt; 1</code>, so each hop contracts activation by at least half. The headroom means small upward adjustments to <code>decay_per_hop</code> do not silently violate the invariant.</p>
+<p>A runtime guard in <code>propagate()</code> enforces <code>cap * decay_per_hop &lt; 1</code> at call time and raises <code>ValueError</code> if the inequality fails. This guard fires on misconfiguration (e.g. a future constants sweep raises <code>decay_per_hop</code> above <code>1 / cap</code> without a matching cap adjustment), not under current defaults. It is the runtime backstop for the invariant the cap value is designed to satisfy.</p>
+<p>The contraction invariant holds for any reachable stored weight, not just newly-written ones, because the Lua BFS applies <code>min(edge_weight, cap)</code> at read time as defense-in-depth.</p>
+<h2 id="known-limitation-neighbor-selection-bias">Known Limitation: Neighbor Selection Bias<a class="headerlink" href="#known-limitation-neighbor-selection-bias" title="Permanent link">&para;</a></h2>
+<p>The propagation BFS selects neighbors via <code>ZREVRANGE</code>, which ranks by the raw stored ZSET score. For pre-existing over-cap weights (edges written before the clamp was introduced, or edges above the cap from a previous lower cap value), the raw stored score may exceed <code>CO_OCCURRENCE_WEIGHT_CAP</code>.</p>
+<p>This biases <em>which</em> neighbors are visited when <code>max_per_node</code> truncation fires: an over-cap edge with stored score 2.5 ranks above a clamped edge at 1.0, even though both have the same effective weight (1.0) after the read-time <code>min()</code>. The contraction invariant is not violated — the read-time clamp guarantees <code>effective_weight &lt;= cap</code> regardless of the stored score — but the <em>selection</em> of which neighbors to expand is distorted by the un-clamped scores.</p>
+<p>This limitation:</p>
+<ul>
+<li><strong>Does not violate the contraction invariant</strong> — <code>min(edge_weight, cap)</code> is applied before computing propagated weight, so per-hop transfer stays bounded.</li>
+<li><strong>Self-corrects as over-cap edges are lazily clamped</strong> on the next <code>strengthen()</code> call (since <code>min(over_cap + delta, cap) = cap</code>).</li>
+<li><strong>Only affects ranking when <code>max_per_node</code> truncation fires</strong> — if all neighbors fit within the <code>max_per_node</code> budget, no truncation occurs and the bias is invisible.</li>
+</ul>
+<p>The fix path, if the bias materializes as a ranking distortion in practice, is a one-time migration that clamps all existing ZSET scores in-place via a <code>ZADD XX</code> overwrite with <code>min(score, cap)</code>. This would normalize stored scores to their effective values and eliminate the ranking distortion. A follow-up issue should be filed if the bias is observed in production graphs.</p>
 <h2 id="cleanup-on-delete">Cleanup on Delete<a class="headerlink" href="#cleanup-on-delete" title="Permanent link">&para;</a></h2>
 <p>When a model instance is deleted, the <code>on_delete</code> hook:
 1. Removes the instance's own edge sorted set
@@ -2714,20 +2790,20 @@
 <h2 id="synergy-with-other-fields">Synergy with Other Fields<a class="headerlink" href="#synergy-with-other-fields" title="Permanent link">&para;</a></h2>
 <h3 id="with-decayingsortedfield">With DecayingSortedField<a class="headerlink" href="#with-decayingsortedfield" title="Permanent link">&para;</a></h3>
 <p>Propagated weights can identify related records for boosting retrieval scores:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">scores</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">propagate</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="p">[</span><span class="n">pk_a</span><span class="p">],</span> <span class="n">depth</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="c1"># Use scores to boost DecayingSortedField retrieval ranking</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">scores</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">propagate</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="p">[</span><span class="n">pk_a</span><span class="p">],</span> <span class="n">depth</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="c1"># Use scores to boost DecayingSortedField retrieval ranking</span>
 </code></pre></div>
 <h3 id="with-accesstrackermixin">With AccessTrackerMixin<a class="headerlink" href="#with-accesstrackermixin" title="Permanent link">&para;</a></h3>
 <p>Co-accessed records can be linked to build association graphs:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># After detecting co-access</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="n">field</span><span class="o">.</span><span class="n">link</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="n">pk_a</span><span class="p">,</span> <span class="n">pk_b</span><span class="p">,</span> <span class="n">initial_weight</span><span class="o">=</span><span class="mf">0.1</span><span class="p">)</span>
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="n">field</span><span class="o">.</span><span class="n">strengthen</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="n">pk_a</span><span class="p">,</span> <span class="n">pk_b</span><span class="p">,</span> <span class="n">delta</span><span class="o">=</span><span class="mf">0.05</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># After detecting co-access</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="n">field</span><span class="o">.</span><span class="n">link</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="n">pk_a</span><span class="p">,</span> <span class="n">pk_b</span><span class="p">,</span> <span class="n">initial_weight</span><span class="o">=</span><span class="mf">0.1</span><span class="p">)</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="n">field</span><span class="o">.</span><span class="n">strengthen</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="n">pk_a</span><span class="p">,</span> <span class="n">pk_b</span><span class="p">,</span> <span class="n">delta</span><span class="o">=</span><span class="mf">0.05</span><span class="p">)</span>
 </code></pre></div>
 <h3 id="with-confidencefield">With ConfidenceField<a class="headerlink" href="#with-confidencefield" title="Permanent link">&para;</a></h3>
 <p>Confidence values can modulate effective edge weights:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">confidence</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">get_confidence</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">)</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="n">linked</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_linked</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="n">pk</span><span class="p">)</span>
-<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="n">effective_weights</span> <span class="o">=</span> <span class="p">[(</span><span class="n">pk</span><span class="p">,</span> <span class="n">w</span> <span class="o">*</span> <span class="n">confidence</span><span class="p">)</span> <span class="k">for</span> <span class="n">pk</span><span class="p">,</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">linked</span><span class="p">]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="n">confidence</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">get_confidence</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">)</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="n">linked</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_linked</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="n">pk</span><span class="p">)</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="n">effective_weights</span> <span class="o">=</span> <span class="p">[(</span><span class="n">pk</span><span class="p">,</span> <span class="n">w</span> <span class="o">*</span> <span class="n">confidence</span><span class="p">)</span> <span class="k">for</span> <span class="n">pk</span><span class="p">,</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">linked</span><span class="p">]</span>
 </code></pre></div>
 
 
