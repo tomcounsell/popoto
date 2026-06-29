@@ -26,7 +26,7 @@ the relevant memory given a natural-language query. It supports two datasets:
 
 | Metric | Definition |
 |--------|-----------|
-| **Recall@K** | Fraction of relevant items found in top-K retrieved results. For single-relevant-item queries, this is a hit-rate: 1 if the correct session/turn appears in top-K, else 0. |
+| **Recall@K** | Any-hit hit-rate: 1.0 if **any** relevant session/turn appears in the top-K retrieved results, else 0.0. This is the definition used by the published reference numbers and preserves the invariant MRR ≤ Recall@K. (A fractional variant — proportion of multi-evidence items found — is available as `fractional_recall_at_k` for per-evidence coverage analysis, but is not the headline metric.) |
 | **MRR** | Mean Reciprocal Rank — reciprocal of the rank of the first relevant result, averaged over all questions. |
 | **p50 latency** | Median wall-clock time for one `assemble()` call (ms). |
 | **p95 latency** | 95th-percentile latency (ms). |

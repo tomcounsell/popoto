@@ -13,7 +13,11 @@ from pathlib import Path
 from tests.benchmarks.datasets import BenchmarkItem
 from tests.benchmarks.datasets.longmemeval_s import iter_items as iter_longmemeval
 from tests.benchmarks.datasets.locomo import iter_items as iter_locomo
-from tests.benchmarks.metrics.retrieval import recall_at_k
+from tests.benchmarks.metrics.retrieval import (
+    fractional_recall_at_k,
+    mean_reciprocal_rank,
+    recall_at_k,
+)
 
 FIXTURES_DIR = Path(__file__).parent / "datasets" / "fixtures"
 LME_FIXTURE = FIXTURES_DIR / "longmemeval_s_sample.json"
@@ -62,24 +66,91 @@ class TestRecallAtK:
         assert recall_at_k(["a", "b"], {"a"}, k=-1) == 0.0
 
     def test_multiple_relevant_all_found(self):
-        """Multiple relevant items, all in top-k — 1.0."""
+        """Multiple relevant items, all in top-k — any-hit 1.0."""
         assert recall_at_k(["a", "b", "c"], {"a", "b"}, k=5) == 1.0
 
-    def test_multiple_relevant_partial(self):
-        """Multiple relevant items, half in top-k — 0.5."""
-        result = recall_at_k(["a", "x", "y"], {"a", "b"}, k=3)
-        assert result == pytest.approx(0.5)
+    def test_multiple_relevant_partial_is_any_hit(self):
+        """Multiple relevant items, only one in top-k — any-hit is 1.0.
+
+        Regression guard for issue #433: under the corrected any-hit
+        definition, finding ANY relevant item scores 1.0 (not the fractional
+        0.5). Fractional behavior now lives in fractional_recall_at_k.
+        """
+        assert recall_at_k(["a", "x", "y"], {"a", "b"}, k=3) == 1.0
 
     def test_single_item_boundary(self):
         """Exactly k items in retrieved, relevant is the last one."""
         assert recall_at_k(["x", "y", "z", "a"], {"a"}, k=4) == 1.0
         assert recall_at_k(["x", "y", "z", "a"], {"a"}, k=3) == 0.0
 
-    def test_caps_at_1_for_single_relevant(self):
-        """With a single relevant item, recall@k cannot exceed 1.0."""
-        result = recall_at_k(["a", "b", "c"], {"a"}, k=10)
-        assert result <= 1.0
-        assert result == 1.0
+    def test_returns_only_zero_or_one(self):
+        """Any-hit recall is binary: never a fraction (issue #433)."""
+        assert recall_at_k(["a", "b", "c"], {"a"}, k=10) == 1.0
+        assert recall_at_k(["x", "y", "z"], {"a"}, k=10) == 0.0
+        assert recall_at_k(["a", "x"], {"a", "b", "c"}, k=5) == 1.0
+
+    def test_multi_evidence_rank1_hit_is_one(self):
+        """Multi-evidence ground truth, rank-1 hit — recall@1 == 1.0.
+
+        The core of issue #433: a top-1 hit on a question with multiple
+        evidence sessions must score 1.0, not 1/|relevant|.
+        """
+        assert recall_at_k(["a", "x", "y"], {"a", "b", "c"}, k=1) == 1.0
+
+    def test_mrr_le_recall_invariant(self):
+        """MRR <= any-hit recall over the full list must always hold (#433).
+
+        MRR is bounded above by any-hit recall: a first-relevant item at rank
+        r contributes 1/r <= 1 to MRR but a full 1.0 to any-hit recall once k
+        reaches r. The universal per-query bound is therefore against recall
+        evaluated over the entire ranked list. (For a fixed small k whose
+        window ends before the first hit, R@k can legitimately be 0 while
+        MRR > 0 — that is not a violation.) This invariant is the guard whose
+        aggregate failure (MRR 0.899 > R@5 0.888) exposed the original bug.
+        """
+        cases = [
+            (["a", "b", "c"], {"a"}),
+            (["x", "a", "y"], {"a", "b"}),
+            (["x", "y", "z", "a"], {"a", "c"}),
+            (["x", "y", "z"], {"a"}),  # miss: both 0.0
+            (["a", "b"], {"a", "b"}),
+        ]
+        for retrieved, relevant in cases:
+            mrr = mean_reciprocal_rank(retrieved, relevant)
+            any_hit = recall_at_k(retrieved, relevant, len(retrieved))
+            assert mrr <= any_hit + 1e-9, (
+                f"MRR {mrr} > any-hit recall {any_hit} " f"for {retrieved} / {relevant}"
+            )
+            # When the first hit is within the window, R@k == 1.0 >= MRR.
+            for k in (1, 5, 10):
+                if recall_at_k(retrieved, relevant, k) == 1.0:
+                    assert mrr <= 1.0
+
+
+class TestFractionalRecallAtK:
+    """Unit tests for the retained fractional_recall_at_k helper (issue #433)."""
+
+    def test_partial_is_fraction(self):
+        """One of two relevant items in top-k — fractional 0.5."""
+        assert fractional_recall_at_k(
+            ["a", "x", "y"], {"a", "b"}, k=3
+        ) == pytest.approx(0.5)
+
+    def test_all_found_is_one(self):
+        """All relevant items found — 1.0."""
+        assert fractional_recall_at_k(["a", "b", "c"], {"a", "b"}, k=5) == 1.0
+
+    def test_rank1_hit_multi_evidence_is_fraction(self):
+        """Rank-1 hit on 3-evidence question — fractional 1/3 (contrast any-hit)."""
+        assert fractional_recall_at_k(
+            ["a", "x", "y"], {"a", "b", "c"}, k=1
+        ) == pytest.approx(1 / 3)
+
+    def test_edge_cases_zero(self):
+        """Empty / non-positive-k edge cases — 0.0."""
+        assert fractional_recall_at_k([], {"a"}, k=5) == 0.0
+        assert fractional_recall_at_k(["a"], set(), k=5) == 0.0
+        assert fractional_recall_at_k(["a"], {"a"}, k=0) == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -228,4 +299,6 @@ class TestLoCoMoAdapter:
         items = list(iter_locomo(fixture_path=LOCOMO_FIXTURE))
         for item in items:
             for turn in item.history:
-                assert turn["content"].strip(), f"Turn content should not be empty: {turn}"
+                assert turn[
+                    "content"
+                ].strip(), f"Turn content should not be empty: {turn}"
