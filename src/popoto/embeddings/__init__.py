@@ -12,6 +12,9 @@ Available providers:
     - OpenAIProvider: OpenAI embeddings (requires openai package)
     - OllamaProvider: Local Ollama embeddings (requires a running Ollama
       server; stdlib-only, no extra package needed)
+    - SentenceTransformersProvider: Local sentence-transformers embeddings
+      (all-MiniLM-L6-v2, 384-dim, no API key; requires the [benchmark] extra,
+      imported lazily)
 """
 
 from abc import ABC, abstractmethod
@@ -72,4 +75,14 @@ class AbstractEmbeddingProvider(ABC):
 
 from .ollama import OllamaProvider  # noqa: E402  (stdlib-only, safe to eagerly import)
 
-__all__ = ["AbstractEmbeddingProvider", "OllamaProvider"]
+# Safe to eagerly import: the heavy sentence-transformers dependency is
+# imported lazily inside SentenceTransformersProvider.embed(), not here.
+from .sentence_transformers import (  # noqa: E402
+    SentenceTransformersProvider,
+)
+
+__all__ = [
+    "AbstractEmbeddingProvider",
+    "OllamaProvider",
+    "SentenceTransformersProvider",
+]

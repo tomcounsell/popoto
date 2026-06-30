@@ -15,39 +15,44 @@ Model class used:
     - importance: FloatField (fixed at 0.5 for baseline)
     - relevance: DecayingSortedField (scored via CompositeScoreQuery)
     - certainty: ConfidenceField (initial 0.5)
-    - content_index: BM25Field (hybrid retrieval — lexical signal)
+    - content_index: BM25Field (lexical signal — always present)
+    - embedding: EmbeddingField (vector signal — present only in hybrid mode)
 
     Class is re-created per benchmark item with a unique name prefix to
     ensure Redis key isolation between items. teardown() scans and deletes
-    all keys matching the class prefix.
+    all keys matching the class prefix (and the per-class embedding dir).
 
-Retrieval mode:
-    ``ContextAssembler`` is constructed with ``retrieval_mode="auto"``.
-    Because the model has a BM25Field but no EmbeddingField (no provider
-    configured), auto-mode resolves to ``"composite"`` — but BM25 lexical
-    search is available for direct use via ``keyword_search()``.
-
-    Effective mode selection (issue #395):
+Retrieval mode (issue #437):
+    Retrieval is driven through ``ContextAssembler.assemble()`` as the
+    **primary** path. The assembler is constructed with
+    ``retrieval_mode="auto"`` so field presence drives mode resolution
+    (issue #395):
     - Model has BM25Field + EmbeddingField → ``"hybrid"`` (BM25 + vector via RRF)
-    - Model has BM25Field only → ``"composite"`` (auto fallback)
-    - Model has EmbeddingField only → ``"composite"`` (auto fallback)
-    - Model has neither → ``"composite"`` (original behaviour)
+    - Model has BM25Field only → ``"lexical"`` (query-sensitive BM25, no vector)
+    - Model has neither → ``"composite"`` (query-blind)
 
-    The benchmark baseline uses BM25Field only. Adding an EmbeddingField
-    with a configured provider would enable full hybrid mode.
+    ``ExternalScenario(retrieval_mode="lexical")`` (the default) declares a
+    BM25Field only, so auto-mode resolves to ``"lexical"``.
+    ``ExternalScenario(retrieval_mode="hybrid")`` additionally declares an
+    EmbeddingField with a local SentenceTransformersProvider, so auto-mode
+    resolves to ``"hybrid"`` and the RRF fusion (k=60) runs.
 
 This module is text-only: turns without content are silently skipped.
 """
 
 import logging
+import os
+import shutil
 import time
 import uuid
 from typing import Any, Dict, List, Optional
 
 from src import popoto
+from src.popoto.embeddings.sentence_transformers import SentenceTransformersProvider
 from src.popoto.fields.bm25_field import BM25Field
 from src.popoto.fields.confidence_field import ConfidenceField
 from src.popoto.fields.decaying_sorted_field import DecayingSortedField
+from src.popoto.fields.embedding_field import EmbeddingField, _get_embeddings_dir
 from src.popoto.recipes.context_assembler import ContextAssembler
 from src.popoto.redis_db import POPOTO_REDIS_DB
 
@@ -60,37 +65,62 @@ logger = logging.getLogger("POPOTO.Benchmark.ExternalScenario")
 BASELINE_SCORE_WEIGHTS = {"relevance": 1.0}
 
 
-def _build_external_model_class(safe_prefix: str):
+def _build_external_model_class(safe_prefix: str, with_embedding: bool = False):
     """Build a fresh Popoto Model class for one benchmark item.
 
     Uses a unique class name derived from ``safe_prefix`` so each item
     gets its own Redis key namespace. This prevents cross-item contamination
     when running multiple items sequentially.
 
-    Includes BM25Field for lexical retrieval. ContextAssembler will use
-    ``retrieval_mode="auto"``; when both BM25Field and EmbeddingField are
-    present the hybrid (RRF) pull path is used automatically.
+    Always includes a BM25Field for the lexical signal. When
+    ``with_embedding`` is True, also declares an EmbeddingField backed by a
+    local SentenceTransformersProvider (all-MiniLM-L6-v2), so that
+    ``ContextAssembler(retrieval_mode="auto")`` resolves to the ``"hybrid"``
+    (RRF) pull path. With BM25 only, auto-mode resolves to ``"lexical"``.
 
     Args:
         safe_prefix: Short alphanumeric prefix (e.g., "a3f9b2c1").
+        with_embedding: If True, add an EmbeddingField for hybrid retrieval.
 
     Returns:
         A new Popoto Model class with agent_id, content, importance,
-        relevance, certainty, and content_index fields.
+        relevance, certainty, content_index, and (in hybrid mode) embedding
+        fields.
     """
 
-    class ExternalBenchmarkMemory(popoto.Model):
-        turn_id = popoto.AutoKeyField()
-        agent_id = popoto.KeyField()
-        content = popoto.StringField(default="")
-        importance = popoto.FloatField(default=0.5)
-        relevance = DecayingSortedField(
-            decay_rate=0.5,
-            base_score_field="importance",
-            partition_by="agent_id",
-        )
-        certainty = ConfidenceField(initial_confidence=0.5)
-        content_index = BM25Field(source="content")
+    if with_embedding:
+
+        class ExternalBenchmarkMemory(popoto.Model):
+            turn_id = popoto.AutoKeyField()
+            agent_id = popoto.KeyField()
+            content = popoto.StringField(default="")
+            importance = popoto.FloatField(default=0.5)
+            relevance = DecayingSortedField(
+                decay_rate=0.5,
+                base_score_field="importance",
+                partition_by="agent_id",
+            )
+            certainty = ConfidenceField(initial_confidence=0.5)
+            content_index = BM25Field(source="content")
+            embedding = EmbeddingField(
+                source="content",
+                provider=SentenceTransformersProvider(),
+            )
+
+    else:
+
+        class ExternalBenchmarkMemory(popoto.Model):
+            turn_id = popoto.AutoKeyField()
+            agent_id = popoto.KeyField()
+            content = popoto.StringField(default="")
+            importance = popoto.FloatField(default=0.5)
+            relevance = DecayingSortedField(
+                decay_rate=0.5,
+                base_score_field="importance",
+                partition_by="agent_id",
+            )
+            certainty = ConfidenceField(initial_confidence=0.5)
+            content_index = BM25Field(source="content")
 
     ExternalBenchmarkMemory.__name__ = f"ExtMem{safe_prefix}"
     ExternalBenchmarkMemory.__qualname__ = f"ExtMem{safe_prefix}"
@@ -107,13 +137,22 @@ class ExternalScenario(Scenario):
         item: BenchmarkItem from a dataset adapter.
         overrides: Optional override dict (unused in baseline; present for
             API compatibility with sweep infrastructure).
+        retrieval_mode: ``"lexical"`` (default, BM25 only) or ``"hybrid"``
+            (BM25 + vector via RRF). Hybrid additionally declares an
+            EmbeddingField on the model so auto-mode resolves to hybrid.
     """
 
     name = "external_base"
 
-    def __init__(self, item: BenchmarkItem, overrides: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        item: BenchmarkItem,
+        overrides: Optional[Dict[str, Any]] = None,
+        retrieval_mode: str = "lexical",
+    ):
         super().__init__(overrides)
         self.item = item
+        self.retrieval_mode = retrieval_mode
         self._agent_id = f"extbench:{uuid.uuid4().hex[:12]}"
         self._model_class = None
         self._assembler = None
@@ -132,11 +171,12 @@ class ExternalScenario(Scenario):
             ConnectionError: If Redis is unavailable.
         """
         safe_prefix = uuid.uuid4().hex[:8]
-        self._model_class = _build_external_model_class(safe_prefix)
-        # retrieval_mode="auto": selects hybrid when BM25+EmbeddingField
-        # detected, composite otherwise. The baseline model has BM25Field
-        # only → composite path, but keyword_search() is available via
-        # BM25Field.search() for direct use.
+        self._model_class = _build_external_model_class(
+            safe_prefix, with_embedding=self.retrieval_mode == "hybrid"
+        )
+        # retrieval_mode="auto": field presence drives resolution (issue #395).
+        # BM25 + EmbeddingField (hybrid mode) → "hybrid" (RRF k=60); BM25 only
+        # (lexical mode) → "lexical". assemble() is the primary retrieval path.
         self._assembler = ContextAssembler(
             model_class=self._model_class,
             score_weights=BASELINE_SCORE_WEIGHTS,
@@ -185,20 +225,19 @@ class ExternalScenario(Scenario):
     def run(self) -> ScenarioResult:
         """Run retrieval and return ScenarioResult.
 
-        Uses BM25 keyword search (via ``content_index`` BM25Field) to rank
-        turns by lexical relevance to the query. When the assembled result
-        contains no records from the composite path, falls back to BM25-only
-        retrieval to maximise R@K signal.
+        Drives retrieval through ``ContextAssembler.assemble()`` as the
+        **primary** path (issue #437). The assembler's effective mode is
+        resolved from field presence: ``"lexical"`` (BM25 only) or
+        ``"hybrid"`` (BM25 + vector fused via RRF). The selected records are
+        mapped to their Redis keys, then back to ground-truth session/turn
+        IDs via ``_session_key_map``.
 
         Measures latency of the retrieval call only (not ingestion).
-        Maps retrieved Redis keys to session IDs via _session_key_map to
-        produce comparable relevant_ids and retrieved_ids.
 
         Returns:
-            ScenarioResult with retrieved_ids as Redis keys and relevant_ids
-            as session IDs (from ground truth). Both are in the same key space
-            because relevant_ids from the dataset are session IDs and we build
-            a session_id -> redis_keys mapping during setup.
+            ScenarioResult with retrieved_ids as session/turn IDs and
+            relevant_ids from ground truth (same key space, via the
+            session_id/turn_id -> redis_keys mapping built during setup).
         """
         if not self._assembler:
             return ScenarioResult(
@@ -216,43 +255,31 @@ class ExternalScenario(Scenario):
 
         t0 = time.monotonic()
 
-        # Primary retrieval: BM25 keyword search on content (issue #395 hybrid path)
-        # The model has BM25Field(source="content"), so we can search lexically.
+        # Primary retrieval: ContextAssembler.assemble(). With both BM25 and
+        # EmbeddingField present (hybrid mode) this runs _pull_path_hybrid()
+        # (RRF k=60); with BM25 only it runs the lexical pull path.
         retrieved_keys: List[str] = []
-        retrieval_method = "bm25"
         try:
-            bm25_results = BM25Field.search(
-                self._model_class,
-                "content_index",
-                self.item.query,
-                limit=20,
+            assembly_result = self._assembler.assemble(
+                query_cues={"topic": self.item.query},
+                agent_id=self._agent_id,
             )
-            if bm25_results:
-                retrieved_keys = [rk for rk, _score in bm25_results]
+            for record in assembly_result.records:
+                try:
+                    retrieved_keys.append(record.db_key.redis_key)
+                except Exception:
+                    retrieved_keys.append(str(id(record)))
         except Exception as e:
-            logger.warning("BM25 search failed, falling back to assembler: %s", e)
-            retrieval_method = "composite_fallback"
+            return ScenarioResult(
+                scenario_name=self.name,
+                status="error",
+                error_message=f"assemble() failed: {e}",
+            )
 
-        # Fallback: if BM25 produced nothing, use composite assembler
-        if not retrieved_keys:
-            try:
-                assembly_result = self._assembler.assemble(
-                    query_cues={"topic": self.item.query},
-                    agent_id=self._agent_id,
-                )
-                retrieved_keys = []
-                for record in assembly_result.records:
-                    try:
-                        retrieved_keys.append(record.db_key.redis_key)
-                    except Exception:
-                        retrieved_keys.append(str(id(record)))
-                retrieval_method = "composite_fallback"
-            except Exception as e:
-                return ScenarioResult(
-                    scenario_name=self.name,
-                    status="error",
-                    error_message=f"assemble() failed: {e}",
-                )
+        # The assembler's effective mode (e.g. "lexical" / "hybrid").
+        retrieval_method = getattr(
+            self._assembler, "_effective_mode", self.retrieval_mode
+        )
 
         retrieval_ms = (time.monotonic() - t0) * 1000
 
@@ -334,5 +361,13 @@ class ExternalScenario(Scenario):
                     break
         except Exception:
             pass
+
+        # Remove on-disk embedding artifacts (.npy + index sidecar) for this
+        # per-item model class. No-op in lexical mode (dir never created).
+        if self._model_class:
+            shutil.rmtree(
+                os.path.join(_get_embeddings_dir(), self._model_class.__name__),
+                ignore_errors=True,
+            )
 
         super().teardown()
