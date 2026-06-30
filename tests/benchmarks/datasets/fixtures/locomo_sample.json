@@ -1,141 +1,133 @@
 [
   {
-    "dialogue_id": "locomo_001",
-    "conversation": [
-      {
-        "session": 1,
-        "turn_id": "t001",
-        "role": "speaker1",
-        "text": "I just got back from my hiking trip in Colorado. It was absolutely amazing!"
-      },
-      {
-        "session": 1,
-        "turn_id": "t002",
-        "role": "speaker2",
-        "text": "That sounds fantastic! How long were you there?"
-      },
-      {
-        "session": 1,
-        "turn_id": "t003",
-        "role": "speaker1",
-        "text": "About two weeks. We hiked fourteen mountains over 14,000 feet."
-      },
-      {
-        "session": 2,
-        "turn_id": "t004",
-        "role": "speaker1",
-        "text": "I started a new job at a tech startup last month."
-      },
-      {
-        "session": 2,
-        "turn_id": "t005",
-        "role": "speaker2",
-        "text": "Congrats! What kind of work do you do there?"
-      },
-      {
-        "session": 2,
-        "turn_id": "t006",
-        "role": "speaker1",
-        "text": "I'm a backend software engineer focusing on distributed systems."
-      },
-      {
-        "session": 3,
-        "turn_id": "t007",
-        "role": "speaker1",
-        "text": "My daughter started college this fall. She's studying marine biology."
-      },
-      {
-        "session": 3,
-        "turn_id": "t008",
-        "role": "speaker2",
-        "text": "That's wonderful! Does she want to work in conservation?"
-      },
-      {
-        "session": 3,
-        "turn_id": "t009",
-        "role": "speaker1",
-        "text": "Yes, she hopes to work with coral reef preservation someday."
-      }
-    ],
+    "sample_id": "conv-26",
+    "conversation": {
+      "speaker_a": "Caroline",
+      "speaker_b": "Melanie",
+      "session_1_date_time": "1:56 pm on 8 May, 2023",
+      "session_1": [
+        {
+          "speaker": "Caroline",
+          "dia_id": "D1:1",
+          "text": "I just got back from my hiking trip in Colorado. It was absolutely amazing!"
+        },
+        {
+          "speaker": "Melanie",
+          "dia_id": "D1:2",
+          "text": "That sounds fantastic! How long were you there?"
+        },
+        {
+          "speaker": "Caroline",
+          "dia_id": "D1:3",
+          "img_url": ["https://example.com/peak.jpg"],
+          "blip_caption": "a snow-capped mountain peak under a clear blue sky"
+        }
+      ],
+      "session_2_date_time": "10:13 am on 21 May, 2023",
+      "session_2": [
+        {
+          "speaker": "Caroline",
+          "dia_id": "D2:1",
+          "text": "I started a new job at a tech startup last month."
+        },
+        {
+          "speaker": "Melanie",
+          "dia_id": "D2:2",
+          "text": "Congrats! What kind of work do you do there?"
+        },
+        {
+          "speaker": "Caroline",
+          "dia_id": "D2:3",
+          "text": "I'm a backend software engineer focusing on distributed systems."
+        }
+      ]
+    },
     "qa": [
       {
-        "question": "Where did speaker1 go on their hiking trip?",
+        "question": "Where did Caroline go on her hiking trip?",
         "answer": "Colorado",
-        "evidence_turn_id": "t001",
-        "type": "factual"
+        "evidence": ["D1:1"],
+        "category": 2
       },
       {
-        "question": "What is speaker1's profession?",
+        "question": "What did the photo from the hiking trip show?",
+        "answer": "A snow-capped mountain peak",
+        "evidence": ["D1:3"],
+        "category": 2
+      },
+      {
+        "question": "What is Caroline's profession?",
         "answer": "Backend software engineer",
-        "evidence_turn_id": "t006",
-        "type": "factual"
+        "evidence": ["D2:3"],
+        "category": 2
       },
       {
-        "question": "What does speaker1's daughter study?",
-        "answer": "Marine biology",
-        "evidence_turn_id": "t007",
-        "type": "factual"
+        "question": "Did Caroline mention climbing Mount Everest?",
+        "adversarial_answer": "Not mentioned in the conversation.",
+        "category": 5
       }
     ]
   },
   {
-    "dialogue_id": "locomo_002",
-    "conversation": [
-      {
-        "session": 1,
-        "turn_id": "t101",
-        "role": "speaker1",
-        "text": "I've been taking piano lessons for the past year."
-      },
-      {
-        "session": 1,
-        "turn_id": "t102",
-        "role": "speaker2",
-        "text": "That's great! Have you played any pieces yet?"
-      },
-      {
-        "session": 1,
-        "turn_id": "t103",
-        "role": "speaker1",
-        "text": "I can play a few Chopin nocturnes now. It took a lot of practice."
-      },
-      {
-        "session": 2,
-        "turn_id": "t104",
-        "role": "speaker1",
-        "text": "I'm vegetarian and have been for the past five years."
-      },
-      {
-        "session": 2,
-        "turn_id": "t105",
-        "role": "speaker2",
-        "text": "Do you ever miss eating meat?"
-      },
-      {
-        "session": 2,
-        "turn_id": "t106",
-        "role": "speaker1",
-        "text": "Sometimes, but I feel much healthier now."
-      }
-    ],
+    "sample_id": "conv-31",
+    "conversation": {
+      "speaker_a": "John",
+      "speaker_b": "Aisha",
+      "session_1_date_time": "9:02 pm on 2 June, 2023",
+      "session_1": [
+        {
+          "speaker": "John",
+          "dia_id": "D1:1",
+          "text": "I've been taking piano lessons for the past year."
+        },
+        {
+          "speaker": "Aisha",
+          "dia_id": "D1:2",
+          "text": "That's great! Have you played any pieces yet?"
+        },
+        {
+          "speaker": "John",
+          "dia_id": "D1:3",
+          "text": "I can play a few Chopin nocturnes now. It took a lot of practice."
+        }
+      ],
+      "session_2_date_time": "7:45 am on 19 June, 2023",
+      "session_2": [
+        {
+          "speaker": "John",
+          "dia_id": "D2:1",
+          "text": "I'm vegetarian and have been for the past five years."
+        },
+        {
+          "speaker": "Aisha",
+          "dia_id": "D2:2",
+          "text": "Do you ever miss eating meat?"
+        },
+        {
+          "speaker": "John",
+          "dia_id": "D2:3",
+          "text": "Sometimes, but I feel much healthier now."
+        }
+      ]
+    },
     "qa": [
       {
-        "question": "What musical instrument does speaker1 play?",
+        "question": "What musical instrument does John play?",
         "answer": "Piano",
-        "evidence_turn_id": "t101",
-        "type": "factual"
+        "evidence": ["D1:1"],
+        "category": 2
       },
       {
-        "question": "What composer's pieces has speaker1 learned?",
+        "question": "Whose compositions has John learned to play?",
         "answer": "Chopin",
-        "evidence_turn_id": "t103",
-        "type": "factual"
+        "evidence": ["D1:3"],
+        "category": 2
       },
       {
-        "question": "What is speaker1's diet?",
+        "question": "What is John's diet?",
         "answer": "Vegetarian",
-        "evidence_turn_id": "t104",
-        "type": "factual"
+        "evidence": ["D2:1"],
+        "category": 2
       }
     ]
   }

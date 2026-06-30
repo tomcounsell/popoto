@@ -7,6 +7,9 @@ Tests cover:
 - LoCoMo adapter schema validation
 """
 
+import json
+import logging
+
 import pytest
 from pathlib import Path
 
@@ -280,25 +283,114 @@ class TestLoCoMoAdapter:
         assert len(items) <= 3
 
     def test_multiple_qa_per_dialogue(self):
-        """Each dialogue in the fixture has multiple QA pairs."""
-        # Fixture has 2 dialogues × 3 QA = 6 items
+        """Each sample in the fixture yields one item per QA pair."""
+        # Fixture: conv-26 has 4 QA (3 normal + 1 adversarial), conv-31 has 3 QA
         items = list(iter_locomo(fixture_path=LOCOMO_FIXTURE))
-        assert len(items) == 6
+        assert len(items) == 7
 
     def test_history_shared_across_qa(self):
-        """All QA items from the same dialogue share the same history."""
+        """All QA items from the same sample share the same history."""
         items = list(iter_locomo(fixture_path=LOCOMO_FIXTURE))
-        # Items 0-2 should be from locomo_001, items 3-5 from locomo_002
-        history_0 = items[0].history
-        history_1 = items[1].history
-        history_2 = items[2].history
-        assert history_0 == history_1 == history_2
+        # Items 0-3 are from conv-26 (4 QA), items 4-6 from conv-31 (3 QA).
+        conv26 = [it for it in items if it.metadata["sample_id"] == "conv-26"]
+        conv31 = [it for it in items if it.metadata["sample_id"] == "conv-31"]
+        assert len(conv26) == 4
+        assert len(conv31) == 3
+        # Histories are shared (identical) within a sample.
+        assert all(it.history == conv26[0].history for it in conv26)
+        assert all(it.history == conv31[0].history for it in conv31)
+        # Distinct samples have distinct histories.
+        assert conv26[0].history != conv31[0].history
 
-    def test_text_only_turns(self):
-        """All history turns should have non-empty content (image turns skipped)."""
+    def test_blip_caption_turns_ingested(self):
+        """Image turns are ingested via blip_caption, not skipped.
+
+        A turn is only dropped when it has neither ``text`` nor
+        ``blip_caption``; every ingested turn has non-empty content.
+        """
         items = list(iter_locomo(fixture_path=LOCOMO_FIXTURE))
         for item in items:
             for turn in item.history:
                 assert turn[
                     "content"
                 ].strip(), f"Turn content should not be empty: {turn}"
+        # The image turn (D1:3 in conv-26) is present via its caption.
+        conv26 = next(it for it in items if it.metadata["sample_id"] == "conv-26")
+        image_turns = [t for t in conv26.history if t["turn_id"] == "D1:3"]
+        assert len(image_turns) == 1
+        assert "snow-capped mountain peak" in image_turns[0]["content"]
+
+    def test_dia_id_intersection(self):
+        """Non-adversarial evidence dia_ids must be reachable in history.
+
+        This is the core proof of the fix: relevant_ids (built from
+        ``qa[].evidence`` dia_ids) intersect the history turn_ids (also
+        dia_ids), so the scorer can actually score a hit.
+        """
+        items = list(iter_locomo(fixture_path=LOCOMO_FIXTURE))
+        non_adversarial = [it for it in items if not it.metadata["adversarial"]]
+        assert non_adversarial, "fixture must contain non-adversarial items"
+        for item in non_adversarial:
+            history_ids = {row["turn_id"] for row in item.history}
+            assert item.relevant_ids, f"{item.item_id} should have evidence"
+            assert item.relevant_ids <= history_ids, (
+                f"{item.item_id} evidence {item.relevant_ids} not reachable "
+                f"in history {history_ids}"
+            )
+
+    def test_adversarial_item_empty_evidence(self):
+        """Adversarial QA yields an item with empty evidence and adv answer."""
+        items = list(iter_locomo(fixture_path=LOCOMO_FIXTURE))
+        adversarial = [it for it in items if it.metadata["adversarial"]]
+        assert len(adversarial) == 1
+        adv = adversarial[0]
+        assert adv.relevant_ids == set()
+        assert adv.metadata["answer"] == "Not mentioned in the conversation."
+
+    def test_malformed_sample_skipped_with_warning(self, tmp_path, caplog):
+        """A sample missing a required field is skipped (with a warning);
+        valid samples are NOT skipped."""
+        malformed = [
+            {
+                "sample_id": "bad",
+                # missing 'conversation'
+                "qa": [{"question": "?", "answer": "x", "evidence": ["D1:1"]}],
+            },
+            {
+                "sample_id": "good",
+                "conversation": {
+                    "speaker_a": "A",
+                    "speaker_b": "B",
+                    "session_1_date_time": "now",
+                    "session_1": [{"speaker": "A", "dia_id": "D1:1", "text": "hello"}],
+                },
+                "qa": [{"question": "?", "answer": "hello", "evidence": ["D1:1"]}],
+            },
+        ]
+        fixture = tmp_path / "malformed_locomo.json"
+        fixture.write_text(json.dumps(malformed))
+
+        with caplog.at_level(logging.WARNING):
+            items = list(iter_locomo(fixture_path=fixture))
+
+        # Only the valid sample's QA is yielded; the malformed one is skipped.
+        assert len(items) == 1
+        assert items[0].metadata["sample_id"] == "good"
+        assert any("Skipping malformed" in rec.message for rec in caplog.records)
+
+    def test_mrr_le_recall_over_fixture_items(self):
+        """MRR <= any-hit Recall@k for retrievals that hit fixture evidence.
+
+        Constructs a retrieved list (the item's own history turn_ids) that
+        hits the evidence and asserts the shared-metric invariant holds.
+        """
+        items = list(iter_locomo(fixture_path=LOCOMO_FIXTURE))
+        non_adversarial = [it for it in items if not it.metadata["adversarial"]]
+        assert non_adversarial
+        for item in non_adversarial:
+            retrieved = [row["turn_id"] for row in item.history]
+            mrr = mean_reciprocal_rank(retrieved, item.relevant_ids)
+            any_hit = recall_at_k(retrieved, item.relevant_ids, len(retrieved))
+            assert mrr <= any_hit + 1e-9
+            # Evidence is reachable, so a full-list retrieval always hits.
+            assert any_hit == 1.0

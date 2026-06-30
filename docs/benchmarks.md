@@ -20,7 +20,7 @@ the relevant memory given a natural-language query. It supports two datasets:
 | Dataset | Questions | Sessions | Notes |
 |---------|-----------|----------|-------|
 | **LongMemEval-S** | 500 | ~48 per question | Single ground-truth session per question |
-| **LoCoMo** | ~350 QA pairs | 50 dialogues | Text-only; image turns skipped |
+| **LoCoMo** | ~350 QA pairs | 50 dialogues | Multi-session dict schema; image turns ingested via BLIP caption so image-evidence stays retrievable |
 
 ### Metrics
 
