@@ -59,8 +59,17 @@ python -m tests.benchmarks.run_external --dataset longmemeval-s
 # Full LoCoMo run:
 python -m tests.benchmarks.run_external --dataset locomo
 
-# Limit to N questions (faster, good for CI smoke tests):
+# Limit to N questions (faster, good for CI smoke tests).
+# By default --limit takes a *representative* sample across the whole
+# dataset (--sample stride), so small runs reflect every question_type
+# rather than the first N records (which are all one easy category):
 python -m tests.benchmarks.run_external --dataset longmemeval-s --limit 20
+
+# Strongest small-run guarantee — every category proportionally represented:
+python -m tests.benchmarks.run_external --dataset longmemeval-s --limit 12 --sample stratified --seed 0
+
+# Reproduce a legacy contiguous-prefix run (warns):
+python -m tests.benchmarks.run_external --dataset longmemeval-s --limit 20 --sample head
 
 # Dry-run (no report saved):
 python -m tests.benchmarks.run_external --dataset longmemeval-s --limit 5 --dry-run
@@ -80,7 +89,9 @@ python -m tests.benchmarks.run_external \
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--dataset` | (required) | `longmemeval-s` or `locomo` |
-| `--limit N` | all | Evaluate at most N questions |
+| `--limit N` | all | Evaluate at most N questions (sampled per `--sample`) |
+| `--sample MODE` | `stride` | How `--limit` selects: `stride` (even spread, representative), `stratified` (proportional per `question_type`), `shuffle` (seeded random), `head` (legacy contiguous prefix). Ignored without `--limit`. |
+| `--seed N` | 0 | Seed for `shuffle`/`stratified` sampling |
 | `--dry-run` | off | Print results without saving report files |
 | `--fixture PATH` | download | Load dataset from a local JSON file |
 | `--output DIR` | `results/external/` | Override output directory |
@@ -104,9 +115,11 @@ tests/benchmarks/results/external/
 
 Each JSON report includes:
 - `summary` — aggregate Recall@1/5/10, MRR, p50/p95 latency
+- `sampling` — `sample_mode` / `seed` / `limit` used for the run (so a report is reproducible from itself)
+- `by_question_type` — per-category Recall@1/5/10 + MRR + count breakdown
 - `machine` — Python version, OS, CPU count
 - `notes` — retrieval mode description
-- `questions` — per-question detail (item_id, recall scores, status, errors)
+- `questions` — per-question detail (item_id, recall scores, status, errors, and `metadata.question_type`)
 
 ### Baseline Numbers (v1.6.3)
 

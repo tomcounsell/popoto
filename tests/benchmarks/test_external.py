@@ -16,6 +16,7 @@ from pathlib import Path
 from tests.benchmarks.datasets import BenchmarkItem
 from tests.benchmarks.datasets.longmemeval_s import iter_items as iter_longmemeval
 from tests.benchmarks.datasets.locomo import iter_items as iter_locomo
+from tests.benchmarks.datasets.sampling import sample_items
 from tests.benchmarks.metrics.retrieval import (
     fractional_recall_at_k,
     mean_reciprocal_rank,
@@ -394,3 +395,190 @@ class TestLoCoMoAdapter:
             assert mrr <= any_hit + 1e-9
             # Evidence is reachable, so a full-list retrieval always hits.
             assert any_hit == 1.0
+
+
+# ---------------------------------------------------------------------------
+# Representative sampling tests (issue #435)
+# ---------------------------------------------------------------------------
+
+
+def _mk_items(n, qtypes=None):
+    """Build n synthetic BenchmarkItems with optional per-item question_type."""
+    items = []
+    for i in range(n):
+        qt = qtypes[i] if qtypes is not None else f"qt{i % 3}"
+        items.append(
+            BenchmarkItem(
+                item_id=str(i),
+                history=[],
+                query=f"q{i}",
+                relevant_ids=set(),
+                metadata={"question_type": qt, "dataset": "synthetic"},
+            )
+        )
+    return items
+
+
+def _ids(items):
+    return [it.item_id for it in items]
+
+
+class TestSampling:
+    """Unit tests for the shared representative sampler (issue #435)."""
+
+    def test_head_is_prefix(self):
+        """head mode returns the contiguous leading slice."""
+        items = _mk_items(10)
+        assert _ids(sample_items(items, 3, mode="head")) == ["0", "1", "2"]
+
+    def test_stride_spans_full_range(self):
+        """stride selects evenly spread indices across the whole list."""
+        items = _mk_items(10)
+        selected = sample_items(items, 3, mode="stride")
+        # indices: round(0)=0, round(10/3)=3, round(20/3)=7
+        assert _ids(selected) == ["0", "3", "7"]
+        # First item of the corpus is included; last index is in the tail half.
+        assert selected[0].item_id == "0"
+        assert int(selected[-1].item_id) >= 10 // 2
+
+    def test_stride_is_deterministic(self):
+        """stride needs no RNG — repeated calls are identical."""
+        items = _mk_items(50)
+        a = _ids(sample_items(items, 7, mode="stride"))
+        b = _ids(sample_items(items, 7, mode="stride"))
+        assert a == b
+
+    def test_stride_no_duplicate_indices(self):
+        """stride never picks the same item twice for limit < N."""
+        items = _mk_items(100)
+        selected = sample_items(items, 37, mode="stride")
+        ids = _ids(selected)
+        assert len(ids) == 37
+        assert len(set(ids)) == 37
+
+    def test_shuffle_seed_deterministic(self):
+        """Same seed → identical selection; result is a sorted subset."""
+        items = _mk_items(40)
+        a = _ids(sample_items(items, 8, mode="shuffle", seed=123))
+        b = _ids(sample_items(items, 8, mode="shuffle", seed=123))
+        assert a == b
+        assert len(a) == 8
+        # Returned in original corpus order.
+        assert [int(x) for x in a] == sorted(int(x) for x in a)
+
+    def test_shuffle_different_seed_differs(self):
+        """Different seeds generally yield a different selection."""
+        items = _mk_items(40)
+        a = _ids(sample_items(items, 8, mode="shuffle", seed=1))
+        b = _ids(sample_items(items, 8, mode="shuffle", seed=2))
+        assert a != b
+
+    def test_shuffle_does_not_touch_global_rng(self):
+        """Sampling must use a local RNG, never perturb the global one."""
+        import random
+
+        random.seed(999)
+        baseline = [random.random() for _ in range(3)]
+        random.seed(999)
+        sample_items(_mk_items(40), 8, mode="shuffle", seed=7)
+        after = [random.random() for _ in range(3)]
+        assert baseline == after
+
+    def test_stratified_covers_every_category_proportionally(self):
+        """stratified represents every question_type, summing to limit."""
+        # 3 categories, 3 items each (qt0/qt1/qt2 round-robin over 9 items).
+        items = _mk_items(9)
+        selected = sample_items(items, 6, mode="stratified", seed=0)
+        assert len(selected) == 6
+        from collections import Counter
+
+        counts = Counter(it.metadata["question_type"] for it in selected)
+        assert set(counts) == {"qt0", "qt1", "qt2"}
+        # Even split: limit 6 over 3 equal groups → 2 each.
+        assert all(c == 2 for c in counts.values())
+
+    def test_stratified_sums_to_exactly_limit_uneven_groups(self):
+        """Largest-remainder apportionment still sums to limit for skewed groups."""
+        # 7 of 'a', 2 of 'b', 1 of 'c' → 10 items.
+        qtypes = ["a"] * 7 + ["b"] * 2 + ["c"]
+        items = _mk_items(10, qtypes=qtypes)
+        selected = sample_items(items, 5, mode="stratified", seed=0)
+        assert len(selected) == 5
+
+    def test_stratified_is_seed_deterministic(self):
+        """Same seed → identical stratified selection."""
+        items = _mk_items(30)
+        a = _ids(sample_items(items, 9, mode="stratified", seed=3))
+        b = _ids(sample_items(items, 9, mode="stratified", seed=3))
+        assert a == b
+
+    def test_stratified_all_empty_qtype_falls_back_gracefully(self):
+        """All-empty question_type collapses to one bucket without crashing."""
+        items = _mk_items(10, qtypes=[""] * 10)
+        selected = sample_items(items, 4, mode="stratified", seed=0)
+        assert len(selected) == 4
+
+    @pytest.mark.parametrize("mode", ["head", "stride", "shuffle", "stratified"])
+    def test_limit_none_returns_all(self, mode):
+        """limit=None returns the full corpus unchanged for every mode."""
+        items = _mk_items(12)
+        assert _ids(sample_items(items, None, mode=mode)) == _ids(items)
+
+    @pytest.mark.parametrize("mode", ["head", "stride", "shuffle", "stratified"])
+    def test_limit_ge_n_returns_all(self, mode):
+        """limit >= N returns the full corpus for every mode."""
+        items = _mk_items(5)
+        assert len(sample_items(items, 5, mode=mode)) == 5
+        assert len(sample_items(items, 99, mode=mode)) == 5
+
+    @pytest.mark.parametrize("mode", ["head", "stride", "shuffle", "stratified"])
+    def test_limit_non_positive_returns_empty(self, mode):
+        """limit <= 0 returns an empty list for every mode."""
+        items = _mk_items(5)
+        assert sample_items(items, 0, mode=mode) == []
+        assert sample_items(items, -3, mode=mode) == []
+
+    @pytest.mark.parametrize("mode", ["head", "stride", "shuffle", "stratified"])
+    def test_empty_items_returns_empty(self, mode):
+        """An empty corpus returns an empty list for every mode."""
+        assert sample_items([], 3, mode=mode) == []
+
+    def test_unknown_mode_raises(self):
+        """An unknown sample mode fails loud with ValueError."""
+        with pytest.raises(ValueError):
+            sample_items(_mk_items(5), 2, mode="bogus")
+
+
+class TestQuestionTypeThreading:
+    """Problem B (issue #435): question_type survives into ScenarioResult."""
+
+    def test_question_type_in_scenario_metadata(self):
+        """Running an item through ExternalScenario keeps question_type."""
+        from tests.benchmarks.scenarios.external_base import ExternalScenario
+
+        item = BenchmarkItem(
+            item_id="q1",
+            history=[
+                {
+                    "role": "user",
+                    "content": "I adopted a golden retriever named Max.",
+                    "turn_id": "s1::0",
+                    "session_id": "s1",
+                },
+                {
+                    "role": "assistant",
+                    "content": "Max is a great name for a dog.",
+                    "turn_id": "s1::1",
+                    "session_id": "s1",
+                },
+            ],
+            query="What is my dog Max?",
+            relevant_ids={"s1"},
+            metadata={
+                "dataset": "longmemeval-s",
+                "question_type": "single-session-user",
+            },
+        )
+        result = ExternalScenario(item=item).execute()
+        assert result.status == "ok"
+        assert result.metadata.get("question_type") == "single-session-user"

@@ -31,9 +31,10 @@ Caching:
 import json
 import logging
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import List, Optional
 
 from . import BenchmarkItem
+from .sampling import sample_items
 
 logger = logging.getLogger("POPOTO.Benchmark.LoCoMo")
 
@@ -259,20 +260,30 @@ def _parse_dialogue(dialogue: dict, dialogue_idx: int) -> list[BenchmarkItem]:
 def iter_items(
     fixture_path: Optional[Path] = None,
     limit: Optional[int] = None,
-) -> Iterator[BenchmarkItem]:
-    """Iterate over LoCoMo benchmark items (one per QA pair).
+    sample: str = "head",
+    seed: int = 0,
+) -> List[BenchmarkItem]:
+    """Load LoCoMo benchmark items (one per QA pair).
+
+    All dialogues are parsed into a single flat item list *before* sampling,
+    so ``stride``/``stratified`` span the whole corpus rather than a prefix of
+    dialogues. The representative sampler then selects the limited subset.
 
     Args:
         fixture_path: If set, load from this JSON file instead of downloading.
             Used for unit tests (fixture-based).
-        limit: If set, yield at most this many items.
+        limit: If set, return at most this many items (after sampling).
+        sample: Sample mode — ``head``/``stride``/``shuffle``/``stratified``.
+            Defaults to ``head`` so callers that pass neither argument keep
+            byte-for-byte legacy behaviour; the CLI passes a resolved mode.
+        seed: Seed for the local RNG used by ``shuffle``/``stratified``.
 
-    Yields:
-        BenchmarkItem namedtuples.
+    Returns:
+        List of BenchmarkItem namedtuples.
 
     Raises:
         RuntimeError: If download fails (when fixture_path is None).
-        ValueError: If the JSON file is malformed.
+        ValueError: If the JSON file is malformed or ``sample`` is unknown.
     """
     if fixture_path is not None:
         source = fixture_path
@@ -289,19 +300,20 @@ def iter_items(
             f"got {type(data).__name__}"
         )
 
-    count = 0
+    parsed: List[BenchmarkItem] = []
     for dialogue_idx, dialogue in enumerate(data):
-        if limit is not None and count >= limit:
-            break
         try:
             items = _parse_dialogue(dialogue, dialogue_idx)
         except ValueError as exc:
             logger.warning("Skipping malformed dialogue[%d]: %s", dialogue_idx, exc)
             continue
-        for item in items:
-            if limit is not None and count >= limit:
-                break
-            yield item
-            count += 1
+        parsed.extend(items)
 
-    logger.info("LoCoMo: yielded %d items", count)
+    result = sample_items(parsed, limit, mode=sample, seed=seed)
+    logger.info(
+        "LoCoMo: yielded %d items (sample=%s seed=%s)",
+        len(result),
+        sample,
+        seed,
+    )
+    return result
