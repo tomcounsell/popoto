@@ -32,9 +32,10 @@ Caching:
 import json
 import logging
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import List, Optional
 
 from . import BenchmarkItem
+from .sampling import sample_items
 
 logger = logging.getLogger("POPOTO.Benchmark.LongMemEvalS")
 
@@ -187,20 +188,31 @@ def _parse_record(record: dict, idx: int) -> BenchmarkItem:
 def iter_items(
     fixture_path: Optional[Path] = None,
     limit: Optional[int] = None,
-) -> Iterator[BenchmarkItem]:
-    """Iterate over LongMemEval-S benchmark items.
+    sample: str = "head",
+    seed: int = 0,
+) -> List[BenchmarkItem]:
+    """Load LongMemEval-S benchmark items.
+
+    The full corpus is parsed into a list and then the representative
+    sampler (:func:`~tests.benchmarks.datasets.sampling.sample_items`) selects
+    the subset for a limited run, so a small ``--limit`` spans the whole
+    category-grouped file rather than only the easiest prefix.
 
     Args:
         fixture_path: If set, load from this JSON file instead of
             downloading. Used for unit tests (fixture-based).
-        limit: If set, yield at most this many items.
+        limit: If set, return at most this many items (after sampling).
+        sample: Sample mode — ``head``/``stride``/``shuffle``/``stratified``.
+            Defaults to ``head`` so callers that pass neither argument keep
+            byte-for-byte legacy behaviour; the CLI passes a resolved mode.
+        seed: Seed for the local RNG used by ``shuffle``/``stratified``.
 
-    Yields:
-        BenchmarkItem namedtuples.
+    Returns:
+        List of BenchmarkItem namedtuples.
 
     Raises:
         RuntimeError: If download fails (when fixture_path is None).
-        ValueError: If the JSON file is malformed.
+        ValueError: If the JSON file is malformed or ``sample`` is unknown.
     """
     if fixture_path is not None:
         source = fixture_path
@@ -217,16 +229,20 @@ def iter_items(
             f"got {type(data).__name__}"
         )
 
-    count = 0
+    parsed: List[BenchmarkItem] = []
     for idx, record in enumerate(data):
-        if limit is not None and count >= limit:
-            break
         try:
             item = _parse_record(record, idx)
         except ValueError as exc:
             logger.warning("Skipping malformed record[%d]: %s", idx, exc)
             continue
-        yield item
-        count += 1
+        parsed.append(item)
 
-    logger.info("LongMemEval-S: yielded %d items", count)
+    result = sample_items(parsed, limit, mode=sample, seed=seed)
+    logger.info(
+        "LongMemEval-S: yielded %d items (sample=%s seed=%s)",
+        len(result),
+        sample,
+        seed,
+    )
+    return result

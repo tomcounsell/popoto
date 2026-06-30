@@ -9,8 +9,13 @@ Usage:
     python -m tests.benchmarks.run_external --dataset longmemeval-s
     python -m tests.benchmarks.run_external --dataset locomo
 
-    # Smoke test (fast, no download needed if using --fixture):
+    # Smoke test (fast). --limit is representative by default: the subset is
+    # selected with --sample stride so it spans the whole (category-grouped)
+    # dataset rather than only the easiest contiguous prefix. Use
+    # --sample stratified to guarantee every question_type is represented, or
+    # --sample head (with --seed ignored) to reproduce legacy prefix runs.
     python -m tests.benchmarks.run_external --dataset longmemeval-s --limit 20
+    python -m tests.benchmarks.run_external --dataset longmemeval-s --limit 12 --sample stratified --seed 0
     python -m tests.benchmarks.run_external --dataset locomo --limit 10
 
     # Dry-run (ingests but prints results without saving report):
@@ -133,7 +138,9 @@ def run_item(item: BenchmarkItem) -> QuestionResult:
     r1 = recall_at_k(scenario_result.retrieved_ids, scenario_result.relevant_ids, 1)
     r5 = recall_at_k(scenario_result.retrieved_ids, scenario_result.relevant_ids, 5)
     r10 = recall_at_k(scenario_result.retrieved_ids, scenario_result.relevant_ids, 10)
-    mrr = mean_reciprocal_rank(scenario_result.retrieved_ids, scenario_result.relevant_ids)
+    mrr = mean_reciprocal_rank(
+        scenario_result.retrieved_ids, scenario_result.relevant_ids
+    )
     retrieval_ms = scenario_result.metadata.get("retrieval_ms", 0.0)
 
     return QuestionResult(
@@ -153,15 +160,51 @@ def run_item(item: BenchmarkItem) -> QuestionResult:
 # ---------------------------------------------------------------------------
 
 
-def compute_aggregate(results: list[QuestionResult], dataset: str) -> dict:
+def _by_question_type(ok: list[QuestionResult]) -> dict:
+    """Per-``question_type`` metric breakdown over the successful results.
+
+    Groups ``ok`` results by their ``question_type`` metadata (empty/``None``
+    routes to ``"(unlabeled)"``) and reports n + R@1/R@5/R@10/MRR per category.
+    Categories are returned in sorted key order for a stable report.
+    """
+    groups: dict = {}
+    for r in ok:
+        qt = r.metadata.get("question_type") or "(unlabeled)"
+        groups.setdefault(qt, []).append(r)
+
+    breakdown: dict = {}
+    for qt in sorted(groups, key=str):
+        rs = groups[qt]
+        breakdown[qt] = {
+            "n": len(rs),
+            "recall_at_1": round(statistics.mean(r.recall_at_1 for r in rs), 4),
+            "recall_at_5": round(statistics.mean(r.recall_at_5 for r in rs), 4),
+            "recall_at_10": round(statistics.mean(r.recall_at_10 for r in rs), 4),
+            "mrr": round(statistics.mean(r.mrr for r in rs), 4),
+        }
+    return breakdown
+
+
+def compute_aggregate(
+    results: list[QuestionResult],
+    dataset: str,
+    sample_mode: str = "head",
+    seed: int = 0,
+    limit=None,
+) -> dict:
     """Compute aggregate metrics over all question results.
 
     Args:
         results: List of QuestionResult objects.
         dataset: Dataset name for labeling.
+        sample_mode: Sampling mode used for this run (recorded for
+            reproducibility).
+        seed: RNG seed used for this run (recorded for reproducibility).
+        limit: ``--limit`` value used for this run (``None`` = full dataset).
 
     Returns:
-        Dict with aggregate metrics and per-question detail.
+        Dict with aggregate metrics, per-``question_type`` breakdown, the
+        sampling parameters, and per-question detail.
     """
     ok = [r for r in results if r.status == "ok"]
     errors = [r for r in results if r.status == "error"]
@@ -180,7 +223,11 @@ def compute_aggregate(results: list[QuestionResult], dataset: str) -> dict:
         latencies = sorted(r.retrieval_ms for r in ok if r.retrieval_ms > 0)
         n_lat = len(latencies)
         p50 = latencies[int(n_lat * 0.50)] if n_lat else 0.0
-        p95 = latencies[int(n_lat * 0.95)] if n_lat >= 2 else (latencies[-1] if latencies else 0.0)
+        p95 = (
+            latencies[int(n_lat * 0.95)]
+            if n_lat >= 2
+            else (latencies[-1] if latencies else 0.0)
+        )
     else:
         avg_r1 = avg_r5 = avg_r10 = avg_mrr = 0.0
         p50 = p95 = 0.0
@@ -190,11 +237,17 @@ def compute_aggregate(results: list[QuestionResult], dataset: str) -> dict:
         "dataset": dataset,
         "run_date": now.strftime("%Y-%m-%d"),
         "run_timestamp": now.isoformat(),
+        "sampling": {
+            "sample_mode": sample_mode,
+            "seed": seed,
+            "limit": limit,
+        },
         "machine": {
             "python_version": platform.python_version(),
             "platform": platform.platform(),
             "cpu_count": os.cpu_count(),
         },
+        "by_question_type": _by_question_type(ok),
         "summary": {
             "n_total": n_total,
             "n_ok": n_ok,
@@ -234,6 +287,11 @@ def build_markdown_report(aggregate: dict) -> str:
     s = aggregate["summary"]
     run_date = aggregate["run_date"]
     machine = aggregate["machine"]
+    sampling = aggregate.get("sampling", {})
+    sample_mode = sampling.get("sample_mode", "head")
+    seed = sampling.get("seed", 0)
+    limit = sampling.get("limit")
+    limit_str = "all" if limit is None else str(limit)
 
     lines = [
         f"# Popoto External Benchmark: {ds}",
@@ -241,6 +299,9 @@ def build_markdown_report(aggregate: dict) -> str:
         f"**Run date:** {run_date}  ",
         f"**Python:** {machine['python_version']}  ",
         f"**Platform:** {machine['platform']}  ",
+        f"**Sample mode:** {sample_mode}  ",
+        f"**Seed:** {seed}  ",
+        f"**Limit:** {limit_str}  ",
         "",
         "## Summary",
         "",
@@ -256,6 +317,23 @@ def build_markdown_report(aggregate: dict) -> str:
         f"| Latency p50 (ms) | {s['p50_ms']} |",
         f"| Latency p95 (ms) | {s['p95_ms']} |",
         "",
+    ]
+
+    by_qt = aggregate.get("by_question_type", {})
+    if by_qt:
+        lines.append("## By question_type")
+        lines.append("")
+        lines.append("| question_type | n | Recall@1 | Recall@5 | Recall@10 | MRR |")
+        lines.append("|---|---|---|---|---|---|")
+        for qt, m in by_qt.items():
+            lines.append(
+                f"| {qt} | {m['n']} | {m['recall_at_1']:.4f} | "
+                f"{m['recall_at_5']:.4f} | {m['recall_at_10']:.4f} | "
+                f"{m['mrr']:.4f} |"
+            )
+        lines.append("")
+
+    lines += [
         "## Notes",
         "",
     ]
@@ -275,7 +353,9 @@ def build_markdown_report(aggregate: dict) -> str:
     return "\n".join(lines)
 
 
-def save_reports(aggregate: dict, dataset_slug: str, dry_run: bool = False) -> tuple[Path, Path]:
+def save_reports(
+    aggregate: dict, dataset_slug: str, dry_run: bool = False
+) -> tuple[Path, Path]:
     """Save JSON and Markdown report files.
 
     Args:
@@ -320,6 +400,7 @@ def save_reports(aggregate: dict, dataset_slug: str, dry_run: bool = False) -> t
             latest_path.symlink_to(src_name)
         except OSError:
             import shutil
+
             shutil.copy2(RESULTS_DIR / src_name, latest_path)
 
     return json_path, md_path
@@ -345,6 +426,23 @@ def main():
         type=int,
         default=None,
         help="Max number of questions to evaluate (default: all)",
+    )
+    parser.add_argument(
+        "--sample",
+        choices=("head", "stride", "shuffle", "stratified"),
+        default="stride",
+        help=(
+            "How to select the --limit subset (default: stride). "
+            "'stride'/'stratified'/'shuffle' span the whole dataset so a "
+            "limited run is representative; 'head' is the legacy contiguous "
+            "prefix (benchmarks only the easiest category — opt-in)."
+        ),
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=0,
+        help="Seed for shuffle/stratified sampling (default: 0)",
     )
     parser.add_argument(
         "--dry-run",
@@ -375,21 +473,43 @@ def main():
     if args.output:
         RESULTS_DIR = args.output
 
+    # When --limit is combined with the legacy contiguous-prefix mode, warn:
+    # 'head' benchmarks only the easiest on-disk category and is not
+    # representative of the whole dataset.
+    if args.sample == "head" and args.limit is not None:
+        logger.warning(
+            "--sample head with --limit benchmarks only the contiguous "
+            "prefix (often a single easy category) and is NOT representative; "
+            "use --sample stride (default) or stratified for a real estimate."
+        )
+
     # Select dataset adapter
     if args.dataset == "longmemeval-s":
         dataset_slug = "longmemeval_s"
-        items = iter_longmemeval(fixture_path=args.fixture, limit=args.limit)
+        items = iter_longmemeval(
+            fixture_path=args.fixture,
+            limit=args.limit,
+            sample=args.sample,
+            seed=args.seed,
+        )
     elif args.dataset == "locomo":
         dataset_slug = "locomo"
-        items = iter_locomo(fixture_path=args.fixture, limit=args.limit)
+        items = iter_locomo(
+            fixture_path=args.fixture,
+            limit=args.limit,
+            sample=args.sample,
+            seed=args.seed,
+        )
     else:
         logger.error("Unknown dataset: %s", args.dataset)
         return 1
 
     logger.info(
-        "Starting benchmark: dataset=%s limit=%s dry_run=%s",
+        "Starting benchmark: dataset=%s limit=%s sample=%s seed=%s dry_run=%s",
         args.dataset,
         args.limit or "all",
+        args.sample,
+        args.seed,
         args.dry_run,
     )
 
@@ -432,7 +552,13 @@ def main():
     logger.info("Benchmark complete: %d questions in %.1fs", n_processed, total_elapsed)
 
     # Aggregate metrics
-    aggregate = compute_aggregate(results, args.dataset)
+    aggregate = compute_aggregate(
+        results,
+        args.dataset,
+        sample_mode=args.sample,
+        seed=args.seed,
+        limit=args.limit,
+    )
     s = aggregate["summary"]
 
     # Print summary table

@@ -55,6 +55,14 @@ python -m tests.benchmarks.run_external \
     --fixture tests/benchmarks/datasets/fixtures/longmemeval_s_sample.json \
     --limit 3 --dry-run
 
+# Representative limited run: --limit selects a subset spanning the whole
+# (category-grouped) dataset. Default --sample stride is deterministic;
+# --sample stratified guarantees every question_type is represented;
+# --sample shuffle --seed N is a seeded random sample; --sample head is the
+# legacy contiguous prefix (benchmarks only the easiest category — opt-in).
+# Reports record sample_mode/seed/limit and a per-question_type breakdown.
+python -m tests.benchmarks.run_external --dataset longmemeval-s --limit 12 --sample stratified --seed 0
+
 # Run all tests
 pytest tests/benchmarks/ -x -q
 ```

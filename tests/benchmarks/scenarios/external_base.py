@@ -291,6 +291,7 @@ class ExternalScenario(Scenario):
                 "n_retrieved": len(retrieved_session_ids),
                 "retrieval_ms": round(retrieval_ms, 2),
                 "dataset": self.item.metadata.get("dataset", "unknown"),
+                "question_type": self.item.metadata.get("question_type", ""),
                 "retrieval_method": retrieval_method,
             },
         )
