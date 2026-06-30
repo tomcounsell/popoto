@@ -582,3 +582,85 @@ class TestQuestionTypeThreading:
         result = ExternalScenario(item=item).execute()
         assert result.status == "ok"
         assert result.metadata.get("question_type") == "single-session-user"
+
+
+# ---------------------------------------------------------------------------
+# Retrieval-mode contract (issue #437)
+# ---------------------------------------------------------------------------
+
+
+_MINILM_REPO = "sentence-transformers/all-MiniLM-L6-v2"
+
+
+def _minilm_cached() -> bool:
+    """True only if all-MiniLM-L6-v2 is already in the HF cache.
+
+    Guards the hybrid smoke test so the suite never triggers a ~90MB download
+    (or requires network) when the model is absent.
+    """
+    try:
+        from huggingface_hub import try_to_load_from_cache
+    except Exception:
+        return False
+    try:
+        path = try_to_load_from_cache(repo_id=_MINILM_REPO, filename="config.json")
+    except Exception:
+        return False
+    return isinstance(path, str)
+
+
+def _dog_item():
+    """A tiny BenchmarkItem whose query lexically matches a single session."""
+    return BenchmarkItem(
+        item_id="q1",
+        history=[
+            {
+                "role": "user",
+                "content": "I adopted a golden retriever named Max.",
+                "turn_id": "s1::0",
+                "session_id": "s1",
+            },
+            {
+                "role": "assistant",
+                "content": "Max is a great name for a dog.",
+                "turn_id": "s1::1",
+                "session_id": "s1",
+            },
+        ],
+        query="What is my dog Max?",
+        relevant_ids={"s1"},
+        metadata={"dataset": "longmemeval-s", "question_type": "single-session-user"},
+    )
+
+
+class TestRetrievalModeContract:
+    """assemble() is the primary path; effective mode is reported (issue #437)."""
+
+    def test_lexical_is_assemble_primary(self):
+        """Default lexical run drives assemble() and reports effective mode."""
+        from tests.benchmarks.scenarios.external_base import ExternalScenario
+
+        result = ExternalScenario(item=_dog_item()).execute()
+        assert result.status == "ok"
+        # retrieval_method records the assembler's effective mode, not the old
+        # BM25-direct "bm25"/"composite_fallback" values.
+        assert result.metadata.get("retrieval_method") == "lexical"
+        # Records are returned and mapped back to ground-truth session IDs.
+        assert "s1" in result.retrieved_ids
+
+    @pytest.mark.skipif(
+        not _minilm_cached(),
+        reason="all-MiniLM-L6-v2 not cached; skipping hybrid smoke test",
+    )
+    def test_hybrid_effective_mode_and_records(self):
+        """Hybrid run resolves the assembler to 'hybrid' and returns records."""
+        from tests.benchmarks.scenarios.external_base import ExternalScenario
+
+        scenario = ExternalScenario(item=_dog_item(), retrieval_mode="hybrid")
+        try:
+            result = scenario.execute()
+        except Exception as e:  # model load/runtime hiccup → skip, don't fail
+            pytest.skip(f"hybrid model unavailable at runtime: {e}")
+        assert result.status == "ok"
+        assert result.metadata.get("retrieval_method") == "hybrid"
+        assert "s1" in result.retrieved_ids

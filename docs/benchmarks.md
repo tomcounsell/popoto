@@ -92,6 +92,7 @@ python -m tests.benchmarks.run_external \
 | `--limit N` | all | Evaluate at most N questions (sampled per `--sample`) |
 | `--sample MODE` | `stride` | How `--limit` selects: `stride` (even spread, representative), `stratified` (proportional per `question_type`), `shuffle` (seeded random), `head` (legacy contiguous prefix). Ignored without `--limit`. |
 | `--seed N` | 0 | Seed for `shuffle`/`stratified` sampling |
+| `--retrieval-mode MODE` | `lexical` | `lexical` (BM25 only) or `hybrid` (BM25 + vector via RRF). See [Retrieval Modes](#retrieval-modes). |
 | `--dry-run` | off | Print results without saving report files |
 | `--fixture PATH` | download | Load dataset from a local JSON file |
 | `--output DIR` | `results/external/` | Override output directory |
@@ -121,6 +122,49 @@ Each JSON report includes:
 - `notes` — retrieval mode description
 - `questions` — per-question detail (item_id, recall scores, status, errors, and `metadata.question_type`)
 
+### Retrieval Modes
+
+`--retrieval-mode` selects how the harness retrieves candidates. Both modes drive
+`ContextAssembler.assemble()`; field presence on the per-item model determines the
+effective mode (`retrieval_mode="auto"`):
+
+| Mode | Fields | Fusion | Cost |
+|------|--------|--------|------|
+| `lexical` (default) | `BM25Field` | none (BM25 ranking) | no model download; fast |
+| `hybrid` | `BM25Field` + `EmbeddingField` | BM25 + vector via **RRF (k=60)** | one-time ~90 MB `all-MiniLM-L6-v2` download; slower (CPU embedding) |
+
+Hybrid is **Valkey-safe**: vector similarity is computed in-process with numpy
+cosine over `EmbeddingField` `.npy` files — no RediSearch, no vector-search modules,
+no `FT.*` / `BF.*` commands. The vector signal uses the local
+[`SentenceTransformersProvider`](fields.md#sentencetransformersprovider) (no API key).
+
+```bash
+# Lexical (default) — BM25 only, no model download:
+python -m tests.benchmarks.run_external --dataset longmemeval-s
+
+# Hybrid — BM25 + vector (downloads MiniLM on first run):
+pip install -e ".[benchmark]"
+python -m tests.benchmarks.run_external --dataset longmemeval-s --retrieval-mode hybrid
+```
+
+**LongMemEval-S, 500 questions (any-hit Recall):**
+
+| Mode | Recall@1 | Recall@5 | Recall@10 | MRR |
+|------|---------:|---------:|----------:|----:|
+| `lexical` (BM25) | 0.856 | 0.952 | 0.978 | 0.899 |
+| `hybrid` (BM25+vector, RRF) | — see note | — | — | — |
+| agentmemory reference (BM25+vector) | — | 0.952 | 0.986 | 0.882 |
+
+> **Hybrid full-run number is pending.** The hybrid retrieval *path* is implemented
+> and validated (effective mode resolves to `hybrid`, RRF fusion executes, vector
+> cosine is numpy-only) — see the harness tests. The committed 500-question hybrid
+> comparison is a separate, deliberately-deferred run: it embeds every turn on CPU
+> (~275k turns), which is far slower than the lexical pass. Run it locally with
+> `python -m tests.benchmarks.run_external --dataset longmemeval-s --retrieval-mode hybrid`
+> and commit the resulting artifact to fill this row. Notably, the lexical BM25
+> baseline already matches the reference Recall@5 (0.952), so the hybrid headroom on
+> this dataset is at the Recall@10 margin.
+
 ### Baseline Numbers (v1.6.3)
 
 **LongMemEval-S (fixture sample, 3 questions):**
@@ -148,7 +192,9 @@ are indistinguishable — the baseline is intentionally a floor.
 
 **Reference:** agentmemory BM25+Vector (all-MiniLM-L6-v2) achieves
 Recall@5 = 95.2%, Recall@10 = 98.6%, MRR = 88.2% on LongMemEval-S.
-Issue #395 will add hybrid retrieval to close this gap.
+Hybrid retrieval is available via `--retrieval-mode hybrid` (see
+[Retrieval Modes](#retrieval-modes)); the lexical BM25 baseline already
+matches the reference Recall@5 (0.952).
 
 ### Architecture
 

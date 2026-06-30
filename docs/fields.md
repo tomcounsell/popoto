@@ -1308,7 +1308,7 @@ generate an embedding, and writes the vector atomically to disk.
 
 ### Embedding Providers
 
-Popoto ships with three built-in providers. You can also implement your own by
+Popoto ships with four built-in providers. You can also implement your own by
 subclassing `AbstractEmbeddingProvider`.
 
 **VoyageProvider** (recommended for retrieval):
@@ -1351,6 +1351,22 @@ Requires a running Ollama server (`ollama serve`) with the model pulled
 (`ollama pull nomic-embed-text`). Uses stdlib only -- no extras to install.
 See [Content and Embedding Fields](features/content-and-embedding-fields.md#ollamaprovider)
 for setup details.
+
+**SentenceTransformersProvider** (local, no API key):
+
+```python
+from popoto.embeddings.sentence_transformers import SentenceTransformersProvider
+
+provider = SentenceTransformersProvider(
+    model_name="all-MiniLM-L6-v2",   # default (384-dim)
+)
+```
+
+Runs `all-MiniLM-L6-v2` locally via `sentence-transformers` (installed by the
+`[benchmark]` extra: `pip install popoto[benchmark]`). No API key or daemon; the
+model (~90 MB) is downloaded from Hugging Face on first use and cached. Used by the
+external benchmark harness for hybrid retrieval — see
+[Benchmarking](benchmarks.md#retrieval-modes).
 
 ### Querying with semantic_search()
 

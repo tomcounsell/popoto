@@ -110,16 +110,18 @@ class QuestionResult:
 # ---------------------------------------------------------------------------
 
 
-def run_item(item: BenchmarkItem) -> QuestionResult:
+def run_item(item: BenchmarkItem, retrieval_mode: str = "lexical") -> QuestionResult:
     """Run a single benchmark item through ExternalScenario.
 
     Args:
         item: BenchmarkItem from a dataset adapter.
+        retrieval_mode: ``"lexical"`` (BM25 only) or ``"hybrid"`` (BM25 +
+            vector via RRF). Threaded into the scenario.
 
     Returns:
         QuestionResult with recall metrics and latency.
     """
-    scenario = ExternalScenario(item=item)
+    scenario = ExternalScenario(item=item, retrieval_mode=retrieval_mode)
     scenario_result = scenario.execute()
 
     if scenario_result.status != "ok":
@@ -191,6 +193,7 @@ def compute_aggregate(
     sample_mode: str = "head",
     seed: int = 0,
     limit=None,
+    retrieval_mode: str = "lexical",
 ) -> dict:
     """Compute aggregate metrics over all question results.
 
@@ -201,6 +204,8 @@ def compute_aggregate(
             reproducibility).
         seed: RNG seed used for this run (recorded for reproducibility).
         limit: ``--limit`` value used for this run (``None`` = full dataset).
+        retrieval_mode: ``"lexical"`` or ``"hybrid"`` — the retrieval mode the
+            run was executed in (recorded and surfaced in the report).
 
     Returns:
         Dict with aggregate metrics, per-``question_type`` breakdown, the
@@ -232,9 +237,25 @@ def compute_aggregate(
         avg_r1 = avg_r5 = avg_r10 = avg_mrr = 0.0
         p50 = p95 = 0.0
 
+    if retrieval_mode == "hybrid":
+        mode_notes = [
+            "Retrieval mode: hybrid — ContextAssembler.assemble() is the "
+            "primary path; effective mode resolves to 'hybrid'.",
+            "Hybrid fuses BM25 (lexical) + vector (all-MiniLM-L6-v2, 384-dim, "
+            "in-process numpy cosine) via Reciprocal Rank Fusion (k=60).",
+        ]
+    else:
+        mode_notes = [
+            "Retrieval mode: lexical — ContextAssembler.assemble() is the "
+            "primary path; effective mode resolves to 'lexical'.",
+            "Lexical uses BM25 (query-sensitive) only; no vector/embedding "
+            "signal is fused in this mode.",
+        ]
+
     now = datetime.now(timezone.utc)
     return {
         "dataset": dataset,
+        "retrieval_mode": retrieval_mode,
         "run_date": now.strftime("%Y-%m-%d"),
         "run_timestamp": now.isoformat(),
         "sampling": {
@@ -260,9 +281,8 @@ def compute_aggregate(
             "p50_ms": round(p50, 2),
             "p95_ms": round(p95, 2),
         },
-        "notes": [
-            "Baseline run: relevance-only scoring (DecayingSortedField).",
-            "No vector/embedding retrieval wired in (BM25-style baseline).",
+        "notes": mode_notes
+        + [
             "LoCoMo: image-only turns skipped (text-only evaluation).",
         ],
         "questions": [r.to_dict() for r in results],
@@ -287,6 +307,7 @@ def build_markdown_report(aggregate: dict) -> str:
     s = aggregate["summary"]
     run_date = aggregate["run_date"]
     machine = aggregate["machine"]
+    retrieval_mode = aggregate.get("retrieval_mode", "lexical")
     sampling = aggregate.get("sampling", {})
     sample_mode = sampling.get("sample_mode", "head")
     seed = sampling.get("seed", 0)
@@ -297,6 +318,7 @@ def build_markdown_report(aggregate: dict) -> str:
         f"# Popoto External Benchmark: {ds}",
         "",
         f"**Run date:** {run_date}  ",
+        f"**Retrieval mode:** {retrieval_mode}  ",
         f"**Python:** {machine['python_version']}  ",
         f"**Platform:** {machine['platform']}  ",
         f"**Sample mode:** {sample_mode}  ",
@@ -345,10 +367,21 @@ def build_markdown_report(aggregate: dict) -> str:
     lines.append("agentmemory BM25+Vector (all-MiniLM-L6-v2) on LongMemEval-S:")
     lines.append("- Recall@5: 95.2%, Recall@10: 98.6%, MRR: 88.2%")
     lines.append("")
-    lines.append(
-        "Popoto baseline is score-only (no embedding retrieval). "
-        "Issue #395 will add hybrid BM25+vector retrieval to close this gap."
-    )
+    lines.append("Popoto BM25-only baseline on LongMemEval-S (any-hit, #438):")
+    lines.append("- Recall@5: 95.2%, Recall@10: 97.8%")
+    lines.append("")
+    if retrieval_mode == "hybrid":
+        lines.append(
+            "This run used **hybrid** retrieval (BM25 + all-MiniLM-L6-v2 vector "
+            "fused via RRF, k=60). Compare Recall@5/Recall@10 above against the "
+            "BM25-only baseline and the agentmemory hybrid reference."
+        )
+    else:
+        lines.append(
+            "This run used **lexical** retrieval (BM25 only). Re-run with "
+            "`--retrieval-mode hybrid` to fuse the all-MiniLM-L6-v2 vector "
+            "signal (RRF, k=60) and compare against the agentmemory reference."
+        )
     lines.append("")
     return "\n".join(lines)
 
@@ -445,6 +478,17 @@ def main():
         help="Seed for shuffle/stratified sampling (default: 0)",
     )
     parser.add_argument(
+        "--retrieval-mode",
+        choices=("lexical", "hybrid"),
+        default="lexical",
+        help=(
+            "Retrieval mode (default: lexical). 'lexical' uses BM25 only and "
+            "needs no model download; 'hybrid' adds an all-MiniLM-L6-v2 vector "
+            "signal fused with BM25 via RRF (k=60) and requires the "
+            "[benchmark] extra plus a one-time ~90MB model download."
+        ),
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Run without saving report artifacts",
@@ -505,11 +549,13 @@ def main():
         return 1
 
     logger.info(
-        "Starting benchmark: dataset=%s limit=%s sample=%s seed=%s dry_run=%s",
+        "Starting benchmark: dataset=%s limit=%s sample=%s seed=%s "
+        "retrieval_mode=%s dry_run=%s",
         args.dataset,
         args.limit or "all",
         args.sample,
         args.seed,
+        args.retrieval_mode,
         args.dry_run,
     )
 
@@ -527,7 +573,7 @@ def main():
                 elapsed,
             )
 
-        q_result = run_item(item)
+        q_result = run_item(item, retrieval_mode=args.retrieval_mode)
         results.append(q_result)
 
         if q_result.status == "ok":
@@ -558,6 +604,7 @@ def main():
         sample_mode=args.sample,
         seed=args.seed,
         limit=args.limit,
+        retrieval_mode=args.retrieval_mode,
     )
     s = aggregate["summary"]
 
@@ -565,6 +612,7 @@ def main():
     print("\n" + "=" * 60)
     print(f"BENCHMARK RESULTS: {args.dataset.upper()}")
     print("=" * 60)
+    print(f"  Retrieval mode      : {args.retrieval_mode}")
     print(f"  Questions evaluated : {s['n_ok']} / {s['n_total']}")
     print(f"  Errors              : {s['n_errors']}")
     print(f"  Recall@1            : {s['recall_at_1']:.4f}")
