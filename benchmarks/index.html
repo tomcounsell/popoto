@@ -2059,6 +2059,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#retrieval-modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retrieval Modes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#baseline-numbers-v163" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2366,6 +2377,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#retrieval-modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retrieval Modes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#baseline-numbers-v163" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2578,6 +2600,11 @@ included in the JSON report for reproducibility.</p>
 <td>Seed for <code>shuffle</code>/<code>stratified</code> sampling</td>
 </tr>
 <tr>
+<td><code>--retrieval-mode MODE</code></td>
+<td><code>lexical</code></td>
+<td><code>lexical</code> (BM25 only) or <code>hybrid</code> (BM25 + vector via RRF). See <a href="#retrieval-modes">Retrieval Modes</a>.</td>
+</tr>
+<tr>
 <td><code>--dry-run</code></td>
 <td>off</td>
 <td>Print results without saving report files</td>
@@ -2618,6 +2645,91 @@ included in the JSON report for reproducibility.</p>
 - <code>machine</code> — Python version, OS, CPU count
 - <code>notes</code> — retrieval mode description
 - <code>questions</code> — per-question detail (item_id, recall scores, status, errors, and <code>metadata.question_type</code>)</p>
+<h3 id="retrieval-modes">Retrieval Modes<a class="headerlink" href="#retrieval-modes" title="Permanent link">&para;</a></h3>
+<p><code>--retrieval-mode</code> selects how the harness retrieves candidates. Both modes drive
+<code>ContextAssembler.assemble()</code>; field presence on the per-item model determines the
+effective mode (<code>retrieval_mode="auto"</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Fields</th>
+<th>Fusion</th>
+<th>Cost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>lexical</code> (default)</td>
+<td><code>BM25Field</code></td>
+<td>none (BM25 ranking)</td>
+<td>no model download; fast</td>
+</tr>
+<tr>
+<td><code>hybrid</code></td>
+<td><code>BM25Field</code> + <code>EmbeddingField</code></td>
+<td>BM25 + vector via <strong>RRF (k=60)</strong></td>
+<td>one-time ~90 MB <code>all-MiniLM-L6-v2</code> download; slower (CPU embedding)</td>
+</tr>
+</tbody>
+</table>
+<p>Hybrid is <strong>Valkey-safe</strong>: vector similarity is computed in-process with numpy
+cosine over <code>EmbeddingField</code> <code>.npy</code> files — no RediSearch, no vector-search modules,
+no <code>FT.*</code> / <code>BF.*</code> commands. The vector signal uses the local
+<a href="../fields/#sentencetransformersprovider"><code>SentenceTransformersProvider</code></a> (no API key).</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Lexical (default) — BM25 only, no model download:</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>longmemeval-s
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1"># Hybrid — BM25 + vector (downloads MiniLM on first run):</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[benchmark]&quot;</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>longmemeval-s<span class="w"> </span>--retrieval-mode<span class="w"> </span>hybrid
+</code></pre></div>
+<p><strong>LongMemEval-S, 500 questions (any-hit Recall):</strong></p>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th style="text-align: right;">Recall@1</th>
+<th style="text-align: right;">Recall@5</th>
+<th style="text-align: right;">Recall@10</th>
+<th style="text-align: right;">MRR</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>lexical</code> (BM25)</td>
+<td style="text-align: right;">0.856</td>
+<td style="text-align: right;">0.952</td>
+<td style="text-align: right;">0.978</td>
+<td style="text-align: right;">0.899</td>
+</tr>
+<tr>
+<td><code>hybrid</code> (BM25+vector, RRF)</td>
+<td style="text-align: right;">— see note</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">—</td>
+</tr>
+<tr>
+<td>agentmemory reference (BM25+vector)</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">0.952</td>
+<td style="text-align: right;">0.986</td>
+<td style="text-align: right;">0.882</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Hybrid full-run number is pending.</strong> The hybrid retrieval <em>path</em> is implemented
+and validated (effective mode resolves to <code>hybrid</code>, RRF fusion executes, vector
+cosine is numpy-only) — see the harness tests. The committed 500-question hybrid
+comparison is a separate, deliberately-deferred run: it embeds every turn on CPU
+(~275k turns), which is far slower than the lexical pass. Run it locally with
+<code>python -m tests.benchmarks.run_external --dataset longmemeval-s --retrieval-mode hybrid</code>
+and commit the resulting artifact to fill this row. Notably, the lexical BM25
+baseline already matches the reference Recall@5 (0.952), so the hybrid headroom on
+this dataset is at the Recall@10 margin.</p>
+</blockquote>
 <h3 id="baseline-numbers-v163">Baseline Numbers (v1.6.3)<a class="headerlink" href="#baseline-numbers-v163" title="Permanent link">&para;</a></h3>
 <p><strong>LongMemEval-S (fixture sample, 3 questions):</strong></p>
 <table>
@@ -2679,23 +2791,25 @@ query-text similarity. Scores for freshly-ingested items with equal importance
 are indistinguishable — the baseline is intentionally a floor.</p>
 <p><strong>Reference:</strong> agentmemory BM25+Vector (all-MiniLM-L6-v2) achieves
 Recall@5 = 95.2%, Recall@10 = 98.6%, MRR = 88.2% on LongMemEval-S.
-Issue #395 will add hybrid retrieval to close this gap.</p>
+Hybrid retrieval is available via <code>--retrieval-mode hybrid</code> (see
+<a href="#retrieval-modes">Retrieval Modes</a>); the lexical BM25 baseline already
+matches the reference Recall@5 (0.952).</p>
 <h3 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>CLI --dataset longmemeval-s
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  → DatasetAdapter (download/cache from HuggingFace)
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>  → iterate BenchmarkItems (question, history, relevant_ids)
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>  → for each item:
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>      ExternalScenario.setup()
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>        — ingest each turn as a memory record via Popoto Model.save()
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>        — track session_id → Redis key mapping
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>      ExternalScenario.run()
-<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>        — call ContextAssembler.assemble(query_cues={&quot;topic&quot;: query})
-<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>        — reverse-map Redis keys → session_ids
-<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>        — return ScenarioResult(retrieved_ids, relevant_ids)
-<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>      ExternalScenario.teardown()
-<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>        — scan and delete all Redis keys for this item
-<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>  → compute Recall@1/5/10, MRR, p50/p95 latency
-<a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>  → write results/external/{dataset}_{YYYYMMDD}.{json,md}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>CLI --dataset longmemeval-s
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  → DatasetAdapter (download/cache from HuggingFace)
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>  → iterate BenchmarkItems (question, history, relevant_ids)
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>  → for each item:
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>      ExternalScenario.setup()
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>        — ingest each turn as a memory record via Popoto Model.save()
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>        — track session_id → Redis key mapping
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>      ExternalScenario.run()
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>        — call ContextAssembler.assemble(query_cues={&quot;topic&quot;: query})
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>        — reverse-map Redis keys → session_ids
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>        — return ScenarioResult(retrieved_ids, relevant_ids)
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>      ExternalScenario.teardown()
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>        — scan and delete all Redis keys for this item
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>  → compute Recall@1/5/10, MRR, p50/p95 latency
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>  → write results/external/{dataset}_{YYYYMMDD}.{json,md}
 </code></pre></div>
 <p><strong>Model class:</strong> <code>ExternalBenchmarkMemory</code> — a fresh Popoto Model per
 benchmark item with:
@@ -2711,8 +2825,8 @@ compatible with both Redis and Valkey:
 - <code>ZADD</code>, <code>ZREVRANGEBYSCORE</code> (sorted sets for indexed fields)
 - <code>SET</code>, <code>GET</code> (model instance storage via msgpack)
 - <code>SCAN</code>, <code>DEL</code> (cleanup)</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># Verify no module commands used:</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>grep<span class="w"> </span>-rn<span class="w"> </span><span class="s2">&quot;BF\.\|CMS\.\|TOPK\.\|FT\.&quot;</span><span class="w"> </span>tests/benchmarks/<span class="w">  </span><span class="c1"># should return nothing</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># Verify no module commands used:</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>grep<span class="w"> </span>-rn<span class="w"> </span><span class="s2">&quot;BF\.\|CMS\.\|TOPK\.\|FT\.&quot;</span><span class="w"> </span>tests/benchmarks/<span class="w">  </span><span class="c1"># should return nothing</span>
 </code></pre></div>
 <h3 id="extending-the-harness">Extending the Harness<a class="headerlink" href="#extending-the-harness" title="Permanent link">&para;</a></h3>
 <p>To add a new dataset:
