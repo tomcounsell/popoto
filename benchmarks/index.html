@@ -2523,20 +2523,29 @@ included in the JSON report for reproducibility.</p>
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1"># Full LoCoMo run:</span>
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>locomo
 <a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="c1"># Limit to N questions (faster, good for CI smoke tests):</span>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>longmemeval-s<span class="w"> </span>--limit<span class="w"> </span><span class="m">20</span>
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="c1"># Dry-run (no report saved):</span>
-<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>longmemeval-s<span class="w"> </span>--limit<span class="w"> </span><span class="m">5</span><span class="w"> </span>--dry-run
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="c1"># Limit to N questions (faster, good for CI smoke tests).</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="c1"># By default --limit takes a *representative* sample across the whole</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="c1"># dataset (--sample stride), so small runs reflect every question_type</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="c1"># rather than the first N records (which are all one easy category):</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>longmemeval-s<span class="w"> </span>--limit<span class="w"> </span><span class="m">20</span>
 <a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>
-<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="c1"># Offline testing using fixture files (no download required):</span>
-<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="w">    </span>--dataset<span class="w"> </span>longmemeval-s<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="w">    </span>--fixture<span class="w"> </span>tests/benchmarks/datasets/fixtures/longmemeval_s_sample.json
-<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>
-<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a><span class="w">    </span>--dataset<span class="w"> </span>locomo<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a><span class="w">    </span>--fixture<span class="w"> </span>tests/benchmarks/datasets/fixtures/locomo_sample.json
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="c1"># Strongest small-run guarantee — every category proportionally represented:</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>longmemeval-s<span class="w"> </span>--limit<span class="w"> </span><span class="m">12</span><span class="w"> </span>--sample<span class="w"> </span>stratified<span class="w"> </span>--seed<span class="w"> </span><span class="m">0</span>
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="c1"># Reproduce a legacy contiguous-prefix run (warns):</span>
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>longmemeval-s<span class="w"> </span>--limit<span class="w"> </span><span class="m">20</span><span class="w"> </span>--sample<span class="w"> </span>head
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a><span class="c1"># Dry-run (no report saved):</span>
+<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>longmemeval-s<span class="w"> </span>--limit<span class="w"> </span><span class="m">5</span><span class="w"> </span>--dry-run
+<a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>
+<a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a><span class="c1"># Offline testing using fixture files (no download required):</span>
+<a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a><span class="w">    </span>--dataset<span class="w"> </span>longmemeval-s<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a><span class="w">    </span>--fixture<span class="w"> </span>tests/benchmarks/datasets/fixtures/longmemeval_s_sample.json
+<a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a>
+<a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a><span class="w">    </span>--dataset<span class="w"> </span>locomo<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a><span class="w">    </span>--fixture<span class="w"> </span>tests/benchmarks/datasets/fixtures/locomo_sample.json
 </code></pre></div>
 <h3 id="cli-flags">CLI Flags<a class="headerlink" href="#cli-flags" title="Permanent link">&para;</a></h3>
 <table>
@@ -2556,7 +2565,17 @@ included in the JSON report for reproducibility.</p>
 <tr>
 <td><code>--limit N</code></td>
 <td>all</td>
-<td>Evaluate at most N questions</td>
+<td>Evaluate at most N questions (sampled per <code>--sample</code>)</td>
+</tr>
+<tr>
+<td><code>--sample MODE</code></td>
+<td><code>stride</code></td>
+<td>How <code>--limit</code> selects: <code>stride</code> (even spread, representative), <code>stratified</code> (proportional per <code>question_type</code>), <code>shuffle</code> (seeded random), <code>head</code> (legacy contiguous prefix). Ignored without <code>--limit</code>.</td>
+</tr>
+<tr>
+<td><code>--seed N</code></td>
+<td>0</td>
+<td>Seed for <code>shuffle</code>/<code>stratified</code> sampling</td>
 </tr>
 <tr>
 <td><code>--dry-run</code></td>
@@ -2594,9 +2613,11 @@ included in the JSON report for reproducibility.</p>
 </code></pre></div>
 <p>Each JSON report includes:
 - <code>summary</code> — aggregate Recall@1/5/10, MRR, p50/p95 latency
+- <code>sampling</code> — <code>sample_mode</code> / <code>seed</code> / <code>limit</code> used for the run (so a report is reproducible from itself)
+- <code>by_question_type</code> — per-category Recall@1/5/10 + MRR + count breakdown
 - <code>machine</code> — Python version, OS, CPU count
 - <code>notes</code> — retrieval mode description
-- <code>questions</code> — per-question detail (item_id, recall scores, status, errors)</p>
+- <code>questions</code> — per-question detail (item_id, recall scores, status, errors, and <code>metadata.question_type</code>)</p>
 <h3 id="baseline-numbers-v163">Baseline Numbers (v1.6.3)<a class="headerlink" href="#baseline-numbers-v163" title="Permanent link">&para;</a></h3>
 <p><strong>LongMemEval-S (fixture sample, 3 questions):</strong></p>
 <table>
