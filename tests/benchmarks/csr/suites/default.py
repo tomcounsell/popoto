@@ -345,7 +345,7 @@ _PRECISION = CsrTestCase(
 _CORPUS_409 = (
     _m(
         "qb-1",
-        "Agent memory retrieval ranks stored facts by keyword overlap " "strength.",
+        "Agent memory retrieval ranks stored facts by keyword overlap strength.",
         topic="memory",
         importance=0.30,
     ),
