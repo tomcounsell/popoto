@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`BM25Field.search()` now returns deterministic ordering for equal scores** ([#446](https://github.com/tomcounsell/popoto/issues/446)): Lua 5.1 `table.sort` is unstable and candidates were collected in hash order, so equal-scored documents came back in undefined order — across runs and across the `limit` truncation boundary. Ties are now broken inside the scoring Lua script by member `redis_key` ascending (byte-wise), so identical searches return identical orderings on both Redis and Valkey. `keyword_search()`, RRF `fuse()`, and hybrid retrieval inherit the determinism.
 - **`ContextAssembler` token budget now enforced for real** ([#408](https://github.com/tomcounsell/popoto/issues/408)):
   - The default `token_counter` previously counted characters in the Redis key (`str(record)`, typically 12–14 "tokens" per record regardless of content size), so `max_tokens` never engaged for realistic budgets. The counter now receives the serialized per-record string the formatter emits, and `metadata["token_count"]` reflects actual serialized content.
   - **Breaking change for users who set `max_tokens`**: assemblies will now admit fewer records. Audit and raise your `max_tokens` values if needed. See [ContextAssembler — Token Budget Semantics](features/context-assembler.md#token-budget-semantics).

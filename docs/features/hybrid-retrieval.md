@@ -92,6 +92,12 @@ scored = BM25Field.search(Memory, "content_bm25", "redis deployment", limit=50)
 # Returns [(redis_key, bm25_score), ...]
 ```
 
+Ordering is deterministic: results are sorted by BM25 score descending, and equal scores
+are tie-broken by `redis_key` ascending (byte-wise) inside the scoring Lua script -- before
+`limit` truncation -- so identical searches always return identical orderings on both Redis
+and Valkey. `keyword_search()` and RRF fusion via `fuse()` inherit this determinism, since
+RRF consumes rank positions.
+
 ### fuse() -- Reciprocal Rank Fusion
 
 The `fuse()` method on `QueryBuilder` combines heterogeneous ranked lists using the RRF formula:
