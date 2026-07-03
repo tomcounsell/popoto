@@ -95,8 +95,10 @@ class TestDeterminism:
     def test_double_run_identical(self):
         """Same suite twice -> bit-identical RSR(std), RSR(adv), Gap.
 
-        This is the standing tripwire for BM25 score ties (Lua table.sort is
-        unstable): a tie-sensitive corpus makes the two runs diverge here.
+        Standing determinism regression tripwire: any nondeterminism in the
+        retrieval pipeline makes the two runs diverge here. BM25 score ties
+        no longer reorder (broken deterministically by member key inside the
+        Lua script since #446), but this gate remains to catch regressions.
         """
         first = run_suite(SUITE)
         second = run_suite(SUITE)
