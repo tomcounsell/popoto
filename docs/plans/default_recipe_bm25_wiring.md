@@ -6,6 +6,7 @@ owner: Claude (SDLC pipeline, issue #445)
 created: 2026-07-03
 tracking: https://github.com/tomcounsell/popoto/issues/445
 last_comment_id: none
+revision_applied: true
 ---
 
 # Default Recipe BM25 Wiring Check (query-sensitivity regression guard)
@@ -177,9 +178,17 @@ message naming the doc, the missing field, and the query-blind consequence.
 - Parse `docs/guides/agent-memory-quickstart.md` relative to the test file
   (`Path(__file__).resolve().parent.parent / "docs" / ...`) so it works from
   any checkout/worktree.
-- Section split on `^## ` headings; the ContextAssembler section is identified
-  by "ContextAssembler" in the `## Level 5` heading text (matching on the
-  stable "Level 5" prefix, asserting it mentions ContextAssembler).
+- Section split on `^## ` headings; the ContextAssembler (Level 5) section is
+  identified **solely** by matching the regex `^## Level 5\b` against the
+  heading line. The extractor **must NOT** require the substring
+  "ContextAssembler" in the heading text — the real heading is
+  `## Level 5: Cognition — LLM-Ready Context Assembly`, which contains no such
+  substring, so a heading-substring gate would find nothing and the extractor
+  would bind to the wrong recipe (or raise). If a semantic anchor is wanted for
+  extra safety, assert that "ContextAssembler" appears in the Level 5 section
+  **body** (the text between the `## Level 5` heading and the next `## `
+  heading), never in the heading itself. See Implementation Note (Critique
+  Results) for the rationale and the anti-pattern this replaces.
 - Exec only `Import`/`ImportFrom`/`ClassDef` nodes via
   `ast.parse` → filter → `compile` → `exec` into a shared namespace. Class
   definitions do not write to Redis at class-creation time; instances are
@@ -367,9 +376,14 @@ a one-file test change.
 
 ## Critique Results
 
+Verdict: **READY TO BUILD (with concerns)** — one CONCERN and one NIT. The
+CONCERN is addressed by this revision pass (`revision_applied: true`); the NIT
+is intentionally left as planned.
+
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
-| | | (populated by /do-plan-critique) | | |
+| CONCERN | do-plan-critique | Level 5 section detection required the substring "ContextAssembler" in the `## Level 5` heading text, but the real heading is `## Level 5: Cognition — LLM-Ready Context Assembly` (no such substring). A heading-substring gate finds nothing → extractor binds the wrong recipe or raises, and the guard could pass vacuously or fail spuriously. | Technical Approach (section-split bullet) rewritten this revision. | **Anchor Level 5 detection ONLY on `re.match(r"^## Level 5\b", heading_line)` against the heading line. Do NOT test the heading for the substring "ContextAssembler". If a semantic anchor is desired, assert "ContextAssembler" appears in the Level 5 section BODY (text between the `## Level 5` heading and the next `## ` heading), not the heading. Heading text after the `Level 5` token is free to change without breaking the extractor.** |
+| NIT | do-plan-critique | Test 4 (`test_recipe_levels_after_attention_keep_bm25`) scope — asserts every `Memory` from the second definition onward declares `BM25Field`. | Left as planned — no change. | Intentional: pins the doc's "query-sensitive from Level 2 on" narrative; the redundancy with test 2 is deliberate and cheap. |
 
 ---
 
