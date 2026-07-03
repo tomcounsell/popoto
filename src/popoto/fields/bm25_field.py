@@ -675,9 +675,7 @@ class BM25Field(Field):
             return [POPOTO_REDIS_DB.zscore(key, m) for m in members]
 
     @classmethod
-    def filter_selective_tokens(
-        cls, model_class, field_name, tokens, min_idf=1.0
-    ):
+    def filter_selective_tokens(cls, model_class, field_name, tokens, min_idf=1.0):
         """Filter tokens to only those with IDF above a threshold.
 
         Useful for pre-filtering keywords before running search().

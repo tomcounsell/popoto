@@ -178,9 +178,7 @@ class TestBM25TieOrdering:
         first = BM25Field.search(BM25Doc, "content", "quagga", limit=10)
         assert len(first) == len(self.TIED_NAMES)
         for _ in range(9):
-            assert (
-                BM25Field.search(BM25Doc, "content", "quagga", limit=10) == first
-            )
+            assert BM25Field.search(BM25Doc, "content", "quagga", limit=10) == first
 
     def test_deterministic_truncation_at_limit(self):
         """With 5 tied docs and limit=3, exactly the 3 lowest keys return."""
@@ -193,9 +191,7 @@ class TestBM25TieOrdering:
         """Higher-scoring doc ranks first; tied tail stays key-ascending."""
         expected_tied_keys = self._plant_tied_docs()
         # Repeating the query term boosts tf, so this doc scores higher.
-        doc_top = BM25Doc(
-            name="zzz_top", raw_content="zebra zebra zebra zebra zebra"
-        )
+        doc_top = BM25Doc(name="zzz_top", raw_content="zebra zebra zebra zebra zebra")
         doc_top.save()
 
         results = BM25Field.search(BM25Doc, "content", "zebra", limit=10)
@@ -440,9 +436,7 @@ class TestBM25GetIdf:
             raw_content="watchdog monitoring alerting system",
         ).save()
 
-        result = BM25Field.get_idf(
-            BM25Doc, "content", ["kubernetes", "watchdog"]
-        )
+        result = BM25Field.get_idf(BM25Doc, "content", ["kubernetes", "watchdog"])
         # "kubernetes" appears in 5/6 docs -> low IDF
         # "watchdog" appears in 1/6 docs -> high IDF
         assert result["watchdog"] > result["kubernetes"]
@@ -463,9 +457,7 @@ class TestBM25GetIdf:
             raw_content="redis cluster deployment production",
         ).save()
 
-        result = BM25Field.get_idf(
-            BM25Doc, "content", ["redis", "caching", "cluster"]
-        )
+        result = BM25Field.get_idf(BM25Doc, "content", ["redis", "caching", "cluster"])
         assert len(result) == 3
         # "redis" in 2/2 docs -> low IDF
         # "caching" in 1/2, "cluster" in 1/2 -> higher IDF
@@ -478,9 +470,7 @@ class TestBM25FilterSelectiveTokens:
 
     def test_filter_empty_list(self):
         """Empty token list returns empty list."""
-        result = BM25Field.filter_selective_tokens(
-            BM25Doc, "content", [], min_idf=1.0
-        )
+        result = BM25Field.filter_selective_tokens(BM25Doc, "content", [], min_idf=1.0)
         assert result == []
 
     def test_filter_keeps_rare_tokens(self):
