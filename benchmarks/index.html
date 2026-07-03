@@ -2638,6 +2638,10 @@ included in the JSON report for reproducibility.</p>
 <a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    locomo_latest.json
 <a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>    locomo_latest.md
 </code></pre></div>
+<p>Non-lexical runs suffix the retrieval mode into both the dated and <code>_latest</code>
+filenames (e.g. <code>longmemeval_s_20260703_hybrid.json</code>,
+<code>longmemeval_s_latest_hybrid.json</code>), so a hybrid run never overwrites the
+lexical baseline artifacts or their symlinks.</p>
 <p>Each JSON report includes:
 - <code>summary</code> — aggregate Recall@1/5/10, MRR, p50/p95 latency
 - <code>sampling</code> — <code>sample_mode</code> / <code>seed</code> / <code>limit</code> used for the run (so a report is reproducible from itself)
@@ -2705,10 +2709,10 @@ no <code>FT.*</code> / <code>BF.*</code> commands. The vector signal uses the lo
 </tr>
 <tr>
 <td><code>hybrid</code> (BM25+vector, RRF)</td>
-<td style="text-align: right;">— see note</td>
-<td style="text-align: right;">—</td>
-<td style="text-align: right;">—</td>
-<td style="text-align: right;">—</td>
+<td style="text-align: right;"><strong>0.894</strong></td>
+<td style="text-align: right;"><strong>0.986</strong></td>
+<td style="text-align: right;"><strong>0.992</strong></td>
+<td style="text-align: right;"><strong>0.932</strong></td>
 </tr>
 <tr>
 <td>agentmemory reference (BM25+vector)</td>
@@ -2719,17 +2723,14 @@ no <code>FT.*</code> / <code>BF.*</code> commands. The vector signal uses the lo
 </tr>
 </tbody>
 </table>
-<blockquote>
-<p><strong>Hybrid full-run number is pending.</strong> The hybrid retrieval <em>path</em> is implemented
-and validated (effective mode resolves to <code>hybrid</code>, RRF fusion executes, vector
-cosine is numpy-only) — see the harness tests. The committed 500-question hybrid
-comparison is a separate, deliberately-deferred run: it embeds every turn on CPU
-(~275k turns), which is far slower than the lexical pass. Run it locally with
-<code>python -m tests.benchmarks.run_external --dataset longmemeval-s --retrieval-mode hybrid</code>
-and commit the resulting artifact to fill this row. Notably, the lexical BM25
-baseline already matches the reference Recall@5 (0.952), so the hybrid headroom on
-this dataset is at the Recall@10 margin.</p>
-</blockquote>
+<p>Hybrid outperforms the lexical baseline on every metric and exceeds the
+agentmemory reference at Recall@5 (0.986 vs 0.952), Recall@10 (0.992 vs 0.986),
+and MRR (0.932 vs 0.882). The vector signal helps most where keyword overlap is
+weakest: <code>single-session-preference</code> Recall@1 rises from 0.40 (lexical) to 0.70,
+and every question category reaches Recall@5 ≥ 0.967. Full per-category detail
+is in the committed artifact
+(<code>tests/benchmarks/results/external/longmemeval_s_latest_hybrid.json</code> —
+500/500 questions, zero errors, every item resolved to the true hybrid path).</p>
 <h3 id="baseline-numbers-v163">Baseline Numbers (v1.6.3)<a class="headerlink" href="#baseline-numbers-v163" title="Permanent link">&para;</a></h3>
 <p><strong>LongMemEval-S (fixture sample, 3 questions):</strong></p>
 <table>
@@ -2791,9 +2792,10 @@ query-text similarity. Scores for freshly-ingested items with equal importance
 are indistinguishable — the baseline is intentionally a floor.</p>
 <p><strong>Reference:</strong> agentmemory BM25+Vector (all-MiniLM-L6-v2) achieves
 Recall@5 = 95.2%, Recall@10 = 98.6%, MRR = 88.2% on LongMemEval-S.
-Hybrid retrieval is available via <code>--retrieval-mode hybrid</code> (see
-<a href="#retrieval-modes">Retrieval Modes</a>); the lexical BM25 baseline already
-matches the reference Recall@5 (0.952).</p>
+Popoto's hybrid mode (<code>--retrieval-mode hybrid</code>, see
+<a href="#retrieval-modes">Retrieval Modes</a>) exceeds all three reference numbers
+(0.986 / 0.992 / 0.932); the lexical BM25 baseline alone already matches
+the reference Recall@5 (0.952).</p>
 <h3 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>CLI --dataset longmemeval-s
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  → DatasetAdapter (download/cache from HuggingFace)
