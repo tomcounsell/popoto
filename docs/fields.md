@@ -912,6 +912,11 @@ for memory in results:
 | `search(model_class, field_name, query_text, limit)` | `list[tuple[str, float]]` | Raw BM25 search returning `(redis_key, score)` tuples. |
 | `recompute_stats(model_class, field_name)` | `None` | Recompute avgdl/n from scratch to correct floating-point drift. |
 
+**Ordering** is deterministic: results are sorted by BM25 score descending, with equal
+scores tie-broken by `redis_key` ascending (byte-wise) inside the Lua script -- so
+identical searches always return identical orderings, including at the `limit` cutoff,
+on both Redis and Valkey.
+
 **Tokenization** uses the same shared tokenizer as ExistenceFilter (`fields/_tokenizer.py`):
 lowercase, split on non-word characters, filter tokens shorter than 3 characters, remove
 stop words. BM25Field preserves duplicate tokens (`unique=False`) for accurate term

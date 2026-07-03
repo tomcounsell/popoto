@@ -103,19 +103,21 @@ CSR cases live in `csr/suites/default.py` and are typed Python fixtures:
    relevant memories on a topic and inert distractors.
 2. Write the `standard_query` (shares vocabulary with the relevant memories)
    and the `adversarial_query` — a semantically equivalent, hand-authored
-   paraphrase. Three authoring rules (the first two enforced at load by the
-   lint, which uses the real BM25 tokenizer; the third by the double-run
-   determinism test):
+   paraphrase. Two authoring rules (enforced at load by the lint, which
+   uses the real BM25 tokenizer):
    - **No shared indexed tokens with any relevant memory** — a weak
      paraphrase behaves like the standard query.
    - **≥ 1 indexed token shared with a distractor memory** — BM25 must
      return hits, or the lexical path silently falls back to the
      query-blind composite path (`plant()` also enforces this post-plant
      with a real `BM25Field.search`).
-   - **No BM25 score ties between assertion-referenced ids** — Lua's
-     `table.sort` is unstable, so tied scores reorder run-to-run. Give the
-     ids named in `RanksAbove`/`InTopK(k=1)` clearly distinct term overlap
-     with the query.
+
+   Best practice (not a rule): avoid BM25 score ties between
+   assertion-referenced ids. Ties are now deterministic — broken by member
+   key ascending inside the Lua script — but distinct scores keep ranking
+   assertions (`RanksAbove`, `InTopK(k=1)`) meaningful: a tie broken by key
+   is not evidence of ranking quality. Give the ids named in assertions
+   clearly distinct term overlap with the query.
 3. Declare typed assertions (`InTopK`, `RanksAbove`, `NoneOlderThan`,
    `CoversTopic`, `Excludes`), set `relevant_ids` (the lint's ground truth),
    and append the case to `SUITE`. The module-load lint rejects rule

@@ -536,6 +536,12 @@ run, making a passing suite flaky.
 tie-sensitive case. Document the rule in the README "adding a CsrTestCase" section. A
 field-level stable sort is filed as a follow-up, not done here.
 
+**Resolved by [#446](https://github.com/tomcounsell/popoto/issues/446):** the Lua comparator
+now breaks ties on member `redis_key` ascending, so equal-scored results are deterministic
+across runs and across the `limit` truncation boundary. The double-run determinism test
+remains the standing tripwire; the no-ties corpus-authoring rule is downgraded to a best
+practice (see `tests/benchmarks/README.md`).
+
 ### Risk 2: Adversarial-query authoring errors — shared tokens, or zero corpus-wide hits
 **Impact:** Two failure modes, in opposite directions. (a) A weak paraphrase that still shares
 keywords with the relevant memories makes the adversarial run behave like the standard run,

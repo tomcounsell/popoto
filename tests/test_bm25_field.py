@@ -142,6 +142,68 @@ class TestBM25FieldBasics:
             assert keys[0] == doc_both_terms.db_key.redis_key
 
 
+class TestBM25TieOrdering:
+    """Regression tests for deterministic tie-breaking (issue #446).
+
+    Equal-scored documents must return in member key (redis_key) ascending
+    order, byte-wise, broken inside the Lua script — independent of
+    insertion order, repeatable across runs, and stable across the
+    ``limit`` truncation boundary.
+    """
+
+    TIED_CONTENT = "zebra quagga okapi"
+    TIED_NAMES = ["doc_a", "doc_b", "doc_c", "doc_d", "doc_e"]
+
+    def _plant_tied_docs(self, names=None):
+        """Save identical-content docs in NON-ascending key order."""
+        names = names or self.TIED_NAMES
+        for name in reversed(names):
+            BM25Doc(name=name, raw_content=self.TIED_CONTENT).save()
+        return [f"BM25Doc:{name}" for name in names]
+
+    def test_tie_order_key_ascending_insertion_order_independent(self):
+        """Tied docs return key-ascending regardless of insertion order."""
+        expected_keys = self._plant_tied_docs()
+
+        results = BM25Field.search(BM25Doc, "content", "zebra", limit=10)
+        assert [k for k, _s in results] == expected_keys
+        # All scores equal — proves the tie-break path was exercised.
+        scores = [s for _k, s in results]
+        assert len(set(scores)) == 1
+
+    def test_repeated_searches_identical(self):
+        """The same search returns the identical ordered list every run."""
+        self._plant_tied_docs()
+
+        first = BM25Field.search(BM25Doc, "content", "quagga", limit=10)
+        assert len(first) == len(self.TIED_NAMES)
+        for _ in range(9):
+            assert BM25Field.search(BM25Doc, "content", "quagga", limit=10) == first
+
+    def test_deterministic_truncation_at_limit(self):
+        """With 5 tied docs and limit=3, exactly the 3 lowest keys return."""
+        expected_keys = self._plant_tied_docs()
+
+        results = BM25Field.search(BM25Doc, "content", "okapi", limit=3)
+        assert [k for k, _s in results] == expected_keys[:3]
+
+    def test_mixed_scores_tie_break_preserves_primary_order(self):
+        """Higher-scoring doc ranks first; tied tail stays key-ascending."""
+        expected_tied_keys = self._plant_tied_docs()
+        # Repeating the query term boosts tf, so this doc scores higher.
+        doc_top = BM25Doc(name="zzz_top", raw_content="zebra zebra zebra zebra zebra")
+        doc_top.save()
+
+        results = BM25Field.search(BM25Doc, "content", "zebra", limit=10)
+        keys = [k for k, _s in results]
+        assert keys[0] == doc_top.db_key.redis_key
+        assert keys[1:] == expected_tied_keys
+        # Tail scores are equal and strictly below the top score.
+        scores = [s for _k, s in results]
+        assert len(set(scores[1:])) == 1
+        assert scores[0] > scores[1]
+
+
 class TestBM25FieldUpdateDelete:
     """Test document updates and deletes update BM25 stats correctly."""
 
@@ -374,9 +436,7 @@ class TestBM25GetIdf:
             raw_content="watchdog monitoring alerting system",
         ).save()
 
-        result = BM25Field.get_idf(
-            BM25Doc, "content", ["kubernetes", "watchdog"]
-        )
+        result = BM25Field.get_idf(BM25Doc, "content", ["kubernetes", "watchdog"])
         # "kubernetes" appears in 5/6 docs -> low IDF
         # "watchdog" appears in 1/6 docs -> high IDF
         assert result["watchdog"] > result["kubernetes"]
@@ -397,9 +457,7 @@ class TestBM25GetIdf:
             raw_content="redis cluster deployment production",
         ).save()
 
-        result = BM25Field.get_idf(
-            BM25Doc, "content", ["redis", "caching", "cluster"]
-        )
+        result = BM25Field.get_idf(BM25Doc, "content", ["redis", "caching", "cluster"])
         assert len(result) == 3
         # "redis" in 2/2 docs -> low IDF
         # "caching" in 1/2, "cluster" in 1/2 -> higher IDF
@@ -412,9 +470,7 @@ class TestBM25FilterSelectiveTokens:
 
     def test_filter_empty_list(self):
         """Empty token list returns empty list."""
-        result = BM25Field.filter_selective_tokens(
-            BM25Doc, "content", [], min_idf=1.0
-        )
+        result = BM25Field.filter_selective_tokens(BM25Doc, "content", [], min_idf=1.0)
         assert result == []
 
     def test_filter_keeps_rare_tokens(self):

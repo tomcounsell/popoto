@@ -289,7 +289,20 @@ for dkey, score in pairs(scores) do
     results[#results + 1] = {dkey, score}
 end
 
-table.sort(results, function(a, b) return a[2] > b[2] end)
+-- Two-level total-order comparator. Lua 5.1 table.sort is unstable and
+-- results are collected via pairs() (hash order), so a score-only comparator
+-- leaves equal-scored docs in undefined order. Tie-break on a[1] (the doc's
+-- full redis_key): unique per model instance by ORM construction, per-field
+-- inverted-index namespace, and unique as a key of the `scores` table -- so
+-- distinct entries always have unequal key strings, giving a strict weak
+-- ordering. NaN scores unreachable (finite sum of idf*tf_norm with df>0,
+-- tf>0, avgdl guarded).
+table.sort(results, function(a, b)
+    if a[2] ~= b[2] then
+        return a[2] > b[2]
+    end
+    return a[1] < b[1]
+end)
 
 -- Return top-K as flat array: [key1, score1, key2, score2, ...]
 local output = {}
@@ -488,7 +501,10 @@ class BM25Field(Field):
         """Search the BM25 index and return ranked results.
 
         Tokenizes the query, executes the BM25 scoring Lua script, and
-        returns results sorted by BM25 score descending.
+        returns results sorted by BM25 score descending. Ordering is
+        deterministic: ties are broken inside the Lua script by member key
+        (redis_key) ascending, byte-wise, so identical searches always
+        return identical orderings -- including truncation at ``limit``.
 
         Args:
             model_class: The Model class to search.
@@ -659,9 +675,7 @@ class BM25Field(Field):
             return [POPOTO_REDIS_DB.zscore(key, m) for m in members]
 
     @classmethod
-    def filter_selective_tokens(
-        cls, model_class, field_name, tokens, min_idf=1.0
-    ):
+    def filter_selective_tokens(cls, model_class, field_name, tokens, min_idf=1.0):
         """Filter tokens to only those with IDF above a threshold.
 
         Useful for pre-filtering keywords before running search().

@@ -40,10 +40,13 @@
 #      memory, so BM25 still returns hits and the lexical path actually
 #      executes (zero corpus-wide hits silently fall back to the query-blind
 #      composite path).
-#   3. No BM25 score ties between assertion-referenced ids for the given
-#      query (Lua table.sort is unstable); give them clearly distinct term
-#      overlap. The double-run determinism test in test_csr.py is the
-#      tripwire.
+#
+# Best practice (not a rule): avoid BM25 score ties between
+# assertion-referenced ids for the given query. Ties are deterministic now
+# (broken by member key ascending inside the BM25 Lua script), but distinct
+# scores keep RanksAbove/InTopK(k=1) assertions meaningful — a tie broken by
+# key is not evidence of ranking quality. Give them clearly distinct term
+# overlap.
 # ---------------------------------------------------------------------------
 """Seed suite for the deterministic CSR harness (issue #418) — ~8 cases.
 
