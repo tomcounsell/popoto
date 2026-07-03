@@ -1,10 +1,11 @@
 ---
-status: Planning
+status: Ready
 type: bug
 appetite: Small
 owner: valorengels
 created: 2026-07-03
 tracking: https://github.com/tomcounsell/popoto/issues/446
+revision_applied: true
 ---
 
 # BM25Field: deterministic tie-break for equal-scored search results
@@ -135,6 +136,7 @@ end)
 ```
 
 - The comparator is a **strict weak ordering** (required by `table.sort`): for distinct members it never returns true both ways, and member keys are unique within `results` (they are hash-table keys of `scores`), so equality of both fields cannot occur.
+- **Why the key-uniqueness guarantee actually holds** (critique-mandated evidence, to be embedded in the Lua comment above the comparator): `dkey` is the inverted-index member `inv_results[j]`, which is the document's full `redis_key` — unique per model instance by ORM construction (`db_key.py`), stored untruncated, and each search runs against a single field's `inv_prefix` namespace. Lua table keys are unique, so two entries in `results` always carry unequal key strings, making `a[1] < b[1]` a total order on any tie set. NaN scores are unreachable: each score is a finite sum of `idf * tf_norm` terms with `df > 0` guarded, `tf > 0` (ZSCORE of an existing member), and `avgdl` guarded by `or 1`, so the `a[2] ~= b[2]` branch never sees NaN.
 - Tie-break on `a[1] < b[1]` (member key ascending) is byte-wise string comparison — identical semantics on Redis and Valkey, no modules, no locale sensitivity.
 - Update the `search()` docstring (`bm25_field.py:487`) to document the defined tie order.
 - No config knob for tie-break direction — per repo rule, constants/behaviors like this are fixed, not configurable.
@@ -163,7 +165,7 @@ No user-visible rendering surface — library API only.
 
 **New regression tests** (all with `POPOTO_TEST_DB=14` during this pipeline):
 1. *Tie order is key-ascending and insertion-order-independent*: plant ~5 documents with identical content under known keys, inserted in non-ascending key order (e.g. reversed/shuffled); assert `search()` returns them in exact key-ascending order.
-2. *Repeated searches are identical*: run the same search ~10 times; assert all runs return the identical ordered list.
+2. *Repeated searches are identical*: run the same search ~10 times with no corpus writes between iterations (single-threaded pytest body on DB 14); assert all runs return the identical ordered list.
 3. *Deterministic truncation at the limit boundary*: with 5 tied documents and `limit=3`, assert exactly the 3 lowest keys are returned, in order — proves the tie-break happens before top-K truncation.
 4. *Mixed scores*: one clearly higher-scoring doc plus tied lower-scoring docs; assert the higher doc is first and the tied tail is key-ascending (tie-break must not disturb primary score ordering).
 
@@ -277,6 +279,10 @@ Solo builder execution — the change is a single comparator plus tests and doc 
 
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
+| CONCERN | Consolidated Critic (LITE) | Key-uniqueness guarantee for the tie-break asserted, not evidenced | Technical Approach now cites the concrete guarantee (dkey = full redis_key, unique per instance, per-field namespace; NaN unreachable) | Embed this rationale as the Lua comment above the comparator; verify `scores[dkey]` keys on `inv_results[j]` |
+| NIT | Consolidated Critic (LITE) | Regression test 2 assumes static corpus during repeat loop | Test Impact updated: no writes between iterations | Trivially true in single-threaded pytest body on DB 14 |
+
+**Verdict: READY TO BUILD (with concerns)** — revision applied 2026-07-03.
 
 ---
 
