@@ -1,12 +1,16 @@
 # Benchmarking
 
-Popoto ships with two benchmark harnesses:
+Popoto ships with three benchmark harnesses:
 
 1. **Internal parametric sweep** (`tests/benchmarks/run_sweeps.py`) — tunes
    behavioral constants against synthetic scenarios. Covered in `tests/benchmarks/README.md`.
 
 2. **External benchmark harness** (`tests/benchmarks/run_external.py`) — evaluates
    memory retrieval quality against published, named datasets. Covered on this page.
+
+3. **Deterministic CSR harness** (`tests/benchmarks/csr/`) — a per-PR CI gate
+   asserting named retrieval properties with deterministic scoring. Covered on
+   this page (see [Deterministic CSR Harness](#deterministic-csr-harness)).
 
 ---
 
@@ -254,3 +258,81 @@ To add a new dataset:
 4. Register the dataset slug in `run_external.py`'s `DATASET_CHOICES`.
 
 The `ExternalScenario` base class handles ingestion and teardown automatically.
+
+---
+
+## Deterministic CSR Harness
+
+### Overview
+
+The CSR (Constraint Satisfaction Rate) harness (issue #418) is the standing,
+deterministic regression gate the external harness cannot be: the same corpus
+and query produce a **bit-identical score every run** — no LLM judge, no
+embedding model, no Redis-module command, identical on Redis and Valkey. It
+adapts CogBench's *scoring methodology* (not its task suite): each test case
+is `(planted corpus, standard query, adversarial query, assertions)`, scored
+by deterministic assertions over the ranked list that
+`ContextAssembler.assemble()` returns.
+
+It exists to catch #409-class regressions — "retrieval is query-independent;
+gibberish and a real query return the bit-identical result set" — which
+shipped to users and was caught only by a hand-rolled adversarial audit.
+
+### Metrics and What They Mean
+
+| Metric | Meaning |
+|--------|---------|
+| **CSR** (per case) | Passed assertions / total assertions (fractional) |
+| **RSR (standard)** | Mean case CSR for the standard queries |
+| **RSR (adversarial)** | Mean case CSR for the authored adversarial paraphrases |
+| **Adversarial Gap** | `RSR(standard) − RSR(adversarial)` |
+
+Two signals, with **opposite** signatures:
+
+- A **large Adversarial Gap** on the lexical path means **keyword
+  dependence** — retrieval only works when the query shares surface tokens
+  with the stored memory. Expected of pure BM25 and flagged in the report
+  (`ADVERSARIAL_GAP_ALERT`), it is **not** the #409 signature.
+- **Query-blindness** (the #409 signature) is the opposite: a query-blind
+  path produces the **identical ranked list** for the standard and
+  adversarial query (Gap = 0 exactly) *and* a **low standard CSR** (the
+  ranking ignores the query, so it cannot satisfy query-relevance
+  assertions). The detector is `rankings_identical AND csr_std <
+  QUERY_BLIND_CSR_ALERT`, never the size of the gap.
+
+The seed suite carries a case pair proving the detector discriminates:
+`query_blind_409` (lexical — different rankings, high standard CSR) and
+`composite_control_409` (query-blind by construction — identical rankings,
+low standard CSR, flag fires).
+
+### Why Lexical-Only
+
+Retrieval runs through `BM25Field` (pure Lua over core Redis commands) so
+`retrieval_mode="auto"` resolves to `"lexical"` — genuinely query-sensitive
+*and* deterministic. Hybrid/embedding CSR is out of scope by design: float
+embeddings and model versioning break "same input → identical score". The
+adversarial queries are **authored fixture data** (committed paraphrases, no
+runtime rewrite step, no synonym RNG), so the adversarial input is
+byte-identical every run.
+
+### Running It
+
+```bash
+# CI gate (pytest, DB-15 isolation, gates on determinism + suite health +
+# the discriminative check — never on RSR/Gap magnitudes):
+pytest tests/benchmarks/test_csr.py -q
+
+# Manual run — writes tests/benchmarks/results/csr/csr_{date}.{json,md}
+# and csr_latest.{json,md}:
+python -m tests.benchmarks.csr.run_csr
+
+# Summary only, no report written:
+python -m tests.benchmarks.csr.run_csr --dry-run
+```
+
+The JSON report records `executed_path` per run (a zero-BM25-hit query
+silently falls back to the query-blind composite path inside the assembler;
+the harness pre-flights every query so a fallback can never masquerade as a
+lexical number) and `rankings_identical` per case.
+
+To add a test case, see "Adding a CsrTestCase" in `tests/benchmarks/README.md`.
