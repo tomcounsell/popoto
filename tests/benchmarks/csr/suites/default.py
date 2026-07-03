@@ -227,7 +227,7 @@ _COVERAGE = CsrTestCase(
         ),
         _m(
             "pr-2",
-            "The starter pricing tier caps usage at ten thousand requests " "monthly.",
+            "The starter pricing tier caps usage at ten thousand requests monthly.",
             topic="pricing",
         ),
         _m(
@@ -261,12 +261,12 @@ _EXCLUSION = CsrTestCase(
     planted_corpus=(
         _m(
             "au-1",
-            "Session tokens expire after thirty minutes of idle " "authentication.",
+            "Session tokens expire after thirty minutes of idle authentication.",
             topic="auth",
         ),
         _m(
             "au-2",
-            "Password reset emails route through the authentication service " "queue.",
+            "Password reset emails route through the authentication service queue.",
             topic="auth",
         ),
         _m("au-d1", "The gardening club plants tomato seedlings behind the shed."),

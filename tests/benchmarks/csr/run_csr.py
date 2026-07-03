@@ -46,7 +46,7 @@ RESULTS_DIR = Path(__file__).parent.parent / "results" / "csr"
 RUN_LABELS = ("standard", "adversarial")
 
 
-def _run_one_query(assembler, model_class, agent_id, query, case, planted_meta):
+def _run_one_query(assembler, model_class, agent_id, query):
     """Execute one assemble() run and score it.
 
     Records ``executed_path`` per run so a silent composite fallback can
@@ -107,7 +107,7 @@ def run_case(case) -> dict:
             RUN_LABELS, (case.standard_query, case.adversarial_query)
         ):
             result, executed_path = _run_one_query(
-                assembler, model_class, agent_id, query, case, planted_meta
+                assembler, model_class, agent_id, query
             )
             ranked_ids = []
             for record in result.records:

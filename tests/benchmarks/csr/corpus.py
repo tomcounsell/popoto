@@ -26,7 +26,7 @@ Determinism guarantees enforced here:
 
 import uuid
 from dataclasses import dataclass, field
-from typing import Dict, List, Tuple
+from typing import Dict, Tuple
 
 from src import popoto
 from src.popoto.fields._tokenizer import tokenize

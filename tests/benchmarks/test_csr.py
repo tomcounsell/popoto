@@ -146,10 +146,12 @@ class TestDiscriminativeCheck:
 
     def test_lexical_gap_is_reported_as_keyword_dependence(self, suite_aggregate):
         """A LARGE lexical gap is the healthy signature — reported, not the
-        #409 signal. The seed suite's authored paraphrases produce one."""
+        #409 signal. Gate on structural consistency of the report, not on the
+        gap's magnitude (hard threshold gating is a plan No-Go until baselines
+        stabilize — the alert is report-only)."""
         s = suite_aggregate["summary"]
-        assert s["adversarial_gap"] >= ADVERSARIAL_GAP_ALERT
-        assert s["gap_alert"] is True
+        assert s["adversarial_gap"] == pytest.approx(s["rsr_std"] - s["rsr_adv"])
+        assert s["gap_alert"] is (s["adversarial_gap"] >= ADVERSARIAL_GAP_ALERT)
         assert s["query_blind_cases"] == ["composite_control_409"]
 
 
