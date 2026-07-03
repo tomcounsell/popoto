@@ -689,6 +689,32 @@ class TestSharedProvider:
         assert first is second
 
 
+class TestListenerConnectionRelease:
+    """teardown() stops the item's invalidation listener (issue #442).
+
+    Each EmbeddingField invalidation listener is a PubSubWorkerThread holding a
+    checked-out pool connection, keyed by model class name. The harness builds
+    a fresh class per item, so a 500-item hybrid run that never stops them
+    exhausts the 128-connection BlockingConnectionPool at ~item 120 and blocks
+    forever — the failure mode that wedged the first full-run attempts.
+    """
+
+    def test_teardown_stops_invalidation_listeners(self):
+        from src.popoto.fields import embedding_field
+        from tests.benchmarks.scenarios.external_base import ExternalScenario
+
+        # Register a real listener directly (pubsub subscribe only — no model
+        # load), as load_embeddings() would during a hybrid run() call.
+        embedding_field._start_invalidation_listener("ExtMemLeakCheck")
+        assert "ExtMemLeakCheck" in embedding_field._listener_threads
+
+        scenario = ExternalScenario(item=_dog_item())
+        scenario.setup()
+        scenario.teardown()
+
+        assert embedding_field._listener_threads == {}
+
+
 # ---------------------------------------------------------------------------
 # save_reports mode-suffixed artifacts (issue #442)
 # ---------------------------------------------------------------------------

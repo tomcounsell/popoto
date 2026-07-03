@@ -52,7 +52,11 @@ from src.popoto.embeddings.sentence_transformers import SentenceTransformersProv
 from src.popoto.fields.bm25_field import BM25Field
 from src.popoto.fields.confidence_field import ConfidenceField
 from src.popoto.fields.decaying_sorted_field import DecayingSortedField
-from src.popoto.fields.embedding_field import EmbeddingField, _get_embeddings_dir
+from src.popoto.fields.embedding_field import (
+    EmbeddingField,
+    _get_embeddings_dir,
+    stop_invalidation_listeners,
+)
 from src.popoto.recipes.context_assembler import ContextAssembler
 from src.popoto.redis_db import POPOTO_REDIS_DB
 
@@ -397,5 +401,13 @@ class ExternalScenario(Scenario):
                 os.path.join(_get_embeddings_dir(), self._model_class.__name__),
                 ignore_errors=True,
             )
+
+        # Stop this item's embedding-cache invalidation listener. Each listener
+        # is a PubSubWorkerThread holding a checked-out pool connection keyed by
+        # model class name; with a fresh class per item, an unbounded run would
+        # exhaust the 128-connection BlockingConnectionPool at ~item 120 and
+        # block forever. Items run sequentially, so stopping all is stopping
+        # ours. No-op in lexical mode (no listener ever starts).
+        stop_invalidation_listeners()
 
         super().teardown()
