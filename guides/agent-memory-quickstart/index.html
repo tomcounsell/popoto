@@ -2402,6 +2402,13 @@
   
 
 
+<!-- Maintainer note: tests/test_default_recipe_wiring.py parses this file.
+     It executes the `class Memory` definitions from the ```python blocks
+     before the `## Level 5` heading and asserts the recipe in effect at the
+     ContextAssembler step declares a BM25Field (query-sensitive retrieval,
+     issue #445). If you restructure the level headings or remove
+     `content_bm25` from the Level 2-4 models, that test will fail by design. -->
+
 <h1 id="agent-memory-quickstart">Agent Memory Quickstart<a class="headerlink" href="#agent-memory-quickstart" title="Permanent link">&para;</a></h1>
 <p>Add programmable memory to your AI agent in 5 progressive levels. Each level is independently useful — adopt only what you need.</p>
 <blockquote>
