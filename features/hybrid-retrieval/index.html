@@ -2635,6 +2635,11 @@
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">scored</span> <span class="o">=</span> <span class="n">BM25Field</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">&quot;content_bm25&quot;</span><span class="p">,</span> <span class="s2">&quot;redis deployment&quot;</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span>
 <a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="c1"># Returns [(redis_key, bm25_score), ...]</span>
 </code></pre></div>
+<p>Ordering is deterministic: results are sorted by BM25 score descending, and equal scores
+are tie-broken by <code>redis_key</code> ascending (byte-wise) inside the scoring Lua script -- before
+<code>limit</code> truncation -- so identical searches always return identical orderings on both Redis
+and Valkey. <code>keyword_search()</code> and RRF fusion via <code>fuse()</code> inherit this determinism, since
+RRF consumes rank positions.</p>
 <h3 id="fuse-reciprocal-rank-fusion">fuse() -- Reciprocal Rank Fusion<a class="headerlink" href="#fuse-reciprocal-rank-fusion" title="Permanent link">&para;</a></h3>
 <p>The <code>fuse()</code> method on <code>QueryBuilder</code> combines heterogeneous ranked lists using the RRF formula:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>score(d) = sum(1 / (k + rank_i(d)))

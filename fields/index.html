@@ -4406,6 +4406,10 @@ on the model instance. It maintains an inverted index and corpus statistics via
 </tr>
 </tbody>
 </table>
+<p><strong>Ordering</strong> is deterministic: results are sorted by BM25 score descending, with equal
+scores tie-broken by <code>redis_key</code> ascending (byte-wise) inside the Lua script -- so
+identical searches always return identical orderings, including at the <code>limit</code> cutoff,
+on both Redis and Valkey.</p>
 <p><strong>Tokenization</strong> uses the same shared tokenizer as ExistenceFilter (<code>fields/_tokenizer.py</code>):
 lowercase, split on non-word characters, filter tokens shorter than 3 characters, remove
 stop words. BM25Field preserves duplicate tokens (<code>unique=False</code>) for accurate term
