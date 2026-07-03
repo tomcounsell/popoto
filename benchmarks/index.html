@@ -2118,6 +2118,67 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#deterministic-csr-harness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deterministic CSR Harness
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Deterministic CSR Harness">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#overview_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#metrics-and-what-they-mean" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metrics and What They Mean
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-lexical-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why Lexical-Only
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#running-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running It
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2436,6 +2497,67 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#deterministic-csr-harness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deterministic CSR Harness
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Deterministic CSR Harness">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#overview_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#metrics-and-what-they-mean" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metrics and What They Mean
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-lexical-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why Lexical-Only
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#running-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running It
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2457,7 +2579,7 @@
 
 
 <h1 id="benchmarking">Benchmarking<a class="headerlink" href="#benchmarking" title="Permanent link">&para;</a></h1>
-<p>Popoto ships with two benchmark harnesses:</p>
+<p>Popoto ships with three benchmark harnesses:</p>
 <ol>
 <li>
 <p><strong>Internal parametric sweep</strong> (<code>tests/benchmarks/run_sweeps.py</code>) — tunes
@@ -2466,6 +2588,11 @@
 <li>
 <p><strong>External benchmark harness</strong> (<code>tests/benchmarks/run_external.py</code>) — evaluates
    memory retrieval quality against published, named datasets. Covered on this page.</p>
+</li>
+<li>
+<p><strong>Deterministic CSR harness</strong> (<code>tests/benchmarks/csr/</code>) — a per-PR CI gate
+   asserting named retrieval properties with deterministic scoring. Covered on
+   this page (see <a href="#deterministic-csr-harness">Deterministic CSR Harness</a>).</p>
 </li>
 </ol>
 <hr />
@@ -2838,6 +2965,89 @@ compatible with both Redis and Valkey:
 3. Add tests to <code>tests/benchmarks/test_external.py</code>.
 4. Register the dataset slug in <code>run_external.py</code>'s <code>DATASET_CHOICES</code>.</p>
 <p>The <code>ExternalScenario</code> base class handles ingestion and teardown automatically.</p>
+<hr />
+<h2 id="deterministic-csr-harness">Deterministic CSR Harness<a class="headerlink" href="#deterministic-csr-harness" title="Permanent link">&para;</a></h2>
+<h3 id="overview_1">Overview<a class="headerlink" href="#overview_1" title="Permanent link">&para;</a></h3>
+<p>The CSR (Constraint Satisfaction Rate) harness (issue #418) is the standing,
+deterministic regression gate the external harness cannot be: the same corpus
+and query produce a <strong>bit-identical score every run</strong> — no LLM judge, no
+embedding model, no Redis-module command, identical on Redis and Valkey. It
+adapts CogBench's <em>scoring methodology</em> (not its task suite): each test case
+is <code>(planted corpus, standard query, adversarial query, assertions)</code>, scored
+by deterministic assertions over the ranked list that
+<code>ContextAssembler.assemble()</code> returns.</p>
+<p>It exists to catch #409-class regressions — "retrieval is query-independent;
+gibberish and a real query return the bit-identical result set" — which
+shipped to users and was caught only by a hand-rolled adversarial audit.</p>
+<h3 id="metrics-and-what-they-mean">Metrics and What They Mean<a class="headerlink" href="#metrics-and-what-they-mean" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>CSR</strong> (per case)</td>
+<td>Passed assertions / total assertions (fractional)</td>
+</tr>
+<tr>
+<td><strong>RSR (standard)</strong></td>
+<td>Mean case CSR for the standard queries</td>
+</tr>
+<tr>
+<td><strong>RSR (adversarial)</strong></td>
+<td>Mean case CSR for the authored adversarial paraphrases</td>
+</tr>
+<tr>
+<td><strong>Adversarial Gap</strong></td>
+<td><code>RSR(standard) − RSR(adversarial)</code></td>
+</tr>
+</tbody>
+</table>
+<p>Two signals, with <strong>opposite</strong> signatures:</p>
+<ul>
+<li>A <strong>large Adversarial Gap</strong> on the lexical path means <strong>keyword
+  dependence</strong> — retrieval only works when the query shares surface tokens
+  with the stored memory. Expected of pure BM25 and flagged in the report
+  (<code>ADVERSARIAL_GAP_ALERT</code>), it is <strong>not</strong> the #409 signature.</li>
+<li><strong>Query-blindness</strong> (the #409 signature) is the opposite: a query-blind
+  path produces the <strong>identical ranked list</strong> for the standard and
+  adversarial query (Gap = 0 exactly) <em>and</em> a <strong>low standard CSR</strong> (the
+  ranking ignores the query, so it cannot satisfy query-relevance
+  assertions). The detector is <code>rankings_identical AND csr_std &lt;
+  QUERY_BLIND_CSR_ALERT</code>, never the size of the gap.</li>
+</ul>
+<p>The seed suite carries a case pair proving the detector discriminates:
+<code>query_blind_409</code> (lexical — different rankings, high standard CSR) and
+<code>composite_control_409</code> (query-blind by construction — identical rankings,
+low standard CSR, flag fires).</p>
+<h3 id="why-lexical-only">Why Lexical-Only<a class="headerlink" href="#why-lexical-only" title="Permanent link">&para;</a></h3>
+<p>Retrieval runs through <code>BM25Field</code> (pure Lua over core Redis commands) so
+<code>retrieval_mode="auto"</code> resolves to <code>"lexical"</code> — genuinely query-sensitive
+<em>and</em> deterministic. Hybrid/embedding CSR is out of scope by design: float
+embeddings and model versioning break "same input → identical score". The
+adversarial queries are <strong>authored fixture data</strong> (committed paraphrases, no
+runtime rewrite step, no synonym RNG), so the adversarial input is
+byte-identical every run.</p>
+<h3 id="running-it">Running It<a class="headerlink" href="#running-it" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># CI gate (pytest, DB-15 isolation, gates on determinism + suite health +</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="c1"># the discriminative check — never on RSR/Gap magnitudes):</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>pytest<span class="w"> </span>tests/benchmarks/test_csr.py<span class="w"> </span>-q
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="c1"># Manual run — writes tests/benchmarks/results/csr/csr_{date}.{json,md}</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="c1"># and csr_latest.{json,md}:</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.csr.run_csr
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="c1"># Summary only, no report written:</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.csr.run_csr<span class="w"> </span>--dry-run
+</code></pre></div>
+<p>The JSON report records <code>executed_path</code> per run (a zero-BM25-hit query
+silently falls back to the query-blind composite path inside the assembler;
+the harness pre-flights every query so a fallback can never masquerade as a
+lexical number) and <code>rankings_identical</code> per case.</p>
+<p>To add a test case, see "Adding a CsrTestCase" in <code>tests/benchmarks/README.md</code>.</p>
 
 
 
