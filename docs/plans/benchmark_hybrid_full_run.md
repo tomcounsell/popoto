@@ -373,20 +373,20 @@ None. The benchmark harness is a developer CLI; no agent/MCP tool surface is tou
 
 ## Success Criteria
 
-- [ ] `external_base.py` reuses a single shared `SentenceTransformersProvider` across all
+- [x] `external_base.py` reuses a single shared `SentenceTransformersProvider` across all
   items (module-level accessor); MiniLM loads once per run, not per item (asserted by a
   singleton-identity test).
-- [ ] `save_reports` writes hybrid artifacts as `longmemeval_s_{date}_hybrid.{json,md}`
+- [x] `save_reports` writes hybrid artifacts as `longmemeval_s_{date}_hybrid.{json,md}`
   + `longmemeval_s_latest_hybrid.{json,md}`, and lexical runs keep the exact current
   unsuffixed names (backward-compat test passes).
-- [ ] A hybrid save does **not** modify any pre-existing lexical `longmemeval_s_{date}.*`
+- [x] A hybrid save does **not** modify any pre-existing lexical `longmemeval_s_{date}.*`
   / `_latest.*` artifact (asserted by a test).
-- [ ] The full 500-question LongMemEval-S hybrid run completes and its artifact is
+- [x] The full 500-question LongMemEval-S hybrid run completes and its artifact is
   committed under the `*_hybrid` name.
-- [ ] `docs/benchmarks.md` hybrid row is filled with the real R@1/R@5/R@10/MRR, and the
+- [x] `docs/benchmarks.md` hybrid row is filled with the real R@1/R@5/R@10/MRR, and the
   pending-run note is replaced with a real hybrid-vs-lexical-vs-reference comparison.
-- [ ] No Redis/Valkey module commands introduced (Verification grep passes).
-- [ ] Tests pass (`/do-test`); `mkdocs build --strict` passes (`/do-docs`).
+- [x] No Redis/Valkey module commands introduced (Verification grep passes).
+- [x] Tests pass (`/do-test`); `mkdocs build --strict` passes (`/do-docs`).
 
 ## Step by Step Tasks
 

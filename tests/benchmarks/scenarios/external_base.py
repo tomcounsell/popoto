@@ -52,7 +52,11 @@ from src.popoto.embeddings.sentence_transformers import SentenceTransformersProv
 from src.popoto.fields.bm25_field import BM25Field
 from src.popoto.fields.confidence_field import ConfidenceField
 from src.popoto.fields.decaying_sorted_field import DecayingSortedField
-from src.popoto.fields.embedding_field import EmbeddingField, _get_embeddings_dir
+from src.popoto.fields.embedding_field import (
+    EmbeddingField,
+    _get_embeddings_dir,
+    stop_invalidation_listeners,
+)
 from src.popoto.recipes.context_assembler import ContextAssembler
 from src.popoto.redis_db import POPOTO_REDIS_DB
 
@@ -63,6 +67,34 @@ logger = logging.getLogger("POPOTO.Benchmark.ExternalScenario")
 
 # Score weights — used by composite path when no BM25/embedding fields present
 BASELINE_SCORE_WEIGHTS = {"relevance": 1.0}
+
+# Shared embedding provider, lazily constructed once per process.
+#
+# ``_build_external_model_class`` is called once per benchmark item (from
+# ``setup()``), so constructing a fresh ``SentenceTransformersProvider`` inline
+# would build a brand-new provider for every one of the 500 items. Each fresh
+# instance reloads ``all-MiniLM-L6-v2`` on its first ``embed()`` (the model is
+# cached on the instance, not the class), so the model would be reloaded into
+# memory 500× over a full run. Sharing a single instance loads MiniLM once and
+# reuses the loaded model across every item. The provider is read-only after its
+# one-time model load (each ``embed()`` is an independent forward pass), so reuse
+# across the per-item model classes is safe.
+_SHARED_PROVIDER = None
+
+
+def _get_shared_provider():
+    """Return the process-wide shared ``SentenceTransformersProvider``.
+
+    Constructed lazily on first call and cached at module level so MiniLM
+    loads once per run rather than once per benchmark item. Constructing the
+    provider does nothing heavy and triggers no model download — the model is
+    loaded lazily on the first ``embed()`` call — so calling this accessor for
+    its identity (without embedding) never loads the model.
+    """
+    global _SHARED_PROVIDER
+    if _SHARED_PROVIDER is None:
+        _SHARED_PROVIDER = SentenceTransformersProvider()
+    return _SHARED_PROVIDER
 
 
 def _build_external_model_class(safe_prefix: str, with_embedding: bool = False):
@@ -104,7 +136,7 @@ def _build_external_model_class(safe_prefix: str, with_embedding: bool = False):
             content_index = BM25Field(source="content")
             embedding = EmbeddingField(
                 source="content",
-                provider=SentenceTransformersProvider(),
+                provider=_get_shared_provider(),
             )
 
     else:
@@ -369,5 +401,13 @@ class ExternalScenario(Scenario):
                 os.path.join(_get_embeddings_dir(), self._model_class.__name__),
                 ignore_errors=True,
             )
+
+        # Stop this item's embedding-cache invalidation listener. Each listener
+        # is a PubSubWorkerThread holding a checked-out pool connection keyed by
+        # model class name; with a fresh class per item, an unbounded run would
+        # exhaust the 128-connection BlockingConnectionPool at ~item 120 and
+        # block forever. Items run sequentially, so stopping all is stopping
+        # ours. No-op in lexical mode (no listener ever starts).
+        stop_invalidation_listeners()
 
         super().teardown()

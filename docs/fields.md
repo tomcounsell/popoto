@@ -1443,6 +1443,14 @@ the pre-fix behavior in all three modes for a single process; only the resource
 profile differs. Single-process apps that want zero overhead should set
 `POPOTO_EMBEDDING_INVALIDATION=none`.
 
+Because each listener holds one checked-out connection from the client
+connection pool for its lifetime, a process that creates **many** model classes
+with `EmbeddingField` (test harnesses, benchmarks, dynamic class factories) can
+exhaust the pool and starve unrelated Redis operations. Call
+`popoto.fields.embedding_field.stop_invalidation_listeners()` when done with a
+batch of model classes to stop every listener and return its connection to the
+pool; the next `semantic_search()` lazily respawns a fresh listener if needed.
+
 ## GeoField
 
 `GeoField` uses Redis geospatial indexes for location-based queries. This is perfect

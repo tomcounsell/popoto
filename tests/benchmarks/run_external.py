@@ -387,13 +387,24 @@ def build_markdown_report(aggregate: dict) -> str:
 
 
 def save_reports(
-    aggregate: dict, dataset_slug: str, dry_run: bool = False
+    aggregate: dict,
+    dataset_slug: str,
+    retrieval_mode: str = "lexical",
+    dry_run: bool = False,
 ) -> tuple[Path, Path]:
     """Save JSON and Markdown report files.
 
     Args:
         aggregate: Output of compute_aggregate().
         dataset_slug: Safe filename slug (e.g., "longmemeval_s").
+        retrieval_mode: Retrieval mode for this run (default ``"lexical"``).
+            For ``"lexical"`` the artifacts keep the exact unsuffixed names
+            (``{slug}_{date}.{json,md}`` and ``{slug}_latest.{json,md}``) — the
+            committed lexical baseline naming. For any non-lexical mode (e.g.
+            ``"hybrid"``) a ``_{mode}`` suffix is woven into both the dated
+            filenames and the ``_latest`` pointers (``{slug}_{date}_hybrid.*``
+            and ``{slug}_latest_hybrid.*``), so a non-lexical run never
+            overwrites the lexical baseline or its ``_latest`` symlinks.
         dry_run: If True, skip saving and return None paths.
 
     Returns:
@@ -405,9 +416,13 @@ def save_reports(
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
+    # Lexical keeps the unsuffixed baseline names; any other mode is suffixed so
+    # it cannot clobber the committed lexical artifacts.
+    suffix = "" if retrieval_mode == "lexical" else f"_{retrieval_mode}"
+
     date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
-    json_name = f"{dataset_slug}_{date_str}.json"
-    md_name = f"{dataset_slug}_{date_str}.md"
+    json_name = f"{dataset_slug}_{date_str}{suffix}.json"
+    md_name = f"{dataset_slug}_{date_str}{suffix}.md"
 
     json_path = RESULTS_DIR / json_name
     md_path = RESULTS_DIR / md_name
@@ -423,8 +438,8 @@ def save_reports(
 
     # Update latest symlinks/copies
     for src_name, latest_name in [
-        (json_name, f"{dataset_slug}_latest.json"),
-        (md_name, f"{dataset_slug}_latest.md"),
+        (json_name, f"{dataset_slug}_latest{suffix}.json"),
+        (md_name, f"{dataset_slug}_latest{suffix}.md"),
     ]:
         latest_path = RESULTS_DIR / latest_name
         try:
@@ -625,7 +640,12 @@ def main():
 
     # Save reports
     if not args.dry_run:
-        json_path, md_path = save_reports(aggregate, dataset_slug, dry_run=False)
+        json_path, md_path = save_reports(
+            aggregate,
+            dataset_slug,
+            retrieval_mode=args.retrieval_mode,
+            dry_run=False,
+        )
         print(f"\nReports saved:")
         print(f"  JSON: {json_path}")
         print(f"  Markdown: {md_path}")

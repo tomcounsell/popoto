@@ -664,3 +664,151 @@ class TestRetrievalModeContract:
         assert result.status == "ok"
         assert result.metadata.get("retrieval_method") == "hybrid"
         assert "s1" in result.retrieved_ids
+
+
+# ---------------------------------------------------------------------------
+# Shared provider singleton (issue #442)
+# ---------------------------------------------------------------------------
+
+
+class TestSharedProvider:
+    """_get_shared_provider() returns one cached instance (issue #442)."""
+
+    def test_returns_same_object_across_calls(self):
+        """Repeated calls return the identical provider object.
+
+        Guards against an accidental per-call construction regression: the
+        full hybrid run relies on MiniLM loading once, not 500×. The accessor
+        returns the provider WITHOUT triggering a model load (the model loads
+        lazily on the first embed()), so this identity check is cheap.
+        """
+        from tests.benchmarks.scenarios.external_base import _get_shared_provider
+
+        first = _get_shared_provider()
+        second = _get_shared_provider()
+        assert first is second
+
+
+class TestListenerConnectionRelease:
+    """teardown() stops the item's invalidation listener (issue #442).
+
+    Each EmbeddingField invalidation listener is a PubSubWorkerThread holding a
+    checked-out pool connection, keyed by model class name. The harness builds
+    a fresh class per item, so a 500-item hybrid run that never stops them
+    exhausts the 128-connection BlockingConnectionPool at ~item 120 and blocks
+    forever — the failure mode that wedged the first full-run attempts.
+    """
+
+    def test_teardown_stops_invalidation_listeners(self):
+        from src.popoto.fields import embedding_field
+        from tests.benchmarks.scenarios.external_base import ExternalScenario
+
+        # Register a real listener directly (pubsub subscribe only — no model
+        # load), as load_embeddings() would during a hybrid run() call.
+        embedding_field._start_invalidation_listener("ExtMemLeakCheck")
+        assert "ExtMemLeakCheck" in embedding_field._listener_threads
+
+        scenario = ExternalScenario(item=_dog_item())
+        scenario.setup()
+        scenario.teardown()
+
+        assert embedding_field._listener_threads == {}
+
+
+# ---------------------------------------------------------------------------
+# save_reports mode-suffixed artifacts (issue #442)
+# ---------------------------------------------------------------------------
+
+
+def _minimal_aggregate(retrieval_mode: str) -> dict:
+    """A real compute_aggregate()-shaped dict (empty results) for save_reports."""
+    from tests.benchmarks.run_external import compute_aggregate
+
+    return compute_aggregate([], "longmemeval-s", retrieval_mode=retrieval_mode)
+
+
+class TestSaveReportsArtifactNaming:
+    """save_reports suffixes non-lexical modes; lexical stays unsuffixed (#442)."""
+
+    @pytest.fixture
+    def results_dir(self, tmp_path, monkeypatch):
+        """Point run_external.RESULTS_DIR at a scratch dir for the test."""
+        import tests.benchmarks.run_external as run_external
+
+        monkeypatch.setattr(run_external, "RESULTS_DIR", tmp_path)
+        return tmp_path
+
+    def test_lexical_names_are_unsuffixed(self, results_dir):
+        """Lexical mode pins the exact current (unsuffixed) baseline names."""
+        import tests.benchmarks.run_external as run_external
+
+        json_path, md_path = run_external.save_reports(
+            _minimal_aggregate("lexical"),
+            "longmemeval_s",
+            retrieval_mode="lexical",
+        )
+        from datetime import datetime, timezone
+
+        date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
+        assert json_path.name == f"longmemeval_s_{date_str}.json"
+        assert md_path.name == f"longmemeval_s_{date_str}.md"
+        assert (results_dir / "longmemeval_s_latest.json").exists()
+        assert (results_dir / "longmemeval_s_latest.md").exists()
+        # No hybrid-suffixed artifacts created for a lexical run.
+        assert not list(results_dir.glob("*_hybrid.*"))
+
+    def test_default_mode_is_lexical(self, results_dir):
+        """Omitting retrieval_mode preserves the lexical (unsuffixed) names."""
+        import tests.benchmarks.run_external as run_external
+
+        json_path, md_path = run_external.save_reports(
+            _minimal_aggregate("lexical"), "longmemeval_s"
+        )
+        from datetime import datetime, timezone
+
+        date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
+        assert json_path.name == f"longmemeval_s_{date_str}.json"
+        assert md_path.name == f"longmemeval_s_{date_str}.md"
+
+    def test_hybrid_names_are_suffixed(self, results_dir):
+        """Hybrid mode suffixes _hybrid into dated AND _latest artifacts."""
+        import tests.benchmarks.run_external as run_external
+
+        json_path, md_path = run_external.save_reports(
+            _minimal_aggregate("hybrid"),
+            "longmemeval_s",
+            retrieval_mode="hybrid",
+        )
+        from datetime import datetime, timezone
+
+        date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
+        assert json_path.name == f"longmemeval_s_{date_str}_hybrid.json"
+        assert md_path.name == f"longmemeval_s_{date_str}_hybrid.md"
+        assert (results_dir / "longmemeval_s_latest_hybrid.json").exists()
+        assert (results_dir / "longmemeval_s_latest_hybrid.md").exists()
+
+    def test_hybrid_save_does_not_clobber_lexical_baseline(self, results_dir):
+        """A hybrid save leaves a pre-existing lexical artifact byte-identical."""
+        import tests.benchmarks.run_external as run_external
+        from datetime import datetime, timezone
+
+        date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
+        # Plant a fake committed lexical baseline.
+        baseline = results_dir / f"longmemeval_s_{date_str}.json"
+        original_bytes = b'{"committed": "lexical baseline"}'
+        baseline.write_bytes(original_bytes)
+
+        run_external.save_reports(
+            _minimal_aggregate("hybrid"),
+            "longmemeval_s",
+            retrieval_mode="hybrid",
+        )
+
+        # Lexical baseline is untouched.
+        assert baseline.read_bytes() == original_bytes
+        # Only _hybrid artifacts were created alongside it.
+        assert (results_dir / f"longmemeval_s_{date_str}_hybrid.json").exists()
+        assert (results_dir / f"longmemeval_s_{date_str}_hybrid.md").exists()
+        # No unsuffixed lexical _latest pointers were created by the hybrid run.
+        assert not (results_dir / "longmemeval_s_latest.json").exists()
+        assert not (results_dir / "longmemeval_s_latest.md").exists()

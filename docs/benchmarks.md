@@ -114,6 +114,11 @@ tests/benchmarks/results/external/
     locomo_latest.md
 ```
 
+Non-lexical runs suffix the retrieval mode into both the dated and `_latest`
+filenames (e.g. `longmemeval_s_20260703_hybrid.json`,
+`longmemeval_s_latest_hybrid.json`), so a hybrid run never overwrites the
+lexical baseline artifacts or their symlinks.
+
 Each JSON report includes:
 - `summary` — aggregate Recall@1/5/10, MRR, p50/p95 latency
 - `sampling` — `sample_mode` / `seed` / `limit` used for the run (so a report is reproducible from itself)
@@ -152,18 +157,17 @@ python -m tests.benchmarks.run_external --dataset longmemeval-s --retrieval-mode
 | Mode | Recall@1 | Recall@5 | Recall@10 | MRR |
 |------|---------:|---------:|----------:|----:|
 | `lexical` (BM25) | 0.856 | 0.952 | 0.978 | 0.899 |
-| `hybrid` (BM25+vector, RRF) | — see note | — | — | — |
+| `hybrid` (BM25+vector, RRF) | **0.894** | **0.986** | **0.992** | **0.932** |
 | agentmemory reference (BM25+vector) | — | 0.952 | 0.986 | 0.882 |
 
-> **Hybrid full-run number is pending.** The hybrid retrieval *path* is implemented
-> and validated (effective mode resolves to `hybrid`, RRF fusion executes, vector
-> cosine is numpy-only) — see the harness tests. The committed 500-question hybrid
-> comparison is a separate, deliberately-deferred run: it embeds every turn on CPU
-> (~275k turns), which is far slower than the lexical pass. Run it locally with
-> `python -m tests.benchmarks.run_external --dataset longmemeval-s --retrieval-mode hybrid`
-> and commit the resulting artifact to fill this row. Notably, the lexical BM25
-> baseline already matches the reference Recall@5 (0.952), so the hybrid headroom on
-> this dataset is at the Recall@10 margin.
+Hybrid outperforms the lexical baseline on every metric and exceeds the
+agentmemory reference at Recall@5 (0.986 vs 0.952), Recall@10 (0.992 vs 0.986),
+and MRR (0.932 vs 0.882). The vector signal helps most where keyword overlap is
+weakest: `single-session-preference` Recall@1 rises from 0.40 (lexical) to 0.70,
+and every question category reaches Recall@5 ≥ 0.967. Full per-category detail
+is in the committed artifact
+(`tests/benchmarks/results/external/longmemeval_s_latest_hybrid.json` —
+500/500 questions, zero errors, every item resolved to the true hybrid path).
 
 ### Baseline Numbers (v1.6.3)
 
@@ -192,9 +196,10 @@ are indistinguishable — the baseline is intentionally a floor.
 
 **Reference:** agentmemory BM25+Vector (all-MiniLM-L6-v2) achieves
 Recall@5 = 95.2%, Recall@10 = 98.6%, MRR = 88.2% on LongMemEval-S.
-Hybrid retrieval is available via `--retrieval-mode hybrid` (see
-[Retrieval Modes](#retrieval-modes)); the lexical BM25 baseline already
-matches the reference Recall@5 (0.952).
+Popoto's hybrid mode (`--retrieval-mode hybrid`, see
+[Retrieval Modes](#retrieval-modes)) exceeds all three reference numbers
+(0.986 / 0.992 / 0.932); the lexical BM25 baseline alone already matches
+the reference Recall@5 (0.952).
 
 ### Architecture
 
