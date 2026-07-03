@@ -16,6 +16,14 @@ tests/benchmarks/
     test_harness.py          # Tests for scenarios, metrics, overrides
     test_sweep.py            # Tests for sweep engine
     test_external.py         # Tests for external benchmark (fixture-based, no network)
+    test_csr.py              # CI gate for the deterministic CSR harness
+    csr/
+        __init__.py          # CSR constants (DEFAULT_TOP_K, alert thresholds)
+        satisfaction.py      # Assertion engine (InTopK, RanksAbove, ...)
+        corpus.py            # PlantedMemory/CsrTestCase schema, plant(), lint
+        run_csr.py           # CLI entry point + report writer
+        suites/
+            default.py       # Seed suite (~8 cases, #408-#416 enumeration)
     metrics/
         retrieval.py         # precision@k, recall@k, nDCG, calibration error, MRR
     scenarios/
@@ -37,6 +45,8 @@ tests/benchmarks/
         external/
             longmemeval_s_*.{json,md}  # External benchmark reports
             locomo_*.{json,md}         # External benchmark reports
+        csr/
+            csr_*.{json,md}            # Deterministic CSR reports
 ```
 
 ## Quick Start
@@ -48,6 +58,10 @@ python -m tests.benchmarks.run_sweeps --tier all --interactions
 # External benchmark (requires dataset download + Redis):
 python -m tests.benchmarks.run_external --dataset longmemeval-s
 python -m tests.benchmarks.run_external --dataset locomo
+
+# Deterministic CSR harness (no network, no model download):
+pytest tests/benchmarks/test_csr.py -q          # CI gate
+python -m tests.benchmarks.csr.run_csr          # write report artifact
 
 # External benchmark smoke test (fixture-based, no download):
 python -m tests.benchmarks.run_external \
@@ -80,3 +94,29 @@ pytest tests/benchmarks/ -x -q
 2. Implement `setup()`, `run()`, `teardown()`
 3. Return `ScenarioResult` with retrieved_ids, relevant_ids, relevance_scores
 4. Add to `ALL_SCENARIOS` in `run_sweeps.py`
+
+## Adding a CsrTestCase
+
+CSR cases live in `csr/suites/default.py` and are typed Python fixtures:
+
+1. Author a small corpus (8–15 `PlantedMemory` items) with a handful of
+   relevant memories on a topic and inert distractors.
+2. Write the `standard_query` (shares vocabulary with the relevant memories)
+   and the `adversarial_query` — a semantically equivalent, hand-authored
+   paraphrase. Three authoring rules (the first two enforced at load by the
+   lint, which uses the real BM25 tokenizer; the third by the double-run
+   determinism test):
+   - **No shared indexed tokens with any relevant memory** — a weak
+     paraphrase behaves like the standard query.
+   - **≥ 1 indexed token shared with a distractor memory** — BM25 must
+     return hits, or the lexical path silently falls back to the
+     query-blind composite path (`plant()` also enforces this post-plant
+     with a real `BM25Field.search`).
+   - **No BM25 score ties between assertion-referenced ids** — Lua's
+     `table.sort` is unstable, so tied scores reorder run-to-run. Give the
+     ids named in `RanksAbove`/`InTopK(k=1)` clearly distinct term overlap
+     with the query.
+3. Declare typed assertions (`InTopK`, `RanksAbove`, `NoneOlderThan`,
+   `CoversTopic`, `Excludes`), set `relevant_ids` (the lint's ground truth),
+   and append the case to `SUITE`. The module-load lint rejects rule
+   violations and empty assertion lists.

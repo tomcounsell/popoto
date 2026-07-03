@@ -1,0 +1,738 @@
+{
+  "harness": "csr",
+  "run_date": "2026-07-03T09:37:37.974131+00:00",
+  "machine": {
+    "python_version": "3.12.13",
+    "platform": "macOS-26.3.1-arm64-arm-64bit"
+  },
+  "constants": {
+    "ASSEMBLER_MAX_ITEMS": 20,
+    "ADVERSARIAL_GAP_ALERT": 0.3,
+    "QUERY_BLIND_CSR_ALERT": 0.5
+  },
+  "summary": {
+    "n_cases": 8,
+    "n_errors": 0,
+    "rsr_std": 0.875,
+    "rsr_adv": 0.275,
+    "adversarial_gap": 0.6,
+    "gap_alert": true,
+    "query_blind_cases": [
+      "composite_control_409"
+    ]
+  },
+  "per_primitive": {
+    "coverage": {
+      "n": 1,
+      "csr_std": 1.0,
+      "csr_adv": 0.3333333333333333
+    },
+    "exclusion": {
+      "n": 1,
+      "csr_std": 1.0,
+      "csr_adv": 0.3333333333333333
+    },
+    "lexical_recall": {
+      "n": 1,
+      "csr_std": 1.0,
+      "csr_adv": 0.25
+    },
+    "ordering": {
+      "n": 1,
+      "csr_std": 1.0,
+      "csr_adv": 0.3333333333333333
+    },
+    "precision": {
+      "n": 1,
+      "csr_std": 1.0,
+      "csr_adv": 0.5
+    },
+    "query_independence": {
+      "n": 2,
+      "csr_std": 0.5,
+      "csr_adv": 0.1
+    },
+    "recency": {
+      "n": 1,
+      "csr_std": 1.0,
+      "csr_adv": 0.25
+    }
+  },
+  "cases": [
+    {
+      "case_id": "lexical_recall_basic",
+      "primitive": "lexical_recall",
+      "retrieval_mode": "auto",
+      "n_memories": 8,
+      "n_assertions": 4,
+      "status": "ok",
+      "runs": [
+        {
+          "run": "standard",
+          "query": "deployment container production release registry",
+          "executed_path": "lexical",
+          "effective_mode": "lexical",
+          "ranked_ids": [
+            "dep-1",
+            "dep-2"
+          ],
+          "passed": 4,
+          "total": 4,
+          "csr": 1.0,
+          "assertions": [
+            {
+              "assertion": "InTopK(memory_id='dep-1', k=5)",
+              "type": "InTopK",
+              "passed": true
+            },
+            {
+              "assertion": "InTopK(memory_id='dep-2', k=5)",
+              "type": "InTopK",
+              "passed": true
+            },
+            {
+              "assertion": "CoversTopic(topic='deploy', k=10)",
+              "type": "CoversTopic",
+              "passed": true
+            },
+            {
+              "assertion": "Excludes(memory_id='dis-6', k=10)",
+              "type": "Excludes",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "run": "adversarial",
+          "query": "rollout of freshly built software onto the live fleet",
+          "executed_path": "lexical",
+          "effective_mode": "lexical",
+          "ranked_ids": [
+            "dis-3"
+          ],
+          "passed": 1,
+          "total": 4,
+          "csr": 0.25,
+          "assertions": [
+            {
+              "assertion": "InTopK(memory_id='dep-1', k=5)",
+              "type": "InTopK",
+              "passed": false
+            },
+            {
+              "assertion": "InTopK(memory_id='dep-2', k=5)",
+              "type": "InTopK",
+              "passed": false
+            },
+            {
+              "assertion": "CoversTopic(topic='deploy', k=10)",
+              "type": "CoversTopic",
+              "passed": false
+            },
+            {
+              "assertion": "Excludes(memory_id='dis-6', k=10)",
+              "type": "Excludes",
+              "passed": true
+            }
+          ]
+        }
+      ],
+      "csr_std": 1.0,
+      "csr_adv": 0.25,
+      "rankings_identical": false,
+      "query_blind_flag": false
+    },
+    {
+      "case_id": "ordering_score_separated",
+      "primitive": "ordering",
+      "retrieval_mode": "auto",
+      "n_memories": 8,
+      "n_assertions": 3,
+      "status": "ok",
+      "runs": [
+        {
+          "run": "standard",
+          "query": "incident postmortem cache stampede outage",
+          "executed_path": "lexical",
+          "effective_mode": "lexical",
+          "ranked_ids": [
+            "inc-1",
+            "inc-2"
+          ],
+          "passed": 3,
+          "total": 3,
+          "csr": 1.0,
+          "assertions": [
+            {
+              "assertion": "InTopK(memory_id='inc-1', k=1)",
+              "type": "InTopK",
+              "passed": true
+            },
+            {
+              "assertion": "RanksAbove(higher_id='inc-1', lower_id='inc-2')",
+              "type": "RanksAbove",
+              "passed": true
+            },
+            {
+              "assertion": "Excludes(memory_id='inc-d1', k=10)",
+              "type": "Excludes",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "run": "adversarial",
+          "query": "retrospective writeup covering why the service went dark",
+          "executed_path": "lexical",
+          "effective_mode": "lexical",
+          "ranked_ids": [
+            "inc-d3"
+          ],
+          "passed": 1,
+          "total": 3,
+          "csr": 0.3333333333333333,
+          "assertions": [
+            {
+              "assertion": "InTopK(memory_id='inc-1', k=1)",
+              "type": "InTopK",
+              "passed": false
+            },
+            {
+              "assertion": "RanksAbove(higher_id='inc-1', lower_id='inc-2')",
+              "type": "RanksAbove",
+              "passed": false
+            },
+            {
+              "assertion": "Excludes(memory_id='inc-d1', k=10)",
+              "type": "Excludes",
+              "passed": true
+            }
+          ]
+        }
+      ],
+      "csr_std": 1.0,
+      "csr_adv": 0.3333333333333333,
+      "rankings_identical": false,
+      "query_blind_flag": false
+    },
+    {
+      "case_id": "recency_none_older",
+      "primitive": "recency",
+      "retrieval_mode": "auto",
+      "n_memories": 8,
+      "n_assertions": 4,
+      "status": "ok",
+      "runs": [
+        {
+          "run": "standard",
+          "query": "vector search milestone roadmap",
+          "executed_path": "lexical",
+          "effective_mode": "lexical",
+          "ranked_ids": [
+            "rm-1",
+            "rm-2"
+          ],
+          "passed": 4,
+          "total": 4,
+          "csr": 1.0,
+          "assertions": [
+            {
+              "assertion": "NoneOlderThan(timestamp=1000.0, k=10)",
+              "type": "NoneOlderThan",
+              "passed": true
+            },
+            {
+              "assertion": "InTopK(memory_id='rm-1', k=5)",
+              "type": "InTopK",
+              "passed": true
+            },
+            {
+              "assertion": "InTopK(memory_id='rm-2', k=5)",
+              "type": "InTopK",
+              "passed": true
+            },
+            {
+              "assertion": "CoversTopic(topic='roadmap', k=10)",
+              "type": "CoversTopic",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "run": "adversarial",
+          "query": "embedding lookup capability planned delivery timeline",
+          "executed_path": "lexical",
+          "effective_mode": "lexical",
+          "ranked_ids": [
+            "rc-d1"
+          ],
+          "passed": 1,
+          "total": 4,
+          "csr": 0.25,
+          "assertions": [
+            {
+              "assertion": "NoneOlderThan(timestamp=1000.0, k=10)",
+              "type": "NoneOlderThan",
+              "passed": true
+            },
+            {
+              "assertion": "InTopK(memory_id='rm-1', k=5)",
+              "type": "InTopK",
+              "passed": false
+            },
+            {
+              "assertion": "InTopK(memory_id='rm-2', k=5)",
+              "type": "InTopK",
+              "passed": false
+            },
+            {
+              "assertion": "CoversTopic(topic='roadmap', k=10)",
+              "type": "CoversTopic",
+              "passed": false
+            }
+          ]
+        }
+      ],
+      "csr_std": 1.0,
+      "csr_adv": 0.25,
+      "rankings_identical": false,
+      "query_blind_flag": false
+    },
+    {
+      "case_id": "coverage_all_topic_facts",
+      "primitive": "coverage",
+      "retrieval_mode": "auto",
+      "n_memories": 8,
+      "n_assertions": 3,
+      "status": "ok",
+      "runs": [
+        {
+          "run": "standard",
+          "query": "pricing tier discounts enterprise starter",
+          "executed_path": "lexical",
+          "effective_mode": "lexical",
+          "ranked_ids": [
+            "pr-1",
+            "pr-2",
+            "pr-3"
+          ],
+          "passed": 3,
+          "total": 3,
+          "csr": 1.0,
+          "assertions": [
+            {
+              "assertion": "CoversTopic(topic='pricing', k=10)",
+              "type": "CoversTopic",
+              "passed": true
+            },
+            {
+              "assertion": "InTopK(memory_id='pr-3', k=10)",
+              "type": "InTopK",
+              "passed": true
+            },
+            {
+              "assertion": "Excludes(memory_id='pd-2', k=10)",
+              "type": "Excludes",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "run": "adversarial",
+          "query": "cost structure across subscription plans varies per seat",
+          "executed_path": "lexical",
+          "effective_mode": "lexical",
+          "ranked_ids": [
+            "pd-1"
+          ],
+          "passed": 1,
+          "total": 3,
+          "csr": 0.3333333333333333,
+          "assertions": [
+            {
+              "assertion": "CoversTopic(topic='pricing', k=10)",
+              "type": "CoversTopic",
+              "passed": false
+            },
+            {
+              "assertion": "InTopK(memory_id='pr-3', k=10)",
+              "type": "InTopK",
+              "passed": false
+            },
+            {
+              "assertion": "Excludes(memory_id='pd-2', k=10)",
+              "type": "Excludes",
+              "passed": true
+            }
+          ]
+        }
+      ],
+      "csr_std": 1.0,
+      "csr_adv": 0.3333333333333333,
+      "rankings_identical": false,
+      "query_blind_flag": false
+    },
+    {
+      "case_id": "exclusion_unrelated",
+      "primitive": "exclusion",
+      "retrieval_mode": "auto",
+      "n_memories": 8,
+      "n_assertions": 3,
+      "status": "ok",
+      "runs": [
+        {
+          "run": "standard",
+          "query": "authentication session tokens expire",
+          "executed_path": "lexical",
+          "effective_mode": "lexical",
+          "ranked_ids": [
+            "au-1",
+            "au-2"
+          ],
+          "passed": 3,
+          "total": 3,
+          "csr": 1.0,
+          "assertions": [
+            {
+              "assertion": "InTopK(memory_id='au-1', k=1)",
+              "type": "InTopK",
+              "passed": true
+            },
+            {
+              "assertion": "RanksAbove(higher_id='au-1', lower_id='au-2')",
+              "type": "RanksAbove",
+              "passed": true
+            },
+            {
+              "assertion": "Excludes(memory_id='au-d1', k=10)",
+              "type": "Excludes",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "run": "adversarial",
+          "query": "login credential validity window before forced signout",
+          "executed_path": "lexical",
+          "effective_mode": "lexical",
+          "ranked_ids": [
+            "au-d2"
+          ],
+          "passed": 1,
+          "total": 3,
+          "csr": 0.3333333333333333,
+          "assertions": [
+            {
+              "assertion": "InTopK(memory_id='au-1', k=1)",
+              "type": "InTopK",
+              "passed": false
+            },
+            {
+              "assertion": "RanksAbove(higher_id='au-1', lower_id='au-2')",
+              "type": "RanksAbove",
+              "passed": false
+            },
+            {
+              "assertion": "Excludes(memory_id='au-d1', k=10)",
+              "type": "Excludes",
+              "passed": true
+            }
+          ]
+        }
+      ],
+      "csr_std": 1.0,
+      "csr_adv": 0.3333333333333333,
+      "rankings_identical": false,
+      "query_blind_flag": false
+    },
+    {
+      "case_id": "precision_multi_topic",
+      "primitive": "precision",
+      "retrieval_mode": "auto",
+      "n_memories": 8,
+      "n_assertions": 4,
+      "status": "ok",
+      "runs": [
+        {
+          "run": "standard",
+          "query": "search indexing latency sharding",
+          "executed_path": "lexical",
+          "effective_mode": "lexical",
+          "ranked_ids": [
+            "se-2",
+            "se-1"
+          ],
+          "passed": 4,
+          "total": 4,
+          "csr": 1.0,
+          "assertions": [
+            {
+              "assertion": "CoversTopic(topic='search', k=10)",
+              "type": "CoversTopic",
+              "passed": true
+            },
+            {
+              "assertion": "RanksAbove(higher_id='se-2', lower_id='se-1')",
+              "type": "RanksAbove",
+              "passed": true
+            },
+            {
+              "assertion": "Excludes(memory_id='bi-1', k=10)",
+              "type": "Excludes",
+              "passed": true
+            },
+            {
+              "assertion": "Excludes(memory_id='bi-2', k=10)",
+              "type": "Excludes",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "run": "adversarial",
+          "query": "query engine speed improvements and catalog refresh cadence",
+          "executed_path": "lexical",
+          "effective_mode": "lexical",
+          "ranked_ids": [
+            "mi-1"
+          ],
+          "passed": 2,
+          "total": 4,
+          "csr": 0.5,
+          "assertions": [
+            {
+              "assertion": "CoversTopic(topic='search', k=10)",
+              "type": "CoversTopic",
+              "passed": false
+            },
+            {
+              "assertion": "RanksAbove(higher_id='se-2', lower_id='se-1')",
+              "type": "RanksAbove",
+              "passed": false
+            },
+            {
+              "assertion": "Excludes(memory_id='bi-1', k=10)",
+              "type": "Excludes",
+              "passed": true
+            },
+            {
+              "assertion": "Excludes(memory_id='bi-2', k=10)",
+              "type": "Excludes",
+              "passed": true
+            }
+          ]
+        }
+      ],
+      "csr_std": 1.0,
+      "csr_adv": 0.5,
+      "rankings_identical": false,
+      "query_blind_flag": false
+    },
+    {
+      "case_id": "query_blind_409",
+      "primitive": "query_independence",
+      "retrieval_mode": "auto",
+      "n_memories": 11,
+      "n_assertions": 5,
+      "status": "ok",
+      "runs": [
+        {
+          "run": "standard",
+          "query": "memory retrieval keyword ranking",
+          "executed_path": "lexical",
+          "effective_mode": "lexical",
+          "ranked_ids": [
+            "qb-3",
+            "qb-1",
+            "qb-2"
+          ],
+          "passed": 5,
+          "total": 5,
+          "csr": 1.0,
+          "assertions": [
+            {
+              "assertion": "InTopK(memory_id='qb-1', k=5)",
+              "type": "InTopK",
+              "passed": true
+            },
+            {
+              "assertion": "InTopK(memory_id='qb-2', k=5)",
+              "type": "InTopK",
+              "passed": true
+            },
+            {
+              "assertion": "InTopK(memory_id='qb-3', k=5)",
+              "type": "InTopK",
+              "passed": true
+            },
+            {
+              "assertion": "CoversTopic(topic='memory', k=10)",
+              "type": "CoversTopic",
+              "passed": true
+            },
+            {
+              "assertion": "Excludes(memory_id='qb-d1', k=10)",
+              "type": "Excludes",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "run": "adversarial",
+          "query": "recall ordering favors surface term matches",
+          "executed_path": "lexical",
+          "effective_mode": "lexical",
+          "ranked_ids": [
+            "qb-d2"
+          ],
+          "passed": 1,
+          "total": 5,
+          "csr": 0.2,
+          "assertions": [
+            {
+              "assertion": "InTopK(memory_id='qb-1', k=5)",
+              "type": "InTopK",
+              "passed": false
+            },
+            {
+              "assertion": "InTopK(memory_id='qb-2', k=5)",
+              "type": "InTopK",
+              "passed": false
+            },
+            {
+              "assertion": "InTopK(memory_id='qb-3', k=5)",
+              "type": "InTopK",
+              "passed": false
+            },
+            {
+              "assertion": "CoversTopic(topic='memory', k=10)",
+              "type": "CoversTopic",
+              "passed": false
+            },
+            {
+              "assertion": "Excludes(memory_id='qb-d1', k=10)",
+              "type": "Excludes",
+              "passed": true
+            }
+          ]
+        }
+      ],
+      "csr_std": 1.0,
+      "csr_adv": 0.2,
+      "rankings_identical": false,
+      "query_blind_flag": false
+    },
+    {
+      "case_id": "composite_control_409",
+      "primitive": "query_independence",
+      "retrieval_mode": "composite",
+      "n_memories": 11,
+      "n_assertions": 5,
+      "status": "ok",
+      "runs": [
+        {
+          "run": "standard",
+          "query": "memory retrieval keyword ranking",
+          "executed_path": "composite",
+          "effective_mode": "composite",
+          "ranked_ids": [
+            "qb-d1",
+            "qb-d2",
+            "qb-d3",
+            "qb-d4",
+            "qb-d5",
+            "qb-d6",
+            "qb-d7",
+            "qb-d8",
+            "qb-1",
+            "qb-2",
+            "qb-3"
+          ],
+          "passed": 0,
+          "total": 5,
+          "csr": 0.0,
+          "assertions": [
+            {
+              "assertion": "InTopK(memory_id='qb-1', k=5)",
+              "type": "InTopK",
+              "passed": false
+            },
+            {
+              "assertion": "InTopK(memory_id='qb-2', k=5)",
+              "type": "InTopK",
+              "passed": false
+            },
+            {
+              "assertion": "InTopK(memory_id='qb-3', k=5)",
+              "type": "InTopK",
+              "passed": false
+            },
+            {
+              "assertion": "CoversTopic(topic='memory', k=10)",
+              "type": "CoversTopic",
+              "passed": false
+            },
+            {
+              "assertion": "Excludes(memory_id='qb-d1', k=10)",
+              "type": "Excludes",
+              "passed": false
+            }
+          ]
+        },
+        {
+          "run": "adversarial",
+          "query": "recall ordering favors surface term matches",
+          "executed_path": "composite",
+          "effective_mode": "composite",
+          "ranked_ids": [
+            "qb-d1",
+            "qb-d2",
+            "qb-d3",
+            "qb-d4",
+            "qb-d5",
+            "qb-d6",
+            "qb-d7",
+            "qb-d8",
+            "qb-1",
+            "qb-2",
+            "qb-3"
+          ],
+          "passed": 0,
+          "total": 5,
+          "csr": 0.0,
+          "assertions": [
+            {
+              "assertion": "InTopK(memory_id='qb-1', k=5)",
+              "type": "InTopK",
+              "passed": false
+            },
+            {
+              "assertion": "InTopK(memory_id='qb-2', k=5)",
+              "type": "InTopK",
+              "passed": false
+            },
+            {
+              "assertion": "InTopK(memory_id='qb-3', k=5)",
+              "type": "InTopK",
+              "passed": false
+            },
+            {
+              "assertion": "CoversTopic(topic='memory', k=10)",
+              "type": "CoversTopic",
+              "passed": false
+            },
+            {
+              "assertion": "Excludes(memory_id='qb-d1', k=10)",
+              "type": "Excludes",
+              "passed": false
+            }
+          ]
+        }
+      ],
+      "csr_std": 0.0,
+      "csr_adv": 0.0,
+      "rankings_identical": true,
+      "query_blind_flag": true
+    }
+  ]
+}
