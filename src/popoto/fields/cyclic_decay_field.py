@@ -128,8 +128,20 @@ for i = 1, #members, 2 do
     table.insert(scored, {member, effective_score})
 end
 
--- Sort by effective score descending
-table.sort(scored, function(a, b) return a[2] > b[2] end)
+-- Two-level total-order comparator. Lua 5.1 table.sort is unstable and
+-- members are collected from ZRANGE (index order), so a score-only comparator
+-- leaves equal-scored members in undefined order -- including across the
+-- max_results truncation boundary below. Tie-break on a[1] (the member's full
+-- redis_key): sorted-set members are unique by definition, so distinct entries
+-- always have unequal key strings, giving a strict weak ordering. The
+-- three-force effective_score is a finite sum (decay + cyclic + pressure), so
+-- a[2] ~= b[2] behaves as a normal total order (no NaN).
+table.sort(scored, function(a, b)
+    if a[2] ~= b[2] then
+        return a[2] > b[2]
+    end
+    return a[1] < b[1]
+end)
 
 -- Return top-N as flat array: [member1, score1, member2, score2, ...]
 local result = {}
@@ -156,6 +168,10 @@ class CyclicDecayField(DecayingSortedField):
 
     When ``cycles=[]`` and ``pressure_rate=0.0``, behavior is identical
     to ``DecayingSortedField``.
+
+    Ranking is deterministic: equal effective-scored members are ordered
+    by member key (redis_key) ascending, byte-wise, broken inside the Lua
+    script before top-N truncation.
 
     Args:
         decay_rate: Controls how fast scores drop. Higher = faster decay.
