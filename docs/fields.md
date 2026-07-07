@@ -724,6 +724,11 @@ All standard `SortedField` range filters (`__gt`, `__gte`, `__lt`, `__lte`, `__b
 work against the timestamp score. See [Agent Memory](features/agent-memory.md) for the
 full agent memory primitives overview.
 
+**Ordering** is deterministic: `top_by_decay()` returns results by decayed score
+descending, with equal scores tie-broken by `redis_key` ascending (byte-wise)
+inside the Lua script -- before the top-N truncation, so identical queries always
+return the identical ordering, including which members survive the `n` cutoff.
+
 ## CyclicDecayField
 
 `CyclicDecayField` extends `DecayingSortedField` with two additional temporal forces computed
@@ -769,6 +774,10 @@ directive.touch("relevance")
 | `cycles` | `list` | `[]` | List of `(period, amplitude, phase)` tuples. Use `TemporalPeriod` constants for period. |
 | `pressure_rate` | `float` | `0.0` | Rate of urgency buildup per unresolved day. |
 | `partition_by` | `str` or `tuple` | `()` | Partition the sorted set by key field values (inherited). |
+
+**Ordering** is deterministic, same as `DecayingSortedField`: equal effective
+scores (`decay + cyclic + pressure`) are tie-broken by `redis_key` ascending
+(byte-wise) inside the Lua script, before the top-N truncation.
 
 See [CyclicDecayField feature docs](features/cyclic-decay-field.md) for the full reference including
 the scoring formula, Redis data model, `TemporalPeriod` constants, and error handling.

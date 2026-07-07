@@ -305,7 +305,11 @@ class QueryBuilder:
             base_score_field: Override the field's base_score_field for this query.
 
         Returns:
-            List of model instances in decayed-score order.
+            List of model instances in decayed-score order. Ordering is
+            deterministic: ties are broken inside the Lua script by member
+            key (redis_key) ascending, byte-wise, before the ``n``
+            truncation, so identical calls always return identical
+            orderings -- including which members survive the cutoff.
 
         Raises:
             QueryException: If field is not a DecayingSortedField or

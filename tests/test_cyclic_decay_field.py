@@ -830,6 +830,100 @@ class TestCyclicBenchmarks:
         popoto.POPOTO_REDIS_DB.delete(pressure_hash_key)
 
 
+# --- Deterministic tie-ordering (issue #448) ---
+
+
+class TestCyclicTieOrdering:
+    """Regression tests for deterministic tie-breaking (issue #448).
+
+    Equal effective-scored members must return in member key (redis_key)
+    ascending order, byte-wise, broken inside the Lua script -- independent
+    of insertion order, repeatable across runs, and stable across the ``n``
+    truncation boundary. ``CyclicItem`` uses the default ``cycles=[]`` /
+    ``pressure_rate=0.0``, so no companion data is written and
+    ``effective_score == decayed`` (the tie collapses to identical scores).
+    Mirrors ``TestBM25TieOrdering`` (#446) and ``TestDecayTieOrdering``.
+    """
+
+    NAMES = ["tie_a", "tie_b", "tie_c", "tie_d", "tie_e"]
+
+    def setup_method(self):
+        CyclicItem.delete_all()
+
+    def _plant_tied(self, names=None):
+        """Create identical-base members, then plant one shared timestamp.
+
+        Created in reversed (non-ascending) key order so a lucky insertion
+        order cannot masquerade as a correct tie-break.
+        """
+        names = names or self.NAMES
+        keys = {}
+        for name in reversed(names):
+            keys[name] = CyclicItem.create(name=name).db_key.redis_key
+        ss_key = CyclicDecayField.get_sortedset_db_key(CyclicItem, "relevance")
+        shared_ts = time.time() - 86400  # 1 day ago, identical for every member
+        popoto.POPOTO_REDIS_DB.zadd(
+            ss_key.redis_key, {keys[name]: shared_ts for name in names}
+        )
+        return sorted(keys.values())  # byte-wise ascending == expected order
+
+    def _scores_via_lua(self, n=10):
+        """Return the raw effective score strings the Lua script emits."""
+        ss_key = CyclicDecayField.get_sortedset_db_key(CyclicItem, "relevance")
+        cycles_key = CyclicDecayField.get_cycles_hash_key_from_parts(
+            CyclicItem, "relevance"
+        )
+        pressure_key = CyclicDecayField.get_pressure_hash_key_from_parts(
+            CyclicItem, "relevance"
+        )
+        raw = popoto.POPOTO_REDIS_DB.eval(
+            CYCLIC_DECAY_LUA,
+            3,
+            ss_key.redis_key,
+            cycles_key,
+            pressure_key,
+            str(time.time()),
+            "0.5",
+            str(n),
+            "",
+        )
+        decoded = [x.decode() if isinstance(x, bytes) else x for x in raw]
+        return [decoded[i + 1] for i in range(0, len(decoded), 2)]
+
+    def test_scores_are_actually_tied(self):
+        """All planted members share exactly one score (tie path exercised)."""
+        self._plant_tied()
+        scores = self._scores_via_lua()
+        assert len(scores) == len(self.NAMES)
+        assert len(set(scores)) == 1
+
+    def test_tie_order_key_ascending_insertion_independent(self):
+        """Tied members return key-ascending regardless of insertion order."""
+        expected = self._plant_tied()
+        results = CyclicItem.query.top_by_decay("relevance", n=10)
+        assert [r.db_key.redis_key for r in results] == expected
+
+    def test_repeated_calls_identical(self):
+        """The same query returns the identical ordered list every run."""
+        self._plant_tied()
+        first = [
+            r.db_key.redis_key for r in CyclicItem.query.top_by_decay("relevance", n=10)
+        ]
+        assert len(first) == len(self.NAMES)
+        for _ in range(9):
+            again = [
+                r.db_key.redis_key
+                for r in CyclicItem.query.top_by_decay("relevance", n=10)
+            ]
+            assert again == first
+
+    def test_deterministic_truncation_at_n(self):
+        """With 5 tied members and n=3, exactly the 3 lowest keys return."""
+        expected = self._plant_tied()
+        results = CyclicItem.query.top_by_decay("relevance", n=3)
+        assert [r.db_key.redis_key for r in results] == expected[:3]
+
+
 # --- Export tests ---
 
 
