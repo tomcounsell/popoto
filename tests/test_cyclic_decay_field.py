@@ -907,8 +907,7 @@ class TestCyclicTieOrdering:
         """The same query returns the identical ordered list every run."""
         self._plant_tied()
         first = [
-            r.db_key.redis_key
-            for r in CyclicItem.query.top_by_decay("relevance", n=10)
+            r.db_key.redis_key for r in CyclicItem.query.top_by_decay("relevance", n=10)
         ]
         assert len(first) == len(self.NAMES)
         for _ in range(9):
