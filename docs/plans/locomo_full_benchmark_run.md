@@ -1,5 +1,5 @@
 ---
-status: Planning
+status: Ready
 type: chore
 appetite: Small
 owner: valor
@@ -438,23 +438,20 @@ touched.
 
 ---
 
-## Open Questions
+## Decisions (formerly Open Questions)
 
-_Recommended defaults proposed; proceed unless PM overrides:_
+_Coordinator approved all recommended defaults on 2026-07-07 — no PM loop-back needed:_
 
-1. **Adversarial (category-5) items in the headline aggregate.** LoCoMo
-   adversarial QAs have no evidence, so they score 0-by-construction on
-   recall/MRR while counting in `n_ok`, deflating the blended headline number.
-   **RECOMMENDED:** report the **raw** aggregate (including the zeros) as the
-   headline — it's what the harness computes and stays comparable to how other
-   tools report LoCoMo — but always surface the `by_question_type` breakdown and
-   add an explicit note that category-5 is 0-by-construction. **Do not** change
-   the metric or exclude the category (out of scope). Confirm this framing.
-2. **Hybrid run wall-clock.** If the full hybrid CPU run proves long,
-   **RECOMMENDED:** run it in the background and monitor; do not commit a
-   `--limit` partial as the headline. Escalate only if it can't finish in a
-   single session.
-3. **Docs table placement.** **RECOMMENDED:** add the LoCoMo Retrieval Modes
-   table immediately after the LongMemEval-S one (after line ~174) and replace
-   the fixture-floor table in place (lines 187-194), rather than restructuring
-   the Baseline Numbers section. Confirm minimal-diff placement is acceptable.
+1. **Adversarial (category-5) items in the headline aggregate.** DECIDED:
+   report the **raw** aggregate (including the zeros) as the headline — it's
+   what the harness computes and stays comparable to how other tools report
+   LoCoMo — but always surface the `by_question_type` breakdown and add an
+   explicit note that category-5 is 0-by-construction. The metric and category
+   inclusion are unchanged (out of scope).
+2. **Hybrid run wall-clock.** DECIDED: run it in the background and monitor; do
+   not commit a `--limit` partial as the headline. Escalate only if it can't
+   finish in a single session.
+3. **Docs table placement.** DECIDED: add the LoCoMo Retrieval Modes table
+   immediately after the LongMemEval-S one (after line ~174) and replace the
+   fixture-floor table in place (lines 187-194), rather than restructuring the
+   Baseline Numbers section.
