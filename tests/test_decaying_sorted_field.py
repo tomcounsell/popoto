@@ -19,7 +19,10 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 import pytest
 from src import popoto
-from src.popoto.fields.decaying_sorted_field import DecayingSortedField
+from src.popoto.fields.decaying_sorted_field import (
+    DecayingSortedField,
+    DECAY_SCORE_LUA,
+)
 from src.popoto.models.query import QueryException
 
 # --- Test Models ---
@@ -494,6 +497,86 @@ class TestDecayBenchmarks:
 
         # Cleanup
         popoto.POPOTO_REDIS_DB.delete(ss_key.redis_key)
+
+
+# --- Deterministic tie-ordering (issue #448) ---
+
+
+class TestDecayTieOrdering:
+    """Regression tests for deterministic tie-breaking (issue #448).
+
+    Equal-scored members must return in member key (redis_key) ascending
+    order, byte-wise, broken inside the Lua script -- independent of
+    insertion order, repeatable across runs, and stable across the ``n``
+    truncation boundary. Mirrors ``TestBM25TieOrdering`` (#446).
+    """
+
+    NAMES = ["tie_a", "tie_b", "tie_c", "tie_d", "tie_e"]
+
+    def setup_method(self):
+        DecayItem.delete_all()
+
+    def _plant_tied(self, names=None):
+        """Create identical-base members, then plant one shared timestamp.
+
+        Members are created in reversed (non-ascending) key order so a lucky
+        insertion order cannot masquerade as a correct tie-break. Base score
+        is 1.0 for every member (DecayItem.relevance has no base_score_field),
+        so an identical timestamp yields an identical decayed score.
+        """
+        names = names or self.NAMES
+        keys = {}
+        for name in reversed(names):
+            keys[name] = DecayItem.create(name=name).db_key.redis_key
+        ss_key = DecayingSortedField.get_sortedset_db_key(DecayItem, "relevance")
+        shared_ts = time.time() - 86400  # 1 day ago, identical for every member
+        popoto.POPOTO_REDIS_DB.zadd(
+            ss_key.redis_key, {keys[name]: shared_ts for name in names}
+        )
+        return sorted(keys.values())  # byte-wise ascending == expected order
+
+    def _scores_via_lua(self, n=10):
+        """Return the raw decayed score strings the Lua script emits."""
+        ss_key = DecayingSortedField.get_sortedset_db_key(DecayItem, "relevance")
+        raw = popoto.POPOTO_REDIS_DB.eval(
+            DECAY_SCORE_LUA, 1, ss_key.redis_key, str(time.time()), "0.5", str(n), ""
+        )
+        decoded = [x.decode() if isinstance(x, bytes) else x for x in raw]
+        return [decoded[i + 1] for i in range(0, len(decoded), 2)]
+
+    def test_scores_are_actually_tied(self):
+        """All planted members share exactly one score (tie path exercised)."""
+        self._plant_tied()
+        scores = self._scores_via_lua()
+        assert len(scores) == len(self.NAMES)
+        assert len(set(scores)) == 1
+
+    def test_tie_order_key_ascending_insertion_independent(self):
+        """Tied members return key-ascending regardless of insertion order."""
+        expected = self._plant_tied()
+        results = DecayItem.query.top_by_decay("relevance", n=10)
+        assert [r.db_key.redis_key for r in results] == expected
+
+    def test_repeated_calls_identical(self):
+        """The same query returns the identical ordered list every run."""
+        self._plant_tied()
+        first = [
+            r.db_key.redis_key
+            for r in DecayItem.query.top_by_decay("relevance", n=10)
+        ]
+        assert len(first) == len(self.NAMES)
+        for _ in range(9):
+            again = [
+                r.db_key.redis_key
+                for r in DecayItem.query.top_by_decay("relevance", n=10)
+            ]
+            assert again == first
+
+    def test_deterministic_truncation_at_n(self):
+        """With 5 tied members and n=3, exactly the 3 lowest keys return."""
+        expected = self._plant_tied()
+        results = DecayItem.query.top_by_decay("relevance", n=3)
+        assert [r.db_key.redis_key for r in results] == expected[:3]
 
 
 # --- Export tests ---
