@@ -4103,6 +4103,10 @@ for the full pattern.</p>
 <p>All standard <code>SortedField</code> range filters (<code>__gt</code>, <code>__gte</code>, <code>__lt</code>, <code>__lte</code>, <code>__between</code>)
 work against the timestamp score. See <a href="../features/agent-memory/">Agent Memory</a> for the
 full agent memory primitives overview.</p>
+<p><strong>Ordering</strong> is deterministic: <code>top_by_decay()</code> returns results by decayed score
+descending, with equal scores tie-broken by <code>redis_key</code> ascending (byte-wise)
+inside the Lua script -- before the top-N truncation, so identical queries always
+return the identical ordering, including which members survive the <code>n</code> cutoff.</p>
 <h2 id="cyclicdecayfield">CyclicDecayField<a class="headerlink" href="#cyclicdecayfield" title="Permanent link">&para;</a></h2>
 <p><code>CyclicDecayField</code> extends <code>DecayingSortedField</code> with two additional temporal forces computed
 atomically in a single Lua script:</p>
@@ -4176,6 +4180,9 @@ atomically in a single Lua script:</p>
 </tr>
 </tbody>
 </table>
+<p><strong>Ordering</strong> is deterministic, same as <code>DecayingSortedField</code>: equal effective
+scores (<code>decay + cyclic + pressure</code>) are tie-broken by <code>redis_key</code> ascending
+(byte-wise) inside the Lua script, before the top-N truncation.</p>
 <p>See <a href="../features/cyclic-decay-field/">CyclicDecayField feature docs</a> for the full reference including
 the scoring formula, Redis data model, <code>TemporalPeriod</code> constants, and error handling.
 See <a href="../features/agent-memory/">Agent Memory</a> for the broader agent memory primitives overview.</p>
