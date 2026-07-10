@@ -791,17 +791,25 @@ class ContextAssembler:
     CyclicDecayField) retrieval, applies token budgets, and formats output
     for LLM context injection.
 
-    The pull path supports two modes selected by ``retrieval_mode``:
+    The pull path supports these modes selected by ``retrieval_mode``:
 
     * ``"hybrid"`` — BM25 (lexical) + vector (semantic) signals fused via
       Reciprocal Rank Fusion (RRF, k=60) followed by optional CoOccurrence
       graph propagation. Requires ``BM25Field`` and ``EmbeddingField`` on the
       model.
+    * ``"lexical"`` — BM25 (query-sensitive) + graph, no embeddings. Requires
+      ``BM25Field``.
+    * ``"vector"`` — pure cosine over the ``EmbeddingField`` (no BM25, no RRF,
+      no graph). Requires ``EmbeddingField``. An **explicit-only** diagnostic
+      mode that measures the dense arm in isolation (issue #455); an empty
+      cosine signal returns no records rather than falling back to composite.
     * ``"composite"`` — original CompositeScoreQuery weighted-sum (unchanged
       from pre-v1.7 behaviour). Requires ``score_weights``.
     * ``"auto"`` *(default)* — selects ``"hybrid"`` when both ``BM25Field``
-      and ``EmbeddingField`` are detected on the model, otherwise falls back
-      to ``"composite"``.
+      and ``EmbeddingField`` are detected, ``"lexical"`` when only ``BM25Field``
+      is present, otherwise falls back to ``"composite"``. ``auto`` never
+      resolves to ``"vector"`` — an embedding-only model routes to
+      ``"composite"``; use explicit ``retrieval_mode="vector"``.
 
     Args:
         model_class: Popoto Model class to query.
@@ -834,12 +842,14 @@ class ContextAssembler:
             ``DeprecationWarning`` at construction. Default: a stdlib
             character-class heuristic over the serialized text
             (``_estimate_tokens``).
-        retrieval_mode: ``"auto"`` (default), ``"hybrid"``, or
-            ``"composite"``. See class docstring for semantics.
+        retrieval_mode: ``"auto"`` (default), ``"hybrid"``, ``"lexical"``,
+            ``"vector"``, or ``"composite"``. See class docstring for semantics.
 
     Raises:
-        QueryException: If ``retrieval_mode="hybrid"`` is requested but the
-            model lacks ``BM25Field`` or ``EmbeddingField``.
+        QueryException: If a mode is requested but the model lacks its required
+            field(s) — ``"hybrid"`` needs ``BM25Field`` and ``EmbeddingField``,
+            ``"lexical"`` needs ``BM25Field``, ``"vector"`` needs
+            ``EmbeddingField``.
     """
 
     def __init__(
@@ -934,7 +944,13 @@ class ContextAssembler:
         #   - neither                     → "composite" (query-blind)
         # Adding an EmbeddingField to a BM25-only model flips lexical → hybrid
         # automatically.
-        _VALID_MODES = {"auto", "lexical", "hybrid", "composite"}
+        #
+        # "vector" is an EXPLICIT-only mode (never auto-resolved): pure cosine
+        # over the EmbeddingField, no BM25/RRF/graph. It is the diagnostic
+        # baseline that measures the dense arm in isolation (issue #455).
+        # ``auto`` deliberately routes an embedding-only model to "composite"
+        # (not "vector") so no production default behavior changes.
+        _VALID_MODES = {"auto", "lexical", "hybrid", "composite", "vector"}
         if retrieval_mode not in _VALID_MODES:
             from ..exceptions import QueryException
 
@@ -975,6 +991,15 @@ class ContextAssembler:
                     f"on {model_class.__name__}"
                 )
             self._effective_mode = "lexical"
+        elif retrieval_mode == "vector":
+            if self._embedding_field is None:
+                from ..exceptions import QueryException
+
+                raise QueryException(
+                    f"retrieval_mode='vector' requires EmbeddingField "
+                    f"on {model_class.__name__}"
+                )
+            self._effective_mode = "vector"
         else:
             self._effective_mode = "composite"
 
@@ -1175,6 +1200,8 @@ class ContextAssembler:
             # hybrid body. Because _embedding_field is None in lexical mode, the
             # vector branch is gated off inside _pull_path_hybrid.
             return self._pull_path_hybrid(query_cues, filters)
+        elif self._effective_mode == "vector":
+            return self._pull_path_vector(query_cues, filters)
         return self._pull_path_composite(query_cues, filters)
 
     def _pull_path_composite(self, query_cues, filters):
@@ -1319,9 +1346,11 @@ class ContextAssembler:
                 "reindex caveat). Falling back to composite (query-blind).",
                 self._effective_mode,
                 self.model_class.__name__,
-                " and the vector search returned none"
-                if self._embedding_field is not None
-                else "",
+                (
+                    " and the vector search returned none"
+                    if self._embedding_field is not None
+                    else ""
+                ),
             )
             return self._pull_path_composite(query_cues, filters)
 
@@ -1364,6 +1393,86 @@ class ContextAssembler:
 
         all_candidates = list(candidates)
         return candidates, all_candidates
+
+    def _pull_path_vector(self, query_cues, filters):
+        """Pure-cosine, vector-only pull path (issue #455).
+
+        Ranks records solely by embedding cosine similarity via
+        ``QueryBuilder._get_vector_scores`` — the identical dense primitive the
+        hybrid path uses for its vector arm — with **no** BM25, RRF fusion, or
+        graph propagation. This is the diagnostic baseline that measures the
+        dense arm in isolation (the missing measurement for the LoCoMo
+        hybrid-vs-lexical regression, #447 → #457).
+
+        Unlike ``_pull_path_hybrid``, an empty vector signal returns
+        ``([], [])`` rather than falling back to the query-blind composite
+        path: a vector-only baseline must never silently degrade to composite,
+        or the measurement is corrupted.
+
+        Valkey-safe: cosine is computed in-process with numpy over the
+        ``EmbeddingField`` ``.npy`` files (no ``FT.*`` / vector modules), the
+        same substrate as the hybrid vector arm.
+
+        Returns:
+            Tuple of (selected_records, all_candidates), records hydrated in
+            descending cosine-similarity order.
+        """
+        from ..models.encoding import decode_popoto_model_hashmap
+        from ..models.query import QueryBuilder as _QueryBuilder
+
+        query_text = " ".join(str(v) for v in query_cues.values())
+
+        # ExistenceFilter pre-check (same short-circuit as the other pull paths).
+        if self._existence_filter is not None:
+            all_missing = all(
+                self._existence_filter.definitely_missing(self.model_class, str(v))
+                for v in query_cues.values()
+            )
+            if all_missing:
+                logger.debug(
+                    "ExistenceFilter: all cues definitely missing, skipping vector pull"
+                )
+                return [], []
+
+        candidate_limit = self.max_items * HYBRID_CANDIDATE_MULTIPLIER
+
+        _q = self.model_class.query
+        _qb = _q.filter(**filters) if filters else _QueryBuilder(_q)
+
+        try:
+            vector_results = _qb._get_vector_scores(query_text, limit=candidate_limit)
+        except Exception as e:
+            logger.warning("Vector search failed in vector path: %s", e)
+            vector_results = []
+
+        if not vector_results:
+            # Vector-only baseline: NO composite fallback. Degrading to the
+            # query-blind composite path would make a "vector" run silently
+            # non-vector and corrupt the diagnostic (issue #455).
+            logger.debug(
+                "Vector pull for %s collected no cosine signal; returning empty "
+                "(no composite fallback in vector-only mode).",
+                self.model_class.__name__,
+            )
+            return [], []
+
+        # Hydrate the top max_items*2 records in cosine order (same pipeline +
+        # decode mechanics as QueryBuilder.fuse(), minus the RRF re-ranking so
+        # the pure cosine order is preserved).
+        top = vector_results[: self.max_items * 2]
+        pipe = POPOTO_REDIS_DB.pipeline()
+        for key, _score in top:
+            pipe.hgetall(key)
+        hashes = pipe.execute()
+
+        records = []
+        for (key, score), data in zip(top, hashes):
+            if data:
+                instance = decode_popoto_model_hashmap(self.model_class, data)
+                instance._vector_score = score
+                records.append(instance)
+
+        return records, records
 
     def _push_path(self, filters):
         """Execute push-path retrieval via CyclicDecayField.
