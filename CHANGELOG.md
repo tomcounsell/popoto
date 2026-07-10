@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Benchmark R@K improvement** — external harness ([#394](https://github.com/tomcounsell/popoto/issues/394)) now shows measurable signal with BM25 retrieval:
   - LongMemEval-S (fixture): R@5 0.0 → 1.0, MRR 0.0 → 0.667
   - LoCoMo (fixture): R@5 0.0 → 0.667, MRR 0.0 → 0.375
+- **Full-dataset LoCoMo baseline** ([#447](https://github.com/tomcounsell/popoto/issues/447)) — the 6-question fixture baseline is replaced by complete 1986-question runs (10 dialogues) in both retrieval modes:
+  - Lexical (BM25): R@1 0.2986, R@5 0.5534, R@10 0.6400, MRR 0.4124
+  - Hybrid (BM25 + vector RRF): R@1 0.1667, R@5 0.4235, R@10 0.5403, MRR 0.2835 — hybrid underperforms lexical on LoCoMo
+  - Category-5 (adversarial) questions score normally in this dataset snapshot (`evidence` is populated), correcting the earlier zero-by-construction assumption
+  - Artifacts: `tests/benchmarks/results/external/locomo_latest{,_hybrid}.{json,md}`; analysis in [docs/benchmarks.md](https://popoto.io/benchmarks/)
 - **`MemoryLifecycle`** recipe (`src/popoto/recipes/memory_lifecycle.py`) — policy layer orchestrating memory tier transitions and auto-forget. Composes `DecayingSortedField`, `ConfidenceField`, and `AccessTrackerMixin` into a two-tier episodic → semantic lifecycle without replacing any existing primitive. ([#396](https://github.com/tomcounsell/popoto/issues/396))
   - `MemoryLifecycle(model_class, importance_field)` — init with capability detection and `ModelException` guards
   - `tag_new(record, tier="episodic")` — assign starting tier; handles `KeyField` migration automatically

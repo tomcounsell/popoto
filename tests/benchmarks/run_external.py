@@ -1,6 +1,6 @@
 """Run external benchmark datasets against Popoto memory retrieval.
 
-Supports LongMemEval-S (500 questions) and LoCoMo (50 dialogues, ~350+ QA pairs).
+Supports LongMemEval-S (500 questions) and LoCoMo (10 dialogues, 1986 QA pairs).
 Reports Recall@1/5/10, MRR, and p50/p95 latency per dataset.
 Commits results to tests/benchmarks/results/external/.
 

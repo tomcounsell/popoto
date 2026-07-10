@@ -5,7 +5,7 @@ HuggingFace, then yields BenchmarkItem namedtuples for each QA pair.
 
 Dataset: snap-research/locomo
 License: Public research use (see https://snap-research.github.io/locomo/)
-Size:    ~50 multi-session dialogues, ~600 turns/dialogue, ~16K tokens each
+Size:    10 multi-session dialogues (1986 QA pairs), ~600 turns/dialogue
 
 LoCoMo is grounded question-answering over long multi-session dialogues.
 Each question is paired with one or more conversation turns as evidence

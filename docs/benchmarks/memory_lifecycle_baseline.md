@@ -12,6 +12,11 @@ This document establishes the pre-lifecycle baseline for the MemoryLifecycle fea
 The external benchmark harness (LoCoMo + LongMemEval-S) was established in issue #394.
 Baseline retrieval metrics (without lifecycle) are from the existing harness runs on `main`.
 
+> **Historical note (2026-07):** the `*_latest` result files cited below have since
+> been repointed at full-dataset runs and no longer contain the all-zero
+> pre-lifecycle numbers recorded here. See [benchmarks.md](../benchmarks.md) for
+> current baselines (LoCoMo: 1986 questions across both retrieval modes).
+
 ## Pre-Lifecycle Baseline (from main branch, 2026-05-22)
 
 Source: `tests/benchmarks/results/external/locomo_latest.md`
