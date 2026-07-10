@@ -2618,8 +2618,8 @@ the relevant memory given a natural-language query. It supports two datasets:</p
 </tr>
 <tr>
 <td><strong>LoCoMo</strong></td>
-<td>~350 QA pairs</td>
-<td>50 dialogues</td>
+<td>1986 QA pairs</td>
+<td>10 dialogues</td>
 <td>Multi-session dict schema; image turns ingested via BLIP caption so image-evidence stays retrievable</td>
 </tr>
 </tbody>
@@ -2858,6 +2858,50 @@ and every question category reaches Recall@5 ≥ 0.967. Full per-category detail
 is in the committed artifact
 (<code>tests/benchmarks/results/external/longmemeval_s_latest_hybrid.json</code> —
 500/500 questions, zero errors, every item resolved to the true hybrid path).</p>
+<p><strong>LoCoMo, 1986 questions (any-hit Recall):</strong></p>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th style="text-align: right;">Recall@1</th>
+<th style="text-align: right;">Recall@5</th>
+<th style="text-align: right;">Recall@10</th>
+<th style="text-align: right;">MRR</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>lexical</code> (BM25)</td>
+<td style="text-align: right;">0.2986</td>
+<td style="text-align: right;">0.5534</td>
+<td style="text-align: right;">0.6400</td>
+<td style="text-align: right;">0.4124</td>
+</tr>
+<tr>
+<td><code>hybrid</code> (BM25+vector, RRF)</td>
+<td style="text-align: right;">0.1667</td>
+<td style="text-align: right;">0.4235</td>
+<td style="text-align: right;">0.5403</td>
+<td style="text-align: right;">0.2835</td>
+</tr>
+</tbody>
+</table>
+<p>Unlike LongMemEval-S, hybrid <strong>underperforms</strong> lexical on LoCoMo across every
+metric — a real, measured result (no retrieval tuning was performed; this
+harness run is measurement-only per issue #447). Full per-category detail is
+in the committed artifact
+(<code>tests/benchmarks/results/external/locomo_latest_hybrid.json</code> — 1986/1986
+questions, zero errors).</p>
+<p>The dataset's <code>by_question_type</code> breakdown (from the lexical run) is worth a
+factual note: LoCoMo's category 5 ("adversarial") questions carry an
+<code>adversarial_answer</code> field (n=446) and might be expected to score 0-by-
+construction if <code>evidence</code> were absent (the harness's <code>recall_at_k</code> treats an
+empty relevant-set as a special case). In this dataset snapshot, however,
+every one of the 1986 QA pairs — including all 446 category-5 items — has a
+populated <code>evidence</code> field, so that special case never triggers and category
+5 is scored normally. Its measured performance (n=446, Recall@1=0.3341,
+Recall@5=0.6031, Recall@10=0.6883, MRR=0.4581) is comparable to, or better
+than, the other categories, not zero.</p>
 <h3 id="baseline-numbers-v163">Baseline Numbers (v1.6.3)<a class="headerlink" href="#baseline-numbers-v163" title="Permanent link">&para;</a></h3>
 <p><strong>LongMemEval-S (fixture sample, 3 questions):</strong></p>
 <table>
@@ -2886,7 +2930,7 @@ is in the committed artifact
 </tr>
 </tbody>
 </table>
-<p><strong>LoCoMo (fixture sample, 6 QA pairs):</strong></p>
+<p><strong>LoCoMo, full dataset (1986 QA pairs, lexical):</strong></p>
 <table>
 <thead>
 <tr>
@@ -2897,26 +2941,31 @@ is in the committed artifact
 <tbody>
 <tr>
 <td>Recall@1</td>
-<td>0.0000</td>
+<td>0.2986</td>
 </tr>
 <tr>
 <td>Recall@5</td>
-<td>0.0000</td>
+<td>0.5534</td>
 </tr>
 <tr>
 <td>Recall@10</td>
-<td>0.0000</td>
+<td>0.6400</td>
 </tr>
 <tr>
 <td>MRR</td>
-<td>0.0000</td>
+<td>0.4124</td>
 </tr>
 </tbody>
 </table>
-<p><strong>Note:</strong> The v1.6.3 baseline uses score-only retrieval (DecayingSortedField).
-<code>ContextAssembler.assemble()</code> ranks candidates by composite score, not by
-query-text similarity. Scores for freshly-ingested items with equal importance
-are indistinguishable — the baseline is intentionally a floor.</p>
+<p>See <code>tests/benchmarks/results/external/locomo_latest.json</code> for the full
+per-question and per-category report.</p>
+<p><strong>Note:</strong> The v1.6.3 baseline (LongMemEval-S row above) uses score-only
+retrieval (DecayingSortedField). <code>ContextAssembler.assemble()</code> ranks
+candidates by composite score, not by query-text similarity. Scores for
+freshly-ingested items with equal importance are indistinguishable — that
+baseline is intentionally a floor. The LoCoMo numbers above, by contrast, are
+a real BM25-lexical run over the full dataset (see
+<a href="#retrieval-modes">Retrieval Modes</a>), not a score-only floor measurement.</p>
 <p><strong>Reference:</strong> agentmemory BM25+Vector (all-MiniLM-L6-v2) achieves
 Recall@5 = 95.2%, Recall@10 = 98.6%, MRR = 88.2% on LongMemEval-S.
 Popoto's hybrid mode (<code>--retrieval-mode hybrid</code>, see
