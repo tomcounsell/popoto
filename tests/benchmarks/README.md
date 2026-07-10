@@ -35,7 +35,7 @@ tests/benchmarks/
     datasets/
         __init__.py          # BenchmarkItem namedtuple
         longmemeval_s.py     # LongMemEval-S adapter (500 questions)
-        locomo.py            # LoCoMo adapter (~350 QA pairs)
+        locomo.py            # LoCoMo adapter (1986 QA pairs, 10 dialogues)
         fixtures/
             longmemeval_s_sample.json  # 3-question fixture (offline testing)
             locomo_sample.json         # 2-dialogue fixture (offline testing)
