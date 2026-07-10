@@ -333,38 +333,38 @@ touched.
 ## Documentation
 
 ### Feature Documentation
-- [ ] `docs/benchmarks.md` — add a **LoCoMo Retrieval Modes** comparison table
+- [x] `docs/benchmarks.md` — add a **LoCoMo Retrieval Modes** comparison table
   (lexical vs hybrid R@1/R@5/R@10/MRR), mirroring the LongMemEval-S table at
   lines 159-165, placed near it.
-- [ ] `docs/benchmarks.md:187-194` — replace the v1.6.3 all-zeros LoCoMo fixture
+- [x] `docs/benchmarks.md:187-194` — replace the v1.6.3 all-zeros LoCoMo fixture
   table with the real full-dataset numbers; add a note on the category-5
   (adversarial) 0-by-construction effect and a pointer to `locomo_latest*.json`
   for per-category detail.
 
 ### External Documentation Site
-- [ ] `mkdocs build --strict` passes after the edits (`scripts/ci-local.sh docs`).
+- [x] `mkdocs build --strict` passes after the edits (`scripts/ci-local.sh docs`).
 
 ### Inline Documentation
-- [ ] None — no code changes. (The committed report `md` files are
+- [x] None — no code changes. (The committed report `md` files are
   self-describing via `build_markdown_report`.)
 
 ## Success Criteria
 
-- [ ] Full-dataset (~350 QA) **lexical** LoCoMo artifact committed
+- [x] Full-dataset (~350 QA) **lexical** LoCoMo artifact committed
   (`locomo_{date}.{json,md}`); `locomo_latest.{json,md}` repointed off the
   6-question fixture onto it.
-- [ ] Full-dataset **hybrid** LoCoMo artifact committed with `_hybrid` suffix
+- [x] Full-dataset **hybrid** LoCoMo artifact committed with `_hybrid` suffix
   (`locomo_{date}_hybrid.{json,md}`); `locomo_latest_hybrid.{json,md}` created.
-- [ ] Each run has `summary.n_errors == 0`, or errored/skipped items are
+- [x] Each run has `summary.n_errors == 0`, or errored/skipped items are
   documented in the report notes and this plan. `n_total ≈ 350`.
-- [ ] The hybrid run leaves the lexical `locomo_{date}.*` / `locomo_latest.*`
+- [x] The hybrid run leaves the lexical `locomo_{date}.*` / `locomo_latest.*`
   artifacts byte-unchanged (`git status` confirms only `_hybrid` names in the
   hybrid commit).
-- [ ] `docs/benchmarks.md` has a LoCoMo Retrieval Modes table with the measured
+- [x] `docs/benchmarks.md` has a LoCoMo Retrieval Modes table with the measured
   lexical + hybrid numbers, and the fixture-floor table is replaced with real
   numbers + the adversarial-item note.
-- [ ] No Redis/Valkey module commands introduced (verification grep passes).
-- [ ] `mkdocs build --strict` passes.
+- [x] No Redis/Valkey module commands introduced (verification grep passes).
+- [x] `mkdocs build --strict` passes.
 
 ## Step by Step Tasks
 
