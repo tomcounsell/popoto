@@ -115,8 +115,9 @@ def run_item(item: BenchmarkItem, retrieval_mode: str = "lexical") -> QuestionRe
 
     Args:
         item: BenchmarkItem from a dataset adapter.
-        retrieval_mode: ``"lexical"`` (BM25 only) or ``"hybrid"`` (BM25 +
-            vector via RRF). Threaded into the scenario.
+        retrieval_mode: ``"lexical"`` (BM25 only), ``"hybrid"`` (BM25 +
+            vector via RRF), or ``"vector"`` (EmbeddingField-only, pure
+            cosine — harness-local diagnostic). Threaded into the scenario.
 
     Returns:
         QuestionResult with recall metrics and latency.
@@ -204,8 +205,9 @@ def compute_aggregate(
             reproducibility).
         seed: RNG seed used for this run (recorded for reproducibility).
         limit: ``--limit`` value used for this run (``None`` = full dataset).
-        retrieval_mode: ``"lexical"`` or ``"hybrid"`` — the retrieval mode the
-            run was executed in (recorded and surfaced in the report).
+        retrieval_mode: ``"lexical"``, ``"hybrid"``, or ``"vector"`` — the
+            retrieval mode the run was executed in (recorded and surfaced in
+            the report).
 
     Returns:
         Dict with aggregate metrics, per-``question_type`` breakdown, the
@@ -243,6 +245,15 @@ def compute_aggregate(
             "primary path; effective mode resolves to 'hybrid'.",
             "Hybrid fuses BM25 (lexical) + vector (all-MiniLM-L6-v2, 384-dim, "
             "in-process numpy cosine) via Reciprocal Rank Fusion (k=60).",
+        ]
+    elif retrieval_mode == "vector":
+        mode_notes = [
+            "Retrieval mode: vector — pure cosine over the EmbeddingField "
+            "(all-MiniLM-L6-v2, 384-dim, in-process numpy cosine); "
+            "ContextAssembler is BYPASSED (auto-mode would resolve an "
+            "embedding-only model to 'composite', which is query-blind, so "
+            "the harness ranks by raw cosine directly). No BM25, no RRF, no "
+            "graph.",
         ]
     else:
         mode_notes = [
@@ -376,6 +387,15 @@ def build_markdown_report(aggregate: dict) -> str:
             "fused via RRF, k=60). Compare Recall@5/Recall@10 above against the "
             "BM25-only baseline and the agentmemory hybrid reference."
         )
+    elif retrieval_mode == "vector":
+        lines.append(
+            "This run used **vector** retrieval (all-MiniLM-L6-v2, pure cosine, "
+            "no BM25/RRF) — a harness-local diagnostic that bypasses "
+            "ContextAssembler and isolates ONLY the dense arm. Vector-only "
+            "LoCoMo R@1 substantially below lexical confirms a weak vector arm / "
+            "RRF-dilution effect; competitive with hybrid reopens the "
+            "fusion-mechanism hypothesis."
+        )
     else:
         lines.append(
             "This run used **lexical** retrieval (BM25 only). Re-run with "
@@ -494,13 +514,16 @@ def main():
     )
     parser.add_argument(
         "--retrieval-mode",
-        choices=("lexical", "hybrid"),
+        choices=("lexical", "hybrid", "vector"),
         default="lexical",
         help=(
             "Retrieval mode (default: lexical). 'lexical' uses BM25 only and "
             "needs no model download; 'hybrid' adds an all-MiniLM-L6-v2 vector "
             "signal fused with BM25 via RRF (k=60) and requires the "
-            "[benchmark] extra plus a one-time ~90MB model download."
+            "[benchmark] extra plus a one-time ~90MB model download; 'vector' "
+            "uses the EmbeddingField only (same ~90MB all-MiniLM-L6-v2 download "
+            "as hybrid) and ranks by pure cosine with no BM25/RRF — a "
+            "harness-local diagnostic that bypasses ContextAssembler."
         ),
     )
     parser.add_argument(

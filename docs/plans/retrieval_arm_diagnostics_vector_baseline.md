@@ -120,7 +120,9 @@ the harness cannot currently produce.
 - **#409 / PR #426** — "make BM25 a first-class retrieval mode"; the reason
   `composite` is query-blind. Directly relevant: an Embedding-only model under
   `auto` mode falls into that same query-blind `composite` bucket, which is
-  *why* vector needs to be first-class rather than auto-resolved. **Succeeded.**
+  *why* the harness ranks by cosine directly rather than routing an
+  embedding-only model through the assembler (which would resolve to the
+  query-blind `composite` path, not vector search). **Succeeded.**
 - **#457** — the downstream consumer (weighted/query-adaptive fusion). This plan
   is its unblocking gate. **Open.**
 
@@ -196,9 +198,10 @@ build:
   `load_embeddings(model_class)`, returns sorted `(redis_key, score)`. It is
   Valkey-safe (no `FT.*`), already used by the hybrid arm, and needs no RRF.
 - **Confidence**: high.
-- **Impact on plan**: `_pull_path_vector` is a thin wrapper — call
-  `_get_vector_scores`, hydrate records in cosine order, done. No new similarity
-  code.
+- **Impact on plan**: the harness calls `QueryBuilder._get_vector_scores`
+  directly in `ExternalScenario.run()` — the returned `(redis_key, score)` pairs
+  are already sorted by cosine descending, so the redis keys ARE the ranked
+  retrieval. No new similarity code and no assembler involvement.
 
 ### spike-3: Does auto-mode already give us vector-only for free?
 - **Assumption**: "An EmbeddingField-only model under `retrieval_mode='auto'`
@@ -209,10 +212,11 @@ build:
   matches *neither* and resolves to `composite` (query-blind — wrong). So vector
   must be an **explicit** first-class mode.
 - **Confidence**: high.
-- **Impact on plan**: Add `"vector"` to `_VALID_MODES` and drive it via
-  **explicit** `retrieval_mode="vector"` (the scenario passes it explicitly).
-  Leave `auto` resolution untouched so no production default behavior changes
-  (see No-Gos).
+- **Impact on plan**: the CLI exposes `--retrieval-mode vector` and the harness
+  drives it entirely — `ExternalScenario` builds an EmbeddingField-only model and
+  `run()` ranks by pure cosine, bypassing the assembler. `ContextAssembler` is
+  **not** touched (no `_VALID_MODES` entry, no `auto` change), so no production
+  default behavior changes (see No-Gos).
 
 ## Data Flow
 
@@ -221,13 +225,16 @@ build:
 2. **Adapter**: `iter_locomo` / `iter_longmemeval` yield `BenchmarkItem`s
    (unchanged).
 3. **Scenario setup** (`external_base.py`): `_build_external_model_class(prefix,
-   embedding_only=True)` builds a model with **EmbeddingField only, no
-   BM25Field**; `ContextAssembler(model_class, retrieval_mode="vector")`.
+   with_bm25=False, with_embedding=True)` builds a model with **EmbeddingField
+   only, no BM25Field**; `setup()` sets `self._assembler = None` (no assembler is
+   constructed for vector mode).
 4. **Ingest**: one record per non-empty turn (unchanged); embeddings written to
    the per-class `.npy` dir.
-5. **Retrieve** (`ContextAssembler.assemble` → `_pull_path` →
-   **`_pull_path_vector`**): `_get_vector_scores(query_text, limit)` → cosine
-   ranking → hydrate records in score order. No BM25, no RRF, no graph.
+5. **Retrieve** (`ExternalScenario.run()`, assembler bypassed):
+   `QueryBuilder(model_class.query)._get_vector_scores(query_text, limit)` →
+   cosine ranking → the returned `(redis_key, score)` pairs are already sorted by
+   similarity descending, so the redis keys ARE the ranked retrieval. No BM25, no
+   RRF, no graph, no assembler.
 6. **Score** (`run_item`): `recall_at_k` (1/5/10) + `mean_reciprocal_rank`
    (unchanged; optionally + `ndcg_at_k` — see Open Questions).
 7. **Aggregate + report** (`compute_aggregate`, `build_markdown_report`,
@@ -241,15 +248,18 @@ build:
 
 - **New dependencies**: none. Reuses `SentenceTransformersProvider`
   (all-MiniLM-L6-v2), existing numpy cosine, existing artifact plumbing.
-- **Interface changes**: `ContextAssembler` gains one valid mode
-  (`"vector"`) + one method (`_pull_path_vector`). `_VALID_MODES` grows by one
-  entry. `run_external.py` CLI choice grows by one. All **purely additive** —
-  no existing branch signature changes.
+- **Interface changes** (harness-local — Open Question 1): `ContextAssembler` is
+  **not** modified — no `_VALID_MODES` entry, no `_pull_path_vector`, no `auto`
+  change. Only the benchmark harness changes: `run_external.py` CLI choice grows
+  by one, and `ExternalScenario` gains an embedding-only model variant + a
+  cosine-ranking branch in `run()`. All harness-local and additive.
 - **Coupling**: unchanged. Vector mode reuses `_get_vector_scores`, already a
-  dependency of the hybrid path.
+  dependency of the hybrid path — but now the harness calls it directly rather
+  than through the assembler.
 - **Data ownership**: unchanged.
-- **Reversibility**: high — the mode is additive and gated behind an explicit
-  opt-in; removing it deletes one branch + one method + one CLI choice.
+- **Reversibility**: high — the change is confined to the benchmark harness;
+  removing it deletes one CLI choice + the `run()`/`setup()` vector branch and
+  the embedding-only model variant. No production surface to unwind.
 
 ## Appetite
 
@@ -284,15 +294,19 @@ appetite is the two long detached benchmark runs and their interpretation.
   with the spike-1 citations, that BM25 and the embedding arm rank identical
   per-turn units at both the model and retrieval layers. Recorded in the plan
   (above) and summarized in `docs/benchmarks.md` / the PR. No code.
-- **First-class `vector` retrieval mode** in `ContextAssembler`: additive
-  `_VALID_MODES` entry, explicit-mode validation (requires EmbeddingField),
-  and `_pull_path_vector` (pure cosine via `_get_vector_scores`, no BM25 / RRF /
-  graph). `auto` resolution is **not** changed.
+- **Harness-local vector ranking** (Open Question 1 → harness-local):
+  `ContextAssembler` is **NOT** modified. `ExternalScenario.run()` ranks by pure
+  cosine directly via `QueryBuilder(model_class.query)._get_vector_scores(
+  query_text, limit)` (no BM25 / RRF / graph, no `_pull_path_vector`, no
+  `_VALID_MODES` change). The assembler is bypassed entirely for vector mode
+  because auto-mode would resolve an embedding-only model to the query-blind
+  `composite` path.
 - **Harness plumbing**: `--retrieval-mode vector` CLI choice; an
-  `embedding_only` model variant in `_build_external_model_class` (EmbeddingField
-  only, no BM25Field); vector-mode notes in `compute_aggregate` /
-  `build_markdown_report`; `_vector` artifact suffix (already generic in
-  `save_reports`).
+  embedding-only model variant in `_build_external_model_class`
+  (`with_bm25=False, with_embedding=True` → EmbeddingField only, no BM25Field);
+  `setup()` sets `self._assembler = None` for vector mode; vector-mode notes in
+  `compute_aggregate` / `build_markdown_report`; `_vector` artifact suffix
+  (already generic in `save_reports`).
 - **Two diagnostic runs**: vector-only on LongMemEval-S (500 q) and LoCoMo
   (1986 q), launched detached, artifacts committed.
 - **Docs update**: vector-only R@1/5/10/MRR folded into `docs/benchmarks.md`
@@ -301,36 +315,39 @@ appetite is the two long detached benchmark runs and their interpretation.
 ### Flow
 
 `run_external.py --retrieval-mode vector` → ExternalScenario builds
-EmbeddingField-only model → `ContextAssembler(retrieval_mode="vector")` →
-`_pull_path_vector` (cosine) → R@1/5/10/MRR → `{slug}_{date}_vector.*` artifacts
-→ `docs/benchmarks.md` table row.
+EmbeddingField-only model (no BM25Field) → `setup()` sets `_assembler = None`
+(assembler bypassed) → `run()` calls
+`QueryBuilder(model_class.query)._get_vector_scores(query_text, limit)` (cosine)
+→ maps `(redis_key, score)` pairs to ground-truth IDs → R@1/5/10/MRR →
+`{slug}_{date}_vector.*` artifacts → `docs/benchmarks.md` table row.
 
-### Technical Approach
+### Technical Approach (harness-local — Open Question 1 resolved)
 
-- **`_VALID_MODES`** (`context_assembler.py:937`): add `"vector"`.
-- **Explicit-mode validation** (mirror the `lexical` elif at 969-977): a
-  `retrieval_mode == "vector"` branch that requires an EmbeddingField
-  (`self._embedding_field is not None`), else `QueryException`; sets
-  `self._effective_mode = "vector"`.
-- **Dispatch** (`_pull_path`, 1165-1178): add
-  `elif self._effective_mode == "vector": return self._pull_path_vector(...)`.
-- **`_pull_path_vector`**: build a `QueryBuilder`, call
-  `_get_vector_scores(query_text, limit=self.max_items * HYBRID_CANDIDATE_MULTIPLIER)`,
-  take the top `self.max_items * 2` keys in cosine order, hydrate to records
-  (reuse the hydration `fuse()`/lexical paths use), return
-  `(candidates, all_candidates)`. Empty vector signal → return `[], []` (do
-  **not** fall back to composite: a vector-only baseline must not silently
-  become query-blind — that would corrupt the diagnostic).
-- **Harness — `_build_external_model_class`**: add an `embedding_only: bool`
-  path (or a 3-way `mode` arg) that declares the EmbeddingField but **omits**
-  `content_index = BM25Field(...)`. `setup()` (`external_base.py:206-217`)
-  selects it when `retrieval_mode == "vector"` and constructs the assembler with
-  `retrieval_mode="vector"` (not `"auto"`).
+- **No `context_assembler.py` change.** `_VALID_MODES`, `_pull_path`, and the
+  assembler's `auto`/lexical/hybrid resolution are **untouched**. The briefly
+  committed first-class `_pull_path_vector` (65b36ea) is reverted so
+  `git diff main -- src/popoto/recipes/context_assembler.py` is empty.
+- **Harness — `_build_external_model_class`** (`external_base.py`): a
+  `with_bm25` / `with_embedding` pair. Vector mode passes
+  `with_bm25=False, with_embedding=True` → EmbeddingField only, **no**
+  `content_index = BM25Field(...)`.
+- **Harness — `setup()`**: for `retrieval_mode == "vector"` sets
+  `self._assembler = None` (no assembler is constructed); lexical/hybrid still
+  build `ContextAssembler(retrieval_mode="auto")` as before.
+- **Harness — `run()`**: for vector mode, build a `QueryBuilder` from
+  `self._model_class.query` and call
+  `_get_vector_scores(self.item.query, limit=MAX_ITEMS)` (`query.py:995-1067`).
+  The returned `(redis_key, score)` pairs are already sorted by cosine
+  descending, so the redis keys ARE the ranked retrieval — no hydration and no
+  `fuse()`/RRF are needed. Empty vector signal → empty retrieved_ids (R@k = 0),
+  never a composite fallback (a vector-only baseline must not silently become
+  query-blind — that would corrupt the diagnostic).
 - **`run_external.py`**: add `"vector"` to the `--retrieval-mode` choices
-  (496-505) and its help text; thread through `run_item` /
-  `compute_aggregate` / `save_reports` (all already parameterized on
-  `retrieval_mode`); add a `vector` branch to the `mode_notes` (240-253) and the
-  `build_markdown_report` mode blurb (373-384).
+  and its help text; thread through `run_item` / `compute_aggregate` /
+  `save_reports` (all already parameterized on `retrieval_mode`); add a `vector`
+  branch to the `mode_notes` and the `build_markdown_report` mode blurb. The
+  `_vector` artifact suffix already falls out of the generic
+  `suffix = "" if retrieval_mode == "lexical" else f"_{retrieval_mode}"`.
 - **Runs**: `nohup python -m tests.benchmarks.run_external --dataset <d>
   --retrieval-mode vector … & disown` per the #442/#447 ops lesson; the
   inherited `stop_invalidation_listeners()` teardown prevents the connection
@@ -344,13 +361,14 @@ EmbeddingField-only model → `ContextAssembler(retrieval_mode="vector")` →
 ## Failure Path Test Strategy
 
 ### Exception Handling Coverage
-- The existing hybrid/vector code paths wrap failures in
+- The existing hybrid/lexical assembler paths wrap failures in
   `logger.warning(...)` + fallback (e.g. `context_assembler.py:1293,1311,1362`).
-  `_pull_path_vector` must **not** copy the composite fallback — a vector-only
-  baseline that silently degrades to query-blind composite would produce a
-  misleading number. Add a test asserting that when `_get_vector_scores`
-  returns `[]`, `_pull_path_vector` returns `([], [])` (empty), **not** a
-  composite result.
+  The harness-local vector path must **not** copy that composite fallback — a
+  vector-only baseline that silently degrades to query-blind composite would
+  produce a misleading number. Because the vector path bypasses the assembler
+  entirely and ranks by raw cosine in `ExternalScenario.run()`, when
+  `_get_vector_scores` returns `[]` the run yields empty retrieved_ids (R@k = 0),
+  **never** a composite result.
 - `_get_vector_scores` already returns `[]` (not raise) on missing
   provider/embeddings/numpy (`query.py:1025-1046`); assert the vector mode
   surfaces that as an empty ScenarioResult, not an error crash.
@@ -416,9 +434,10 @@ disown`) and watch the progress log.
 ### Risk 2: Empty vector signal silently falls back to composite, corrupting the baseline
 **Impact:** A "vector-only" number that is really query-blind composite would
 mislead the #457 decision.
-**Mitigation:** `_pull_path_vector` returns empty on no signal (no composite
-fallback), with an explicit test asserting it. Documented in Failure Path
-Strategy.
+**Mitigation:** The harness-local vector path (`ExternalScenario.run()`) ranks by
+raw cosine and returns empty retrieved_ids on no signal — the assembler is
+bypassed, so there is no composite fallback to fall into. An explicit test
+asserts it. Documented in Failure Path Strategy.
 
 ### Risk 3: nDCG scope creep forces a full three-mode re-benchmark
 **Impact:** The cheap diagnostic turns into re-running lexical + hybrid on both
@@ -476,25 +495,36 @@ is no MCP/tool surface to wire.
 - [ ] `mkdocs build --strict` passes (the docs deploy gate).
 
 ### Inline Documentation
-- [ ] Docstring for `_pull_path_vector` and the `vector` mode in
-  `ContextAssembler`'s class/`assemble` docstrings (mirror the existing
-  lexical/hybrid docstrings).
-- [ ] Update `external_base.py` module docstring (the "Retrieval mode" section,
-  lines 25-38) to describe the vector mode.
+- [ ] ~~Docstring for `_pull_path_vector` in `ContextAssembler`~~ — VOID
+  (harness-local; the assembler is not modified).
+- [ ] Update `external_base.py` module docstring (the "Retrieval mode" section)
+  and `ExternalScenario.run()` docstring to describe the harness-local vector
+  mode (pure cosine, assembler bypassed).
 
 ## Success Criteria
 
 - [ ] Granularity-parity audit is written with citations and its conclusion
   (parity holds → weak-arm hypothesis elevated) recorded in `docs/benchmarks.md`
-  + PR.
-- [ ] `ContextAssembler` accepts `retrieval_mode="vector"` (EmbeddingField
-  required), dispatches to `_pull_path_vector` (pure cosine, no BM25/RRF/graph),
-  and rejects vector mode on a BM25-only / no-embedding model with
-  `QueryException`.
-- [ ] `_pull_path_vector` returns empty (not composite) on empty vector signal —
-  asserted by a test.
+  + PR. **The audit isolates only the dense arm** — not the graph /
+  co-occurrence arm that also lives inside hybrid's `_pull_path_hybrid` — so the
+  conclusion is scoped to the vector signal's standalone strength.
+- [ ] **Harness-local (Open Question 1):** `git diff main -- src/popoto/recipes/context_assembler.py`
+  is **empty** — no first-class `vector` mode, no `_pull_path_vector`, no
+  `_VALID_MODES` change ship to production.
+- [ ] `ExternalScenario.run()` ranks vector mode by pure cosine via
+  `QueryBuilder._get_vector_scores` (no BM25/RRF/graph, assembler bypassed) and
+  yields empty retrieved_ids (R@k = 0), not a composite fallback, on empty
+  vector signal.
+- [ ] **Decision rule for #457 (the diagnostic's core deliverable):**
+  vector-only LoCoMo R@1 **substantially below lexical** R@1 (mirroring the
+  hybrid<lexical LoCoMo regression) confirms the **weak-arm / RRF-dilution**
+  hypothesis and greenlights #457's weighted/query-adaptive fusion; vector-only
+  **competitive with hybrid** instead reopens the **fusion-mechanism**
+  hypothesis (the fix is in how the arms combine, not in the dense arm). This
+  rule is recorded in `docs/benchmarks.md` so #457 proceeds without a fresh
+  interpretation debate.
 - [ ] `run_external.py --retrieval-mode vector` runs end-to-end on a smoke
-  subset (`--limit 20 --dry-run`).
+  subset (`--limit 20 --dry-run` / fixture).
 - [ ] Full vector-only runs committed for **both** datasets as
   `{slug}_{date}_vector.{json,md}` + `{slug}_latest_vector.*`, never
   overwriting lexical/hybrid artifacts.
@@ -512,10 +542,12 @@ builds directly.
 
 ### Team Members
 
-- **Builder (assembler-vector-mode)**
+- **Builder (assembler-vector-mode)** — **VOID** (Open Question 1 → harness-local;
+  see Task 1). No `ContextAssembler` changes ship; the vector ranking lives in
+  the harness (`harness-builder`, below).
   - Name: `vector-mode-builder`
-  - Role: Add `"vector"` to `ContextAssembler` (`_VALID_MODES`, validation,
-    `_pull_path_vector`, dispatch) + unit tests.
+  - Role: ~~Add `"vector"` to `ContextAssembler` (`_VALID_MODES`, validation,
+    `_pull_path_vector`, dispatch) + unit tests.~~ VOID.
   - Agent Type: builder
   - Domain: Redis/Popoto data + retrieval
   - Resume: true
@@ -549,39 +581,34 @@ builds directly.
 
 ## Step by Step Tasks
 
-### 1. Add first-class `vector` mode to ContextAssembler
+### 1. ~~Add first-class `vector` mode to ContextAssembler~~ — VOID (Open Question 1 → harness-local)
 - **Task ID**: build-vector-mode
-- **Depends On**: none
-- **Validates**: `tests/recipes/test_context_assembler*.py` (extend/create)
-- **Informed By**: spike-2 (reuse `_get_vector_scores`), spike-3 (must be
-  explicit, not auto)
-- **Assigned To**: vector-mode-builder
-- **Agent Type**: builder
-- **Parallel**: true
-- Add `"vector"` to `_VALID_MODES` (`context_assembler.py:937`).
-- Add a `retrieval_mode == "vector"` validation branch (requires EmbeddingField,
-  else `QueryException`; set `_effective_mode = "vector"`).
-- Add `_pull_path_vector`: cosine via `_get_vector_scores`, hydrate top
-  `max_items*2` in score order, return `(candidates, all_candidates)`; empty
-  signal → `([], [])` (NO composite fallback).
-- Add dispatch in `_pull_path`.
-- Unit tests: resolution, missing-field rejection, empty-signal-no-fallback.
+- **Status**: **VOID.** Open Question 1 resolved harness-local, so `ContextAssembler`
+  is not modified. The briefly-committed `_VALID_MODES` entry + `_pull_path_vector`
+  (65b36ea) are reverted; `git diff main -- src/popoto/recipes/context_assembler.py`
+  must be empty. The pure-cosine ranking lives in the harness (Task 2), calling
+  `QueryBuilder._get_vector_scores` directly.
 
-### 2. Harness plumbing for `--retrieval-mode vector`
+### 2. Harness-local vector ranking + plumbing for `--retrieval-mode vector`
 - **Task ID**: build-harness
 - **Depends On**: none
 - **Validates**: `tests/benchmarks/test_external.py`
+- **Informed By**: spike-2 (reuse `_get_vector_scores`), spike-3 (auto-mode
+  gives composite, not vector — so bypass the assembler)
 - **Assigned To**: harness-builder
 - **Agent Type**: builder
 - **Parallel**: true
 - Add `"vector"` to the `--retrieval-mode` choices + help (`run_external.py`).
-- Add `embedding_only` model variant in `_build_external_model_class`
-  (EmbeddingField only, no BM25Field).
-- Wire `setup()` to select it and construct
-  `ContextAssembler(retrieval_mode="vector")` when
-  `retrieval_mode == "vector"`.
+- Add an embedding-only model variant in `_build_external_model_class`
+  (`with_bm25=False, with_embedding=True` → EmbeddingField only, no BM25Field).
+- Wire `setup()` to set `self._assembler = None` for vector mode (no assembler).
+- Wire `run()` to rank by pure cosine via
+  `QueryBuilder(self._model_class.query)._get_vector_scores(query_text, MAX_ITEMS)`
+  and map `(redis_key, score)` pairs to ground-truth IDs; empty signal → empty
+  retrieved_ids (NO composite fallback).
 - Add `vector` branch to `mode_notes` + `build_markdown_report` blurb.
-- Tests: `save_reports`/`compute_aggregate` vector suffix + notes.
+- Tests: `save_reports`/`compute_aggregate` vector suffix + notes; cosine-path
+  smoke via fixture.
 
 ### 3. Validate additive-only + failure paths
 - **Task ID**: validate-vector
@@ -628,33 +655,50 @@ builds directly.
 | Check | Command | Expected |
 |-------|---------|----------|
 | Tests pass | `pytest tests/ -q` | exit code 0 |
-| Vector is a valid mode | `grep -c '"vector"' src/popoto/recipes/context_assembler.py` | output > 0 |
-| Vector pull path exists | `grep -c '_pull_path_vector' src/popoto/recipes/context_assembler.py` | output > 0 |
+| Assembler untouched (harness-local, anti-criterion) | `git diff main -- src/popoto/recipes/context_assembler.py` | empty diff |
+| No first-class vector mode leaked to production | `grep -c '_pull_path_vector' src/popoto/recipes/context_assembler.py` | output == 0 |
+| Harness ranks vector by cosine | `grep -c '_get_vector_scores' tests/benchmarks/scenarios/external_base.py` | output > 0 |
 | CLI exposes vector | `grep -c 'vector' tests/benchmarks/run_external.py` | output > 0 |
-| RRF constant unchanged (anti-criterion: no fusion tuning) | `grep -c 'RRF_K = 60' src/popoto/recipes/context_assembler.py` | output > 0 |
-| No composite fallback in vector path (anti-criterion) | `awk '/def _pull_path_vector/,/def [a-z]/' src/popoto/recipes/context_assembler.py \| grep -c '_pull_path_composite'` | match count == 0 |
 | Vector artifacts committed (LoCoMo) | `ls tests/benchmarks/results/external/locomo_latest_vector.json` | exit code 0 |
 | Vector artifacts committed (LongMemEval-S) | `ls tests/benchmarks/results/external/longmemeval_s_latest_vector.json` | exit code 0 |
 | Docs build | `mkdocs build --strict` | exit code 0 |
 
 ## Critique Results
 
-<!-- Populated by /do-plan-critique (war room). Leave empty until critique is run. -->
-| Severity | Critic | Finding | Addressed By | Implementation Note |
-|----------|--------|---------|--------------|---------------------|
+**Verdict: NEEDS REVISION** — 1 blocker must be resolved before build. Critics:
+Risk & Robustness, Scope & Value, History & Consistency (FULL depth). 4 findings
+(1 blocker, 3 concerns, 0 nits). All three critics independently flagged Open
+Question 1 as unresolved-yet-committed; cross-validation + live working-tree
+divergence elevated it to BLOCKER.
+
+| Severity | Critic(s) | Finding | Addressed By | Implementation Note |
+|----------|-----------|---------|--------------|---------------------|
+| **BLOCKER** | All 3 | Open Question 1 (first-class production `vector` mode vs harness-local) is unresolved, but Solution (287-290), Technical Approach (310-323), Tasks 1-2 (552-584), Success Criteria (490-493) and Verification (631-632) all commit to first-class. The in-progress branch has already diverged: harness went harness-local (`external_base.py` cosine bypass), assembler got first-class `_pull_path_vector`. Build is split across both approaches. | Resolve Q1 (PM check-in) and reconcile with divergent in-progress code before dispatching Tasks 1-2. | Add `Depends On: open-question-1-resolved` to `build-vector-mode` and `build-harness`. If harness-local chosen, Task 1, `_VALID_MODES`/`_pull_path` edits, and the two `context_assembler.py` verification greps (631-632) become void — `ExternalScenario.run()` calls `QueryBuilder(model_class)._get_vector_scores(query_text, limit)` (query.py:995-1067) and hydrates itself, no `context_assembler.py` diff. |
+| CONCERN | Risk & Robustness, History & Consistency | `_pull_path_vector` "reuse the hydration `fuse()` path" contradicts the no-RRF vector-only guarantee. `_get_vector_scores` returns raw `(redis_key, score)` tuples, not records; hydration in hybrid is done by `fuse()`, which IS the RRF fusion function. Routing vector-only candidates back through `fuse()` re-invokes RRF — contradicting Data Flow's "No BM25, no RRF, no graph" (228-230) and Risk 2 (416-421). | Name the exact hydration primitive to reuse, or confirm one must be factored out of `fuse()`, before Task 1. | Either call `fuse()` with only `vector=` populated and verify single-arm input preserves cosine order, or extract the hydrate-by-redis_key sub-step and reuse directly. Add a unit assertion that `_pull_path_vector` never invokes `RRF_K`-weighted scoring. |
+| CONCERN | Risk & Robustness | "Weak-arm vs broken-fusion" is a false binary — vector-only cannot isolate the graph arm inside hybrid. `_pull_path_hybrid` fuses a THIRD graph/co-occurrence arm seeded from BM25 top-5. A weak vector-only number cannot distinguish "vector arm weak" from "graph arm is the confound." Concluding it "elevates the weak-arm/RRF hypothesis" (spike-1, 183-188) overstates what a vector-vs-everything comparison proves. | Scope the audit's conclusion language, or add a graph-arm-off ablation as a follow-up candidate in Open Questions before #457 commits to a fix. | In `docs/benchmarks.md` interpretation guide, state that the vector-only run isolates only the dense arm — not the graph/co-occurrence arm in `_pull_path_hybrid`. |
+| CONCERN | Scope & Value | Success Criteria (485-506) are all mechanical — none define the "decisive" result that unblocks #457. Every criterion is a mechanical check; none state the decision rule (threshold/pattern) that lets #457 proceed without a fresh interpretation debate. The plan's purpose is to unblock #457, so the deliverable's core value is undefined. | Add a Success Criterion stating the decision rule. | Docs-only change to Success Criteria + `docs/benchmarks.md` interpretation guide. E.g. "vector-only LoCoMo R@1 substantially below lexical R@1 (mirroring hybrid<lexical) confirms weak-arm/RRF; competitive with hybrid reopens the fusion-mechanism hypothesis." |
 
 ---
 
 ## Open Questions
 
-1. **Vector-mode implementation surface.** Recommended: add a first-class
-   explicit `retrieval_mode="vector"` to production `ContextAssembler`
-   (additive; `auto`/lexical/hybrid untouched) and have the harness pass it
-   explicitly. Alternative: keep it harness-local (scenario calls
-   `_get_vector_scores` directly, zero production change). The recommended path
-   keeps `assemble()` as the primary retrieval path (the #437 architecture) at
-   the cost of one additive production branch. **Approve the recommended
-   first-class approach, or prefer harness-local?**
+1. **Vector-mode implementation surface.** ✅ **RESOLVED (2026-07-13):
+   harness-local.** The maintainer chose the **harness-local** alternative: the
+   vector-only baseline lives entirely in the benchmark harness and
+   `ContextAssembler` is **NOT** modified. `ExternalScenario.run()` calls
+   `QueryBuilder(model_class.query)._get_vector_scores(query_text, limit)`
+   (`query.py:995-1067`) directly and maps the returned `(redis_key, score)`
+   pairs back to ground-truth IDs — no `context_assembler.py` diff, no
+   `_pull_path_vector`, no new `_VALID_MODES` entry, no `retrieval_mode="vector"`
+   branch in the assembler. The first-class production `vector` mode (the
+   originally-recommended path, briefly committed in 65b36ea) is **rejected and
+   reverted**: shipping a production `retrieval_mode="vector"` was deemed
+   unwarranted for a diagnostic, and auto-mode resolving an embedding-only model
+   to the query-blind `composite` path stays a #457/#409 concern, not this
+   measurement task. Rationale: the vector baseline is a one-off diagnostic to
+   unblock #457; it does not need to be a durable `assemble()` retrieval path.
+   The superseded first-class plan is preserved at
+   `docs/plans/vector_retrieval_mode.md` (status: Superseded) for history.
 2. **nDCG.** The issue says "consider adding nDCG across all three modes."
    Default here is **OFF** (headline R@1/5/10/MRR vector is the diagnostic).
    Wiring nDCG means binary-gain nDCG@{5,10} and, for a comparable three-mode

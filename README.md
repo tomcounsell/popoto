@@ -14,6 +14,23 @@
 pip install popoto
 ```
 
+## Running
+
+Popoto is a library, not a standalone service. It runs inside your application and talks to a Redis or Valkey server. To exercise it locally (and to run the test suite) you need a Redis/Valkey server listening on `localhost:6379`.
+
+```bash
+# 1. Start Redis (or Valkey), e.g. on macOS via Homebrew:
+redis-server                     # or: brew services start redis
+
+# 2. Install Popoto with dev dependencies:
+uv venv && source .venv/bin/activate && uv pip install -e ".[dev]"
+
+# 3. Run the test suite (auto-isolated on Redis DB 15):
+pytest
+```
+
+By default Popoto connects to `localhost:6379`; set `REDIS_URL` to point at a different server. The pytest plugin isolates tests on Redis DB 15 (override with `POPOTO_TEST_DB=<n>`).
+
 ## Basic Usage
 
 ``` python

@@ -96,7 +96,7 @@ python -m tests.benchmarks.run_external \
 | `--limit N` | all | Evaluate at most N questions (sampled per `--sample`) |
 | `--sample MODE` | `stride` | How `--limit` selects: `stride` (even spread, representative), `stratified` (proportional per `question_type`), `shuffle` (seeded random), `head` (legacy contiguous prefix). Ignored without `--limit`. |
 | `--seed N` | 0 | Seed for `shuffle`/`stratified` sampling |
-| `--retrieval-mode MODE` | `lexical` | `lexical` (BM25 only) or `hybrid` (BM25 + vector via RRF). See [Retrieval Modes](#retrieval-modes). |
+| `--retrieval-mode MODE` | `lexical` | `lexical` (BM25 only), `hybrid` (BM25 + vector via RRF), or `vector` (`EmbeddingField` only, pure cosine — diagnostic). See [Retrieval Modes](#retrieval-modes). |
 | `--dry-run` | off | Print results without saving report files |
 | `--fixture PATH` | download | Load dataset from a local JSON file |
 | `--output DIR` | `results/external/` | Override output directory |
@@ -133,19 +133,28 @@ Each JSON report includes:
 
 ### Retrieval Modes
 
-`--retrieval-mode` selects how the harness retrieves candidates. Both modes drive
-`ContextAssembler.assemble()`; field presence on the per-item model determines the
-effective mode (`retrieval_mode="auto"`):
+`--retrieval-mode` selects how the harness retrieves candidates. `lexical` and
+`hybrid` drive `ContextAssembler.assemble()`; field presence on the per-item model
+determines the effective mode (`retrieval_mode="auto"`). `vector` is a harness-local
+diagnostic that **bypasses** the assembler and ranks by pure cosine directly:
 
-| Mode | Fields | Fusion | Cost |
+| Mode | Fields | Method | Cost |
 |------|--------|--------|------|
 | `lexical` (default) | `BM25Field` | none (BM25 ranking) | no model download; fast |
 | `hybrid` | `BM25Field` + `EmbeddingField` | BM25 + vector via **RRF (k=60)** | one-time ~90 MB `all-MiniLM-L6-v2` download; slower (CPU embedding) |
+| `vector` | `EmbeddingField` only | pure cosine (no BM25, no RRF) | same ~90 MB `all-MiniLM-L6-v2` download as hybrid; slower (CPU embedding) |
 
 Hybrid is **Valkey-safe**: vector similarity is computed in-process with numpy
 cosine over `EmbeddingField` `.npy` files — no RediSearch, no vector-search modules,
 no `FT.*` / `BF.*` commands. The vector signal uses the local
 [`SentenceTransformersProvider`](fields.md#sentencetransformersprovider) (no API key).
+
+`vector` is a **harness-local diagnostic** (issue #455): it bypasses
+`ContextAssembler` entirely — auto-mode would resolve an embedding-only model to the
+query-blind `composite` path, so the harness ranks by raw cosine over the
+`EmbeddingField` directly. It isolates **only** the dense arm; it does **not**
+exercise the graph / co-occurrence arm that also lives inside `hybrid`. Use it to
+diagnose the vector signal's standalone strength, not as a production retrieval path.
 
 ```bash
 # Lexical (default) — BM25 only, no model download:
@@ -154,6 +163,9 @@ python -m tests.benchmarks.run_external --dataset longmemeval-s
 # Hybrid — BM25 + vector (downloads MiniLM on first run):
 pip install -e ".[benchmark]"
 python -m tests.benchmarks.run_external --dataset longmemeval-s --retrieval-mode hybrid
+
+# Vector — pure cosine over EmbeddingField only (diagnostic; downloads MiniLM):
+python -m tests.benchmarks.run_external --dataset longmemeval-s --retrieval-mode vector
 ```
 
 **LongMemEval-S, 500 questions (any-hit Recall):**
