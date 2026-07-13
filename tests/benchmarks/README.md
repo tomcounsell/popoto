@@ -59,6 +59,9 @@ python -m tests.benchmarks.run_sweeps --tier all --interactions
 python -m tests.benchmarks.run_external --dataset longmemeval-s
 python -m tests.benchmarks.run_external --dataset locomo
 
+# Point the external harness at a different bench DB (default 14):
+POPOTO_BENCH_DB=13 python -m tests.benchmarks.run_external --dataset locomo
+
 # Deterministic CSR harness (no network, no model download):
 pytest tests/benchmarks/test_csr.py -q          # CI gate
 python -m tests.benchmarks.csr.run_csr          # write report artifact
@@ -80,6 +83,50 @@ python -m tests.benchmarks.run_external --dataset longmemeval-s --limit 12 --sam
 # Run all tests
 pytest tests/benchmarks/ -x -q
 ```
+
+## External-harness DB isolation & residue (issue #465)
+
+The external harness (`run_external.py`) is a **benchmark, not a pytest test**,
+so the pytest db15 test-isolation plugin does **not** apply to it. Each
+benchmark item writes `ExternalBenchmarkMemory` / `ExtMem<hash>` model keys (and
+`$BM25:ExtMem<hash>*` BM25 index keys) to Redis. `ExternalScenario.teardown()`
+deletes them per-item, but a **killed / interrupted / wedged** run leaves that
+residue behind permanently — and if the harness shares db0 with a live store,
+the residue pollutes it (a dogfood machine accumulated **1,825** leaked keys).
+
+Two belt-and-braces mitigations, both scoped to the `run_external.py`
+entrypoint (they activate only at run start — never at import time, so pytest
+collection and the db15 plugin are unaffected):
+
+1. **Dedicated bench DB.** At startup the harness points the Popoto connection
+   at a dedicated non-default DB (**default 14**, mirroring the plugin's db15
+   posture: tests → 15, benchmarks → 14). Override with `POPOTO_BENCH_DB=<n>`.
+   `POPOTO_BENCH_DB=0` is **rejected** — db0 is typically production — so a
+   misconfiguration can't repollute the live database. Host/port/auth from
+   `REDIS_URL` are preserved.
+2. **Startup sweep.** Before any ingestion the harness `SCAN`s (non-blocking,
+   Valkey-safe) and `DEL`s any stale `ExternalBenchmarkMemory:*` / `ExtMem*` /
+   `$BM25:ExtMem*` keys left by a prior run on the bench DB, logging the count.
+
+### Cleaning existing db0 pollution
+
+If earlier runs (before this fix) leaked keys into db0, sweep them once with a
+non-blocking `SCAN`+`DEL` (works on both Redis and Valkey — no modules):
+
+```bash
+# Dry run first — list what would be deleted (per pattern):
+for p in 'ExternalBenchmarkMemory:*' 'ExtMem*' '$BM25:ExtMem*'; do
+  redis-cli -n 0 --scan --pattern "$p"
+done
+
+# Delete them (redis-cli --scan streams via SCAN, not the blocking KEYS):
+for p in 'ExternalBenchmarkMemory:*' 'ExtMem*' '$BM25:ExtMem*'; do
+  redis-cli -n 0 --scan --pattern "$p" | xargs -r -L 100 redis-cli -n 0 DEL
+done
+```
+
+Use `valkey-cli` in place of `redis-cli` for Valkey; adjust `-n 0` if the
+pollution is on another DB.
 
 ## Adding a New Constant
 

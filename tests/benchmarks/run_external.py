@@ -40,6 +40,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+import redis
+
 # Ensure project root is on path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
@@ -59,6 +61,144 @@ logger = logging.getLogger("ExternalBenchmark")
 RESULTS_DIR = Path(__file__).parent / "results" / "external"
 
 DATASET_CHOICES = ("longmemeval-s", "locomo")
+
+# ---------------------------------------------------------------------------
+# Benchmark DB isolation (issue #465)
+# ---------------------------------------------------------------------------
+#
+# The external harness runs against the live default Popoto connection — db0 by
+# design, because it is a benchmark rather than a pytest test, so the db15
+# test-isolation plugin does not apply. Interrupted / killed / wedged runs
+# leaked ExternalBenchmarkMemory / ExtMem* / $BM25:ExtMem* keys into db0
+# permanently, polluting any store sharing db0 (a dogfood machine accumulated
+# 1,825 stale keys). Two belt-and-braces mitigations, both scoped to this
+# entrypoint (they activate only inside main(), never at import time, so pytest
+# collection and the db15 plugin are unaffected):
+#
+#   1. Point the connection at a dedicated bench DB (default 14), mirroring the
+#      plugin's db15 posture and its db0 rejection.
+#   2. Sweep any pre-existing residue at run start via SCAN+DEL.
+
+# Dedicated non-default DB for the external benchmark harness. 14 mirrors the
+# plugin's db15 isolation posture (tests → 15, benchmarks → 14). Operational,
+# overridable via POPOTO_BENCH_DB (like POPOTO_TEST_DB); db0 is rejected.
+BENCH_DB_DEFAULT = 14
+
+# Key patterns left behind by prior/interrupted runs. ExtMem* covers the
+# per-item model keys and their sorted-index keys (ExtMem<hash>:_relevance,
+# etc.); $BM25:ExtMem* covers the BM25 index keys; ExternalBenchmarkMemory:*
+# covers any keys written under the un-renamed base class name. All are literal
+# outside the trailing glob (``$`` is not a Redis SCAN metacharacter).
+_STALE_KEY_PATTERNS = (
+    "ExternalBenchmarkMemory:*",
+    "ExtMem*",
+    "$BM25:ExtMem*",
+)
+
+
+def _resolve_bench_db() -> int:
+    """Resolve the benchmark Redis DB number.
+
+    Priority: ``POPOTO_BENCH_DB`` env var > default (:data:`BENCH_DB_DEFAULT`,
+    14). Mirrors the pytest plugin's db0 rejection so a misconfigured
+    ``POPOTO_BENCH_DB=0`` cannot repollute production.
+
+    Returns:
+        The resolved bench DB number (non-zero int).
+
+    Raises:
+        ValueError: If the env value is non-integer or 0.
+    """
+    raw = os.environ.get("POPOTO_BENCH_DB", "").strip()
+    if not raw:
+        return BENCH_DB_DEFAULT
+    try:
+        bench_db = int(raw)
+    except (ValueError, TypeError):
+        raise ValueError(f"POPOTO_BENCH_DB must be an integer, got {raw!r}")
+    if bench_db == 0:
+        raise ValueError(
+            "POPOTO_BENCH_DB=0 is not allowed — DB 0 is typically production. "
+            "Use a non-zero DB (default: 14)."
+        )
+    return bench_db
+
+
+def _point_connection_at_db(target_db: int) -> None:
+    """Swap the Popoto connection pool in-place onto ``target_db``.
+
+    Mirrors ``popoto.pytest_plugin._swap_db``: it mutates the existing
+    ``POPOTO_REDIS_DB`` object rather than rebinding the global, so every module
+    that imported ``POPOTO_REDIS_DB`` at load time (e.g. the scenario module)
+    keeps using the correct connection. Host/port/auth are preserved from the
+    current pool so a ``REDIS_URL`` with credentials keeps working.
+
+    Called ONLY from the harness entrypoint (main()); never at import time, so
+    it cannot interfere with the pytest db15 plugin.
+    """
+    from src.popoto import redis_db
+
+    db_obj = redis_db.POPOTO_REDIS_DB
+    current_kwargs = dict(db_obj.connection_pool.connection_kwargs)
+    current_kwargs["db"] = target_db
+    current_kwargs.setdefault("socket_timeout", 5)
+    current_kwargs.setdefault("socket_connect_timeout", 5)
+    connection_class = db_obj.connection_pool.connection_class
+    new_pool = redis.ConnectionPool(connection_class=connection_class, **current_kwargs)
+    old_pool = db_obj.connection_pool
+    db_obj.connection_pool = new_pool
+    old_pool.disconnect()
+
+
+def _sweep_stale_benchmark_keys(redis_conn) -> int:
+    """SCAN + DEL any benchmark residue left by prior/interrupted runs.
+
+    Uses cursor-based SCAN (non-blocking, Valkey-safe — no Redis modules) to
+    enumerate keys matching :data:`_STALE_KEY_PATTERNS` and DELs them. Operates
+    on whatever connection it is handed, so it targets exactly the DB the
+    harness is pointed at.
+
+    Args:
+        redis_conn: A ``redis.Redis`` client (the live Popoto connection).
+
+    Returns:
+        The number of stale keys deleted.
+    """
+    deleted = 0
+    for pattern in _STALE_KEY_PATTERNS:
+        cursor = 0
+        while True:
+            cursor, keys = redis_conn.scan(cursor, match=pattern, count=500)
+            if keys:
+                deleted += redis_conn.delete(*keys)
+            if cursor == 0:
+                break
+    return deleted
+
+
+def _select_bench_db() -> int:
+    """Point the Popoto connection at the isolated bench DB and sweep residue.
+
+    Resolves the bench DB (env > default 14, db0 rejected), swaps the live
+    connection onto it, then sweeps any stale keys left by prior runs. Both
+    steps are scoped to the harness entrypoint. Returns the bench DB number.
+    """
+    from src.popoto.redis_db import POPOTO_REDIS_DB
+
+    bench_db = _resolve_bench_db()
+    _point_connection_at_db(bench_db)
+    logger.info(
+        "Benchmark isolation: Popoto connection pointed at DB %d "
+        "(override via POPOTO_BENCH_DB; db0 rejected).",
+        bench_db,
+    )
+    swept = _sweep_stale_benchmark_keys(POPOTO_REDIS_DB)
+    logger.info(
+        "Swept %d stale benchmark key(s) from DB %d at startup.",
+        swept,
+        bench_db,
+    )
+    return bench_db
 
 
 # ---------------------------------------------------------------------------
@@ -555,6 +695,12 @@ def main():
     if args.output:
         RESULTS_DIR = args.output
 
+    # Benchmark DB isolation (issue #465): point the live Popoto connection at a
+    # dedicated bench DB (default 14, db0 rejected) and sweep any residue left
+    # by prior/interrupted runs BEFORE any ingestion. Scoped to this entrypoint
+    # so it never affects import-time behavior or the pytest db15 plugin.
+    bench_db = _select_bench_db()
+
     # When --limit is combined with the legacy contiguous-prefix mode, warn:
     # 'head' benchmarks only the easiest on-disk category and is not
     # representative of the whole dataset.
@@ -588,13 +734,14 @@ def main():
 
     logger.info(
         "Starting benchmark: dataset=%s limit=%s sample=%s seed=%s "
-        "retrieval_mode=%s dry_run=%s",
+        "retrieval_mode=%s dry_run=%s bench_db=%d",
         args.dataset,
         args.limit or "all",
         args.sample,
         args.seed,
         args.retrieval_mode,
         args.dry_run,
+        bench_db,
     )
 
     total_start = time.monotonic()

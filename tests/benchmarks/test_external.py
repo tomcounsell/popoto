@@ -727,6 +727,101 @@ def _minimal_aggregate(retrieval_mode: str) -> dict:
     return compute_aggregate([], "longmemeval-s", retrieval_mode=retrieval_mode)
 
 
+class TestBenchDbSelection:
+    """Bench-DB isolation for the external harness (issue #465).
+
+    The harness runs against the live default connection (db0 by design — it
+    is a benchmark, not a pytest test). Interrupted runs leaked residue into
+    db0. ``_resolve_bench_db`` chooses a dedicated non-default DB (default 14),
+    mirroring the pytest plugin's db15 posture and its db0 rejection.
+
+    These tests exercise ONLY the pure resolution logic — they never call
+    ``_point_connection_at_db`` / ``_select_bench_db``, which would swap the
+    live connection off the pytest db15 and break isolation for later tests.
+    """
+
+    def test_default_is_14(self, monkeypatch):
+        """No POPOTO_BENCH_DB → default bench DB 14."""
+        from tests.benchmarks.run_external import _resolve_bench_db
+
+        monkeypatch.delenv("POPOTO_BENCH_DB", raising=False)
+        assert _resolve_bench_db() == 14
+
+    def test_env_override(self, monkeypatch):
+        """POPOTO_BENCH_DB overrides the default."""
+        from tests.benchmarks.run_external import _resolve_bench_db
+
+        monkeypatch.setenv("POPOTO_BENCH_DB", "13")
+        assert _resolve_bench_db() == 13
+
+    def test_blank_env_falls_back_to_default(self, monkeypatch):
+        """A blank/whitespace POPOTO_BENCH_DB falls back to the default."""
+        from tests.benchmarks.run_external import _resolve_bench_db
+
+        monkeypatch.setenv("POPOTO_BENCH_DB", "   ")
+        assert _resolve_bench_db() == 14
+
+    def test_rejects_db0(self, monkeypatch):
+        """POPOTO_BENCH_DB=0 is rejected — db0 is typically production."""
+        from tests.benchmarks.run_external import _resolve_bench_db
+
+        monkeypatch.setenv("POPOTO_BENCH_DB", "0")
+        with pytest.raises(ValueError, match="DB 0"):
+            _resolve_bench_db()
+
+    def test_rejects_non_integer(self, monkeypatch):
+        """A non-integer POPOTO_BENCH_DB fails loud."""
+        from tests.benchmarks.run_external import _resolve_bench_db
+
+        monkeypatch.setenv("POPOTO_BENCH_DB", "notanint")
+        with pytest.raises(ValueError, match="integer"):
+            _resolve_bench_db()
+
+
+class TestStaleKeySweep:
+    """Startup sweep of leaked benchmark residue (issue #465).
+
+    Interrupted/killed runs leave ExternalBenchmarkMemory / ExtMem* /
+    $BM25:ExtMem* keys behind permanently. The sweep SCAN+DELs them at run
+    start. It operates on whatever connection it is handed — here the pytest
+    db15 connection — so it never touches production and never fights the
+    plugin's isolation.
+    """
+
+    def test_sweeps_all_stale_patterns_and_reports_count(self):
+        """SCAN+DEL removes every leaked pattern; unrelated keys survive."""
+        from src.popoto.redis_db import POPOTO_REDIS_DB
+        from tests.benchmarks.run_external import _sweep_stale_benchmark_keys
+
+        stale = {
+            "ExternalBenchmarkMemory:abc": "1",
+            "ExtMem12345678:xyz": "1",
+            "ExtMem12345678:_relevance": "1",
+            "$BM25:ExtMem12345678:doc": "1",
+        }
+        keeper = "SomeOtherModel:keepme"
+        for k, v in stale.items():
+            POPOTO_REDIS_DB.set(k, v)
+        POPOTO_REDIS_DB.set(keeper, "1")
+
+        swept = _sweep_stale_benchmark_keys(POPOTO_REDIS_DB)
+
+        assert swept >= len(stale)
+        for k in stale:
+            assert POPOTO_REDIS_DB.exists(k) == 0
+        # Unrelated keys are untouched.
+        assert POPOTO_REDIS_DB.exists(keeper) == 1
+        POPOTO_REDIS_DB.delete(keeper)
+
+    def test_sweep_on_clean_db_returns_zero(self):
+        """A DB with no residue sweeps zero keys."""
+        from src.popoto.redis_db import POPOTO_REDIS_DB
+        from tests.benchmarks.run_external import _sweep_stale_benchmark_keys
+
+        # The per-test flush fixture guarantees a clean db15 here.
+        assert _sweep_stale_benchmark_keys(POPOTO_REDIS_DB) == 0
+
+
 class TestSaveReportsArtifactNaming:
     """save_reports suffixes non-lexical modes; lexical stays unsuffixed (#442)."""
 
