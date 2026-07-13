@@ -1,5 +1,5 @@
 ---
-status: Ready
+status: Superseded
 type: feature
 appetite: Small
 owner: valor
@@ -8,6 +8,15 @@ tracking: https://github.com/tomcounsell/popoto/issues/455
 last_comment_id: 0
 revision_applied: false
 ---
+
+> **SUPERSEDED** by the harness-local decision on Open Question 1 (see
+> [`retrieval_arm_diagnostics_vector_baseline.md`](retrieval_arm_diagnostics_vector_baseline.md)).
+> The first-class ContextAssembler `vector` mode described here (new
+> `_VALID_MODES` entry + `_pull_path_vector`, briefly committed in 65b36ea) was
+> **rejected and reverted**; the vector-only baseline is **harness-local**
+> (`ExternalScenario.run()` ranks by pure cosine via
+> `QueryBuilder._get_vector_scores`, the assembler is not modified). Retained for
+> history — do not build from this plan.
 
 # Retrieval-arm diagnostics: vector-only baseline (`--retrieval-mode vector`)
 

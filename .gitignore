@@ -123,6 +123,9 @@ Pipfile
 
 *.dump
 settings/local.py
+
+# Benchmark byproducts (e.g. data/doc_embeddings.json — large, regenerated)
+data/
 /src/popoto/_archive/
 .claude/hooks/
 .claude/worktrees/

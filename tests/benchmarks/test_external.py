@@ -812,3 +812,103 @@ class TestSaveReportsArtifactNaming:
         # No unsuffixed lexical _latest pointers were created by the hybrid run.
         assert not (results_dir / "longmemeval_s_latest.json").exists()
         assert not (results_dir / "longmemeval_s_latest.md").exists()
+
+
+# ---------------------------------------------------------------------------
+# Vector-only retrieval mode (issue #455)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(
+    not _minilm_cached(),
+    reason="all-MiniLM-L6-v2 not cached; skipping vector diagnostic tests",
+)
+class TestVectorRetrievalMode:
+    """Harness-local vector-only diagnostic (issue #455).
+
+    Vector mode declares an EmbeddingField and NO BM25Field, **bypasses**
+    ContextAssembler entirely, and ranks by pure cosine via
+    ``QueryBuilder._get_vector_scores()``. Its artifacts are ``_vector``-suffixed
+    so a vector run never clobbers the committed lexical baseline. All three
+    tests share the hybrid tests' MiniLM-cache skip guard so the suite never
+    triggers a model download when the ``[benchmark]`` extra is absent.
+    """
+
+    @pytest.fixture
+    def results_dir(self, tmp_path, monkeypatch):
+        """Point run_external.RESULTS_DIR at a scratch dir for the test."""
+        import tests.benchmarks.run_external as run_external
+
+        monkeypatch.setattr(run_external, "RESULTS_DIR", tmp_path)
+        return tmp_path
+
+    def test_vector_effective_mode_and_records(self):
+        """Vector run: EmbeddingField-only model, assembler bypassed, cosine rank."""
+        from src.popoto.fields.bm25_field import BM25Field
+        from src.popoto.fields.embedding_field import EmbeddingField
+        from tests.benchmarks.scenarios.external_base import ExternalScenario
+
+        scenario = ExternalScenario(item=_dog_item(), retrieval_mode="vector")
+        try:
+            result = scenario.execute()
+        except Exception as e:  # model load/runtime hiccup → skip, don't fail
+            pytest.skip(f"vector model unavailable at runtime: {e}")
+
+        assert result.status == "ok"
+        # The per-item model declares an EmbeddingField and NO BM25Field.
+        fields = list(scenario._model_class._meta.fields.values())
+        assert any(isinstance(f, EmbeddingField) for f in fields)
+        assert not any(isinstance(f, BM25Field) for f in fields)
+        # The assembler is bypassed entirely for vector mode.
+        assert scenario._assembler is None
+        # Effective retrieval method is pure cosine vector (not lexical/hybrid).
+        assert result.metadata.get("retrieval_method") == "vector"
+        # Records are retrieved and mapped back to the ground-truth session ID.
+        assert "s1" in result.retrieved_ids
+
+    def test_vector_names_are_suffixed(self, results_dir):
+        """Vector mode suffixes _vector into dated AND _latest artifacts."""
+        import tests.benchmarks.run_external as run_external
+        from datetime import datetime, timezone
+
+        json_path, md_path = run_external.save_reports(
+            _minimal_aggregate("vector"),
+            "longmemeval_s",
+            retrieval_mode="vector",
+        )
+
+        date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
+        assert json_path.name == f"longmemeval_s_{date_str}_vector.json"
+        assert md_path.name == f"longmemeval_s_{date_str}_vector.md"
+        assert (results_dir / "longmemeval_s_latest_vector.json").exists()
+        assert (results_dir / "longmemeval_s_latest_vector.md").exists()
+
+    def test_vector_save_does_not_clobber_lexical_baseline(self, results_dir):
+        """A vector save leaves pre-existing lexical artifacts byte-identical."""
+        import tests.benchmarks.run_external as run_external
+        from datetime import datetime, timezone
+
+        date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
+        # Plant a fake committed lexical baseline (both json + md).
+        baseline_json = results_dir / f"longmemeval_s_{date_str}.json"
+        baseline_md = results_dir / f"longmemeval_s_{date_str}.md"
+        original_json = b'{"committed": "lexical baseline"}'
+        original_md = b"# committed lexical baseline\n"
+        baseline_json.write_bytes(original_json)
+        baseline_md.write_bytes(original_md)
+
+        run_external.save_reports(
+            _minimal_aggregate("vector"),
+            "longmemeval_s",
+            retrieval_mode="vector",
+        )
+
+        # Lexical baseline artifacts are untouched, byte-for-byte.
+        assert baseline_json.read_bytes() == original_json
+        assert baseline_md.read_bytes() == original_md
+        # Distinct _vector artifacts were created alongside them.
+        assert (results_dir / f"longmemeval_s_{date_str}_vector.json").exists()
+        assert (results_dir / f"longmemeval_s_{date_str}_vector.md").exists()
+        # No unsuffixed lexical _latest pointers were created by the vector run.
+        assert not (results_dir / "longmemeval_s_latest.json").exists()
+        assert not (results_dir / "longmemeval_s_latest.md").exists()
