@@ -2729,7 +2729,7 @@ included in the JSON report for reproducibility.</p>
 <tr>
 <td><code>--retrieval-mode MODE</code></td>
 <td><code>lexical</code></td>
-<td><code>lexical</code> (BM25 only) or <code>hybrid</code> (BM25 + vector via RRF). See <a href="#retrieval-modes">Retrieval Modes</a>.</td>
+<td><code>lexical</code> (BM25 only), <code>hybrid</code> (BM25 + vector via RRF), or <code>vector</code> (<code>EmbeddingField</code> only, pure cosine — diagnostic). See <a href="#retrieval-modes">Retrieval Modes</a>.</td>
 </tr>
 <tr>
 <td><code>--dry-run</code></td>
@@ -2777,15 +2777,16 @@ lexical baseline artifacts or their symlinks.</p>
 - <code>notes</code> — retrieval mode description
 - <code>questions</code> — per-question detail (item_id, recall scores, status, errors, and <code>metadata.question_type</code>)</p>
 <h3 id="retrieval-modes">Retrieval Modes<a class="headerlink" href="#retrieval-modes" title="Permanent link">&para;</a></h3>
-<p><code>--retrieval-mode</code> selects how the harness retrieves candidates. Both modes drive
-<code>ContextAssembler.assemble()</code>; field presence on the per-item model determines the
-effective mode (<code>retrieval_mode="auto"</code>):</p>
+<p><code>--retrieval-mode</code> selects how the harness retrieves candidates. <code>lexical</code> and
+<code>hybrid</code> drive <code>ContextAssembler.assemble()</code>; field presence on the per-item model
+determines the effective mode (<code>retrieval_mode="auto"</code>). <code>vector</code> is a harness-local
+diagnostic that <strong>bypasses</strong> the assembler and ranks by pure cosine directly:</p>
 <table>
 <thead>
 <tr>
 <th>Mode</th>
 <th>Fields</th>
-<th>Fusion</th>
+<th>Method</th>
 <th>Cost</th>
 </tr>
 </thead>
@@ -2802,18 +2803,33 @@ effective mode (<code>retrieval_mode="auto"</code>):</p>
 <td>BM25 + vector via <strong>RRF (k=60)</strong></td>
 <td>one-time ~90 MB <code>all-MiniLM-L6-v2</code> download; slower (CPU embedding)</td>
 </tr>
+<tr>
+<td><code>vector</code></td>
+<td><code>EmbeddingField</code> only</td>
+<td>pure cosine (no BM25, no RRF)</td>
+<td>same ~90 MB <code>all-MiniLM-L6-v2</code> download as hybrid; slower (CPU embedding)</td>
+</tr>
 </tbody>
 </table>
 <p>Hybrid is <strong>Valkey-safe</strong>: vector similarity is computed in-process with numpy
 cosine over <code>EmbeddingField</code> <code>.npy</code> files — no RediSearch, no vector-search modules,
 no <code>FT.*</code> / <code>BF.*</code> commands. The vector signal uses the local
 <a href="../fields/#sentencetransformersprovider"><code>SentenceTransformersProvider</code></a> (no API key).</p>
+<p><code>vector</code> is a <strong>harness-local diagnostic</strong> (issue #455): it bypasses
+<code>ContextAssembler</code> entirely — auto-mode would resolve an embedding-only model to the
+query-blind <code>composite</code> path, so the harness ranks by raw cosine over the
+<code>EmbeddingField</code> directly. It isolates <strong>only</strong> the dense arm; it does <strong>not</strong>
+exercise the graph / co-occurrence arm that also lives inside <code>hybrid</code>. Use it to
+diagnose the vector signal's standalone strength, not as a production retrieval path.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Lexical (default) — BM25 only, no model download:</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>longmemeval-s
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1"># Hybrid — BM25 + vector (downloads MiniLM on first run):</span>
 <a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[benchmark]&quot;</span>
 <a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>longmemeval-s<span class="w"> </span>--retrieval-mode<span class="w"> </span>hybrid
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="c1"># Vector — pure cosine over EmbeddingField only (diagnostic; downloads MiniLM):</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>longmemeval-s<span class="w"> </span>--retrieval-mode<span class="w"> </span>vector
 </code></pre></div>
 <p><strong>LongMemEval-S, 500 questions (any-hit Recall):</strong></p>
 <table>
