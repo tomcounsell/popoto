@@ -14835,7 +14835,361 @@ pre-lifecycle retrieval baselines.
 
 ---
 
-## Benchmarking
+## Testing
+
+# Testing
+
+Popoto includes a pytest plugin that automatically isolates tests in a dedicated Redis DB. It is the recommended way to run a project's test suite against Popoto models without contaminating development or production data.
+
+## Pytest Plugin (auto-registered)
+
+The `popoto.pytest_plugin` module is registered as a [pytest11 entry point](https://docs.pytest.org/en/stable/how-to/writing_plugins.html#making-your-plugin-installable-by-others) and loads automatically when Popoto is installed. No configuration is required.
+
+**What the plugin does:**
+
+- Switches all Redis operations to DB 15 (or a configured DB) for the test session.
+- Runs `flushdb()` before each test for a clean slate.
+- Resets the async Redis connection per test to avoid event-loop conflicts.
+- Collapses `src.popoto` (and all `popoto.*` submodules) onto the canonical `popoto` objects in `sys.modules` so that tests using either `import popoto` or `import src.popoto` share the same DB-15 connection (no DB-0 leaks from `src/`-layout imports).
+- Enforces a DB-0 tripwire: aborts the session if the test DB resolves to DB 0, preventing silent writes to production data.
+
+**Configuration priority** (highest to lowest):
+
+1. `POPOTO_TEST_DB` environment variable
+2. `popoto_test_db` ini option in `pyproject.toml` `[tool.pytest.ini_options]`
+3. Default: `15`
+
+DB 0 is rejected to prevent accidental test runs against production data. Non-integer values produce a clear error message.
+
+```ini
+# pyproject.toml
+[tool.pytest.ini_options]
+popoto_test_db = "14"
+```
+
+**Disabling the plugin:**
+
+```bash
+pytest -p no:popoto
+```
+
+## Manual Test Helpers
+
+The `popoto.testing` module provides helpers for non-pytest test runners or manual use:
+
+```python
+from popoto.testing import use_test_db, flush_test_db
+
+use_test_db(db=15)   # Switch to test DB
+flush_test_db()      # Clear the test DB
+```
+
+These are not needed when using the pytest plugin, which handles both automatically.
+
+---
+
+## Kitchen Edge Case Demo
+
+# Kitchen Demo: Edge Case Mutation Flows
+
+The Popoto Kitchen TUI demo (`examples/popoto_kitchen/`) now exercises four
+mutation-after-save scenarios that correspond to the index-correctness fixes
+landed in PRs #159–#163. Each scenario is reachable via an interactive button
+in the demo.
+
+## Background
+
+Before this change the demo only created and deleted records. All four classes
+of index-corruption bugs fixed by the referenced PRs are triggered exclusively
+by mutation scenarios:
+
+| PR | Fix | Scenario |
+|----|-----|----------|
+| #159 | SortedField ghost entries on partition key change | Move a MenuItem to a different category |
+| #161 | save() removes obsolete key from class set on KeyField rename | Rename a Restaurant |
+| #162 | Partial save (`update_fields`) obsolete key cleanup | Advance an Order status |
+| #163 | Relationship.on_save() index cleanup on value change | Replace an Order's driver |
+
+## Model Changes
+
+### MenuItem — category promoted to KeyField
+
+`MenuItem.category` was previously a plain `Field(type=str)`. It is now a
+`KeyField()`, making category part of the Redis key:
+
+```
+Before: MenuItem:<item_id>
+After:  MenuItem:<category>:<item_id>
+```
+
+The `price` SortedField now uses `partition_by="category"`, so price index
+sorted sets are scoped per category (`MenuItem:_price:Main`,
+`MenuItem:_price:Appetizer`, etc.).
+
+**Seed data**: `seed.py` already passes an explicit `category=` argument for
+every `MenuItem` — no data-value changes were needed, only the field declaration
+changed.
+
+**Full-key lookup**: All `MenuItem` lookups in `menu.py` now use
+`MenuItem.query.get(redis_key=key.value)` (full key string) rather than
+splitting the key on `":"` to extract just the last segment.
+
+### Order.advance_status() — partial save
+
+`advance_status()` now calls:
+
+```python
+super(Order, self).save(update_fields=["status", "updated_at"])
+```
+
+Only the `status` and `updated_at` fields are written. The `total` SortedField
+index is untouched, demonstrating that partial save does not produce ghost
+index entries (PR #162 fix).
+
+## New Interactive Flows
+
+### Menu Screen — "Move Category" (PR #159)
+
+1. Select a menu item in the table.
+2. Click **Move Category**.
+3. The item cycles to the next category in `["Appetizer", "Main", "Side", "Dessert", "Drink"]`.
+4. `SortedField.on_save()` removes the item from the old price sorted set and
+   adds it to the new one.
+5. A notification shows `"Moved: {name} from {old} → {new}"`.
+
+Guard: if the computed next category is the same as the current (only one
+category exists in the list), the action is a no-op with a warning.
+
+### Orders Screen — "→ Advance Status" (PR #162)
+
+Unchanged UI flow; the underlying implementation now uses partial save
+(`update_fields=["status", "updated_at"]`) so that only the status field and
+its timestamp are written. The total SortedField index is unaffected.
+
+### Orders Screen — "Assign Driver" (PR #163)
+
+When an order already has a driver assigned, reassigning shows:
+
+```
+Replaced driver: Alice → Bob
+```
+
+The old notification (`"Assigned driver: Bob"`) is now shown only for first
+assignment. A guard prevents reassigning the same driver twice.
+
+`Relationship.on_save()` handles the index cleanup: the order key is removed
+from the old driver's relationship index and added to the new driver's index.
+
+### Restaurants Screen — "Rename" (PR #161)
+
+1. Select a restaurant in the table.
+2. Click **Rename**.
+3. A new name is generated via `restaurant_name(restaurant.cuisine)`.
+4. `restaurant.name = new_name; restaurant.save()` — save detects the obsolete
+   Redis key, removes the old key from the `Restaurant` class set, and writes
+   the new key.
+5. `Restaurant.query.all()` returns the restaurant under the new key; the old
+   key is gone.
+
+## v1.4.4 Feature Demos (PR #346)
+
+PR #346 added a new `ReviewScore` model and an operations script that
+demonstrates four v1.4.4 features outside of the TUI. These are invoked
+via `python -m popoto_kitchen --ops` and print results to stdout.
+
+### ReviewScore Model
+
+A new model using `ConfidenceField` with `partition_by="restaurant"` to
+track review confidence per restaurant. See
+[ConfidenceField docs](confidence-field.md) for the capped-evidence update formula.
+
+```python
+class ReviewScore(Model):
+    restaurant = KeyField()
+    reviewer = KeyField()
+    score = ConfidenceField(initial_confidence=0.5, partition_by="restaurant")
+```
+
+The seed script creates 100 review scores with varied confidence signals
+(2-6 signals per review, mix of positive and negative) to build realistic
+evidence histories.
+
+### Operations Script (`operations.py`)
+
+| Demo | Feature | Description |
+|------|---------|-------------|
+| `demo_get_many()` | `query.get_many()` | Bulk-loads Order instances by key in a single pipeline call. Shows both default mode (with `None` placeholders) and `skip_none=True` mode. |
+| `demo_check_and_clean_indexes()` | `check_indexes()` / `clean_indexes()` | Runs a read-only health check on all models, then surgically removes any orphaned index entries found. |
+| `demo_companion_hash_keys()` | `get_data_hash_key()` | Inspects the companion Redis hash keys for ReviewScore's ConfidenceField, showing how `partition_by` creates per-restaurant hashes. Also demonstrates `get_data_hash_key_from_values()` for building keys without a loaded instance. |
+
+### Entry Point Changes
+
+New CLI flags added to `__main__.py`:
+
+- `--ops` -- Run v1.4.4 operations demos and exit
+- `--seed-only --clear` -- Seed fresh data without launching the TUI
+
+## Running the Demo
+
+```bash
+# Start the TUI (interactive edge case demos)
+python -m examples.popoto_kitchen
+
+# Clear any stale seeded data first (category -> KeyField is a breaking schema change)
+# In the Dashboard screen, click "Clear All Data", then "Seed Data"
+
+# Run the v1.4.4 operations demos (non-interactive, stdout output)
+python -m popoto_kitchen --seed-only --clear
+python -m popoto_kitchen --ops
+```
+
+Navigate to each screen and use the new buttons to observe the edge case
+behaviors described above. Use `--ops` for the v1.4.4 feature demos.
+
+---
+
+## Launch Announcements
+
+# Popoto 1.0.0 Launch Announcements
+
+## Hacker News — Show HN
+
+### How to post
+1. Go to https://news.ycombinator.com/submit
+2. Use the title and URL below
+3. Post Tuesday–Thursday, 9–11am ET for best visibility
+4. Immediately add your top-level comment (below)
+5. Stay online for the first 2 hours to reply to comments — HN rewards fast engagement
+
+### Title
+```
+Show HN: Popoto – A Redis/Valkey ORM with Django-like syntax for Python
+```
+
+### URL
+```
+https://github.com/tomcounsell/popoto
+```
+
+### Your first comment (post immediately after submitting)
+
+> Hey HN, I'm Tom. I built Popoto because I wanted Django-model ergonomics for Redis without the overhead of Redis OM or hand-rolling SCAN/pipeline logic everywhere.
+>
+> Popoto gives you a declarative model layer on top of Redis (or Valkey):
+>
+> ```python
+> from popoto import Model, KeyField, SortedField, Q
+>
+> class Restaurant(Model):
+>     name = KeyField()
+>     cuisine = Field()
+>     rating = SortedField(type=float)
+>
+> Restaurant.create(name="Burger Palace", cuisine="American", rating=4.5)
+>
+> # Chainable queries, Q objects, expression syntax
+> results = Restaurant.query.filter(
+>     Q(cuisine="Italian") | Q(cuisine="Japanese"),
+>     rating__gte=4.0
+> ).order_by("-rating").limit(10)
+> ```
+>
+> What makes it different:
+>
+> - **Django-like API** — KeyField, SortedField, GeoField, Relationship, Q objects, `get_or_create()`, `bulk_create()`
+> - **Full async/await** — native `redis.asyncio`, not `asyncio.to_thread()` wrappers
+> - **Atomic saves** via internal Redis pipelines
+> - **Works with both Redis and Valkey** out of the box
+> - **Geo search, time-series, pub/sub** built in
+> - **Zero required dependencies beyond redis-py and msgpack** — pandas is optional
+>
+> We've been using it in production for streaming financial data and sensor networks. 1.0.0 is the first stable release after two betas and significant index integrity hardening.
+>
+> Docs: https://popoto.io
+> PyPI: `pip install popoto`
+>
+> Happy to answer any questions about the internals or how it compares to Redis OM.
+
+---
+
+## Product Hunt
+
+### How to post
+1. Go to https://www.producthunt.com/posts/new
+2. You need a maker account (sign up or log in)
+3. Launch at 12:01am PT on a Tuesday, Wednesday, or Thursday
+4. Fill in the fields below
+5. Have 5–10 supporters ready to upvote and comment in the first hour
+6. Engage with every comment throughout launch day
+
+### Product name
+```
+Popoto
+```
+
+### Tagline (60 chars max)
+```
+Django-like ORM for Redis and Valkey in Python
+```
+
+### Topics/tags
+```
+Developer Tools, Open Source, Python, Databases
+```
+
+### Description
+
+> Popoto is a Python ORM that brings Django-model syntax to Redis and Valkey. Define your data models with fields, relationships, and indexes — Popoto handles serialization, querying, and persistence automatically.
+>
+> **Why Popoto?**
+>
+> Redis is incredibly fast, but using it as a primary data store means writing a lot of boilerplate — key naming conventions, serialization, index management, pipeline batching. Popoto eliminates all of that with a familiar, declarative API.
+>
+> **Key features:**
+>
+> 🔍 Chainable queries with Q objects and expression syntax
+> ⚡ Full async/await with native redis.asyncio
+> 🌍 Geographic distance search with GeoField
+> 📊 Time-series data with SortedField
+> 🔗 Model relationships with lazy loading
+> 📦 Bulk create/update/delete via Redis pipelines
+> 🔄 Works with both Redis and Valkey
+>
+> **Who is it for?**
+>
+> Python developers who use Redis for more than caching — real-time applications, streaming data pipelines, IoT sensor networks, or anywhere you want Redis speed with ORM convenience.
+>
+> 1.0.0 is production-stable after two beta releases and extensive index integrity hardening.
+
+### Links
+```
+GitHub: https://github.com/tomcounsell/popoto
+Docs:   https://popoto.io
+PyPI:   https://pypi.org/project/popoto/
+```
+
+### Maker comment (post on launch)
+
+> Hi Product Hunt! I'm Tom, the creator of Popoto.
+>
+> I built this because every Redis project I worked on ended up with the same boilerplate — key naming, msgpack serialization, maintaining secondary indexes by hand. I wanted something that felt like Django models but ran on Redis.
+>
+> Popoto started as an internal tool for processing streaming financial data, where we needed sub-millisecond reads and Django-like query ergonomics. After 3+ years in production and two beta releases, 1.0.0 is the first stable release.
+>
+> I'd love to hear how you'd use it — or what's missing. Feedback welcome!
+
+---
+
+## General tips
+
+- **Lead with the problem, not the product.** "Redis has no good ORM" resonates more than "here's my ORM."
+- **A demo GIF is worth 1000 words.** Consider recording a 30-second terminal session showing model definition → create → query → result. Tools: asciinema, vhs, or a simple screen recording.
+- **Don't cross-post on the same day.** Do HN first (higher risk, higher reward), then Product Hunt a few days later with learnings from HN feedback.
+- **GitHub README is your landing page.** Make sure it looks sharp before posting.
+
+---
+
+## Benchmarking How-To
 
 # Benchmarking
 
@@ -15221,357 +15575,86 @@ To add a test case, see "Adding a CsrTestCase" in `tests/benchmarks/README.md`.
 
 ---
 
-## Testing
+## Memory Lifecycle Baseline
 
-# Testing
+# MemoryLifecycle Benchmark Baseline
 
-Popoto includes a pytest plugin that automatically isolates tests in a dedicated Redis DB. It is the recommended way to run a project's test suite against Popoto models without contaminating development or production data.
+**Generated:** 2026-05-22
+**Branch:** session/memory_lifecycle
+**Issue:** #396
 
-## Pytest Plugin (auto-registered)
+## Overview
 
-The `popoto.pytest_plugin` module is registered as a [pytest11 entry point](https://docs.pytest.org/en/stable/how-to/writing_plugins.html#making-your-plugin-installable-by-others) and loads automatically when Popoto is installed. No configuration is required.
+This document establishes the pre-lifecycle baseline for the MemoryLifecycle feature
+(issue #396) and records the sweep grid parameters added to `tests/benchmarks/run_sweeps.py`.
 
-**What the plugin does:**
+The external benchmark harness (LoCoMo + LongMemEval-S) was established in issue #394.
+Baseline retrieval metrics (without lifecycle) are from the existing harness runs on `main`.
 
-- Switches all Redis operations to DB 15 (or a configured DB) for the test session.
-- Runs `flushdb()` before each test for a clean slate.
-- Resets the async Redis connection per test to avoid event-loop conflicts.
-- Collapses `src.popoto` (and all `popoto.*` submodules) onto the canonical `popoto` objects in `sys.modules` so that tests using either `import popoto` or `import src.popoto` share the same DB-15 connection (no DB-0 leaks from `src/`-layout imports).
-- Enforces a DB-0 tripwire: aborts the session if the test DB resolves to DB 0, preventing silent writes to production data.
+> **Historical note (2026-07):** the `*_latest` result files cited below have since
+> been repointed at full-dataset runs and no longer contain the all-zero
+> pre-lifecycle numbers recorded here. See [benchmarks.md](../benchmarks.md) for
+> current baselines (LoCoMo: 1986 questions across both retrieval modes).
 
-**Configuration priority** (highest to lowest):
+## Pre-Lifecycle Baseline (from main branch, 2026-05-22)
 
-1. `POPOTO_TEST_DB` environment variable
-2. `popoto_test_db` ini option in `pyproject.toml` `[tool.pytest.ini_options]`
-3. Default: `15`
+Source: `tests/benchmarks/results/external/locomo_latest.md`
 
-DB 0 is rejected to prevent accidental test runs against production data. Non-integer values produce a clear error message.
+| Metric | Baseline (no lifecycle) |
+|--------|------------------------|
+| Recall@1 | 0.0000 |
+| Recall@5 | 0.0000 |
+| Recall@10 | 0.0000 |
+| MRR | 0.0000 |
+| Questions evaluated | 6 / 6 |
 
-```ini
-# pyproject.toml
-[tool.pytest.ini_options]
-popoto_test_db = "14"
-```
+Source: `tests/benchmarks/results/external/longmemeval_s_latest.md`
 
-**Disabling the plugin:**
+| Metric | Baseline (no lifecycle) |
+|--------|------------------------|
+| Recall@1 | 0.0000 |
+| Recall@5 | 0.0000 |
+| Recall@10 | 0.0000 |
+| MRR | 0.0000 |
+| Questions evaluated | 10 / 10 |
 
-```bash
-pytest -p no:popoto
-```
+**Note:** Baseline scores are 0 because the current harness uses score-only retrieval
+(no embedding/BM25). Issue #395 will add hybrid retrieval. The lifecycle layer is
+designed to improve signal quality by filtering low-value memories; its impact will
+be measurable once #395 closes the retrieval gap.
 
-## Manual Test Helpers
+**Reference target:** agentmemory BM25+Vector achieves 95.2% R@5 on LoCoMo with lifecycle.
 
-The `popoto.testing` module provides helpers for non-pytest test runners or manual use:
+## Sweep Grid Parameters Added (Tier 5)
 
-```python
-from popoto.testing import use_test_db, flush_test_db
+Added to `TIER5_SWEEPS` in `tests/benchmarks/run_sweeps.py`:
 
-use_test_db(db=15)   # Switch to test DB
-flush_test_db()      # Clear the test DB
-```
+| Constant | Sweep Values | Default | Rationale |
+|----------|-------------|---------|-----------|
+| `LIFECYCLE_PROMOTION_ACCESS_COUNT` | [1, 2, 3, 5, 10] | 3 | Access threshold for episodic→semantic |
+| `LIFECYCLE_PROMOTION_CONFIDENCE_THRESHOLD` | [0.3, 0.5, 0.6, 0.7, 0.9] | 0.6 | Confidence floor for promotion |
+| `LIFECYCLE_PROMOTION_MIN_AGE_SECONDS` | [0.0, 60.0, 300.0, 1800.0, 7200.0] | 300.0 | Age guard against burst promotion |
+| `LIFECYCLE_FORGET_IMPORTANCE_FLOOR` | [0.01, 0.05, 0.1, 0.2, 0.5] | 0.1 | Importance threshold for auto-forget |
+| `LIFECYCLE_FORGET_IDLE_SECONDS` | [3600.0, 21600.0, 86400.0, 259200.0, 604800.0] | 86400.0 | Idle time threshold for auto-forget |
 
-These are not needed when using the pytest plugin, which handles both automatically.
+## How to Run a Sweep
 
----
-
-## Kitchen Edge Case Demo
-
-# Kitchen Demo: Edge Case Mutation Flows
-
-The Popoto Kitchen TUI demo (`examples/popoto_kitchen/`) now exercises four
-mutation-after-save scenarios that correspond to the index-correctness fixes
-landed in PRs #159–#163. Each scenario is reachable via an interactive button
-in the demo.
-
-## Background
-
-Before this change the demo only created and deleted records. All four classes
-of index-corruption bugs fixed by the referenced PRs are triggered exclusively
-by mutation scenarios:
-
-| PR | Fix | Scenario |
-|----|-----|----------|
-| #159 | SortedField ghost entries on partition key change | Move a MenuItem to a different category |
-| #161 | save() removes obsolete key from class set on KeyField rename | Rename a Restaurant |
-| #162 | Partial save (`update_fields`) obsolete key cleanup | Advance an Order status |
-| #163 | Relationship.on_save() index cleanup on value change | Replace an Order's driver |
-
-## Model Changes
-
-### MenuItem — category promoted to KeyField
-
-`MenuItem.category` was previously a plain `Field(type=str)`. It is now a
-`KeyField()`, making category part of the Redis key:
-
-```
-Before: MenuItem:<item_id>
-After:  MenuItem:<category>:<item_id>
-```
-
-The `price` SortedField now uses `partition_by="category"`, so price index
-sorted sets are scoped per category (`MenuItem:_price:Main`,
-`MenuItem:_price:Appetizer`, etc.).
-
-**Seed data**: `seed.py` already passes an explicit `category=` argument for
-every `MenuItem` — no data-value changes were needed, only the field declaration
-changed.
-
-**Full-key lookup**: All `MenuItem` lookups in `menu.py` now use
-`MenuItem.query.get(redis_key=key.value)` (full key string) rather than
-splitting the key on `":"` to extract just the last segment.
-
-### Order.advance_status() — partial save
-
-`advance_status()` now calls:
-
-```python
-super(Order, self).save(update_fields=["status", "updated_at"])
-```
-
-Only the `status` and `updated_at` fields are written. The `total` SortedField
-index is untouched, demonstrating that partial save does not produce ghost
-index entries (PR #162 fix).
-
-## New Interactive Flows
-
-### Menu Screen — "Move Category" (PR #159)
-
-1. Select a menu item in the table.
-2. Click **Move Category**.
-3. The item cycles to the next category in `["Appetizer", "Main", "Side", "Dessert", "Drink"]`.
-4. `SortedField.on_save()` removes the item from the old price sorted set and
-   adds it to the new one.
-5. A notification shows `"Moved: {name} from {old} → {new}"`.
-
-Guard: if the computed next category is the same as the current (only one
-category exists in the list), the action is a no-op with a warning.
-
-### Orders Screen — "→ Advance Status" (PR #162)
-
-Unchanged UI flow; the underlying implementation now uses partial save
-(`update_fields=["status", "updated_at"]`) so that only the status field and
-its timestamp are written. The total SortedField index is unaffected.
-
-### Orders Screen — "Assign Driver" (PR #163)
-
-When an order already has a driver assigned, reassigning shows:
-
-```
-Replaced driver: Alice → Bob
-```
-
-The old notification (`"Assigned driver: Bob"`) is now shown only for first
-assignment. A guard prevents reassigning the same driver twice.
-
-`Relationship.on_save()` handles the index cleanup: the order key is removed
-from the old driver's relationship index and added to the new driver's index.
-
-### Restaurants Screen — "Rename" (PR #161)
-
-1. Select a restaurant in the table.
-2. Click **Rename**.
-3. A new name is generated via `restaurant_name(restaurant.cuisine)`.
-4. `restaurant.name = new_name; restaurant.save()` — save detects the obsolete
-   Redis key, removes the old key from the `Restaurant` class set, and writes
-   the new key.
-5. `Restaurant.query.all()` returns the restaurant under the new key; the old
-   key is gone.
-
-## v1.4.4 Feature Demos (PR #346)
-
-PR #346 added a new `ReviewScore` model and an operations script that
-demonstrates four v1.4.4 features outside of the TUI. These are invoked
-via `python -m popoto_kitchen --ops` and print results to stdout.
-
-### ReviewScore Model
-
-A new model using `ConfidenceField` with `partition_by="restaurant"` to
-track review confidence per restaurant. See
-[ConfidenceField docs](confidence-field.md) for the capped-evidence update formula.
-
-```python
-class ReviewScore(Model):
-    restaurant = KeyField()
-    reviewer = KeyField()
-    score = ConfidenceField(initial_confidence=0.5, partition_by="restaurant")
-```
-
-The seed script creates 100 review scores with varied confidence signals
-(2-6 signals per review, mix of positive and negative) to build realistic
-evidence histories.
-
-### Operations Script (`operations.py`)
-
-| Demo | Feature | Description |
-|------|---------|-------------|
-| `demo_get_many()` | `query.get_many()` | Bulk-loads Order instances by key in a single pipeline call. Shows both default mode (with `None` placeholders) and `skip_none=True` mode. |
-| `demo_check_and_clean_indexes()` | `check_indexes()` / `clean_indexes()` | Runs a read-only health check on all models, then surgically removes any orphaned index entries found. |
-| `demo_companion_hash_keys()` | `get_data_hash_key()` | Inspects the companion Redis hash keys for ReviewScore's ConfidenceField, showing how `partition_by` creates per-restaurant hashes. Also demonstrates `get_data_hash_key_from_values()` for building keys without a loaded instance. |
-
-### Entry Point Changes
-
-New CLI flags added to `__main__.py`:
-
-- `--ops` -- Run v1.4.4 operations demos and exit
-- `--seed-only --clear` -- Seed fresh data without launching the TUI
-
-## Running the Demo
+Once issue #395 (hybrid retrieval) is merged and the LoCoMo harness produces
+non-zero retrieval scores, run the Tier 5 sweep with:
 
 ```bash
-# Start the TUI (interactive edge case demos)
-python -m examples.popoto_kitchen
-
-# Clear any stale seeded data first (category -> KeyField is a breaking schema change)
-# In the Dashboard screen, click "Clear All Data", then "Seed Data"
-
-# Run the v1.4.4 operations demos (non-interactive, stdout output)
-python -m popoto_kitchen --seed-only --clear
-python -m popoto_kitchen --ops
+python -m tests.benchmarks.run_sweeps --tier 5
 ```
 
-Navigate to each screen and use the new buttons to observe the edge case
-behaviors described above. Use `--ops` for the v1.4.4 feature demos.
+This will produce results in `tests/benchmarks/results/sweep_YYYYMMDD_HHMMSS.json`.
+Compare pre/post lifecycle Recall@5 on LoCoMo against the agentmemory 95.2% target.
 
----
+## Next Steps
 
-## Launch Announcements
-
-# Popoto 1.0.0 Launch Announcements
-
-## Hacker News — Show HN
-
-### How to post
-1. Go to https://news.ycombinator.com/submit
-2. Use the title and URL below
-3. Post Tuesday–Thursday, 9–11am ET for best visibility
-4. Immediately add your top-level comment (below)
-5. Stay online for the first 2 hours to reply to comments — HN rewards fast engagement
-
-### Title
-```
-Show HN: Popoto – A Redis/Valkey ORM with Django-like syntax for Python
-```
-
-### URL
-```
-https://github.com/tomcounsell/popoto
-```
-
-### Your first comment (post immediately after submitting)
-
-> Hey HN, I'm Tom. I built Popoto because I wanted Django-model ergonomics for Redis without the overhead of Redis OM or hand-rolling SCAN/pipeline logic everywhere.
->
-> Popoto gives you a declarative model layer on top of Redis (or Valkey):
->
-> ```python
-> from popoto import Model, KeyField, SortedField, Q
->
-> class Restaurant(Model):
->     name = KeyField()
->     cuisine = Field()
->     rating = SortedField(type=float)
->
-> Restaurant.create(name="Burger Palace", cuisine="American", rating=4.5)
->
-> # Chainable queries, Q objects, expression syntax
-> results = Restaurant.query.filter(
->     Q(cuisine="Italian") | Q(cuisine="Japanese"),
->     rating__gte=4.0
-> ).order_by("-rating").limit(10)
-> ```
->
-> What makes it different:
->
-> - **Django-like API** — KeyField, SortedField, GeoField, Relationship, Q objects, `get_or_create()`, `bulk_create()`
-> - **Full async/await** — native `redis.asyncio`, not `asyncio.to_thread()` wrappers
-> - **Atomic saves** via internal Redis pipelines
-> - **Works with both Redis and Valkey** out of the box
-> - **Geo search, time-series, pub/sub** built in
-> - **Zero required dependencies beyond redis-py and msgpack** — pandas is optional
->
-> We've been using it in production for streaming financial data and sensor networks. 1.0.0 is the first stable release after two betas and significant index integrity hardening.
->
-> Docs: https://popoto.io
-> PyPI: `pip install popoto`
->
-> Happy to answer any questions about the internals or how it compares to Redis OM.
-
----
-
-## Product Hunt
-
-### How to post
-1. Go to https://www.producthunt.com/posts/new
-2. You need a maker account (sign up or log in)
-3. Launch at 12:01am PT on a Tuesday, Wednesday, or Thursday
-4. Fill in the fields below
-5. Have 5–10 supporters ready to upvote and comment in the first hour
-6. Engage with every comment throughout launch day
-
-### Product name
-```
-Popoto
-```
-
-### Tagline (60 chars max)
-```
-Django-like ORM for Redis and Valkey in Python
-```
-
-### Topics/tags
-```
-Developer Tools, Open Source, Python, Databases
-```
-
-### Description
-
-> Popoto is a Python ORM that brings Django-model syntax to Redis and Valkey. Define your data models with fields, relationships, and indexes — Popoto handles serialization, querying, and persistence automatically.
->
-> **Why Popoto?**
->
-> Redis is incredibly fast, but using it as a primary data store means writing a lot of boilerplate — key naming conventions, serialization, index management, pipeline batching. Popoto eliminates all of that with a familiar, declarative API.
->
-> **Key features:**
->
-> 🔍 Chainable queries with Q objects and expression syntax
-> ⚡ Full async/await with native redis.asyncio
-> 🌍 Geographic distance search with GeoField
-> 📊 Time-series data with SortedField
-> 🔗 Model relationships with lazy loading
-> 📦 Bulk create/update/delete via Redis pipelines
-> 🔄 Works with both Redis and Valkey
->
-> **Who is it for?**
->
-> Python developers who use Redis for more than caching — real-time applications, streaming data pipelines, IoT sensor networks, or anywhere you want Redis speed with ORM convenience.
->
-> 1.0.0 is production-stable after two beta releases and extensive index integrity hardening.
-
-### Links
-```
-GitHub: https://github.com/tomcounsell/popoto
-Docs:   https://popoto.io
-PyPI:   https://pypi.org/project/popoto/
-```
-
-### Maker comment (post on launch)
-
-> Hi Product Hunt! I'm Tom, the creator of Popoto.
->
-> I built this because every Redis project I worked on ended up with the same boilerplate — key naming, msgpack serialization, maintaining secondary indexes by hand. I wanted something that felt like Django models but ran on Redis.
->
-> Popoto started as an internal tool for processing streaming financial data, where we needed sub-millisecond reads and Django-like query ergonomics. After 3+ years in production and two beta releases, 1.0.0 is the first stable release.
->
-> I'd love to hear how you'd use it — or what's missing. Feedback welcome!
-
----
-
-## General tips
-
-- **Lead with the problem, not the product.** "Redis has no good ORM" resonates more than "here's my ORM."
-- **A demo GIF is worth 1000 words.** Consider recording a 30-second terminal session showing model definition → create → query → result. Tools: asciinema, vhs, or a simple screen recording.
-- **Don't cross-post on the same day.** Do HN first (higher risk, higher reward), then Product Hunt a few days later with learnings from HN feedback.
-- **GitHub README is your landing page.** Make sure it looks sharp before posting.
+1. Merge issue #395 (hybrid retrieval) to enable non-zero LoCoMo scores
+2. Run `python -m tests.benchmarks.run_sweeps --tier 5` on a corpus with lifecycle active
+3. Update this document with sweep results and calibrate the Tier 5 constants
+4. If LoCoMo Recall@5 improves, update `Defaults.LIFECYCLE_*` with optimal values
 
 ---
 

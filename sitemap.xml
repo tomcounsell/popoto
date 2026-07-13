@@ -65,6 +65,34 @@
          <lastmod>2026-07-13</lastmod>
     </url>
     <url>
+         <loc>https://popoto.io/benchmarks/results/</loc>
+         <lastmod>2026-07-13</lastmod>
+    </url>
+    <url>
+         <loc>https://popoto.io/benchmarks/results/SUMMARY/</loc>
+         <lastmod>2026-07-13</lastmod>
+    </url>
+    <url>
+         <loc>https://popoto.io/benchmarks/results/csr/</loc>
+         <lastmod>2026-07-13</lastmod>
+    </url>
+    <url>
+         <loc>https://popoto.io/benchmarks/results/locomo_hybrid/</loc>
+         <lastmod>2026-07-13</lastmod>
+    </url>
+    <url>
+         <loc>https://popoto.io/benchmarks/results/locomo_lexical/</loc>
+         <lastmod>2026-07-13</lastmod>
+    </url>
+    <url>
+         <loc>https://popoto.io/benchmarks/results/longmemeval_s_hybrid/</loc>
+         <lastmod>2026-07-13</lastmod>
+    </url>
+    <url>
+         <loc>https://popoto.io/benchmarks/results/longmemeval_s_lexical/</loc>
+         <lastmod>2026-07-13</lastmod>
+    </url>
+    <url>
          <loc>https://popoto.io/features/</loc>
          <lastmod>2026-07-13</lastmod>
     </url>
