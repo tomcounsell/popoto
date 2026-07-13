@@ -15342,6 +15342,19 @@ cosine over `EmbeddingField` `.npy` files — no RediSearch, no vector-search mo
 no `FT.*` / `BF.*` commands. The vector signal uses the local
 [`SentenceTransformersProvider`](fields.md#sentencetransformersprovider) (no API key).
 
+!!! warning "Hybrid is not universally better than lexical"
+    Hybrid retrieval is **not** a strict upgrade over `lexical`. Its unweighted
+    RRF (k=60) gives the dense arm equal say, which helps on paraphrastic queries
+    (hybrid wins on LongMemEval-S at every _k_) but **hurts on coreference-heavy,
+    multi-session dialogue**, where topically-similar-but-wrong turns displace
+    correct BM25 hits — hybrid **underperforms** `lexical` on LoCoMo at every _k_
+    (Recall@1 0.167 vs 0.299; see the LoCoMo results below). If your
+    workload resembles long, multi-session conversation, benchmark both modes on
+    your own data before defaulting to hybrid; `lexical` remains the safe default.
+    Weighted / query-adaptive fusion to make hybrid trustworthy across
+    conversation shapes is tracked in
+    [issue #457](https://github.com/tomcounsell/popoto/issues/457).
+
 `vector` is a **harness-local diagnostic** (issue #455): it bypasses
 `ContextAssembler` entirely — auto-mode would resolve an embedding-only model to the
 query-blind `composite` path, so the harness ranks by raw cosine over the

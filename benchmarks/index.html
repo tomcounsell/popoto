@@ -3165,6 +3165,20 @@ diagnostic that <strong>bypasses</strong> the assembler and ranks by pure cosine
 cosine over <code>EmbeddingField</code> <code>.npy</code> files — no RediSearch, no vector-search modules,
 no <code>FT.*</code> / <code>BF.*</code> commands. The vector signal uses the local
 <a href="../fields/#sentencetransformersprovider"><code>SentenceTransformersProvider</code></a> (no API key).</p>
+<div class="admonition warning">
+<p class="admonition-title">Hybrid is not universally better than lexical</p>
+<p>Hybrid retrieval is <strong>not</strong> a strict upgrade over <code>lexical</code>. Its unweighted
+RRF (k=60) gives the dense arm equal say, which helps on paraphrastic queries
+(hybrid wins on LongMemEval-S at every <em>k</em>) but <strong>hurts on coreference-heavy,
+multi-session dialogue</strong>, where topically-similar-but-wrong turns displace
+correct BM25 hits — hybrid <strong>underperforms</strong> <code>lexical</code> on LoCoMo at every <em>k</em>
+(Recall@1 0.167 vs 0.299; see the LoCoMo results below). If your
+workload resembles long, multi-session conversation, benchmark both modes on
+your own data before defaulting to hybrid; <code>lexical</code> remains the safe default.
+Weighted / query-adaptive fusion to make hybrid trustworthy across
+conversation shapes is tracked in
+<a href="https://github.com/tomcounsell/popoto/issues/457">issue #457</a>.</p>
+</div>
 <p><code>vector</code> is a <strong>harness-local diagnostic</strong> (issue #455): it bypasses
 <code>ContextAssembler</code> entirely — auto-mode would resolve an embedding-only model to the
 query-blind <code>composite</code> path, so the harness ranks by raw cosine over the
