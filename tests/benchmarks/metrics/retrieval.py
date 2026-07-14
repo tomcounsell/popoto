@@ -5,7 +5,7 @@ All functions are pure — no Redis or model dependencies.
 """
 
 import math
-from typing import Dict, List
+from typing import Dict, Iterable, List
 
 
 def precision_at_k(retrieved: List[str], relevant: set, k: int) -> float:
@@ -181,3 +181,60 @@ def mean_reciprocal_rank(retrieved: List[str], relevant: set) -> float:
         if item in relevant:
             return 1.0 / (i + 1)
     return 0.0
+
+
+def leaderboard_parity_slice(
+    by_question_type: Dict,
+    exclude_categories: Iterable = ("5",),
+) -> Dict:
+    """Re-aggregate a per-``question_type`` breakdown with categories excluded.
+
+    Given the ``by_question_type`` block a benchmark run emits (each category
+    mapping to ``n`` + ``recall_at_1/5/10`` + ``mrr``), recompute the aggregate
+    over only the *retained* categories, weighting each category's mean by its
+    ``n``. Every metric here is itself a mean over questions, so the n-weighted
+    mean of the per-category means equals the overall metric on the retained
+    subset — no per-question data needed, so the slice is reproducible from a
+    committed artifact's ``by_question_type`` alone.
+
+    The motivating use is LoCoMo's "leaderboard-parity" slice (issue #454):
+    excluding category 5 ("adversarial", n=446) from the 1986-QA run yields the
+    exact 1540-QA, 4-category configuration the common no-adversarial
+    leaderboards report, so Popoto lines up against them without a re-run.
+
+    Category keys are compared as strings, so this works whether the breakdown
+    keys are ints (a live in-process report) or strings (a JSON round-trip).
+
+    Args:
+        by_question_type: Mapping of category key → {"n", "recall_at_1",
+            "recall_at_5", "recall_at_10", "mrr"}.
+        exclude_categories: Category keys to drop before re-aggregating.
+            Compared by string value. Default drops LoCoMo's cat-5.
+
+    Returns:
+        Dict with ``excluded`` (sorted list of the excluded keys that were
+        actually present), ``n`` (retained question count), and the
+        re-aggregated ``recall_at_1/5/10`` + ``mrr`` (rounded to 4 places).
+        Recalls are ``0.0`` when no questions are retained.
+    """
+    excluded_set = {str(c) for c in exclude_categories}
+    excluded_present = sorted(
+        str(cat) for cat in by_question_type if str(cat) in excluded_set
+    )
+
+    total_n = 0
+    acc = {"recall_at_1": 0.0, "recall_at_5": 0.0, "recall_at_10": 0.0, "mrr": 0.0}
+    for cat, stats in by_question_type.items():
+        if str(cat) in excluded_set:
+            continue
+        n = stats["n"]
+        total_n += n
+        for metric in acc:
+            acc[metric] += n * stats[metric]
+
+    if total_n == 0:
+        result = {m: 0.0 for m in acc}
+    else:
+        result = {m: round(acc[m] / total_n, 4) for m in acc}
+
+    return {"excluded": excluded_present, "n": total_n, **result}

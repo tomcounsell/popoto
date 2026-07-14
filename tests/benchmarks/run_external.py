@@ -48,7 +48,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from tests.benchmarks.datasets import BenchmarkItem
 from tests.benchmarks.datasets.longmemeval_s import iter_items as iter_longmemeval
 from tests.benchmarks.datasets.locomo import iter_items as iter_locomo
-from tests.benchmarks.metrics.retrieval import mean_reciprocal_rank, recall_at_k
+from tests.benchmarks.metrics.retrieval import (
+    leaderboard_parity_slice,
+    mean_reciprocal_rank,
+    recall_at_k,
+)
 from tests.benchmarks.scenarios.external_base import ExternalScenario
 
 logging.basicConfig(
@@ -403,8 +407,20 @@ def compute_aggregate(
             "signal is fused in this mode.",
         ]
 
+    by_qt = _by_question_type(ok)
+
+    # Leaderboard-parity slice (issue #454): re-aggregate with LoCoMo's cat-5
+    # ("adversarial") excluded, so the run lines up against the common
+    # no-adversarial 1540-QA boards. Emitted only when cat-5 is actually
+    # present (LoCoMo), so LongMemEval reports are unchanged. Derived from the
+    # per-category breakdown, so it is reproducible from the committed artifact
+    # without re-running. See docs/benchmarks.md for the audit and the caveat:
+    # this snapshot's cat-5 is answerable/evidence-grounded, not refusal-style.
+    parity = leaderboard_parity_slice(by_qt, exclude_categories=("5",))
+    include_parity = bool(parity["excluded"])
+
     now = datetime.now(timezone.utc)
-    return {
+    aggregate = {
         "dataset": dataset,
         "retrieval_mode": retrieval_mode,
         "run_date": now.strftime("%Y-%m-%d"),
@@ -419,7 +435,7 @@ def compute_aggregate(
             "platform": platform.platform(),
             "cpu_count": os.cpu_count(),
         },
-        "by_question_type": _by_question_type(ok),
+        "by_question_type": by_qt,
         "summary": {
             "n_total": n_total,
             "n_ok": n_ok,
@@ -438,6 +454,9 @@ def compute_aggregate(
         ],
         "questions": [r.to_dict() for r in results],
     }
+    if include_parity:
+        aggregate["leaderboard_parity"] = parity
+    return aggregate
 
 
 # ---------------------------------------------------------------------------
@@ -504,6 +523,31 @@ def build_markdown_report(aggregate: dict) -> str:
                 f"{m['recall_at_5']:.4f} | {m['recall_at_10']:.4f} | "
                 f"{m['mrr']:.4f} |"
             )
+        lines.append("")
+
+    parity = aggregate.get("leaderboard_parity")
+    if parity and parity.get("excluded"):
+        excluded = ", ".join(parity["excluded"])
+        lines.append("## Leaderboard-parity slice")
+        lines.append("")
+        lines.append(
+            f"Categories excluded: {excluded} "
+            f"(LoCoMo cat-5 'adversarial' — see docs/benchmarks.md for the "
+            f"evidence audit and caveat). Re-aggregated from the per-category "
+            f"breakdown; comparable to the no-adversarial leaderboard variant."
+        )
+        lines.append("")
+        lines.append("| Slice | n | Recall@1 | Recall@5 | Recall@10 | MRR |")
+        lines.append("|---|---|---|---|---|---|")
+        lines.append(
+            f"| Full ({retrieval_mode}) | {s['n_ok']} | {s['recall_at_1']:.4f} | "
+            f"{s['recall_at_5']:.4f} | {s['recall_at_10']:.4f} | {s['mrr']:.4f} |"
+        )
+        lines.append(
+            f"| Parity ({retrieval_mode}) | {parity['n']} | "
+            f"{parity['recall_at_1']:.4f} | {parity['recall_at_5']:.4f} | "
+            f"{parity['recall_at_10']:.4f} | {parity['mrr']:.4f} |"
+        )
         lines.append("")
 
     lines += [

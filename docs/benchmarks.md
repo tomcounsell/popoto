@@ -212,16 +212,77 @@ in the committed artifact
 (`tests/benchmarks/results/external/locomo_latest_hybrid.json` — 1986/1986
 questions, zero errors).
 
-The dataset's `by_question_type` breakdown (from the lexical run) is worth a
-factual note: LoCoMo's category 5 ("adversarial") questions carry an
-`adversarial_answer` field (n=446) and might be expected to score 0-by-
-construction if `evidence` were absent (the harness's `recall_at_k` treats an
-empty relevant-set as a special case). In this dataset snapshot, however,
-every one of the 1986 QA pairs — including all 446 category-5 items — has a
-populated `evidence` field, so that special case never triggers and category
-5 is scored normally. Its measured performance (n=446, Recall@1=0.3341,
-Recall@5=0.6031, Recall@10=0.6883, MRR=0.4581) is comparable to, or better
-than, the other categories, not zero.
+#### Category 5 ("adversarial") — evidence audit and leaderboard-parity slice
+
+LoCoMo's category 5 is historically the hardest category industry-wide (the
+original paper reports humans ≈89 F1 vs LLMs ≈2 F1), and most public
+leaderboards exclude it. Popoto scores it *comparably* to the other categories
+(n=446, Recall@1=0.3341, Recall@5=0.6031, Recall@10=0.6883, MRR=0.4581), which
+warranted an audit (issue #454) of whether that number means anything.
+
+**Audit finding — the cat-5 spans are genuinely meaningful for retrieval in
+this snapshot.** Direct inspection of all 446 category-5 items in the committed
+dataset (`snap-research/locomo10.json`) shows:
+
+- **446/446 carry a populated `evidence` field** (so the harness's empty-
+  relevant-set special case never fires — category 5 is scored as ordinary
+  retrieval, like every other category).
+- **444/446 have an answerable `adversarial_answer` whose evidence span
+  directly supports it.** For example, *"What did Caroline realize after her
+  charity race?"* → `adversarial_answer="self-care is important"`, evidence turn
+  D2:3 = *"I'm starting to realize that self-care is really important."* Only
+  **2/446** are refusal-style ("Not mentioned").
+
+So in **this** snapshot, category 5 is **not** a refusal category; it is a set
+of grounded, answerable retrieval questions. Scoring it as any-hit retrieval is
+measuring retrieval — the same thing measured for every category — not
+"measuring the wrong thing."
+
+**Why the apparent paradox (paper's ≈2 F1 vs our 0.33 Recall@1) dissolves:** it
+is a **metric-family difference**, not a scoring artifact. The paper's ≈2 F1 is
+*end-to-end judged-answer* accuracy (retrieve → generate → judge); Popoto's
+0.3341 is *retrieval any-hit recall* (did the evidence turn get retrieved).
+These families are not convertible (see the metric-family note above).
+Adversarial is hard to *answer/judge*, not hard to *retrieve* — so a normal
+retrieval-recall number on it is expected and honest.
+
+!!! warning "cat-5 is not a refusal-capability signal"
+    This snapshot's category 5 is answerable and evidence-grounded. Its recall
+    number is **not** evidence that Popoto refuses unanswerable queries, and it
+    is **not** comparable to systems that report a refusal-adversarial metric or
+    that drop the category. Refusal capability (confidence-gated retrieval) is
+    tracked separately in
+    [issue #463](https://github.com/tomcounsell/popoto/issues/463) and must be
+    evaluated on a dataset that actually contains unanswerable questions — a
+    "precision of no-answer decisions" metric has no signal on a snapshot where
+    only 2/446 items are unanswerable.
+
+**Leaderboard-parity slice (4-category, n=1540).** For apples-to-apples
+comparison with the common no-adversarial boards (1,540-QA, 4-category), the
+harness reports a parity slice that re-aggregates the run with category 5
+excluded — `1986 − 446 = 1540`, exactly the leaderboard variant count. The
+slice is computed from the committed `by_question_type` breakdown (no re-run
+needed) by `leaderboard_parity_slice()` and emitted into each LoCoMo report as
+a `leaderboard_parity` block:
+
+| Slice | n | Recall@1 | Recall@5 | Recall@10 | MRR |
+|------|--:|---------:|---------:|----------:|----:|
+| `lexical`, full 5-category | 1986 | 0.2986 | 0.5534 | 0.6400 | 0.4124 |
+| `lexical`, 4-category parity | 1540 | 0.2883 | 0.5390 | 0.6260 | 0.3991 |
+| `hybrid`, full 5-category | 1986 | 0.1667 | 0.4235 | 0.5403 | 0.2835 |
+| `hybrid`, 4-category parity | 1540 | 0.1552 | 0.4065 | 0.5181 | 0.2686 |
+
+Category 5 sits near the mean, so excluding it barely moves the numbers —
+further evidence it is neither anomalously easy nor a scoring artifact. (The
+slice re-aggregates 4-decimal per-category means, so it can differ from a raw
+re-aggregation in the 4th place; reproducibility from the committed artifact is
+the priority.)
+
+**Recommendation (pending maintainer sign-off — scoring semantics is
+policy-level).** Keep category 5 in the full 5-category aggregate (the evidence
+audit shows its spans are meaningful), publish the 4-category parity slice
+alongside it for leaderboard comparability, and always carry the caveat above.
+A refusal metric is not applicable to this dataset and is deferred to #463.
 
 ### Baseline Numbers (v1.6.3)
 
