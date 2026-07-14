@@ -4,6 +4,8 @@ type: feature
 appetite: Small
 owner: valorengels
 created: 2026-07-14
+revision_applied: true
+revision_applied_at: 2026-07-14T06:04:09Z
 tracking: https://github.com/tomcounsell/popoto/issues/469
 last_comment_id: none
 ---
@@ -196,11 +198,17 @@ point.
   LoCoMo vector note carries the MEMTIER retrieval-regime anchor and the
   "isolates only the dense arm, not the graph/co-occurrence arm" caveat from
   PR #467. No hardcoded Recall@k values in either note.
-- Add `_iter_spec_stems()` and `_warn_orphan_artifacts(specs)` helpers.
-  `_warn_orphan_artifacts` globs `RESULTS_ROOT/external/*_latest*.md`, derives
-  each artifact's stem relative to `RESULTS_ROOT` (dropping `.md`), and warns for
-  any not present in the set of `Spec.stem` values. Called from `main()` after
-  the spec loop (order irrelevant; it only prints).
+- Add `_iter_spec_stems()` and `_warn_orphan_artifacts(specs, root=RESULTS_ROOT)`
+  helpers. `_warn_orphan_artifacts` globs `root/"external"/"*_latest*.md"`,
+  derives each artifact's stem relative to `root` (preserving the `external/`
+  prefix, dropping `.md`), and warns for any not present in the set of
+  `Spec.stem` values. Called from `main()` after the spec loop (order
+  irrelevant; it only prints). **The `root` parameter is injectable** (defaults
+  to `RESULTS_ROOT`) so tests pass a `tmp_path` root and never write into or
+  read from the real `tests/benchmarks/results/external/` — this keeps
+  Verification criterion 6 (no new files under `results/external/`) safe and the
+  tests hermetic. Stem derivation stays relative to `root` so a mapped
+  `Spec.stem` like `external/longmemeval_s_latest_vector` compares equal.
 - Change module bottom to `if __name__ in ("__main__", "<run_path>"): main()`.
   Verified: mkdocs-gen-files execs via `runpy.run_path` → `__name__ ==
   "<run_path>"`, so the generator still runs at build; a unit `import` (module
@@ -243,11 +251,16 @@ the `main()` guard):
 - `test_vector_notes_have_no_fabricated_numbers` — the vector `Spec.note`
   strings contain no `Recall@` / decimal metric literals (doctrine: don't
   fabricate numbers before artifacts exist).
-- `test_orphan_artifact_scan_warns` — a temp `external/` dir with an unmapped
-  `foo_latest_experimental.md` triggers a warning naming the artifact; a mapped
-  stem does not.
-- `test_orphan_scan_silent_when_all_mapped` — no warnings when every artifact
-  has a spec (and empty dir → no warning, no raise).
+- `test_orphan_artifact_scan_warns` — pass a `tmp_path` root containing an
+  `external/foo_latest_experimental.md` (unmapped) via
+  `_warn_orphan_artifacts(SPECS, root=tmp_path)`; assert a warning names the
+  artifact.
+- `test_orphan_scan_silent_when_all_mapped` — a `tmp_path` root whose only
+  `external/*_latest*.md` files correspond to existing `Spec.stem`s emits no
+  warning; an empty root emits no warning and does not raise.
+
+All orphan-scan tests pass an injected `tmp_path` root — they never write into
+or monkeypatch the real `RESULTS_ROOT`.
 
 ## Rabbit Holes
 
