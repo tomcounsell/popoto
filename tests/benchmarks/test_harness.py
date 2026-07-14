@@ -15,6 +15,7 @@ import pytest
 
 from tests.benchmarks.metrics.retrieval import (
     calibration_error,
+    leaderboard_parity_slice,
     mean_reciprocal_rank,
     ndcg_at_k,
     precision_at_k,
@@ -104,6 +105,113 @@ class TestMRR:
 
     def test_no_hit(self):
         assert mean_reciprocal_rank(["x", "y", "z"], {"a"}) == 0.0
+
+
+class TestLeaderboardParitySlice:
+    """Pure re-aggregation of a by_question_type breakdown (issue #454)."""
+
+    # A minimal 3-category breakdown; metric values chosen so the n-weighted
+    # means are exact and hand-checkable.
+    BREAKDOWN = {
+        1: {
+            "n": 100,
+            "recall_at_1": 0.4,
+            "recall_at_5": 0.6,
+            "recall_at_10": 0.7,
+            "mrr": 0.5,
+        },
+        4: {
+            "n": 300,
+            "recall_at_1": 0.2,
+            "recall_at_5": 0.4,
+            "recall_at_10": 0.5,
+            "mrr": 0.3,
+        },
+        5: {
+            "n": 100,
+            "recall_at_1": 0.9,
+            "recall_at_5": 0.9,
+            "recall_at_10": 0.9,
+            "mrr": 0.9,
+        },
+    }
+
+    def test_excludes_default_cat5_and_reweights(self):
+        # Retained cats 1 (n=100) + 4 (n=300): R@1 = (100*0.4 + 300*0.2)/400 = 0.25
+        out = leaderboard_parity_slice(self.BREAKDOWN)
+        assert out["excluded"] == ["5"]
+        assert out["n"] == 400
+        assert out["recall_at_1"] == pytest.approx(0.25)
+        assert out["recall_at_5"] == pytest.approx(0.45)
+        assert out["recall_at_10"] == pytest.approx(0.55)
+        assert out["mrr"] == pytest.approx(0.35)
+
+    def test_string_keys_match_int_keys(self):
+        # A JSON round-trip stringifies category keys; the slice must be stable.
+        str_breakdown = {str(k): v for k, v in self.BREAKDOWN.items()}
+        assert leaderboard_parity_slice(str_breakdown) == leaderboard_parity_slice(
+            self.BREAKDOWN
+        )
+
+    def test_no_excluded_category_present_is_full_aggregate(self):
+        # Excluding a category that is not present retains everyone.
+        no_cat5 = {k: v for k, v in self.BREAKDOWN.items() if k != 5}
+        out = leaderboard_parity_slice(no_cat5)
+        assert out["excluded"] == []
+        assert out["n"] == 400
+
+    def test_multiple_exclusions(self):
+        out = leaderboard_parity_slice(self.BREAKDOWN, exclude_categories=("4", "5"))
+        assert out["excluded"] == ["4", "5"]
+        assert out["n"] == 100
+        assert out["recall_at_1"] == pytest.approx(0.4)
+
+    def test_all_excluded_yields_zero(self):
+        out = leaderboard_parity_slice(
+            self.BREAKDOWN, exclude_categories=("1", "4", "5")
+        )
+        assert out["n"] == 0
+        assert out["recall_at_1"] == 0.0
+        assert out["mrr"] == 0.0
+
+
+class TestLoCoMoParityRegression:
+    """Pin the published LoCoMo leaderboard-parity numbers (issue #454).
+
+    The 4-category slice is the standing published artifact; these assertions
+    are the regression gate so the docs numbers cannot silently drift from the
+    committed benchmark artifacts.
+    """
+
+    RESULTS_DIR = os.path.join(SCRIPT_DIR, "results", "external")
+
+    def _slice(self, filename):
+        import json
+
+        path = os.path.join(self.RESULTS_DIR, filename)
+        if not os.path.exists(path):
+            pytest.skip(f"committed artifact missing: {filename}")
+        with open(path) as fh:
+            data = json.load(fh)
+        return leaderboard_parity_slice(data["by_question_type"])
+
+    def test_lexical_parity_slice_is_1540_qa(self):
+        out = self._slice("locomo_latest.json")
+        assert out["excluded"] == ["5"]
+        assert out["n"] == 1540  # 1986 full − 446 cat-5 = exact leaderboard variant
+        assert out["recall_at_1"] == pytest.approx(0.2883, abs=1e-4)
+        assert out["recall_at_5"] == pytest.approx(0.5390, abs=1e-4)
+        assert out["recall_at_10"] == pytest.approx(0.6260, abs=1e-4)
+        assert out["mrr"] == pytest.approx(0.3991, abs=1e-4)
+
+    def test_hybrid_parity_slice_is_1540_qa(self):
+        out = self._slice("locomo_latest_hybrid.json")
+        assert out["excluded"] == ["5"]
+        assert out["n"] == 1540
+        assert out["recall_at_1"] == pytest.approx(0.1552, abs=1e-4)
+        assert out["recall_at_5"] == pytest.approx(0.4065, abs=1e-4)
+        assert out["recall_at_10"] == pytest.approx(0.5181, abs=1e-4)
+        assert out["mrr"] == pytest.approx(0.2686, abs=1e-4)
 
 
 # ---------------------------------------------------------------------------
