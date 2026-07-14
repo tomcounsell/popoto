@@ -2521,6 +2521,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#judged-answer-accuracy-tier-5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Judged-Answer Accuracy (Tier 5)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#baseline-numbers-v163" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2861,6 +2872,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#judged-answer-accuracy-tier-5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Judged-Answer Accuracy (Tier 5)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#baseline-numbers-v163" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3011,7 +3033,10 @@
 <h2 id="external-benchmark-harness">External Benchmark Harness<a class="headerlink" href="#external-benchmark-harness" title="Permanent link">&para;</a></h2>
 <h3 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h3>
 <p>The external harness measures how well Popoto's <code>ContextAssembler</code> retrieves
-the relevant memory given a natural-language query. It supports two datasets:</p>
+the relevant memory given a natural-language query, and can optionally run an
+end-to-end judged-answer stage (retrieve → generate → LLM-judge) for
+leaderboard-comparable accuracy numbers (see
+<a href="#judged-answer-accuracy-tier-5">Judged-Answer Accuracy</a>). It supports two datasets:</p>
 <table>
 <thead>
 <tr>
@@ -3161,7 +3186,17 @@ included in the JSON report for reproducibility.</p>
 <tr>
 <td><code>--error-threshold FLOAT</code></td>
 <td>0.10</td>
-<td>Exit 1 if error rate exceeds this fraction</td>
+<td>Exit 1 if retrieval error rate exceeds this fraction</td>
+</tr>
+<tr>
+<td><code>--judged</code></td>
+<td>off</td>
+<td>Run the end-to-end judged-answer stage (retrieve → generate → LLM-judge). Requires <code>OPENAI_API_KEY</code>; skips gracefully without one. <code>lexical</code>/<code>hybrid</code> only. See <a href="#judged-answer-accuracy-tier-5">Judged-Answer Accuracy</a>.</td>
+</tr>
+<tr>
+<td><code>--judge-error-threshold FLOAT</code></td>
+<td>0.25</td>
+<td>With <code>--judged</code>, exit 1 if the judge-error (API failure) rate exceeds this fraction. Independent of <code>--error-threshold</code>.</td>
 </tr>
 </tbody>
 </table>
@@ -3181,7 +3216,10 @@ included in the JSON report for reproducibility.</p>
 filenames (e.g. <code>longmemeval_s_20260703_hybrid.json</code>,
 <code>longmemeval_s_latest_hybrid.json</code>; <code>vector</code> uses the <code>_vector</code> suffix), so a
 hybrid or vector run never overwrites the lexical baseline artifacts or their
-symlinks.</p>
+symlinks. <code>--judged</code> runs add an independent <code>_judged</code> suffix that composes with
+the mode suffix (e.g. <code>locomo_20260714_judged.*</code> for lexical+judged,
+<code>locomo_20260714_hybrid_judged.*</code> for hybrid+judged), so a judged run never
+clobbers a retrieval-only artifact.</p>
 <p>Committing a <code>_latest</code> artifact (any mode) auto-publishes it to the
 <a href="results/">Benchmarks results pages</a> on the docs site on the
 next deploy — the <code>lexical</code>, <code>hybrid</code>, and <code>vector</code> pages per dataset are generated
@@ -3194,7 +3232,8 @@ reported as a loud build-time warning rather than silently dropped.</p>
 - <code>by_question_type</code> — per-category Recall@1/5/10 + MRR + count breakdown
 - <code>machine</code> — Python version, OS, CPU count
 - <code>notes</code> — retrieval mode description
-- <code>questions</code> — per-question detail (item_id, recall scores, status, errors, and <code>metadata.question_type</code>)</p>
+- <code>questions</code> — per-question detail (item_id, recall scores, status, errors, and <code>metadata.question_type</code>)
+- <code>judge</code> / <code>judged</code> — present only on <code>--judged</code> runs: the pinned judge identity (model, prompt SHA-256, protocol, temperature) and the judged-accuracy aggregate (see <a href="#judged-answer-accuracy-tier-5">Judged-Answer Accuracy</a>)</p>
 <h3 id="retrieval-modes">Retrieval Modes<a class="headerlink" href="#retrieval-modes" title="Permanent link">&para;</a></h3>
 <p><code>--retrieval-mode</code> selects how the harness retrieves candidates. <code>lexical</code> and
 <code>hybrid</code> drive <code>ContextAssembler.assemble()</code>; field presence on the per-item model
@@ -3448,6 +3487,55 @@ policy-level).</strong> Keep category 5 in the full 5-category aggregate (the ev
 audit shows its spans are meaningful), publish the 4-category parity slice
 alongside it for leaderboard comparability, and always carry the caveat above.
 A refusal metric is not applicable to this dataset and is deferred to #463.</p>
+<h3 id="judged-answer-accuracy-tier-5">Judged-Answer Accuracy (Tier 5)<a class="headerlink" href="#judged-answer-accuracy-tier-5" title="Permanent link">&para;</a></h3>
+<p>The metrics above are <strong>retrieval-level</strong> — did the right memory get retrieved.
+Every published vendor leaderboard (Hindsight, Mem0, Zep, Memori, Backboard)
+instead reports <strong>end-to-end judged accuracy</strong>: retrieve → generate an answer →
+have an LLM grade that answer against the gold answer. The <code>--judged</code> flag adds
+that stage so Popoto is comparable to those boards.</p>
+<blockquote>
+<p><strong>Two different metric families.</strong> Retrieval recall and judged accuracy are
+reported side by side but <strong>must never be cross-compared or combined into a
+single ranking</strong> (per the #453 framing requirements). A judged run's artifact
+keeps them in separate blocks (<code>summary</code> vs <code>judged</code>).</p>
+</blockquote>
+<p><strong>Pinned judge (reproducibility).</strong> The judge is the <strong>Mem0 / GAM evaluation
+protocol</strong> (<code>ACCURACY_PROMPT</code>, arXiv:2504.19413) reproduced verbatim, with
+<code>gpt-4o-mini</code> as both judge and answer-generator, at <code>temperature=0</code>. Judged
+accuracy drifts several points across judge models, so the judge identity —
+model id, prompt SHA-256, protocol reference, temperature — is recorded in the
+<code>judge</code> block of every judged artifact. Both the model and the prompt are pinned
+in <code>tests/benchmarks/judge.py</code> and guarded by tests, so a silent swap is a test
+failure.</p>
+<p><strong>API key + cost.</strong> Generation and judging call the OpenAI API, so <code>--judged</code>
+needs <code>OPENAI_API_KEY</code> and the <code>[openai]</code> extra (<code>pip install -e ".[openai]"</code>).
+Without them the stage <strong>skips gracefully</strong> (prints a cost estimate and exits 0,
+the same posture as hybrid's model download). Each item costs ~2 <code>gpt-4o-mini</code>
+calls (~$0.0004/item under the harness's documented token assumptions); a full
+LoCoMo judged run (1986 QA) is ~$0.8, a <code>--limit 200</code> slice ~$0.08. The harness
+prints this estimate (sized by <code>--limit</code>, or the dataset's full size when
+unlimited) before running.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># Judged run over a representative 200-question LoCoMo slice (lexical retrieval):</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">OPENAI_API_KEY</span><span class="o">=</span>sk-...
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>locomo<span class="w"> </span>--judged<span class="w"> </span>--limit<span class="w"> </span><span class="m">200</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="c1"># Hybrid retrieval + judged accuracy (writes locomo_&lt;date&gt;_hybrid_judged.*):</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>locomo<span class="w"> </span>--judged<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">    </span>--retrieval-mode<span class="w"> </span>hybrid<span class="w"> </span>--limit<span class="w"> </span><span class="m">200</span>
+</code></pre></div>
+<p>The <code>judged</code> block reports <code>judged_accuracy</code> (fraction CORRECT over scored
+items), a per-<code>question_type</code> breakdown, and separate counts for judge errors
+and skipped items. <strong>LoCoMo adversarial (category-5) items are excluded from the
+headline <code>judged_accuracy</code></strong> and reported separately under <code>adversarial</code>: the
+Mem0/GAM prompt is a factual-match judge, not a refusal judge, so it cannot score
+refusal answers meaningfully (a dedicated refusal metric is tracked in #463; the
+cat-5 scoring audit that recommended it was #454).
+Per-item fault isolation means a transient API error records a <code>judge_error</code>
+status and the run continues rather than aborting a paid run.</p>
+<p>Vector mode (<code>--retrieval-mode vector</code>) is <strong>not</strong> supported with <code>--judged</code> (the
+diagnostic vector path returns no memory text to answer from) and is rejected up
+front. No self-benchmarked judged numbers are committed — the harness ships the
+capability; live runs are operator-run with a key.</p>
 <h3 id="baseline-numbers-v163">Baseline Numbers (v1.6.3)<a class="headerlink" href="#baseline-numbers-v163" title="Permanent link">&para;</a></h3>
 <p><strong>LongMemEval-S (fixture sample, 3 questions):</strong></p>
 <table>
@@ -3519,21 +3607,21 @@ Popoto's hybrid mode (<code>--retrieval-mode hybrid</code>, see
 (0.986 / 0.992 / 0.932); the lexical BM25 baseline alone already matches
 the reference Recall@5 (0.952).</p>
 <h3 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>CLI --dataset longmemeval-s
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  → DatasetAdapter (download/cache from HuggingFace)
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>  → iterate BenchmarkItems (question, history, relevant_ids)
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>  → for each item:
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>      ExternalScenario.setup()
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>        — ingest each turn as a memory record via Popoto Model.save()
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>        — track session_id → Redis key mapping
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>      ExternalScenario.run()
-<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>        — call ContextAssembler.assemble(query_cues={&quot;topic&quot;: query})
-<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>        — reverse-map Redis keys → session_ids
-<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>        — return ScenarioResult(retrieved_ids, relevant_ids)
-<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>      ExternalScenario.teardown()
-<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>        — scan and delete all Redis keys for this item
-<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>  → compute Recall@1/5/10, MRR, p50/p95 latency
-<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>  → write results/external/{dataset}_{YYYYMMDD}.{json,md}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>CLI --dataset longmemeval-s
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  → DatasetAdapter (download/cache from HuggingFace)
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>  → iterate BenchmarkItems (question, history, relevant_ids)
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>  → for each item:
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>      ExternalScenario.setup()
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>        — ingest each turn as a memory record via Popoto Model.save()
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>        — track session_id → Redis key mapping
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>      ExternalScenario.run()
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>        — call ContextAssembler.assemble(query_cues={&quot;topic&quot;: query})
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>        — reverse-map Redis keys → session_ids
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>        — return ScenarioResult(retrieved_ids, relevant_ids)
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>      ExternalScenario.teardown()
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>        — scan and delete all Redis keys for this item
+<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>  → compute Recall@1/5/10, MRR, p50/p95 latency
+<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>  → write results/external/{dataset}_{YYYYMMDD}.{json,md}
 </code></pre></div>
 <p><strong>Model class:</strong> <code>ExternalBenchmarkMemory</code> — a fresh Popoto Model per
 benchmark item with:
@@ -3549,8 +3637,8 @@ compatible with both Redis and Valkey:
 - <code>ZADD</code>, <code>ZREVRANGEBYSCORE</code> (sorted sets for indexed fields)
 - <code>SET</code>, <code>GET</code> (model instance storage via msgpack)
 - <code>SCAN</code>, <code>DEL</code> (cleanup)</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># Verify no module commands used:</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>grep<span class="w"> </span>-rn<span class="w"> </span><span class="s2">&quot;BF\.\|CMS\.\|TOPK\.\|FT\.&quot;</span><span class="w"> </span>tests/benchmarks/<span class="w">  </span><span class="c1"># should return nothing</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># Verify no module commands used:</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>grep<span class="w"> </span>-rn<span class="w"> </span><span class="s2">&quot;BF\.\|CMS\.\|TOPK\.\|FT\.&quot;</span><span class="w"> </span>tests/benchmarks/<span class="w">  </span><span class="c1"># should return nothing</span>
 </code></pre></div>
 <h3 id="extending-the-harness">Extending the Harness<a class="headerlink" href="#extending-the-harness" title="Permanent link">&para;</a></h3>
 <p>To add a new dataset:
@@ -3627,16 +3715,16 @@ adversarial queries are <strong>authored fixture data</strong> (committed paraph
 runtime rewrite step, no synonym RNG), so the adversarial input is
 byte-identical every run.</p>
 <h3 id="running-it">Running It<a class="headerlink" href="#running-it" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># CI gate (pytest, DB-15 isolation, gates on determinism + suite health +</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="c1"># the discriminative check — never on RSR/Gap magnitudes):</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>pytest<span class="w"> </span>tests/benchmarks/test_csr.py<span class="w"> </span>-q
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="c1"># Manual run — writes tests/benchmarks/results/csr/csr_{date}.{json,md}</span>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="c1"># and csr_latest.{json,md}:</span>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.csr.run_csr
-<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>
-<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="c1"># Summary only, no report written:</span>
-<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.csr.run_csr<span class="w"> </span>--dry-run
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># CI gate (pytest, DB-15 isolation, gates on determinism + suite health +</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="c1"># the discriminative check — never on RSR/Gap magnitudes):</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>pytest<span class="w"> </span>tests/benchmarks/test_csr.py<span class="w"> </span>-q
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="c1"># Manual run — writes tests/benchmarks/results/csr/csr_{date}.{json,md}</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="c1"># and csr_latest.{json,md}:</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.csr.run_csr
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="c1"># Summary only, no report written:</span>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.csr.run_csr<span class="w"> </span>--dry-run
 </code></pre></div>
 <p>The JSON report records <code>executed_path</code> per run (a zero-BM25-hit query
 silently falls back to the query-blind composite path inside the assembler;
