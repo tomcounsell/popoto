@@ -357,6 +357,11 @@ class ExternalScenario(Scenario):
         t0 = time.monotonic()
 
         retrieved_keys: List[str] = []
+        # Retrieved memory texts in rank order — consumed by the judged-answer
+        # stage (#458). Only populated on the assembler path, where records carry
+        # `.content`; the vector path holds only (redis_key, cosine) pairs and
+        # judged mode rejects vector up front, so it is left empty there.
+        retrieved_contents: List[str] = []
         if self.retrieval_mode == "vector":
             # Vector-only diagnostic: pure cosine over the EmbeddingField, no
             # ContextAssembler. _get_vector_scores() returns (redis_key, cosine)
@@ -390,6 +395,8 @@ class ExternalScenario(Scenario):
                         retrieved_keys.append(record.db_key.redis_key)
                     except Exception:
                         retrieved_keys.append(str(id(record)))
+                    # Capture the record text (rank order) for the judged stage.
+                    retrieved_contents.append(getattr(record, "content", "") or "")
             except Exception as e:
                 return ScenarioResult(
                     scenario_name=self.name,
@@ -441,6 +448,7 @@ class ExternalScenario(Scenario):
                 "dataset": self.item.metadata.get("dataset", "unknown"),
                 "question_type": self.item.metadata.get("question_type", ""),
                 "retrieval_method": retrieval_method,
+                "retrieved_contents": retrieved_contents,
             },
         )
 

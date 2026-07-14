@@ -54,6 +54,7 @@ from tests.benchmarks.metrics.retrieval import (
     recall_at_k,
 )
 from tests.benchmarks.scenarios.external_base import ExternalScenario
+from tests.benchmarks import judge as judge_mod
 
 logging.basicConfig(
     level=logging.INFO,
@@ -460,6 +461,143 @@ def compute_aggregate(
 
 
 # ---------------------------------------------------------------------------
+# Judged-answer stage (Tier 5, issue #458)
+# ---------------------------------------------------------------------------
+
+
+def _is_adversarial(item: BenchmarkItem) -> bool:
+    """True if ``item`` is a LoCoMo adversarial (cat-5) / unanswerable question.
+
+    Adversarial items test *refusal*, which the verbatim Mem0/GAM factual-match
+    judge cannot score meaningfully, so they are excluded from the headline
+    judged accuracy and reported separately (a dedicated refusal metric is #454).
+    """
+    md = item.metadata or {}
+    if md.get("adversarial"):
+        return True
+    return md.get("question_type") in (5, "5")
+
+
+def judge_one(
+    item: BenchmarkItem,
+    q_result: "QuestionResult",
+    client,
+    retry_sleep=time.sleep,
+) -> dict:
+    """Generate an answer for ``item`` from its retrieved memories, then judge it.
+
+    Gated by the caller on ``q_result.status == "ok"``. Each LLM call retries with
+    backoff; a final failure is captured as ``judge_status == "judge_error"`` so a
+    single transient error never crashes the run.
+
+    Returns:
+        A per-item judged-result dict.
+    """
+    context_texts = q_result.metadata.get("retrieved_contents", []) or []
+    gold = (item.metadata or {}).get("answer", "") or ""
+    question = item.query
+    adversarial = _is_adversarial(item)
+    base = {
+        "item_id": item.item_id,
+        "question_type": q_result.metadata.get("question_type", ""),
+        "adversarial": adversarial,
+    }
+    try:
+        generated = judge_mod.call_with_retry(
+            lambda: judge_mod.generate_answer(client, question, context_texts),
+            sleep=retry_sleep,
+        )
+        label, raw = judge_mod.call_with_retry(
+            lambda: judge_mod.judge_answer(client, question, gold, generated),
+            sleep=retry_sleep,
+        )
+        base.update(
+            {
+                "generated_answer": generated,
+                "judge_label": label,
+                "judge_status": "ok",
+            }
+        )
+    except Exception as exc:  # noqa: BLE001 - captured per-item, not fatal
+        base.update(
+            {
+                "generated_answer": "",
+                "judge_label": "",
+                "judge_status": "judge_error",
+                "judge_error": str(exc),
+            }
+        )
+    return base
+
+
+def _judged_by_question_type(scored: list) -> dict:
+    """Per-``question_type`` judged-accuracy breakdown over scored (non-adversarial,
+    non-error) judged results."""
+    groups: dict = {}
+    for r in scored:
+        qt = r.get("question_type") or "(unlabeled)"
+        groups.setdefault(str(qt), []).append(r)
+    out: dict = {}
+    for qt in sorted(groups, key=str):
+        rs = groups[qt]
+        n_correct = sum(1 for r in rs if r["judge_label"] == "CORRECT")
+        out[qt] = {
+            "n": len(rs),
+            "n_correct": n_correct,
+            "judged_accuracy": round(n_correct / len(rs), 4) if rs else 0.0,
+        }
+    return out
+
+
+def compute_judged_block(judged_results: list, n_total: int) -> dict:
+    """Aggregate per-item judged results into the artifact's ``judged`` block.
+
+    The headline ``judged_accuracy`` is computed over **scored** items only —
+    excluding judge errors, skipped (non-ok retrieval) items, AND adversarial
+    (cat-5) items, whose refusal semantics the factual-match judge cannot score.
+    Adversarial items are reported separately under ``adversarial``.
+
+    Args:
+        judged_results: Per-item dicts from :func:`judge_one` (ok items only).
+        n_total: Total items in the run (for the skipped count).
+
+    Returns:
+        The ``judged`` aggregate block.
+    """
+    errors = [r for r in judged_results if r["judge_status"] == "judge_error"]
+    ok = [r for r in judged_results if r["judge_status"] == "ok"]
+    adversarial = [r for r in ok if r["adversarial"]]
+    scored = [r for r in ok if not r["adversarial"]]
+
+    n_correct = sum(1 for r in scored if r["judge_label"] == "CORRECT")
+    n_scored = len(scored)
+    adv_correct = sum(1 for r in adversarial if r["judge_label"] == "CORRECT")
+
+    return {
+        "n_total": n_total,
+        "n_judged": len(judged_results),
+        "n_judged_skipped": n_total - len(judged_results),
+        "n_judge_errors": len(errors),
+        "n_adversarial_excluded": len(adversarial),
+        "n_scored": n_scored,
+        "n_correct": n_correct,
+        # Headline: excludes errors, skips, and adversarial items.
+        "judged_accuracy": round(n_correct / n_scored, 4) if n_scored else 0.0,
+        "by_question_type": _judged_by_question_type(scored),
+        "adversarial": {
+            "n": len(adversarial),
+            "n_correct": adv_correct,
+            "note": (
+                "Adversarial (cat-5) items test refusal; the factual-match "
+                "Mem0/GAM judge cannot score them meaningfully. Reported for "
+                "transparency only, EXCLUDED from judged_accuracy. Refusal "
+                "metric tracked in #454."
+            ),
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
 # Report generation
 # ---------------------------------------------------------------------------
 
@@ -550,6 +688,57 @@ def build_markdown_report(aggregate: dict) -> str:
         )
         lines.append("")
 
+    judged = aggregate.get("judged")
+    if judged:
+        judge_id = aggregate.get("judge", {})
+        lines.append("## Judged Answer Accuracy (end-to-end)")
+        lines.append("")
+        lines.append(
+            "> These are a **different metric family** from the retrieval recall "
+            "above (retrieve→generate→LLM-judge). Retrieval recall and judged "
+            "accuracy are reported side by side but MUST NOT be cross-compared or "
+            "combined into a single ranking (#453)."
+        )
+        lines.append("")
+        lines.append(
+            f"**Judge:** `{judge_id.get('judge_model')}` · "
+            f"**Generator:** `{judge_id.get('generation_model')}` · "
+            f"**Protocol:** {judge_id.get('protocol')} "
+            f"({judge_id.get('protocol_ref')}) · "
+            f"**temperature:** {judge_id.get('temperature')}  "
+        )
+        lines.append(
+            f"**Judge prompt SHA-256:** `{judge_id.get('judge_prompt_sha256', '')[:16]}…`  "
+        )
+        lines.append("")
+        lines.append("| Metric | Value |")
+        lines.append("|--------|-------|")
+        lines.append(f"| Judged accuracy | {judged['judged_accuracy']:.4f} |")
+        lines.append(f"| Scored (CORRECT+WRONG) | {judged['n_scored']} |")
+        lines.append(f"| Correct | {judged['n_correct']} |")
+        lines.append(f"| Judge errors | {judged['n_judge_errors']} |")
+        lines.append(f"| Skipped (retrieval not ok) | {judged['n_judged_skipped']} |")
+        lines.append(f"| Adversarial excluded | {judged['n_adversarial_excluded']} |")
+        lines.append("")
+        jbqt = judged.get("by_question_type", {})
+        if jbqt:
+            lines.append("### Judged accuracy by question_type")
+            lines.append("")
+            lines.append("| question_type | n | Correct | Judged accuracy |")
+            lines.append("|---|---|---|---|")
+            for qt, m in jbqt.items():
+                lines.append(
+                    f"| {qt} | {m['n']} | {m['n_correct']} | "
+                    f"{m['judged_accuracy']:.4f} |"
+                )
+            lines.append("")
+        adv = judged.get("adversarial", {})
+        lines.append(
+            f"_Adversarial (cat-5): {adv.get('n', 0)} items, excluded from the "
+            f"headline number. {adv.get('note', '')}_"
+        )
+        lines.append("")
+
     lines += [
         "## Notes",
         "",
@@ -595,6 +784,7 @@ def save_reports(
     dataset_slug: str,
     retrieval_mode: str = "lexical",
     dry_run: bool = False,
+    judged: bool = False,
 ) -> tuple[Path, Path]:
     """Save JSON and Markdown report files.
 
@@ -620,9 +810,13 @@ def save_reports(
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Lexical keeps the unsuffixed baseline names; any other mode is suffixed so
-    # it cannot clobber the committed lexical artifacts.
-    suffix = "" if retrieval_mode == "lexical" else f"_{retrieval_mode}"
+    # Two independent suffix dimensions are composed so no combination clobbers
+    # another (issue #458): retrieval mode (lexical keeps the unsuffixed baseline
+    # name; hybrid/vector add ``_{mode}``) AND the judged stage (adds ``_judged``).
+    # e.g. hybrid+judged -> ``{slug}_{date}_hybrid_judged.*``.
+    mode_suffix = "" if retrieval_mode == "lexical" else f"_{retrieval_mode}"
+    judged_suffix = "_judged" if judged else ""
+    suffix = f"{mode_suffix}{judged_suffix}"
 
     date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
     json_name = f"{dataset_slug}_{date_str}{suffix}.json"
@@ -733,7 +927,37 @@ def main():
         default=0.10,
         help="Exit with code 1 if error rate exceeds this fraction (default: 0.10)",
     )
+    parser.add_argument(
+        "--judged",
+        action="store_true",
+        help=(
+            "Run the end-to-end judged-answer stage (Tier 5, #458): "
+            "retrieve -> generate -> LLM-judge with a PINNED gpt-4o-mini judge "
+            "(Mem0/GAM protocol). Requires OPENAI_API_KEY + the [openai] extra; "
+            "skips gracefully without them. Supported for lexical/hybrid only. "
+            "Writes {slug}_{date}[_mode]_judged.{json,md}."
+        ),
+    )
+    parser.add_argument(
+        "--judge-error-threshold",
+        type=float,
+        default=0.25,
+        help=(
+            "With --judged, exit code 1 if the judge-error rate (transient API "
+            "failures) exceeds this fraction (default: 0.25). Independent of "
+            "--error-threshold, which governs retrieval errors."
+        ),
+    )
     args = parser.parse_args()
+
+    # Judged mode is a factual-match judge over retrieved *content*; the vector
+    # diagnostic path holds no hydrated content, so reject it up front (#458).
+    if args.judged and args.retrieval_mode == "vector":
+        logger.error(
+            "--judged is not supported with --retrieval-mode vector (the vector "
+            "path returns no memory text to answer from). Use lexical or hybrid."
+        )
+        return 1
 
     global RESULTS_DIR
     if args.output:
@@ -788,8 +1012,40 @@ def main():
         bench_db,
     )
 
+    # Judged stage: build the (pinned) judge client up front, or skip gracefully
+    # if no API key / openai — a missing key is NOT a failure (#458 requirement 5,
+    # mirroring hybrid's model-download posture).
+    judge_client = None
+    if args.judged:
+        est = judge_mod.estimate_cost(args.limit or 0)
+        if not judge_mod.is_judge_available():
+            print("\n" + "=" * 60)
+            print("JUDGED STAGE SKIPPED — no OPENAI_API_KEY / openai not installed")
+            print("=" * 60)
+            print(
+                "  The judged harness needs an API key (retrieve->generate->"
+                "LLM-judge)."
+            )
+            print(
+                f"  Estimated cost if run: ~${est['usd_total_estimate']} "
+                f"(~${est['usd_per_item']}/item, 2 gpt-4o-mini calls/item)."
+            )
+            print("  Set OPENAI_API_KEY and `pip install -e '.[openai]'` to run.")
+            print("=" * 60)
+            return 0
+        logger.info(
+            "Judged stage ON: pinned judge=%s generator=%s. Est. cost ~$%s "
+            "(~$%s/item).",
+            judge_mod.JUDGE_MODEL,
+            judge_mod.GENERATION_MODEL,
+            est["usd_total_estimate"],
+            est["usd_per_item"],
+        )
+        judge_client = judge_mod.build_openai_client()
+
     total_start = time.monotonic()
     results = []
+    judged_results = []
     n_processed = 0
 
     for item in items:
@@ -804,6 +1060,12 @@ def main():
 
         q_result = run_item(item, retrieval_mode=args.retrieval_mode)
         results.append(q_result)
+
+        # Judged stage — only for ok retrievals (non-ok / skipped-empty items
+        # have no retrieved content to answer from; they are counted as
+        # judged-skipped by compute_judged_block via n_total - n_judged).
+        if judge_client is not None and q_result.status == "ok":
+            judged_results.append(judge_one(item, q_result, judge_client))
 
         if q_result.status == "ok":
             logger.debug(
@@ -837,6 +1099,25 @@ def main():
     )
     s = aggregate["summary"]
 
+    # Attach judged block + judge identity, and merge per-item judged fields into
+    # the retrieval question detail so recall and judged accuracy sit side by side
+    # in the artifact (never fused into one ranking — #453).
+    judged_block = None
+    if args.judged:
+        judged_block = compute_judged_block(judged_results, s["n_total"])
+        aggregate["judge"] = judge_mod.judge_identity()
+        aggregate["judged"] = judged_block
+        by_item = {r["item_id"]: r for r in judged_results}
+        for q in aggregate["questions"]:
+            jr = by_item.get(q["item_id"])
+            if jr:
+                q["judged"] = {
+                    "judge_label": jr.get("judge_label", ""),
+                    "judge_status": jr.get("judge_status", ""),
+                    "adversarial": jr.get("adversarial", False),
+                    "generated_answer": jr.get("generated_answer", ""),
+                }
+
     # Print summary table
     print("\n" + "=" * 60)
     print(f"BENCHMARK RESULTS: {args.dataset.upper()}")
@@ -850,6 +1131,17 @@ def main():
     print(f"  MRR                 : {s['mrr']:.4f}")
     print(f"  Latency p50 (ms)    : {s['p50_ms']}")
     print(f"  Latency p95 (ms)    : {s['p95_ms']}")
+    if judged_block is not None:
+        print("  " + "-" * 56)
+        print("  JUDGED ANSWER ACCURACY (separate metric family — do not")
+        print("  cross-compare with retrieval recall above, #453):")
+        print(f"    Judged accuracy   : {judged_block['judged_accuracy']:.4f}")
+        print(
+            f"    Scored / Correct  : {judged_block['n_scored']} / "
+            f"{judged_block['n_correct']}"
+        )
+        print(f"    Judge errors      : {judged_block['n_judge_errors']}")
+        print(f"    Adversarial excl. : {judged_block['n_adversarial_excluded']}")
     print("=" * 60)
 
     # Save reports
@@ -859,6 +1151,7 @@ def main():
             dataset_slug,
             retrieval_mode=args.retrieval_mode,
             dry_run=False,
+            judged=args.judged,
         )
         print(f"\nReports saved:")
         print(f"  JSON: {json_path}")
@@ -872,6 +1165,19 @@ def main():
                 "Error rate %.1f%% exceeds threshold %.1f%% — exiting with code 1",
                 error_rate * 100,
                 args.error_threshold * 100,
+            )
+            return 1
+
+    # Judge-error threshold is independent of the retrieval error gate: a paid
+    # judged run tripping on transient API flakiness shouldn't masquerade as a
+    # retrieval failure (or vice versa).
+    if judged_block is not None and judged_block["n_judged"] > 0:
+        judge_error_rate = judged_block["n_judge_errors"] / judged_block["n_judged"]
+        if judge_error_rate > args.judge_error_threshold:
+            logger.error(
+                "Judge-error rate %.1f%% exceeds threshold %.1f%% — exiting 1",
+                judge_error_rate * 100,
+                args.judge_error_threshold * 100,
             )
             return 1
 
