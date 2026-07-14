@@ -6,6 +6,7 @@ owner: valorengels
 created: 2026-07-14
 tracking: https://github.com/tomcounsell/popoto/issues/458
 last_comment_id:
+revision_applied: true
 ---
 
 # End-to-end Judged-Answer Harness (Tier 5): Mem0/GAM protocol, pinned gpt-4o-mini judge
@@ -88,8 +89,13 @@ factory.
 
 - `JUDGE_MODEL = "gpt-4o-mini"` — pinned. A test asserts this exact string so a silent model
   swap is a test failure (issue requirement 1/2).
-- `GENERATION_MODEL_DEFAULT = "gpt-4o-mini"` — default answer-generation model (overridable via
-  `--generation-model`; the *judge* is never overridable).
+- `GENERATION_MODEL = "gpt-4o-mini"` — the answer generator is **also pinned** (crit C3). #458
+  requires pinning the judge; making the generator configurable is scope nobody asked for and
+  would silently invalidate the committed cost figures. Both calls use the same pinned model, so
+  the cost estimate stays correct.
+- Both `generate_answer` and `judge_answer` call the model with **`temperature=0`** (crit C2) so
+  judged_accuracy is reproducible run-to-run; the temperature is recorded in the `judge`
+  identity block alongside the prompt hash.
 - `LLM_JUDGE_PROMPT` — the Mem0/GAM `ACCURACY_PROMPT`, reproduced **verbatim** with a source
   citation (arXiv:2504.19413 + the mem0 evaluation repo). `{question}`/`{gold_answer}`/
   `{generated_answer}` placeholders.
@@ -104,46 +110,78 @@ factory.
   `JudgeProtocol` adapter.
 - `is_judge_available() -> bool` — True iff `openai` importable AND `OPENAI_API_KEY` set.
   Mirrors hybrid's capability check.
-- `generate_answer(client, question, context_texts, model) -> str`
+- `generate_answer(client, question, context_texts) -> str` — `temperature=0`, pinned
+  `GENERATION_MODEL`.
 - `judge_answer(client, question, gold_answer, generated_answer) -> tuple[str, str]` — returns
-  `(label, raw)` where `label ∈ {"CORRECT", "WRONG"}`. Parses the Mem0 protocol's JSON
-  `{"label": ...}` first, falls back to a strict CORRECT/WRONG scan, and normalizes ambiguity
-  to `"WRONG"` (the protocol's conservative default).
+  `(label, raw)` where `label ∈ {"CORRECT", "WRONG"}`. `temperature=0`, pinned `JUDGE_MODEL`.
+  Parses the Mem0 protocol's JSON `{"label": ...}` first, falls back to a strict CORRECT/WRONG
+  scan, and normalizes ambiguity to `"WRONG"` (the protocol's conservative default).
+- `call_with_retry(fn, attempts=3)` — retry-with-backoff wrapper used around both LLM calls so a
+  transient `RateLimitError`/`APIError`/timeout retries rather than aborting a paid run (crit B3).
+  Raises the last error after `attempts`, which the caller catches per-item.
 - `estimate_cost(n_items, ...) -> dict` — documented token/price assumptions → an estimated USD
   range, printed before a non-dry full run and reproduced in the plan/docs.
 
 ### 2. `--judged` stage wired into `run_external.py`
 
 Reuse the existing CLI (`--dataset`, `--limit`, `--sample`, `--seed`, `--retrieval-mode`,
-`--dry-run`, `--fixture`, `--output`). Add:
+`--dry-run`, `--fixture`, `--output`). Add exactly one new flag:
 
-- `--judged` (flag) — turn on the generation+judge stage on top of retrieval.
-- `--generation-model` (default `gpt-4o-mini`) — answer generator only; judge stays pinned.
+- `--judged` (flag) — turn on the generation+judge stage on top of retrieval. The generator and
+  judge are both pinned to `gpt-4o-mini` (no `--generation-model` flag — crit C3).
+
+**Retrieval-mode support (crit B2):** `--judged` is supported only for the assembler paths
+(`lexical`, `hybrid`), whose retrieved records already carry `.content`
+(`external_base.py:388`). `--retrieval-mode vector --judged` is **rejected up front** with a
+clear error (the vector path holds only `(redis_key, cosine)` pairs, no hydrated content;
+hydration is deferred to a follow-up if real demand appears). This guard lives in `main()`
+before any ingestion.
 
 Flow when `--judged` is set:
 
 1. **Graceful skip:** if `not is_judge_available()`, print the reason + the cost estimate and
    return 0 with a clear "skipped, no API key" message (matching hybrid's posture — a missing key
    is not a failure). No artifacts written.
-2. For each item, after retrieval, feed the **retrieved** turn texts (new
+2. For each item, after retrieval, **gate on `q_result.status == "ok"`** (crit C1) — non-ok /
+   `skipped-empty` items have zero or no metadata, so they are counted as `judged_skipped` and
+   never reach an API call. For ok items, feed the **retrieved** turn texts (new
    `metadata["retrieved_contents"]`, top-k) to `generate_answer`, then `judge_answer` vs
-   `item.metadata["answer"]`. Record per-item `generated_answer`, `judge_label`, and the
-   already-computed recall.
-3. Aggregate adds a `judged` block: `n_judged`, `n_correct`, `judged_accuracy`, and a
+   `item.metadata["answer"]`.
+3. **Per-item fault isolation (crit B3):** each item's generate+judge is wrapped in try/except.
+   Transient errors retry via `call_with_retry`; a final failure records a `judge_status =
+   "judge_error"` (distinct from CORRECT/WRONG) and the run **continues** rather than crashing —
+   so a single 429/5xx never forces a full re-pay. Judge errors are tracked separately and do
+   **not** count against the existing retrieval `--error-threshold` gate
+   (`run_external.py:824`); a distinct `--judge-error-threshold` (default 0.25) governs them.
+   All per-item results (incl. `generated_answer`, `judge_label`, `judge_status`) are written to
+   the artifact at the end, so a completed run is fully inspectable.
+4. Aggregate adds a `judged` block: `n_judged`, `n_correct`, `n_judge_errors`, `n_judged_skipped`,
+   `judged_accuracy` (denominator = CORRECT+WRONG only, excluding errors and skips), and a
    per-`question_type` judged breakdown — kept **separate** from the retrieval `summary` block.
-4. A top-level `judge` identity block: `{judge_model, judge_prompt_sha256, generation_model,
-   protocol: "mem0/gam", protocol_ref: "arXiv:2504.19413"}`.
-5. Artifacts saved with the `_judged` suffix (`{slug}_{date}_judged.{json,md}` +
-   `{slug}_latest_judged.*`), never clobbering the lexical/hybrid retrieval artifacts. The
-   Markdown renders retrieval recall and judged accuracy in **two separate tables** under an
-   explicit "these two metric families are not comparable" caveat (#453).
+   **Adversarial items (LoCoMo cat-5) are excluded from the headline `judged_accuracy`** (crit
+   C4): the verbatim Mem0/GAM prompt is a factual-match judge, not a refusal judge, so refusal
+   answers judged against `adversarial_answer` have no defined correctness semantics. They are
+   reported under a separate `judged_adversarial` key (count + labels), never folded into the
+   headline number; the refusal *metric* remains #454.
+5. A top-level `judge` identity block: `{judge_model, judge_prompt_sha256, generation_model,
+   generation_prompt_sha256, temperature: 0, protocol: "mem0/gam",
+   protocol_ref: "arXiv:2504.19413"}`.
+6. Artifacts saved with a composed suffix (crit B1). `save_reports()` gains a `judged: bool`
+   param and composes **both** dimensions:
+   `suffix = ("" if mode=="lexical" else f"_{mode}") + ("_judged" if judged else "")`. So
+   `lexical`+`judged` → `{slug}_{date}_judged.*`; `hybrid`+`judged` →
+   `{slug}_{date}_hybrid_judged.*` (+ matching `_latest*` pointers) — never clobbering the plain
+   `_hybrid` retrieval artifact or the lexical-judged artifact. The Markdown renders retrieval
+   recall and judged accuracy in **two separate tables** under an explicit "these two metric
+   families are not comparable" caveat (#453).
 
 ### 3. `ExternalScenario` hook
 
 `run()` collects the retrieved records' `.content` in rank order into
-`metadata["retrieved_contents"]` (assembler path: from `assembly_result.records`; vector path:
-hydrate the ranked keys). Zero behavior change to existing retrieval scoring; purely additive
-metadata that the judged stage consumes.
+`metadata["retrieved_contents"]` on the **assembler path only** (from `assembly_result.records`
+at `external_base.py:388`). The vector path is not extended (it holds only `(redis_key, cosine)`
+pairs and `--judged` rejects vector mode up front — crit B2). Zero behavior change to existing
+retrieval scoring; purely additive metadata that the judged stage consumes.
 
 ## Testing
 
@@ -155,14 +193,27 @@ injected `JudgeProtocol` fake:
   text contains the protocol's signature phrasing (guards silent prompt drift).
 - **Judge parsing:** JSON `{"label":"CORRECT"}`, bare `CORRECT`/`WRONG`, mixed/ambiguous →
   `WRONG`, case-insensitivity.
-- **Generation:** fake client returns a canned answer; `generate_answer` passes the right model
+- **Determinism:** `generate_answer`/`judge_answer` pass `temperature=0` and the pinned models to
+  the fake client (assert the call kwargs).
+- **Generation:** fake client returns a canned answer; `generate_answer` passes the pinned model
   and includes the context.
 - **Gating:** `is_judge_available()` False when key unset / openai absent (monkeypatched).
+- **Retry / fault isolation:** a fake client that raises twice then succeeds → `call_with_retry`
+  recovers; a fake that always raises → item recorded as `judge_error`, run does not crash, other
+  items still judged.
+- **Suffix composition (crit B1):** `save_reports(..., retrieval_mode="hybrid", judged=True)`
+  writes `..._hybrid_judged.json`, not `..._judged.json`; lexical+judged writes `..._judged.json`.
 - **Aggregate shape:** judged aggregate has a `judged` block AND a retrieval `summary` block,
-  the top-level `judge` identity block is populated, and the two families are **not** merged
-  into one ranking (assert both blocks exist and are distinct).
+  the top-level `judge` identity block is populated (incl. `temperature`), and the two families
+  are **not** merged into one ranking (assert both blocks exist and are distinct).
+- **Status gate (crit C1):** a non-ok / skipped-empty item is counted as `judged_skipped` and
+  triggers no generation call (fake client call-count asserted).
+- **Adversarial exclusion (crit C4):** an adversarial (cat-5) item does not move the headline
+  `judged_accuracy` and is reported under `judged_adversarial`.
+- **Vector rejection (crit B2):** `main(--retrieval-mode vector --judged)` exits with a clear
+  error and writes no artifacts.
 - **Graceful skip end-to-end:** `main(--judged)` with `is_judge_available()` monkeypatched
-  False returns cleanly and writes no artifacts.
+  False returns 0 cleanly and writes no artifacts.
 - **End-to-end (mocked):** small fixture, injected fake judge+generator → judged accuracy
   computed and `_judged` artifacts written to a `tmp_path --output`.
 
@@ -179,12 +230,18 @@ assumption-based (documented), never presented as measured Popoto results.
 
 ## Out of Scope / Non-goals
 
-- **Adversarial (LoCoMo cat-5) refusal metric** — the gold `adversarial_answer` is passed to the
-  judge as-is; a dedicated refusal-precision metric is #454 (strategy §1.3), not this issue.
+- **Adversarial (LoCoMo cat-5) refusal metric** — adversarial items are *excluded* from the
+  headline judged-accuracy and reported separately (crit C4); a dedicated refusal-precision
+  metric is #454 (strategy §1.3), not this issue.
 - **Cross-comparing recall vs judged accuracy** — explicitly forbidden (#453); the report keeps
   them in separate blocks with a caveat.
 - **No committed live-judge numbers** — this PR ships the *harness*, not a self-benchmarked
   scoreboard (benchmark doctrine: no fabricated self-benchmark numbers). Live runs are operator-run
   with a key.
-- **Judge model configurability** — deliberately omitted; the judge is pinned. Only the *generator*
-  is overridable.
+- **Judge AND generator model configurability** — both are pinned to `gpt-4o-mini`; no override
+  flag (crit C3). Reopen in a follow-up if a real need appears.
+- **Vector-mode judged** — rejected up front (crit B2); vector results carry no `.content` to
+  answer from. Deferred to a follow-up if demand appears.
+- **Checkpoint/resume of a killed run** — per-item fault isolation means a completed run never
+  crashes and always writes its artifact; mid-run *process kill* resume (JSONL replay) is a
+  follow-up, not this appetite. Documented so operators re-run from scratch if the process dies.
