@@ -19,7 +19,10 @@ Popoto ships with three benchmark harnesses:
 ### Overview
 
 The external harness measures how well Popoto's `ContextAssembler` retrieves
-the relevant memory given a natural-language query. It supports two datasets:
+the relevant memory given a natural-language query, and can optionally run an
+end-to-end judged-answer stage (retrieve → generate → LLM-judge) for
+leaderboard-comparable accuracy numbers (see
+[Judged-Answer Accuracy](#judged-answer-accuracy-tier-5)). It supports two datasets:
 
 | Dataset | Questions | Sessions | Notes |
 |---------|-----------|----------|-------|
@@ -100,7 +103,9 @@ python -m tests.benchmarks.run_external \
 | `--dry-run` | off | Print results without saving report files |
 | `--fixture PATH` | download | Load dataset from a local JSON file |
 | `--output DIR` | `results/external/` | Override output directory |
-| `--error-threshold FLOAT` | 0.10 | Exit 1 if error rate exceeds this fraction |
+| `--error-threshold FLOAT` | 0.10 | Exit 1 if retrieval error rate exceeds this fraction |
+| `--judged` | off | Run the end-to-end judged-answer stage (retrieve → generate → LLM-judge). Requires `OPENAI_API_KEY`; skips gracefully without one. `lexical`/`hybrid` only. See [Judged-Answer Accuracy](#judged-answer-accuracy-tier-5). |
+| `--judge-error-threshold FLOAT` | 0.25 | With `--judged`, exit 1 if the judge-error (API failure) rate exceeds this fraction. Independent of `--error-threshold`. |
 
 ### Report Artifacts
 
@@ -122,7 +127,10 @@ Non-lexical runs suffix the retrieval mode into both the dated and `_latest`
 filenames (e.g. `longmemeval_s_20260703_hybrid.json`,
 `longmemeval_s_latest_hybrid.json`; `vector` uses the `_vector` suffix), so a
 hybrid or vector run never overwrites the lexical baseline artifacts or their
-symlinks.
+symlinks. `--judged` runs add an independent `_judged` suffix that composes with
+the mode suffix (e.g. `locomo_20260714_judged.*` for lexical+judged,
+`locomo_20260714_hybrid_judged.*` for hybrid+judged), so a judged run never
+clobbers a retrieval-only artifact.
 
 Committing a `_latest` artifact (any mode) auto-publishes it to the
 [Benchmarks results pages](benchmarks/results/index.md) on the docs site on the
@@ -138,6 +146,7 @@ Each JSON report includes:
 - `machine` — Python version, OS, CPU count
 - `notes` — retrieval mode description
 - `questions` — per-question detail (item_id, recall scores, status, errors, and `metadata.question_type`)
+- `judge` / `judged` — present only on `--judged` runs: the pinned judge identity (model, prompt SHA-256, protocol, temperature) and the judged-accuracy aggregate (see [Judged-Answer Accuracy](#judged-answer-accuracy-tier-5))
 
 ### Retrieval Modes
 
@@ -293,6 +302,62 @@ policy-level).** Keep category 5 in the full 5-category aggregate (the evidence
 audit shows its spans are meaningful), publish the 4-category parity slice
 alongside it for leaderboard comparability, and always carry the caveat above.
 A refusal metric is not applicable to this dataset and is deferred to #463.
+
+### Judged-Answer Accuracy (Tier 5)
+
+The metrics above are **retrieval-level** — did the right memory get retrieved.
+Every published vendor leaderboard (Hindsight, Mem0, Zep, Memori, Backboard)
+instead reports **end-to-end judged accuracy**: retrieve → generate an answer →
+have an LLM grade that answer against the gold answer. The `--judged` flag adds
+that stage so Popoto is comparable to those boards.
+
+> **Two different metric families.** Retrieval recall and judged accuracy are
+> reported side by side but **must never be cross-compared or combined into a
+> single ranking** (per the #453 framing requirements). A judged run's artifact
+> keeps them in separate blocks (`summary` vs `judged`).
+
+**Pinned judge (reproducibility).** The judge is the **Mem0 / GAM evaluation
+protocol** (`ACCURACY_PROMPT`, arXiv:2504.19413) reproduced verbatim, with
+`gpt-4o-mini` as both judge and answer-generator, at `temperature=0`. Judged
+accuracy drifts several points across judge models, so the judge identity —
+model id, prompt SHA-256, protocol reference, temperature — is recorded in the
+`judge` block of every judged artifact. Both the model and the prompt are pinned
+in `tests/benchmarks/judge.py` and guarded by tests, so a silent swap is a test
+failure.
+
+**API key + cost.** Generation and judging call the OpenAI API, so `--judged`
+needs `OPENAI_API_KEY` and the `[openai]` extra (`pip install -e ".[openai]"`).
+Without them the stage **skips gracefully** (prints a cost estimate and exits 0,
+the same posture as hybrid's model download). Each item costs ~2 `gpt-4o-mini`
+calls (~$0.0004/item under the harness's documented token assumptions); a full
+LoCoMo judged run (1986 QA) is ~$0.8, a `--limit 200` slice ~$0.08. The harness
+prints this estimate (sized by `--limit`, or the dataset's full size when
+unlimited) before running.
+
+```bash
+# Judged run over a representative 200-question LoCoMo slice (lexical retrieval):
+export OPENAI_API_KEY=sk-...
+python -m tests.benchmarks.run_external --dataset locomo --judged --limit 200
+
+# Hybrid retrieval + judged accuracy (writes locomo_<date>_hybrid_judged.*):
+python -m tests.benchmarks.run_external --dataset locomo --judged \
+    --retrieval-mode hybrid --limit 200
+```
+
+The `judged` block reports `judged_accuracy` (fraction CORRECT over scored
+items), a per-`question_type` breakdown, and separate counts for judge errors
+and skipped items. **LoCoMo adversarial (category-5) items are excluded from the
+headline `judged_accuracy`** and reported separately under `adversarial`: the
+Mem0/GAM prompt is a factual-match judge, not a refusal judge, so it cannot score
+refusal answers meaningfully (a dedicated refusal metric is tracked in #463; the
+cat-5 scoring audit that recommended it was #454).
+Per-item fault isolation means a transient API error records a `judge_error`
+status and the run continues rather than aborting a paid run.
+
+Vector mode (`--retrieval-mode vector`) is **not** supported with `--judged` (the
+diagnostic vector path returns no memory text to answer from) and is rejected up
+front. No self-benchmarked judged numbers are committed — the harness ships the
+capability; live runs are operator-run with a key.
 
 ### Baseline Numbers (v1.6.3)
 
