@@ -15313,8 +15313,16 @@ tests/benchmarks/results/external/
 
 Non-lexical runs suffix the retrieval mode into both the dated and `_latest`
 filenames (e.g. `longmemeval_s_20260703_hybrid.json`,
-`longmemeval_s_latest_hybrid.json`), so a hybrid run never overwrites the
-lexical baseline artifacts or their symlinks.
+`longmemeval_s_latest_hybrid.json`; `vector` uses the `_vector` suffix), so a
+hybrid or vector run never overwrites the lexical baseline artifacts or their
+symlinks.
+
+Committing a `_latest` artifact (any mode) auto-publishes it to the
+[Benchmarks results pages](benchmarks/results/index.md) on the docs site on the
+next deploy — the `lexical`, `hybrid`, and `vector` pages per dataset are generated
+from these artifacts by `docs/scripts/gen_benchmark_pages.py`, with no
+hand-edited prose tables. An artifact for a mode nobody wired a page for is
+reported as a loud build-time warning rather than silently dropped.
 
 Each JSON report includes:
 - `summary` — aggregate Recall@1/5/10, MRR, p50/p95 latency

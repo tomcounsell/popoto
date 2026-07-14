@@ -3151,8 +3151,15 @@ included in the JSON report for reproducibility.</p>
 </code></pre></div>
 <p>Non-lexical runs suffix the retrieval mode into both the dated and <code>_latest</code>
 filenames (e.g. <code>longmemeval_s_20260703_hybrid.json</code>,
-<code>longmemeval_s_latest_hybrid.json</code>), so a hybrid run never overwrites the
-lexical baseline artifacts or their symlinks.</p>
+<code>longmemeval_s_latest_hybrid.json</code>; <code>vector</code> uses the <code>_vector</code> suffix), so a
+hybrid or vector run never overwrites the lexical baseline artifacts or their
+symlinks.</p>
+<p>Committing a <code>_latest</code> artifact (any mode) auto-publishes it to the
+<a href="results/">Benchmarks results pages</a> on the docs site on the
+next deploy — the <code>lexical</code>, <code>hybrid</code>, and <code>vector</code> pages per dataset are generated
+from these artifacts by <code>docs/scripts/gen_benchmark_pages.py</code>, with no
+hand-edited prose tables. An artifact for a mode nobody wired a page for is
+reported as a loud build-time warning rather than silently dropped.</p>
 <p>Each JSON report includes:
 - <code>summary</code> — aggregate Recall@1/5/10, MRR, p50/p95 latency
 - <code>sampling</code> — <code>sample_mode</code> / <code>seed</code> / <code>limit</code> used for the run (so a report is reproducible from itself)
