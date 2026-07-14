@@ -8,12 +8,19 @@ are importable and usable, but designed primarily as reference implementations.
 from .adaptive_assembler import AdaptiveAssembler
 from .context_assembler import AssemblyResult, ContextAssembler, RetrievalQuality
 from .memory_lifecycle import LifecycleState, MemoryLifecycle
+from .memory_telemetry import (
+    AssemblyEvent,
+    TelemetryAnalyzer,
+    TelemetryRecorder,
+    report_outcomes,
+)
 from .policy_cache import PolicyEntry, compute_fingerprint, update_q_value
 from .subconscious_memory import SubconsciousMemory
 from .trajectory_memory import TrajectoryMemory
 
 __all__ = [
     "AdaptiveAssembler",
+    "AssemblyEvent",
     "AssemblyResult",
     "ContextAssembler",
     "LifecycleState",
@@ -21,7 +28,10 @@ __all__ = [
     "PolicyEntry",
     "RetrievalQuality",
     "SubconsciousMemory",
+    "TelemetryAnalyzer",
+    "TelemetryRecorder",
     "TrajectoryMemory",
     "compute_fingerprint",
+    "report_outcomes",
     "update_q_value",
 ]

@@ -130,6 +130,16 @@ The `assemble()` call returns an `AssemblyResult` dataclass:
 | `formatted` | `str` | LLM-ready formatted string |
 | `metadata` | `dict` | Scores, timing, token counts |
 
+### Telemetry hook: `emit_trace`
+
+`assemble(..., emit_trace=True)` attaches `metadata["trace"]` — a list of
+`{"key", "rank", "score", "source"}` dicts describing the injected records in
+final rank order (`score` is the injection-time composite score captured before
+post-effects; `source` is `"pull"` or `"push"`). It is **off by default**; when
+`False` the result is bit-for-bit identical to the pre-telemetry behavior. This
+is the instrumentation point consumed by the [Memory Telemetry](memory-telemetry.md)
+recipe to turn live `assemble()` calls into a real-workload benchmark.
+
 ## Tuning Constants
 
 ```python

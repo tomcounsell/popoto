@@ -990,6 +990,7 @@ class ContextAssembler:
         agent_id=None,
         partition_filters=None,
         assess_quality=False,
+        emit_trace=False,
     ):
         """Execute the full retrieval pipeline.
 
@@ -1007,6 +1008,17 @@ class ContextAssembler:
                 the pre-metacognitive-layer behavior. Turning this on adds
                 bounded overhead (one ``might_exist`` per cue plus one
                 ``get_confidence`` per selected record).
+            emit_trace: When True, attach ``metadata["trace"]`` — a list of
+                ``{"key", "rank", "score", "source"}`` dicts describing the
+                selected (injected) records in final rank order. ``score``
+                is the injection-time composite/fused score proxy, captured
+                *before* post-retrieval effects mutate decay clocks;
+                ``source`` is ``"pull"`` or ``"push"``. Default False; when
+                False the result is bit-for-bit identical to the
+                pre-telemetry behavior. This is the instrumentation hook the
+                telemetry recipe (issue #464) consumes — it uses only the
+                read-only, pipelined score proxy (ZSCORE), so it is
+                Valkey-safe and adds bounded overhead.
 
         Returns:
             AssemblyResult with records, proactive, formatted, and metadata.
@@ -1083,6 +1095,30 @@ class ContextAssembler:
         # Identify proactive records in final selection
         proactive = [r for r in selected if _get_key(r) in push_keys]
 
+        # [TELEMETRY] Capture the injection trace BEFORE post-effects mutate
+        # decay clocks, so the recorded score reflects the score the record
+        # was actually ranked/injected on. Off-by-default (issue #464): when
+        # emit_trace is False this block does no Redis work and the result is
+        # bit-for-bit identical to the pre-telemetry behavior.
+        trace = None
+        if emit_trace:
+            try:
+                proxy = self._injection_scores(selected)
+            except Exception as e:
+                logger.warning("emit_trace score proxy failed: %s", e)
+                proxy = {}
+            trace = []
+            for rank, record in enumerate(selected):
+                rk = _get_key(record)
+                trace.append(
+                    {
+                        "key": rk,
+                        "rank": rank,
+                        "score": proxy.get(rk, 0.0),
+                        "source": "pull" if rk in pull_keys else "push",
+                    }
+                )
+
         # --- Post-retrieval effects ---
         self._post_effects(
             selected, pull_keys, push_keys, all_pull_candidates, agent_id
@@ -1110,6 +1146,11 @@ class ContextAssembler:
             "total_candidates": len(merged),
         }
 
+        # [TELEMETRY] Attach the injection trace captured pre-post-effects.
+        # Off-by-default so existing callers see identical metadata.
+        if trace is not None:
+            metadata["trace"] = trace
+
         # [METACOGNITIVE] Quality assessment — opt-in, off-by-default so existing
         # callers see bit-for-bit identical metadata.
         if assess_quality:
@@ -1129,6 +1170,66 @@ class ContextAssembler:
             formatted=formatted,
             metadata=metadata,
         )
+
+    def _injection_scores(self, records):
+        """Partition-aware composite-score proxy for the telemetry trace (#464).
+
+        Unlike the metacognitive :func:`_score_proxy_for_records` helper (which
+        keys the non-partitioned sorted-set index), this reads each record's
+        score from the *partition-specific* sorted set via
+        ``get_partitioned_sortedset_db_key`` — so scores are correct for models
+        whose sorted fields declare ``partition_by`` (the common agent-memory
+        case, where the metacognitive proxy would return 0.0). Read-only,
+        pipelined ZSCORE only — Valkey-safe, no temp keys.
+
+        Only sorted-field-backed entries in ``score_weights`` contribute
+        (ConfidenceField / WriteFilter scores are not persisted in a ZSET). In
+        hybrid/lexical retrieval the fused RRF score is not persisted either, so
+        the trace score reflects only ``score_weights`` sorted fields (0.0 when
+        none) — per-arm score decomposition is the documented fast-follow.
+
+        Returns:
+            ``{record_key: weighted_score}`` for every record in ``records``.
+        """
+        if not records or not self.score_weights:
+            return {_get_key(r): 0.0 for r in records}
+
+        sorted_field_names = []
+        for field_name in self.score_weights:
+            try:
+                f = self.model_class._meta.fields.get(field_name)
+            except Exception:
+                f = None
+            if f is not None and isinstance(f, SortedFieldMixin):
+                sorted_field_names.append(field_name)
+
+        if not sorted_field_names:
+            return {_get_key(r): 0.0 for r in records}
+
+        pipe = POPOTO_REDIS_DB.pipeline()
+        plan = []  # parallel list of (record_key, weight) per queued ZSCORE
+        for field_name in sorted_field_names:
+            f = self.model_class._meta.fields[field_name]
+            weight = float(self.score_weights.get(field_name, 0.0))
+            for record in records:
+                try:
+                    zkey = f.get_partitioned_sortedset_db_key(
+                        record, field_name
+                    ).redis_key
+                    pipe.zscore(zkey, _get_key(record))
+                except Exception:
+                    pipe.zscore("", "")  # placeholder to keep plan aligned
+                plan.append((_get_key(record), weight))
+        raw = pipe.execute()
+
+        scores = {_get_key(r): 0.0 for r in records}
+        for (r_key, weight), val in zip(plan, raw):
+            if val is not None:
+                try:
+                    scores[r_key] += weight * float(val)
+                except (TypeError, ValueError):
+                    pass
+        return scores
 
     def _count_record_tokens(self, record):
         """Serialize ``record`` for the active output format and count tokens.
@@ -1319,9 +1420,11 @@ class ContextAssembler:
                 "reindex caveat). Falling back to composite (query-blind).",
                 self._effective_mode,
                 self.model_class.__name__,
-                " and the vector search returned none"
-                if self._embedding_field is not None
-                else "",
+                (
+                    " and the vector search returned none"
+                    if self._embedding_field is not None
+                    else ""
+                ),
             )
             return self._pull_path_composite(query_cues, filters)
 
