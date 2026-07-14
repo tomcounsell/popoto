@@ -1438,6 +1438,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#telemetry-hook-emit_trace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Telemetry hook: emit_trace
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1847,6 +1858,34 @@
     
   
     RAG Chatbot
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../memory-telemetry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory Telemetry
   
 
     
@@ -2825,6 +2864,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#telemetry-hook-emit_trace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Telemetry hook: emit_trace
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -3235,6 +3285,14 @@
 </tr>
 </tbody>
 </table>
+<h3 id="telemetry-hook-emit_trace">Telemetry hook: <code>emit_trace</code><a class="headerlink" href="#telemetry-hook-emit_trace" title="Permanent link">&para;</a></h3>
+<p><code>assemble(..., emit_trace=True)</code> attaches <code>metadata["trace"]</code> — a list of
+<code>{"key", "rank", "score", "source"}</code> dicts describing the injected records in
+final rank order (<code>score</code> is the injection-time composite score captured before
+post-effects; <code>source</code> is <code>"pull"</code> or <code>"push"</code>). It is <strong>off by default</strong>; when
+<code>False</code> the result is bit-for-bit identical to the pre-telemetry behavior. This
+is the instrumentation point consumed by the <a href="../memory-telemetry/">Memory Telemetry</a>
+recipe to turn live <code>assemble()</code> calls into a real-workload benchmark.</p>
 <h2 id="tuning-constants">Tuning Constants<a class="headerlink" href="#tuning-constants" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">Defaults</span>
 </code></pre></div>
