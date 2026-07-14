@@ -67,6 +67,13 @@ RESULTS_DIR = Path(__file__).parent / "results" / "external"
 
 DATASET_CHOICES = ("longmemeval-s", "locomo")
 
+# Full-dataset question counts, used only to size the judged-run cost estimate
+# when ``--limit`` is not given (otherwise the estimate would read ~$0 on exactly
+# the full run where cost matters most). These are the canonical dataset sizes;
+# the actual judged count can be lower (skipped/empty items), so the estimate is
+# an upper bound, which is the safe direction for a cost warning.
+DATASET_FULL_SIZE = {"longmemeval-s": 500, "locomo": 1986}
+
 # ---------------------------------------------------------------------------
 # Benchmark DB isolation (issue #465)
 # ---------------------------------------------------------------------------
@@ -470,7 +477,8 @@ def _is_adversarial(item: BenchmarkItem) -> bool:
 
     Adversarial items test *refusal*, which the verbatim Mem0/GAM factual-match
     judge cannot score meaningfully, so they are excluded from the headline
-    judged accuracy and reported separately (a dedicated refusal metric is #454).
+    judged accuracy and reported separately (a dedicated refusal metric is #463;
+    the cat-5 scoring audit that recommended it was #454).
     """
     md = item.metadata or {}
     if md.get("adversarial"):
@@ -591,7 +599,7 @@ def compute_judged_block(judged_results: list, n_total: int) -> dict:
                 "Adversarial (cat-5) items test refusal; the factual-match "
                 "Mem0/GAM judge cannot score them meaningfully. Reported for "
                 "transparency only, EXCLUDED from judged_accuracy. Refusal "
-                "metric tracked in #454."
+                "metric tracked in #463."
             ),
         },
     }
@@ -1017,7 +1025,10 @@ def main():
     # mirroring hybrid's model-download posture).
     judge_client = None
     if args.judged:
-        est = judge_mod.estimate_cost(args.limit or 0)
+        # Size the estimate by --limit, or the dataset's full size when unlimited
+        # (so a full run shows the real ~$1.4, not ~$0).
+        n_for_estimate = args.limit or DATASET_FULL_SIZE.get(args.dataset, 0)
+        est = judge_mod.estimate_cost(n_for_estimate)
         if not judge_mod.is_judge_available():
             print("\n" + "=" * 60)
             print("JUDGED STAGE SKIPPED — no OPENAI_API_KEY / openai not installed")

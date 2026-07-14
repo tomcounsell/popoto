@@ -162,7 +162,8 @@ Flow when `--judged` is set:
    C4): the verbatim Mem0/GAM prompt is a factual-match judge, not a refusal judge, so refusal
    answers judged against `adversarial_answer` have no defined correctness semantics. They are
    reported under a separate `judged_adversarial` key (count + labels), never folded into the
-   headline number; the refusal *metric* remains #454.
+   headline number; the refusal *metric* is tracked in #463 (recommended by the
+   closed cat-5 audit #454).
 5. A top-level `judge` identity block: `{judge_model, judge_prompt_sha256, generation_model,
    generation_prompt_sha256, temperature: 0, protocol: "mem0/gam",
    protocol_ref: "arXiv:2504.19413"}`.
@@ -223,16 +224,19 @@ they add no external dependency to the default suite.
 ## Cost estimate (documented before full runs)
 
 Per judged item = 1 generation call + 1 judge call, both `gpt-4o-mini`
-($0.15 / 1M input, $0.60 / 1M output as of 2026-07). With ~1.5k input + ~150 output tokens per
-call, ~2 calls/item ≈ **$0.0007/item**. Full LoCoMo (1,986 QA) ≈ **~$1.4**; a `--limit 200`
-representative slice ≈ **$0.15**. `estimate_cost()` prints this before a non-dry run; numbers are
-assumption-based (documented), never presented as measured Popoto results.
+($0.15 / 1M input, $0.60 / 1M output as of 2026-07). Under the token assumptions pinned in
+`estimate_cost()` (generation ~1.5k in / 150 out, judge ~0.5k in / 30 out), ~2 calls/item ≈
+**$0.0004/item**. Full LoCoMo (1,986 QA) ≈ **~$0.8**; a `--limit 200` representative slice ≈
+**$0.08**. `estimate_cost()` prints this before a run (sized by `--limit`, or the dataset's full
+size when unlimited); numbers are assumption-based (documented), never presented as measured
+Popoto results.
 
 ## Out of Scope / Non-goals
 
 - **Adversarial (LoCoMo cat-5) refusal metric** — adversarial items are *excluded* from the
   headline judged-accuracy and reported separately (crit C4); a dedicated refusal-precision
-  metric is #454 (strategy §1.3), not this issue.
+  metric is tracked in #463 (recommended by the closed cat-5 audit #454, strategy §1.3), not
+  this issue.
 - **Cross-comparing recall vs judged accuracy** — explicitly forbidden (#453); the report keeps
   them in separate blocks with a caveat.
 - **No committed live-judge numbers** — this PR ships the *harness*, not a self-benchmarked

@@ -304,7 +304,7 @@ def test_compute_judged_block_excludes_adversarial_and_errors():
     # adversarial reported separately, not folded into headline
     assert block["adversarial"]["n"] == 1
     assert block["adversarial"]["n_correct"] == 1
-    assert "#454" in block["adversarial"]["note"]
+    assert "#463" in block["adversarial"]["note"]
 
 
 def test_compute_judged_block_by_question_type():

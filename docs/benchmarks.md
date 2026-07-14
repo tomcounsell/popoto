@@ -329,8 +329,10 @@ failure.
 needs `OPENAI_API_KEY` and the `[openai]` extra (`pip install -e ".[openai]"`).
 Without them the stage **skips gracefully** (prints a cost estimate and exits 0,
 the same posture as hybrid's model download). Each item costs ~2 `gpt-4o-mini`
-calls (~$0.0007/item); a full LoCoMo judged run (1986 QA) is ~$1.4, a
-`--limit 200` slice ~$0.15. The harness prints the estimate before running.
+calls (~$0.0004/item under the harness's documented token assumptions); a full
+LoCoMo judged run (1986 QA) is ~$0.8, a `--limit 200` slice ~$0.08. The harness
+prints this estimate (sized by `--limit`, or the dataset's full size when
+unlimited) before running.
 
 ```bash
 # Judged run over a representative 200-question LoCoMo slice (lexical retrieval):
@@ -347,7 +349,8 @@ items), a per-`question_type` breakdown, and separate counts for judge errors
 and skipped items. **LoCoMo adversarial (category-5) items are excluded from the
 headline `judged_accuracy`** and reported separately under `adversarial`: the
 Mem0/GAM prompt is a factual-match judge, not a refusal judge, so it cannot score
-refusal answers meaningfully (a dedicated refusal metric is tracked in #454).
+refusal answers meaningfully (a dedicated refusal metric is tracked in #463; the
+cat-5 scoring audit that recommended it was #454).
 Per-item fault isolation means a transient API error records a `judge_error`
 status and the run continues rather than aborting a paid run.
 
