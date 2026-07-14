@@ -49,9 +49,20 @@ Output layout (virtual files under ``benchmarks/results/``):
     benchmarks/results/index.md                    -- Overview + framing + headline table
     benchmarks/results/longmemeval_s_lexical.md
     benchmarks/results/longmemeval_s_hybrid.md
+    benchmarks/results/longmemeval_s_vector.md
     benchmarks/results/locomo_lexical.md
     benchmarks/results/locomo_hybrid.md
+    benchmarks/results/locomo_vector.md
     benchmarks/results/csr.md
+
+A page is emitted only when its artifact is committed. The ``_vector`` pages
+(dense/embedding retrieval, produced by the ``--retrieval-mode vector`` harness
+in #455/PR #467) therefore appear on the docs site the moment a
+``{dataset}_latest_vector.{json,md}`` artifact lands under
+``tests/benchmarks/results/external/`` — no code edit required at that point.
+Any ``*_latest*`` artifact not covered by a ``Spec`` is reported as a loud
+build-time warning by ``_warn_orphan_artifacts`` (never raised), so a new
+retrieval mode can never be silently dropped from the site.
 
 Valkey-safety: this generator writes only framing prose plus the embedded
 harness markdown. It introduces no Redis-module command strings (the search,
@@ -108,7 +119,7 @@ SPECS: tuple[Spec, ...] = (
         stem="external/longmemeval_s_latest",
         kind="external",
         note=(
-            "!!! note \"Lexical (BM25-only) baseline\"\n"
+            '!!! note "Lexical (BM25-only) baseline"\n'
             "    Query-sensitive BM25 with no vector signal fused in. This is the\n"
             "    score-only baseline; the LongMemEval-S hybrid variant adds the\n"
             "    vector arm and is the headline result (see the\n"
@@ -122,7 +133,7 @@ SPECS: tuple[Spec, ...] = (
         stem="external/longmemeval_s_latest_hybrid",
         kind="external",
         note=(
-            "!!! success \"Headline result — like-for-like win over the reference\"\n"
+            '!!! success "Headline result — like-for-like win over the reference"\n'
             "    Hybrid retrieval (BM25 + all-MiniLM-L6-v2 vector fused via Reciprocal\n"
             "    Rank Fusion, k=60) reaches **Recall@1 0.894 / Recall@5 0.986 /\n"
             "    Recall@10 0.992 / MRR 0.932**, beating the agentmemory BM25+Vector\n"
@@ -132,13 +143,30 @@ SPECS: tuple[Spec, ...] = (
         ),
     ),
     Spec(
+        slug="longmemeval_s_vector",
+        title="LongMemEval-S — Vector (Dense/Embedding) Retrieval",
+        nav_title="LongMemEval-S (vector)",
+        stem="external/longmemeval_s_latest_vector",
+        kind="external",
+        note=(
+            '!!! note "Dense-arm diagnostic — not the headline"\n'
+            "    Vector retrieval ranks by **pure cosine** over the\n"
+            "    all-MiniLM-L6-v2 embedding (no BM25, no Reciprocal Rank Fusion).\n"
+            "    It isolates the **dense arm only** — a diagnostic baseline for the\n"
+            "    hybrid-vs-lexical investigation, not a headline result. The\n"
+            "    LongMemEval-S headline remains the hybrid variant (see the\n"
+            "    [Overview](index.md)). Same retrieval-recall metric family as the\n"
+            "    lexical and hybrid pages, so the three are directly comparable.\n"
+        ),
+    ),
+    Spec(
         slug="locomo_lexical",
         title="LoCoMo — Lexical (BM25) Retrieval",
         nav_title="LoCoMo (lexical)",
         stem="external/locomo_latest",
         kind="external",
         note=(
-            "!!! note \"Retrieval regime — read the [Overview](index.md) first\"\n"
+            '!!! note "Retrieval regime — read the [Overview](index.md) first"\n'
             "    Measured as *retrieval recall*, published LoCoMo Recall@1 sits in the\n"
             "    0.10–0.30 band (MEMTIER, arXiv:2605.03675). Popoto lexical Recall@1\n"
             "    **0.2986** is competitive-to-strong in this regime. This variant is\n"
@@ -153,7 +181,7 @@ SPECS: tuple[Spec, ...] = (
         stem="external/locomo_latest_hybrid",
         kind="external",
         note=(
-            "!!! warning \"Hybrid underperforms lexical here — reported factually, untuned\"\n"
+            '!!! warning "Hybrid underperforms lexical here — reported factually, untuned"\n'
             "    On this LoCoMo variant, hybrid (**Recall@1 0.1667 / MRR 0.2835**)\n"
             "    measurably underperforms the lexical path (**Recall@1 0.2986 /\n"
             "    MRR 0.4124**). No retrieval tuning has been attempted; an unweighted\n"
@@ -164,18 +192,37 @@ SPECS: tuple[Spec, ...] = (
         ),
     ),
     Spec(
+        slug="locomo_vector",
+        title="LoCoMo — Vector (Dense/Embedding) Retrieval",
+        nav_title="LoCoMo (vector)",
+        stem="external/locomo_latest_vector",
+        kind="external",
+        note=(
+            '!!! note "Dense-arm diagnostic — read in the retrieval regime"\n'
+            "    Vector retrieval ranks by **pure cosine** over the\n"
+            "    all-MiniLM-L6-v2 embedding (no BM25, no Reciprocal Rank Fusion). It\n"
+            "    isolates the **dense arm only** — *not* the graph/co-occurrence arm\n"
+            "    that also lives inside hybrid — so a weak number here does not by\n"
+            "    itself explain the hybrid-vs-lexical gap. Read it in the MEMTIER\n"
+            "    retrieval regime (published LoCoMo Recall@1 sits in the 0.10–0.30\n"
+            "    band, arXiv:2605.03675), and against the same 10-dialogue /\n"
+            "    5-category / 1986-QA-pair LoCoMo variant used by the lexical and\n"
+            "    hybrid pages — same retrieval-recall metric family throughout.\n"
+        ),
+    ),
+    Spec(
         slug="csr",
         title="Deterministic CSR Regression Gate",
         nav_title="CSR Regression Gate",
         stem="csr/csr_latest",
         kind="csr",
         note=(
-            "!!! info \"Report-only CI gate — not a leaderboard metric\"\n"
+            '!!! info "Report-only CI gate — not a leaderboard metric"\n'
             "    The Constraint Satisfaction Rate (CSR) harness is a deterministic,\n"
             "    per-PR regression gate (bit-identical every run — no LLM judge, no\n"
             "    embeddings, no Redis module; identical on Redis and Valkey). Its RSR\n"
             "    (standard/adversarial) and Adversarial Gap numbers are report-only\n"
-            "    signals for catching regressions, **not** a \"higher is better\"\n"
+            '    signals for catching regressions, **not** a "higher is better"\n'
             "    leaderboard score.\n"
         ),
     ),
@@ -413,6 +460,52 @@ def _write_summary(rows: list[dict]) -> None:
             fd.write(f"* [{spec.nav_title}]({spec.slug}.md)\n")
 
 
+def _warn_orphan_artifacts(
+    specs: tuple[Spec, ...], root: Path = RESULTS_ROOT
+) -> list[str]:
+    """Warn (never raise) about ``external/`` artifacts no ``Spec`` publishes.
+
+    The published set is an *explicit* ``SPECS`` list (not a directory glob), by
+    design, so page order and per-dataset framing stay deterministic. The cost
+    of that design is a **silent** gap: an ``external/*_latest*`` artifact that
+    no ``Spec`` references is skipped without a trace, so a new retrieval mode's
+    results can land in the repo yet never appear on the docs site.
+
+    This scan converts that silent gap into a **loud** one. It globs
+    ``root/external/*_latest*.md`` (the artifact whose presence would drive a
+    page), and for every artifact whose ``RESULTS_ROOT``-relative stem is not the
+    ``stem`` of some ``Spec``, prints a build-time WARNING to stderr. It never
+    raises — ``mkdocs build --strict`` stays green — and it never publishes; a
+    human still authors the ``Spec`` (with deterministic order and framing). The
+    warning simply makes the omission visible in the deploy log.
+
+    ``root`` is injectable (defaults to ``RESULTS_ROOT``) so tests can point it
+    at a ``tmp_path`` and never touch the committed ``results/external/`` tree.
+    Returns the list of orphan stems it warned about (for testability).
+
+    Only the ``.md`` artifact is scanned: the ``.md`` is what drives a page body,
+    so a lone ``.json`` without an ``.md`` would be skipped by ``_write_page``
+    anyway and is not an "unpublished results page" in the sense this guards.
+    """
+    mapped = {spec.stem for spec in specs}
+    external_dir = root / "external"
+    orphans: list[str] = []
+    for md_path in sorted(external_dir.glob("*_latest*.md")):
+        # Stem relative to RESULTS_ROOT, preserving the ``external/`` prefix and
+        # dropping the ``.md`` suffix, so it compares equal to a ``Spec.stem``
+        # such as ``external/longmemeval_s_latest_vector``.
+        stem = md_path.relative_to(root).with_suffix("").as_posix()
+        if stem not in mapped:
+            orphans.append(stem)
+            print(
+                f"[gen_benchmark_pages] WARNING: unmapped artifact {stem!r} "
+                f"({md_path}) — no Spec publishes it, so it is absent from the "
+                "docs site. Add a Spec to SPECS to publish it.",
+                file=sys.stderr,
+            )
+    return orphans
+
+
 def main() -> None:
     rows: list[dict] = []
     for spec in SPECS:
@@ -421,6 +514,13 @@ def main() -> None:
             rows.append(result)
     _write_index(rows)
     _write_summary(rows)
+    _warn_orphan_artifacts(SPECS)
 
 
-main()
+if __name__ in ("__main__", "<run_path>"):
+    # mkdocs-gen-files execs this file via ``runpy.run_path``, which sets
+    # ``__name__`` to ``"<run_path>"``; running it directly sets ``"__main__"``.
+    # Guarding on both keeps the generator running at build time while letting a
+    # unit test ``import`` the module (to exercise SPECS / _warn_orphan_artifacts)
+    # without triggering the full build-time generation.
+    main()
