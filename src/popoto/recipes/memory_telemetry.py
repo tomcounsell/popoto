@@ -212,14 +212,19 @@ class TelemetryRecorder:
     def assemble(self, query_cues=None, agent_id=None, **kwargs):
         """Delegate to the wrapped assembler, recording one event per call.
 
-        Forces ``emit_trace=True`` on the inner call (overriding any caller
-        value) so the injection trace is available. Returns the inner
-        ``AssemblyResult`` unchanged apart from an added
-        ``metadata["telemetry_event_id"]`` when an event was written.
+        The sampling decision is made *before* the inner call: only when this
+        call will be recorded is ``emit_trace=True`` forced on the assembler,
+        so sampled-out calls pay no trace-proxy cost — ``sample_rate`` genuinely
+        protects hot-path latency. A caller that passes its own ``emit_trace``
+        is respected on sampled-out calls. Returns the inner ``AssemblyResult``
+        unchanged apart from an added ``metadata["telemetry_event_id"]`` when an
+        event was written.
         """
-        kwargs["emit_trace"] = True
+        record_this = self._should_sample()
+        if record_this:
+            kwargs["emit_trace"] = True
         result = self.inner.assemble(query_cues=query_cues, agent_id=agent_id, **kwargs)
-        if self._should_sample():
+        if record_this:
             self._record(result, query_cues, agent_id)
         return result
 
@@ -228,9 +233,17 @@ class TelemetryRecorder:
         """Measured telemetry overhead across recorded calls.
 
         Returns a dict ``{count, mean_ms, p95_ms, max_ms}`` over the full
-        per-call ``_record`` wall time (preparation + Redis write). Empty
-        history yields zeros. This is the "record the cost" report the issue
-        requires — so telemetry can be shown not to distort #460's latency.
+        per-call ``_record`` wall time — building the injected list plus the
+        Redis ``save()``. Empty history yields zeros. This is the "record the
+        cost" report the issue requires — so telemetry can be shown not to
+        distort #460's latency.
+
+        Scope note: the ``emit_trace`` score-proxy runs *inside*
+        ``inner.assemble()``, so its cost is already reflected in each event's
+        ``latency_ms`` (the assemble wall time), not double-counted here. The
+        per-event ``overhead_ms`` field is the preparation cost only (it is
+        written into the event, so it cannot include that event's own
+        ``save()``); ``overhead_stats`` is the fuller per-call figure.
         """
         samples = self._overhead_samples
         if not samples:

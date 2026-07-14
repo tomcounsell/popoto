@@ -144,8 +144,12 @@ def test_emit_trace_off_by_default_is_inert():
 
     assert "trace" not in baseline.metadata
     assert "trace" not in explicit_off.metadata
-    # Same metadata key set with and without the (off) kwarg.
+    # Same metadata key set AND values with and without the (off) kwarg
+    # (timing_ms is wall-clock and varies run-to-run, so exclude it).
     assert set(baseline.metadata) == set(explicit_off.metadata)
+    volatile = {"timing_ms"}
+    for k in set(baseline.metadata) - volatile:
+        assert baseline.metadata[k] == explicit_off.metadata[k]
 
 
 def test_emit_trace_adds_only_trace():
@@ -215,6 +219,16 @@ def test_sample_rate_fractional_is_deterministic_with_seeded_rng():
     n = len(list(AssemblyEvent.query.all()))
     # Some but not all calls sampled; the exact count is reproducible.
     assert 0 < n < 20
+
+
+def test_sampled_out_calls_skip_trace_cost():
+    # When a call is not sampled, emit_trace must not be forced on the inner
+    # assembler, so no trace-proxy work is done (sample_rate protects latency).
+    _seed()
+    rec = TelemetryRecorder(_assembler(), sample_rate=0.0)
+    result = rec.assemble({"topic": "note"}, agent_id="a1")
+    assert "trace" not in result.metadata
+    assert "telemetry_event_id" not in result.metadata
 
 
 def test_invalid_sample_rate_raises():
