@@ -2473,6 +2473,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Retrieval Modes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#category-5-adversarial-evidence-audit-and-leaderboard-parity-slice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Category 5 ("adversarial") — evidence audit and leaderboard-parity slice
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
           <li class="md-nav__item">
@@ -2795,6 +2812,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Retrieval Modes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#category-5-adversarial-evidence-audit-and-leaderboard-parity-slice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Category 5 ("adversarial") — evidence audit and leaderboard-parity slice
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
         
@@ -3272,16 +3306,113 @@ harness run is measurement-only per issue #447). Full per-category detail is
 in the committed artifact
 (<code>tests/benchmarks/results/external/locomo_latest_hybrid.json</code> — 1986/1986
 questions, zero errors).</p>
-<p>The dataset's <code>by_question_type</code> breakdown (from the lexical run) is worth a
-factual note: LoCoMo's category 5 ("adversarial") questions carry an
-<code>adversarial_answer</code> field (n=446) and might be expected to score 0-by-
-construction if <code>evidence</code> were absent (the harness's <code>recall_at_k</code> treats an
-empty relevant-set as a special case). In this dataset snapshot, however,
-every one of the 1986 QA pairs — including all 446 category-5 items — has a
-populated <code>evidence</code> field, so that special case never triggers and category
-5 is scored normally. Its measured performance (n=446, Recall@1=0.3341,
-Recall@5=0.6031, Recall@10=0.6883, MRR=0.4581) is comparable to, or better
-than, the other categories, not zero.</p>
+<h4 id="category-5-adversarial-evidence-audit-and-leaderboard-parity-slice">Category 5 ("adversarial") — evidence audit and leaderboard-parity slice<a class="headerlink" href="#category-5-adversarial-evidence-audit-and-leaderboard-parity-slice" title="Permanent link">&para;</a></h4>
+<p>LoCoMo's category 5 is historically the hardest category industry-wide (the
+original paper reports humans ≈89 F1 vs LLMs ≈2 F1), and most public
+leaderboards exclude it. Popoto scores it <em>comparably</em> to the other categories
+(n=446, Recall@1=0.3341, Recall@5=0.6031, Recall@10=0.6883, MRR=0.4581), which
+warranted an audit (issue #454) of whether that number means anything.</p>
+<p><strong>Audit finding — the cat-5 spans are genuinely meaningful for retrieval in
+this snapshot.</strong> Direct inspection of all 446 category-5 items in the cached
+LoCoMo dataset (the <code>snap-research/locomo</code> HuggingFace release, file
+<code>locomo10.json</code>, cached locally at <code>~/.cache/popoto_benchmarks/locomo.json</code> —
+downloaded on first run, not checked into the repo) shows:</p>
+<ul>
+<li><strong>446/446 carry a populated <code>evidence</code> field</strong> (so the harness's empty-
+  relevant-set special case never fires — category 5 is scored as ordinary
+  retrieval, like every other category).</li>
+<li><strong>444/446 have an answerable <code>adversarial_answer</code> whose evidence span
+  directly supports it.</strong> For example, <em>"What did Caroline realize after her
+  charity race?"</em> → <code>adversarial_answer="self-care is important"</code>, evidence turn
+  D2:3 = <em>"I'm starting to realize that self-care is really important."</em> Only
+  <strong>2/446</strong> are refusal-style ("Not mentioned").</li>
+</ul>
+<p>So in <strong>this</strong> snapshot, category 5 is <strong>not</strong> a refusal category; it is a set
+of grounded, answerable retrieval questions. Scoring it as any-hit retrieval is
+measuring retrieval — the same thing measured for every category — not
+"measuring the wrong thing."</p>
+<p><strong>Why the apparent paradox (paper's ≈2 F1 vs our 0.33 Recall@1) dissolves:</strong> it
+is a <strong>metric-family difference</strong>, not a scoring artifact. The paper's ≈2 F1 is
+<em>end-to-end judged-answer</em> accuracy (retrieve → generate → judge); Popoto's
+0.3341 is <em>retrieval any-hit recall</em> (did the evidence turn get retrieved).
+These families are not convertible (see the metric-family note above).
+Adversarial is hard to <em>answer/judge</em>, not hard to <em>retrieve</em> — so a normal
+retrieval-recall number on it is expected and honest.</p>
+<div class="admonition warning">
+<p class="admonition-title">cat-5 is not a refusal-capability signal</p>
+<p>This snapshot's category 5 is answerable and evidence-grounded. Its recall
+number is <strong>not</strong> evidence that Popoto refuses unanswerable queries, and it
+is <strong>not</strong> comparable to systems that report a refusal-adversarial metric or
+that drop the category. Refusal capability (confidence-gated retrieval) is
+tracked separately in
+<a href="https://github.com/tomcounsell/popoto/issues/463">issue #463</a> and must be
+evaluated on a dataset that actually contains unanswerable questions — a
+"precision of no-answer decisions" metric has no signal on a snapshot where
+only 2/446 items are unanswerable.</p>
+</div>
+<p><strong>Leaderboard-parity slice (4-category, n=1540).</strong> For apples-to-apples
+comparison with the common no-adversarial boards (1,540-QA, 4-category), the
+harness reports a parity slice that re-aggregates the run with category 5
+excluded — <code>1986 − 446 = 1540</code>, exactly the leaderboard variant count. The
+slice is computed from the committed <code>by_question_type</code> breakdown (no re-run
+needed) by <code>leaderboard_parity_slice()</code> and emitted into each LoCoMo report as
+a <code>leaderboard_parity</code> block:</p>
+<table>
+<thead>
+<tr>
+<th>Slice</th>
+<th style="text-align: right;">n</th>
+<th style="text-align: right;">Recall@1</th>
+<th style="text-align: right;">Recall@5</th>
+<th style="text-align: right;">Recall@10</th>
+<th style="text-align: right;">MRR</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>lexical</code>, full 5-category</td>
+<td style="text-align: right;">1986</td>
+<td style="text-align: right;">0.2986</td>
+<td style="text-align: right;">0.5534</td>
+<td style="text-align: right;">0.6400</td>
+<td style="text-align: right;">0.4124</td>
+</tr>
+<tr>
+<td><code>lexical</code>, 4-category parity</td>
+<td style="text-align: right;">1540</td>
+<td style="text-align: right;">0.2883</td>
+<td style="text-align: right;">0.5390</td>
+<td style="text-align: right;">0.6260</td>
+<td style="text-align: right;">0.3991</td>
+</tr>
+<tr>
+<td><code>hybrid</code>, full 5-category</td>
+<td style="text-align: right;">1986</td>
+<td style="text-align: right;">0.1667</td>
+<td style="text-align: right;">0.4235</td>
+<td style="text-align: right;">0.5403</td>
+<td style="text-align: right;">0.2835</td>
+</tr>
+<tr>
+<td><code>hybrid</code>, 4-category parity</td>
+<td style="text-align: right;">1540</td>
+<td style="text-align: right;">0.1552</td>
+<td style="text-align: right;">0.4065</td>
+<td style="text-align: right;">0.5181</td>
+<td style="text-align: right;">0.2686</td>
+</tr>
+</tbody>
+</table>
+<p>Category 5 sits near the mean, so excluding it barely moves the numbers —
+further evidence it is neither anomalously easy nor a scoring artifact. (The
+slice re-aggregates 4-decimal per-category means, so it can differ from a raw
+re-aggregation in the 4th place; reproducibility from the committed artifact is
+the priority.)</p>
+<p><strong>Recommendation (pending maintainer sign-off — scoring semantics is
+policy-level).</strong> Keep category 5 in the full 5-category aggregate (the evidence
+audit shows its spans are meaningful), publish the 4-category parity slice
+alongside it for leaderboard comparability, and always carry the caveat above.
+A refusal metric is not applicable to this dataset and is deferred to #463.</p>
 <h3 id="baseline-numbers-v163">Baseline Numbers (v1.6.3)<a class="headerlink" href="#baseline-numbers-v163" title="Permanent link">&para;</a></h3>
 <p><strong>LongMemEval-S (fixture sample, 3 questions):</strong></p>
 <table>
