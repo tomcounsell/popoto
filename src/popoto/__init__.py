@@ -74,6 +74,12 @@ from .recipes.context_assembler import (
     ContextAssembler,
     RetrievalQuality,
 )
+from .recipes.memory_telemetry import (
+    AssemblyEvent,
+    TelemetryAnalyzer,
+    TelemetryRecorder,
+    report_outcomes,
+)
 from .streams import StreamConsumer
 from .redis_db import POPOTO_REDIS_DB, get_async_redis_db
 from ._error_reporting import enable_error_reporting
@@ -206,6 +212,10 @@ __all__ = [
     "AssemblyResult",
     "RetrievalQuality",
     "AdaptiveAssembler",
+    "AssemblyEvent",
+    "TelemetryRecorder",
+    "TelemetryAnalyzer",
+    "report_outcomes",
     "ContentField",
     "EmbeddingField",
     "BM25Field",
