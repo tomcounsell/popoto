@@ -1026,7 +1026,7 @@ def main():
     judge_client = None
     if args.judged:
         # Size the estimate by --limit, or the dataset's full size when unlimited
-        # (so a full run shows the real ~$1.4, not ~$0).
+        # (so a full run shows the real ~$0.8, not ~$0).
         n_for_estimate = args.limit or DATASET_FULL_SIZE.get(args.dataset, 0)
         est = judge_mod.estimate_cost(n_for_estimate)
         if not judge_mod.is_judge_available():
