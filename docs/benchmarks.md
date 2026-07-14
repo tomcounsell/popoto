@@ -221,8 +221,10 @@ leaderboards exclude it. Popoto scores it *comparably* to the other categories
 warranted an audit (issue #454) of whether that number means anything.
 
 **Audit finding — the cat-5 spans are genuinely meaningful for retrieval in
-this snapshot.** Direct inspection of all 446 category-5 items in the committed
-dataset (`snap-research/locomo10.json`) shows:
+this snapshot.** Direct inspection of all 446 category-5 items in the cached
+LoCoMo dataset (the `snap-research/locomo` HuggingFace release, file
+`locomo10.json`, cached locally at `~/.cache/popoto_benchmarks/locomo.json` —
+downloaded on first run, not checked into the repo) shows:
 
 - **446/446 carry a populated `evidence` field** (so the harness's empty-
   relevant-set special case never fires — category 5 is scored as ordinary
