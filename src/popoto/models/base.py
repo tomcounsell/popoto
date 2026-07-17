@@ -1670,9 +1670,12 @@ class Model(metaclass=ModelBase):
         """Delete this instance from Redis.
 
         Executes the complete deletion workflow:
-            1. Delete the Redis hash map (HSET data)
-            2. Remove key from model's class set
-            3. Trigger Field.on_delete() hooks to clean secondary indexes
+            1. Trigger Field.on_delete() hooks to clean secondary indexes
+               (run first, while the hash still exists -- see #476: reading
+               index-pointer state after the hash was already gone silently
+               fell back to a possibly-stale in-memory snapshot)
+            2. Delete the Redis hash map (HSET data)
+            3. Remove key from model's class set
             4. Clear internal state (_db_content)
 
         Args:
