@@ -65,40 +65,65 @@ _SENTINEL = object()
 # Contract:
 #   KEYS[1] = model hash key (the record's Redis hash where field values live)
 #   KEYS[2] = new value Set key (the index Set for the new field value)
+#   KEYS[3] = pointer side key (a standalone STRING key — NOT a field inside
+#             the model hash) recording which Set this record currently
+#             belongs to for this field, so we can atomically remove from the
+#             old Set without relying on a stale client-side snapshot.
 #
 #   ARGV[1] = field name (hash field name, for reading/writing field value in hash)
 #   ARGV[2] = member key (the record's redis_key — the member stored in the Set)
 #   ARGV[3] = new value, msgpack-packed by Python (written to model hash)
 #   ARGV[4] = unique flag: "1" to enforce uniqueness, "0" to skip check
-#   ARGV[5] = pointer hash field name ({field_name}\x00idxset) — stores which
-#             Set this record currently belongs to, so we can atomically remove
-#             from the old Set without relying on a stale client-side snapshot
-#   ARGV[6] = legacy-old-set hint: pre-cleaned old value-Set key from
+#   ARGV[5] = legacy-old-set hint: pre-cleaned old value-Set key from
 #             _saved_field_values (empty string "" if no prior known value)
 #             Used only on the first save after upgrading to the Lua-backed path,
-#             for records that predate the server-authoritative pointer.
+#             for records that predate the pointer (whether the legacy in-hash
+#             pointer scheme or the current side-key scheme).
+#   ARGV[6] = legacy in-hash pointer field name ({field_name}\x00idxset), kept
+#             ONLY for backward-compatible migration off the pre-fix (#476)
+#             hash-embedded pointer scheme. Read as a migration fallback when
+#             the side key (KEYS[3]) has never been written, and opportunistically
+#             HDEL'd here so records self-heal off the polluted schema on next
+#             write without requiring an offline migration.
 #
 # Logic:
-#   1. Read the server-authoritative pointer (ARGV[5]) from the model hash.
+#   1. Read the pointer from the side key (KEYS[3]). If absent, fall back to
+#      the legacy in-hash pointer field (ARGV[6]) for records written by the
+#      pre-#476 code path, then remove that legacy field (HDEL) so it never
+#      surfaces to a pre-1.8.0 (or any) hash decoder again.
 #   2. Idempotent re-save: if pointer already points to the new Set AND member
 #      is already in it, just re-write the field bytes and return 1.
 #   3. Uniqueness check (if ARGV[4]=="1"): scan the new Set for any member
 #      other than self. Return error_reply on conflict — caller maps this to
 #      ModelException.
-#   4. Remove from old Set: use server-authoritative pointer if present and
-#      different from new Set; else fall back to the legacy-old-set hint.
-#   5. SADD member to new Set, update pointer in model hash, write field bytes.
+#   4. Remove from old Set: use the resolved pointer if present and different
+#      from new Set; else fall back to the legacy-old-set hint.
+#   5. SADD member to new Set, update the pointer side key, write field bytes.
+#
+# Forward-compat rationale (#476): the pointer now lives in a side key (a
+# distinct Redis key, SET/GET, plain string) instead of a hash field, so it
+# never appears in redis_hash.items() at all — no decoder-skip logic needed,
+# and pre-1.8.0 (or any future) decoders that iterate the model hash and
+# msgpack.unpackb() every value can never trip over it.
 #
 # Type-parity rationale: ARGV[3] is msgpack-packed by Python using the same
 # encoder as encode_popoto_model_obj(), so the hash field value is byte-for-byte
-# identical to what a plain HSET would have written. The decode path in
-# encoding.py skips fields whose names contain \x00, so the pointer field
-# (ARGV[5]) never surfaces as a model attribute.
+# identical to what a plain HSET would have written.
 INDEX_SWAP_LUA = """
-local model_key, new_set = KEYS[1], KEYS[2]
-local field, member, new_bytes, is_unique, ptr_field, legacy_old_set =
+local model_key, new_set, ptr_key = KEYS[1], KEYS[2], KEYS[3]
+local field, member, new_bytes, is_unique, legacy_old_set, legacy_ptr_field =
   ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6]
-local old_set = redis.call('HGET', model_key, ptr_field)
+
+local old_set = redis.call('GET', ptr_key)
+if not old_set or old_set == false then
+  -- Migration fallback: pre-#476 records may still carry the pointer as a
+  -- polluting field inside the model hash. Read it once, then scrub it.
+  local legacy_ptr = redis.call('HGET', model_key, legacy_ptr_field)
+  if legacy_ptr and legacy_ptr ~= false then
+    old_set = legacy_ptr
+    redis.call('HDEL', model_key, legacy_ptr_field)
+  end
+end
 
 -- idempotent re-save: same set already recorded AND member already present
 if old_set == new_set and redis.call('SISMEMBER', new_set, member) == 1 then
@@ -121,7 +146,7 @@ elseif legacy_old_set ~= '' and legacy_old_set ~= new_set then
   redis.call('SREM', legacy_old_set, member)
 end
 redis.call('SADD', new_set, member)
-redis.call('HSET', model_key, ptr_field, new_set)
+redis.call('SET', ptr_key, new_set)
 redis.call('HSET', model_key, field, new_bytes)
 return 1
 """
@@ -157,6 +182,29 @@ class IndexedFieldMixin:
     """
 
     indexed: bool = True
+
+    @staticmethod
+    def _pointer_side_key(model_hash_key: str, field_name: str) -> str:
+        """Build the side key that stores the server-authoritative index pointer.
+
+        This is a standalone Redis key (STRING type), NOT a field inside the
+        model hash — see #476. Using \\x00 in the key name keeps it out of
+        any glob-style KEYS/SCAN pattern a user would write for their own
+        data (real model hash keys never contain \\x00), while ensuring it
+        never collides with another key.
+        """
+        return f"{model_hash_key}\x00idxptr\x00{field_name}"
+
+    @staticmethod
+    def _legacy_pointer_field(field_name: str) -> str:
+        """Pre-#476 in-hash pointer field name, kept for migration fallback only.
+
+        Never written by current code. Only read (and then scrubbed via HDEL
+        inside INDEX_SWAP_LUA / on_delete) so records written before this fix
+        shipped continue to be cleaned up correctly, and self-heal off the
+        polluted hash schema the first time they're touched again.
+        """
+        return f"{field_name}\x00idxset"
 
     def __init__(self, **kwargs):
         """
@@ -224,10 +272,12 @@ class IndexedFieldMixin:
             field_value,
         ).redis_key
 
-        # Server-authoritative pointer field name stored in the model hash.
-        # The \x00 byte ensures the decode path skips it (never surfaces as
-        # a model attribute). See encoding.py decode exclusion.
-        ptr_field = f"{field_name}\x00idxset"
+        # Server-authoritative pointer: a standalone side key (#476), never a
+        # field inside the model hash — see IndexedFieldMixin._pointer_side_key.
+        ptr_key = cls._pointer_side_key(member_key, field_name)
+        # Legacy in-hash pointer field name, read-only migration fallback for
+        # records written before #476 shipped (scrubbed via HDEL when found).
+        legacy_ptr_field = cls._legacy_pointer_field(field_name)
 
         # Legacy-old-set hint: used on first post-upgrade save of records
         # that predate the server-authoritative pointer. The Lua script uses
@@ -268,15 +318,16 @@ class IndexedFieldMixin:
             # Queue EVAL into caller's pipeline — authoritative check at execute()
             pipeline.eval(
                 INDEX_SWAP_LUA,
-                2,
+                3,
                 member_key,  # KEYS[1]: the model hash key (same as record redis_key)
                 new_set_key,  # KEYS[2]: new value Set key
+                ptr_key,  # KEYS[3]: pointer side key
                 field_name,
                 member_key,
                 new_bytes,
                 is_unique,
-                ptr_field,
                 legacy_old_set,
+                legacy_ptr_field,
             )
             return pipeline
         else:
@@ -285,15 +336,16 @@ class IndexedFieldMixin:
             try:
                 result = POPOTO_REDIS_DB.eval(
                     INDEX_SWAP_LUA,
-                    2,
+                    3,
                     member_key,  # KEYS[1]: the model hash key (same as record redis_key)
                     new_set_key,  # KEYS[2]: new value Set key
+                    ptr_key,  # KEYS[3]: pointer side key
                     field_name,
                     member_key,
                     new_bytes,
                     is_unique,
-                    ptr_field,
                     legacy_old_set,
+                    legacy_ptr_field,
                 )
             except Exception as e:
                 if "POPOTO_UNIQUE_CONFLICT" in str(e):
@@ -317,9 +369,18 @@ class IndexedFieldMixin:
         """
         Remove the model instance from the index Set on delete.
 
-        Uses the server-authoritative {field}\x00idxset pointer (if present) to
-        determine which value-Set to SREM from. Falls back to field_value-derived
-        key for legacy records without the pointer.
+        Uses the server-authoritative pointer side key (#476) — if present —
+        to determine which value-Set to SREM from. Falls back to the legacy
+        pre-#476 in-hash pointer field (for records written before this fix
+        shipped), then to a field_value-derived key for records that predate
+        any pointer at all.
+
+        Important: this reads live Redis state (GET/HGET), so it must be
+        called BEFORE the model hash itself is deleted — see Model.delete()
+        in base.py, which now runs field.on_delete() hooks ahead of the
+        hash DELETE for exactly this reason (#476 latent bug: reading the
+        pointer after the hash was already gone always returned nothing,
+        silently falling back to a possibly-stale in-memory snapshot).
 
         Args:
             model_instance: The Model instance being deleted.
@@ -333,9 +394,16 @@ class IndexedFieldMixin:
         member_key = kwargs.get("saved_redis_key", model_instance.db_key.redis_key)
         model_hash_key = member_key  # model hash key = redis_key for this record
 
-        # Read server-authoritative pointer to find the exact set this member is in
-        ptr_field = f"{field_name}\x00idxset"
-        ptr_value = POPOTO_REDIS_DB.hget(model_hash_key, ptr_field)
+        # 1. Server-authoritative pointer side key (current scheme, #476).
+        ptr_key = cls._pointer_side_key(model_hash_key, field_name)
+        ptr_value = POPOTO_REDIS_DB.get(ptr_key)
+
+        if not ptr_value:
+            # 2. Migration fallback: legacy in-hash pointer field written by
+            # pre-#476 code. Only useful if this HGET runs before the model
+            # hash is deleted (see docstring note above).
+            legacy_ptr_field = cls._legacy_pointer_field(field_name)
+            ptr_value = POPOTO_REDIS_DB.hget(model_hash_key, legacy_ptr_field)
 
         if ptr_value:
             # Pointer present: SREM from the set it names
@@ -343,16 +411,19 @@ class IndexedFieldMixin:
                 ptr_value.decode() if isinstance(ptr_value, bytes) else ptr_value
             )
         else:
-            # Legacy record (no pointer): fall back to field_value-derived key
+            # No pointer found anywhere: fall back to field_value-derived key
             index_set_key = DB_key(
                 cls.get_special_use_field_db_key(model_instance, field_name),
                 field_value,
             ).redis_key
 
         if pipeline:
-            return pipeline.srem(index_set_key, member_key)
+            pipeline = pipeline.srem(index_set_key, member_key)
+            return pipeline.delete(ptr_key)
         else:
-            return POPOTO_REDIS_DB.srem(index_set_key, member_key)
+            result = POPOTO_REDIS_DB.srem(index_set_key, member_key)
+            POPOTO_REDIS_DB.delete(ptr_key)
+            return result
 
     def get_filter_query_params(self, field_name: str) -> set:
         """

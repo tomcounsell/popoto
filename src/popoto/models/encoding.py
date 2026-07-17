@@ -317,7 +317,12 @@ def decode_popoto_model_hashmap(
                     msgpack.unpackb(value_b, strict_map_key=False)
                 )
                 for key_b, value_b in redis_hash.items()
-                if not (b"\x00" in key_b if isinstance(key_b, bytes) else "\x00" in key_b)  # skip internal pointer fields (e.g. \x00idxset)
+                # Skip internal pointer fields. #476: current code no longer
+                # writes these into the hash; kept for pre-#476 legacy
+                # records until they self-heal on next write.
+                if not (
+                    b"\x00" in key_b if isinstance(key_b, bytes) else "\x00" in key_b
+                )
             }
             return model_attrs
 
