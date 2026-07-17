@@ -178,8 +178,8 @@ This mirrors the `$KeyF` pattern used by KeyField.
 When a model instance is saved, an atomic server-side Lua script (`INDEX_SWAP_LUA`)
 handles the index update in a single Redis command:
 
-1. Reads a server-authoritative pointer (`{field_name}\x00idxset`) from the model hash
-   to identify which Set the record currently belongs to
+1. Reads a server-authoritative pointer to identify which Set the record currently
+   belongs to
 2. If `unique=True`, scans the target Set for any member other than the current record
    and raises `ModelException` immediately on conflict
 3. Atomically removes the record from the old Set, adds it to the new Set, updates the
@@ -187,37 +187,49 @@ handles the index update in a single Redis command:
 
 This eliminates the stale-snapshot SREM+SADD race that existed in earlier versions.
 
+For `Model.save()` calls that don't pass an external pipeline (the common case,
+including `Model.create()`), the uniqueness EVAL for `IndexedField`/`UniqueField`
+values runs *before* any other write for that record is issued. A genuine uniqueness
+conflict therefore raises `ModelException` without leaving any trace — no orphaned
+hash, no class-set membership, nothing to clean up.
+
 ### Operator Note
 
-Each model hash for models with `IndexedField` or `UniqueField` fields carries one
-extra hash field per indexed field, visible in `redis-cli HGETALL <Model:key>` output:
+The server-authoritative pointer is stored in a standalone Redis key (a plain
+string, `GET`/`SET`), **not** as a field inside the model hash. `redis-cli HGETALL
+<Model:key>` shows only your declared fields — no extra bookkeeping field. The
+pointer key itself follows the pattern:
 
 ```
-{field_name}\x00idxset  ->  $IndexF:ModelName:field_name:current_value
+<Model:key>\x00idxptr\x00<field_name>  ->  $IndexF:ModelName:field_name:current_value
 ```
-
-The `\x00` (NUL byte) in the field name is intentional internal bookkeeping. This is
-expected — it is NOT corruption.
 
 - Do NOT edit or delete it manually. Removing it reopens the index-stranding race until
   the record's next save.
 - It is invisible to the Python model API: `filter()`, attribute access, and
-  `is_valid()` all ignore it.
+  `is_valid()` all ignore it (it isn't part of the model hash at all).
 - The `$IndexF:` and `$UniquF:` Set schema itself is unchanged from earlier versions.
 
-**Upgrading over a populated database:** Records saved before this fix self-heal on
-their first post-upgrade save (the Lua script falls back to a client-supplied hint for
-the old Set on the first write, then records the authoritative pointer for all future
-saves). A full clean cut-over is optional:
+!!! note "Versions prior to this fix (1.8.0, see issue #476)"
+    An earlier 1.8.0 revision stored this pointer as a `{field_name}\x00idxset`
+    field **inside** the model hash. That is forward-incompatible: any decoder
+    that unconditionally `msgpack.unpackb()`s every hash field (all pre-1.8.0
+    releases) crashes with `msgpack.exceptions.ExtraData` on such records.
+    Current code never writes that in-hash field. Records written by the
+    affected 1.8.0 revision are read as a migration fallback and self-heal
+    (the field is scrubbed and the pointer moves to the side key) the next
+    time they're saved. A full clean cut-over is optional:
 
-```python
-User.rebuild_indexes()   # optional — not required for correctness
-```
+    ```python
+    User.rebuild_indexes()   # optional — not required for correctness
+    ```
 
 ### Delete Behavior
 
-When a model instance is deleted, the instance's Redis key is removed from the
-index Set.
+When a model instance is deleted, the field hooks that clean up secondary indexes
+(including reading the pointer above) run *before* the model hash itself is
+physically removed, so the correct current Set is always found — the instance's
+Redis key is then removed from that index Set, and the pointer key is cleaned up.
 
 ## Comparison Table
 

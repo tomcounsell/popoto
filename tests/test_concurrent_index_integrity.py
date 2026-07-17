@@ -218,20 +218,34 @@ def _assert_no_unique_set_has_multiple(r: redis_lib.Redis, field_class, model_cl
         )
 
 
+def _pointer_side_key(member_redis_key: str, field_name: str) -> str:
+    """Match production's IndexedFieldMixin._pointer_side_key() derivation (#476)."""
+    return f"{member_redis_key}\x00idxptr\x00{field_name}"
+
+
 def _check_pointer_matches_set(r: redis_lib.Redis, member_redis_key: str, field_name: str, field_class, model_class):
-    """Verify that the server-authoritative pointer in the hash matches which Set contains the member."""
-    ptr_field = f"{field_name}\x00idxset"
-    raw_hash = r.hget(member_redis_key, ptr_field.encode("utf-8"))
-    if raw_hash is None:
+    """Verify that the server-authoritative pointer side key matches which Set contains the member.
+
+    #476: the pointer now lives in a standalone side key (not a field inside
+    the model hash) — see IndexedFieldMixin._pointer_side_key().
+    """
+    ptr_key = _pointer_side_key(member_redis_key, field_name)
+    raw_ptr = r.get(ptr_key.encode("utf-8"))
+    if raw_ptr is None:
         # No pointer yet (legacy record or first save not yet run): skip check
         return
-    pointer_set = raw_hash.decode("utf-8") if isinstance(raw_hash, bytes) else raw_hash
+    pointer_set = raw_ptr.decode("utf-8") if isinstance(raw_ptr, bytes) else raw_ptr
     # The member must be in the pointed-to set
     assert r.sismember(pointer_set, member_redis_key), (
-        f"Pointer {ptr_field!r} = {pointer_set!r} but member {member_redis_key!r} is NOT in that Set"
+        f"Pointer {ptr_key!r} = {pointer_set!r} but member {member_redis_key!r} is NOT in that Set"
     )
     # And must not be in any other set
     _assert_no_dual_membership(r, member_redis_key, field_class, model_class, field_name)
+    # And must never be exposed as a hash field (that was the pre-#476 bug)
+    assert r.hget(member_redis_key, f"{field_name}\x00idxset".encode("utf-8")) is None, (
+        "Legacy in-hash pointer field was written by current code (should only ever "
+        "be read as a migration fallback, never written)"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -602,16 +616,17 @@ class TestIdempotentResave:
         _assert_exactly_one_set(r, member_key, UniqueField, _UniqueResaveModel, "email")
 
     def test_hash_field_value_unchanged_after_resave(self):
-        """Hash field value must be unchanged after idempotent resave."""
+        """Pointer side key value must be unchanged after idempotent resave."""
         r = _raw_redis()
         obj = PtrTestModel.create(status="check")
 
-        ptr_field = "status\x00idxset"
-        ptr_before = r.hget(obj.db_key.redis_key, ptr_field.encode("utf-8"))
+        ptr_key = _pointer_side_key(obj.db_key.redis_key, "status")
+        ptr_before = r.get(ptr_key.encode("utf-8"))
+        assert ptr_before is not None, "Pointer side key not written on create"
 
         obj.save()
 
-        ptr_after = r.hget(obj.db_key.redis_key, ptr_field.encode("utf-8"))
+        ptr_after = r.get(ptr_key.encode("utf-8"))
         assert ptr_before == ptr_after, "Pointer changed on idempotent resave"
 
 
@@ -639,7 +654,7 @@ class TestRejectedUniqueLeaveNoTrace:
         )
 
     def test_rejected_unique_leaves_no_pointer(self):
-        """Rejected save must not write the \x00idxset pointer for B."""
+        """Rejected save must not write any pointer (side key or legacy in-hash) for B."""
         r = _raw_redis()
 
         a = UniqueRejectionModel.create(email="taken2@example.com")
@@ -648,9 +663,13 @@ class TestRejectedUniqueLeaveNoTrace:
         with pytest.raises(ModelException):
             b.save()
 
-        ptr_field = "email\x00idxset"
-        ptr_b = r.hget(b.db_key.redis_key.encode("utf-8"), ptr_field.encode("utf-8"))
-        assert ptr_b is None, f"Pointer was written for rejected record B: {ptr_b}"
+        ptr_key = _pointer_side_key(b.db_key.redis_key, "email")
+        ptr_b = r.get(ptr_key.encode("utf-8"))
+        assert ptr_b is None, f"Pointer side key was written for rejected record B: {ptr_b}"
+
+        legacy_ptr_field = "email\x00idxset"
+        legacy_ptr_b = r.hget(b.db_key.redis_key.encode("utf-8"), legacy_ptr_field.encode("utf-8"))
+        assert legacy_ptr_b is None, f"Legacy in-hash pointer was written for rejected record B: {legacy_ptr_b}"
 
     def test_rejected_unique_set_still_has_only_a(self):
         """After B is rejected, the UniqueField Set must contain only A's key."""
@@ -881,10 +900,16 @@ class TestLegacyRecordUpgrade:
             "Legacy record not in new Set after upgrade save"
         )
 
-        # Pointer now written
-        ptr = r.hget(model_key, "status\x00idxset".encode("utf-8"))
-        assert ptr is not None, "Pointer not written after legacy upgrade save"
+        # Pointer now written to the side key (#476), not the legacy in-hash field
+        ptr_key = _pointer_side_key(model_key, "status")
+        ptr = r.get(ptr_key.encode("utf-8"))
+        assert ptr is not None, "Pointer side key not written after legacy upgrade save"
         assert ptr.decode("utf-8") == new_set_key
+
+        # The legacy in-hash pointer field must have been scrubbed, not repopulated
+        assert r.hget(model_key, "status\x00idxset".encode("utf-8")) is None, (
+            "Legacy in-hash pointer field was written/left behind by current code"
+        )
 
         # No dual-membership
         _assert_no_dual_membership(r, model_key, IndexedField, LegacyUpgradeModel, "status")
@@ -915,9 +940,14 @@ class TestLegacyRecordUpgrade:
             "Legacy unique record not in new Set after upgrade"
         )
 
-        ptr = r.hget(model_key, "email\x00idxset".encode("utf-8"))
+        ptr_key = _pointer_side_key(model_key, "email")
+        ptr = r.get(ptr_key.encode("utf-8"))
         assert ptr is not None
         assert ptr.decode("utf-8") == new_set_key
+
+        assert r.hget(model_key, "email\x00idxset".encode("utf-8")) is None, (
+            "Legacy in-hash pointer field was written/left behind by current code"
+        )
 
         _assert_no_dual_membership(r, model_key, UniqueField, LegacyUniqueModel, "email")
 

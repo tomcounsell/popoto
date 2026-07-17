@@ -1205,6 +1205,26 @@ class Model(metaclass=ModelBase):
                     )
                 return pipeline
             else:
+                # Run indexed/unique fields in update_fields EAGERLY (own
+                # atomic EVAL, pipeline=None) before the internal pipeline
+                # for everything else is built and executed — same #476
+                # "unique-conflict window" fix as the full-save path below.
+                _eager_indexed_update_fields = [
+                    field_name
+                    for field_name in update_fields
+                    if isinstance(self._meta.fields[field_name], IndexedFieldMixin)
+                ]
+                for field_name in _eager_indexed_update_fields:
+                    field = self._meta.fields[field_name]
+                    field.on_save(
+                        self,
+                        field_name=field_name,
+                        field_value=getattr(self, field_name),
+                        ignore_errors=ignore_errors,
+                        pipeline=None,
+                        **kwargs,
+                    )
+
                 # Use internal pipeline for atomic execution
                 internal_pipeline = POPOTO_REDIS_DB.pipeline()
                 if hset_mapping:
@@ -1236,6 +1256,8 @@ class Model(metaclass=ModelBase):
                     )
                 # Run on_save for listed fields (adds new index entries)
                 for field_name in update_fields:
+                    if field_name in _eager_indexed_update_fields:
+                        continue  # already written + indexed atomically above
                     field = self._meta.fields[field_name]
                     field.on_save(
                         self,
@@ -1378,7 +1400,34 @@ class Model(metaclass=ModelBase):
             return pipeline
 
         else:
-            # Use internal pipeline for atomic execution (all-or-nothing)
+            # Run indexed/unique field on_save() EAGERLY — each as its own
+            # atomic Lua EVAL executed directly against POPOTO_REDIS_DB
+            # (pipeline=None) — BEFORE the internal pipeline below is built
+            # and executed. See #476 ("unique-conflict window"): Redis's
+            # MULTI/EXEC does NOT roll back other queued commands when one
+            # command in the transaction errors, so if these EVAL calls were
+            # instead queued into internal_pipeline (as before), a uniqueness
+            # conflict would still leave the base HSET / class-set SADD /
+            # index bookkeeping committed, orphaning a hash with no index
+            # entry pointing at it. Raising here, before internal_pipeline
+            # even exists, guarantees nothing else for this save is written
+            # when an indexed/unique field genuinely conflicts.
+            _eager_indexed_fields = {
+                field_name: field
+                for field_name, field in self._meta.fields.items()
+                if isinstance(field, IndexedFieldMixin)
+            }
+            for field_name, field in _eager_indexed_fields.items():
+                field.on_save(
+                    self,
+                    field_name=field_name,
+                    field_value=getattr(self, field_name),
+                    ignore_errors=ignore_errors,
+                    pipeline=None,
+                    **kwargs,
+                )
+
+            # Use internal pipeline for atomic execution of everything else
             internal_pipeline = POPOTO_REDIS_DB.pipeline()
 
             if hset_mapping:
@@ -1418,6 +1467,8 @@ class Model(metaclass=ModelBase):
                 self.obsolete_redis_key = None
 
             for field_name, field in self._meta.fields.items():  # 5
+                if field_name in _eager_indexed_fields:
+                    continue  # already written + indexed atomically above
                 field.on_save(  # 5
                     self,
                     field_name=field_name,
@@ -1644,17 +1695,23 @@ class Model(metaclass=ModelBase):
                 print("User did not exist")
         """
         delete_redis_key = self._redis_key or self.db_key.redis_key
-        db_response = False
 
         if pipeline:
-            pipeline = pipeline.delete(delete_redis_key)  # 1
+            result_pipeline = pipeline
+            existed = None  # unknown/unused: caller executes and owns the result
         else:
-            db_response = POPOTO_REDIS_DB.delete(delete_redis_key)  # 1
-            pipeline = POPOTO_REDIS_DB.pipeline()
-
-        pipeline = pipeline.srem(
-            self._meta.db_class_set_key.redis_key, delete_redis_key
-        )  # 2
+            # #476: determine existence BEFORE any mutation, and run field
+            # on_delete() hooks BEFORE the model hash is physically removed.
+            # IndexedFieldMixin.on_delete() reads live pointer state (the
+            # #476 side key, or — for records written before that fix
+            # shipped — the legacy in-hash pointer field) to find the exact
+            # index Set to SREM from. Deleting the hash first (the previous
+            # order here) meant that read always came back empty for the
+            # legacy in-hash pointer, silently falling back to a possibly
+            # stale _saved_field_values snapshot and risking an orphaned
+            # index member pointing at an already-deleted hash.
+            existed = bool(POPOTO_REDIS_DB.exists(delete_redis_key))
+            result_pipeline = POPOTO_REDIS_DB.pipeline()
 
         for field_name, field in self._meta.fields.items():  # 3
             # Use saved field values if available, otherwise fall back to current values
@@ -1662,14 +1719,20 @@ class Model(metaclass=ModelBase):
             field_value = self._saved_field_values.get(
                 field_name, getattr(self, field_name)
             )
-            pipeline = field.on_delete(
+            result_pipeline = field.on_delete(
                 model_instance=self,
                 field_name=field_name,
                 field_value=field_value,
-                pipeline=pipeline,
+                pipeline=result_pipeline,
                 saved_redis_key=delete_redis_key,
                 **kwargs,
             )
+
+        result_pipeline = result_pipeline.delete(delete_redis_key)  # 1
+        result_pipeline = result_pipeline.srem(
+            self._meta.db_class_set_key.redis_key, delete_redis_key
+        )  # 2
+        pipeline = result_pipeline
 
         # Clean up indexes  # 4
         cleanup_values = self._saved_field_values or {
@@ -1706,9 +1769,9 @@ class Model(metaclass=ModelBase):
         self._db_content = dict()  # 6
         self._saved_field_values = dict()  # 6
 
-        if db_response is not False:
+        if existed is not None:
             pipeline.execute()
-            return bool(db_response > 0)
+            return existed
         else:
             return pipeline
 
