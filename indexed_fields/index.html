@@ -3104,37 +3104,51 @@ surfaces conflicts earlier for the common case.</p>
 <p>When a model instance is saved, an atomic server-side Lua script (<code>INDEX_SWAP_LUA</code>)
 handles the index update in a single Redis command:</p>
 <ol>
-<li>Reads a server-authoritative pointer (<code>{field_name}\x00idxset</code>) from the model hash
-   to identify which Set the record currently belongs to</li>
+<li>Reads a server-authoritative pointer to identify which Set the record currently
+   belongs to</li>
 <li>If <code>unique=True</code>, scans the target Set for any member other than the current record
    and raises <code>ModelException</code> immediately on conflict</li>
 <li>Atomically removes the record from the old Set, adds it to the new Set, updates the
    pointer, and writes the field bytes — no race window between any of these steps</li>
 </ol>
 <p>This eliminates the stale-snapshot SREM+SADD race that existed in earlier versions.</p>
+<p>For <code>Model.save()</code> calls that don't pass an external pipeline (the common case,
+including <code>Model.create()</code>), the uniqueness EVAL for <code>IndexedField</code>/<code>UniqueField</code>
+values runs <em>before</em> any other write for that record is issued. A genuine uniqueness
+conflict therefore raises <code>ModelException</code> without leaving any trace — no orphaned
+hash, no class-set membership, nothing to clean up.</p>
 <h3 id="operator-note">Operator Note<a class="headerlink" href="#operator-note" title="Permanent link">&para;</a></h3>
-<p>Each model hash for models with <code>IndexedField</code> or <code>UniqueField</code> fields carries one
-extra hash field per indexed field, visible in <code>redis-cli HGETALL &lt;Model:key&gt;</code> output:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>{field_name}\x00idxset  -&gt;  $IndexF:ModelName:field_name:current_value
+<p>The server-authoritative pointer is stored in a standalone Redis key (a plain
+string, <code>GET</code>/<code>SET</code>), <strong>not</strong> as a field inside the model hash. <code>redis-cli HGETALL
+&lt;Model:key&gt;</code> shows only your declared fields — no extra bookkeeping field. The
+pointer key itself follows the pattern:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>&lt;Model:key&gt;\x00idxptr\x00&lt;field_name&gt;  -&gt;  $IndexF:ModelName:field_name:current_value
 </code></pre></div>
-<p>The <code>\x00</code> (NUL byte) in the field name is intentional internal bookkeeping. This is
-expected — it is NOT corruption.</p>
 <ul>
 <li>Do NOT edit or delete it manually. Removing it reopens the index-stranding race until
   the record's next save.</li>
 <li>It is invisible to the Python model API: <code>filter()</code>, attribute access, and
-  <code>is_valid()</code> all ignore it.</li>
+  <code>is_valid()</code> all ignore it (it isn't part of the model hash at all).</li>
 <li>The <code>$IndexF:</code> and <code>$UniquF:</code> Set schema itself is unchanged from earlier versions.</li>
 </ul>
-<p><strong>Upgrading over a populated database:</strong> Records saved before this fix self-heal on
-their first post-upgrade save (the Lua script falls back to a client-supplied hint for
-the old Set on the first write, then records the authoritative pointer for all future
-saves). A full clean cut-over is optional:</p>
+<div class="admonition note">
+<p class="admonition-title">Versions prior to this fix (1.8.0, see issue #476)</p>
+<p>An earlier 1.8.0 revision stored this pointer as a <code>{field_name}\x00idxset</code>
+field <strong>inside</strong> the model hash. That is forward-incompatible: any decoder
+that unconditionally <code>msgpack.unpackb()</code>s every hash field (all pre-1.8.0
+releases) crashes with <code>msgpack.exceptions.ExtraData</code> on such records.
+Current code never writes that in-hash field. Records written by the
+affected 1.8.0 revision are read as a migration fallback and self-heal
+(the field is scrubbed and the pointer moves to the side key) the next
+time they're saved. A full clean cut-over is optional:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">User</span><span class="o">.</span><span class="n">rebuild_indexes</span><span class="p">()</span>   <span class="c1"># optional — not required for correctness</span>
 </code></pre></div>
+</div>
 <h3 id="delete-behavior">Delete Behavior<a class="headerlink" href="#delete-behavior" title="Permanent link">&para;</a></h3>
-<p>When a model instance is deleted, the instance's Redis key is removed from the
-index Set.</p>
+<p>When a model instance is deleted, the field hooks that clean up secondary indexes
+(including reading the pointer above) run <em>before</em> the model hash itself is
+physically removed, so the correct current Set is always found — the instance's
+Redis key is then removed from that index Set, and the pointer key is cleaned up.</p>
 <h2 id="comparison-table">Comparison Table<a class="headerlink" href="#comparison-table" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
