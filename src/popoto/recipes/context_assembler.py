@@ -201,9 +201,14 @@ def _fusion_weights(query_text: str) -> dict:
     if not tokens:
         return dict(FUSION_REGIME_NEUTRAL)
 
+    # Count words inside quoted spans once, then scan the *unquoted* remainder
+    # for capitalization/digit-date signals so a capitalized word inside a
+    # quoted phrase (e.g. `"Coach Ramirez"`) is never double-counted by both
+    # the quoted-span pass and the per-token capitalization pass.
     quoted_matches = _FUSION_QUOTED_RE.findall(query_text)
     specific = sum(len(m.strip("\"'").split()) for m in quoted_matches)
-    for idx, tok in enumerate(tokens):
+    unquoted_text = _FUSION_QUOTED_RE.sub(" ", query_text)
+    for idx, tok in enumerate(unquoted_text.split()):
         bare = tok.strip(".,!?;:\"'")
         if not bare:
             continue

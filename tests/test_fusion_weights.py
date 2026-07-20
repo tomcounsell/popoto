@@ -71,3 +71,19 @@ class TestFusionWeightsRegimeSelection:
         """Same input always produces the same output (no randomness, no ML)."""
         text = "What restaurant did Alex visit on 2023-04-01?"
         assert _fusion_weights(text) == _fusion_weights(text)
+
+    def test_capitalized_quoted_phrase_not_double_counted(self):
+        """A capitalized proper noun inside a quoted span must be counted once
+        (via the quoted-span pass), not again via the per-token capitalization
+        pass -- regression test for a PR #479 review finding. A quoted phrase
+        should not, by itself, swing an otherwise-paraphrastic query all the
+        way into the keyword-lean regime just because the quoted words happen
+        to be capitalized."""
+        lowercase_quoted = _fusion_weights('What did she mean by "burnt out"?')
+        capitalized_quoted = _fusion_weights('What did "Coach Ramirez" say?')
+
+        # Both quote a two-word span out of a 7-token query (2/7 ≈ 0.286);
+        # capitalization of the quoted words must not inflate the fraction
+        # further, so both land in the same regime.
+        assert lowercase_quoted == capitalized_quoted
+        assert capitalized_quoted != FUSION_REGIME_KEYWORD_LEAN

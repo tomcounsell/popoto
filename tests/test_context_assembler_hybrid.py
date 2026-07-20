@@ -390,6 +390,48 @@ class TestPullPathDispatch:
             # Fallback to composite must be called when fuse raises
             mock_composite.assert_called_once()
 
+    def test_pull_path_hybrid_threads_query_adaptive_weights_into_fuse(self):
+        """(#457) _pull_path_hybrid must pass the *actual* per-query weight
+        regime from _fusion_weights() into query.fuse(weights=...), not just
+        compute it and drop it. Regression test for a PR #479 review finding
+        that the two units were only ever tested in isolation."""
+        from src.popoto.recipes import context_assembler as ca_module
+
+        _flush()
+        assembler = ContextAssembler(
+            model_class=HybridMemory,
+            score_weights={"relevance": 1.0},
+            retrieval_mode="hybrid",
+        )
+
+        # A name/date-heavy query -> FUSION_REGIME_KEYWORD_LEAN.
+        query_text = "What did Sarah do on March 3, 2023?"
+        expected_weights = dict(ca_module._fusion_weights(query_text))
+        expected_weights["graph"] = ca_module.FUSION_WEIGHT_GRAPH
+
+        mock_bm25_results = [("HybridMemory:1", 1.0)]
+        captured_kwargs = {}
+
+        def _capture_fuse(self_qb, *args, **kwargs):
+            captured_kwargs.update(kwargs)
+            return []
+
+        with (
+            patch(
+                "src.popoto.fields.bm25_field.BM25Field.search",
+                return_value=mock_bm25_results,
+            ),
+            patch.object(
+                assembler.model_class.query.__class__,
+                "fuse",
+                _capture_fuse,
+                create=True,
+            ),
+        ):
+            assembler.assemble(query_cues={"topic": query_text})
+
+        assert captured_kwargs.get("weights") == expected_weights
+
 
 # ---------------------------------------------------------------------------
 # 7. QueryBuilder._get_vector_scores
@@ -548,7 +590,9 @@ class TestLexicalMode:
             score_weights={"relevance": 1.0},
             retrieval_mode="lexical",
         )
-        assert assembler._embedding_field is None, "lexical mode requires no EmbeddingField"
+        assert (
+            assembler._embedding_field is None
+        ), "lexical mode requires no EmbeddingField"
 
         call_count = {"n": 0}
 
@@ -592,7 +636,12 @@ class TestLexicalMode:
             patch.object(
                 assembler, "_pull_path_composite", return_value=([], [])
             ) as mock_composite,
-            patch.object(assembler.model_class.query.__class__, "fuse", return_value=[], create=True),
+            patch.object(
+                assembler.model_class.query.__class__,
+                "fuse",
+                return_value=[],
+                create=True,
+            ),
         ):
             assembler.assemble(query_cues={"topic": "test"})
             mock_composite.assert_not_called()
@@ -614,7 +663,9 @@ class TestLexicalMode:
                 assembler, "_pull_path_composite", return_value=([], [])
             ) as mock_composite,
         ):
-            result = assembler.assemble(query_cues={"topic": "zzz flurble xyzzy gibberish"})
+            result = assembler.assemble(
+                query_cues={"topic": "zzz flurble xyzzy gibberish"}
+            )
             # Zero BM25 hits → should fall back to composite (by design)
             mock_composite.assert_called_once()
             assert isinstance(result.records, list)
