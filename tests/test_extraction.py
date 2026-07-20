@@ -31,7 +31,6 @@ from popoto.extraction import (
 from popoto.fields.constants import Defaults
 from popoto.recipes.subconscious_memory import SubconsciousMemory
 
-
 # ---------------------------------------------------------------------------
 # HeuristicExtractionProvider: before/after equivalence pin
 # ---------------------------------------------------------------------------
@@ -79,7 +78,9 @@ class TestHeuristicEquivalence:
         importance/confidence None -- so downstream falls back to the
         caller-supplied importance and leaves confidence untouched."""
         provider = HeuristicExtractionProvider()
-        facts = provider.extract("A sufficiently long first sentence here. And a second one too.")
+        facts = provider.extract(
+            "A sufficiently long first sentence here. And a second one too."
+        )
         assert len(facts) == 2
         for fact in facts:
             assert fact.entities == []
@@ -334,7 +335,9 @@ class TestClaudeProviderExtraction:
             "extraction failed" in r.message.lower() for r in caplog.records
         ), f"Expected a warning log, got: {[r.message for r in caplog.records]}"
 
-    def test_missing_facts_key_returns_empty_and_logs_warning(self, monkeypatch, caplog):
+    def test_missing_facts_key_returns_empty_and_logs_warning(
+        self, monkeypatch, caplog
+    ):
         import json
 
         provider, _ = _make_provider(
@@ -377,7 +380,12 @@ class TestClaudeProviderExtraction:
             {
                 "facts": [
                     "not a dict",
-                    {"text": "A valid fact.", "entities": [], "importance": 0.5, "confidence": 0.5},
+                    {
+                        "text": "A valid fact.",
+                        "entities": [],
+                        "importance": 0.5,
+                        "confidence": 0.5,
+                    },
                 ]
             }
         )

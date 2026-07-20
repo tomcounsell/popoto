@@ -30,7 +30,6 @@ from popoto.extraction import AbstractExtractionProvider, ExtractedFact
 from popoto.recipes.subconscious_memory import SubconsciousMemory
 from popoto.redis_db import POPOTO_REDIS_DB
 
-
 # ---------------------------------------------------------------------------
 # Test Models
 # ---------------------------------------------------------------------------
@@ -145,7 +144,9 @@ class TestDefaultBehaviorEquivalence:
             agent_id="default-agent-2",
             score_weights={"relevance": 0.6},
         )
-        saved = sm.extract_memories("A single sentence with no opinions.", importance=0.5)
+        saved = sm.extract_memories(
+            "A single sentence with no opinions.", importance=0.5
+        )
         assert len(saved) == 1
 
     def test_no_co_occurrence_field_present_no_crash(self):
@@ -154,7 +155,9 @@ class TestDefaultBehaviorEquivalence:
             agent_id="default-agent-3",
             score_weights={"relevance": 0.6},
         )
-        saved = sm.extract_memories("Another plain sentence right here.", importance=0.5)
+        saved = sm.extract_memories(
+            "Another plain sentence right here.", importance=0.5
+        )
         assert len(saved) == 1
 
     def test_empty_response_returns_empty(self):
@@ -225,9 +228,7 @@ class TestCoOccurrenceSeeding:
 
     def test_no_edge_when_fewer_than_two_entities(self):
         provider = FakeProvider(
-            [
-                ExtractedFact(text="Solo mention of Eve.", entities=["Eve"])
-            ]
+            [ExtractedFact(text="Solo mention of Eve.", entities=["Eve"])]
         )
         sm = SubconsciousMemory(
             model_class=ExtMemoryFull,
@@ -242,6 +243,42 @@ class TestCoOccurrenceSeeding:
 
         field = ExtMemoryFull.associations
         assert field.get_linked(ExtMemoryFull, "Eve") == []
+
+    def test_duplicate_entities_deduped_no_self_loop_error(self):
+        """A fact whose entities list repeats a name (e.g. ["Alice", "Bob",
+        "Alice"]) must not raise -- CoOccurrenceField.link() rejects
+        self-pairs, so _seed_associations dedupes entities (order-stable)
+        before pairing. This pins the B2 fix: exactly one edge pair
+        (Alice, Bob) is created, with no self-pair attempted."""
+        provider = FakeProvider(
+            [
+                ExtractedFact(
+                    text="Alice mentioned Bob, then Alice again.",
+                    entities=["Alice", "Bob", "Alice"],
+                )
+            ]
+        )
+        sm = SubconsciousMemory(
+            model_class=ExtMemoryFull,
+            agent_id="coocc-agent-4",
+            score_weights={"relevance": 0.6},
+            extraction_provider=provider,
+            co_occurrence_field="associations",
+        )
+
+        # Must not raise (e.g. a ValueError from a self-pair reaching link()).
+        saved = sm.extract_memories(
+            "Alice mentioned Bob, then Alice again.", importance=0.5
+        )
+        assert len(saved) == 1
+
+        field = ExtMemoryFull.associations
+        linked_from_alice = field.get_linked(ExtMemoryFull, "Alice")
+        linked_from_bob = field.get_linked(ExtMemoryFull, "Bob")
+
+        # Exactly one edge pair: Alice<->Bob, no self-loop on Alice.
+        assert [pk for pk, _weight in linked_from_alice] == ["Bob"]
+        assert [pk for pk, _weight in linked_from_bob] == ["Alice"]
 
 
 # ===========================================================================
@@ -406,9 +443,7 @@ class TestSeamFailureDoesNotLoseSavedMemory:
         def flaky_link(self, *args, **kwargs):
             raise RuntimeError("simulated link failure")
 
-        monkeypatch.setattr(
-            type(ExtMemoryFull.associations), "link", flaky_link
-        )
+        monkeypatch.setattr(type(ExtMemoryFull.associations), "link", flaky_link)
 
         with caplog.at_level(logging.WARNING, logger="POPOTO.SubconsciousMemory"):
             saved = sm.extract_memories("irrelevant raw text", importance=0.5)
@@ -422,7 +457,11 @@ class TestSeamFailureDoesNotLoseSavedMemory:
 
     def test_update_confidence_failure_keeps_saved_memory(self, monkeypatch, caplog):
         provider = FakeProvider(
-            [ExtractedFact(text="A fact whose confidence seed will fail.", confidence=0.8)]
+            [
+                ExtractedFact(
+                    text="A fact whose confidence seed will fail.", confidence=0.8
+                )
+            ]
         )
         sm = SubconsciousMemory(
             model_class=ExtMemoryFull,
@@ -432,7 +471,9 @@ class TestSeamFailureDoesNotLoseSavedMemory:
             confidence_field="confidence",
         )
 
-        def flaky_update_confidence(cls, model_instance, field_name, signal, pipeline=None):
+        def flaky_update_confidence(
+            cls, model_instance, field_name, signal, pipeline=None
+        ):
             raise RuntimeError("simulated confidence update failure")
 
         monkeypatch.setattr(
