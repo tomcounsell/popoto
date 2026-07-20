@@ -305,6 +305,13 @@ class SubconsciousMemory:
         drops the remaining valid pairs or the already-saved memory
         record.
 
+        The deduped entity list is truncated to
+        ``Defaults.EXTRACTION_MAX_ENTITIES_PER_FACT`` before pairing:
+        combination count grows O(n^2), so an extraction result with an
+        unusually large entity set (malformed provider output, or an
+        adversarial input) can't blow up into a burst of co-occurrence
+        writes for a single fact.
+
         Args:
             instance: The already-saved model instance for this fact.
             fact: The ``ExtractedFact`` that produced ``instance``.
@@ -324,6 +331,9 @@ class SubconsciousMemory:
 
         if len(norm_entities) < 2:
             return
+
+        if len(norm_entities) > Defaults.EXTRACTION_MAX_ENTITIES_PER_FACT:
+            norm_entities = norm_entities[: Defaults.EXTRACTION_MAX_ENTITIES_PER_FACT]
 
         field = getattr(self.model_class, self.co_occurrence_field)
         for a, b in itertools.combinations(norm_entities, 2):

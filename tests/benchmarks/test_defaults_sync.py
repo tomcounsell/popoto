@@ -83,6 +83,7 @@ class TestDefaultsSync:
             "EXTRACTION_DEFAULT_IMPORTANCE",
             "EXTRACTION_DEFAULT_CONFIDENCE",
             "EXTRACTION_ENTITY_PAIR_LINK_WEIGHT",
+            "EXTRACTION_MAX_ENTITIES_PER_FACT",
         }
 
         expected_in_module = defaults_attrs - field_kwargs_and_class_attrs

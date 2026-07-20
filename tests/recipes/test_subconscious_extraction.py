@@ -27,6 +27,7 @@ from popoto import (
     StringField,
 )
 from popoto.extraction import AbstractExtractionProvider, ExtractedFact
+from popoto.fields.constants import Defaults
 from popoto.recipes.subconscious_memory import SubconsciousMemory
 from popoto.redis_db import POPOTO_REDIS_DB
 
@@ -279,6 +280,39 @@ class TestCoOccurrenceSeeding:
         # Exactly one edge pair: Alice<->Bob, no self-loop on Alice.
         assert [pk for pk, _weight in linked_from_alice] == ["Bob"]
         assert [pk for pk, _weight in linked_from_bob] == ["Alice"]
+
+    def test_entity_pairing_capped_at_max_entities_per_fact(self):
+        """A fact with more entities than
+        Defaults.EXTRACTION_MAX_ENTITIES_PER_FACT must only pair the first
+        N (deduped, order-stable) entities, not the full combinatorial set.
+        This pins the O(n^2) cap: without it, a malformed/adversarial
+        extraction result with many entities could generate an unbounded
+        burst of co-occurrence writes for a single fact."""
+        cap = Defaults.EXTRACTION_MAX_ENTITIES_PER_FACT
+        entities = [f"Entity{i}" for i in range(cap + 5)]
+        provider = FakeProvider(
+            [ExtractedFact(text="Many entities mentioned.", entities=entities)]
+        )
+        sm = SubconsciousMemory(
+            model_class=ExtMemoryFull,
+            agent_id="coocc-agent-cap",
+            score_weights={"relevance": 0.6},
+            extraction_provider=provider,
+            co_occurrence_field="associations",
+        )
+
+        saved = sm.extract_memories("Many entities mentioned.", importance=0.5)
+        assert len(saved) == 1
+
+        field = ExtMemoryFull.associations
+
+        # Entities within the cap got paired (and thus linked).
+        for name in entities[:cap]:
+            assert field.get_linked(ExtMemoryFull, name) != []
+
+        # Entities beyond the cap were excluded from pairing entirely.
+        for name in entities[cap:]:
+            assert field.get_linked(ExtMemoryFull, name) == []
 
 
 # ===========================================================================

@@ -176,6 +176,7 @@ class Defaults:
     EXTRACTION_DEFAULT_IMPORTANCE = 0.5  # aligns with SubconsciousMemory.extract_memories()'s current flat importance default
     EXTRACTION_DEFAULT_CONFIDENCE = 0.7  # signal applied when a provider asserts a fact but returns no explicit confidence
     EXTRACTION_ENTITY_PAIR_LINK_WEIGHT = 0.1  # matches CO_OCCURRENCE_INITIAL_WEIGHT; must stay <= CO_OCCURRENCE_WEIGHT_CAP (1.0) or CoOccurrenceField.link() raises
+    EXTRACTION_MAX_ENTITIES_PER_FACT = 12  # cap on deduped entities paired per fact; combinations grow O(n^2), so a malformed/adversarial extraction with many entities can't blow up co-occurrence writes
 
 
 class TemporalPeriod:

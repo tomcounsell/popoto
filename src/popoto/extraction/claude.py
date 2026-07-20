@@ -26,6 +26,11 @@ try:
 
     _anthropic_available = True
 except ImportError:
+    # Keep the name bound (to None) even when the optional dependency is
+    # absent, so callers/tests can always `monkeypatch.setattr(claude_mod,
+    # "anthropic_module", ...)` regardless of whether `anthropic` is
+    # installed in the current environment.
+    anthropic_module = None
     _anthropic_available = False
 
 logger = logging.getLogger("POPOTO.extraction")
