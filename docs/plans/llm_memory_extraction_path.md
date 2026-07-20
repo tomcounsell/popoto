@@ -1,11 +1,13 @@
 ---
-status: Planning
+status: Ready
 type: feature
 appetite: Medium
 owner: Valor Engels
 created: 2026-07-20
 tracking: https://github.com/tomcounsell/popoto/issues/461
 last_comment_id:
+revision_applied: true
+revision_applied_at: 2026-07-20T06:03:41Z
 ---
 
 # First-class LLM memory-extraction path — entities, typed facts, importance-on-write
@@ -274,20 +276,64 @@ def extract_memories(self, response_text, importance=0.5):
     return saved
 ```
 - `_seed_associations`: no-op unless `self.co_occurrence_field` is set, the field
-  exists on the model, and `len(fact.entities) >= 2`. Then for each unordered
-  pair `(a, b)` in `itertools.combinations(fact.entities, 2)` call
-  `getattr(self.model_class, self.co_occurrence_field).link(self.model_class, a, b,
-  initial_weight=Defaults.EXTRACTION_ENTITY_PAIR_LINK_WEIGHT)`. Entity **names**
-  are the graph nodes (co-occurrence within a fact ⇒ association). Wrap in
-  try/except + `logger.warning` so a link failure never loses the saved memory.
+  exists on the model, and there are `>= 2` **distinct** entities. **Dedupe and
+  normalize `fact.entities` first** — the extractor (LLM or otherwise) can return
+  duplicate/whitespace-variant names, and `itertools.combinations(["Alice",
+  "Bob", "Alice"], 2)` yields the self-pair `("Alice", "Alice")`, which
+  `CoOccurrenceField.link()` rejects with `ValueError: Cannot link a PK to itself`
+  (`co_occurrence_field.py:353-354`). Build a de-duplicated, order-stable list
+  before pairing:
+  ```
+  seen = set()
+  norm_entities = []
+  for e in fact.entities:
+      e = (e or "").strip()
+      if e and e not in seen:
+          seen.add(e)
+          norm_entities.append(e)
+  if not self.co_occurrence_field or len(norm_entities) < 2:
+      return
+  field = getattr(self.model_class, self.co_occurrence_field)
+  for a, b in itertools.combinations(norm_entities, 2):
+      try:
+          field.link(self.model_class, a, b,
+                     initial_weight=Defaults.EXTRACTION_ENTITY_PAIR_LINK_WEIGHT)
+      except Exception as exc:            # per-pair guard, INSIDE the loop
+          logger.warning("entity link %r<->%r failed: %s", a, b, exc)
+  ```
+  The try/except is **per-pair, inside the loop** — one bad pair must not abort
+  the remaining valid pairs (a loop-level guard would drop every subsequent link
+  after the first failure). After dedup the self-pair can no longer occur; the
+  guard is defense-in-depth for other link failures (e.g. transient Redis error).
+- **Co-occurrence node convention (explicit decision).** Entity **name strings**
+  are used as the `CoOccurrenceField` graph nodes — co-occurrence within one fact
+  ⇒ association. This is a deliberate departure from the field's usual
+  record-PK-as-node convention. **Decision: accept the departure**, because the
+  co-occurrence graph is fundamentally an *entity-association* graph (the whole
+  point of write-time extraction) and entity names are the natural nodes; there is
+  no record PK for an abstract entity like "Alice". Consequences we accept and
+  document: (a) these edges are queried via the co-occurrence graph API
+  (`propagate`/edge-scan on entity names), NOT via normal `Model.query`, so they
+  are intentionally not reachable from the record query path; (b) an entity name
+  that happens to equal a real record PK would share an edge-set keyspace — this
+  is acceptable because edges live under the `$CoOcF:{ClassName}:{field}:` prefix
+  and represent semantic association regardless of node identity, but the feature
+  doc must state that entity-name nodes and record-PK nodes coexist in one graph.
+  This decision is recorded here (not left implicit) and echoed in Rabbit Holes.
 - `_seed_confidence`: no-op unless `self.confidence_field` is set, the field
   exists, and `fact.confidence is not None`. Then
   `ConfidenceField.update_confidence(instance, self.confidence_field,
-  signal=fact.confidence)`. Note (from Freshness Check): `ConfidenceField` has no
-  per-instance "set initial value" API; the companion hash is seeded with the
-  field's fixed `initial_confidence` in `on_save`, so a per-fact confidence is
-  realized as the **first `update_confidence` signal**. Document this nuance in
-  the docstring and the feature doc. Same try/except guard.
+  signal=fact.confidence)`. **`update_confidence` does NOT store the signal
+  verbatim** (`confidence_field.py:408-450`): the companion hash is seeded in
+  `on_save` with the field's fixed `initial_confidence` (pseudo-count 1), and
+  `update_confidence` computes the capped running mean over `{prior, signal}`. So
+  the **first** seeding call with signal `s` yields a stored confidence of
+  `(initial_confidence + s) / 2`, not `s`. Additionally, a signal `< 0.5` is
+  treated as a *contradiction* and `>= 0.5` as a *corroboration*. The plan and
+  tests MUST assert the **computed** stored value (`(initial_confidence + s)/2`),
+  not `s`. Document this "first-update-blends-with-prior" nuance in the docstring
+  and the feature doc so downstream users don't expect signal==stored. Same
+  per-call try/except guard as above.
 
 **§4 — `ClaudeExtractionProvider` (opt-in, lazy).** Mirror `embeddings/openai.py`:
 module-level `try: import anthropic … except ImportError: _anthropic_available =
@@ -319,6 +365,34 @@ fall back to returning `[]` (the caller keeps working; no crash).
   `link()` raises). Tag each inline as experimental tuning per the existing file
   convention.
 
+**§5a — Mandatory `test_defaults_sync` registration (merge gate).** Adding any
+uppercase attribute to `Defaults` makes
+`tests/benchmarks/test_defaults_sync.py::test_all_defaults_covered_by_module_constants`
+fail unless the new constant is either (a) registered in
+`tests/benchmarks/overrides.py`'s `MODULE_CONSTANTS` with a real module-level
+alias, or (b) listed in the `field_kwargs_and_class_attrs` exception set inside
+`test_defaults_sync.py` (:51-80). **This plan chooses (b), unconditionally, for
+all three constants.** Rationale: the extraction constants are read directly via
+`Defaults.EXTRACTION_*` at their use sites (recipe wiring + Claude provider), with
+no bare module-level alias — exactly the pattern already used for the
+`CO_OCCURRENCE_*` and `LIFECYCLE_*` families that live in that exception set. The
+build MUST add these three literal lines to `field_kwargs_and_class_attrs` in
+`tests/benchmarks/test_defaults_sync.py`:
+```python
+# Extraction defaults (extraction/, recipes/subconscious_memory.py) — read via
+# Defaults.EXTRACTION_* directly; no module-level alias, so not in MODULE_CONSTANTS.
+"EXTRACTION_DEFAULT_IMPORTANCE",
+"EXTRACTION_DEFAULT_CONFIDENCE",
+"EXTRACTION_ENTITY_PAIR_LINK_WEIGHT",
+```
+This is a hard, unconditional edit — NOT "update if present". Do not add a
+module-level alias and do not touch `MODULE_CONSTANTS` (adding to
+`MODULE_CONSTANTS` without a matching module alias would fail the *other* test,
+`test_module_alias_matches_defaults`). After the edit, `pytest tests/ -q` must be
+green. Verified against the current test file: the set is a plain literal `{...}`
+of string names, and `test_all_defaults_covered_by_module_constants` asserts
+`defaults_attrs - field_kwargs_and_class_attrs ⊆ MODULE_CONSTANTS.keys()`.
+
 **§6 — `pyproject.toml` extra.** Add, mirroring `openai`:
 ```
 anthropic = ["anthropic>=0.40.0"]
@@ -330,7 +404,14 @@ them from the top-level package only if it does not risk importing `anthropic`
 (it won't — those three are stdlib-only). `ClaudeExtractionProvider` stays behind
 `popoto.extraction.claude` to keep the lazy-import boundary crisp.
 
-**§8 — Evaluation ("evaluated, not vibes").** The build stage MUST inspect
+**§8 — Evaluation ("evaluated, not vibes"). Fully deferrable — not a merge
+blocker.** To be unambiguous: the "evaluated, not vibes" value claim is
+**explicitly permitted to be an unvalidated-at-merge-time follow-up**. Merge is
+gated on the extractor + unit tests + import-safety, NOT on a judged-accuracy or
+recall lift. If the harness comparison is a reasonable lift, do it; if not,
+documenting evaluation as a tracked epic-#456 Track B follow-up is a fully
+accepted, complete outcome for this PR. This removes any ambiguity that the value
+claim must be proven before merge. The build stage MUST inspect
 `tests/benchmarks/` (specifically `judge.py`, `run_external.py`, `test_judged.py`
 from PR #475) and decide:
 - **If wiring a comparison run is a reasonable lift** (the harness accepts a
@@ -356,9 +437,14 @@ a Redis command in the extraction package, that is a red flag — stop and reass
 - `extract_memories` keeps its per-record `except Exception: logger.warning(...)`
   (currently at :232). Add a test asserting a save failure on one fact does not
   abort the loop and emits a warning.
-- `_seed_associations` / `_seed_confidence` each wrap primitive calls in
-  try/except + `logger.warning`; add a test that a `link()`/`update_confidence`
-  failure does not lose the already-saved memory (memory still in `saved`).
+- `_seed_associations` wraps each `link()` call in a **per-pair** try/except +
+  `logger.warning` (inside the loop); add a test that one failing pair does not
+  lose the saved memory (still in `saved`) NOR abort the remaining valid pairs.
+- `_seed_associations` dedupes `fact.entities` before pairing; add a test that
+  duplicate entities (e.g. `["Alice","Bob","Alice"]`) produce no self-loop
+  `ValueError` and exactly one edge pair.
+- `_seed_confidence` wraps `update_confidence` in try/except + `logger.warning`;
+  add a test that an `update_confidence` failure does not lose the saved memory.
 - `ClaudeExtractionProvider.extract` swallows API/parse errors → returns `[]` and
   logs; add a unit test with a fake client raising, asserting `[]` + warning.
 
@@ -390,26 +476,53 @@ a Redis command in the extraction package, that is a red flag — stop and reass
   - `ClaudeExtractionProvider` parsing/clamping/failure paths via an injected
     fake client (no network, no key) — same seam style as `test_judged.py`'s
     `FakeClient`.
-- **New** `tests/recipes/test_subconscious_extraction.py` — CREATE:
-  - Default `SubconsciousMemory.extract_memories` writes identical records to the
-    pre-change behavior (content, flat importance, no links, no confidence update).
-  - With a fake provider returning entities → `CoOccurrenceField` edges created
-    only when `co_occurrence_field` configured and `>= 2` entities.
-  - With a fake provider returning per-fact importance → record importance
-    overrides the flat default.
-  - With a fake provider returning confidence → `update_confidence` applied only
-    when `confidence_field` configured.
-- `tests/benchmarks/test_defaults_sync.py` — **UPDATE if present**: if it asserts
-  the `Defaults` set matches a manifest, add the three new extraction constants.
+- **New** `tests/recipes/test_subconscious_extraction.py` — CREATE. `extract_memories()`
+  currently bundles four concerns (extraction, importance-on-write, co-occurrence
+  seeding, confidence seeding); tests MUST exercise **each seam independently**,
+  not only via one big integration test:
+  - **Default-path equivalence**: default `extract_memories` writes identical
+    records to pre-change behavior (content, flat importance, no links, no
+    confidence update).
+  - **Fact with no entities** (seam: association no-op): fake provider returns a
+    fact with `entities=[]` → no `link()` calls, memory still saved.
+  - **Fact with 2 entities, co-occurrence field configured** (seam: association):
+    exactly one edge pair created; assert on the edge weight
+    (`EXTRACTION_ENTITY_PAIR_LINK_WEIGHT`).
+  - **Fact with duplicate entities** (B2 regression): `entities=["Alice","Bob","Alice"]`
+    → dedup yields one pair `("Alice","Bob")`, **no `ValueError`**, no self-loop.
+  - **Model WITHOUT a co-occurrence field configured** (seam isolation): entities
+    present but `co_occurrence_field=None` → no links attempted, no error.
+  - **Fact with per-fact importance** (seam: importance-on-write): record
+    importance overrides the flat default; a fact with `importance=None` falls back
+    to the flat arg.
+  - **Fact with confidence, confidence field configured** (seam: confidence, C1):
+    assert the stored confidence equals `(initial_confidence + fact.confidence)/2`
+    (the running-mean-with-prior result), **not** `fact.confidence`.
+  - **Model WITHOUT a confidence field configured** (seam isolation): `fact.confidence`
+    set but `confidence_field=None` → `update_confidence` never called, no error.
+  - **Per-record save-failure isolation**: one failing fact does not abort the loop
+    (others still saved, warning emitted).
+  - **Link-failure isolation**: a single failing pair (monkeypatched `link` raising)
+    does not lose the saved memory nor abort the remaining pairs.
+- `tests/benchmarks/test_defaults_sync.py` — **UPDATE (mandatory)**: add the three
+  new extraction constants to the `field_kwargs_and_class_attrs` exception set per
+  §5a (unconditional, not "if present" — this test exists and gates merge).
 
 ## Rabbit Holes
 
 - **Building a taxonomy of "typed facts".** The issue says "typed facts" but the
   primitives consume `(text, entities, importance, confidence)`. Do NOT invent a
   fact-type ontology/enum this round — carry entities + scores and stop.
-- **Entity resolution / dedup / canonicalization.** Linking raw entity-name
-  strings is enough for v1. Do not build an entity registry, alias table, or
-  cross-fact entity merging — that is a separate project.
+- **Entity resolution / canonicalization.** Linking raw entity-name strings is
+  enough for v1. Do not build an entity registry, alias table, or cross-fact
+  entity merging — that is a separate project. (Note: **within-fact** dedup IS in
+  scope — it is required to avoid the `link()` self-loop `ValueError`, see §3/B2 —
+  but it is a simple `strip()`+set filter, not entity resolution.)
+- **Entity-name-as-graph-node departure.** Using entity **name** strings (not
+  record PKs) as `CoOccurrenceField` nodes is an intentional, documented decision
+  (see §3 "Co-occurrence node convention"). Do NOT re-litigate it into a
+  keyed-by-synthetic-PK scheme this round; accept the departure and document that
+  entity-name edges are reachable via the co-occurrence graph API, not `Model.query`.
 - **A global `configure(extraction_provider=…)` hook.** Resist wiring extraction
   into `popoto.configure()`. Constructor injection on `SubconsciousMemory` is
   narrower and avoids touching global embedding/content config. (Note as an Open
@@ -446,11 +559,16 @@ and `import popoto.extraction` succeed and leave `anthropic` out of `sys.modules
 `claude-opus-4-8` as a constant. The sketch here is explicitly directional and
 must be confirmed against the skill + installed SDK version.
 
-### Risk 4: `link()` raises on over-cap weight
+### Risk 4: `link()` raises on over-cap weight OR self-loop
 **Impact:** Entity linking throws if `EXTRACTION_ENTITY_PAIR_LINK_WEIGHT >
-CO_OCCURRENCE_WEIGHT_CAP`.
+CO_OCCURRENCE_WEIGHT_CAP`, or if a duplicated entity produces a self-pair
+(`source_pk == target_pk`), which `link()` also rejects with `ValueError`
+(`co_occurrence_field.py:353-354`).
 **Mitigation:** Set the constant to `0.1` (== `CO_OCCURRENCE_INITIAL_WEIGHT`,
-well under the `1.0` cap); guard the link call in try/except; add a unit test.
+well under the `1.0` cap). **Dedupe/normalize `fact.entities` before pairing** so
+self-pairs never reach `link()` (see §3). Guard each `link()` call in a
+**per-pair** try/except (inside the loop, so one bad pair can't abort the rest);
+add unit tests for both the duplicate-entity and link-failure paths.
 
 ## Race Conditions
 
@@ -522,7 +640,16 @@ change is transparent and opt-in via constructor kwargs.
 - [ ] `anthropic = ["anthropic>=0.40.0"]` extra added to `pyproject.toml`.
 - [ ] Evaluation either wired against the Tier-5 harness OR documented as a
   tracked follow-up in the PR — no fabricated numbers.
-- [ ] New extraction constants live in `Defaults`, tagged as experimental.
+- [ ] New extraction constants live in `Defaults`, tagged as experimental, AND
+  are listed in `field_kwargs_and_class_attrs` in `test_defaults_sync.py` so
+  `test_all_defaults_covered_by_module_constants` passes.
+- [ ] Duplicate entities within a fact produce no self-loop `ValueError` and one
+  edge pair; one failing pair does not abort the rest (per-pair guard).
+- [ ] Seeded confidence stores `(initial_confidence + signal)/2`, asserted
+  explicitly (not `signal`).
+- [ ] Each `extract_memories` seam is covered by an independent test (no-entities,
+  2-entities, no-co-occurrence-field, importance-override, confidence,
+  no-confidence-field).
 - [ ] Tests pass (`/do-test`), lint/format clean.
 - [ ] Documentation updated (`/do-docs`).
 
@@ -585,6 +712,10 @@ The lead agent orchestrates; it does not build directly.
   (confirm surface via `/claude-api`), clamp+default+graceful-failure parsing.
 - Add extraction constants to `Defaults` in `src/popoto/fields/constants.py`,
   tagged as experimental.
+- **Register the three new `Defaults.EXTRACTION_*` constants in the
+  `field_kwargs_and_class_attrs` exception set in
+  `tests/benchmarks/test_defaults_sync.py` (per §5a)** — mandatory, unconditional;
+  without it `test_all_defaults_covered_by_module_constants` fails.
 - Add `anthropic = ["anthropic>=0.40.0"]` to `pyproject.toml`.
 
 ### 2. Wire the provider into SubconsciousMemory
@@ -598,7 +729,9 @@ The lead agent orchestrates; it does not build directly.
   (defaults preserve current behavior; default provider =
   `HeuristicExtractionProvider(min_length=extraction_min_length)`).
 - Rewrite `extract_memories()` per Technical Approach §3; add `_seed_associations`
-  and `_seed_confidence` helpers, each guarded by try/except + `logger.warning`.
+  (dedupe entities first; per-pair try/except INSIDE the loop) and
+  `_seed_confidence` (per-call try/except; document the running-mean-with-prior
+  nuance), each guarded by `logger.warning`.
 - Keep the return contract (`list` of saved instances) unchanged.
 
 ### 3. Tests
@@ -610,9 +743,15 @@ The lead agent orchestrates; it does not build directly.
 - `tests/test_extraction.py`: heuristic equivalence, import-safety (no `anthropic`),
   ImportError message, Claude provider parse/clamp/failure via fake client, model
   + prompt pin assertions.
-- `tests/recipes/test_subconscious_extraction.py`: default-path equivalence,
-  importance-override, entity linking (>=2 + configured), confidence seeding
-  (configured), per-record save-failure isolation.
+- `tests/recipes/test_subconscious_extraction.py`: exercise each seam
+  independently (see Test Impact) — default-path equivalence, fact-with-no-entities,
+  fact-with-2-entities, duplicate-entities (no self-loop `ValueError`),
+  model-without-co-occurrence-field, importance-override, confidence seeding with
+  the **computed** `(initial_confidence+signal)/2` assertion,
+  model-without-confidence-field, per-record save-failure isolation, and
+  per-pair link-failure isolation.
+- Add the three `EXTRACTION_*` constants to `field_kwargs_and_class_attrs` in
+  `tests/benchmarks/test_defaults_sync.py` and confirm `pytest tests/ -q` is green.
 
 ### 4. Evaluation decision
 - **Task ID**: build-eval
@@ -649,6 +788,7 @@ The lead agent orchestrates; it does not build directly.
 |-------|---------|----------|
 | Tests pass | `pytest tests/test_extraction.py tests/recipes/test_subconscious_extraction.py -q` | exit code 0 |
 | Full suite | `pytest tests/ -q` | exit code 0 |
+| Defaults sync gate | `pytest tests/benchmarks/test_defaults_sync.py -q` | exit code 0 |
 | import safe (no anthropic hard dep) | `python -c "import sys; import popoto, popoto.extraction; assert 'anthropic' not in sys.modules; print('ok')"` | output contains ok |
 | Model pinned | `grep -rn 'claude-opus-4-8' src/popoto/extraction/claude.py` | output contains claude-opus-4-8 |
 | anthropic extra present | `grep -n 'anthropic' pyproject.toml` | output contains anthropic>=0.40.0 |
