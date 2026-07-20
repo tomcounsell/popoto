@@ -387,13 +387,163 @@ def _cue_familiarity(cue_value, *, existence_filter, model_class) -> float:
     return 1.0 if present else 0.0
 
 
-def _score_proxy_for_records(records, *, model_class, score_weights):
-    """Pipelined ZSCORE proxy for composite scores.
+def _partition_scores_for_field(records, *, model_class, field_name, now=None):
+    """Per-record relevance score read from the PARTITION-specific sorted set.
 
-    Read-only (no ZUNIONSTORE, no temp keys). Only sorted-field-backed
-    entries in ``score_weights`` contribute; other weights are ignored
-    (ConfidenceField / WriteFilter are computed elsewhere in the quality
-    signal).
+    Agent-memory sorted fields almost always declare ``partition_by``, so the
+    real scores live in a partition-specific ZSET (``$SortF:Model:field:<part>``),
+    not the base key. Reading the base key -- the historical behaviour of the
+    shared proxy -- returned ``None`` for every partitioned record and silently
+    collapsed every metacognitive signal to its degenerate value (issue #474).
+
+    Scoring is field-type aware, because the two sorted-field families store
+    *different quantities* as the ZSET score:
+
+    * A plain :class:`SortedField` stores the field *value itself* as the
+      score, so a raw pipelined ``ZSCORE`` on the partition key is the score.
+    * A :class:`DecayingSortedField` (and its :class:`CyclicDecayField`
+      subclass) stores the *last_updated timestamp* as the score, not
+      relevance. A naive ``ZSCORE`` would surface ~1.7e9 timestamps and invert
+      staleness. This reuses ``DECAY_SCORE_LUA`` to compute the power-law
+      decayed relevance on the partition ZSET -- identical math to
+      :meth:`Query.top_by_decay`, so the proxy and the query agree.
+
+    Records whose member is absent from the partition ZSET, or whose partition
+    field value is missing, map to ``None`` (never corrupting other records'
+    scores). Read-only and Valkey-safe (``ZSCORE`` / read-only ``EVAL``; no
+    ``ZUNIONSTORE``, no temp keys, no Redis modules).
+
+    Returns:
+        ``{record_key: score_or_None}`` for every record in ``records``.
+    """
+    f = model_class._meta.fields[field_name]
+
+    # Resolve each record's partition-specific ZSET key up front. A record
+    # whose partition value is missing raises QueryException in the key
+    # builder -- it scores None and never perturbs the pipeline for the rest.
+    key_for_record = {}
+    for record in records:
+        r_key = _get_key(record)
+        try:
+            key_for_record[r_key] = f.get_partitioned_sortedset_db_key(
+                record, field_name
+            ).redis_key
+        except Exception:
+            key_for_record[r_key] = None
+
+    if isinstance(f, DecayingSortedField):
+        return _decayed_partition_scores(
+            records,
+            field=f,
+            key_for_record=key_for_record,
+            now=now,
+        )
+
+    # Plain SortedField: the stored value IS the score.
+    scores = {}
+    ordered_keys = []
+    pipe = POPOTO_REDIS_DB.pipeline()
+    for record in records:
+        r_key = _get_key(record)
+        ordered_keys.append(r_key)
+        zkey = key_for_record[r_key]
+        if zkey is None:
+            pipe.zscore("", "")  # placeholder keeps the pipeline plan aligned
+        else:
+            pipe.zscore(zkey, r_key)
+    raw = pipe.execute()
+    for r_key, val in zip(ordered_keys, raw):
+        if val is None:
+            scores[r_key] = None
+        else:
+            try:
+                scores[r_key] = float(val)
+            except (TypeError, ValueError):
+                scores[r_key] = None
+    return scores
+
+
+def _decayed_partition_scores(records, *, field, key_for_record, now=None):
+    """Decayed relevance per record for a DecayingSortedField partition ZSET.
+
+    Reuses ``DECAY_SCORE_LUA`` (the same script :meth:`Query.top_by_decay`
+    runs) so the metacognitive proxy sees the same decayed relevance a query
+    would surface, rather than the raw last_updated timestamp stored as the
+    ZSET score. The script is evaluated once per distinct partition ZSET
+    (typically a single agent per proxy call). Read-only EVAL, Valkey-safe.
+
+    ``CyclicDecayField`` is scored with the base power-law decay too: the
+    cyclic cadence/pressure adjustment is a documented per-arm fast-follow and
+    is deliberately out of scope here (#464) -- using the base decay still
+    yields a real relevance signal instead of a raw timestamp.
+    """
+    from ..fields.decaying_sorted_field import DECAY_SCORE_LUA
+
+    if now is None:
+        now = time.time()
+
+    base_score_field = field.base_score_field or ""
+
+    # Group members by their partition ZSET so the script runs once per set.
+    members_by_zset = {}
+    for record in records:
+        zkey = key_for_record[_get_key(record)]
+        if zkey is not None:
+            members_by_zset.setdefault(zkey, True)
+
+    # (zset_key, member) -> decayed score
+    decayed = {}
+    for zkey in members_by_zset:
+        try:
+            cardinality = POPOTO_REDIS_DB.zcard(zkey)
+            if not cardinality:
+                continue
+            result = POPOTO_REDIS_DB.eval(
+                DECAY_SCORE_LUA,
+                1,  # number of KEYS
+                zkey,
+                str(now),
+                str(field.decay_rate),
+                str(cardinality),  # return every member's decayed score
+                base_score_field,
+            )
+        except Exception as e:
+            logger.warning(
+                "decayed partition score eval failed for %s: %s", zkey, e
+            )
+            continue
+        # Flat array: [member1, score1, member2, score2, ...]
+        for i in range(0, len(result), 2):
+            member = result[i]
+            if isinstance(member, bytes):
+                member = member.decode()
+            try:
+                decayed[(zkey, member)] = float(result[i + 1])
+            except (TypeError, ValueError):
+                pass
+
+    scores = {}
+    for record in records:
+        r_key = _get_key(record)
+        zkey = key_for_record[r_key]
+        scores[r_key] = decayed.get((zkey, r_key)) if zkey is not None else None
+    return scores
+
+
+def _score_proxy_for_records(records, *, model_class, score_weights):
+    """Partition-aware weighted score proxy for composite scores.
+
+    Reads each record's per-field score from the *partition-specific* sorted
+    set (see :func:`_partition_scores_for_field`), so partitioned agent-memory
+    models get real per-record scores instead of the all-zero result the base
+    key produced before #474. Non-partitioned models are unaffected:
+    ``get_partitioned_sortedset_db_key`` returns the identical base key when
+    ``partition_by`` is empty.
+
+    Read-only and Valkey-safe (``ZSCORE`` / read-only ``EVAL``; no
+    ``ZUNIONSTORE``, no temp keys). Only sorted-field-backed entries in
+    ``score_weights`` contribute; other weights are ignored (ConfidenceField /
+    WriteFilter are computed elsewhere in the quality signal).
     """
     if not records:
         return {}
@@ -410,40 +560,16 @@ def _score_proxy_for_records(records, *, model_class, score_weights):
     if not sorted_field_names:
         return {r_key: 0.0 for r_key in (_get_key(r) for r in records)}
 
-    per_field_keys = {}
-    for field_name in sorted_field_names:
-        f = model_class._meta.fields[field_name]
-        per_field_keys[field_name] = []
-        for record in records:
-            try:
-                key = f.get_special_use_field_db_key(record, field_name).redis_key
-            except Exception:
-                key = None
-            per_field_keys[field_name].append(key)
-
-    pipe = POPOTO_REDIS_DB.pipeline()
-    for field_name in sorted_field_names:
-        zset_keys = per_field_keys[field_name]
-        for record, zset_key in zip(records, zset_keys):
-            if zset_key is None:
-                pipe.zscore("", "")  # placeholder
-                continue
-            pipe.zscore(zset_key, _get_key(record))
-    raw = pipe.execute()
-
+    now = time.time()
     scores = {_get_key(r): 0.0 for r in records}
-    idx = 0
     for field_name in sorted_field_names:
         weight = float(score_weights.get(field_name, 0.0))
-        for record in records:
-            r_key = _get_key(record)
-            val = raw[idx]
-            idx += 1
+        field_scores = _partition_scores_for_field(
+            records, model_class=model_class, field_name=field_name, now=now
+        )
+        for r_key, val in field_scores.items():
             if val is not None:
-                try:
-                    scores[r_key] += weight * float(val)
-                except (TypeError, ValueError):
-                    pass
+                scores[r_key] += weight * val
     return scores
 
 
@@ -580,41 +706,34 @@ def _staleness_ratio(
     surfacing_threshold,
     decaying_sorted_field_name,
 ):
-    """Fraction of records whose DecayingSortedField score is below the
-    surfacing threshold. ``0.0`` when the model has no DecayingSortedField
+    """Fraction of records whose decayed DecayingSortedField relevance is below
+    the surfacing threshold. ``0.0`` when the model has no DecayingSortedField
     or when that field is not in ``score_weights``.
+
+    Reads the *partition-specific* decayed relevance via
+    :func:`_partition_scores_for_field` (issue #474). Before the fix this read
+    the non-partitioned base key -- ``None`` for every partitioned record --
+    and reported ``1.0`` (all records "stale") regardless of freshness. It now
+    compares each record's decayed relevance against ``surfacing_threshold``,
+    so freshly-updated partitioned records are correctly not stale.
     """
     if not records or not decaying_sorted_field_name:
         return 0.0
     field_name = decaying_sorted_field_name
+    if field_name not in score_weights:
+        return 0.0
     try:
-        _score_proxy_for_records(
-            records, model_class=model_class, score_weights=score_weights
+        field_scores = _partition_scores_for_field(
+            records, model_class=model_class, field_name=field_name
         )
     except Exception as e:
         logger.warning("_staleness_ratio proxy failed: %s", e)
         return 0.0
-    if field_name not in score_weights:
-        return 0.0
-    f = model_class._meta.fields[field_name]
-    pipe = POPOTO_REDIS_DB.pipeline()
-    for record in records:
-        try:
-            zkey = f.get_special_use_field_db_key(record, field_name).redis_key
-            pipe.zscore(zkey, _get_key(record))
-        except Exception:
-            pipe.zscore("", "")
-    raw = pipe.execute()
 
     stale_count = 0
-    for val in raw:
-        if val is None:
-            stale_count += 1
-            continue
-        try:
-            if float(val) < surfacing_threshold:
-                stale_count += 1
-        except (TypeError, ValueError):
+    for record in records:
+        val = field_scores.get(_get_key(record))
+        if val is None or val < surfacing_threshold:
             stale_count += 1
     return stale_count / len(records)
 
@@ -1174,13 +1293,15 @@ class ContextAssembler:
     def _injection_scores(self, records):
         """Partition-aware composite-score proxy for the telemetry trace (#464).
 
-        Unlike the metacognitive :func:`_score_proxy_for_records` helper (which
-        keys the non-partitioned sorted-set index), this reads each record's
-        score from the *partition-specific* sorted set via
+        Reads each record's score from the *partition-specific* sorted set via
         ``get_partitioned_sortedset_db_key`` — so scores are correct for models
         whose sorted fields declare ``partition_by`` (the common agent-memory
-        case, where the metacognitive proxy would return 0.0). Read-only,
-        pipelined ZSCORE only — Valkey-safe, no temp keys.
+        case). The shared metacognitive :func:`_score_proxy_for_records` helper
+        is now partition-aware too (#474) and additionally decays
+        ``DecayingSortedField`` timestamps into relevance; this trace scorer
+        keeps its lighter raw-ZSCORE form because per-arm/decayed decomposition
+        for the trace is the documented fast-follow. Read-only, pipelined
+        ZSCORE only — Valkey-safe, no temp keys.
 
         Only sorted-field-backed entries in ``score_weights`` contribute
         (ConfidenceField / WriteFilter scores are not persisted in a ZSET). In

@@ -24,6 +24,7 @@ import pytest  # noqa: E402
 
 from src.popoto.fields.co_occurrence_field import CoOccurrenceField  # noqa: E402
 from src.popoto.fields.confidence_field import ConfidenceField  # noqa: E402
+from src.popoto.fields.constants import Defaults  # noqa: E402
 from src.popoto.fields.cyclic_decay_field import CyclicDecayField  # noqa: E402
 from src.popoto.fields.decaying_sorted_field import DecayingSortedField  # noqa: E402
 from src.popoto.fields.existence_filter import ExistenceFilter  # noqa: E402
@@ -806,9 +807,19 @@ class TestRetrievalQualityAssembler:
         # ((0.5+0.9)/2 + (0.5+0.5)/2 + (0.5+0.3)/2) / 3
         #   = (0.7 + 0.5 + 0.4) / 3 = 1.6 / 3 = 0.5333...
         assert self._isclose(quality.avg_confidence, 1.6 / 3)
+        # score_spread stays 0.0 -- but now for the RIGHT reason (#474). The
+        # three records are equally fresh, so their decayed relevance scores
+        # are identical (see score_distribution below) -> zero dispersion.
+        # Pre-#474 this was 0.0 because the proxy read the empty non-partitioned
+        # key and every record scored 0.0.
         assert self._isclose(quality.score_spread, 0.0)
         assert self._isclose(quality.fok_score, 0.64)
-        assert self._isclose(quality.staleness_ratio, 1.0)
+        # staleness_ratio: 1.0 -> 0.0 (#474). Pre-fix, the staleness loop read
+        # the non-partitioned base key, got None for every partitioned record
+        # and counted them all "stale". The partition-aware helper now reads the
+        # decayed relevance (~3.98, see below), which is well above the 0.5
+        # surfacing_threshold, so these freshly-saved records are NOT stale.
+        assert self._isclose(quality.staleness_ratio, 0.0)
 
         # Per-cue components also hardcoded.
         assert set(quality.per_cue_fok.keys()) == {"alpha", "beta"}
@@ -819,12 +830,17 @@ class TestRetrievalQualityAssembler:
             assert self._isclose(comp["subthreshold_activation"], 0.0)
             assert self._isclose(comp["component_score"], 0.64)
 
-        # score_distribution contents: three zero-valued proxy scores
-        # (decayed to 0 because DecayingSortedField starts at 0 score on a
-        # freshly saved record — the deterministic fixture relies on this).
+        # score_distribution contents (#474): three equal, non-zero decayed
+        # relevance scores. DecayingSortedField stores the last_updated
+        # timestamp as the ZSET score; the partition-aware proxy decays it via
+        # DECAY_SCORE_LUA (base_score 1.0, default decay_rate 0.3). All three
+        # records are freshly saved, so elapsed time clamps to the script's
+        # 0.01-day floor and each decays to 0.01**(-0.3) ≈ 3.981. Pre-#474 the
+        # proxy read the empty non-partitioned key and reported 0.0 for all.
+        expected_decayed = 0.01 ** (-Defaults.DECAY_RATE)
         assert len(quality.score_distribution) == 3
         for s in quality.score_distribution:
-            assert self._isclose(s, 0.0)
+            assert self._isclose(s, expected_decayed)
 
 
 # ---------------------------------------------------------------------------
