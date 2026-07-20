@@ -43,6 +43,9 @@ openai = [
     "openai>=1.0.0",
     "numpy>=1.23.1",
 ]
+anthropic = [
+    "anthropic>=0.40.0",
+]
 monitoring = [
     "sentry-sdk>=2.0.0",
 ]

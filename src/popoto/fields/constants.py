@@ -169,6 +169,14 @@ class Defaults:
     )
     LIFECYCLE_FORGET_IDLE_SECONDS = 86400.0  # 24 h idle → eligible for forget
 
+    # -- Extraction (extraction/) ---------------------------------------------
+    # Experimental tuning constants for the pluggable LLM-extraction path
+    # (popoto.extraction). Not yet swept -- initial values set by design,
+    # per issue #461 / docs/plans/llm_memory_extraction_path.md.
+    EXTRACTION_DEFAULT_IMPORTANCE = 0.5  # aligns with SubconsciousMemory.extract_memories()'s current flat importance default
+    EXTRACTION_DEFAULT_CONFIDENCE = 0.7  # signal applied when a provider asserts a fact but returns no explicit confidence
+    EXTRACTION_ENTITY_PAIR_LINK_WEIGHT = 0.1  # matches CO_OCCURRENCE_INITIAL_WEIGHT; must stay <= CO_OCCURRENCE_WEIGHT_CAP (1.0) or CoOccurrenceField.link() raises
+
 
 class TemporalPeriod:
     """Named constants for common temporal cycle periods in seconds.
