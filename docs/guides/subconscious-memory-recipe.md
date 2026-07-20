@@ -129,11 +129,23 @@ The query cue is only meaningful in **query-sensitive** modes (lexical or hybrid
 
 ### Post-turn: `extract_memories(response_text, importance)`
 
+By default (no `extraction_provider` passed to the constructor):
+
 1. Splits the LLM response into sentences
 2. Filters out sentences shorter than `extraction_min_length` (default 10 chars)
 3. Saves each sentence as a new Memory record with the specified importance
 
-The built-in extraction uses a simple sentence-splitting heuristic. For more accurate extraction, override this method or extract facts using a secondary LLM call and save them directly via your model class.
+This is unchanged, byte-for-byte, from the original heuristic -- existing code that doesn't pass any of `extraction_provider`, `confidence_field`, or `co_occurrence_field` sees no behavior change.
+
+Extraction is now pluggable via a dedicated provider interface -- see the [LLM Memory Extraction](../features/llm-memory-extraction.md) feature doc for the full picture. In short:
+
+- **`extraction_provider`** (default `None` -> `HeuristicExtractionProvider`): pass an `AbstractExtractionProvider` instance (e.g. `ClaudeExtractionProvider` from `popoto.extraction.claude`, requires `pip install popoto[anthropic]`) for LLM-based extraction that also returns entities, an importance opinion, and a confidence opinion per fact.
+- **`confidence_field`** (default `None`, no-op unless set): name of a `ConfidenceField` on `model_class`. When set and a fact carries a confidence opinion, `extract_memories()` seeds that field via `ConfidenceField.update_confidence()`. Because `ConfidenceField` has no per-instance "set initial value" API, this is a *blend* with the field's `initial_confidence` prior, not a hard override -- see [the confidence blend nuance](../features/llm-memory-extraction.md#the-confidence-blend-nuance) before assuming the stored value equals the extracted confidence.
+- **`co_occurrence_field`** (default `None`, no-op unless set): name of a `CoOccurrenceField` on `model_class`. When set and a fact names two or more distinct entities, every unordered entity pair is linked in that field's association graph.
+
+Both `confidence_field` and `co_occurrence_field` are inert with the default `HeuristicExtractionProvider`, since it never populates `entities` or `confidence` on the facts it emits -- they only do work once an entity/confidence-emitting provider (like `ClaudeExtractionProvider`) is configured.
+
+For a fully custom extraction source (not implementing the provider interface), you can still subclass `SubconsciousMemory` and override `extract_memories()` directly -- see [Extensibility](#extensibility) below.
 
 ### Outcome: `report_outcomes(assembly_result, outcome)`
 
@@ -156,6 +168,9 @@ Reports how the agent used the injected memories via `ObservationProtocol.on_con
 | `system_preamble` | "You are a helpful assistant." | Prefix for auto-created system messages |
 | `content_field` | "content" | Name of the text content field on your model |
 | `importance_field` | "importance" | Name of the importance score field |
+| `extraction_provider` | `None` (-> `HeuristicExtractionProvider`) | `AbstractExtractionProvider` used by `extract_memories()`. See [LLM Memory Extraction](../features/llm-memory-extraction.md) |
+| `confidence_field` | `None` | Name of a `ConfidenceField` to seed from extracted facts' confidence opinions; no-op unless set |
+| `co_occurrence_field` | `None` | Name of a `CoOccurrenceField` to link co-mentioned entities in; no-op unless set |
 
 These constants can be tuned experimentally using the Tier 4 benchmark harness. See the [Tuning Magic Numbers](tuning-magic-numbers.md) guide for the full constant catalog, optimal ranges, and how to run parameter sweeps.
 
@@ -163,7 +178,28 @@ These constants can be tuned experimentally using the Tier 4 benchmark harness. 
 
 ### Custom Fact Extraction
 
-Subclass `SubconsciousMemory` and override `extract_memories()` for LLM-based extraction:
+The preferred way to customize extraction is to pass an `extraction_provider` -- either the built-in `ClaudeExtractionProvider` or your own `AbstractExtractionProvider` implementation -- rather than subclassing. See [LLM Memory Extraction](../features/llm-memory-extraction.md) for the full interface and a "writing a custom provider" example.
+
+```python
+from popoto.extraction import AbstractExtractionProvider, ExtractedFact
+
+class MyProvider(AbstractExtractionProvider):
+    def extract(self, text: str) -> list[ExtractedFact]:
+        facts = my_extraction_function(text)
+        return [
+            ExtractedFact(text=f["text"], importance=f.get("importance"))
+            for f in facts
+        ]
+
+sm = SubconsciousMemory(
+    model_class=Memory,
+    agent_id="agent-1",
+    score_weights={"relevance": 0.6, "confidence": 0.3},
+    extraction_provider=MyProvider(),
+)
+```
+
+If you need to change more than extraction itself (e.g. custom save logic, side effects beyond seeding confidence/co-occurrence), subclassing and overriding `extract_memories()` directly is still supported:
 
 ```python
 class SmartSubconsciousMemory(SubconsciousMemory):
@@ -189,6 +225,7 @@ The default implementation uses the last user message as the query cue. For more
 ## See Also
 
 - [Agent Memory Quickstart](agent-memory-quickstart.md) -- progressive adoption guide
+- [LLM Memory Extraction](../features/llm-memory-extraction.md) -- pluggable extraction providers, entities, importance/confidence opinions
 - [ContextAssembler](../features/context-assembler.md) -- retrieval-to-injection bridge
 - [PolicyCache Recipe](policy-cache-recipe.md) -- RL-style learned action selection
 - [Trajectory Memory Recipe](trajectory-memory-recipe.md) -- fingerprint-keyed procedural memory: cluster completed task trajectories and recall "what worked last time"
