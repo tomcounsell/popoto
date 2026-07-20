@@ -132,6 +132,11 @@ HYBRID_CANDIDATE_MULTIPLIER = 5
 """candidate_limit = max_items * HYBRID_CANDIDATE_MULTIPLIER for per-signal
 retrieval in the hybrid pull path before RRF fusion."""
 
+EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD = 0.5
+"""NOT a shipped default — used only by the benchmark/report script; needs
+maintainer sign-off before becoming Defaults.CONFIDENCE_GATE_THRESHOLD or a
+ctor default (see issue #463)."""
+
 
 # ---------------------------------------------------------------------------
 # AssemblyResult
@@ -528,9 +533,7 @@ def _decayed_partition_scores(records, *, field, key_for_record, now=None):
                     base_score_field,
                 )
         except Exception as e:
-            logger.warning(
-                "decayed partition score eval failed for %s: %s", zkey, e
-            )
+            logger.warning("decayed partition score eval failed for %s: %s", zkey, e)
             continue
         # Flat array: [member1, score1, member2, score2, ...]
         for i in range(0, len(result), 2):
@@ -975,10 +978,26 @@ class ContextAssembler:
             (``_estimate_tokens``).
         retrieval_mode: ``"auto"`` (default), ``"hybrid"``, or
             ``"composite"``. See class docstring for semantics.
+        confidence_gate_threshold: Optional confidence gate. When not
+            ``None``, ``assemble()`` reads the rank-0 pull-path candidate's
+            ``ConfidenceField`` value and compares it to this threshold. If
+            the value is below the threshold the gate is "gated": in
+            ``"refuse"`` mode all pull-path records are dropped before
+            injection; in ``"flag"`` mode records are retained and only
+            ``AssemblyResult.metadata["gate"]`` reports the decision. Requires
+            the model to declare a ``ConfidenceField``. Default ``None``
+            (gate disabled; no shipped default — see
+            ``EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD`` and issue #463).
+        confidence_gate_mode: ``"refuse"`` (default) or ``"flag"``. Only
+            meaningful when ``confidence_gate_threshold`` is not ``None``.
 
     Raises:
         QueryException: If ``retrieval_mode="hybrid"`` is requested but the
-            model lacks ``BM25Field`` or ``EmbeddingField``.
+            model lacks ``BM25Field`` or ``EmbeddingField``; if
+            ``confidence_gate_threshold`` is set and ``confidence_gate_mode``
+            is not one of ``{"refuse", "flag"}``; or if
+            ``confidence_gate_threshold`` is set but the model lacks a
+            ``ConfidenceField``.
     """
 
     def __init__(
@@ -993,6 +1012,8 @@ class ContextAssembler:
         token_counter=None,
         *,
         retrieval_mode: str = "auto",
+        confidence_gate_threshold: float | None = None,
+        confidence_gate_mode: str = "refuse",
     ):
         self.model_class = model_class
         self.score_weights = score_weights
@@ -1001,6 +1022,8 @@ class ContextAssembler:
         self.surfacing_threshold = surfacing_threshold
         self.propagation_depth = propagation_depth
         self.output_format = output_format
+        self.confidence_gate_threshold = confidence_gate_threshold
+        self.confidence_gate_mode = confidence_gate_mode
         if token_counter is None:
             self._token_counter = _estimate_tokens
         else:
@@ -1060,6 +1083,29 @@ class ContextAssembler:
             if isinstance(f, EmbeddingField) and self._embedding_field is None:
                 self._embedding_field = f
                 self._embedding_field_name = name
+
+        # Confidence-gate construction-time validation (issue #463). The gate
+        # is opt-in — no-op unless confidence_gate_threshold is set — but
+        # once enabled it must be self-consistent (valid mode) and backed by
+        # a ConfidenceField on the model, mirroring the hybrid-mode
+        # validation block below.
+        _VALID_GATE_MODES = {"refuse", "flag"}
+        if self.confidence_gate_threshold is not None:
+            if self.confidence_gate_mode not in _VALID_GATE_MODES:
+                from ..exceptions import QueryException
+
+                raise QueryException(
+                    f"confidence_gate_mode={self.confidence_gate_mode!r} is not "
+                    f"a recognised mode. Allowed values: "
+                    f"{sorted(_VALID_GATE_MODES)}"
+                )
+            if self._confidence_field_name is None:
+                from ..exceptions import QueryException
+
+                raise QueryException(
+                    f"confidence_gate_threshold requires ConfidenceField on "
+                    f"{model_class.__name__}"
+                )
 
         # Resolve effective retrieval mode.
         #
@@ -1177,6 +1223,70 @@ class ContextAssembler:
         if query_cues:
             pull_records, all_pull_candidates = self._pull_path(query_cues, filters)
 
+        # [CONFIDENCE GATE] Opt-in, off-by-default (issue #463). Reads the
+        # rank-0 pull-path candidate's ConfidenceField value and compares it
+        # to confidence_gate_threshold. Kept as a small, self-contained,
+        # additive block that does not touch RRF/fusion logic — it is
+        # mode-agnostic because ConfidenceField.get_confidence() always
+        # returns a value in [0, 1] regardless of the underlying ranking
+        # score scale (composite weighted-sum vs RRF-fused). suppression_candidates
+        # starts as an alias of all_pull_candidates and is only ever
+        # replaced (never mutated in place), so all_pull_candidates itself is
+        # never touched here.
+        suppression_candidates = all_pull_candidates
+        gate_meta = None
+        if self.confidence_gate_threshold is not None:
+            if not pull_records:
+                gate_meta = {
+                    "applied": False,
+                    "gate_score": None,
+                    "threshold": self.confidence_gate_threshold,
+                    "mode": self.confidence_gate_mode,
+                    "gated": False,
+                }
+            else:
+                try:
+                    gate_score = float(
+                        ConfidenceField.get_confidence(
+                            pull_records[0], self._confidence_field_name
+                        )
+                    )
+                except Exception as e:
+                    # Fault-tolerant, matching the style of emit_trace /
+                    # _compute_quality elsewhere in this method: a
+                    # get_confidence() failure degrades to "gate not
+                    # applied" rather than crashing assemble().
+                    logger.warning("confidence gate get_confidence failed: %s", e)
+                    gate_score = None
+
+                if gate_score is None:
+                    gate_meta = {
+                        "applied": False,
+                        "gate_score": None,
+                        "threshold": self.confidence_gate_threshold,
+                        "mode": self.confidence_gate_mode,
+                        "gated": False,
+                    }
+                else:
+                    gated = gate_score < self.confidence_gate_threshold
+                    if gated and self.confidence_gate_mode == "refuse":
+                        pull_records = []
+                        # Don't punish other candidates in competitive
+                        # suppression for a refusal that already happened:
+                        # zero only the copy fed to _post_effects.
+                        # all_pull_candidates itself is left untouched so
+                        # _compute_quality's feeling-of-knowing (FoK) score
+                        # still reflects that candidates WERE found, even
+                        # though the assembler chose not to inject them.
+                        suppression_candidates = []
+                    gate_meta = {
+                        "applied": True,
+                        "gate_score": gate_score,
+                        "threshold": self.confidence_gate_threshold,
+                        "mode": self.confidence_gate_mode,
+                        "gated": gated,
+                    }
+
         # --- Push path ---
         if self._cyclic_decay_field_name is not None:
             push_records = self._push_path(filters)
@@ -1259,8 +1369,11 @@ class ContextAssembler:
                 )
 
         # --- Post-retrieval effects ---
+        # suppression_candidates (not all_pull_candidates) so a "refuse"
+        # gate decision does not competitively suppress candidates for an
+        # answer that was never injected.
         self._post_effects(
-            selected, pull_keys, push_keys, all_pull_candidates, agent_id
+            selected, pull_keys, push_keys, suppression_candidates, agent_id
         )
 
         # --- Format ---
@@ -1289,6 +1402,12 @@ class ContextAssembler:
         # Off-by-default so existing callers see identical metadata.
         if trace is not None:
             metadata["trace"] = trace
+
+        # [CONFIDENCE GATE] Attach only when configured — callers who pass
+        # no threshold get bit-for-bit identical metadata to pre-change
+        # behavior (no "gate" key at all).
+        if gate_meta is not None:
+            metadata["gate"] = gate_meta
 
         # [METACOGNITIVE] Quality assessment — opt-in, off-by-default so existing
         # callers see bit-for-bit identical metadata.
