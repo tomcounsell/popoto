@@ -489,11 +489,11 @@ directly in Python; the new kwargs are part of that same surface.
 ## Documentation
 
 ### Feature Documentation
-- [ ] Update `docs/features/agent-memory.md` ContextAssembler section (starts line
+- [x] Update `docs/features/agent-memory.md` ContextAssembler section (starts line
   ~1224): document `confidence_gate_threshold` / `confidence_gate_mode`, the
   mode-agnostic gate mechanism, the `metadata["gate"]` shape, "refuse" vs "flag"
   semantics, the no-default policy, and the EXPERIMENTAL constant.
-- [ ] Update `docs/benchmarks.md`: add a refusal-metric subsection (append, do not
+- [x] Update `docs/benchmarks.md`: add a refusal-metric subsection (append, do not
   edit the #471 cat-5 audit block). The wording MUST make the number's provenance
   unambiguous — this is a **seeded/simulated, small-sample** figure, not real evidence
   and not leaderboard-grade (CONCERN 3). Use language equivalent to this exact framing
@@ -511,60 +511,60 @@ directly in Python; the new kwargs are part of that same surface.
   > refusal accuracy. Do not cross-compare it with any leaderboard recall/accuracy
   > number (metric-family doctrine).
 
-- [ ] PR description carries the same caveat verbatim-equivalent: the refusal number is
+- [x] PR description carries the same caveat verbatim-equivalent: the refusal number is
   seeded/simulated on ≤2 true positives with a cold-start limitation, shipped as a
   mechanism demonstration only.
 
 ### External Documentation Site
-- [ ] `mkdocs build --strict` passes (part of `scripts/ci-local.sh docs`).
+- [x] `mkdocs build --strict` passes (part of `scripts/ci-local.sh docs`).
 
 ### Inline Documentation
-- [ ] Docstring on the two new ctor kwargs + `Raises: QueryException`.
-- [ ] Comment on the `suppression_candidates = []` clear explaining the
+- [x] Docstring on the two new ctor kwargs + `Raises: QueryException`.
+- [x] Comment on the `suppression_candidates = []` clear explaining the
   competitive-suppression rationale AND why `all_pull_candidates` is deliberately left
   intact (preserves `_compute_quality` FoK — BLOCKER fix).
-- [ ] Docstring/comment on the rank-0 `get_confidence` `try/except` noting it matches
+- [x] Docstring/comment on the rank-0 `get_confidence` `try/except` noting it matches
   the fault-tolerant style of `emit_trace`/`_compute_quality`.
-- [ ] EXPERIMENTAL constant carries the mandated NOT-a-shipped-default comment.
+- [x] EXPERIMENTAL constant carries the mandated NOT-a-shipped-default comment.
 
 ## Success Criteria
 
-- [ ] `confidence_gate_threshold=None` (default) → `AssemblyResult.metadata` is
+- [x] `confidence_gate_threshold=None` (default) → `AssemblyResult.metadata` is
   bit-for-bit identical to pre-change (no `gate` key).
-- [ ] Threshold configured on a model without `ConfidenceField` → `QueryException` at
+- [x] Threshold configured on a model without `ConfidenceField` → `QueryException` at
   construction (mirrors hybrid validation).
-- [ ] Invalid `confidence_gate_mode` → `QueryException` at construction.
-- [ ] "refuse" + gate_score < threshold → zero pull records injected, push path
+- [x] Invalid `confidence_gate_mode` → `QueryException` at construction.
+- [x] "refuse" + gate_score < threshold → zero pull records injected, push path
   intact, `suppression_candidates` zeroed (no competitive suppression on refusal —
   asserted via no `update_confidence` calls), `metadata["gate"]["gated"] is True`,
   `applied True`.
-- [ ] "refuse" + `assess_quality=True` → `metadata["quality"].fok_score` is computed
+- [x] "refuse" + `assess_quality=True` → `metadata["quality"].fok_score` is computed
   over the found candidates (non-degenerate), proving the shared `all_pull_candidates`
   is NOT corrupted by the refuse clear (BLOCKER fix).
-- [ ] rank-0 `get_confidence` raising → `logger.warning` fires, gate treated as
+- [x] rank-0 `get_confidence` raising → `logger.warning` fires, gate treated as
   not-applied (`applied False`, `gate_score None`, `gated False`), records returned
   unchanged, no crash (CONCERN 1 guard).
-- [ ] "flag" mode's only effect is the `metadata["gate"]` annotation — records,
+- [x] "flag" mode's only effect is the `metadata["gate"]` annotation — records,
   suppression, and formatted output are byte-for-byte identical to threshold-None
   (CONCERN 2 scope boundary).
-- [ ] "flag" + gate_score < threshold → records retained, `metadata["gate"]["gated"]
+- [x] "flag" + gate_score < threshold → records retained, `metadata["gate"]["gated"]
   is True`, nothing dropped.
-- [ ] Empty pull_records with threshold configured → `applied False`,
+- [x] Empty pull_records with threshold configured → `applied False`,
   `gate_score None`, `gated False`, dict attached.
-- [ ] Gate is mode-agnostic: identical behavior asserted under composite and hybrid.
-- [ ] `EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD = 0.5` present with the required
+- [x] Gate is mode-agnostic: identical behavior asserted under composite and hybrid.
+- [x] `EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD = 0.5` present with the required
   comment; no `Defaults.CONFIDENCE_GATE_THRESHOLD` added; ctor default stays None.
-- [ ] Refusal-metric benchmark produces a number on the cat-5 slice with the
+- [x] Refusal-metric benchmark produces a number on the cat-5 slice with the
   cold-start caveat documented; runs only when the LoCoMo cache is present (skipped
   otherwise); the seeded-fixture unit test runs in CI.
-- [ ] Targeted tests pass:
+- [x] Targeted tests pass:
   `pytest tests/test_context_assembler.py tests/test_context_assembler_hybrid.py
   tests/test_confidence_field.py tests/benchmarks/test_confidence_gate_refusal.py`.
-- [ ] `scripts/ci-local.sh --fast` (or equivalent) passes before PR.
-- [ ] Valkey-safe: no Redis modules introduced (gate is a plain hash read via
+- [x] `scripts/ci-local.sh --fast` (or equivalent) passes before PR.
+- [x] Valkey-safe: no Redis modules introduced (gate is a plain hash read via
   `get_confidence`).
-- [ ] Documentation updated (`/do-docs`).
-- [ ] PR OPEN (not merged); PR description's final section explicitly flags that
+- [x] Documentation updated (`/do-docs`).
+- [x] PR OPEN (not merged); PR description's final section explicitly flags that
   `confidence_gate_threshold` ships with no default and
   `EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD` needs maintainer sign-off.
 
