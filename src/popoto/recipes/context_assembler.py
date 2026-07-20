@@ -132,6 +132,96 @@ HYBRID_CANDIDATE_MULTIPLIER = 5
 """candidate_limit = max_items * HYBRID_CANDIDATE_MULTIPLIER for per-signal
 retrieval in the hybrid pull path before RRF fusion."""
 
+# ---------------------------------------------------------------------------
+# Weighted / query-adaptive RRF fusion (issue #457) — experimental tuning
+# constants, in-code only, never user config (magic-number doctrine).
+#
+# Unweighted RRF gave the dense (vector) arm equal say with BM25. On
+# coreference-heavy multi-session dialogue (LoCoMo) the dense arm is
+# net-harmful — it retrieves topically-similar-but-wrong turns that displace
+# correct BM25 hits (hybrid R@1 0.1667 << lexical 0.2986). On paraphrastic
+# recall (LongMemEval-S) the dense arm is net-helpful (hybrid R@1 0.894 >
+# lexical 0.856). A single fixed vector weight cannot clear both bars, so the
+# weight is chosen per query from a cheap, deterministic, in-process lexical-
+# specificity signal — no ML, no new deps, Valkey-safe.
+# ---------------------------------------------------------------------------
+
+FUSION_WEIGHT_GRAPH = 1.0
+"""Graph (co-occurrence) arm RRF weight. Fixed — not adapted by query shape;
+only the keyword/vector balance is query-adaptive."""
+
+FUSION_REGIME_KEYWORD_LEAN = {"keyword": 1.0, "vector": 0.25}
+"""Weight regime for token/name/date-specific queries (LoCoMo's shape) —
+lean heavily on BM25, sharply down-weight the dense arm."""
+
+FUSION_REGIME_NEUTRAL = {"keyword": 1.0, "vector": 0.6}
+"""Weight regime for queries with a mixed lexical-specificity signal —
+mild down-weight of the dense arm relative to unweighted RRF."""
+
+FUSION_REGIME_VECTOR_LEAN = {"keyword": 0.6, "vector": 1.0}
+"""Weight regime for paraphrastic/semantic queries (LongMemEval-S's shape) —
+lean on the dense arm, mildly down-weight BM25."""
+
+FUSION_LEXICAL_SPECIFICITY_HIGH = 0.5
+"""Fraction of query tokens that are proper-noun/digit-date/quoted-token
+signals at or above which a query is classified token-specific
+(-> FUSION_REGIME_KEYWORD_LEAN)."""
+
+FUSION_LEXICAL_SPECIFICITY_LOW = 0.2
+"""Fraction of query tokens at or below which a query is classified
+paraphrastic (-> FUSION_REGIME_VECTOR_LEAN). Between LOW and HIGH ->
+FUSION_REGIME_NEUTRAL."""
+
+_FUSION_DATE_TOKEN_RE = re.compile(r"^\d{1,4}([/-]\d{1,2}){0,2}$")
+_FUSION_QUOTED_RE = re.compile(r"\"[^\"]+\"|'[^']+'")
+
+
+def _fusion_weights(query_text: str) -> dict:
+    """Query-adaptive RRF weight regime for the keyword/vector arms (#457).
+
+    Computes a lexical-specificity signal from the query tokens -- the
+    fraction that are (a) capitalized proper-noun-like tokens (not the
+    sentence-initial word), (b) digits/dates/years, or (c) quoted/exact-token
+    substrings -- and maps it to one of three discrete, in-code weight
+    regimes. High specificity (name/date/token-heavy queries, LoCoMo's shape)
+    leans BM25; low specificity (paraphrastic queries, LongMemEval-S's shape)
+    leans vector. Pure Python, deterministic, no ML, no server round-trip --
+    Valkey-safe.
+
+    Args:
+        query_text: The joined query-cue text passed to BM25/vector search.
+
+    Returns:
+        ``{"keyword": w, "vector": w}`` weight mapping suitable for merging
+        into the ``weights`` dict passed to ``Query.fuse()``. The graph arm
+        (``FUSION_WEIGHT_GRAPH``) is not query-adaptive and is applied
+        separately by the caller.
+    """
+    tokens = query_text.split()
+    if not tokens:
+        return dict(FUSION_REGIME_NEUTRAL)
+
+    quoted_matches = _FUSION_QUOTED_RE.findall(query_text)
+    specific = sum(len(m.strip("\"'").split()) for m in quoted_matches)
+    for idx, tok in enumerate(tokens):
+        bare = tok.strip(".,!?;:\"'")
+        if not bare:
+            continue
+        if bare.isdigit() or _FUSION_DATE_TOKEN_RE.match(bare):
+            specific += 1
+        elif idx > 0 and bare[0].isupper() and not bare.isupper():
+            # Capitalized, not sentence-initial, not an ALL-CAPS token —
+            # proper-noun-like (name/place).
+            specific += 1
+
+    fraction = specific / len(tokens)
+
+    if fraction >= FUSION_LEXICAL_SPECIFICITY_HIGH:
+        return dict(FUSION_REGIME_KEYWORD_LEAN)
+    if fraction <= FUSION_LEXICAL_SPECIFICITY_LOW:
+        return dict(FUSION_REGIME_VECTOR_LEAN)
+    return dict(FUSION_REGIME_NEUTRAL)
+
 
 # ---------------------------------------------------------------------------
 # AssemblyResult
@@ -1456,9 +1546,12 @@ class ContextAssembler:
             query = self.model_class.query
             if filters:
                 query = query.filter(**filters)
+            fusion_weights = _fusion_weights(query_text)
+            fusion_weights["graph"] = FUSION_WEIGHT_GRAPH
             candidates = query.fuse(
                 k=RRF_K,
                 limit=self.max_items * 2,
+                weights=fusion_weights,
                 **fuse_kwargs,
             )
         except Exception as e:
