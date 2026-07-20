@@ -16,6 +16,7 @@ import json
 import math
 import os
 import sys
+import time
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
@@ -31,6 +32,7 @@ from src.popoto.fields.existence_filter import ExistenceFilter  # noqa: E402
 from src.popoto.fields.field import Field  # noqa: E402
 from src.popoto.fields.shortcuts import (  # noqa: E402
     AutoKeyField,
+    FloatField,
     KeyField,
     SortedField,
 )
@@ -1121,3 +1123,207 @@ class TestPartitionAwareScoreProxy:
         assert len(good) == 2
         assert math.isclose(good[0], 0.6, abs_tol=1e-9)
         assert math.isclose(good[1], 0.9, abs_tol=1e-9)
+
+
+# ---------------------------------------------------------------------------
+# TestPartitionAwareDecayingScoreProxy (issue #474 — the decay branch)
+#
+# The subtle half of #474: a DecayingSortedField stores each member's
+# last_updated TIMESTAMP as the ZSET score, not its relevance. A naive
+# partition key-swap would surface ~1.7e9 timestamps as "relevance" (inverting
+# staleness and flattening spread). The fix decays the timestamp into relevance
+# via DECAY_SCORE_LUA on the partition ZSET. These tests exercise that branch
+# directly (the plain-SortedField tests above would mask the decay defect).
+# ---------------------------------------------------------------------------
+
+
+class DecayPartitionedMemory(Model):
+    """Partitioned DecayingSortedField with a base_score companion.
+
+    Distinct ``strength`` values give freshly-saved records distinct decayed
+    relevance scores (base * elapsed^-decay_rate, elapsed clamped to the
+    script's 0.01-day floor), so score_spread is non-zero without any aging.
+    """
+
+    memory_id = AutoKeyField()
+    agent_id = KeyField()
+    content = Field(type=str)
+    strength = FloatField(default=1.0)
+    # Explicit decay_rate=0.5 (not the 0.1 default) so aged-record tests reach
+    # sub-threshold decayed scores within a reasonable number of days:
+    # 40 days -> 40**-0.5 ≈ 0.158 < the 0.5 surfacing threshold.
+    relevance = DecayingSortedField(
+        partition_by="agent_id", base_score_field="strength", decay_rate=0.5
+    )
+    bloom = ExistenceFilter(
+        error_rate=0.01,
+        capacity=10_000,
+        fingerprint_fn=lambda inst: inst.content,
+    )
+
+
+class TestPartitionAwareDecayingScoreProxy:
+    @staticmethod
+    def _partition_key(agent_id):
+        return DecayingSortedField.get_sortedset_db_key(
+            DecayPartitionedMemory, "relevance", agent_id
+        ).redis_key
+
+    def _backdate(self, agent_id, members_days):
+        """Set each member's partition-ZSET score to now - days*86400."""
+        now = time.time()
+        POPOTO_REDIS_DB.zadd(
+            self._partition_key(agent_id),
+            {m.db_key.redis_key: now - 86400 * d for m, d in members_days},
+        )
+
+    def test_distinct_base_scores_give_nonzero_spread(self):
+        """Fresh partitioned decaying records with distinct base scores decay to
+        distinct relevances -> real per-record proxy scores and score_spread>0.
+        This is the primary #474 decay-branch repro (all 0.0 pre-fix)."""
+        recs = []
+        for i, w in enumerate((1.0, 3.0, 9.0)):
+            r = DecayPartitionedMemory(
+                agent_id="a", content=f"c{i}", strength=w
+            )
+            r.save()
+            recs.append(r)
+
+        proxy = _score_proxy_for_records(
+            recs,
+            model_class=DecayPartitionedMemory,
+            score_weights={"relevance": 1.0},
+        )
+        vals = sorted(proxy.values())
+        # Three distinct, strictly increasing, non-zero decayed scores.
+        assert len(vals) == 3
+        assert vals[0] > 0.0
+        assert vals[0] < vals[1] < vals[2]
+        # Decayed relevance scales linearly in base_score at equal freshness.
+        decay_rate = DecayPartitionedMemory._meta.fields["relevance"].decay_rate
+        factor = 0.01 ** (-decay_rate)
+        for got, w in zip(vals, (1.0, 3.0, 9.0)):
+            assert math.isclose(got, w * factor, rel_tol=1e-6)
+
+        spread, dist = _compute_score_spread(
+            recs,
+            model_class=DecayPartitionedMemory,
+            score_weights={"relevance": 1.0},
+        )
+        assert spread > 0.0
+        assert len(dist) == 3
+
+    def test_proxy_matches_top_by_decay(self):
+        """The proxy's decayed score agrees with Query.top_by_decay (both reuse
+        DECAY_SCORE_LUA on the same partition ZSET) — no drift."""
+        recs = []
+        for i, w in enumerate((1.0, 4.0)):
+            r = DecayPartitionedMemory(agent_id="a", content=f"c{i}", strength=w)
+            r.save()
+            recs.append(r)
+        # Age them so ordering is unambiguous.
+        self._backdate("a", [(recs[0], 1), (recs[1], 4)])
+
+        ranked = DecayPartitionedMemory.query.filter(agent_id="a").top_by_decay(
+            "relevance", n=10
+        )
+        proxy = _score_proxy_for_records(
+            recs,
+            model_class=DecayPartitionedMemory,
+            score_weights={"relevance": 1.0},
+        )
+        # top_by_decay returns instances in decayed-score order; the proxy's
+        # highest score must correspond to top_by_decay's first result.
+        best_key = max(proxy, key=proxy.get)
+        assert ranked[0].db_key.redis_key == best_key
+
+    def test_aged_records_are_stale_fresh_are_not(self):
+        """staleness_ratio regression (#474): records aged past the surfacing
+        threshold count as stale; freshly-saved records do not."""
+        aged = DecayPartitionedMemory(agent_id="a", content="old", strength=1.0)
+        aged.save()
+        fresh = DecayPartitionedMemory(agent_id="a", content="new", strength=1.0)
+        fresh.save()
+        # Age one record ~40 days: decayed = 40^-0.3 ≈ 0.35 < 0.5 threshold.
+        self._backdate("a", [(aged, 40)])
+
+        assembler = ContextAssembler(
+            model_class=DecayPartitionedMemory,
+            score_weights={"relevance": 1.0},
+            surfacing_threshold=0.5,
+        )
+        # All fresh -> staleness 0.0.
+        fresh_only = _staleness_ratio_wrapper(assembler, [fresh])
+        assert fresh_only == 0.0
+        # One of two aged past threshold -> staleness 0.5.
+        mixed = _staleness_ratio_wrapper(assembler, [aged, fresh])
+        assert mixed == 0.5
+
+    def test_fok_subthreshold_activation_for_aged_records(self):
+        """FOK subthreshold regression (#474): records whose decayed relevance
+        falls in (0, surfacing_threshold) drive subthreshold_activation > 0."""
+        recs = []
+        for i in range(3):
+            r = DecayPartitionedMemory(
+                agent_id="a", content=f"deployment{i}", strength=1.0
+            )
+            r.save()
+            recs.append(r)
+        # Age all three ~40 days -> decayed ≈ 0.35, inside (0, 0.5).
+        self._backdate("a", [(r, 40) for r in recs])
+
+        assembler = ContextAssembler(
+            model_class=DecayPartitionedMemory,
+            score_weights={"relevance": 1.0},
+            surfacing_threshold=0.5,
+        )
+        quality = assembler.assess(
+            query_cues={"content": "deployment0"},
+            partition_filters={"agent_id": "a"},
+        )
+        subthreshold = [
+            c["subthreshold_activation"] for c in quality.per_cue_fok.values()
+        ]
+        assert subthreshold
+        assert all(s > 0.0 for s in subthreshold)
+
+    def test_cyclic_field_uses_cyclic_decay_not_raw_timestamp(self):
+        """A CyclicDecayField is scored via CYCLIC_DECAY_LUA on the partition
+        ZSET, so the proxy returns a bounded decayed relevance -- NOT the raw
+        ~1.7e9 last_updated timestamp a naive ZSCORE would surface (#474)."""
+        recs = []
+        for i in range(2):
+            r = CyclicPartitionedMemory(agent_id="a", content=f"c{i}")
+            r.save()
+            recs.append(r)
+        proxy = _score_proxy_for_records(
+            recs,
+            model_class=CyclicPartitionedMemory,
+            score_weights={"urgency": 1.0},
+        )
+        assert len(proxy) == 2
+        # Decayed relevance is O(1), nowhere near an epoch timestamp.
+        for v in proxy.values():
+            assert 0.0 <= v < 1e6
+
+
+class CyclicPartitionedMemory(Model):
+    """Partitioned CyclicDecayField — exercises the CYCLIC_DECAY_LUA branch."""
+
+    memory_id = AutoKeyField()
+    agent_id = KeyField()
+    content = Field(type=str)
+    urgency = CyclicDecayField(partition_by="agent_id")
+
+
+def _staleness_ratio_wrapper(assembler, records):
+    """Call the module-level _staleness_ratio the way ContextAssembler does."""
+    from src.popoto.recipes.context_assembler import _staleness_ratio
+
+    return _staleness_ratio(
+        records,
+        model_class=assembler.model_class,
+        score_weights=assembler.score_weights,
+        surfacing_threshold=assembler.surfacing_threshold,
+        decaying_sorted_field_name="relevance",
+    )

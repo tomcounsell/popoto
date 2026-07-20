@@ -466,47 +466,67 @@ def _partition_scores_for_field(records, *, model_class, field_name, now=None):
 def _decayed_partition_scores(records, *, field, key_for_record, now=None):
     """Decayed relevance per record for a DecayingSortedField partition ZSET.
 
-    Reuses ``DECAY_SCORE_LUA`` (the same script :meth:`Query.top_by_decay`
-    runs) so the metacognitive proxy sees the same decayed relevance a query
-    would surface, rather than the raw last_updated timestamp stored as the
-    ZSET score. The script is evaluated once per distinct partition ZSET
-    (typically a single agent per proxy call). Read-only EVAL, Valkey-safe.
+    Reuses the same decay scripts :meth:`Query.top_by_decay` runs, so the
+    metacognitive proxy sees the same decayed relevance a query would surface,
+    rather than the raw last_updated timestamp stored as the ZSET score:
 
-    ``CyclicDecayField`` is scored with the base power-law decay too: the
-    cyclic cadence/pressure adjustment is a documented per-arm fast-follow and
-    is deliberately out of scope here (#464) -- using the base decay still
-    yields a real relevance signal instead of a raw timestamp.
+    * :class:`DecayingSortedField` -> ``DECAY_SCORE_LUA`` (1 KEY).
+    * :class:`CyclicDecayField` -> ``CYCLIC_DECAY_LUA`` (3 KEYS: the partition
+      ZSET plus its ``:cycles`` / ``:pressure`` companion hashes), so cyclic
+      cadence/pressure is honoured and the proxy agrees with ``top_by_decay``
+      for cyclic fields too.
+
+    The script is evaluated once per distinct partition ZSET (typically a
+    single agent per proxy call). Read-only ``EVAL``, Valkey-safe.
     """
+    from ..fields.cyclic_decay_field import CYCLIC_DECAY_LUA
     from ..fields.decaying_sorted_field import DECAY_SCORE_LUA
 
     if now is None:
         now = time.time()
 
     base_score_field = field.base_score_field or ""
+    is_cyclic = isinstance(field, CyclicDecayField)
 
-    # Group members by their partition ZSET so the script runs once per set.
-    members_by_zset = {}
-    for record in records:
-        zkey = key_for_record[_get_key(record)]
-        if zkey is not None:
-            members_by_zset.setdefault(zkey, True)
+    # Distinct partition ZSETs referenced by these records (typically one).
+    partition_keys = {
+        key_for_record[_get_key(r)]
+        for r in records
+        if key_for_record[_get_key(r)] is not None
+    }
 
     # (zset_key, member) -> decayed score
     decayed = {}
-    for zkey in members_by_zset:
+    for zkey in partition_keys:
         try:
             cardinality = POPOTO_REDIS_DB.zcard(zkey)
             if not cardinality:
                 continue
-            result = POPOTO_REDIS_DB.eval(
-                DECAY_SCORE_LUA,
-                1,  # number of KEYS
-                zkey,
-                str(now),
-                str(field.decay_rate),
-                str(cardinality),  # return every member's decayed score
-                base_score_field,
-            )
+            if is_cyclic:
+                # Companion hashes are the partition ZSET key plus a suffix
+                # (CyclicDecayField.get_cycles/pressure_hash_key), so they are
+                # derivable directly from the partition ZSET key.
+                result = POPOTO_REDIS_DB.eval(
+                    CYCLIC_DECAY_LUA,
+                    3,  # number of KEYS
+                    zkey,
+                    zkey + ":cycles",
+                    zkey + ":pressure",
+                    str(now),
+                    str(field.decay_rate),
+                    str(cardinality),  # return every member's decayed score
+                    base_score_field,
+                )
+            else:
+                result = POPOTO_REDIS_DB.eval(
+                    DECAY_SCORE_LUA,
+                    1,  # number of KEYS
+                    zkey,
+                    str(now),
+                    str(field.decay_rate),
+                    str(cardinality),  # return every member's decayed score
+                    base_score_field,
+                )
         except Exception as e:
             logger.warning(
                 "decayed partition score eval failed for %s: %s", zkey, e
@@ -1291,66 +1311,33 @@ class ContextAssembler:
         )
 
     def _injection_scores(self, records):
-        """Partition-aware composite-score proxy for the telemetry trace (#464).
+        """Composite-score proxy for the telemetry trace (#464).
 
-        Reads each record's score from the *partition-specific* sorted set via
-        ``get_partitioned_sortedset_db_key`` — so scores are correct for models
-        whose sorted fields declare ``partition_by`` (the common agent-memory
-        case). The shared metacognitive :func:`_score_proxy_for_records` helper
-        is now partition-aware too (#474) and additionally decays
-        ``DecayingSortedField`` timestamps into relevance; this trace scorer
-        keeps its lighter raw-ZSCORE form because per-arm/decayed decomposition
-        for the trace is the documented fast-follow. Read-only, pipelined
-        ZSCORE only — Valkey-safe, no temp keys.
+        Reconciled onto the shared metacognitive
+        :func:`_score_proxy_for_records` (#474), so the trace and the
+        metacognitive layer share one partition- **and** decay-aware
+        implementation -- eliminating the drift that produced #474. Scores are
+        read from the *partition-specific* sorted set, and
+        ``DecayingSortedField`` / ``CyclicDecayField`` timestamps are decayed
+        into relevance (previously the trace emitted raw ~1.7e9 timestamps for
+        decaying fields). Read-only and Valkey-safe.
 
         Only sorted-field-backed entries in ``score_weights`` contribute
         (ConfidenceField / WriteFilter scores are not persisted in a ZSET). In
         hybrid/lexical retrieval the fused RRF score is not persisted either, so
         the trace score reflects only ``score_weights`` sorted fields (0.0 when
-        none) — per-arm score decomposition is the documented fast-follow.
+        none) -- per-arm score decomposition is the documented fast-follow.
 
         Returns:
             ``{record_key: weighted_score}`` for every record in ``records``.
         """
         if not records or not self.score_weights:
             return {_get_key(r): 0.0 for r in records}
-
-        sorted_field_names = []
-        for field_name in self.score_weights:
-            try:
-                f = self.model_class._meta.fields.get(field_name)
-            except Exception:
-                f = None
-            if f is not None and isinstance(f, SortedFieldMixin):
-                sorted_field_names.append(field_name)
-
-        if not sorted_field_names:
-            return {_get_key(r): 0.0 for r in records}
-
-        pipe = POPOTO_REDIS_DB.pipeline()
-        plan = []  # parallel list of (record_key, weight) per queued ZSCORE
-        for field_name in sorted_field_names:
-            f = self.model_class._meta.fields[field_name]
-            weight = float(self.score_weights.get(field_name, 0.0))
-            for record in records:
-                try:
-                    zkey = f.get_partitioned_sortedset_db_key(
-                        record, field_name
-                    ).redis_key
-                    pipe.zscore(zkey, _get_key(record))
-                except Exception:
-                    pipe.zscore("", "")  # placeholder to keep plan aligned
-                plan.append((_get_key(record), weight))
-        raw = pipe.execute()
-
-        scores = {_get_key(r): 0.0 for r in records}
-        for (r_key, weight), val in zip(plan, raw):
-            if val is not None:
-                try:
-                    scores[r_key] += weight * float(val)
-                except (TypeError, ValueError):
-                    pass
-        return scores
+        return _score_proxy_for_records(
+            records,
+            model_class=self.model_class,
+            score_weights=self.score_weights,
+        )
 
     def _count_record_tokens(self, record):
         """Serialize ``record`` for the active output format and count tokens.
