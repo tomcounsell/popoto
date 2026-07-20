@@ -1244,7 +1244,7 @@ class TestPartitionAwareDecayingScoreProxy:
         aged.save()
         fresh = DecayPartitionedMemory(agent_id="a", content="new", strength=1.0)
         fresh.save()
-        # Age one record ~40 days: decayed = 40^-0.3 ≈ 0.35 < 0.5 threshold.
+        # Age one record ~40 days: decayed = 1.0 * 40**-0.5 ≈ 0.158 < 0.5.
         self._backdate("a", [(aged, 40)])
 
         assembler = ContextAssembler(
@@ -1269,7 +1269,7 @@ class TestPartitionAwareDecayingScoreProxy:
             )
             r.save()
             recs.append(r)
-        # Age all three ~40 days -> decayed ≈ 0.35, inside (0, 0.5).
+        # Age all three ~40 days -> decayed = 40**-0.5 ≈ 0.158, inside (0, 0.5).
         self._backdate("a", [(r, 40) for r in recs])
 
         assembler = ContextAssembler(
