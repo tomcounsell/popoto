@@ -309,9 +309,42 @@ print(quality.avg_confidence, quality.fok_score)
 
 See [Metacognitive Layer](metacognitive-layer.md) for full documentation of `RetrievalQuality`, all four metrics, the `assess()` method, and the `AdaptiveAssembler` keep/revert loop.
 
+## Confidence Gate
+
+An opt-in gate (issue #463) lets `assemble()` decline to inject a pull-path
+answer when it isn't confident enough, rather than always returning its best
+match regardless of quality. It is off by default and ships with **no shipped
+default threshold** — pass `confidence_gate_threshold` explicitly to enable
+it:
+
+```python
+assembler = ContextAssembler(
+    model_class=Memory,  # must declare a ConfidenceField
+    confidence_gate_threshold=0.5,
+    confidence_gate_mode="refuse",  # or "flag"
+)
+
+result = assembler.assemble(query_cues={"topic": "deployment"}, agent_id="agent-1")
+print(result.metadata["gate"])
+# {"applied": True, "gate_score": 0.42, "threshold": 0.5, "mode": "refuse", "gated": True}
+```
+
+The gate reads the rank-0 pull-path candidate's `ConfidenceField` value (via
+`get_confidence()`, always in `[0, 1]`), so it is mode-agnostic across
+composite, lexical, and hybrid retrieval. `"refuse"` drops all pull-path
+records when gated (push path untouched); `"flag"` retains records and only
+annotates the decision. Enabling the gate on a model without a
+`ConfidenceField`, or with an invalid `confidence_gate_mode`, raises
+`QueryException` at construction.
+
+See [Agent Memory overview → Confidence Gate](agent-memory.md#confidence-gate)
+for the full `metadata["gate"]` shape, the fault-tolerant `get_confidence()`
+failure path, and the no-default policy on `EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD`.
+
 ## See Also
 
 - [Metacognitive Layer](metacognitive-layer.md) — retrieval quality scoring, FOK, and adaptive weight tuning
+- [ConfidenceField](confidence-field.md) — the field the confidence gate reads via `get_confidence()`
 - [PolicyCache](policy-cache.md) — learned action selection (uses ContextAssembler for retrieval)
 - [Hybrid Retrieval](hybrid-retrieval.md) — BM25Field, EmbeddingField, and RRF fusion primitives
 - [CompositeScoreQuery](composite-score-query.md) — multi-factor retrieval (composite mode)

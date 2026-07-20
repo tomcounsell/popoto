@@ -252,4 +252,5 @@ for a walkthrough.
 - **DecayingSortedField**: Composite scoring via `priority = decay_score * confidence`
 - **CyclicDecayField**: Auto-discharge when confidence drops below threshold
 - **WriteFilterMixin**: Use confidence in `compute_filter_score()` for directed forgetting
+- **[ContextAssembler](context-assembler.md#confidence-gate)**: `get_confidence()` on the rank-0 pull-path candidate drives the opt-in confidence gate — `assemble()` can refuse or flag a low-confidence answer instead of injecting it
 - **AccessTrackerMixin**: Read tracking independent of confidence
