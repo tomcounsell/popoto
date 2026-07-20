@@ -13,6 +13,7 @@ Tests cover:
 """
 
 import json
+import math
 import os
 import sys
 
@@ -27,7 +28,11 @@ from src.popoto.fields.cyclic_decay_field import CyclicDecayField  # noqa: E402
 from src.popoto.fields.decaying_sorted_field import DecayingSortedField  # noqa: E402
 from src.popoto.fields.existence_filter import ExistenceFilter  # noqa: E402
 from src.popoto.fields.field import Field  # noqa: E402
-from src.popoto.fields.shortcuts import AutoKeyField, KeyField  # noqa: E402
+from src.popoto.fields.shortcuts import (  # noqa: E402
+    AutoKeyField,
+    KeyField,
+    SortedField,
+)
 from src.popoto.models.base import Model  # noqa: E402
 from src.popoto.recipes.context_assembler import (  # noqa: E402
     COMPETITIVE_SUPPRESSION_SIGNAL,
@@ -40,6 +45,8 @@ from src.popoto.recipes.context_assembler import (  # noqa: E402
     AssemblyResult,
     ContextAssembler,
     RetrievalQuality,
+    _compute_score_spread,
+    _score_proxy_for_records,
     format_natural,
     format_structured,
     format_xml,
@@ -1009,3 +1016,92 @@ class TestAssessWithNoSavedMemories:
         # The early-return path returns avg_confidence=0.5 when ConfidenceField is
         # present (neutral sentinel: no evidence against, but also none for).
         assert result.avg_confidence == 0.5
+
+
+# ---------------------------------------------------------------------------
+# TestPartitionAwareScoreProxy (issue #474)
+#
+# The shared `_score_proxy_for_records` / `RetrievalQuality` helper historically
+# read each record's score from the NON-partitioned sorted-set index key. Agent
+# memory models declare `partition_by` on their sorted fields, so the real
+# scores live in a partition-specific ZSET; the base key has zero members and
+# every ZSCORE returned None -> 0.0 for every record -> score_spread == 0.0.
+# ---------------------------------------------------------------------------
+
+
+class PlainSortedPartitionedMemory(Model):
+    """Plain (non-decaying) SortedField partitioned by agent_id.
+
+    A plain SortedField stores the field *value itself* as the ZSET score, so
+    distinct saved values must surface as distinct proxy scores once the helper
+    reads the partition-specific ZSET.
+    """
+
+    memory_id = AutoKeyField()
+    agent_id = KeyField()
+    content = Field(type=str)
+    relevance = SortedField(type=float, partition_by="agent_id")
+
+
+class TestPartitionAwareScoreProxy:
+    def _mk(self, agent_id="a", scores=(0.2, 0.6, 0.9)):
+        records = []
+        for i, s in enumerate(scores):
+            r = PlainSortedPartitionedMemory(
+                agent_id=agent_id, content=f"c{i}", relevance=s
+            )
+            r.save()
+            records.append(r)
+        return records
+
+    def test_proxy_reads_partition_specific_scores(self):
+        """`_score_proxy_for_records` returns the true per-record partition
+        scores for a partitioned SortedField (was all 0.0 pre-#474)."""
+        records = self._mk(scores=(0.2, 0.6, 0.9))
+        proxy = _score_proxy_for_records(
+            records,
+            model_class=PlainSortedPartitionedMemory,
+            score_weights={"relevance": 1.0},
+        )
+        vals = sorted(proxy.values())
+        assert len(vals) == 3
+        assert math.isclose(vals[0], 0.2, abs_tol=1e-9)
+        assert math.isclose(vals[1], 0.6, abs_tol=1e-9)
+        assert math.isclose(vals[2], 0.9, abs_tol=1e-9)
+
+    def test_score_spread_nonzero_for_partitioned_model(self):
+        """score_spread reflects real dispersion for a partitioned model."""
+        records = self._mk(scores=(0.2, 0.6, 0.9))
+        spread, dist = _compute_score_spread(
+            records,
+            model_class=PlainSortedPartitionedMemory,
+            score_weights={"relevance": 1.0},
+        )
+        assert spread > 0.0
+        assert len(dist) == 3
+
+    def test_single_partition_record_value_is_the_score(self):
+        """Single record -> proxy equals its stored value (sanity)."""
+        records = self._mk(scores=(0.42,))
+        proxy = _score_proxy_for_records(
+            records,
+            model_class=PlainSortedPartitionedMemory,
+            score_weights={"relevance": 1.0},
+        )
+        assert math.isclose(list(proxy.values())[0], 0.42, abs_tol=1e-9)
+
+    def test_missing_partition_value_does_not_corrupt_others(self):
+        """A record missing its partition field scores 0.0 without crashing or
+        corrupting the other records' scores."""
+        records = self._mk(scores=(0.6, 0.9))
+        orphan = PlainSortedPartitionedMemory(content="orphan", relevance=0.5)
+        # deliberately do NOT set agent_id / do not save -> partition missing
+        proxy = _score_proxy_for_records(
+            records + [orphan],
+            model_class=PlainSortedPartitionedMemory,
+            score_weights={"relevance": 1.0},
+        )
+        good = sorted(v for v in proxy.values() if v > 0)
+        assert len(good) == 2
+        assert math.isclose(good[0], 0.6, abs_tol=1e-9)
+        assert math.isclose(good[1], 0.9, abs_tol=1e-9)
