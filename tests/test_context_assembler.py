@@ -13,8 +13,10 @@ Tests cover:
 """
 
 import json
+import math
 import os
 import sys
+import time
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
@@ -23,11 +25,17 @@ import pytest  # noqa: E402
 
 from src.popoto.fields.co_occurrence_field import CoOccurrenceField  # noqa: E402
 from src.popoto.fields.confidence_field import ConfidenceField  # noqa: E402
+from src.popoto.fields.constants import Defaults  # noqa: E402
 from src.popoto.fields.cyclic_decay_field import CyclicDecayField  # noqa: E402
 from src.popoto.fields.decaying_sorted_field import DecayingSortedField  # noqa: E402
 from src.popoto.fields.existence_filter import ExistenceFilter  # noqa: E402
 from src.popoto.fields.field import Field  # noqa: E402
-from src.popoto.fields.shortcuts import AutoKeyField, KeyField  # noqa: E402
+from src.popoto.fields.shortcuts import (  # noqa: E402
+    AutoKeyField,
+    FloatField,
+    KeyField,
+    SortedField,
+)
 from src.popoto.models.base import Model  # noqa: E402
 from src.popoto.recipes.context_assembler import (  # noqa: E402
     COMPETITIVE_SUPPRESSION_SIGNAL,
@@ -40,6 +48,8 @@ from src.popoto.recipes.context_assembler import (  # noqa: E402
     AssemblyResult,
     ContextAssembler,
     RetrievalQuality,
+    _compute_score_spread,
+    _score_proxy_for_records,
     format_natural,
     format_structured,
     format_xml,
@@ -799,9 +809,19 @@ class TestRetrievalQualityAssembler:
         # ((0.5+0.9)/2 + (0.5+0.5)/2 + (0.5+0.3)/2) / 3
         #   = (0.7 + 0.5 + 0.4) / 3 = 1.6 / 3 = 0.5333...
         assert self._isclose(quality.avg_confidence, 1.6 / 3)
+        # score_spread stays 0.0 -- but now for the RIGHT reason (#474). The
+        # three records are equally fresh, so their decayed relevance scores
+        # are identical (see score_distribution below) -> zero dispersion.
+        # Pre-#474 this was 0.0 because the proxy read the empty non-partitioned
+        # key and every record scored 0.0.
         assert self._isclose(quality.score_spread, 0.0)
         assert self._isclose(quality.fok_score, 0.64)
-        assert self._isclose(quality.staleness_ratio, 1.0)
+        # staleness_ratio: 1.0 -> 0.0 (#474). Pre-fix, the staleness loop read
+        # the non-partitioned base key, got None for every partitioned record
+        # and counted them all "stale". The partition-aware helper now reads the
+        # decayed relevance (~3.98, see below), which is well above the 0.5
+        # surfacing_threshold, so these freshly-saved records are NOT stale.
+        assert self._isclose(quality.staleness_ratio, 0.0)
 
         # Per-cue components also hardcoded.
         assert set(quality.per_cue_fok.keys()) == {"alpha", "beta"}
@@ -812,12 +832,17 @@ class TestRetrievalQualityAssembler:
             assert self._isclose(comp["subthreshold_activation"], 0.0)
             assert self._isclose(comp["component_score"], 0.64)
 
-        # score_distribution contents: three zero-valued proxy scores
-        # (decayed to 0 because DecayingSortedField starts at 0 score on a
-        # freshly saved record — the deterministic fixture relies on this).
+        # score_distribution contents (#474): three equal, non-zero decayed
+        # relevance scores. DecayingSortedField stores the last_updated
+        # timestamp as the ZSET score; the partition-aware proxy decays it via
+        # DECAY_SCORE_LUA (base_score 1.0, default decay_rate 0.3). All three
+        # records are freshly saved, so elapsed time clamps to the script's
+        # 0.01-day floor and each decays to 0.01**(-0.3) ≈ 3.981. Pre-#474 the
+        # proxy read the empty non-partitioned key and reported 0.0 for all.
+        expected_decayed = 0.01 ** (-Defaults.DECAY_RATE)
         assert len(quality.score_distribution) == 3
         for s in quality.score_distribution:
-            assert self._isclose(s, 0.0)
+            assert self._isclose(s, expected_decayed)
 
 
 # ---------------------------------------------------------------------------
@@ -1009,3 +1034,296 @@ class TestAssessWithNoSavedMemories:
         # The early-return path returns avg_confidence=0.5 when ConfidenceField is
         # present (neutral sentinel: no evidence against, but also none for).
         assert result.avg_confidence == 0.5
+
+
+# ---------------------------------------------------------------------------
+# TestPartitionAwareScoreProxy (issue #474)
+#
+# The shared `_score_proxy_for_records` / `RetrievalQuality` helper historically
+# read each record's score from the NON-partitioned sorted-set index key. Agent
+# memory models declare `partition_by` on their sorted fields, so the real
+# scores live in a partition-specific ZSET; the base key has zero members and
+# every ZSCORE returned None -> 0.0 for every record -> score_spread == 0.0.
+# ---------------------------------------------------------------------------
+
+
+class PlainSortedPartitionedMemory(Model):
+    """Plain (non-decaying) SortedField partitioned by agent_id.
+
+    A plain SortedField stores the field *value itself* as the ZSET score, so
+    distinct saved values must surface as distinct proxy scores once the helper
+    reads the partition-specific ZSET.
+    """
+
+    memory_id = AutoKeyField()
+    agent_id = KeyField()
+    content = Field(type=str)
+    relevance = SortedField(type=float, partition_by="agent_id")
+
+
+class TestPartitionAwareScoreProxy:
+    def _mk(self, agent_id="a", scores=(0.2, 0.6, 0.9)):
+        records = []
+        for i, s in enumerate(scores):
+            r = PlainSortedPartitionedMemory(
+                agent_id=agent_id, content=f"c{i}", relevance=s
+            )
+            r.save()
+            records.append(r)
+        return records
+
+    def test_proxy_reads_partition_specific_scores(self):
+        """`_score_proxy_for_records` returns the true per-record partition
+        scores for a partitioned SortedField (was all 0.0 pre-#474)."""
+        records = self._mk(scores=(0.2, 0.6, 0.9))
+        proxy = _score_proxy_for_records(
+            records,
+            model_class=PlainSortedPartitionedMemory,
+            score_weights={"relevance": 1.0},
+        )
+        vals = sorted(proxy.values())
+        assert len(vals) == 3
+        assert math.isclose(vals[0], 0.2, abs_tol=1e-9)
+        assert math.isclose(vals[1], 0.6, abs_tol=1e-9)
+        assert math.isclose(vals[2], 0.9, abs_tol=1e-9)
+
+    def test_score_spread_nonzero_for_partitioned_model(self):
+        """score_spread reflects real dispersion for a partitioned model."""
+        records = self._mk(scores=(0.2, 0.6, 0.9))
+        spread, dist = _compute_score_spread(
+            records,
+            model_class=PlainSortedPartitionedMemory,
+            score_weights={"relevance": 1.0},
+        )
+        assert spread > 0.0
+        assert len(dist) == 3
+
+    def test_single_partition_record_value_is_the_score(self):
+        """Single record -> proxy equals its stored value (sanity)."""
+        records = self._mk(scores=(0.42,))
+        proxy = _score_proxy_for_records(
+            records,
+            model_class=PlainSortedPartitionedMemory,
+            score_weights={"relevance": 1.0},
+        )
+        assert math.isclose(list(proxy.values())[0], 0.42, abs_tol=1e-9)
+
+    def test_missing_partition_value_does_not_corrupt_others(self):
+        """A record missing its partition field scores 0.0 without crashing or
+        corrupting the other records' scores."""
+        records = self._mk(scores=(0.6, 0.9))
+        orphan = PlainSortedPartitionedMemory(content="orphan", relevance=0.5)
+        # deliberately do NOT set agent_id / do not save -> partition missing
+        proxy = _score_proxy_for_records(
+            records + [orphan],
+            model_class=PlainSortedPartitionedMemory,
+            score_weights={"relevance": 1.0},
+        )
+        good = sorted(v for v in proxy.values() if v > 0)
+        assert len(good) == 2
+        assert math.isclose(good[0], 0.6, abs_tol=1e-9)
+        assert math.isclose(good[1], 0.9, abs_tol=1e-9)
+
+
+# ---------------------------------------------------------------------------
+# TestPartitionAwareDecayingScoreProxy (issue #474 — the decay branch)
+#
+# The subtle half of #474: a DecayingSortedField stores each member's
+# last_updated TIMESTAMP as the ZSET score, not its relevance. A naive
+# partition key-swap would surface ~1.7e9 timestamps as "relevance" (inverting
+# staleness and flattening spread). The fix decays the timestamp into relevance
+# via DECAY_SCORE_LUA on the partition ZSET. These tests exercise that branch
+# directly (the plain-SortedField tests above would mask the decay defect).
+# ---------------------------------------------------------------------------
+
+
+class DecayPartitionedMemory(Model):
+    """Partitioned DecayingSortedField with a base_score companion.
+
+    Distinct ``strength`` values give freshly-saved records distinct decayed
+    relevance scores (base * elapsed^-decay_rate, elapsed clamped to the
+    script's 0.01-day floor), so score_spread is non-zero without any aging.
+    """
+
+    memory_id = AutoKeyField()
+    agent_id = KeyField()
+    content = Field(type=str)
+    strength = FloatField(default=1.0)
+    # Explicit decay_rate=0.5 (not the 0.1 default) so aged-record tests reach
+    # sub-threshold decayed scores within a reasonable number of days:
+    # 40 days -> 40**-0.5 ≈ 0.158 < the 0.5 surfacing threshold.
+    relevance = DecayingSortedField(
+        partition_by="agent_id", base_score_field="strength", decay_rate=0.5
+    )
+    bloom = ExistenceFilter(
+        error_rate=0.01,
+        capacity=10_000,
+        fingerprint_fn=lambda inst: inst.content,
+    )
+
+
+class TestPartitionAwareDecayingScoreProxy:
+    @staticmethod
+    def _partition_key(agent_id):
+        return DecayingSortedField.get_sortedset_db_key(
+            DecayPartitionedMemory, "relevance", agent_id
+        ).redis_key
+
+    def _backdate(self, agent_id, members_days):
+        """Set each member's partition-ZSET score to now - days*86400."""
+        now = time.time()
+        POPOTO_REDIS_DB.zadd(
+            self._partition_key(agent_id),
+            {m.db_key.redis_key: now - 86400 * d for m, d in members_days},
+        )
+
+    def test_distinct_base_scores_give_nonzero_spread(self):
+        """Fresh partitioned decaying records with distinct base scores decay to
+        distinct relevances -> real per-record proxy scores and score_spread>0.
+        This is the primary #474 decay-branch repro (all 0.0 pre-fix)."""
+        recs = []
+        for i, w in enumerate((1.0, 3.0, 9.0)):
+            r = DecayPartitionedMemory(
+                agent_id="a", content=f"c{i}", strength=w
+            )
+            r.save()
+            recs.append(r)
+
+        proxy = _score_proxy_for_records(
+            recs,
+            model_class=DecayPartitionedMemory,
+            score_weights={"relevance": 1.0},
+        )
+        vals = sorted(proxy.values())
+        # Three distinct, strictly increasing, non-zero decayed scores.
+        assert len(vals) == 3
+        assert vals[0] > 0.0
+        assert vals[0] < vals[1] < vals[2]
+        # Decayed relevance scales linearly in base_score at equal freshness.
+        decay_rate = DecayPartitionedMemory._meta.fields["relevance"].decay_rate
+        factor = 0.01 ** (-decay_rate)
+        for got, w in zip(vals, (1.0, 3.0, 9.0)):
+            assert math.isclose(got, w * factor, rel_tol=1e-6)
+
+        spread, dist = _compute_score_spread(
+            recs,
+            model_class=DecayPartitionedMemory,
+            score_weights={"relevance": 1.0},
+        )
+        assert spread > 0.0
+        assert len(dist) == 3
+
+    def test_proxy_matches_top_by_decay(self):
+        """The proxy's decayed score agrees with Query.top_by_decay (both reuse
+        DECAY_SCORE_LUA on the same partition ZSET) — no drift."""
+        recs = []
+        for i, w in enumerate((1.0, 4.0)):
+            r = DecayPartitionedMemory(agent_id="a", content=f"c{i}", strength=w)
+            r.save()
+            recs.append(r)
+        # Age them so ordering is unambiguous.
+        self._backdate("a", [(recs[0], 1), (recs[1], 4)])
+
+        ranked = DecayPartitionedMemory.query.filter(agent_id="a").top_by_decay(
+            "relevance", n=10
+        )
+        proxy = _score_proxy_for_records(
+            recs,
+            model_class=DecayPartitionedMemory,
+            score_weights={"relevance": 1.0},
+        )
+        # top_by_decay returns instances in decayed-score order; the proxy's
+        # highest score must correspond to top_by_decay's first result.
+        best_key = max(proxy, key=proxy.get)
+        assert ranked[0].db_key.redis_key == best_key
+
+    def test_aged_records_are_stale_fresh_are_not(self):
+        """staleness_ratio regression (#474): records aged past the surfacing
+        threshold count as stale; freshly-saved records do not."""
+        aged = DecayPartitionedMemory(agent_id="a", content="old", strength=1.0)
+        aged.save()
+        fresh = DecayPartitionedMemory(agent_id="a", content="new", strength=1.0)
+        fresh.save()
+        # Age one record ~40 days: decayed = 1.0 * 40**-0.5 ≈ 0.158 < 0.5.
+        self._backdate("a", [(aged, 40)])
+
+        assembler = ContextAssembler(
+            model_class=DecayPartitionedMemory,
+            score_weights={"relevance": 1.0},
+            surfacing_threshold=0.5,
+        )
+        # All fresh -> staleness 0.0.
+        fresh_only = _staleness_ratio_wrapper(assembler, [fresh])
+        assert fresh_only == 0.0
+        # One of two aged past threshold -> staleness 0.5.
+        mixed = _staleness_ratio_wrapper(assembler, [aged, fresh])
+        assert mixed == 0.5
+
+    def test_fok_subthreshold_activation_for_aged_records(self):
+        """FOK subthreshold regression (#474): records whose decayed relevance
+        falls in (0, surfacing_threshold) drive subthreshold_activation > 0."""
+        recs = []
+        for i in range(3):
+            r = DecayPartitionedMemory(
+                agent_id="a", content=f"deployment{i}", strength=1.0
+            )
+            r.save()
+            recs.append(r)
+        # Age all three ~40 days -> decayed = 40**-0.5 ≈ 0.158, inside (0, 0.5).
+        self._backdate("a", [(r, 40) for r in recs])
+
+        assembler = ContextAssembler(
+            model_class=DecayPartitionedMemory,
+            score_weights={"relevance": 1.0},
+            surfacing_threshold=0.5,
+        )
+        quality = assembler.assess(
+            query_cues={"content": "deployment0"},
+            partition_filters={"agent_id": "a"},
+        )
+        subthreshold = [
+            c["subthreshold_activation"] for c in quality.per_cue_fok.values()
+        ]
+        assert subthreshold
+        assert all(s > 0.0 for s in subthreshold)
+
+    def test_cyclic_field_uses_cyclic_decay_not_raw_timestamp(self):
+        """A CyclicDecayField is scored via CYCLIC_DECAY_LUA on the partition
+        ZSET, so the proxy returns a bounded decayed relevance -- NOT the raw
+        ~1.7e9 last_updated timestamp a naive ZSCORE would surface (#474)."""
+        recs = []
+        for i in range(2):
+            r = CyclicPartitionedMemory(agent_id="a", content=f"c{i}")
+            r.save()
+            recs.append(r)
+        proxy = _score_proxy_for_records(
+            recs,
+            model_class=CyclicPartitionedMemory,
+            score_weights={"urgency": 1.0},
+        )
+        assert len(proxy) == 2
+        # Decayed relevance is O(1), nowhere near an epoch timestamp.
+        for v in proxy.values():
+            assert 0.0 <= v < 1e6
+
+
+class CyclicPartitionedMemory(Model):
+    """Partitioned CyclicDecayField — exercises the CYCLIC_DECAY_LUA branch."""
+
+    memory_id = AutoKeyField()
+    agent_id = KeyField()
+    content = Field(type=str)
+    urgency = CyclicDecayField(partition_by="agent_id")
+
+
+def _staleness_ratio_wrapper(assembler, records):
+    """Call the module-level _staleness_ratio the way ContextAssembler does."""
+    from src.popoto.recipes.context_assembler import _staleness_ratio
+
+    return _staleness_ratio(
+        records,
+        model_class=assembler.model_class,
+        score_weights=assembler.score_weights,
+        surfacing_threshold=assembler.surfacing_threshold,
+        decaying_sorted_field_name="relevance",
+    )
