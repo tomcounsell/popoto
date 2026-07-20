@@ -130,7 +130,7 @@ The top judged-accuracy systems win multi-hop via **entity-graph traversal** (Ze
 
 ### 3.3 LLM-based extraction & structured memory writes
 
-Competitors' big lever is *structuring unstructured chat into semantic memory* on write (Memori explicitly attributes its lead to this). Popoto's default `extract_memories()` is a **sentence-splitting heuristic** — the docs themselves flag this as the place to override with an LLM extractor. A first-class, evaluated LLM-extraction path (entities, typed facts, importance scoring on write) likely moves both retrieval and judged accuracy materially, and directly improves SIQ/MDF above.
+Competitors' big lever is *structuring unstructured chat into semantic memory* on write (Memori explicitly attributes its lead to this). Popoto's default `extract_memories()` is still a **sentence-splitting heuristic** for backward compatibility, but as of #461/PR #481 it is now pluggable: `SubconsciousMemory` accepts an `extraction_provider` (see [LLM Memory Extraction](../features/llm-memory-extraction.md)) that can return entities, typed facts, and importance/confidence scoring on write, feeding `CoOccurrenceField` and `ConfidenceField` directly. The built-in `ClaudeExtractionProvider` covers the LLM-extraction mechanism; **judged-accuracy/recall evaluation of it vs. the heuristic default is still outstanding**, tracked under epic #456 Track B, since the existing benchmark harness has no extraction-provider seam yet. That evaluation -- not the mechanism -- is what remains to confirm the SIQ/MDF lift this section predicted.
 
 ### 3.4 Temporal reasoning (hardest category industry-wide)
 
