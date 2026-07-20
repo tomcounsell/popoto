@@ -47,6 +47,9 @@ logger = logging.getLogger("POPOTO.extraction")
 EXTRACTION_MODEL = "claude-opus-4-8"
 """Pinned model for Claude-based extraction. Not user-configurable."""
 
+EXTRACTION_MAX_TOKENS = 4096
+"""Pinned max_tokens for Claude-based extraction. Not user-configurable."""
+
 EXTRACTION_PROMPT = """You are a memory-extraction engine for an AI agent. Given a \
 block of text (typically an LLM's response during a conversation), extract the \
 discrete, independently-useful facts it contains.
@@ -156,7 +159,7 @@ class ClaudeExtractionProvider(AbstractExtractionProvider):
         try:
             response = self._client.messages.create(
                 model=EXTRACTION_MODEL,
-                max_tokens=4096,
+                max_tokens=EXTRACTION_MAX_TOKENS,
                 system=EXTRACTION_PROMPT,
                 messages=[{"role": "user", "content": text}],
                 output_config={
