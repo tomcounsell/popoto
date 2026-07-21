@@ -2208,6 +2208,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#graph-traversal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Graph Traversal
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#tuning-constants_1" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5065,6 +5076,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#graph-traversal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Graph Traversal
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#tuning-constants_1" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -7028,7 +7050,8 @@ should not count as a user-originated read.</p>
 <a id="__codelineno-43-13" name="__codelineno-43-13" href="#__codelineno-43-13"></a>    <span class="n">retrieval_mode</span><span class="o">=</span><span class="s2">&quot;auto&quot;</span><span class="p">,</span>    <span class="c1"># &quot;auto&quot; (default), &quot;hybrid&quot;, or &quot;lexical&quot;</span>
 <a id="__codelineno-43-14" name="__codelineno-43-14" href="#__codelineno-43-14"></a>    <span class="n">confidence_gate_threshold</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>  <span class="c1"># float | None (default). See &quot;Confidence Gate&quot; below.</span>
 <a id="__codelineno-43-15" name="__codelineno-43-15" href="#__codelineno-43-15"></a>    <span class="n">confidence_gate_mode</span><span class="o">=</span><span class="s2">&quot;refuse&quot;</span><span class="p">,</span>   <span class="c1"># &quot;refuse&quot; (default) or &quot;flag&quot;</span>
-<a id="__codelineno-43-16" name="__codelineno-43-16" href="#__codelineno-43-16"></a><span class="p">)</span>
+<a id="__codelineno-43-16" name="__codelineno-43-16" href="#__codelineno-43-16"></a>    <span class="n">graph_traversal_relationship_fields</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>  <span class="c1"># list[str] | None (default). See &quot;Graph Traversal&quot; below.</span>
+<a id="__codelineno-43-17" name="__codelineno-43-17" href="#__codelineno-43-17"></a><span class="p">)</span>
 </code></pre></div>
 <p>The assembler auto-detects which fields are present on <code>model_class</code> and adapts the pipeline accordingly. Models without <code>ExistenceFilter</code> skip the pre-check; models without <code>CoOccurrenceField</code> skip propagation; models without <code>CyclicDecayField</code> skip the push path entirely.</p>
 <p><strong>Raises</strong> <code>QueryException</code> at construction if <code>retrieval_mode="hybrid"</code> is
@@ -7258,6 +7281,51 @@ It is explicitly <em>not</em> <code>Defaults.CONFIDENCE_GATE_THRESHOLD</code> �
 <code>Defaults</code> entry exists — and it is not used as the ctor default.  Promoting
 it to a real default is a policy-level decision requiring maintainer
 sign-off (tracked in <a href="https://github.com/tomcounsell/popoto/issues/463">issue #463</a>).</p>
+<h3 id="graph-traversal">Graph Traversal<a class="headerlink" href="#graph-traversal" title="Permanent link">&para;</a></h3>
+<p>An opt-in extension (issue #462) of the existing CoOccurrence graph arm
+(the "CoOccurrence propagation" step in the <a href="#pipeline">Pipeline</a> diagram
+above). It is off by default — pass <code>graph_traversal_relationship_fields</code>
+to enable it; omitting it leaves <code>assemble()</code> byte-for-byte identical to
+before this feature.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-52-1" name="__codelineno-52-1" href="#__codelineno-52-1"></a><span class="n">assembler</span> <span class="o">=</span> <span class="n">ContextAssembler</span><span class="p">(</span>
+<a id="__codelineno-52-2" name="__codelineno-52-2" href="#__codelineno-52-2"></a>    <span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span>
+<a id="__codelineno-52-3" name="__codelineno-52-3" href="#__codelineno-52-3"></a>    <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;relevance&quot;</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">,</span> <span class="s2">&quot;confidence&quot;</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">},</span>
+<a id="__codelineno-52-4" name="__codelineno-52-4" href="#__codelineno-52-4"></a>    <span class="n">graph_traversal_relationship_fields</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;related_memory&quot;</span><span class="p">],</span>
+<a id="__codelineno-52-5" name="__codelineno-52-5" href="#__codelineno-52-5"></a><span class="p">)</span>
+<a id="__codelineno-52-6" name="__codelineno-52-6" href="#__codelineno-52-6"></a>
+<a id="__codelineno-52-7" name="__codelineno-52-7" href="#__codelineno-52-7"></a><span class="n">result</span> <span class="o">=</span> <span class="n">assembler</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span><span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;topic&quot;</span><span class="p">:</span> <span class="s2">&quot;deployment&quot;</span><span class="p">},</span> <span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Mechanism.</strong> Where the pipeline previously called
+<code>CoOccurrenceField.propagate()</code> directly, it now routes through
+<a href="https://github.com/tomcounsell/popoto/blob/main/src/popoto/recipes/graph_traversal.py"><code>popoto.recipes.graph_traversal.traverse()</code></a>,
+which:</p>
+<ol>
+<li>Runs the existing <code>CoOccurrenceField.propagate()</code> BFS (unchanged).</li>
+<li>Additionally walks each named <code>Relationship</code> field 1-2 hops, in both
+   directions (a node's own relationship value, and other nodes pointing at
+   it via the field's <code>$RelationshipF:...</code> index Set), with fan-out bounded
+   per hop via <code>SRANDMEMBER</code>.</li>
+<li>Merges both signals (max-weight-wins per PK) and caps the result to a
+   fixed <code>max_candidates</code> <em>before</em> any instance is loaded, so traversal
+   cost stays bounded independent of graph fan-out.</li>
+<li>If the model declares a <code>ConfidenceField</code> and/or <code>DecayingSortedField</code>,
+   multiplies each surviving candidate's weight by its own confidence/decay
+   state, so a low-confidence or heavily decayed node is less likely to
+   survive into the merged candidate set than a fresh, corroborated one.</li>
+</ol>
+<p><strong><code>graph_traversal_relationship_fields</code></strong> must name <strong>self-referential</strong>
+<code>Relationship</code> field(s) — a field on <code>model_class</code> whose <code>model</code> is
+<code>model_class</code> itself (e.g. a <code>Memory.related_memory = Relationship(model=Memory)</code>
+edge). A relationship pointing at a different model class is ignored with a
+logged warning at construction time (traversal degrades to the
+CoOccurrence-only signal, not an error), since <code>ContextAssembler</code> treats its
+candidate set as homogeneous.</p>
+<p><strong>Evaluation status.</strong> This slice implements and unit-tests the traversal
+mechanism (<code>tests/test_graph_traversal.py</code>). The LoCoMo multi-hop slice and
+association-recall benchmark scenarios called for in issue #462 are tracked
+as <a href="https://github.com/tomcounsell/popoto/issues/484">issue #484</a> rather
+than run here — see the note in
+<a href="../../plans/benchmarking_strategy_2026-07/#32-structuredgraph-memory-where-zep-hindsight-byterover-lead">the benchmarking strategy doc</a>.</p>
 <h3 id="tuning-constants_1">Tuning Constants<a class="headerlink" href="#tuning-constants_1" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
@@ -7295,6 +7363,10 @@ sign-off (tracked in <a href="https://github.com/tomcounsell/popoto/issues/463">
 </tr>
 </tbody>
 </table>
+<p><code>popoto/recipes/graph_traversal.py</code> defines its own experimental constants
+(<code>RELATIONSHIP_HOP_DECAY</code>, <code>RELATIONSHIP_HOP_FANOUT_LIMIT</code>,
+<code>GRAPH_TRAVERSAL_MAX_CANDIDATES</code>, <code>ADMISSION_THRESHOLD</code>) — in-code magic
+numbers, not user-facing config, matching the convention above.</p>
 <h3 id="graceful-degradation_1">Graceful Degradation<a class="headerlink" href="#graceful-degradation_1" title="Permanent link">&para;</a></h3>
 <p>ContextAssembler adapts to whatever fields are present on the model class:</p>
 <table>
@@ -7343,13 +7415,13 @@ sign-off (tracked in <a href="https://github.com/tomcounsell/popoto/issues/463">
 <p><strong>Centralized tuning.</strong> All ~24 behavioral constants are consolidated in <code>Defaults</code>, importable from the package root. Override globally or per-field — explicit kwargs always win.</p>
 </li>
 </ol>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-52-1" name="__codelineno-52-1" href="#__codelineno-52-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Defaults</span>
-<a id="__codelineno-52-2" name="__codelineno-52-2" href="#__codelineno-52-2"></a>
-<a id="__codelineno-52-3" name="__codelineno-52-3" href="#__codelineno-52-3"></a><span class="c1"># Global override — all DecayingSortedFields default to 0.7</span>
-<a id="__codelineno-52-4" name="__codelineno-52-4" href="#__codelineno-52-4"></a><span class="n">Defaults</span><span class="o">.</span><span class="n">DECAY_RATE</span> <span class="o">=</span> <span class="mf">0.7</span>
-<a id="__codelineno-52-5" name="__codelineno-52-5" href="#__codelineno-52-5"></a>
-<a id="__codelineno-52-6" name="__codelineno-52-6" href="#__codelineno-52-6"></a><span class="c1"># Per-field override still wins</span>
-<a id="__codelineno-52-7" name="__codelineno-52-7" href="#__codelineno-52-7"></a><span class="n">relevance</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span><span class="n">decay_rate</span><span class="o">=</span><span class="mf">0.3</span><span class="p">)</span>  <span class="c1"># uses 0.3, not 0.7</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-53-1" name="__codelineno-53-1" href="#__codelineno-53-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Defaults</span>
+<a id="__codelineno-53-2" name="__codelineno-53-2" href="#__codelineno-53-2"></a>
+<a id="__codelineno-53-3" name="__codelineno-53-3" href="#__codelineno-53-3"></a><span class="c1"># Global override — all DecayingSortedFields default to 0.7</span>
+<a id="__codelineno-53-4" name="__codelineno-53-4" href="#__codelineno-53-4"></a><span class="n">Defaults</span><span class="o">.</span><span class="n">DECAY_RATE</span> <span class="o">=</span> <span class="mf">0.7</span>
+<a id="__codelineno-53-5" name="__codelineno-53-5" href="#__codelineno-53-5"></a>
+<a id="__codelineno-53-6" name="__codelineno-53-6" href="#__codelineno-53-6"></a><span class="c1"># Per-field override still wins</span>
+<a id="__codelineno-53-7" name="__codelineno-53-7" href="#__codelineno-53-7"></a><span class="n">relevance</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span><span class="n">decay_rate</span><span class="o">=</span><span class="mf">0.3</span><span class="p">)</span>  <span class="c1"># uses 0.3, not 0.7</span>
 </code></pre></div>
 <p>See <a href="../../reference/popoto/fields/constants/">Defaults API reference</a> and <a href="../../guides/tuning-magic-numbers/">Tuning Magic Numbers</a> for the full constant table and benchmark-validated guidance.</p>
 <h2 id="memorylifecycle">MemoryLifecycle<a class="headerlink" href="#memorylifecycle" title="Permanent link">&para;</a></h2>
@@ -7373,23 +7445,23 @@ are evaluated over that same in-memory snapshot. Before any <code>record.delete(
 record's authoritative tier is re-read from Redis — if the tier is now <code>"semantic"</code>
 (promoted by a concurrent tick) or the key no longer exists, the delete is skipped.</p>
 <h3 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-53-1" name="__codelineno-53-1" href="#__codelineno-53-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes</span><span class="w"> </span><span class="kn">import</span> <span class="n">MemoryLifecycle</span>
-<a id="__codelineno-53-2" name="__codelineno-53-2" href="#__codelineno-53-2"></a>
-<a id="__codelineno-53-3" name="__codelineno-53-3" href="#__codelineno-53-3"></a><span class="n">lifecycle</span> <span class="o">=</span> <span class="n">MemoryLifecycle</span><span class="p">(</span>
-<a id="__codelineno-53-4" name="__codelineno-53-4" href="#__codelineno-53-4"></a>    <span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span>
-<a id="__codelineno-53-5" name="__codelineno-53-5" href="#__codelineno-53-5"></a>    <span class="n">importance_field</span><span class="o">=</span><span class="s2">&quot;relevance&quot;</span><span class="p">,</span>   <span class="c1"># name of a DecayingSortedField</span>
-<a id="__codelineno-53-6" name="__codelineno-53-6" href="#__codelineno-53-6"></a><span class="p">)</span>
-<a id="__codelineno-53-7" name="__codelineno-53-7" href="#__codelineno-53-7"></a>
-<a id="__codelineno-53-8" name="__codelineno-53-8" href="#__codelineno-53-8"></a><span class="c1"># Tag new memories</span>
-<a id="__codelineno-53-9" name="__codelineno-53-9" href="#__codelineno-53-9"></a><span class="n">lifecycle</span><span class="o">.</span><span class="n">tag_new</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>  <span class="c1"># assigns tier = &quot;episodic&quot;</span>
-<a id="__codelineno-53-10" name="__codelineno-53-10" href="#__codelineno-53-10"></a>
-<a id="__codelineno-53-11" name="__codelineno-53-11" href="#__codelineno-53-11"></a><span class="c1"># Periodic consolidation pass (non-tracking — zero staged AccessTracker entries)</span>
-<a id="__codelineno-53-12" name="__codelineno-53-12" href="#__codelineno-53-12"></a><span class="n">summary</span> <span class="o">=</span> <span class="n">lifecycle</span><span class="o">.</span><span class="n">tick</span><span class="p">()</span>
-<a id="__codelineno-53-13" name="__codelineno-53-13" href="#__codelineno-53-13"></a><span class="c1"># {&quot;promoted&quot;: 2, &quot;forgotten&quot;: 5, &quot;duration_ms&quot;: 8.3}</span>
-<a id="__codelineno-53-14" name="__codelineno-53-14" href="#__codelineno-53-14"></a>
-<a id="__codelineno-53-15" name="__codelineno-53-15" href="#__codelineno-53-15"></a><span class="c1"># Inspect lifecycle state</span>
-<a id="__codelineno-53-16" name="__codelineno-53-16" href="#__codelineno-53-16"></a><span class="n">state</span> <span class="o">=</span> <span class="n">lifecycle</span><span class="o">.</span><span class="n">assess</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>
-<a id="__codelineno-53-17" name="__codelineno-53-17" href="#__codelineno-53-17"></a><span class="nb">print</span><span class="p">(</span><span class="n">state</span><span class="o">.</span><span class="n">tier</span><span class="p">,</span> <span class="n">state</span><span class="o">.</span><span class="n">promotion_eligible</span><span class="p">,</span> <span class="n">state</span><span class="o">.</span><span class="n">forget_eligible</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-54-1" name="__codelineno-54-1" href="#__codelineno-54-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes</span><span class="w"> </span><span class="kn">import</span> <span class="n">MemoryLifecycle</span>
+<a id="__codelineno-54-2" name="__codelineno-54-2" href="#__codelineno-54-2"></a>
+<a id="__codelineno-54-3" name="__codelineno-54-3" href="#__codelineno-54-3"></a><span class="n">lifecycle</span> <span class="o">=</span> <span class="n">MemoryLifecycle</span><span class="p">(</span>
+<a id="__codelineno-54-4" name="__codelineno-54-4" href="#__codelineno-54-4"></a>    <span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span>
+<a id="__codelineno-54-5" name="__codelineno-54-5" href="#__codelineno-54-5"></a>    <span class="n">importance_field</span><span class="o">=</span><span class="s2">&quot;relevance&quot;</span><span class="p">,</span>   <span class="c1"># name of a DecayingSortedField</span>
+<a id="__codelineno-54-6" name="__codelineno-54-6" href="#__codelineno-54-6"></a><span class="p">)</span>
+<a id="__codelineno-54-7" name="__codelineno-54-7" href="#__codelineno-54-7"></a>
+<a id="__codelineno-54-8" name="__codelineno-54-8" href="#__codelineno-54-8"></a><span class="c1"># Tag new memories</span>
+<a id="__codelineno-54-9" name="__codelineno-54-9" href="#__codelineno-54-9"></a><span class="n">lifecycle</span><span class="o">.</span><span class="n">tag_new</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>  <span class="c1"># assigns tier = &quot;episodic&quot;</span>
+<a id="__codelineno-54-10" name="__codelineno-54-10" href="#__codelineno-54-10"></a>
+<a id="__codelineno-54-11" name="__codelineno-54-11" href="#__codelineno-54-11"></a><span class="c1"># Periodic consolidation pass (non-tracking — zero staged AccessTracker entries)</span>
+<a id="__codelineno-54-12" name="__codelineno-54-12" href="#__codelineno-54-12"></a><span class="n">summary</span> <span class="o">=</span> <span class="n">lifecycle</span><span class="o">.</span><span class="n">tick</span><span class="p">()</span>
+<a id="__codelineno-54-13" name="__codelineno-54-13" href="#__codelineno-54-13"></a><span class="c1"># {&quot;promoted&quot;: 2, &quot;forgotten&quot;: 5, &quot;duration_ms&quot;: 8.3}</span>
+<a id="__codelineno-54-14" name="__codelineno-54-14" href="#__codelineno-54-14"></a>
+<a id="__codelineno-54-15" name="__codelineno-54-15" href="#__codelineno-54-15"></a><span class="c1"># Inspect lifecycle state</span>
+<a id="__codelineno-54-16" name="__codelineno-54-16" href="#__codelineno-54-16"></a><span class="n">state</span> <span class="o">=</span> <span class="n">lifecycle</span><span class="o">.</span><span class="n">assess</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>
+<a id="__codelineno-54-17" name="__codelineno-54-17" href="#__codelineno-54-17"></a><span class="nb">print</span><span class="p">(</span><span class="n">state</span><span class="o">.</span><span class="n">tier</span><span class="p">,</span> <span class="n">state</span><span class="o">.</span><span class="n">promotion_eligible</span><span class="p">,</span> <span class="n">state</span><span class="o">.</span><span class="n">forget_eligible</span><span class="p">)</span>
 </code></pre></div>
 <p>See <a href="../../recipes/#memorylifecycle"><code>docs/recipes.md#memorylifecycle</code></a> for the
 full API reference, custom policy examples, multi-agent partitioning, and
