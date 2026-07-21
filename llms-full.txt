@@ -16367,6 +16367,113 @@ lexical number) and `rankings_identical` per case.
 
 To add a test case, see "Adding a CsrTestCase" in `tests/benchmarks/README.md`.
 
+## Subconscious Injection Quality (SIQ) Harness
+
+### Overview
+
+SIQ (issue #459) is Popoto's flagship **native** benchmark — it measures the
+one thing composite (query-blind) retrieval does that no public benchmark
+scores: *without an explicit query cueing it, did the right memory get injected
+into context at the right turn?* Every other harness on this page (the external
+LongMemEval-S/LoCoMo runs, the Tier-5 judged-answer harness, even CSR) is
+**query-driven** — an explicit question or `query_cues` dict is supplied and the
+harness scores whether the right evidence came back. SIQ is the complement.
+
+Each case is a multi-turn agent **trace**: a later turn needs a memory that was
+established several turns earlier, but the turn's own message never lexically
+restates it (coreference, implication, or need-to-know). This is exactly the
+regime where query-blind importance/decay ranking should beat query-driven
+retrieval — and where a pure retriever scores ~0 by construction. The traces are
+**committed deterministic fixtures** (CSR discipline: no runtime generation RNG,
+no wall-clock in ranking, bit-identical scores every run), and retrieval runs
+through `ContextAssembler` in `composite` mode (a plain `importance` SortedField,
+no BM25/embedding field on the model, so the pull path is genuinely query-blind).
+
+An authoring **cue-blindness lint** makes the ground truth un-gameable: using the
+*real* BM25 tokenizer (`src.popoto.fields._tokenizer.tokenize` — the same
+preprocessing BM25 indexes with), `lint_trace` rejects any trace whose
+`should_recall` turn shares even one indexed token with the target memory. The
+constraint only ever gets *harder* to satisfy, never easier.
+
+### Metrics and What They Mean
+
+| Metric | Meaning |
+|--------|---------|
+| **Injection Precision @ budget** | Of the memories injected under the `max_items`/`max_tokens` budget at an evaluation turn, the fraction that are ground-truth useful |
+| **Injection Recall @ budget** | Of that turn's `should_recall` targets, the fraction actually injected |
+| **Anticipation lead time** | Per memory: the number of consecutive turns immediately before it becomes explicitly relevant during which it was already injected (rewards proactive recall; a query retriever scores 0 here by construction) |
+| **Budget efficiency** | `useful_tokens / injected_tokens` — quality tied to the token budget the recipe already enforces |
+
+Precision, recall, and budget efficiency are evaluated **only at turns that
+carry a `should_recall` annotation** — the moments of defined information need.
+Narrative turns contribute nothing to them; proactive injection at those turns
+is credited by *anticipation lead time* instead. Edge cases resolve to
+`None` (undefined), never a `ZeroDivisionError`: precision is `None` when
+nothing was injected, recall is `None` at a non-evaluation turn, and a memory
+never injected when it mattered is a **miss** (excluded from the mean, counted
+separately) rather than a bogus lead value.
+
+### Why It's Competitor-Fair
+
+`SiqAdapter` (a `Protocol`, mirroring the Tier-5 `JudgeProtocol`) is the
+extension point: any memory system replayed turn-by-turn can be scored on
+identical footing. Two adapters ship:
+
+- **`NativeAdapter`** — Popoto's query-blind composite mode (the system under
+  test); the composite-mode invariant is asserted before scoring.
+- **`QueryOnlyStubAdapter`** — a dependency-free, deterministic *query-driven*
+  baseline (the Mem0/Zep/Hindsight stand-in). It injects only memories whose
+  content lexically overlaps the current message, so by the cue-blindness lint
+  it injects **nothing** at the recall turn — scoring ~0 recall and all-miss
+  anticipation *by construction*. That near-zero baseline is the harness's own
+  validity proof (asserted in `test_siq.py`), not a rigged result.
+
+Real Mem0/Zep/Hindsight adapters (heavyweight optional deps + live API keys) are
+a tracked follow-up; no competitor numbers are fabricated here. An optional
+LLM-judged "usefulness" cross-check reuses the Tier-5 pinned judge
+(`gpt-4o-mini`, temperature 0) and is never in the default/CI path.
+
+Baseline over the four committed fixtures (`coreference_relocation`,
+`implication_deadline`, `need_to_know_allergy`, `multi_recall_preferences`):
+
+| adapter | recall @ budget | anticipation misses | mean lead |
+|---|---|---|---|
+| `native` (query-blind) | **1.000** | 0 / 5 targets | 4.0 turns |
+| `query_stub` (query-driven) | 0.000 | 5 / 5 targets | n/a |
+
+Everything is Valkey-safe — core Redis commands only, no modules — and the
+whole default suite needs no network, no model download, and no API key.
+
+### DB Hygiene
+
+The CI-facing surface is `tests/benchmarks/test_siq.py`, which runs under the
+pytest **db15** isolation plugin like every other `test_*.py` — it plants
+per-trace, uniquely-prefixed model classes and tears them down, never touching
+db0. The optional `run_siq.py` CLI is a manual (non-pytest) report generator, so
+it reuses `run_external`'s bench-DB machinery: a dedicated bench DB (default
+**14**, `POPOTO_BENCH_DB` override, **db0 rejected**), pointed at only at
+`main()` time. Point the CLI away from any in-flight external run (which also
+uses db14), e.g. `POPOTO_BENCH_DB=13`.
+
+### Running It
+
+```bash
+# CI gate (pytest, DB-15 isolation, deterministic — no network, no API key):
+pytest tests/benchmarks/test_siq.py -q
+
+# Manual run — writes tests/benchmarks/results/siq/siq_{date}_{adapter}.{json,md}
+# and siq_latest_{adapter}.{json,md}. Use a free bench DB (db0 rejected):
+POPOTO_BENCH_DB=13 python -m tests.benchmarks.siq.run_siq --adapter native
+POPOTO_BENCH_DB=13 python -m tests.benchmarks.siq.run_siq --adapter query_stub
+
+# Summary only, no report written:
+POPOTO_BENCH_DB=13 python -m tests.benchmarks.siq.run_siq --dry-run
+```
+
+To add a trace, drop a committed JSON fixture in `tests/benchmarks/siq/fixtures/`
+(schema in `tests/benchmarks/siq/corpus.py`); `lint_trace` enforces the
+cue-blindness and anticipation-window authoring rules at load time.
+
 ---
 
 ## Memory Lifecycle Baseline

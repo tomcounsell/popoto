@@ -2680,6 +2680,78 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#subconscious-injection-quality-siq-harness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Subconscious Injection Quality (SIQ) Harness
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Subconscious Injection Quality (SIQ) Harness">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#overview_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#metrics-and-what-they-mean_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metrics and What They Mean
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-its-competitor-fair" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why It's Competitor-Fair
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#db-hygiene" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DB Hygiene
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#running-it_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running It
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3028,6 +3100,78 @@
         
           <li class="md-nav__item">
   <a href="#running-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running It
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#subconscious-injection-quality-siq-harness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Subconscious Injection Quality (SIQ) Harness
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Subconscious Injection Quality (SIQ) Harness">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#overview_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#metrics-and-what-they-mean_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metrics and What They Mean
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-its-competitor-fair" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why It's Competitor-Fair
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#db-hygiene" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DB Hygiene
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#running-it_1" class="md-nav__link">
     <span class="md-ellipsis">
       
         Running It
@@ -3846,6 +3990,134 @@ silently falls back to the query-blind composite path inside the assembler;
 the harness pre-flights every query so a fallback can never masquerade as a
 lexical number) and <code>rankings_identical</code> per case.</p>
 <p>To add a test case, see "Adding a CsrTestCase" in <code>tests/benchmarks/README.md</code>.</p>
+<h2 id="subconscious-injection-quality-siq-harness">Subconscious Injection Quality (SIQ) Harness<a class="headerlink" href="#subconscious-injection-quality-siq-harness" title="Permanent link">&para;</a></h2>
+<h3 id="overview_2">Overview<a class="headerlink" href="#overview_2" title="Permanent link">&para;</a></h3>
+<p>SIQ (issue #459) is Popoto's flagship <strong>native</strong> benchmark — it measures the
+one thing composite (query-blind) retrieval does that no public benchmark
+scores: <em>without an explicit query cueing it, did the right memory get injected
+into context at the right turn?</em> Every other harness on this page (the external
+LongMemEval-S/LoCoMo runs, the Tier-5 judged-answer harness, even CSR) is
+<strong>query-driven</strong> — an explicit question or <code>query_cues</code> dict is supplied and the
+harness scores whether the right evidence came back. SIQ is the complement.</p>
+<p>Each case is a multi-turn agent <strong>trace</strong>: a later turn needs a memory that was
+established several turns earlier, but the turn's own message never lexically
+restates it (coreference, implication, or need-to-know). This is exactly the
+regime where query-blind importance/decay ranking should beat query-driven
+retrieval — and where a pure retriever scores ~0 by construction. The traces are
+<strong>committed deterministic fixtures</strong> (CSR discipline: no runtime generation RNG,
+no wall-clock in ranking, bit-identical scores every run), and retrieval runs
+through <code>ContextAssembler</code> in <code>composite</code> mode (a plain <code>importance</code> SortedField,
+no BM25/embedding field on the model, so the pull path is genuinely query-blind).</p>
+<p>An authoring <strong>cue-blindness lint</strong> makes the ground truth un-gameable: using the
+<em>real</em> BM25 tokenizer (<code>src.popoto.fields._tokenizer.tokenize</code> — the same
+preprocessing BM25 indexes with), <code>lint_trace</code> rejects any trace whose
+<code>should_recall</code> turn shares even one indexed token with the target memory. The
+constraint only ever gets <em>harder</em> to satisfy, never easier.</p>
+<h3 id="metrics-and-what-they-mean_1">Metrics and What They Mean<a class="headerlink" href="#metrics-and-what-they-mean_1" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Injection Precision @ budget</strong></td>
+<td>Of the memories injected under the <code>max_items</code>/<code>max_tokens</code> budget at an evaluation turn, the fraction that are ground-truth useful</td>
+</tr>
+<tr>
+<td><strong>Injection Recall @ budget</strong></td>
+<td>Of that turn's <code>should_recall</code> targets, the fraction actually injected</td>
+</tr>
+<tr>
+<td><strong>Anticipation lead time</strong></td>
+<td>Per memory: the number of consecutive turns immediately before it becomes explicitly relevant during which it was already injected (rewards proactive recall; a query retriever scores 0 here by construction)</td>
+</tr>
+<tr>
+<td><strong>Budget efficiency</strong></td>
+<td><code>useful_tokens / injected_tokens</code> — quality tied to the token budget the recipe already enforces</td>
+</tr>
+</tbody>
+</table>
+<p>Precision, recall, and budget efficiency are evaluated <strong>only at turns that
+carry a <code>should_recall</code> annotation</strong> — the moments of defined information need.
+Narrative turns contribute nothing to them; proactive injection at those turns
+is credited by <em>anticipation lead time</em> instead. Edge cases resolve to
+<code>None</code> (undefined), never a <code>ZeroDivisionError</code>: precision is <code>None</code> when
+nothing was injected, recall is <code>None</code> at a non-evaluation turn, and a memory
+never injected when it mattered is a <strong>miss</strong> (excluded from the mean, counted
+separately) rather than a bogus lead value.</p>
+<h3 id="why-its-competitor-fair">Why It's Competitor-Fair<a class="headerlink" href="#why-its-competitor-fair" title="Permanent link">&para;</a></h3>
+<p><code>SiqAdapter</code> (a <code>Protocol</code>, mirroring the Tier-5 <code>JudgeProtocol</code>) is the
+extension point: any memory system replayed turn-by-turn can be scored on
+identical footing. Two adapters ship:</p>
+<ul>
+<li><strong><code>NativeAdapter</code></strong> — Popoto's query-blind composite mode (the system under
+  test); the composite-mode invariant is asserted before scoring.</li>
+<li><strong><code>QueryOnlyStubAdapter</code></strong> — a dependency-free, deterministic <em>query-driven</em>
+  baseline (the Mem0/Zep/Hindsight stand-in). It injects only memories whose
+  content lexically overlaps the current message, so by the cue-blindness lint
+  it injects <strong>nothing</strong> at the recall turn — scoring ~0 recall and all-miss
+  anticipation <em>by construction</em>. That near-zero baseline is the harness's own
+  validity proof (asserted in <code>test_siq.py</code>), not a rigged result.</li>
+</ul>
+<p>Real Mem0/Zep/Hindsight adapters (heavyweight optional deps + live API keys) are
+a tracked follow-up; no competitor numbers are fabricated here. An optional
+LLM-judged "usefulness" cross-check reuses the Tier-5 pinned judge
+(<code>gpt-4o-mini</code>, temperature 0) and is never in the default/CI path.</p>
+<p>Baseline over the four committed fixtures (<code>coreference_relocation</code>,
+<code>implication_deadline</code>, <code>need_to_know_allergy</code>, <code>multi_recall_preferences</code>):</p>
+<table>
+<thead>
+<tr>
+<th>adapter</th>
+<th>recall @ budget</th>
+<th>anticipation misses</th>
+<th>mean lead</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>native</code> (query-blind)</td>
+<td><strong>1.000</strong></td>
+<td>0 / 5 targets</td>
+<td>4.0 turns</td>
+</tr>
+<tr>
+<td><code>query_stub</code> (query-driven)</td>
+<td>0.000</td>
+<td>5 / 5 targets</td>
+<td>n/a</td>
+</tr>
+</tbody>
+</table>
+<p>Everything is Valkey-safe — core Redis commands only, no modules — and the
+whole default suite needs no network, no model download, and no API key.</p>
+<h3 id="db-hygiene">DB Hygiene<a class="headerlink" href="#db-hygiene" title="Permanent link">&para;</a></h3>
+<p>The CI-facing surface is <code>tests/benchmarks/test_siq.py</code>, which runs under the
+pytest <strong>db15</strong> isolation plugin like every other <code>test_*.py</code> — it plants
+per-trace, uniquely-prefixed model classes and tears them down, never touching
+db0. The optional <code>run_siq.py</code> CLI is a manual (non-pytest) report generator, so
+it reuses <code>run_external</code>'s bench-DB machinery: a dedicated bench DB (default
+<strong>14</strong>, <code>POPOTO_BENCH_DB</code> override, <strong>db0 rejected</strong>), pointed at only at
+<code>main()</code> time. Point the CLI away from any in-flight external run (which also
+uses db14), e.g. <code>POPOTO_BENCH_DB=13</code>.</p>
+<h3 id="running-it_1">Running It<a class="headerlink" href="#running-it_1" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># CI gate (pytest, DB-15 isolation, deterministic — no network, no API key):</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>pytest<span class="w"> </span>tests/benchmarks/test_siq.py<span class="w"> </span>-q
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="c1"># Manual run — writes tests/benchmarks/results/siq/siq_{date}_{adapter}.{json,md}</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="c1"># and siq_latest_{adapter}.{json,md}. Use a free bench DB (db0 rejected):</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="nv">POPOTO_BENCH_DB</span><span class="o">=</span><span class="m">13</span><span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.siq.run_siq<span class="w"> </span>--adapter<span class="w"> </span>native
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="nv">POPOTO_BENCH_DB</span><span class="o">=</span><span class="m">13</span><span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.siq.run_siq<span class="w"> </span>--adapter<span class="w"> </span>query_stub
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="c1"># Summary only, no report written:</span>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="nv">POPOTO_BENCH_DB</span><span class="o">=</span><span class="m">13</span><span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.siq.run_siq<span class="w"> </span>--dry-run
+</code></pre></div>
+<p>To add a trace, drop a committed JSON fixture in <code>tests/benchmarks/siq/fixtures/</code>
+(schema in <code>tests/benchmarks/siq/corpus.py</code>); <code>lint_trace</code> enforces the
+cue-blindness and anticipation-window authoring rules at load time.</p>
 
 
 
