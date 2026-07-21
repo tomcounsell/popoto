@@ -1,0 +1,108 @@
+{
+  "benchmark": "rlt",
+  "run_date": "2026-07-21",
+  "run_timestamp": "2026-07-21T09:37:18.067177+00:00",
+  "machine": {
+    "python_version": "3.12.13",
+    "platform": "macOS-26.5.2-arm64-arm-64bit",
+    "cpu_count": 10,
+    "backend": "redis"
+  },
+  "scaling_curve": [
+    {
+      "corpus_size": 1000,
+      "latency": {
+        "p50_ms": 3.0877080280333757,
+        "p95_ms": 3.8913340540602803,
+        "p99_ms": 5.633624969050288,
+        "n_samples": 200,
+        "n_errors": 0
+      }
+    },
+    {
+      "corpus_size": 5000,
+      "latency": {
+        "p50_ms": 4.908541915938258,
+        "p95_ms": 9.867333923466504,
+        "p99_ms": 12.158832978457212,
+        "n_samples": 200,
+        "n_errors": 0
+      }
+    },
+    {
+      "corpus_size": 10000,
+      "latency": {
+        "p50_ms": 8.13008297700435,
+        "p95_ms": 10.72175009176135,
+        "p99_ms": 12.16233300510794,
+        "n_samples": 200,
+        "n_errors": 0
+      }
+    },
+    {
+      "corpus_size": 20000,
+      "latency": {
+        "p50_ms": 8.68879200424999,
+        "p95_ms": 10.386334033682942,
+        "p99_ms": 10.80787496175617,
+        "n_samples": 200,
+        "n_errors": 0
+      }
+    }
+  ],
+  "throughput": {
+    "corpus_size": 20000,
+    "serial": {
+      "queries_per_second": 115.52085781707318,
+      "n_queries": 200,
+      "n_errors": 0,
+      "concurrency": 1,
+      "elapsed_seconds": 1.731289083021693
+    },
+    "concurrent": {
+      "queries_per_second": 288.05789383478213,
+      "n_queries": 200,
+      "n_errors": 0,
+      "concurrency": 4,
+      "elapsed_seconds": 0.6943048750981688
+    }
+  },
+  "mixed_workload": {
+    "baseline_read": {
+      "p50_ms": 3.278749994933605,
+      "p95_ms": 6.053125020116568,
+      "p99_ms": 10.794125031679869,
+      "n_samples": 100,
+      "n_errors": 0
+    },
+    "baseline_write": {
+      "p50_ms": 0.6937499856576324,
+      "p95_ms": 0.757874920964241,
+      "p99_ms": 0.9230409050360322,
+      "n_samples": 100,
+      "n_errors": 0
+    },
+    "degraded_read": {
+      "p50_ms": 10.608708020299673,
+      "p95_ms": 17.650499939918518,
+      "p99_ms": 27.297499938867986,
+      "n_samples": 100,
+      "n_errors": 0
+    },
+    "degraded_write": {
+      "p50_ms": 1.3581670355051756,
+      "p95_ms": 2.0271249813959002,
+      "p99_ms": 9.407707955688238,
+      "n_samples": 100,
+      "n_errors": 0
+    },
+    "read_degradation_ratio": 2.528921969937542,
+    "write_degradation_ratio": 10.192081309030389,
+    "corpus_size": 5000,
+    "n_threads": 4
+  },
+  "notes": [
+    "Latency measured by timing ContextAssembler.assemble() end to end (retrieve->rank->inject) \u2014 assemble_latency and retrieval_latency refer to the same measured call in this harness; there is no separate lower-level retrieval-only API surface to isolate without changing src/popoto/.",
+    "Mixed-workload latency includes client-side thread-scheduling overhead (thread-based load generator); a multi-process load generator would be needed to fully isolate server-only latency (see docs/benchmarks.md RLT caveat)."
+  ]
+}

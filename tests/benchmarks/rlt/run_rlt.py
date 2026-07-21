@@ -115,6 +115,96 @@ def build_machine_metadata(backend: str) -> dict:
     }
 
 
+def _fmt(value, digits: int = 3) -> str:
+    """Format a possibly-``None`` numeric cell for a Markdown table."""
+    if value is None:
+        return "n/a"
+    return f"{value:.{digits}f}"
+
+
+def build_markdown_report(aggregate: dict, backend: str) -> str:
+    """Build a Markdown summary with the scaling/throughput/mixed-workload tables.
+
+    Mirrors ``run_external.py``'s report shape (machine header + metric tables)
+    so a committed RLT artifact is human-readable, not just a JSON blob.
+    """
+    machine = aggregate["machine"]
+    lines = [
+        f"# Popoto RLT Benchmark ({backend})",
+        "",
+        f"**Run date:** {aggregate['run_date']}  ",
+        f"**Backend:** {backend}  ",
+        f"**Python:** {machine['python_version']}  ",
+        f"**Platform:** {machine['platform']}  ",
+        f"**CPU count:** {machine.get('cpu_count')}  ",
+        "",
+        "> Latency is `ContextAssembler.assemble()` timed end to end "
+        "(retrieve→rank→inject) — in this harness the per-retrieval and "
+        "end-to-end-assemble numbers are the same measured call.",
+        "",
+        "## Scaling curve — latency vs. corpus size",
+        "",
+        "| corpus size | p50 (ms) | p95 (ms) | p99 (ms) | samples | errors |",
+        "|---|---|---|---|---|---|",
+    ]
+    for p in aggregate.get("scaling_curve", []):
+        lat = p["latency"]
+        lines.append(
+            f"| {p['corpus_size']} | {_fmt(lat['p50_ms'])} | "
+            f"{_fmt(lat['p95_ms'])} | {_fmt(lat['p99_ms'])} | "
+            f"{lat['n_samples']} | {lat['n_errors']} |"
+        )
+    lines.append("")
+
+    tp = aggregate.get("throughput")
+    if tp:
+        lines += [
+            f"## Throughput — queries/sec at corpus size {tp['corpus_size']}",
+            "",
+            "| mode | concurrency | queries/sec | queries | errors |",
+            "|---|---|---|---|---|",
+            f"| serial | {tp['serial']['concurrency']} | "
+            f"{_fmt(tp['serial']['queries_per_second'], 1)} | "
+            f"{tp['serial']['n_queries']} | {tp['serial']['n_errors']} |",
+            f"| concurrent | {tp['concurrent']['concurrency']} | "
+            f"{_fmt(tp['concurrent']['queries_per_second'], 1)} | "
+            f"{tp['concurrent']['n_queries']} | {tp['concurrent']['n_errors']} |",
+            "",
+        ]
+
+    mw = aggregate.get("mixed_workload")
+    if mw:
+        lines += [
+            f"## Live mixed workload — corpus {mw['corpus_size']}, "
+            f"{mw['n_threads']} threads",
+            "",
+            "> Includes client-side thread-scheduling overhead (thread-based "
+            "load generator); see the RLT caveat in `docs/benchmarks.md`.",
+            "",
+            "| direction | baseline p99 (ms) | degraded p99 (ms) | "
+            "degradation ratio |",
+            "|---|---|---|---|",
+            f"| read (under write load) | {_fmt(mw['baseline_read']['p99_ms'])} "
+            f"| {_fmt(mw['degraded_read']['p99_ms'])} | "
+            f"{_fmt(mw['read_degradation_ratio'], 2)} |",
+            f"| write (under read load) | "
+            f"{_fmt(mw['baseline_write']['p99_ms'])} | "
+            f"{_fmt(mw['degraded_write']['p99_ms'])} | "
+            f"{_fmt(mw['write_degradation_ratio'], 2)} |",
+            "",
+        ]
+
+    notes = aggregate.get("notes", [])
+    if notes:
+        lines.append("## Notes")
+        lines.append("")
+        for note in notes:
+            lines.append(f"- {note}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 def save_reports(aggregate: dict, backend: str, dry_run: bool = False):
     """Save JSON + Markdown report files, mirroring ``run_external.py``'s convention."""
     if dry_run:
@@ -132,18 +222,7 @@ def save_reports(aggregate: dict, backend: str, dry_run: bool = False):
         json.dump(aggregate, f, indent=2, default=str)
     logger.info("Saved JSON report: %s", json_path)
 
-    md_lines = [
-        f"# Popoto RLT Benchmark ({backend})",
-        "",
-        f"**Run date:** {aggregate['run_date']}  ",
-        f"**Backend:** {backend}  ",
-        f"**Python:** {aggregate['machine']['python_version']}  ",
-        f"**Platform:** {aggregate['machine']['platform']}  ",
-        "",
-        "See the JSON artifact for full per-size / mixed-workload detail.",
-        "",
-    ]
-    md_path.write_text("\n".join(md_lines))
+    md_path.write_text(build_markdown_report(aggregate, backend))
     logger.info("Saved Markdown report: %s", md_path)
 
     for src_name, latest_name in [
@@ -234,6 +313,8 @@ def main(argv=None):
         "run_timestamp": datetime.now(timezone.utc).isoformat(),
         "machine": build_machine_metadata(args.backend),
         "scaling_curve": [p.to_dict() for p in scaling_points],
+        "throughput": None,
+        "mixed_workload": None,
         "notes": [
             "Latency measured by timing ContextAssembler.assemble() end to "
             "end (retrieve->rank->inject) — assemble_latency and "
@@ -243,17 +324,79 @@ def main(argv=None):
         ],
     }
 
+    # Throughput at a fixed corpus size (the largest scaling-curve size, so it
+    # reflects the same corpus the curve's slowest point measured).
+    throughput_size = max(corpus_sizes)
+    logger.info("Running throughput at fixed corpus size %d", throughput_size)
+    aggregate["throughput"] = _run_throughput(throughput_size)
+
     if args.mixed_workload:
-        logger.info(
-            "Mixed-workload run not wired into the default CLI path in this "
-            "PR — see rlt/mixed_workload.py's run_mixed_workload() for the "
-            "harness function; a follow-up wires it into this CLI with a "
-            "real corpus once the machine is confirmed quiet."
+        logger.info("Running live mixed-workload measurement")
+        aggregate["mixed_workload"] = _run_mixed_workload()
+        aggregate["notes"].append(
+            "Mixed-workload latency includes client-side thread-scheduling "
+            "overhead (thread-based load generator); a multi-process load "
+            "generator would be needed to fully isolate server-only latency "
+            "(see docs/benchmarks.md RLT caveat)."
         )
-        aggregate["mixed_workload"] = None
 
     save_reports(aggregate, args.backend, dry_run=False)
     return 0
+
+
+def _run_throughput(size: int, concurrency: int = 4) -> dict:
+    """Build a fixed corpus, measure single-threaded + concurrent qps, tear down."""
+    from .comparators import NativeAdapter
+    from .corpus import build_corpus, teardown_corpus
+    from .throughput import measure_throughput
+
+    corpus = build_corpus(size, seed=0)
+    try:
+        adapter = NativeAdapter(corpus.model_class, corpus.agent_id)
+        queries = [q.text for q in corpus.queries]
+        # Repeat the small query set enough times for a stable qps estimate.
+        repeated = queries * 20
+        serial = measure_throughput(lambda t: adapter.query(t), repeated, concurrency=1)
+        concurrent = measure_throughput(
+            lambda t: adapter.query(t), repeated, concurrency=concurrency
+        )
+        return {
+            "corpus_size": size,
+            "serial": serial.to_dict(),
+            "concurrent": concurrent.to_dict(),
+        }
+    finally:
+        teardown_corpus(corpus)
+
+
+def _run_mixed_workload(size: int = 5_000, n_threads: int = 4) -> dict:
+    """Plant a corpus, then measure read/write latency solo vs. concurrent."""
+    from .comparators import NativeAdapter
+    from .corpus import build_corpus, teardown_corpus
+    from .mixed_workload import run_mixed_workload
+
+    corpus = build_corpus(size, seed=0)
+    try:
+        adapter = NativeAdapter(corpus.model_class, corpus.agent_id)
+        queries = [q.text for q in corpus.queries]
+        read_args = queries * 10
+        write_args = [
+            f"live turn ingest number {i} discussing an ongoing conversation"
+            for i in range(len(read_args))
+        ]
+        report = run_mixed_workload(
+            read_call=lambda t: adapter.query(t),
+            read_args=read_args,
+            write_call=lambda content: adapter.ingest(content),
+            write_args=write_args,
+            n_threads=n_threads,
+        )
+        result = report.to_dict()
+        result["corpus_size"] = size
+        result["n_threads"] = n_threads
+        return result
+    finally:
+        teardown_corpus(corpus)
 
 
 if __name__ == "__main__":

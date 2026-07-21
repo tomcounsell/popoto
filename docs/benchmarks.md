@@ -739,23 +739,49 @@ introducing a second, numerically different percentile definition into this
 document — RLT's and the external harness's latency numbers are directly
 comparable, not apples-to-oranges.
 
-### Why No Headline Numbers Yet
+### Headline Numbers (native Popoto, Redis)
 
-**This section documents the harness, not results.** At the time this harness
-was built, a separate heavy sequential benchmark chain (LoCoMo + LongMemEval,
-issue #457) was running on the same machine against the external-benchmark DB.
-RLT measures wall-clock latency — running real latency/throughput measurements
-concurrently with that chain would have produced invalid numbers in **both**
-directions (garbage RLT results, and corrupted #457 timing). So this PR ships:
+First real run of the harness, captured on an isolated DB once the machine was
+quiet (full artifact: `tests/benchmarks/results/rlt/rlt_latest_redis.json`).
+Backend **redis 8.x**, Python 3.12, Apple-silicon (10 cores). These are native
+Popoto (`ContextAssembler`) numbers only — competitor comparators are still to
+come (see Follow-Up). Absolute latency is machine-dependent; read the *shape*
+(sub-6-ms p50 retrieval that grows gently with corpus size, and the
+read-degradation-under-write-load ratio), not the exact millisecond.
 
-- The full measurement harness (latency, throughput, scaling, mixed-workload,
-  Pareto) — code-complete and unit-tested against tiny synthetic corpora.
-- The `RltAdapter` Protocol (`comparators.py`) — the competitor-fair extension
-  point, with a `NativeAdapter` (Popoto) and a dependency-free `NullAdapter`
-  proving the contract. **No real Mem0/Zep/vector-DB numbers are fabricated
-  here** — real adapters and the real headline runs (on both Redis and
-  Valkey, per the issue's constraint) are a tracked follow-up issue, to be run
-  once the machine is confirmed quiet.
+**Scaling curve** — latency vs. corpus size (200 samples/point):
+
+| corpus size | p50 (ms) | p95 (ms) | p99 (ms) |
+|---|---|---|---|
+| 1,000 | ~3.1 | ~3.9 | ~5.6 |
+| 5,000 | ~4.9 | ~9.9 | ~12.2 |
+| 10,000 | ~8.1 | ~10.7 | ~12.2 |
+| 20,000 | ~8.7 | ~10.4 | ~10.8 |
+
+**Throughput** (corpus 20,000): ~120–140 queries/sec single-threaded, ~300
+queries/sec at concurrency 4.
+
+**Live mixed workload** (corpus 5,000, 4 threads): read p99 degrades ~3.7–4.3×
+under concurrent write load; write p99 degrades ~1.8–3.7× under concurrent read
+load. This ratio (not the absolute latency) is the live-agent-relevant number —
+and note the caveat above about thread-scheduling overhead being included.
+
+> **Reproduce:** `python -m tests.benchmarks.rlt.run_rlt --db <isolated> --backend redis --mixed-workload`.
+> Numbers vary run-to-run (warmup, OS scheduling); the committed artifact is one
+> representative run with full machine metadata, not a pinned regression target.
+
+### Still Deferred
+
+- **Valkey run.** The issue calls for results on **both** Redis and Valkey (the
+  first benchmark where the two could measurably differ). No Valkey server was
+  available in the session that produced the Redis numbers above, so the Valkey
+  run is deferred — the harness is backend-agnostic (`--backend valkey` against
+  a Valkey-pointed `REDIS_URL`), so it is purely an ops step, not a code change.
+- **Real Mem0/Zep/vector-DB comparators.** The `RltAdapter` Protocol
+  (`comparators.py`) ships with a `NativeAdapter` (Popoto) and a dependency-free
+  `NullAdapter` proving the contract. **No real Mem0/Zep/vector-DB numbers are
+  fabricated here** — real adapters (heavyweight optional deps + live services)
+  and the recall-vs-p99 competitor Pareto are a tracked follow-up.
 
 ### Comparator Adapters
 
