@@ -54,10 +54,13 @@ Example:
     sm.report_outcomes(assembly_result)
 """
 
+import itertools
 import logging
-import re
 
 from .context_assembler import AssemblyResult, ContextAssembler
+from ..extraction import HeuristicExtractionProvider
+from ..fields.confidence_field import ConfidenceField
+from ..fields.constants import Defaults
 from ..fields.observation import ObservationProtocol
 
 logger = logging.getLogger("POPOTO.SubconsciousMemory")
@@ -103,6 +106,21 @@ class SubconsciousMemory:
             importance score. Default "importance".
         agent_id_field: Name of the KeyField for agent partitioning.
             Default "agent_id".
+        extraction_provider: An ``AbstractExtractionProvider`` instance
+            (see ``popoto.extraction``) used to turn LLM response text
+            into ``ExtractedFact`` records in ``extract_memories()``.
+            Default ``None``, which resolves to
+            ``HeuristicExtractionProvider(min_length=extraction_min_length)``
+            -- the historical sentence-splitting behavior, preserved
+            byte-identical when no new kwargs are passed. Pass a
+            ``ClaudeExtractionProvider`` (``popoto.extraction.claude``)
+            for LLM-based extraction with entities/importance/confidence.
+        confidence_field: Name of a ``ConfidenceField`` on model_class to
+            seed from each extracted fact's ``confidence`` opinion, or
+            ``None`` (default) to skip confidence seeding entirely.
+        co_occurrence_field: Name of a ``CoOccurrenceField`` on
+            model_class to link co-mentioned entities in, or ``None``
+            (default) to skip association seeding entirely.
     """
 
     def __init__(
@@ -117,6 +135,9 @@ class SubconsciousMemory:
         content_field="content",
         importance_field="importance",
         agent_id_field="agent_id",
+        extraction_provider=None,
+        confidence_field=None,
+        co_occurrence_field=None,
     ):
         self.model_class = model_class
         self.agent_id = agent_id
@@ -128,6 +149,12 @@ class SubconsciousMemory:
         self.content_field = content_field
         self.importance_field = importance_field
         self.agent_id_field = agent_id_field
+
+        self._extractor = extraction_provider or HeuristicExtractionProvider(
+            min_length=extraction_min_length
+        )
+        self.confidence_field = confidence_field
+        self.co_occurrence_field = co_occurrence_field
 
         self._assembler = ContextAssembler(
             model_class=model_class,
@@ -192,17 +219,38 @@ class SubconsciousMemory:
     def extract_memories(self, response_text, importance=0.5):
         """Post-turn: extract facts from LLM response and save as Memory records.
 
-        Uses a simple heuristic: split response into sentences, filter by
-        minimum length, and save each as a separate Memory record.
+        Delegates to ``self._extractor`` (an ``AbstractExtractionProvider``,
+        see ``popoto.extraction``) to turn ``response_text`` into
+        ``ExtractedFact`` records, then saves each as a Memory record. By
+        default ``self._extractor`` is a ``HeuristicExtractionProvider``,
+        which splits the response into sentences and filters by minimum
+        length -- this reproduces the original sentence-splitting behavior
+        of this method byte-for-byte when no new constructor kwargs are
+        passed. Pass ``extraction_provider=ClaudeExtractionProvider(...)``
+        (see ``popoto.extraction.claude``) for LLM-based extraction with
+        entities, importance, and confidence opinions.
 
-        For LLM-based extraction (more accurate but requires an API call),
-        override this method or pass extracted facts directly to your
-        model_class.save().
+        Importance-on-write nuance: each ``ExtractedFact.importance`` is
+        used verbatim when the provider has an opinion (not ``None``);
+        otherwise the ``importance`` argument passed to this call is used
+        as the fallback. The heuristic provider never has an opinion, so
+        its output always uses the caller-supplied ``importance``.
+
+        If ``co_occurrence_field`` is configured and a fact names two or
+        more distinct entities, every unordered pair is linked in that
+        field's co-occurrence graph (see ``_seed_associations``). If
+        ``confidence_field`` is configured and a fact has a confidence
+        opinion, that field is seeded via ``_seed_confidence`` -- note
+        ``ConfidenceField.update_confidence()`` blends the signal with the
+        field's fixed ``initial_confidence`` rather than storing it
+        verbatim; see ``_seed_confidence`` for the exact formula.
 
         Args:
             response_text: The LLM's response text.
-            importance: Default importance score for extracted memories.
-                Float between 0.0 and 1.0. Default 0.5.
+            importance: Fallback importance score used for any extracted
+                fact that has no importance opinion of its own (i.e.
+                ``ExtractedFact.importance is None``). Float between 0.0
+                and 1.0. Default 0.5.
 
         Returns:
             List of saved model instances. Empty list if response_text
@@ -211,28 +259,129 @@ class SubconsciousMemory:
         if not response_text or not response_text.strip():
             return []
 
-        sentences = self._split_sentences(response_text)
+        facts = self._extractor.extract(response_text)
         saved = []
 
-        for sentence in sentences:
-            sentence = sentence.strip()
-            if len(sentence) < self.extraction_min_length:
-                continue
-
+        for fact in facts:
+            eff_importance = (
+                fact.importance if fact.importance is not None else importance
+            )
+            kwargs = {
+                self.agent_id_field: self.agent_id,
+                self.content_field: fact.text,
+                self.importance_field: eff_importance,
+            }
             try:
-                kwargs = {
-                    self.agent_id_field: self.agent_id,
-                    self.content_field: sentence,
-                    self.importance_field: importance,
-                }
                 instance = self.model_class(**kwargs)
-                result = instance.save()
-                if result is not False:
+                if instance.save() is not False:
                     saved.append(instance)
+                    self._seed_associations(instance, fact)
+                    self._seed_confidence(instance, fact)
             except Exception as e:
                 logger.warning("Failed to save extracted memory: %s", e)
 
         return saved
+
+    def _seed_associations(self, instance, fact):
+        """Link co-mentioned entities in ``self.co_occurrence_field``.
+
+        No-op unless ``self.co_occurrence_field`` is set, the named field
+        exists on ``self.model_class``, and ``fact.entities`` contains at
+        least two distinct (case-sensitive, whitespace-trimmed) names.
+
+        Entity name strings -- not the saved ``instance``'s PK -- are used
+        as the graph nodes: co-mention within one fact is treated as an
+        association between entities, which is the natural unit for a
+        write-time extraction graph (there is no record PK for an
+        abstract entity). This is a deliberate departure from the field's
+        usual record-PK-as-node convention; entity-name nodes and record
+        PK nodes coexist in the same keyspace under
+        ``$CoOcF:{ClassName}:{field}:``.
+
+        Entities are deduplicated (order-stable) before pairing, since
+        ``CoOccurrenceField.link()`` rejects self-pairs. Each pair is
+        linked independently with its own try/except so one failing pair
+        (e.g. a residual self-pair, or a transient Redis error) never
+        drops the remaining valid pairs or the already-saved memory
+        record.
+
+        The deduped entity list is truncated to
+        ``Defaults.EXTRACTION_MAX_ENTITIES_PER_FACT`` before pairing:
+        combination count grows O(n^2), so an extraction result with an
+        unusually large entity set (malformed provider output, or an
+        adversarial input) can't blow up into a burst of co-occurrence
+        writes for a single fact.
+
+        Args:
+            instance: The already-saved model instance for this fact.
+            fact: The ``ExtractedFact`` that produced ``instance``.
+        """
+        if not self.co_occurrence_field:
+            return
+        if self.model_class._meta.fields.get(self.co_occurrence_field) is None:
+            return
+
+        seen = set()
+        norm_entities = []
+        for e in fact.entities:
+            e = (e or "").strip()
+            if e and e not in seen:
+                seen.add(e)
+                norm_entities.append(e)
+
+        if len(norm_entities) < 2:
+            return
+
+        if len(norm_entities) > Defaults.EXTRACTION_MAX_ENTITIES_PER_FACT:
+            norm_entities = norm_entities[: Defaults.EXTRACTION_MAX_ENTITIES_PER_FACT]
+
+        field = getattr(self.model_class, self.co_occurrence_field)
+        for a, b in itertools.combinations(norm_entities, 2):
+            try:
+                field.link(
+                    self.model_class,
+                    a,
+                    b,
+                    initial_weight=Defaults.EXTRACTION_ENTITY_PAIR_LINK_WEIGHT,
+                )
+            except Exception as exc:
+                logger.warning("entity link %r<->%r failed: %s", a, b, exc)
+
+    def _seed_confidence(self, instance, fact):
+        """Seed ``self.confidence_field`` from ``fact.confidence``.
+
+        No-op unless ``self.confidence_field`` is set, the named field
+        exists on ``self.model_class``, and ``fact.confidence is not
+        None``.
+
+        Note: ``ConfidenceField`` has no per-instance "set initial value"
+        API. The companion hash is seeded in ``on_save`` with the field's
+        fixed ``initial_confidence`` (pseudo-count 1); this method's call
+        to ``update_confidence()`` is the *first evidence update* against
+        that prior, not a hard override. Concretely, seeding with signal
+        ``s`` yields a stored confidence of ``(initial_confidence + s) /
+        2`` -- not ``s`` verbatim. Callers should not expect
+        ``fact.confidence`` to equal the stored value after this call.
+
+        Args:
+            instance: The already-saved model instance for this fact.
+            fact: The ``ExtractedFact`` that produced ``instance``.
+        """
+        if not self.confidence_field:
+            return
+        if self.model_class._meta.fields.get(self.confidence_field) is None:
+            return
+        if fact.confidence is None:
+            return
+
+        try:
+            ConfidenceField.update_confidence(
+                instance, self.confidence_field, signal=fact.confidence
+            )
+        except Exception as exc:
+            logger.warning(
+                "confidence seed for %r failed: %s", self.confidence_field, exc
+            )
 
     def report_outcomes(self, assembly_result, outcome="acted"):
         """Outcome hook: report how injected memories were used.
@@ -268,9 +417,13 @@ class SubconsciousMemory:
     def _split_sentences(text):
         """Split text into sentences using a simple regex heuristic.
 
-        Splits on sentence-ending punctuation (.!?) followed by whitespace
-        or end-of-string. Preserves abbreviations like "e.g." and "Dr."
-        reasonably well for typical LLM output.
+        Delegates to ``HeuristicExtractionProvider._split_sentences`` --
+        kept here (rather than removed) for backward compatibility with
+        callers/tests that reference this staticmethod directly.
+        ``extract_memories()`` no longer calls this method itself; it
+        delegates to ``self._extractor`` instead (see
+        ``popoto.extraction.HeuristicExtractionProvider``, which contains
+        the canonical implementation).
 
         Args:
             text: Input text to split.
@@ -278,6 +431,4 @@ class SubconsciousMemory:
         Returns:
             List of sentence strings.
         """
-        # Split on .!? followed by space or end of string
-        parts = re.split(r"(?<=[.!?])\s+", text.strip())
-        return [p for p in parts if p]
+        return HeuristicExtractionProvider._split_sentences(text)

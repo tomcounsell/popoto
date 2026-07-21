@@ -77,6 +77,13 @@ class TestDefaultsSync:
             "LIFECYCLE_PROMOTION_MIN_AGE_SECONDS",
             "LIFECYCLE_FORGET_IMPORTANCE_FLOOR",
             "LIFECYCLE_FORGET_IDLE_SECONDS",
+            # Extraction (extraction/, #461) — read directly from Defaults
+            # (popoto.extraction.claude, popoto.recipes.subconscious_memory);
+            # no module-level alias exists, so not in MODULE_CONSTANTS.
+            "EXTRACTION_DEFAULT_IMPORTANCE",
+            "EXTRACTION_DEFAULT_CONFIDENCE",
+            "EXTRACTION_ENTITY_PAIR_LINK_WEIGHT",
+            "EXTRACTION_MAX_ENTITIES_PER_FACT",
         }
 
         expected_in_module = defaults_attrs - field_kwargs_and_class_attrs
