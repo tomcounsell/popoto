@@ -17,12 +17,14 @@ import math
 import os
 import sys
 import time
+from unittest.mock import patch
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 import pytest  # noqa: E402
 
+from src.popoto.exceptions import QueryException  # noqa: E402
 from src.popoto.fields.co_occurrence_field import CoOccurrenceField  # noqa: E402
 from src.popoto.fields.confidence_field import ConfidenceField  # noqa: E402
 from src.popoto.fields.constants import Defaults  # noqa: E402
@@ -108,6 +110,25 @@ class FixtureMemory(Model):
     )
 
 
+class GateMemory(Model):
+    """Model with ConfidenceField + CyclicDecayField for confidence-gate
+    tests (issue #463) — lets a single test exercise both the pull path
+    (gated) and the push path (never gated, must stay intact)."""
+
+    memory_id = AutoKeyField()
+    agent_id = KeyField()
+    topic = Field(type=str)
+    content = Field(type=str)
+    relevance = DecayingSortedField(partition_by="agent_id")
+    urgency = CyclicDecayField(partition_by="agent_id")
+    confidence = ConfidenceField(initial_confidence=0.5)
+    bloom = ExistenceFilter(
+        error_rate=0.01,
+        capacity=10_000,
+        fingerprint_fn=lambda inst: inst.topic,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -128,6 +149,7 @@ def _clean_all():
         "*FullMemory*",
         "*FixtureMemory*",
         "*AltFixtureMemory*",
+        "*GateMemory*",
         "$EF:*Memory*",
         "$CoOcF:*Memory*",
         "$ConfidencF:*Memory*",
@@ -1183,9 +1205,7 @@ class TestPartitionAwareDecayingScoreProxy:
         This is the primary #474 decay-branch repro (all 0.0 pre-fix)."""
         recs = []
         for i, w in enumerate((1.0, 3.0, 9.0)):
-            r = DecayPartitionedMemory(
-                agent_id="a", content=f"c{i}", strength=w
-            )
+            r = DecayPartitionedMemory(agent_id="a", content=f"c{i}", strength=w)
             r.save()
             recs.append(r)
 
@@ -1327,3 +1347,262 @@ def _staleness_ratio_wrapper(assembler, records):
         surfacing_threshold=assembler.surfacing_threshold,
         decaying_sorted_field_name="relevance",
     )
+
+
+# ---------------------------------------------------------------------------
+# TestConfidenceGate — confidence-gated retrieval (issue #463)
+# ---------------------------------------------------------------------------
+
+
+class TestConfidenceGate:
+    """Unit tests for the opt-in confidence gate on ContextAssembler.
+
+    The gate reads the rank-0 pull-path candidate's ConfidenceField value
+    and, when below ``confidence_gate_threshold``, either drops all
+    pull-path records ("refuse") or keeps them and only flags the decision
+    in ``metadata["gate"]`` ("flag"). Disabled by default (threshold=None).
+    """
+
+    # -- Construction-time validation -------------------------------------
+
+    def test_default_threshold_none_no_gate_key(self):
+        """confidence_gate_threshold=None (default) -> metadata has no
+        "gate" key at all, bit-for-bit identical to pre-change behavior."""
+        assembler = ContextAssembler(
+            model_class=SimpleMemory,
+            score_weights={"relevance": 1.0},
+        )
+        assert assembler.confidence_gate_threshold is None
+        assert assembler.confidence_gate_mode == "refuse"
+        result = assembler.assemble()
+        assert "gate" not in result.metadata
+
+    def test_threshold_without_confidence_field_raises(self):
+        """A model with no ConfidenceField cannot use the gate."""
+        with pytest.raises(QueryException, match="ConfidenceField"):
+            ContextAssembler(
+                model_class=SimpleMemory,
+                score_weights={"relevance": 1.0},
+                confidence_gate_threshold=0.5,
+            )
+
+    def test_invalid_gate_mode_raises(self):
+        with pytest.raises(QueryException, match="not a recognised mode"):
+            ContextAssembler(
+                model_class=GateMemory,
+                score_weights={"relevance": 1.0},
+                confidence_gate_threshold=0.5,
+                confidence_gate_mode="bogus",
+            )
+
+    # -- Empty / skipped pull-path -----------------------------------------
+
+    def test_empty_pull_records_with_threshold(self):
+        """No candidates matched: applied=False, gate_score=None,
+        gated=False, but the dict is still attached."""
+        assembler = ContextAssembler(
+            model_class=GateMemory,
+            score_weights={"relevance": 1.0},
+            confidence_gate_threshold=0.5,
+        )
+        result = assembler.assemble(
+            query_cues={"topic": "nonexistent_xyz"},
+            partition_filters={"agent_id": "a1"},
+        )
+        assert result.metadata["pull_count"] == 0
+        assert result.metadata["gate"] == {
+            "applied": False,
+            "gate_score": None,
+            "threshold": 0.5,
+            "mode": "refuse",
+            "gated": False,
+        }
+
+    def test_query_cues_none_skips_pull_path_gate_still_empty(self):
+        """query_cues=None skips the pull path entirely: same empty-path
+        gate behavior as an unmatched query."""
+        assembler = ContextAssembler(
+            model_class=GateMemory,
+            score_weights={"relevance": 1.0},
+            confidence_gate_threshold=0.5,
+        )
+        result = assembler.assemble()
+        assert result.metadata["gate"] == {
+            "applied": False,
+            "gate_score": None,
+            "threshold": 0.5,
+            "mode": "refuse",
+            "gated": False,
+        }
+
+    # -- "refuse" mode -------------------------------------------------------
+
+    def test_refuse_mode_gated_drops_pull_records_keeps_push(self):
+        """refuse + gate_score < threshold: pull records dropped, push
+        path intact, and no competitive suppression runs (suppression
+        candidates were zeroed, not punished, for a refusal already made)."""
+        record = GateMemory(agent_id="a1", topic="pull-topic", content="c")
+        record.save()  # confidence starts at initial_confidence == 0.5
+
+        assembler = ContextAssembler(
+            model_class=GateMemory,
+            score_weights={"relevance": 0.5, "urgency": 0.5},
+            surfacing_threshold=0.0,  # accept all push candidates
+            confidence_gate_threshold=0.9,  # 0.5 < 0.9 -> gated
+            confidence_gate_mode="refuse",
+        )
+        # Force the pull path to return our low-confidence record as rank 0,
+        # deterministically, regardless of real scoring.
+        assembler._pull_path = lambda cues, filters: ([record], [record])
+
+        with patch.object(ConfidenceField, "update_confidence") as mock_update:
+            result = assembler.assemble(
+                query_cues={"topic": "pull-topic"},
+                partition_filters={"agent_id": "a1"},
+            )
+            mock_update.assert_not_called()
+
+        assert result.metadata["pull_count"] == 0
+        assert result.metadata["gate"] == {
+            "applied": True,
+            "gate_score": 0.5,
+            "threshold": 0.9,
+            "mode": "refuse",
+            "gated": True,
+        }
+        # The push path is never gated: the same underlying record is still
+        # discoverable via the real (unmocked) push scan and gets injected.
+        assert result.metadata["push_count"] >= 1
+
+    def test_refuse_not_gated_retains_records(self):
+        """refuse mode but gate_score >= threshold: nothing is dropped."""
+        record = GateMemory(agent_id="a1", topic="pull-topic", content="c")
+        record.save()
+
+        assembler = ContextAssembler(
+            model_class=GateMemory,
+            score_weights={"relevance": 1.0},
+            confidence_gate_threshold=0.1,  # 0.5 >= 0.1 -> not gated
+            confidence_gate_mode="refuse",
+        )
+        assembler._pull_path = lambda cues, filters: ([record], [record])
+
+        result = assembler.assemble(
+            query_cues={"topic": "pull-topic"},
+            partition_filters={"agent_id": "a1"},
+        )
+        assert result.metadata["pull_count"] == 1
+        assert result.metadata["gate"]["gated"] is False
+        assert result.metadata["gate"]["applied"] is True
+
+    def test_refuse_assess_quality_fok_not_corrupted(self):
+        """BLOCKER fix: a refusal must not corrupt _compute_quality's FoK
+        score. all_pull_candidates is left untouched by the refuse clear
+        (only the suppression copy fed to _post_effects is zeroed), so
+        assess_quality=True still reports a non-degenerate FoK reflecting
+        that candidates WERE found, even though they were refused."""
+        record = GateMemory(agent_id="a1", topic="pull-topic", content="c")
+        record.save()
+
+        assembler = ContextAssembler(
+            model_class=GateMemory,
+            score_weights={"relevance": 1.0},
+            confidence_gate_threshold=0.9,
+            confidence_gate_mode="refuse",
+        )
+        assembler._pull_path = lambda cues, filters: ([record], [record])
+
+        result = assembler.assemble(
+            query_cues={"topic": "pull-topic"},
+            partition_filters={"agent_id": "a1"},
+            assess_quality=True,
+        )
+        assert result.metadata["gate"]["gated"] is True
+        assert result.metadata["pull_count"] == 0
+        assert result.metadata["quality"].fok_score > 0.0
+
+    # -- "flag" mode -----------------------------------------------------
+
+    def test_flag_mode_gated_retains_records(self):
+        """flag + gate_score < threshold: nothing is dropped, only the
+        metadata annotation reports the decision."""
+        record = GateMemory(agent_id="a1", topic="pull-topic", content="c")
+        record.save()
+
+        assembler = ContextAssembler(
+            model_class=GateMemory,
+            score_weights={"relevance": 1.0},
+            confidence_gate_threshold=0.9,
+            confidence_gate_mode="flag",
+        )
+        assembler._pull_path = lambda cues, filters: ([record], [record])
+
+        result = assembler.assemble(
+            query_cues={"topic": "pull-topic"},
+            partition_filters={"agent_id": "a1"},
+        )
+        assert result.metadata["pull_count"] == 1
+        assert result.metadata["gate"] == {
+            "applied": True,
+            "gate_score": 0.5,
+            "threshold": 0.9,
+            "mode": "flag",
+            "gated": True,
+        }
+
+    def test_flag_not_gated_retains_records(self):
+        """flag mode, gate_score >= threshold: not gated, retained."""
+        record = GateMemory(agent_id="a1", topic="pull-topic", content="c")
+        record.save()
+
+        assembler = ContextAssembler(
+            model_class=GateMemory,
+            score_weights={"relevance": 1.0},
+            confidence_gate_threshold=0.1,
+            confidence_gate_mode="flag",
+        )
+        assembler._pull_path = lambda cues, filters: ([record], [record])
+
+        result = assembler.assemble(
+            query_cues={"topic": "pull-topic"},
+            partition_filters={"agent_id": "a1"},
+        )
+        assert result.metadata["pull_count"] == 1
+        assert result.metadata["gate"]["gated"] is False
+
+    # -- Fault tolerance ----------------------------------------------------
+
+    def test_get_confidence_raises_gate_not_applied(self, caplog):
+        """A get_confidence() failure degrades gracefully: a warning is
+        logged, the gate is treated as not-applied, and records are
+        returned unchanged (no crash)."""
+        record = GateMemory(agent_id="a1", topic="pull-topic", content="c")
+        record.save()
+
+        assembler = ContextAssembler(
+            model_class=GateMemory,
+            score_weights={"relevance": 1.0},
+            confidence_gate_threshold=0.9,
+            confidence_gate_mode="refuse",
+        )
+        assembler._pull_path = lambda cues, filters: ([record], [record])
+
+        with patch.object(
+            ConfidenceField, "get_confidence", side_effect=RuntimeError("boom")
+        ):
+            with caplog.at_level("WARNING", logger="POPOTO.ContextAssembler"):
+                result = assembler.assemble(
+                    query_cues={"topic": "pull-topic"},
+                    partition_filters={"agent_id": "a1"},
+                )
+
+        assert "confidence gate get_confidence failed" in caplog.text
+        assert result.metadata["gate"] == {
+            "applied": False,
+            "gate_score": None,
+            "threshold": 0.9,
+            "mode": "refuse",
+            "gated": False,
+        }
+        # Not applied -> records untouched, even in refuse mode.
+        assert result.metadata["pull_count"] == 1

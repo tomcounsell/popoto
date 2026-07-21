@@ -1,11 +1,13 @@
 ---
-status: Planning
+status: Ready
 type: feature
 appetite: Medium
 owner: dev
 created: 2026-07-20
 tracking: https://github.com/tomcounsell/popoto/issues/463
 last_comment_id:
+revision_applied: true
+revision_applied_at: 2026-07-20T06:03:05Z
 ---
 
 # Confidence-gated retrieval — refuse when memory doesn't know
@@ -138,18 +140,61 @@ already vendored via the benchmark harness. Proceeding with codebase context.
      legacy behavior).
    - If `pull_records` is empty → `gate_score=None`, `applied=False`, `gated=False`;
      still attach the dict.
-   - Else read `gate_score = ConfidenceField.get_confidence(pull_records[0],
-     self._confidence_field_name)` (rank-0 candidate, mode-agnostic — value is
-     always in [0,1] regardless of composite vs RRF score scale).
+   - Else read the rank-0 candidate's confidence **inside a `try/except`** (see the
+     rank-0 read guard, below): `gate_score = ConfidenceField.get_confidence(
+     pull_records[0], self._confidence_field_name)` (rank-0 candidate, mode-agnostic —
+     value is always in [0,1] regardless of composite vs RRF score scale). On any
+     exception, log `logger.warning` and treat the gate as **not applied**
+     (`gate_score=None`, `applied=False`, `gated=False`, records untouched) — matching
+     the fault-tolerant style of `emit_trace`/`_compute_quality` in the same method.
    - `gated = gate_score < threshold`.
-   - **refuse** + gated → drop all `pull_records` AND clear `all_pull_candidates`
-     (so competitive suppression in `_post_effects` doesn't punish candidates for a
-     refusal that already happened). `applied=True`.
+   - **refuse** + gated → drop all `pull_records`, and zero **only the
+     competitive-suppression copy** of the candidate list (`suppression_candidates =
+     []`) so `_post_effects` doesn't punish candidates for a refusal that already
+     happened. The pull-path's `all_pull_candidates` list is **preserved unchanged**
+     and still flows into `_compute_quality` — quality assessment must reflect what was
+     actually found (even though it was refused), not a degenerate empty-candidate
+     score. `applied=True`. (See BLOCKER fix below.)
    - **flag** → never drop; `applied` reflects whether the gate ran (True when
      pull_records non-empty). Records untouched.
 5. **Merge + budget + post-effects + format**: unchanged; push path is never gated.
+   `_post_effects` receives `suppression_candidates` (zeroed on refuse); everything
+   else — including `_compute_quality`'s `all_pull_candidates` — is unaffected.
 6. **Output**: `AssemblyResult.metadata["gate"] = {"applied", "gate_score",
    "threshold", "mode", "gated"}` attached only when threshold is not None.
+
+### Design assumption (fixed, not open for revision)
+
+**Rank-0-by-relevance is the gate signal.** The gate reads the `ConfidenceField`
+value of the single top-ranked pull candidate (`pull_records[0]`) and compares it to
+the threshold. This is a deliberate design decision already made by the requester —
+the plan does not re-open it. The rationale: the rank-0 record is the answer the
+assembler would otherwise inject, so its confidence is the honest proxy for "do we
+know the answer." Aggregating across candidates (mean/max/quorum) is explicitly out of
+scope for this issue.
+
+### BLOCKER fix — refuse must not corrupt quality assessment
+
+The pull-path `all_pull_candidates` list is consumed by **two** downstream consumers,
+not one:
+- `_post_effects(...)` (line ~1263) → competitive suppression, which decrements
+  `ConfidenceField` on non-selected candidates. This is the consumer the refuse clear
+  legitimately wants to suppress (don't punish candidates for a refusal).
+- `_compute_quality(..., all_pull_candidates=...)` (line ~1299, only when
+  `assess_quality=True`) → `_compute_fok` (feeling-of-knowing) is computed **over the
+  full candidate set** (`context_assembler.py:1729`). If the gate zeroed the shared
+  list, FoK would collapse to a degenerate empty-candidate score, silently corrupting
+  the metacognitive layer.
+
+Therefore the earlier "the gate does not touch metacognitive layers" claim is only
+true if we **do not** mutate the shared `all_pull_candidates`. The fix: introduce a
+separate `suppression_candidates` reference (defaulting to `all_pull_candidates`),
+zero **only that** on refuse, and pass it to `_post_effects`. `_compute_quality`
+continues to receive the untouched `all_pull_candidates`. On refuse, `selected` is
+empty (pull records dropped), so quality's per-record metrics (avg_confidence,
+score_spread, staleness) legitimately reflect the empty selection, while FoK still
+reflects that candidates *were* found — the correct semantics for "we found matches
+but chose to refuse."
 
 ## Architectural Impact
 
@@ -157,8 +202,13 @@ already vendored via the benchmark harness. Proceeding with codebase context.
 - **Interface changes**: two new **keyword-only** ctor kwargs, both defaulting to
   off. `assemble()` signature unchanged. `AssemblyResult` dataclass unchanged (new
   data rides in the existing `metadata` dict).
-- **Coupling**: minimal — an additive branch in `assemble()` reading one field. Does
-  not touch RRF/fusion, push path, token budget, telemetry, or metacognitive layers.
+- **Coupling**: minimal — an additive branch in `assemble()` reading one field, plus a
+  one-line rename of the candidate list passed to `_post_effects` (from
+  `all_pull_candidates` to a `suppression_candidates` alias) so the refuse clear does
+  not corrupt `_compute_quality`. Does not touch RRF/fusion, push path, token budget,
+  or telemetry. Interaction with the metacognitive layer is deliberately confined to
+  preserving `all_pull_candidates` for `_compute_quality` (see BLOCKER fix in Data
+  Flow); the gate does not alter any quality math.
 - **Data ownership**: none changed; read-only on `ConfidenceField`.
 - **Reversibility**: trivial — the feature is inert unless a threshold is passed.
 
@@ -207,8 +257,19 @@ tests do not — they use a seeded synthetic fixture.
 ### Flow
 
 Caller passes threshold → `assemble()` runs pull path → reads rank-0 confidence →
-compares to threshold → (refuse: drop pull records + clear candidates | flag: keep) →
-merge with push → inject → `metadata["gate"]` reports the decision.
+compares to threshold → (refuse: drop pull records + zero the suppression copy | flag:
+keep everything) → merge with push → inject → `metadata["gate"]` reports the decision.
+
+### "flag" mode scope (CONCERN 2)
+
+Issue #463 explicitly asks for **both** "refuse" and "flag" modes, so "flag" stays in
+scope. But its only visible effect **within this issue's scope** is the
+`metadata["gate"]` annotation — no downstream consumer changes behavior based on the
+flag yet. "flag" never drops records, never touches suppression, never alters the
+formatted output; a caller who wants to act on a flagged low-confidence answer must
+inspect `metadata["gate"]` themselves. This is intentional and acceptable for this
+issue: "flag" ships the honest signal now, and any automated consumer of that signal
+is a separate, later concern. The plan does not build a flagged-metadata consumer.
 
 ### Technical Approach
 
@@ -239,9 +300,14 @@ and its message phrasing ("requires X on ClassName").
 **3. Gate block in `assemble()`** — insert immediately after the pull-path call
 (`pull_records, all_pull_candidates = self._pull_path(...)`) and before the push
 path. Compute a local `gate_meta` dict; do NOT mutate `metadata` yet (metadata is
-built later). Keep it a small self-contained block so a #479 rebase touches disjoint
-lines:
+built later). Introduce a `suppression_candidates` alias that `_post_effects` will
+consume, so the refuse clear never touches the shared `all_pull_candidates` that
+`_compute_quality` needs. The rank-0 `get_confidence()` read is wrapped in a
+`try/except` (it is otherwise the only unhandled-exception surface in an otherwise
+fault-tolerant `assemble()` — CONCERN 1). Keep it a small self-contained block so a
+#479 rebase touches disjoint lines:
 ```python
+suppression_candidates = all_pull_candidates  # copy fed to _post_effects
 gate_meta = None
 if self.confidence_gate_threshold is not None:
     if not pull_records:
@@ -249,22 +315,41 @@ if self.confidence_gate_threshold is not None:
                      "threshold": self.confidence_gate_threshold,
                      "mode": self.confidence_gate_mode, "gated": False}
     else:
-        gate_score = float(ConfidenceField.get_confidence(
-            pull_records[0], self._confidence_field_name))
-        gated = gate_score < self.confidence_gate_threshold
-        if gated and self.confidence_gate_mode == "refuse":
-            pull_records = []
-            all_pull_candidates = []   # don't punish others for a refusal
-        gate_meta = {"applied": True, "gate_score": gate_score,
-                     "threshold": self.confidence_gate_threshold,
-                     "mode": self.confidence_gate_mode, "gated": gated}
+        try:
+            gate_score = float(ConfidenceField.get_confidence(
+                pull_records[0], self._confidence_field_name))
+        except Exception as e:  # fault-tolerant, matches emit_trace/_compute_quality
+            logger.warning("confidence gate get_confidence failed: %s", e)
+            gate_score = None
+        if gate_score is None:
+            gate_meta = {"applied": False, "gate_score": None,
+                         "threshold": self.confidence_gate_threshold,
+                         "mode": self.confidence_gate_mode, "gated": False}
+        else:
+            gated = gate_score < self.confidence_gate_threshold
+            if gated and self.confidence_gate_mode == "refuse":
+                pull_records = []
+                suppression_candidates = []  # don't punish others for a refusal;
+                                             # all_pull_candidates preserved for FoK
+            gate_meta = {"applied": True, "gate_score": gate_score,
+                         "threshold": self.confidence_gate_threshold,
+                         "mode": self.confidence_gate_mode, "gated": gated}
 ```
-Then, where `metadata` is assembled near the end, attach only if configured:
+Then pass `suppression_candidates` (NOT `all_pull_candidates`) to `_post_effects`:
+```python
+self._post_effects(
+    selected, pull_keys, push_keys, suppression_candidates, agent_id
+)
+```
+`_compute_quality` keeps receiving the untouched `all_pull_candidates`. And where
+`metadata` is assembled near the end, attach only if configured:
 ```python
 if gate_meta is not None:
     metadata["gate"] = gate_meta
 ```
-This guarantees callers who pass no threshold get bit-for-bit identical metadata.
+This guarantees callers who pass no threshold get bit-for-bit identical metadata, and
+callers who assess quality on a refusal get a FoK computed over the candidates that
+were actually found.
 
 **4. Refusal-metric benchmark** (`tests/benchmarks/test_confidence_gate_refusal.py`):
 - Load cat-5 items via `tests.benchmarks.datasets.locomo.iter_items` (filter
@@ -291,15 +376,22 @@ This guarantees callers who pass no threshold get bit-for-bit identical metadata
 ## Failure Path Test Strategy
 
 ### Exception Handling Coverage
-- The new gate block reads `get_confidence()` on the rank-0 record. This is a
-  narrow, deterministic read (the record just came back from the pull path). We do
-  NOT wrap it in a broad `except Exception: pass` — a failure here is a real bug and
-  should surface. If a defensive guard is added, it MUST log `logger.warning` and be
-  covered by a test asserting the warning fires (no silent swallow). Default plan:
-  no new exception handler in the gate block; state this in the PR.
-- `_post_effects` already guards its pipeline; clearing `all_pull_candidates` on
-  refuse means the competitive-suppression loop simply iterates an empty list — test
-  asserts no `update_confidence` calls happen on a refusal.
+- The new gate block reads `get_confidence()` on the rank-0 record. This is the only
+  otherwise-unhandled-exception surface in an otherwise fault-tolerant `assemble()`
+  (which already wraps `emit_trace` and `_compute_quality` in `try/except` +
+  `logger.warning`). Per CONCERN 1, the read **is** wrapped: on any exception it logs
+  `logger.warning` and treats the gate as not-applied (`gate_score=None`,
+  `applied=False`, `gated=False`, records untouched) — never a silent `except: pass`.
+  A test monkeypatches `ConfidenceField.get_confidence` to raise and asserts (a) the
+  warning fires, (b) `metadata["gate"]["applied"] is False`, and (c) records are
+  returned unchanged (no crash, graceful degradation).
+- `_post_effects` already guards its pipeline; zeroing the `suppression_candidates`
+  copy on refuse means the competitive-suppression loop simply iterates an empty list
+  — a test asserts no `update_confidence` calls happen on a refusal. The shared
+  `all_pull_candidates` is left intact, so a companion test asserts that with
+  `assess_quality=True`, a refusal still yields a non-degenerate
+  `metadata["quality"].fok_score` (computed over the found candidates), proving the
+  BLOCKER fix.
 
 ### Empty/Invalid Input Handling
 - Empty `pull_records` (no candidates) with a configured threshold → `applied=False`,
@@ -371,7 +463,7 @@ tests seed explicit confidence values so gate behavior is deterministic and legi
 
 No race conditions identified. The gate is a synchronous, single-threaded read of one
 already-retrieved record's confidence value, evaluated inline in `assemble()` before
-any post-effects run. Clearing `all_pull_candidates` happens before `_post_effects`
+any post-effects run. Zeroing `suppression_candidates` happens before `_post_effects`
 consumes it, in the same call frame.
 
 ## No-Gos (Out of Scope)
@@ -397,51 +489,82 @@ directly in Python; the new kwargs are part of that same surface.
 ## Documentation
 
 ### Feature Documentation
-- [ ] Update `docs/features/agent-memory.md` ContextAssembler section (starts line
+- [x] Update `docs/features/agent-memory.md` ContextAssembler section (starts line
   ~1224): document `confidence_gate_threshold` / `confidence_gate_mode`, the
   mode-agnostic gate mechanism, the `metadata["gate"]` shape, "refuse" vs "flag"
   semantics, the no-default policy, and the EXPERIMENTAL constant.
-- [ ] Update `docs/benchmarks.md`: add a refusal-metric subsection (append, do not
-  edit the #471 cat-5 audit block) reporting the number with the cold-start +
-  ≤2-true-positive caveat, and explicitly stating it is not leaderboard-comparable.
+- [x] Update `docs/benchmarks.md`: add a refusal-metric subsection (append, do not
+  edit the #471 cat-5 audit block). The wording MUST make the number's provenance
+  unambiguous — this is a **seeded/simulated, small-sample** figure, not real evidence
+  and not leaderboard-grade (CONCERN 3). Use language equivalent to this exact framing
+  (the DOCS step ships this, tighten only for flow):
+
+  > **Refusal precision (confidence gate) — illustrative, not leaderboard-grade.**
+  > This number is a *seeded simulation*, not an organic measurement. LoCoMo's cat-5
+  > slice contains only **2 genuinely-unanswerable items** out of 446 (per the #454 /
+  > PR #471 audit), so the refusal metric has **≤2 true positives** — a single false
+  > positive swings precision by tens of points. Moreover, `ConfidenceField` gating is
+  > **cold-start-degenerate** on a fresh one-shot corpus: every candidate begins at the
+  > same `initial_confidence` with no observation history, so the reported spread was
+  > **manually seeded** to make the gate exercisable. Read this as a *demonstration
+  > that the gate mechanism works end-to-end*, NOT as a claim about Popoto's real-world
+  > refusal accuracy. Do not cross-compare it with any leaderboard recall/accuracy
+  > number (metric-family doctrine).
+
+- [x] PR description carries the same caveat verbatim-equivalent: the refusal number is
+  seeded/simulated on ≤2 true positives with a cold-start limitation, shipped as a
+  mechanism demonstration only.
 
 ### External Documentation Site
-- [ ] `mkdocs build --strict` passes (part of `scripts/ci-local.sh docs`).
+- [x] `mkdocs build --strict` passes (part of `scripts/ci-local.sh docs`).
 
 ### Inline Documentation
-- [ ] Docstring on the two new ctor kwargs + `Raises: QueryException`.
-- [ ] Comment on the `all_pull_candidates = []` clear explaining the
-  competitive-suppression rationale.
-- [ ] EXPERIMENTAL constant carries the mandated NOT-a-shipped-default comment.
+- [x] Docstring on the two new ctor kwargs + `Raises: QueryException`.
+- [x] Comment on the `suppression_candidates = []` clear explaining the
+  competitive-suppression rationale AND why `all_pull_candidates` is deliberately left
+  intact (preserves `_compute_quality` FoK — BLOCKER fix).
+- [x] Docstring/comment on the rank-0 `get_confidence` `try/except` noting it matches
+  the fault-tolerant style of `emit_trace`/`_compute_quality`.
+- [x] EXPERIMENTAL constant carries the mandated NOT-a-shipped-default comment.
 
 ## Success Criteria
 
-- [ ] `confidence_gate_threshold=None` (default) → `AssemblyResult.metadata` is
+- [x] `confidence_gate_threshold=None` (default) → `AssemblyResult.metadata` is
   bit-for-bit identical to pre-change (no `gate` key).
-- [ ] Threshold configured on a model without `ConfidenceField` → `QueryException` at
+- [x] Threshold configured on a model without `ConfidenceField` → `QueryException` at
   construction (mirrors hybrid validation).
-- [ ] Invalid `confidence_gate_mode` → `QueryException` at construction.
-- [ ] "refuse" + gate_score < threshold → zero pull records injected, push path
-  intact, `all_pull_candidates` cleared (no competitive suppression on refusal),
-  `metadata["gate"]["gated"] is True`, `applied True`.
-- [ ] "flag" + gate_score < threshold → records retained, `metadata["gate"]["gated"]
+- [x] Invalid `confidence_gate_mode` → `QueryException` at construction.
+- [x] "refuse" + gate_score < threshold → zero pull records injected, push path
+  intact, `suppression_candidates` zeroed (no competitive suppression on refusal —
+  asserted via no `update_confidence` calls), `metadata["gate"]["gated"] is True`,
+  `applied True`.
+- [x] "refuse" + `assess_quality=True` → `metadata["quality"].fok_score` is computed
+  over the found candidates (non-degenerate), proving the shared `all_pull_candidates`
+  is NOT corrupted by the refuse clear (BLOCKER fix).
+- [x] rank-0 `get_confidence` raising → `logger.warning` fires, gate treated as
+  not-applied (`applied False`, `gate_score None`, `gated False`), records returned
+  unchanged, no crash (CONCERN 1 guard).
+- [x] "flag" mode's only effect is the `metadata["gate"]` annotation — records,
+  suppression, and formatted output are byte-for-byte identical to threshold-None
+  (CONCERN 2 scope boundary).
+- [x] "flag" + gate_score < threshold → records retained, `metadata["gate"]["gated"]
   is True`, nothing dropped.
-- [ ] Empty pull_records with threshold configured → `applied False`,
+- [x] Empty pull_records with threshold configured → `applied False`,
   `gate_score None`, `gated False`, dict attached.
-- [ ] Gate is mode-agnostic: identical behavior asserted under composite and hybrid.
-- [ ] `EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD = 0.5` present with the required
+- [x] Gate is mode-agnostic: identical behavior asserted under composite and hybrid.
+- [x] `EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD = 0.5` present with the required
   comment; no `Defaults.CONFIDENCE_GATE_THRESHOLD` added; ctor default stays None.
-- [ ] Refusal-metric benchmark produces a number on the cat-5 slice with the
+- [x] Refusal-metric benchmark produces a number on the cat-5 slice with the
   cold-start caveat documented; runs only when the LoCoMo cache is present (skipped
   otherwise); the seeded-fixture unit test runs in CI.
-- [ ] Targeted tests pass:
+- [x] Targeted tests pass:
   `pytest tests/test_context_assembler.py tests/test_context_assembler_hybrid.py
   tests/test_confidence_field.py tests/benchmarks/test_confidence_gate_refusal.py`.
-- [ ] `scripts/ci-local.sh --fast` (or equivalent) passes before PR.
-- [ ] Valkey-safe: no Redis modules introduced (gate is a plain hash read via
+- [x] `scripts/ci-local.sh --fast` (or equivalent) passes before PR.
+- [x] Valkey-safe: no Redis modules introduced (gate is a plain hash read via
   `get_confidence`).
-- [ ] Documentation updated (`/do-docs`).
-- [ ] PR OPEN (not merged); PR description's final section explicitly flags that
+- [x] Documentation updated (`/do-docs`).
+- [x] PR OPEN (not merged); PR description's final section explicitly flags that
   `confidence_gate_threshold` ships with no default and
   `EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD` needs maintainer sign-off.
 
@@ -494,11 +617,15 @@ best built in one pass, then the benchmark, then docs.
 - Add construction-time validation (mode in {refuse,flag}; ConfidenceField present),
   raising `QueryException` mirroring the hybrid-mode block's style.
 - Add the additive gate block in `assemble()` after the pull path (rank-0
-  `get_confidence`, refuse drops pull_records + clears all_pull_candidates, flag
-  keeps). Attach `metadata["gate"]` only when threshold is not None.
+  `get_confidence` wrapped in `try/except` + `logger.warning`; refuse drops
+  pull_records + zeros a `suppression_candidates` alias while preserving
+  `all_pull_candidates`; flag keeps). Pass `suppression_candidates` to `_post_effects`;
+  leave `_compute_quality`'s `all_pull_candidates` untouched. Attach `metadata["gate"]`
+  only when threshold is not None.
 - Write unit tests covering all Success Criteria rows for the mechanism (refuse/flag ×
   gated/not, empty-pull, threshold-None identical-metadata, both QueryException paths,
-  mode-agnostic under hybrid).
+  mode-agnostic under hybrid, the rank-0-read guard, and the refuse +
+  `assess_quality=True` non-degenerate-FoK BLOCKER-fix assertion).
 
 ### 2. Refusal-metric benchmark
 - **Task ID**: build-benchmark
@@ -551,9 +678,13 @@ best built in one pass, then the benchmark, then docs.
 
 ## Critique Results
 
-<!-- Populated by /do-plan-critique (war room). Leave empty until critique is run. -->
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
+| BLOCKER | do-plan-critique | Clearing `all_pull_candidates=[]` on refuse corrupts `_compute_quality`/`_compute_fok` (empty-candidate quality). | Data Flow → BLOCKER fix; Technical Approach step 3; Architectural Impact | Introduce `suppression_candidates` alias, zero only that on refuse, feed it to `_post_effects`; preserve `all_pull_candidates` for `_compute_quality`. New success-criterion + test asserts non-degenerate FoK on refusal. |
+| CONCERN 1 | do-plan-critique | rank-0 `get_confidence()` read is the only unhandled-exception surface in `assemble()`. | Data Flow step 4; Technical Approach step 3; Failure Path Test Strategy | Wrapped in `try/except` + `logger.warning`; on failure gate treated as not-applied, records untouched. Test monkeypatches to raise and asserts graceful degradation. |
+| CONCERN 2 | do-plan-critique | "flag" mode has no in-scope consumer of flagged metadata. | Solution → "flag" mode scope | Kept in scope (issue asks for it); stated explicitly its only visible effect is `metadata["gate"]`; no consumer built — intentional. |
+| CONCERN 3 | do-plan-critique | Refusal number is seeded/thin but docs could imply real evidence. | Documentation (benchmarks.md + PR wording) | Exact "illustrative, not leaderboard-grade" framing spelled out: seeded/simulated, ≤2 TP, cold-start-degenerate, no cross-comparison. |
+| NIT | do-plan-critique | "rank-0 is the gate signal" was implicit. | Data Flow → Design assumption | Stated explicitly as a fixed requester decision, not open for revision. |
 
 ---
 

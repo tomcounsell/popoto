@@ -91,6 +91,19 @@ class HybridMemory(Model):
     associations = CoOccurrenceField(symmetric=True, max_edges=50)
 
 
+class HybridGatedMemory(Model):
+    """Hybrid-capable model (BM25Field + EmbeddingField) with a
+    ConfidenceField, for the confidence-gate mode-agnostic test (#463)."""
+
+    memory_id = AutoKeyField()
+    agent_id = KeyField()
+    content = Field(type=str)
+    relevance = DecayingSortedField(partition_by="agent_id")
+    content_index = BM25Field(source="content")
+    embedding = EmbeddingField(source="content")
+    confidence = ConfidenceField(initial_confidence=0.5)
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -548,7 +561,9 @@ class TestLexicalMode:
             score_weights={"relevance": 1.0},
             retrieval_mode="lexical",
         )
-        assert assembler._embedding_field is None, "lexical mode requires no EmbeddingField"
+        assert (
+            assembler._embedding_field is None
+        ), "lexical mode requires no EmbeddingField"
 
         call_count = {"n": 0}
 
@@ -592,7 +607,12 @@ class TestLexicalMode:
             patch.object(
                 assembler, "_pull_path_composite", return_value=([], [])
             ) as mock_composite,
-            patch.object(assembler.model_class.query.__class__, "fuse", return_value=[], create=True),
+            patch.object(
+                assembler.model_class.query.__class__,
+                "fuse",
+                return_value=[],
+                create=True,
+            ),
         ):
             assembler.assemble(query_cues={"topic": "test"})
             mock_composite.assert_not_called()
@@ -614,7 +634,9 @@ class TestLexicalMode:
                 assembler, "_pull_path_composite", return_value=([], [])
             ) as mock_composite,
         ):
-            result = assembler.assemble(query_cues={"topic": "zzz flurble xyzzy gibberish"})
+            result = assembler.assemble(
+                query_cues={"topic": "zzz flurble xyzzy gibberish"}
+            )
             # Zero BM25 hits → should fall back to composite (by design)
             mock_composite.assert_called_once()
             assert isinstance(result.records, list)
@@ -639,3 +661,49 @@ class TestConstants:
 
     def test_hybrid_candidate_multiplier_is_positive(self):
         assert HYBRID_CANDIDATE_MULTIPLIER > 0
+
+
+# ---------------------------------------------------------------------------
+# Confidence gate — mode-agnostic under hybrid ranking (issue #463)
+# ---------------------------------------------------------------------------
+
+
+class TestConfidenceGateModeAgnostic:
+    """The gate reads ConfidenceField.get_confidence() on the rank-0
+    pull-path candidate, which is always in [0, 1] regardless of the
+    underlying ranking score scale (composite weighted-sum vs RRF-fused).
+    This proves it fires identically when the effective retrieval mode is
+    "hybrid" as it does under composite/lexical (covered in
+    tests/test_context_assembler.py::TestConfidenceGate)."""
+
+    def test_gate_fires_identically_under_hybrid_mode(self):
+        _flush()
+        record = HybridGatedMemory(agent_id="a1", content="hybrid content")
+        record.save()  # confidence starts at initial_confidence == 0.5
+
+        assembler = ContextAssembler(
+            model_class=HybridGatedMemory,
+            score_weights={"relevance": 1.0},
+            retrieval_mode="hybrid",
+            confidence_gate_threshold=0.9,  # 0.5 < 0.9 -> gated
+            confidence_gate_mode="refuse",
+        )
+        assert assembler._effective_mode == "hybrid"
+        # Deterministically stand in for the real hybrid pull path (already
+        # covered elsewhere in this file) so the gate's own behavior is
+        # isolated from RRF fusion/BM25/embedding scoring.
+        assembler._pull_path = lambda cues, filters: ([record], [record])
+
+        result = assembler.assemble(
+            query_cues={"topic": "hybrid content"},
+            partition_filters={"agent_id": "a1"},
+        )
+
+        assert result.metadata["pull_count"] == 0
+        assert result.metadata["gate"] == {
+            "applied": True,
+            "gate_score": 0.5,
+            "threshold": 0.9,
+            "mode": "refuse",
+            "gated": True,
+        }
