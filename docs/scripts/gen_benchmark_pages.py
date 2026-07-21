@@ -53,6 +53,7 @@ Output layout (virtual files under ``benchmarks/results/``):
     benchmarks/results/locomo_lexical.md
     benchmarks/results/locomo_hybrid.md
     benchmarks/results/locomo_vector.md
+    benchmarks/results/rlt_redis.md
     benchmarks/results/csr.md
 
 A page is emitted only when its artifact is committed. The ``_vector`` pages
@@ -208,6 +209,32 @@ SPECS: tuple[Spec, ...] = (
             "    band, arXiv:2605.03675), and against the same 10-dialogue /\n"
             "    5-category / 1986-QA-pair LoCoMo variant used by the lexical and\n"
             "    hybrid pages — same retrieval-recall metric family throughout.\n"
+        ),
+    ),
+    Spec(
+        slug="rlt_redis",
+        title="RLT — Retrieval Latency & Throughput (Redis)",
+        nav_title="RLT (Redis)",
+        stem="rlt/rlt_latest_redis",
+        # ``rlt`` is neither an "external" (Recall@k/MRR) nor a "csr" (RSR) page:
+        # its metric family is latency/throughput, so it never contributes a row
+        # to the Overview's recall headline table (``_external_table`` filters on
+        # kind == "external") and has no ``summary`` block for ``_read_summary``.
+        # The page body (scaling / throughput / mixed-workload tables) is spliced
+        # verbatim from the committed artifact, exactly like every other page.
+        # Ordered before ``csr`` so the CSR page stays last (a pinned invariant
+        # in test_gen_benchmark_pages.py).
+        kind="rlt",
+        note=(
+            '!!! note "Latency metric family — not comparable to recall pages"\n'
+            "    RLT measures **speed** (p50/p95/p99 retrieval latency, throughput,\n"
+            "    scaling curve, live mixed-workload degradation), a different metric\n"
+            "    family from the Recall@k/MRR retrieval pages above — the two are not\n"
+            "    cross-comparable. These are **native Popoto (Redis)** numbers only;\n"
+            "    the Valkey run and real Mem0/Zep/vector-DB comparators are a tracked\n"
+            "    follow-up (see [Benchmarking How-To](../../benchmarks.md) →\n"
+            "    RLT section). Absolute latency is machine-dependent — read the\n"
+            "    *shape*, not the exact millisecond.\n"
         ),
     ),
     Spec(
