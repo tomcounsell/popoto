@@ -16,7 +16,7 @@
         <link rel="prev" href="../policy-cache-recipe/">
       
       
-        <link rel="next" href="../trajectory-memory-recipe/">
+        <link rel="next" href="../../features/llm-memory-extraction/">
       
       
         
@@ -1728,6 +1728,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../features/llm-memory-extraction/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Memory Extraction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../trajectory-memory-recipe/" class="md-nav__link">
         
   
@@ -2999,12 +3027,21 @@
 <p>If no memories are found (or all are filtered), messages are returned unchanged.</p>
 <p>The query cue is only meaningful in <strong>query-sensitive</strong> modes (lexical or hybrid, requiring <code>BM25Field</code>). In composite mode (no <code>BM25Field</code>, no <code>EmbeddingField</code>), the query cue is ignored and ranking is driven purely by importance/confidence scores.</p>
 <h3 id="post-turn-extract_memoriesresponse_text-importance">Post-turn: <code>extract_memories(response_text, importance)</code><a class="headerlink" href="#post-turn-extract_memoriesresponse_text-importance" title="Permanent link">&para;</a></h3>
+<p>By default (no <code>extraction_provider</code> passed to the constructor):</p>
 <ol>
 <li>Splits the LLM response into sentences</li>
 <li>Filters out sentences shorter than <code>extraction_min_length</code> (default 10 chars)</li>
 <li>Saves each sentence as a new Memory record with the specified importance</li>
 </ol>
-<p>The built-in extraction uses a simple sentence-splitting heuristic. For more accurate extraction, override this method or extract facts using a secondary LLM call and save them directly via your model class.</p>
+<p>This is unchanged, byte-for-byte, from the original heuristic -- existing code that doesn't pass any of <code>extraction_provider</code>, <code>confidence_field</code>, or <code>co_occurrence_field</code> sees no behavior change.</p>
+<p>Extraction is now pluggable via a dedicated provider interface -- see the <a href="../../features/llm-memory-extraction/">LLM Memory Extraction</a> feature doc for the full picture. In short:</p>
+<ul>
+<li><strong><code>extraction_provider</code></strong> (default <code>None</code> -&gt; <code>HeuristicExtractionProvider</code>): pass an <code>AbstractExtractionProvider</code> instance (e.g. <code>ClaudeExtractionProvider</code> from <code>popoto.extraction.claude</code>, requires <code>pip install popoto[anthropic]</code>) for LLM-based extraction that also returns entities, an importance opinion, and a confidence opinion per fact.</li>
+<li><strong><code>confidence_field</code></strong> (default <code>None</code>, no-op unless set): name of a <code>ConfidenceField</code> on <code>model_class</code>. When set and a fact carries a confidence opinion, <code>extract_memories()</code> seeds that field via <code>ConfidenceField.update_confidence()</code>. Because <code>ConfidenceField</code> has no per-instance "set initial value" API, this is a <em>blend</em> with the field's <code>initial_confidence</code> prior, not a hard override -- see <a href="../../features/llm-memory-extraction/#the-confidence-blend-nuance">the confidence blend nuance</a> before assuming the stored value equals the extracted confidence.</li>
+<li><strong><code>co_occurrence_field</code></strong> (default <code>None</code>, no-op unless set): name of a <code>CoOccurrenceField</code> on <code>model_class</code>. When set and a fact names two or more distinct entities, every unordered entity pair is linked in that field's association graph.</li>
+</ul>
+<p>Both <code>confidence_field</code> and <code>co_occurrence_field</code> are inert with the default <code>HeuristicExtractionProvider</code>, since it never populates <code>entities</code> or <code>confidence</code> on the facts it emits -- they only do work once an entity/confidence-emitting provider (like <code>ClaudeExtractionProvider</code>) is configured.</p>
+<p>For a fully custom extraction source (not implementing the provider interface), you can still subclass <code>SubconsciousMemory</code> and override <code>extract_memories()</code> directly -- see <a href="#extensibility">Extensibility</a> below.</p>
 <h3 id="outcome-report_outcomesassembly_result-outcome">Outcome: <code>report_outcomes(assembly_result, outcome)</code><a class="headerlink" href="#outcome-report_outcomesassembly_result-outcome" title="Permanent link">&para;</a></h3>
 <p>Reports how the agent used the injected memories via <code>ObservationProtocol.on_context_used()</code>. Outcomes strengthen or weaken memories for future retrieval:</p>
 <ul>
@@ -3059,32 +3096,66 @@
 <td>"importance"</td>
 <td>Name of the importance score field</td>
 </tr>
+<tr>
+<td><code>extraction_provider</code></td>
+<td><code>None</code> (-&gt; <code>HeuristicExtractionProvider</code>)</td>
+<td><code>AbstractExtractionProvider</code> used by <code>extract_memories()</code>. See <a href="../../features/llm-memory-extraction/">LLM Memory Extraction</a></td>
+</tr>
+<tr>
+<td><code>confidence_field</code></td>
+<td><code>None</code></td>
+<td>Name of a <code>ConfidenceField</code> to seed from extracted facts' confidence opinions; no-op unless set</td>
+</tr>
+<tr>
+<td><code>co_occurrence_field</code></td>
+<td><code>None</code></td>
+<td>Name of a <code>CoOccurrenceField</code> to link co-mentioned entities in; no-op unless set</td>
+</tr>
 </tbody>
 </table>
 <p>These constants can be tuned experimentally using the Tier 4 benchmark harness. See the <a href="../tuning-magic-numbers/">Tuning Magic Numbers</a> guide for the full constant catalog, optimal ranges, and how to run parameter sweeps.</p>
 <h2 id="extensibility">Extensibility<a class="headerlink" href="#extensibility" title="Permanent link">&para;</a></h2>
 <h3 id="custom-fact-extraction">Custom Fact Extraction<a class="headerlink" href="#custom-fact-extraction" title="Permanent link">&para;</a></h3>
-<p>Subclass <code>SubconsciousMemory</code> and override <code>extract_memories()</code> for LLM-based extraction:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">SmartSubconsciousMemory</span><span class="p">(</span><span class="n">SubconsciousMemory</span><span class="p">):</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">extract_memories</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">response_text</span><span class="p">,</span> <span class="n">importance</span><span class="o">=</span><span class="mf">0.5</span><span class="p">):</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>        <span class="c1"># Use a secondary LLM call to extract structured facts</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>        <span class="n">facts</span> <span class="o">=</span> <span class="n">my_extraction_function</span><span class="p">(</span><span class="n">response_text</span><span class="p">)</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>        <span class="n">saved</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>        <span class="k">for</span> <span class="n">fact</span> <span class="ow">in</span> <span class="n">facts</span><span class="p">:</span>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>            <span class="n">m</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">(</span>
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>                <span class="n">agent_id</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">agent_id</span><span class="p">,</span>
-<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>                <span class="n">content</span><span class="o">=</span><span class="n">fact</span><span class="p">[</span><span class="s2">&quot;text&quot;</span><span class="p">],</span>
-<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>                <span class="n">importance</span><span class="o">=</span><span class="n">fact</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;importance&quot;</span><span class="p">,</span> <span class="n">importance</span><span class="p">),</span>
-<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>            <span class="p">)</span>
-<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>            <span class="n">m</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
-<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>            <span class="n">saved</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">m</span><span class="p">)</span>
-<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>        <span class="k">return</span> <span class="n">saved</span>
+<p>The preferred way to customize extraction is to pass an <code>extraction_provider</code> -- either the built-in <code>ClaudeExtractionProvider</code> or your own <code>AbstractExtractionProvider</code> implementation -- rather than subclassing. See <a href="../../features/llm-memory-extraction/">LLM Memory Extraction</a> for the full interface and a "writing a custom provider" example.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.extraction</span><span class="w"> </span><span class="kn">import</span> <span class="n">AbstractExtractionProvider</span><span class="p">,</span> <span class="n">ExtractedFact</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">MyProvider</span><span class="p">(</span><span class="n">AbstractExtractionProvider</span><span class="p">):</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">extract</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">ExtractedFact</span><span class="p">]:</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>        <span class="n">facts</span> <span class="o">=</span> <span class="n">my_extraction_function</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>        <span class="k">return</span> <span class="p">[</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>            <span class="n">ExtractedFact</span><span class="p">(</span><span class="n">text</span><span class="o">=</span><span class="n">f</span><span class="p">[</span><span class="s2">&quot;text&quot;</span><span class="p">],</span> <span class="n">importance</span><span class="o">=</span><span class="n">f</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;importance&quot;</span><span class="p">))</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>            <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">facts</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>        <span class="p">]</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="n">sm</span> <span class="o">=</span> <span class="n">SubconsciousMemory</span><span class="p">(</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>    <span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>    <span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>    <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;relevance&quot;</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">,</span> <span class="s2">&quot;confidence&quot;</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">},</span>
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>    <span class="n">extraction_provider</span><span class="o">=</span><span class="n">MyProvider</span><span class="p">(),</span>
+<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="p">)</span>
+</code></pre></div>
+<p>If you need to change more than extraction itself (e.g. custom save logic, side effects beyond seeding confidence/co-occurrence), subclassing and overriding <code>extract_memories()</code> directly is still supported:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">SmartSubconsciousMemory</span><span class="p">(</span><span class="n">SubconsciousMemory</span><span class="p">):</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">extract_memories</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">response_text</span><span class="p">,</span> <span class="n">importance</span><span class="o">=</span><span class="mf">0.5</span><span class="p">):</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>        <span class="c1"># Use a secondary LLM call to extract structured facts</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>        <span class="n">facts</span> <span class="o">=</span> <span class="n">my_extraction_function</span><span class="p">(</span><span class="n">response_text</span><span class="p">)</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>        <span class="n">saved</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>        <span class="k">for</span> <span class="n">fact</span> <span class="ow">in</span> <span class="n">facts</span><span class="p">:</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>            <span class="n">m</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">(</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>                <span class="n">agent_id</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">agent_id</span><span class="p">,</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>                <span class="n">content</span><span class="o">=</span><span class="n">fact</span><span class="p">[</span><span class="s2">&quot;text&quot;</span><span class="p">],</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>                <span class="n">importance</span><span class="o">=</span><span class="n">fact</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;importance&quot;</span><span class="p">,</span> <span class="n">importance</span><span class="p">),</span>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>            <span class="p">)</span>
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>            <span class="n">m</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>            <span class="n">saved</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">m</span><span class="p">)</span>
+<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>        <span class="k">return</span> <span class="n">saved</span>
 </code></pre></div>
 <h3 id="custom-query-cues">Custom Query Cues<a class="headerlink" href="#custom-query-cues" title="Permanent link">&para;</a></h3>
 <p>The default implementation uses the last user message as the query cue. For more sophisticated cue extraction, subclass and override the relevant portion of <code>inject_context()</code>.</p>
 <h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../agent-memory-quickstart/">Agent Memory Quickstart</a> -- progressive adoption guide</li>
+<li><a href="../../features/llm-memory-extraction/">LLM Memory Extraction</a> -- pluggable extraction providers, entities, importance/confidence opinions</li>
 <li><a href="../../features/context-assembler/">ContextAssembler</a> -- retrieval-to-injection bridge</li>
 <li><a href="../policy-cache-recipe/">PolicyCache Recipe</a> -- RL-style learned action selection</li>
 <li><a href="../trajectory-memory-recipe/">Trajectory Memory Recipe</a> -- fingerprint-keyed procedural memory: cluster completed task trajectories and recall "what worked last time"</li>

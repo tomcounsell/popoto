@@ -1501,6 +1501,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../../../features/llm-memory-extraction/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Memory Extraction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../../../guides/trajectory-memory-recipe/" class="md-nav__link">
         
   
@@ -2808,7 +2836,16 @@ ignores <code>Defaults.DECAY_RATE</code>.</p>
 <span class="normal"><a href="#__codelineno-0-167">167</a></span>
 <span class="normal"><a href="#__codelineno-0-168">168</a></span>
 <span class="normal"><a href="#__codelineno-0-169">169</a></span>
-<span class="normal"><a href="#__codelineno-0-170">170</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-22" name="__codelineno-0-22"></a><span class="k">class</span><span class="w"> </span><span class="nc">Defaults</span><span class="p">:</span>
+<span class="normal"><a href="#__codelineno-0-170">170</a></span>
+<span class="normal"><a href="#__codelineno-0-171">171</a></span>
+<span class="normal"><a href="#__codelineno-0-172">172</a></span>
+<span class="normal"><a href="#__codelineno-0-173">173</a></span>
+<span class="normal"><a href="#__codelineno-0-174">174</a></span>
+<span class="normal"><a href="#__codelineno-0-175">175</a></span>
+<span class="normal"><a href="#__codelineno-0-176">176</a></span>
+<span class="normal"><a href="#__codelineno-0-177">177</a></span>
+<span class="normal"><a href="#__codelineno-0-178">178</a></span>
+<span class="normal"><a href="#__codelineno-0-179">179</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-22" name="__codelineno-0-22"></a><span class="k">class</span><span class="w"> </span><span class="nc">Defaults</span><span class="p">:</span>
 <a id="__codelineno-0-23" name="__codelineno-0-23"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Central registry of tunable behavioral constants (Category 1).</span>
 <a id="__codelineno-0-24" name="__codelineno-0-24"></a>
 <a id="__codelineno-0-25" name="__codelineno-0-25"></a><span class="sd">    Override any constant before model definition or at runtime::</span>
@@ -2957,6 +2994,15 @@ ignores <code>Defaults.DECAY_RATE</code>.</p>
 <a id="__codelineno-0-168" name="__codelineno-0-168"></a>        <span class="mf">0.1</span>  <span class="c1"># importance below this → eligible for forget</span>
 <a id="__codelineno-0-169" name="__codelineno-0-169"></a>    <span class="p">)</span>
 <a id="__codelineno-0-170" name="__codelineno-0-170"></a>    <span class="n">LIFECYCLE_FORGET_IDLE_SECONDS</span> <span class="o">=</span> <span class="mf">86400.0</span>  <span class="c1"># 24 h idle → eligible for forget</span>
+<a id="__codelineno-0-171" name="__codelineno-0-171"></a>
+<a id="__codelineno-0-172" name="__codelineno-0-172"></a>    <span class="c1"># -- Extraction (extraction/) ---------------------------------------------</span>
+<a id="__codelineno-0-173" name="__codelineno-0-173"></a>    <span class="c1"># Experimental tuning constants for the pluggable LLM-extraction path</span>
+<a id="__codelineno-0-174" name="__codelineno-0-174"></a>    <span class="c1"># (popoto.extraction). Not yet swept -- initial values set by design,</span>
+<a id="__codelineno-0-175" name="__codelineno-0-175"></a>    <span class="c1"># per issue #461 / docs/plans/llm_memory_extraction_path.md.</span>
+<a id="__codelineno-0-176" name="__codelineno-0-176"></a>    <span class="n">EXTRACTION_DEFAULT_IMPORTANCE</span> <span class="o">=</span> <span class="mf">0.5</span>  <span class="c1"># aligns with SubconsciousMemory.extract_memories()&#39;s current flat importance default</span>
+<a id="__codelineno-0-177" name="__codelineno-0-177"></a>    <span class="n">EXTRACTION_DEFAULT_CONFIDENCE</span> <span class="o">=</span> <span class="mf">0.7</span>  <span class="c1"># signal applied when a provider asserts a fact but returns no explicit confidence</span>
+<a id="__codelineno-0-178" name="__codelineno-0-178"></a>    <span class="n">EXTRACTION_ENTITY_PAIR_LINK_WEIGHT</span> <span class="o">=</span> <span class="mf">0.1</span>  <span class="c1"># matches CO_OCCURRENCE_INITIAL_WEIGHT; must stay &lt;= CO_OCCURRENCE_WEIGHT_CAP (1.0) or CoOccurrenceField.link() raises</span>
+<a id="__codelineno-0-179" name="__codelineno-0-179"></a>    <span class="n">EXTRACTION_MAX_ENTITIES_PER_FACT</span> <span class="o">=</span> <span class="mi">12</span>  <span class="c1"># cap on deduped entities paired per fact; combinations grow O(n^2), so a malformed/adversarial extraction with many entities can&#39;t blow up co-occurrence writes</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -3016,37 +3062,37 @@ YEARLY    = 31,536,000 seconds (365 days)</p>
 
               <details class="mkdocstrings-source">
                 <summary>Source code in <code>src/popoto/fields/constants.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-173">173</a></span>
-<span class="normal"><a href="#__codelineno-0-174">174</a></span>
-<span class="normal"><a href="#__codelineno-0-175">175</a></span>
-<span class="normal"><a href="#__codelineno-0-176">176</a></span>
-<span class="normal"><a href="#__codelineno-0-177">177</a></span>
-<span class="normal"><a href="#__codelineno-0-178">178</a></span>
-<span class="normal"><a href="#__codelineno-0-179">179</a></span>
-<span class="normal"><a href="#__codelineno-0-180">180</a></span>
-<span class="normal"><a href="#__codelineno-0-181">181</a></span>
-<span class="normal"><a href="#__codelineno-0-182">182</a></span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-182">182</a></span>
 <span class="normal"><a href="#__codelineno-0-183">183</a></span>
 <span class="normal"><a href="#__codelineno-0-184">184</a></span>
 <span class="normal"><a href="#__codelineno-0-185">185</a></span>
 <span class="normal"><a href="#__codelineno-0-186">186</a></span>
 <span class="normal"><a href="#__codelineno-0-187">187</a></span>
-<span class="normal"><a href="#__codelineno-0-188">188</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-173" name="__codelineno-0-173"></a><span class="k">class</span><span class="w"> </span><span class="nc">TemporalPeriod</span><span class="p">:</span>
-<a id="__codelineno-0-174" name="__codelineno-0-174"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Named constants for common temporal cycle periods in seconds.</span>
-<a id="__codelineno-0-175" name="__codelineno-0-175"></a>
-<a id="__codelineno-0-176" name="__codelineno-0-176"></a><span class="sd">    These values represent the approximate duration of each period:</span>
-<a id="__codelineno-0-177" name="__codelineno-0-177"></a><span class="sd">        DAILY     = 86,400 seconds (24 hours)</span>
-<a id="__codelineno-0-178" name="__codelineno-0-178"></a><span class="sd">        WEEKLY    = 604,800 seconds (7 days)</span>
-<a id="__codelineno-0-179" name="__codelineno-0-179"></a><span class="sd">        MONTHLY   = 2,592,000 seconds (30 days)</span>
-<a id="__codelineno-0-180" name="__codelineno-0-180"></a><span class="sd">        QUARTERLY = 7,776,000 seconds (90 days)</span>
-<a id="__codelineno-0-181" name="__codelineno-0-181"></a><span class="sd">        YEARLY    = 31,536,000 seconds (365 days)</span>
-<a id="__codelineno-0-182" name="__codelineno-0-182"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-183" name="__codelineno-0-183"></a>
-<a id="__codelineno-0-184" name="__codelineno-0-184"></a>    <span class="n">DAILY</span> <span class="o">=</span> <span class="mi">86_400</span>
-<a id="__codelineno-0-185" name="__codelineno-0-185"></a>    <span class="n">WEEKLY</span> <span class="o">=</span> <span class="mi">604_800</span>
-<a id="__codelineno-0-186" name="__codelineno-0-186"></a>    <span class="n">MONTHLY</span> <span class="o">=</span> <span class="mi">2_592_000</span>
-<a id="__codelineno-0-187" name="__codelineno-0-187"></a>    <span class="n">QUARTERLY</span> <span class="o">=</span> <span class="mi">7_776_000</span>
-<a id="__codelineno-0-188" name="__codelineno-0-188"></a>    <span class="n">YEARLY</span> <span class="o">=</span> <span class="mi">31_536_000</span>
+<span class="normal"><a href="#__codelineno-0-188">188</a></span>
+<span class="normal"><a href="#__codelineno-0-189">189</a></span>
+<span class="normal"><a href="#__codelineno-0-190">190</a></span>
+<span class="normal"><a href="#__codelineno-0-191">191</a></span>
+<span class="normal"><a href="#__codelineno-0-192">192</a></span>
+<span class="normal"><a href="#__codelineno-0-193">193</a></span>
+<span class="normal"><a href="#__codelineno-0-194">194</a></span>
+<span class="normal"><a href="#__codelineno-0-195">195</a></span>
+<span class="normal"><a href="#__codelineno-0-196">196</a></span>
+<span class="normal"><a href="#__codelineno-0-197">197</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-182" name="__codelineno-0-182"></a><span class="k">class</span><span class="w"> </span><span class="nc">TemporalPeriod</span><span class="p">:</span>
+<a id="__codelineno-0-183" name="__codelineno-0-183"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Named constants for common temporal cycle periods in seconds.</span>
+<a id="__codelineno-0-184" name="__codelineno-0-184"></a>
+<a id="__codelineno-0-185" name="__codelineno-0-185"></a><span class="sd">    These values represent the approximate duration of each period:</span>
+<a id="__codelineno-0-186" name="__codelineno-0-186"></a><span class="sd">        DAILY     = 86,400 seconds (24 hours)</span>
+<a id="__codelineno-0-187" name="__codelineno-0-187"></a><span class="sd">        WEEKLY    = 604,800 seconds (7 days)</span>
+<a id="__codelineno-0-188" name="__codelineno-0-188"></a><span class="sd">        MONTHLY   = 2,592,000 seconds (30 days)</span>
+<a id="__codelineno-0-189" name="__codelineno-0-189"></a><span class="sd">        QUARTERLY = 7,776,000 seconds (90 days)</span>
+<a id="__codelineno-0-190" name="__codelineno-0-190"></a><span class="sd">        YEARLY    = 31,536,000 seconds (365 days)</span>
+<a id="__codelineno-0-191" name="__codelineno-0-191"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-192" name="__codelineno-0-192"></a>
+<a id="__codelineno-0-193" name="__codelineno-0-193"></a>    <span class="n">DAILY</span> <span class="o">=</span> <span class="mi">86_400</span>
+<a id="__codelineno-0-194" name="__codelineno-0-194"></a>    <span class="n">WEEKLY</span> <span class="o">=</span> <span class="mi">604_800</span>
+<a id="__codelineno-0-195" name="__codelineno-0-195"></a>    <span class="n">MONTHLY</span> <span class="o">=</span> <span class="mi">2_592_000</span>
+<a id="__codelineno-0-196" name="__codelineno-0-196"></a>    <span class="n">QUARTERLY</span> <span class="o">=</span> <span class="mi">7_776_000</span>
+<a id="__codelineno-0-197" name="__codelineno-0-197"></a>    <span class="n">YEARLY</span> <span class="o">=</span> <span class="mi">31_536_000</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -3101,16 +3147,7 @@ YEARLY    = 31,536,000 seconds (365 days)</p>
 
               <details class="mkdocstrings-source">
                 <summary>Source code in <code>src/popoto/fields/constants.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-191">191</a></span>
-<span class="normal"><a href="#__codelineno-0-192">192</a></span>
-<span class="normal"><a href="#__codelineno-0-193">193</a></span>
-<span class="normal"><a href="#__codelineno-0-194">194</a></span>
-<span class="normal"><a href="#__codelineno-0-195">195</a></span>
-<span class="normal"><a href="#__codelineno-0-196">196</a></span>
-<span class="normal"><a href="#__codelineno-0-197">197</a></span>
-<span class="normal"><a href="#__codelineno-0-198">198</a></span>
-<span class="normal"><a href="#__codelineno-0-199">199</a></span>
-<span class="normal"><a href="#__codelineno-0-200">200</a></span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-200">200</a></span>
 <span class="normal"><a href="#__codelineno-0-201">201</a></span>
 <span class="normal"><a href="#__codelineno-0-202">202</a></span>
 <span class="normal"><a href="#__codelineno-0-203">203</a></span>
@@ -3128,34 +3165,43 @@ YEARLY    = 31,536,000 seconds (365 days)</p>
 <span class="normal"><a href="#__codelineno-0-215">215</a></span>
 <span class="normal"><a href="#__codelineno-0-216">216</a></span>
 <span class="normal"><a href="#__codelineno-0-217">217</a></span>
-<span class="normal"><a href="#__codelineno-0-218">218</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-191" name="__codelineno-0-191"></a><span class="k">class</span><span class="w"> </span><span class="nc">InteractionWeight</span><span class="p">:</span>
-<a id="__codelineno-0-192" name="__codelineno-0-192"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Weight constants for source/role-based importance scoring.</span>
-<a id="__codelineno-0-193" name="__codelineno-0-193"></a>
-<a id="__codelineno-0-194" name="__codelineno-0-194"></a><span class="sd">    Two axes combined by addition:</span>
-<a id="__codelineno-0-195" name="__codelineno-0-195"></a><span class="sd">    - Source axis: what kind of entity (HUMAN, AGENT, SYSTEM)</span>
-<a id="__codelineno-0-196" name="__codelineno-0-196"></a><span class="sd">    - Role axis: authority level (EXECUTIVE, MANAGER, PEER, SUBORDINATE)</span>
-<a id="__codelineno-0-197" name="__codelineno-0-197"></a>
-<a id="__codelineno-0-198" name="__codelineno-0-198"></a><span class="sd">    With decay_rate=0.5, effective lifetime ~ score^2 days.</span>
-<a id="__codelineno-0-199" name="__codelineno-0-199"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-200" name="__codelineno-0-200"></a>
-<a id="__codelineno-0-201" name="__codelineno-0-201"></a>    <span class="n">HUMAN</span> <span class="o">=</span> <span class="mf">6.0</span>
-<a id="__codelineno-0-202" name="__codelineno-0-202"></a>    <span class="n">AGENT</span> <span class="o">=</span> <span class="mf">1.0</span>
-<a id="__codelineno-0-203" name="__codelineno-0-203"></a>    <span class="n">SYSTEM</span> <span class="o">=</span> <span class="mf">0.2</span>
-<a id="__codelineno-0-204" name="__codelineno-0-204"></a>
-<a id="__codelineno-0-205" name="__codelineno-0-205"></a>    <span class="n">EXECUTIVE</span> <span class="o">=</span> <span class="mf">44.0</span>
-<a id="__codelineno-0-206" name="__codelineno-0-206"></a>    <span class="n">MANAGER</span> <span class="o">=</span> <span class="mf">16.0</span>
-<a id="__codelineno-0-207" name="__codelineno-0-207"></a>    <span class="n">PEER</span> <span class="o">=</span> <span class="mf">6.0</span>
-<a id="__codelineno-0-208" name="__codelineno-0-208"></a>    <span class="n">SUBORDINATE</span> <span class="o">=</span> <span class="mf">1.0</span>
+<span class="normal"><a href="#__codelineno-0-218">218</a></span>
+<span class="normal"><a href="#__codelineno-0-219">219</a></span>
+<span class="normal"><a href="#__codelineno-0-220">220</a></span>
+<span class="normal"><a href="#__codelineno-0-221">221</a></span>
+<span class="normal"><a href="#__codelineno-0-222">222</a></span>
+<span class="normal"><a href="#__codelineno-0-223">223</a></span>
+<span class="normal"><a href="#__codelineno-0-224">224</a></span>
+<span class="normal"><a href="#__codelineno-0-225">225</a></span>
+<span class="normal"><a href="#__codelineno-0-226">226</a></span>
+<span class="normal"><a href="#__codelineno-0-227">227</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-200" name="__codelineno-0-200"></a><span class="k">class</span><span class="w"> </span><span class="nc">InteractionWeight</span><span class="p">:</span>
+<a id="__codelineno-0-201" name="__codelineno-0-201"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Weight constants for source/role-based importance scoring.</span>
+<a id="__codelineno-0-202" name="__codelineno-0-202"></a>
+<a id="__codelineno-0-203" name="__codelineno-0-203"></a><span class="sd">    Two axes combined by addition:</span>
+<a id="__codelineno-0-204" name="__codelineno-0-204"></a><span class="sd">    - Source axis: what kind of entity (HUMAN, AGENT, SYSTEM)</span>
+<a id="__codelineno-0-205" name="__codelineno-0-205"></a><span class="sd">    - Role axis: authority level (EXECUTIVE, MANAGER, PEER, SUBORDINATE)</span>
+<a id="__codelineno-0-206" name="__codelineno-0-206"></a>
+<a id="__codelineno-0-207" name="__codelineno-0-207"></a><span class="sd">    With decay_rate=0.5, effective lifetime ~ score^2 days.</span>
+<a id="__codelineno-0-208" name="__codelineno-0-208"></a><span class="sd">    &quot;&quot;&quot;</span>
 <a id="__codelineno-0-209" name="__codelineno-0-209"></a>
-<a id="__codelineno-0-210" name="__codelineno-0-210"></a>    <span class="nd">@staticmethod</span>
-<a id="__codelineno-0-211" name="__codelineno-0-211"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">combine</span><span class="p">(</span><span class="n">source</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">role</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
-<a id="__codelineno-0-212" name="__codelineno-0-212"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the combined weight for a source/role pair.</span>
+<a id="__codelineno-0-210" name="__codelineno-0-210"></a>    <span class="n">HUMAN</span> <span class="o">=</span> <span class="mf">6.0</span>
+<a id="__codelineno-0-211" name="__codelineno-0-211"></a>    <span class="n">AGENT</span> <span class="o">=</span> <span class="mf">1.0</span>
+<a id="__codelineno-0-212" name="__codelineno-0-212"></a>    <span class="n">SYSTEM</span> <span class="o">=</span> <span class="mf">0.2</span>
 <a id="__codelineno-0-213" name="__codelineno-0-213"></a>
-<a id="__codelineno-0-214" name="__codelineno-0-214"></a><span class="sd">        The two axes are additive: a HUMAN (6.0) PEER (6.0) interaction</span>
-<a id="__codelineno-0-215" name="__codelineno-0-215"></a><span class="sd">        yields weight 12.0, while an AGENT (1.0) SUBORDINATE (1.0)</span>
-<a id="__codelineno-0-216" name="__codelineno-0-216"></a><span class="sd">        interaction yields weight 2.0.</span>
-<a id="__codelineno-0-217" name="__codelineno-0-217"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-218" name="__codelineno-0-218"></a>        <span class="k">return</span> <span class="n">source</span> <span class="o">+</span> <span class="n">role</span>
+<a id="__codelineno-0-214" name="__codelineno-0-214"></a>    <span class="n">EXECUTIVE</span> <span class="o">=</span> <span class="mf">44.0</span>
+<a id="__codelineno-0-215" name="__codelineno-0-215"></a>    <span class="n">MANAGER</span> <span class="o">=</span> <span class="mf">16.0</span>
+<a id="__codelineno-0-216" name="__codelineno-0-216"></a>    <span class="n">PEER</span> <span class="o">=</span> <span class="mf">6.0</span>
+<a id="__codelineno-0-217" name="__codelineno-0-217"></a>    <span class="n">SUBORDINATE</span> <span class="o">=</span> <span class="mf">1.0</span>
+<a id="__codelineno-0-218" name="__codelineno-0-218"></a>
+<a id="__codelineno-0-219" name="__codelineno-0-219"></a>    <span class="nd">@staticmethod</span>
+<a id="__codelineno-0-220" name="__codelineno-0-220"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">combine</span><span class="p">(</span><span class="n">source</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">role</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<a id="__codelineno-0-221" name="__codelineno-0-221"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the combined weight for a source/role pair.</span>
+<a id="__codelineno-0-222" name="__codelineno-0-222"></a>
+<a id="__codelineno-0-223" name="__codelineno-0-223"></a><span class="sd">        The two axes are additive: a HUMAN (6.0) PEER (6.0) interaction</span>
+<a id="__codelineno-0-224" name="__codelineno-0-224"></a><span class="sd">        yields weight 12.0, while an AGENT (1.0) SUBORDINATE (1.0)</span>
+<a id="__codelineno-0-225" name="__codelineno-0-225"></a><span class="sd">        interaction yields weight 2.0.</span>
+<a id="__codelineno-0-226" name="__codelineno-0-226"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-227" name="__codelineno-0-227"></a>        <span class="k">return</span> <span class="n">source</span> <span class="o">+</span> <span class="n">role</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -3195,23 +3241,23 @@ interaction yields weight 2.0.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/fields/constants.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-210">210</a></span>
-<span class="normal"><a href="#__codelineno-0-211">211</a></span>
-<span class="normal"><a href="#__codelineno-0-212">212</a></span>
-<span class="normal"><a href="#__codelineno-0-213">213</a></span>
-<span class="normal"><a href="#__codelineno-0-214">214</a></span>
-<span class="normal"><a href="#__codelineno-0-215">215</a></span>
-<span class="normal"><a href="#__codelineno-0-216">216</a></span>
-<span class="normal"><a href="#__codelineno-0-217">217</a></span>
-<span class="normal"><a href="#__codelineno-0-218">218</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-210" name="__codelineno-0-210"></a><span class="nd">@staticmethod</span>
-<a id="__codelineno-0-211" name="__codelineno-0-211"></a><span class="k">def</span><span class="w"> </span><span class="nf">combine</span><span class="p">(</span><span class="n">source</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">role</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
-<a id="__codelineno-0-212" name="__codelineno-0-212"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the combined weight for a source/role pair.</span>
-<a id="__codelineno-0-213" name="__codelineno-0-213"></a>
-<a id="__codelineno-0-214" name="__codelineno-0-214"></a><span class="sd">    The two axes are additive: a HUMAN (6.0) PEER (6.0) interaction</span>
-<a id="__codelineno-0-215" name="__codelineno-0-215"></a><span class="sd">    yields weight 12.0, while an AGENT (1.0) SUBORDINATE (1.0)</span>
-<a id="__codelineno-0-216" name="__codelineno-0-216"></a><span class="sd">    interaction yields weight 2.0.</span>
-<a id="__codelineno-0-217" name="__codelineno-0-217"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-218" name="__codelineno-0-218"></a>    <span class="k">return</span> <span class="n">source</span> <span class="o">+</span> <span class="n">role</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-219">219</a></span>
+<span class="normal"><a href="#__codelineno-0-220">220</a></span>
+<span class="normal"><a href="#__codelineno-0-221">221</a></span>
+<span class="normal"><a href="#__codelineno-0-222">222</a></span>
+<span class="normal"><a href="#__codelineno-0-223">223</a></span>
+<span class="normal"><a href="#__codelineno-0-224">224</a></span>
+<span class="normal"><a href="#__codelineno-0-225">225</a></span>
+<span class="normal"><a href="#__codelineno-0-226">226</a></span>
+<span class="normal"><a href="#__codelineno-0-227">227</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-219" name="__codelineno-0-219"></a><span class="nd">@staticmethod</span>
+<a id="__codelineno-0-220" name="__codelineno-0-220"></a><span class="k">def</span><span class="w"> </span><span class="nf">combine</span><span class="p">(</span><span class="n">source</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">role</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<a id="__codelineno-0-221" name="__codelineno-0-221"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the combined weight for a source/role pair.</span>
+<a id="__codelineno-0-222" name="__codelineno-0-222"></a>
+<a id="__codelineno-0-223" name="__codelineno-0-223"></a><span class="sd">    The two axes are additive: a HUMAN (6.0) PEER (6.0) interaction</span>
+<a id="__codelineno-0-224" name="__codelineno-0-224"></a><span class="sd">    yields weight 12.0, while an AGENT (1.0) SUBORDINATE (1.0)</span>
+<a id="__codelineno-0-225" name="__codelineno-0-225"></a><span class="sd">    interaction yields weight 2.0.</span>
+<a id="__codelineno-0-226" name="__codelineno-0-226"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-227" name="__codelineno-0-227"></a>    <span class="k">return</span> <span class="n">source</span> <span class="o">+</span> <span class="n">role</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

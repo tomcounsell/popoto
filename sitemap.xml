@@ -141,6 +141,10 @@
          <lastmod>2026-07-21</lastmod>
     </url>
     <url>
+         <loc>https://popoto.io/features/llm-memory-extraction/</loc>
+         <lastmod>2026-07-21</lastmod>
+    </url>
+    <url>
          <loc>https://popoto.io/features/memory-telemetry/</loc>
          <lastmod>2026-07-21</lastmod>
     </url>
@@ -242,6 +246,10 @@
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/embeddings/sentence_transformers/</loc>
+         <lastmod>2026-07-21</lastmod>
+    </url>
+    <url>
+         <loc>https://popoto.io/reference/popoto/extraction/claude/</loc>
          <lastmod>2026-07-21</lastmod>
     </url>
     <url>
