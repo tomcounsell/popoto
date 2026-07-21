@@ -6,7 +6,8 @@ owner: valorengels
 created: 2026-07-21
 tracking: https://github.com/tomcounsell/popoto/issues/460
 last_comment_id:
-revision_applied: false
+revision_applied: true
+revision_applied_at: 2026-07-21T08:54:33Z
 ---
 
 # RLT Benchmark — Retrieval Latency & Throughput (flagship native harness, Track A)
@@ -172,6 +173,9 @@ codebase context.
    recall_at_k)` tuples (one per retrieval-mode/comparator run), computes the Pareto-optimal
    frontier (points not dominated by any other point on both axes — lower p99 AND higher
    recall) via a pure function, independently unit-testable with hand-constructed point sets.
+   `recall_at_k()` from `metrics/retrieval.py` is any-hit binary (0.0/1.0) per query; the
+   Pareto recall axis is the **mean of `recall_at_k()` over the full query set**, per config —
+   a single continuous value per point, not a per-query binary axis (clarified per critique).
 7. **Comparator adapter interface (`rlt/comparators.py`):** a `RltAdapter` Protocol
    (`ingest(record) -> None`, `query(q) -> (List[str], latency_ms)`) mirroring `judge.py`'s
    lazy-import/optional-dependency pattern from Tier 5. Ships the Protocol + one
@@ -294,11 +298,16 @@ against a real corpus once the machine is confirmed quiet.
   artifact (`"assemble_latency"` is the canonical measurement; `"retrieval_latency"` is
   documented as an alias for the same number in this harness, with a note explaining why, so a
   reader isn't confused into thinking two different pipelines were measured).
-- **Percentile computation uses `statistics.quantiles()`** (stdlib, no numpy) with
-  `n=100, method="inclusive"` for p50/p95/p99, falling back to `sorted(values)[int(len(values)
-  * p/100)]` (nearest-rank) only if a fixture size makes `statistics.quantiles()` raise (it
-  requires ≥2 data points) — unit tests cover both code paths explicitly with tiny + single-
-  element inputs.
+- **Percentile computation reuses `run_external.py`'s existing nearest-rank formula**
+  (`sorted(values)[int(len(values) * p/100)]`) rather than introducing a second, numerically
+  different percentile definition into the same benchmark suite (`compute_aggregate()` already
+  computes p50/p95 this way for the external harness; `docs/benchmarks.md` will present RLT's
+  numbers in the same document). `percentile(values: List[float], p: float) -> float` in
+  `rlt/latency.py` is a small pure function extracted to this shared shape; unit tests assert
+  it against hand-computed values including single-element input. `percentile([], p)` is
+  specified to **raise `ValueError`** — a silent `0.0` would be indistinguishable from a
+  genuine zero-latency measurement in a downstream artifact (see the empty-latencies
+  hardening below for how callers avoid ever hitting this on an all-error batch).
 - **Mixed workload uses `concurrent.futures.ThreadPoolExecutor`**, matching the stdlib-only,
   no-new-dependency posture and `tests/test_stress.py`'s existing threading precedent.
   redis-py's connection pool is thread-safe (confirmed in Freshness Check) so no additional
@@ -311,23 +320,23 @@ against a real corpus once the machine is confirmed quiet.
   "both backends" requirement (issue constraint) means running the CLI twice, once against a
   Redis instance and once against a Valkey instance, both supplied externally by whoever runs
   it (documented in `docs/benchmarks.md`, tracked as part of the deferred real-run follow-up).
-  `aggregate["machine"]["backend"]` records the server's `INFO server` `redis_version` /
-  presence of a Valkey-specific field (`redis_conn.info().get("redis_version")` plus a
-  best-effort `"valkey"` substring check against `INFO server`'s `os`/`redis_mode`-adjacent
-  fields — Valkey's `INFO` reports its own version string distinctly from Redis, verified via
-  `redis-cli INFO server` locally showing `redis_version:` populated by both servers under that
-  same key name for compatibility, so the harness treats an explicit `--backend` CLI flag as
-  the authoritative label and the `INFO`-derived string as a cross-check note, not the source
-  of truth — avoids over-engineering server-type sniffing).
+  `aggregate["machine"]["backend"]` records **only** the explicit `--backend` CLI flag value
+  the operator supplies (`"redis"` or `"valkey"`) — the single authoritative label. Per
+  critique, the plan drops the previously-proposed secondary `INFO server`-derived cross-check:
+  two mechanisms answering one already-explicit question is unneeded complexity for this PR:
+  the operator already knows which server they pointed `REDIS_URL` at.
 - **DB hygiene for the manual CLI (`run_rlt.py`):** `--db` is a **required** argument (no
   default, unlike `run_external.py`'s `POPOTO_BENCH_DB` default-14 pattern) — this harness
   explicitly does not default to 14, because 14 is the DB the concurrently running #457 chain
-  uses per the contention constraint. Passing `--db 0` or `--db 14` raises a `ValueError`
-  before any connection is made, mirroring `_resolve_bench_db()`'s db0 rejection extended to
-  also reject 14 for this specific entrypoint (a comment explains why 14 specifically, so a
-  future reader isn't confused when `run_external.py` itself defaults to 14).
-  `--dry-run` never opens a corpus-writing connection choice at all — it validates arguments
-  and prints the plan without connecting.
+  uses per the contention constraint. Passing `--db 0`, `--db 14`, **or `--db 15`** raises a
+  `ValueError` before any connection is made: 0 is production-shaped (mirrors
+  `_resolve_bench_db()`'s rejection), 14 is reserved for the concurrently running #457 chain,
+  and 15 is the project's dedicated pytest-isolation DB — flushed (`flushdb()`) by every
+  test session, so a manual run against it would either get wiped mid-run by a concurrent
+  `pytest` invocation or pollute the DB tests rely on being clean. A comment in the code
+  explains all three exclusions so a future reader isn't confused when `run_external.py`
+  itself defaults to 14. `--dry-run` never opens a corpus-writing connection choice at all — it
+  validates arguments and prints the plan without connecting.
 - **Numeric constants are experimental tuning constants** (corpus sizes, thread counts, call
   counts, latency-report bucket count) — hardcoded module-level constants with docstring
   rationale, not env vars or user config, per project convention.
@@ -340,6 +349,15 @@ against a real corpus once the machine is confirmed quiet.
   single failing query never aborts the whole latency run. Unit test: inject one query with a
   malformed `agent_id` type expected to raise, assert the report still returns with `n_errors
   == 1` and valid percentiles over the remaining successful samples.
+- **All-errors edge case (hardened per critique):** if every query in a batch fails,
+  `measure_latency()` collects zero successful latencies. Rather than calling `percentile([])`
+  and letting its `ValueError` bubble up and abort the whole scaling/throughput run,
+  `measure_latency()` explicitly checks `if not latencies:` first and returns a
+  `LatencyReport(p50=None, p95=None, p99=None, n_errors=len(queries), n_samples=0)` — a
+  degraded-but-valid report, not a crash. Unit test: a query set that always raises (e.g. an
+  `agent_id` guaranteed invalid) asserts the report has `p50 is None` and `n_errors ==
+  len(queries)`, and that a `scaling.py` run containing one such all-error point still
+  completes and returns reports for the other points.
 - `mixed_workload.py`: a worker-thread exception is captured (not silently swallowed — logged
   and counted) via `ThreadPoolExecutor.submit()` + `future.result()` inspection in the
   collection loop, not a bare `except: pass` inside the worker function itself.
@@ -467,9 +485,51 @@ into this appetite.
   a required CI step (and, specifically for this plan, not run at all in this PR per the
   machine-contention constraint).
 
+## Critique Response
+
+A plan-critique war room (Risk & Robustness, Scope & Value, History & Consistency, FULL depth)
+ran against this plan and returned **READY TO BUILD (with concerns)** — 0 blockers, 4
+concerns, 3 nits. All four concerns are addressed below; the plan text above already reflects
+three of them inline (DB-15 rejection, empty-latencies edge case, percentile-formula
+consistency, Pareto recall-axis clarification, dropped redundant backend cross-check).
+
+1. **`--db` didn't reject 15 (pytest isolation DB).** Fixed inline above — `run_rlt.py` now
+   rejects `0`, `14`, **and `15`**, with 15 called out explicitly as the project's
+   `flushdb()`-per-test-session DB.
+2. **`measure_latency()` could propagate an uncaught `percentile([])` `ValueError` on an
+   all-errors batch, aborting an entire scaling run over one bad point.** Fixed inline above
+   (Failure Path Test Strategy) — `measure_latency()` now short-circuits to a degraded
+   `LatencyReport(p50=None, ...)` before calling `percentile()`, with a unit test covering the
+   all-errors case explicitly.
+3. **Percentile algorithm diverged from `run_external.py`'s existing nearest-rank formula,**
+   risking an apples-to-oranges comparison within the same `docs/benchmarks.md` document. Fixed
+   inline above — `rlt/latency.py`'s `percentile()` now reuses the identical nearest-rank
+   formula (`sorted(values)[int(len(values) * p/100)]`) rather than introducing
+   `statistics.quantiles()`'s different definition.
+4. **`RltAdapter` Protocol + `NativeAdapter`/`NullAdapter` is speculative generality — no real
+   second implementation lands in this PR.** The critic's YAGNI read is correct in isolation,
+   but this element is **kept as-is, not dropped** — the routing task explicitly requires
+   shipping "the native RLT harness + the adapter interface" as this PR's deliverable (real
+   Mem0/Zep/vector-DB adapters deferred, the *interface* is not). `NullAdapter` stays as the
+   dependency-free second implementation that proves the Protocol contract in a unit test
+   (asserting both `NativeAdapter` and `NullAdapter` satisfy the same call shape) — without a
+   second implementation, a "Protocol" is just a docstring, not a verified contract. This is a
+   deliberate override of the concern, not an oversight; noted here so a reviewer sees the
+   trade-off was considered.
+
+**Nits addressed:**
+- Pareto recall axis: clarified inline as the mean of `recall_at_k()` over the full query set
+  per config (continuous, not the per-query binary value).
+- Redundant backend-detection mechanism: dropped the `INFO server` cross-check; `--backend` is
+  now the sole, authoritative label.
+- `judge.py` pattern citation lacked file:line backing (flagged given this session's prior SIQ
+  hallucination incident on a similar citation): will be verified directly against
+  `tests/benchmarks/judge.py`'s actual lazy-import shape at build time, before `rlt/comparators.py`
+  is written, rather than assumed from this plan's prose.
+
 ## Open Questions
 
 None — design is fully specified by the issue body, the PM's explicit machine-contention scope
 constraint, and mirrors an established in-repo pattern (Tier 5 / CSR / the concurrently-planned
 SIQ sibling) closely enough that no unresolved judgment calls remain for the human. Proceeding
-to critique.
+to build.
