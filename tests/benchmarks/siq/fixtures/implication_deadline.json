@@ -1,0 +1,39 @@
+{
+  "trace_id": "implication_deadline",
+  "description": "User states a hard constraint (board demo locked for Friday) early, then several turns later asks to 'push the timeline two weeks' — the implication that Friday is immovable is never restated. The relevant constraint must already be in context.",
+  "max_items": 5,
+  "max_tokens": null,
+  "turns": [
+    {
+      "speaker": "user",
+      "message": "Remember the board demonstration is locked for Friday and absolutely cannot move.",
+      "establishes": {
+        "id": "mem_locked_demo",
+        "content": "The board demonstration is locked for Friday and cannot move under any circumstances.",
+        "importance": 0.95
+      }
+    },
+    {
+      "speaker": "assistant",
+      "message": "Understood, noting that firmly on my side."
+    },
+    {
+      "speaker": "user",
+      "message": "The onboarding copy still needs another editing pass.",
+      "establishes": {
+        "id": "mem_copy_edit",
+        "content": "The onboarding copy still needs another editing pass before it ships.",
+        "importance": 0.4
+      }
+    },
+    {
+      "speaker": "assistant",
+      "message": "Okay, I will slot revisions where they fit."
+    },
+    {
+      "speaker": "user",
+      "message": "Honestly, can we just slide everything back a fortnight?",
+      "should_recall": ["mem_locked_demo"]
+    }
+  ]
+}

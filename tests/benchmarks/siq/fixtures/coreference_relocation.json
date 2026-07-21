@@ -1,0 +1,34 @@
+{
+  "trace_id": "coreference_relocation",
+  "description": "User establishes a relocation to Austin early, then later asks about 'good spots there' via coreference ('there') without ever restating the city or the move. The subconscious injector should still have the relocation memory in context.",
+  "max_items": 5,
+  "max_tokens": null,
+  "turns": [
+    {
+      "speaker": "user",
+      "message": "Heads up, I am relocating to Austin next month to begin a new engineering position.",
+      "establishes": {
+        "id": "mem_relocation",
+        "content": "User is relocating to Austin next month to begin a new engineering position.",
+        "importance": 0.9
+      }
+    },
+    {
+      "speaker": "assistant",
+      "message": "Congratulations, that sounds like a big and exciting step."
+    },
+    {
+      "speaker": "user",
+      "message": "My paperwork finally cleared yesterday afternoon."
+    },
+    {
+      "speaker": "assistant",
+      "message": "Glad it all worked itself out without extra hassle."
+    },
+    {
+      "speaker": "user",
+      "message": "Which quiet residential spots would you recommend around here?",
+      "should_recall": ["mem_relocation"]
+    }
+  ]
+}
