@@ -3324,6 +3324,7 @@ for a walkthrough.</p>
 <li><strong>DecayingSortedField</strong>: Composite scoring via <code>priority = decay_score * confidence</code></li>
 <li><strong>CyclicDecayField</strong>: Auto-discharge when confidence drops below threshold</li>
 <li><strong>WriteFilterMixin</strong>: Use confidence in <code>compute_filter_score()</code> for directed forgetting</li>
+<li><strong><a href="../context-assembler/#confidence-gate">ContextAssembler</a></strong>: <code>get_confidence()</code> on the rank-0 pull-path candidate drives the opt-in confidence gate — <code>assemble()</code> can refuse or flag a low-confidence answer instead of injecting it</li>
 <li><strong>AccessTrackerMixin</strong>: Read tracking independent of confidence</li>
 </ul>
 

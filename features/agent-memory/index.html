@@ -2197,6 +2197,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#confidence-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Confidence Gate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#tuning-constants_1" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5015,6 +5026,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#confidence-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Confidence Gate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#tuning-constants_1" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -6974,9 +6996,18 @@ should not count as a user-originated read.</p>
 <a id="__codelineno-43-9" name="__codelineno-43-9" href="#__codelineno-43-9"></a>    <span class="n">propagation_depth</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>      <span class="c1"># BFS depth for CoOccurrence propagation</span>
 <a id="__codelineno-43-10" name="__codelineno-43-10" href="#__codelineno-43-10"></a>    <span class="n">output_format</span><span class="o">=</span><span class="s2">&quot;structured&quot;</span><span class="p">,</span>  <span class="c1"># &quot;structured&quot; (JSON), &quot;xml&quot;, or &quot;natural&quot;</span>
 <a id="__codelineno-43-11" name="__codelineno-43-11" href="#__codelineno-43-11"></a>    <span class="n">token_counter</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>       <span class="c1"># Optional callable(serialized_text: str) -&gt; int; default: stdlib heuristic</span>
-<a id="__codelineno-43-12" name="__codelineno-43-12" href="#__codelineno-43-12"></a><span class="p">)</span>
+<a id="__codelineno-43-12" name="__codelineno-43-12" href="#__codelineno-43-12"></a>    <span class="c1"># Keyword-only:</span>
+<a id="__codelineno-43-13" name="__codelineno-43-13" href="#__codelineno-43-13"></a>    <span class="n">retrieval_mode</span><span class="o">=</span><span class="s2">&quot;auto&quot;</span><span class="p">,</span>    <span class="c1"># &quot;auto&quot; (default), &quot;hybrid&quot;, or &quot;lexical&quot;</span>
+<a id="__codelineno-43-14" name="__codelineno-43-14" href="#__codelineno-43-14"></a>    <span class="n">confidence_gate_threshold</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>  <span class="c1"># float | None (default). See &quot;Confidence Gate&quot; below.</span>
+<a id="__codelineno-43-15" name="__codelineno-43-15" href="#__codelineno-43-15"></a>    <span class="n">confidence_gate_mode</span><span class="o">=</span><span class="s2">&quot;refuse&quot;</span><span class="p">,</span>   <span class="c1"># &quot;refuse&quot; (default) or &quot;flag&quot;</span>
+<a id="__codelineno-43-16" name="__codelineno-43-16" href="#__codelineno-43-16"></a><span class="p">)</span>
 </code></pre></div>
 <p>The assembler auto-detects which fields are present on <code>model_class</code> and adapts the pipeline accordingly. Models without <code>ExistenceFilter</code> skip the pre-check; models without <code>CoOccurrenceField</code> skip propagation; models without <code>CyclicDecayField</code> skip the push path entirely.</p>
+<p><strong>Raises</strong> <code>QueryException</code> at construction if <code>retrieval_mode="hybrid"</code> is
+requested but the model lacks <code>BM25Field</code>/<code>EmbeddingField</code>; if
+<code>confidence_gate_threshold</code> is set and <code>confidence_gate_mode</code> is not one of
+<code>{"refuse", "flag"}</code>; or if <code>confidence_gate_threshold</code> is set but the model
+lacks a <code>ConfidenceField</code>.</p>
 <h4 id="contextassemblerassemble"><code>ContextAssembler.assemble()</code><a class="headerlink" href="#contextassemblerassemble" title="Permanent link">&para;</a></h4>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-44-1" name="__codelineno-44-1" href="#__codelineno-44-1"></a><span class="n">result</span> <span class="o">=</span> <span class="n">assembler</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span>
 <a id="__codelineno-44-2" name="__codelineno-44-2" href="#__codelineno-44-2"></a>    <span class="n">query_cues</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>          <span class="c1"># Dict of query cues (e.g., {&quot;topic&quot;: &quot;deploy&quot;})</span>
@@ -7022,6 +7053,10 @@ should not count as a user-originated read.</p>
 <tr>
 <td><code>total_candidates</code></td>
 <td>Total candidates before budget selection</td>
+</tr>
+<tr>
+<td><code>gate</code></td>
+<td>Confidence-gate decision dict. Present <strong>only</strong> when <code>confidence_gate_threshold</code> was set at construction — see <a href="#confidence-gate">Confidence Gate</a> below.</td>
 </tr>
 </tbody>
 </table>
@@ -7089,6 +7124,112 @@ the formatter emits for each record (a JSON object indented inside the array for
 <a id="__codelineno-49-9" name="__codelineno-49-9" href="#__codelineno-49-9"></a>    <span class="n">token_counter</span><span class="o">=</span><span class="k">lambda</span> <span class="n">text</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">enc</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="n">text</span><span class="p">)),</span>
 <a id="__codelineno-49-10" name="__codelineno-49-10" href="#__codelineno-49-10"></a><span class="p">)</span>
 </code></pre></div>
+<h3 id="confidence-gate">Confidence Gate<a class="headerlink" href="#confidence-gate" title="Permanent link">&para;</a></h3>
+<p>An opt-in gate (issue #463) that lets <code>assemble()</code> decline to inject a
+pull-path answer when it isn't confident enough. It is off by default and has
+<strong>no shipped default threshold</strong> — a caller must explicitly pass
+<code>confidence_gate_threshold</code> to enable it.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-50-1" name="__codelineno-50-1" href="#__codelineno-50-1"></a><span class="n">assembler</span> <span class="o">=</span> <span class="n">ContextAssembler</span><span class="p">(</span>
+<a id="__codelineno-50-2" name="__codelineno-50-2" href="#__codelineno-50-2"></a>    <span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span>
+<a id="__codelineno-50-3" name="__codelineno-50-3" href="#__codelineno-50-3"></a>    <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;relevance&quot;</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">,</span> <span class="s2">&quot;confidence&quot;</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">},</span>
+<a id="__codelineno-50-4" name="__codelineno-50-4" href="#__codelineno-50-4"></a>    <span class="n">confidence_gate_threshold</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span>
+<a id="__codelineno-50-5" name="__codelineno-50-5" href="#__codelineno-50-5"></a>    <span class="n">confidence_gate_mode</span><span class="o">=</span><span class="s2">&quot;refuse&quot;</span><span class="p">,</span>  <span class="c1"># or &quot;flag&quot;</span>
+<a id="__codelineno-50-6" name="__codelineno-50-6" href="#__codelineno-50-6"></a><span class="p">)</span>
+<a id="__codelineno-50-7" name="__codelineno-50-7" href="#__codelineno-50-7"></a>
+<a id="__codelineno-50-8" name="__codelineno-50-8" href="#__codelineno-50-8"></a><span class="n">result</span> <span class="o">=</span> <span class="n">assembler</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span><span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;topic&quot;</span><span class="p">:</span> <span class="s2">&quot;deployment&quot;</span><span class="p">},</span> <span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">)</span>
+<a id="__codelineno-50-9" name="__codelineno-50-9" href="#__codelineno-50-9"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">metadata</span><span class="p">[</span><span class="s2">&quot;gate&quot;</span><span class="p">])</span>
+<a id="__codelineno-50-10" name="__codelineno-50-10" href="#__codelineno-50-10"></a><span class="c1"># {&quot;applied&quot;: True, &quot;gate_score&quot;: 0.42, &quot;threshold&quot;: 0.5, &quot;mode&quot;: &quot;refuse&quot;, &quot;gated&quot;: True}</span>
+</code></pre></div>
+<p><strong>Mechanism.</strong> After the pull path runs, the gate reads the <code>ConfidenceField</code>
+value of the rank-0 pull-path candidate — the single best-matching record,
+which is the one the assembler would otherwise inject — via
+<code>ConfidenceField.get_confidence()</code>, and compares it to
+<code>confidence_gate_threshold</code>. This makes the gate <strong>mode-agnostic</strong>:
+<code>get_confidence()</code> always returns a value in <code>[0, 1]</code> regardless of whether
+the pull path is running composite (weighted-sum) or hybrid/RRF-fused
+retrieval, so the same threshold means the same thing under either ranking
+mode. Aggregating across multiple candidates (mean/max/quorum) is out of
+scope — the rank-0 record is the deliberate, fixed design choice.</p>
+<p>If reading <code>get_confidence()</code> raises (e.g. a candidate is missing its
+confidence companion hash), the gate degrades gracefully: it logs
+<code>logger.warning</code> and treats the gate as <strong>not applied</strong>
+(<code>gate_score=None</code>, <code>applied=False</code>, <code>gated=False</code>), returning records
+unchanged rather than crashing <code>assemble()</code> — matching the fault-tolerant
+style already used by <code>emit_trace</code>/<code>_compute_quality</code> elsewhere in the same
+method.</p>
+<p><strong><code>confidence_gate_mode</code>:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Behavior when <code>gate_score &lt; threshold</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>"refuse"</code> (default)</td>
+<td>Drops <strong>all</strong> pull-path records before injection. The push path is never touched. Competitive suppression is also skipped for the refused candidates (a refusal isn't punished as a "loss"), but the untouched candidate set still flows into <code>_compute_quality</code>, so a feeling-of-knowing (FoK) score computed via <code>assess_quality=True</code> correctly reflects that candidates <em>were found</em> even though the assembler chose not to inject them.</td>
+</tr>
+<tr>
+<td><code>"flag"</code></td>
+<td>Never drops records. The only effect is the <code>metadata["gate"]</code> annotation — <code>assess_quality</code>, suppression, and <code>result.formatted</code> are otherwise byte-for-byte identical to leaving the gate off. A caller who wants to act on a flagged low-confidence answer (e.g. prepend a disclaimer) must inspect <code>metadata["gate"]</code> itself; ContextAssembler ships no automated consumer of the flag.</td>
+</tr>
+</tbody>
+</table>
+<p><strong><code>metadata["gate"]</code> shape</strong> — attached to <code>AssemblyResult.metadata</code> only
+when <code>confidence_gate_threshold</code> is not <code>None</code> (callers who never pass a
+threshold get metadata that is bit-for-bit identical to pre-gate behavior —
+no <code>"gate"</code> key at all):</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>applied</code></td>
+<td><code>bool</code></td>
+<td>Whether the gate actually evaluated a confidence score (<code>False</code> if the pull path returned no records, or if <code>get_confidence()</code> raised).</td>
+</tr>
+<tr>
+<td><code>gate_score</code></td>
+<td><code>float \| None</code></td>
+<td>The rank-0 candidate's confidence, or <code>None</code> when <code>applied</code> is <code>False</code>.</td>
+</tr>
+<tr>
+<td><code>threshold</code></td>
+<td><code>float</code></td>
+<td>The configured <code>confidence_gate_threshold</code>, echoed back for convenience.</td>
+</tr>
+<tr>
+<td><code>mode</code></td>
+<td><code>str</code></td>
+<td>The configured <code>confidence_gate_mode</code> (<code>"refuse"</code> or <code>"flag"</code>).</td>
+</tr>
+<tr>
+<td><code>gated</code></td>
+<td><code>bool</code></td>
+<td>Whether <code>gate_score &lt; threshold</code> (i.e. whether the gate decision fired). Always <code>False</code> when <code>applied</code> is <code>False</code>.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Construction-time validation.</strong> Enabling the gate raises <code>QueryException</code>
+if <code>confidence_gate_mode</code> is not one of <code>{"refuse", "flag"}</code>, or if the model
+does not declare a <code>ConfidenceField</code> — mirroring the validation <code>retrieval_mode="hybrid"</code>
+already performs for <code>BM25Field</code>/<code>EmbeddingField</code>.</p>
+<p><strong>No-default policy.</strong> <code>confidence_gate_threshold</code> ships with <strong>no default</strong> —
+it must be explicitly opted into by the caller. The module also defines:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-51-1" name="__codelineno-51-1" href="#__codelineno-51-1"></a><span class="n">EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD</span> <span class="o">=</span> <span class="mf">0.5</span>  <span class="c1"># NOT a shipped default</span>
+</code></pre></div>
+<p>This constant exists <strong>only</strong> for the refusal-metric benchmark and report
+scripts (see <a href="../../benchmarks/#confidence-gated-retrieval-refusal-precision-issue-463">Confidence-gated retrieval — refusal precision</a>).
+It is explicitly <em>not</em> <code>Defaults.CONFIDENCE_GATE_THRESHOLD</code> — no such
+<code>Defaults</code> entry exists — and it is not used as the ctor default.  Promoting
+it to a real default is a policy-level decision requiring maintainer
+sign-off (tracked in <a href="https://github.com/tomcounsell/popoto/issues/463">issue #463</a>).</p>
 <h3 id="tuning-constants_1">Tuning Constants<a class="headerlink" href="#tuning-constants_1" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
@@ -7118,6 +7259,11 @@ the formatter emits for each record (a JSON object indented inside the array for
 <td><code>DEFAULT_PROPAGATION_DEPTH</code></td>
 <td><code>2</code></td>
 <td>Default BFS depth for CoOccurrence propagation.</td>
+</tr>
+<tr>
+<td><code>EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD</code></td>
+<td><code>0.5</code></td>
+<td><strong>Not</strong> a shipped default — used only by the confidence-gate refusal benchmark/report script. Requires maintainer sign-off before it could become a real <code>Defaults</code> entry or ctor default (issue #463).</td>
 </tr>
 </tbody>
 </table>
@@ -7169,13 +7315,13 @@ the formatter emits for each record (a JSON object indented inside the array for
 <p><strong>Centralized tuning.</strong> All ~24 behavioral constants are consolidated in <code>Defaults</code>, importable from the package root. Override globally or per-field — explicit kwargs always win.</p>
 </li>
 </ol>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-50-1" name="__codelineno-50-1" href="#__codelineno-50-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Defaults</span>
-<a id="__codelineno-50-2" name="__codelineno-50-2" href="#__codelineno-50-2"></a>
-<a id="__codelineno-50-3" name="__codelineno-50-3" href="#__codelineno-50-3"></a><span class="c1"># Global override — all DecayingSortedFields default to 0.7</span>
-<a id="__codelineno-50-4" name="__codelineno-50-4" href="#__codelineno-50-4"></a><span class="n">Defaults</span><span class="o">.</span><span class="n">DECAY_RATE</span> <span class="o">=</span> <span class="mf">0.7</span>
-<a id="__codelineno-50-5" name="__codelineno-50-5" href="#__codelineno-50-5"></a>
-<a id="__codelineno-50-6" name="__codelineno-50-6" href="#__codelineno-50-6"></a><span class="c1"># Per-field override still wins</span>
-<a id="__codelineno-50-7" name="__codelineno-50-7" href="#__codelineno-50-7"></a><span class="n">relevance</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span><span class="n">decay_rate</span><span class="o">=</span><span class="mf">0.3</span><span class="p">)</span>  <span class="c1"># uses 0.3, not 0.7</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-52-1" name="__codelineno-52-1" href="#__codelineno-52-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Defaults</span>
+<a id="__codelineno-52-2" name="__codelineno-52-2" href="#__codelineno-52-2"></a>
+<a id="__codelineno-52-3" name="__codelineno-52-3" href="#__codelineno-52-3"></a><span class="c1"># Global override — all DecayingSortedFields default to 0.7</span>
+<a id="__codelineno-52-4" name="__codelineno-52-4" href="#__codelineno-52-4"></a><span class="n">Defaults</span><span class="o">.</span><span class="n">DECAY_RATE</span> <span class="o">=</span> <span class="mf">0.7</span>
+<a id="__codelineno-52-5" name="__codelineno-52-5" href="#__codelineno-52-5"></a>
+<a id="__codelineno-52-6" name="__codelineno-52-6" href="#__codelineno-52-6"></a><span class="c1"># Per-field override still wins</span>
+<a id="__codelineno-52-7" name="__codelineno-52-7" href="#__codelineno-52-7"></a><span class="n">relevance</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span><span class="n">decay_rate</span><span class="o">=</span><span class="mf">0.3</span><span class="p">)</span>  <span class="c1"># uses 0.3, not 0.7</span>
 </code></pre></div>
 <p>See <a href="../../reference/popoto/fields/constants/">Defaults API reference</a> and <a href="../../guides/tuning-magic-numbers/">Tuning Magic Numbers</a> for the full constant table and benchmark-validated guidance.</p>
 <h2 id="memorylifecycle">MemoryLifecycle<a class="headerlink" href="#memorylifecycle" title="Permanent link">&para;</a></h2>
@@ -7199,23 +7345,23 @@ are evaluated over that same in-memory snapshot. Before any <code>record.delete(
 record's authoritative tier is re-read from Redis — if the tier is now <code>"semantic"</code>
 (promoted by a concurrent tick) or the key no longer exists, the delete is skipped.</p>
 <h3 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-51-1" name="__codelineno-51-1" href="#__codelineno-51-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes</span><span class="w"> </span><span class="kn">import</span> <span class="n">MemoryLifecycle</span>
-<a id="__codelineno-51-2" name="__codelineno-51-2" href="#__codelineno-51-2"></a>
-<a id="__codelineno-51-3" name="__codelineno-51-3" href="#__codelineno-51-3"></a><span class="n">lifecycle</span> <span class="o">=</span> <span class="n">MemoryLifecycle</span><span class="p">(</span>
-<a id="__codelineno-51-4" name="__codelineno-51-4" href="#__codelineno-51-4"></a>    <span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span>
-<a id="__codelineno-51-5" name="__codelineno-51-5" href="#__codelineno-51-5"></a>    <span class="n">importance_field</span><span class="o">=</span><span class="s2">&quot;relevance&quot;</span><span class="p">,</span>   <span class="c1"># name of a DecayingSortedField</span>
-<a id="__codelineno-51-6" name="__codelineno-51-6" href="#__codelineno-51-6"></a><span class="p">)</span>
-<a id="__codelineno-51-7" name="__codelineno-51-7" href="#__codelineno-51-7"></a>
-<a id="__codelineno-51-8" name="__codelineno-51-8" href="#__codelineno-51-8"></a><span class="c1"># Tag new memories</span>
-<a id="__codelineno-51-9" name="__codelineno-51-9" href="#__codelineno-51-9"></a><span class="n">lifecycle</span><span class="o">.</span><span class="n">tag_new</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>  <span class="c1"># assigns tier = &quot;episodic&quot;</span>
-<a id="__codelineno-51-10" name="__codelineno-51-10" href="#__codelineno-51-10"></a>
-<a id="__codelineno-51-11" name="__codelineno-51-11" href="#__codelineno-51-11"></a><span class="c1"># Periodic consolidation pass (non-tracking — zero staged AccessTracker entries)</span>
-<a id="__codelineno-51-12" name="__codelineno-51-12" href="#__codelineno-51-12"></a><span class="n">summary</span> <span class="o">=</span> <span class="n">lifecycle</span><span class="o">.</span><span class="n">tick</span><span class="p">()</span>
-<a id="__codelineno-51-13" name="__codelineno-51-13" href="#__codelineno-51-13"></a><span class="c1"># {&quot;promoted&quot;: 2, &quot;forgotten&quot;: 5, &quot;duration_ms&quot;: 8.3}</span>
-<a id="__codelineno-51-14" name="__codelineno-51-14" href="#__codelineno-51-14"></a>
-<a id="__codelineno-51-15" name="__codelineno-51-15" href="#__codelineno-51-15"></a><span class="c1"># Inspect lifecycle state</span>
-<a id="__codelineno-51-16" name="__codelineno-51-16" href="#__codelineno-51-16"></a><span class="n">state</span> <span class="o">=</span> <span class="n">lifecycle</span><span class="o">.</span><span class="n">assess</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>
-<a id="__codelineno-51-17" name="__codelineno-51-17" href="#__codelineno-51-17"></a><span class="nb">print</span><span class="p">(</span><span class="n">state</span><span class="o">.</span><span class="n">tier</span><span class="p">,</span> <span class="n">state</span><span class="o">.</span><span class="n">promotion_eligible</span><span class="p">,</span> <span class="n">state</span><span class="o">.</span><span class="n">forget_eligible</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-53-1" name="__codelineno-53-1" href="#__codelineno-53-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes</span><span class="w"> </span><span class="kn">import</span> <span class="n">MemoryLifecycle</span>
+<a id="__codelineno-53-2" name="__codelineno-53-2" href="#__codelineno-53-2"></a>
+<a id="__codelineno-53-3" name="__codelineno-53-3" href="#__codelineno-53-3"></a><span class="n">lifecycle</span> <span class="o">=</span> <span class="n">MemoryLifecycle</span><span class="p">(</span>
+<a id="__codelineno-53-4" name="__codelineno-53-4" href="#__codelineno-53-4"></a>    <span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span>
+<a id="__codelineno-53-5" name="__codelineno-53-5" href="#__codelineno-53-5"></a>    <span class="n">importance_field</span><span class="o">=</span><span class="s2">&quot;relevance&quot;</span><span class="p">,</span>   <span class="c1"># name of a DecayingSortedField</span>
+<a id="__codelineno-53-6" name="__codelineno-53-6" href="#__codelineno-53-6"></a><span class="p">)</span>
+<a id="__codelineno-53-7" name="__codelineno-53-7" href="#__codelineno-53-7"></a>
+<a id="__codelineno-53-8" name="__codelineno-53-8" href="#__codelineno-53-8"></a><span class="c1"># Tag new memories</span>
+<a id="__codelineno-53-9" name="__codelineno-53-9" href="#__codelineno-53-9"></a><span class="n">lifecycle</span><span class="o">.</span><span class="n">tag_new</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>  <span class="c1"># assigns tier = &quot;episodic&quot;</span>
+<a id="__codelineno-53-10" name="__codelineno-53-10" href="#__codelineno-53-10"></a>
+<a id="__codelineno-53-11" name="__codelineno-53-11" href="#__codelineno-53-11"></a><span class="c1"># Periodic consolidation pass (non-tracking — zero staged AccessTracker entries)</span>
+<a id="__codelineno-53-12" name="__codelineno-53-12" href="#__codelineno-53-12"></a><span class="n">summary</span> <span class="o">=</span> <span class="n">lifecycle</span><span class="o">.</span><span class="n">tick</span><span class="p">()</span>
+<a id="__codelineno-53-13" name="__codelineno-53-13" href="#__codelineno-53-13"></a><span class="c1"># {&quot;promoted&quot;: 2, &quot;forgotten&quot;: 5, &quot;duration_ms&quot;: 8.3}</span>
+<a id="__codelineno-53-14" name="__codelineno-53-14" href="#__codelineno-53-14"></a>
+<a id="__codelineno-53-15" name="__codelineno-53-15" href="#__codelineno-53-15"></a><span class="c1"># Inspect lifecycle state</span>
+<a id="__codelineno-53-16" name="__codelineno-53-16" href="#__codelineno-53-16"></a><span class="n">state</span> <span class="o">=</span> <span class="n">lifecycle</span><span class="o">.</span><span class="n">assess</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>
+<a id="__codelineno-53-17" name="__codelineno-53-17" href="#__codelineno-53-17"></a><span class="nb">print</span><span class="p">(</span><span class="n">state</span><span class="o">.</span><span class="n">tier</span><span class="p">,</span> <span class="n">state</span><span class="o">.</span><span class="n">promotion_eligible</span><span class="p">,</span> <span class="n">state</span><span class="o">.</span><span class="n">forget_eligible</span><span class="p">)</span>
 </code></pre></div>
 <p>See <a href="../../recipes/#memorylifecycle"><code>docs/recipes.md#memorylifecycle</code></a> for the
 full API reference, custom policy examples, multi-agent partitioning, and

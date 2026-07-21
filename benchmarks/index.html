@@ -2515,6 +2515,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#confidence-gated-retrieval-refusal-precision-issue-463" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Confidence-gated retrieval — refusal precision (issue #463)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2860,6 +2871,17 @@
     <span class="md-ellipsis">
       
         Category 5 ("adversarial") — evidence audit and leaderboard-parity slice
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#confidence-gated-retrieval-refusal-precision-issue-463" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Confidence-gated retrieval — refusal precision (issue #463)
       
     </span>
   </a>
@@ -3487,6 +3509,71 @@ policy-level).</strong> Keep category 5 in the full 5-category aggregate (the ev
 audit shows its spans are meaningful), publish the 4-category parity slice
 alongside it for leaderboard comparability, and always carry the caveat above.
 A refusal metric is not applicable to this dataset and is deferred to #463.</p>
+<h4 id="confidence-gated-retrieval-refusal-precision-issue-463">Confidence-gated retrieval — refusal precision (issue #463)<a class="headerlink" href="#confidence-gated-retrieval-refusal-precision-issue-463" title="Permanent link">&para;</a></h4>
+<p>Issue #463 shipped an opt-in confidence gate on <code>ContextAssembler</code>
+(<code>confidence_gate_threshold</code> / <code>confidence_gate_mode</code>; see
+<a href="../features/agent-memory/#contextassembler">ContextAssembler</a> for the API).
+<code>tests/benchmarks/test_confidence_gate_refusal.py</code> measures how well the gate
+identifies genuinely-unanswerable questions on the same category-5 slice
+audited above.</p>
+<p><strong>CAVEAT — this is a seeded simulation, not an organic measurement.</strong> Read the
+caveat before the number:</p>
+<ul>
+<li>As established in the cat-5 audit directly above, <strong>only 2 of the 446
+  category-5 items are genuinely unanswerable</strong>. Refusal precision =
+  TP/(TP+FP) therefore has <strong>at most 2 true positives</strong> — a single false
+  positive swings the reported precision by tens of points. This is not a
+  statistically meaningful sample size.</li>
+<li><code>ConfidenceField</code> gating is <strong>cold-start-degenerate</strong> on LoCoMo: the harness
+  performs single-shot retrieval with no correction loop, so every candidate's
+  confidence sits at the same <code>initial_confidence</code> with no observation history
+  to diverge it. Left unseeded, <code>gate_score</code> would be constant across all 446
+  items and the gate would refuse either everything or nothing. To make the
+  gate exercisable at all, the benchmark manually seeds a deterministic,
+  content-hash-derived confidence spread (roughly <code>[0.05, 0.95]</code>) onto every
+  ingested record before querying, simulating "a realistic post-interaction
+  confidence spread" — this is a <strong>simulation of a spread</strong>, not a measurement
+  of one.</li>
+</ul>
+<p><strong>Result (lexical retrieval, <code>EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD = 0.5</code>,
+<code>confidence_gate_mode="refuse"</code>, full 446-item cat-5 slice):</strong></p>
+<table>
+<thead>
+<tr>
+<th style="text-align: right;">Items refused</th>
+<th style="text-align: right;">True positives (TP)</th>
+<th style="text-align: right;">False positives (FP)</th>
+<th style="text-align: right;">Refusal precision TP/(TP+FP)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: right;">221</td>
+<td style="text-align: right;">2</td>
+<td style="text-align: right;">219</td>
+<td style="text-align: right;">0.009 (≈0.9%)</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition warning">
+<p class="admonition-title">Not leaderboard-comparable, not a real-world refusal-accuracy claim</p>
+<p>This number demonstrates that the gate mechanism works end-to-end — it
+faithfully refuses when the (seeded) rank-0 confidence is low — not that
+Popoto's confidence gate achieves ~1% precision in production. With only 2
+true positives available on this dataset, and a confidence spread that was
+manually seeded rather than organically observed, the figure carries no
+statistical weight and must <strong>never</strong> be cross-compared against any
+recall or judged-accuracy number from the sections above (metric-family
+doctrine) or against another system's refusal-capability claim. See the
+<a href="#category-5-adversarial-evidence-audit-and-leaderboard-parity-slice">category 5 audit</a>
+above for why LoCoMo cat-5 is a poor substrate for a refusal metric in the
+first place — the same limitation applies here.</p>
+</div>
+<p>Reproduce: <code>pytest tests/benchmarks/test_confidence_gate_refusal.py -v</code> (the
+deterministic <code>TestRefusalGateMechanics</code> class runs unconditionally in CI; the
+446-item <code>TestRefusalPrecisionLoCoMoCat5</code> class is cache-gated on
+<code>~/.cache/popoto_benchmarks/locomo.json</code> and prints the same caveat inline
+with the report).</p>
 <h3 id="judged-answer-accuracy-tier-5">Judged-Answer Accuracy (Tier 5)<a class="headerlink" href="#judged-answer-accuracy-tier-5" title="Permanent link">&para;</a></h3>
 <p>The metrics above are <strong>retrieval-level</strong> — did the right memory get retrieved.
 Every published vendor leaderboard (Hindsight, Mem0, Zep, Memori, Backboard)

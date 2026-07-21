@@ -1621,6 +1621,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#confidence-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Confidence Gate
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3047,6 +3058,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#confidence-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Confidence Gate
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3485,9 +3507,36 @@ recipe to turn live <code>assemble()</code> calls into a real-workload benchmark
 <a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="nb">print</span><span class="p">(</span><span class="n">quality</span><span class="o">.</span><span class="n">avg_confidence</span><span class="p">,</span> <span class="n">quality</span><span class="o">.</span><span class="n">fok_score</span><span class="p">)</span>
 </code></pre></div>
 <p>See <a href="../metacognitive-layer/">Metacognitive Layer</a> for full documentation of <code>RetrievalQuality</code>, all four metrics, the <code>assess()</code> method, and the <code>AdaptiveAssembler</code> keep/revert loop.</p>
+<h2 id="confidence-gate">Confidence Gate<a class="headerlink" href="#confidence-gate" title="Permanent link">&para;</a></h2>
+<p>An opt-in gate (issue #463) lets <code>assemble()</code> decline to inject a pull-path
+answer when it isn't confident enough, rather than always returning its best
+match regardless of quality. It is off by default and ships with <strong>no shipped
+default threshold</strong> — pass <code>confidence_gate_threshold</code> explicitly to enable
+it:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">assembler</span> <span class="o">=</span> <span class="n">ContextAssembler</span><span class="p">(</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>    <span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span>  <span class="c1"># must declare a ConfidenceField</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>    <span class="n">confidence_gate_threshold</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>    <span class="n">confidence_gate_mode</span><span class="o">=</span><span class="s2">&quot;refuse&quot;</span><span class="p">,</span>  <span class="c1"># or &quot;flag&quot;</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="p">)</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="n">result</span> <span class="o">=</span> <span class="n">assembler</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span><span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;topic&quot;</span><span class="p">:</span> <span class="s2">&quot;deployment&quot;</span><span class="p">},</span> <span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">)</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">metadata</span><span class="p">[</span><span class="s2">&quot;gate&quot;</span><span class="p">])</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="c1"># {&quot;applied&quot;: True, &quot;gate_score&quot;: 0.42, &quot;threshold&quot;: 0.5, &quot;mode&quot;: &quot;refuse&quot;, &quot;gated&quot;: True}</span>
+</code></pre></div>
+<p>The gate reads the rank-0 pull-path candidate's <code>ConfidenceField</code> value (via
+<code>get_confidence()</code>, always in <code>[0, 1]</code>), so it is mode-agnostic across
+composite, lexical, and hybrid retrieval. <code>"refuse"</code> drops all pull-path
+records when gated (push path untouched); <code>"flag"</code> retains records and only
+annotates the decision. Enabling the gate on a model without a
+<code>ConfidenceField</code>, or with an invalid <code>confidence_gate_mode</code>, raises
+<code>QueryException</code> at construction.</p>
+<p>See <a href="../agent-memory/#confidence-gate">Agent Memory overview → Confidence Gate</a>
+for the full <code>metadata["gate"]</code> shape, the fault-tolerant <code>get_confidence()</code>
+failure path, and the no-default policy on <code>EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD</code>.</p>
 <h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../metacognitive-layer/">Metacognitive Layer</a> — retrieval quality scoring, FOK, and adaptive weight tuning</li>
+<li><a href="../confidence-field/">ConfidenceField</a> — the field the confidence gate reads via <code>get_confidence()</code></li>
 <li><a href="../policy-cache/">PolicyCache</a> — learned action selection (uses ContextAssembler for retrieval)</li>
 <li><a href="../hybrid-retrieval/">Hybrid Retrieval</a> — BM25Field, EmbeddingField, and RRF fusion primitives</li>
 <li><a href="../composite-score-query/">CompositeScoreQuery</a> — multi-factor retrieval (composite mode)</li>

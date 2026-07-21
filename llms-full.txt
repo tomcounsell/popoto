@@ -7700,10 +7700,20 @@ assembler = ContextAssembler(
     propagation_depth=2,      # BFS depth for CoOccurrence propagation
     output_format="structured",  # "structured" (JSON), "xml", or "natural"
     token_counter=None,       # Optional callable(serialized_text: str) -> int; default: stdlib heuristic
+    # Keyword-only:
+    retrieval_mode="auto",    # "auto" (default), "hybrid", or "lexical"
+    confidence_gate_threshold=None,  # float | None (default). See "Confidence Gate" below.
+    confidence_gate_mode="refuse",   # "refuse" (default) or "flag"
 )
 ```
 
 The assembler auto-detects which fields are present on `model_class` and adapts the pipeline accordingly. Models without `ExistenceFilter` skip the pre-check; models without `CoOccurrenceField` skip propagation; models without `CyclicDecayField` skip the push path entirely.
+
+**Raises** `QueryException` at construction if `retrieval_mode="hybrid"` is
+requested but the model lacks `BM25Field`/`EmbeddingField`; if
+`confidence_gate_threshold` is set and `confidence_gate_mode` is not one of
+`{"refuse", "flag"}`; or if `confidence_gate_threshold` is set but the model
+lacks a `ConfidenceField`.
 
 #### `ContextAssembler.assemble()`
 
@@ -7739,6 +7749,7 @@ The `metadata` dict contains:
 | `token_count` | Estimated total tokens across selected records |
 | `timing_ms` | Wall-clock time for the full pipeline |
 | `total_candidates` | Total candidates before budget selection |
+| `gate` | Confidence-gate decision dict. Present **only** when `confidence_gate_threshold` was set at construction — see [Confidence Gate](#confidence-gate) below. |
 
 ### Usage Examples
 
@@ -7818,6 +7829,84 @@ assembler = ContextAssembler(
 )
 ```
 
+### Confidence Gate
+
+An opt-in gate (issue #463) that lets `assemble()` decline to inject a
+pull-path answer when it isn't confident enough. It is off by default and has
+**no shipped default threshold** — a caller must explicitly pass
+`confidence_gate_threshold` to enable it.
+
+```python
+assembler = ContextAssembler(
+    model_class=Memory,
+    score_weights={"relevance": 0.6, "confidence": 0.3},
+    confidence_gate_threshold=0.5,
+    confidence_gate_mode="refuse",  # or "flag"
+)
+
+result = assembler.assemble(query_cues={"topic": "deployment"}, agent_id="agent-1")
+print(result.metadata["gate"])
+# {"applied": True, "gate_score": 0.42, "threshold": 0.5, "mode": "refuse", "gated": True}
+```
+
+**Mechanism.** After the pull path runs, the gate reads the `ConfidenceField`
+value of the rank-0 pull-path candidate — the single best-matching record,
+which is the one the assembler would otherwise inject — via
+`ConfidenceField.get_confidence()`, and compares it to
+`confidence_gate_threshold`. This makes the gate **mode-agnostic**:
+`get_confidence()` always returns a value in `[0, 1]` regardless of whether
+the pull path is running composite (weighted-sum) or hybrid/RRF-fused
+retrieval, so the same threshold means the same thing under either ranking
+mode. Aggregating across multiple candidates (mean/max/quorum) is out of
+scope — the rank-0 record is the deliberate, fixed design choice.
+
+If reading `get_confidence()` raises (e.g. a candidate is missing its
+confidence companion hash), the gate degrades gracefully: it logs
+`logger.warning` and treats the gate as **not applied**
+(`gate_score=None`, `applied=False`, `gated=False`), returning records
+unchanged rather than crashing `assemble()` — matching the fault-tolerant
+style already used by `emit_trace`/`_compute_quality` elsewhere in the same
+method.
+
+**`confidence_gate_mode`:**
+
+| Mode | Behavior when `gate_score < threshold` |
+|------|------------------------------------------|
+| `"refuse"` (default) | Drops **all** pull-path records before injection. The push path is never touched. Competitive suppression is also skipped for the refused candidates (a refusal isn't punished as a "loss"), but the untouched candidate set still flows into `_compute_quality`, so a feeling-of-knowing (FoK) score computed via `assess_quality=True` correctly reflects that candidates *were found* even though the assembler chose not to inject them. |
+| `"flag"` | Never drops records. The only effect is the `metadata["gate"]` annotation — `assess_quality`, suppression, and `result.formatted` are otherwise byte-for-byte identical to leaving the gate off. A caller who wants to act on a flagged low-confidence answer (e.g. prepend a disclaimer) must inspect `metadata["gate"]` itself; ContextAssembler ships no automated consumer of the flag. |
+
+**`metadata["gate"]` shape** — attached to `AssemblyResult.metadata` only
+when `confidence_gate_threshold` is not `None` (callers who never pass a
+threshold get metadata that is bit-for-bit identical to pre-gate behavior —
+no `"gate"` key at all):
+
+| Key | Type | Description |
+|-----|------|--------------|
+| `applied` | `bool` | Whether the gate actually evaluated a confidence score (`False` if the pull path returned no records, or if `get_confidence()` raised). |
+| `gate_score` | `float \| None` | The rank-0 candidate's confidence, or `None` when `applied` is `False`. |
+| `threshold` | `float` | The configured `confidence_gate_threshold`, echoed back for convenience. |
+| `mode` | `str` | The configured `confidence_gate_mode` (`"refuse"` or `"flag"`). |
+| `gated` | `bool` | Whether `gate_score < threshold` (i.e. whether the gate decision fired). Always `False` when `applied` is `False`. |
+
+**Construction-time validation.** Enabling the gate raises `QueryException`
+if `confidence_gate_mode` is not one of `{"refuse", "flag"}`, or if the model
+does not declare a `ConfidenceField` — mirroring the validation `retrieval_mode="hybrid"`
+already performs for `BM25Field`/`EmbeddingField`.
+
+**No-default policy.** `confidence_gate_threshold` ships with **no default** —
+it must be explicitly opted into by the caller. The module also defines:
+
+```python
+EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD = 0.5  # NOT a shipped default
+```
+
+This constant exists **only** for the refusal-metric benchmark and report
+scripts (see [Confidence-gated retrieval — refusal precision](../benchmarks.md#confidence-gated-retrieval-refusal-precision-issue-463)).
+It is explicitly *not* `Defaults.CONFIDENCE_GATE_THRESHOLD` — no such
+`Defaults` entry exists — and it is not used as the ctor default.  Promoting
+it to a real default is a policy-level decision requiring maintainer
+sign-off (tracked in [issue #463](https://github.com/tomcounsell/popoto/issues/463)).
+
 ### Tuning Constants
 
 | Constant | Default | Description |
@@ -7826,6 +7915,7 @@ assembler = ContextAssembler(
 | `DEFAULT_SURFACING_THRESHOLD` | `0.5` | Minimum score for push-path records to be surfaced. |
 | `DEFAULT_MAX_ITEMS` | `10` | Default maximum number of records returned. |
 | `DEFAULT_PROPAGATION_DEPTH` | `2` | Default BFS depth for CoOccurrence propagation. |
+| `EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD` | `0.5` | **Not** a shipped default — used only by the confidence-gate refusal benchmark/report script. Requires maintainer sign-off before it could become a real `Defaults` entry or ctor default (issue #463). |
 
 ### Graceful Degradation
 
@@ -8816,6 +8906,7 @@ for a walkthrough.
 - **DecayingSortedField**: Composite scoring via `priority = decay_score * confidence`
 - **CyclicDecayField**: Auto-discharge when confidence drops below threshold
 - **WriteFilterMixin**: Use confidence in `compute_filter_score()` for directed forgetting
+- **[ContextAssembler](context-assembler.md#confidence-gate)**: `get_confidence()` on the rank-0 pull-path candidate drives the opt-in confidence gate — `assemble()` can refuse or flag a low-confidence answer instead of injecting it
 - **AccessTrackerMixin**: Read tracking independent of confidence
 
 ---
@@ -10112,9 +10203,42 @@ print(quality.avg_confidence, quality.fok_score)
 
 See [Metacognitive Layer](metacognitive-layer.md) for full documentation of `RetrievalQuality`, all four metrics, the `assess()` method, and the `AdaptiveAssembler` keep/revert loop.
 
+## Confidence Gate
+
+An opt-in gate (issue #463) lets `assemble()` decline to inject a pull-path
+answer when it isn't confident enough, rather than always returning its best
+match regardless of quality. It is off by default and ships with **no shipped
+default threshold** — pass `confidence_gate_threshold` explicitly to enable
+it:
+
+```python
+assembler = ContextAssembler(
+    model_class=Memory,  # must declare a ConfidenceField
+    confidence_gate_threshold=0.5,
+    confidence_gate_mode="refuse",  # or "flag"
+)
+
+result = assembler.assemble(query_cues={"topic": "deployment"}, agent_id="agent-1")
+print(result.metadata["gate"])
+# {"applied": True, "gate_score": 0.42, "threshold": 0.5, "mode": "refuse", "gated": True}
+```
+
+The gate reads the rank-0 pull-path candidate's `ConfidenceField` value (via
+`get_confidence()`, always in `[0, 1]`), so it is mode-agnostic across
+composite, lexical, and hybrid retrieval. `"refuse"` drops all pull-path
+records when gated (push path untouched); `"flag"` retains records and only
+annotates the decision. Enabling the gate on a model without a
+`ConfidenceField`, or with an invalid `confidence_gate_mode`, raises
+`QueryException` at construction.
+
+See [Agent Memory overview → Confidence Gate](agent-memory.md#confidence-gate)
+for the full `metadata["gate"]` shape, the fault-tolerant `get_confidence()`
+failure path, and the no-default policy on `EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD`.
+
 ## See Also
 
 - [Metacognitive Layer](metacognitive-layer.md) — retrieval quality scoring, FOK, and adaptive weight tuning
+- [ConfidenceField](confidence-field.md) — the field the confidence gate reads via `get_confidence()`
 - [PolicyCache](policy-cache.md) — learned action selection (uses ContextAssembler for retrieval)
 - [Hybrid Retrieval](hybrid-retrieval.md) — BM25Field, EmbeddingField, and RRF fusion primitives
 - [CompositeScoreQuery](composite-score-query.md) — multi-factor retrieval (composite mode)
@@ -15689,6 +15813,60 @@ policy-level).** Keep category 5 in the full 5-category aggregate (the evidence
 audit shows its spans are meaningful), publish the 4-category parity slice
 alongside it for leaderboard comparability, and always carry the caveat above.
 A refusal metric is not applicable to this dataset and is deferred to #463.
+
+#### Confidence-gated retrieval — refusal precision (issue #463)
+
+Issue #463 shipped an opt-in confidence gate on `ContextAssembler`
+(`confidence_gate_threshold` / `confidence_gate_mode`; see
+[ContextAssembler](features/agent-memory.md#contextassembler) for the API).
+`tests/benchmarks/test_confidence_gate_refusal.py` measures how well the gate
+identifies genuinely-unanswerable questions on the same category-5 slice
+audited above.
+
+**CAVEAT — this is a seeded simulation, not an organic measurement.** Read the
+caveat before the number:
+
+- As established in the cat-5 audit directly above, **only 2 of the 446
+  category-5 items are genuinely unanswerable**. Refusal precision =
+  TP/(TP+FP) therefore has **at most 2 true positives** — a single false
+  positive swings the reported precision by tens of points. This is not a
+  statistically meaningful sample size.
+- `ConfidenceField` gating is **cold-start-degenerate** on LoCoMo: the harness
+  performs single-shot retrieval with no correction loop, so every candidate's
+  confidence sits at the same `initial_confidence` with no observation history
+  to diverge it. Left unseeded, `gate_score` would be constant across all 446
+  items and the gate would refuse either everything or nothing. To make the
+  gate exercisable at all, the benchmark manually seeds a deterministic,
+  content-hash-derived confidence spread (roughly `[0.05, 0.95]`) onto every
+  ingested record before querying, simulating "a realistic post-interaction
+  confidence spread" — this is a **simulation of a spread**, not a measurement
+  of one.
+
+**Result (lexical retrieval, `EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD = 0.5`,
+`confidence_gate_mode="refuse"`, full 446-item cat-5 slice):**
+
+| Items refused | True positives (TP) | False positives (FP) | Refusal precision TP/(TP+FP) |
+|---:|---:|---:|---:|
+| 221 | 2 | 219 | 0.009 (≈0.9%) |
+
+!!! warning "Not leaderboard-comparable, not a real-world refusal-accuracy claim"
+    This number demonstrates that the gate mechanism works end-to-end — it
+    faithfully refuses when the (seeded) rank-0 confidence is low — not that
+    Popoto's confidence gate achieves ~1% precision in production. With only 2
+    true positives available on this dataset, and a confidence spread that was
+    manually seeded rather than organically observed, the figure carries no
+    statistical weight and must **never** be cross-compared against any
+    recall or judged-accuracy number from the sections above (metric-family
+    doctrine) or against another system's refusal-capability claim. See the
+    [category 5 audit](#category-5-adversarial-evidence-audit-and-leaderboard-parity-slice)
+    above for why LoCoMo cat-5 is a poor substrate for a refusal metric in the
+    first place — the same limitation applies here.
+
+Reproduce: `pytest tests/benchmarks/test_confidence_gate_refusal.py -v` (the
+deterministic `TestRefusalGateMechanics` class runs unconditionally in CI; the
+446-item `TestRefusalPrecisionLoCoMoCat5` class is cache-gated on
+`~/.cache/popoto_benchmarks/locomo.json` and prints the same caveat inline
+with the report).
 
 ### Judged-Answer Accuracy (Tier 5)
 
