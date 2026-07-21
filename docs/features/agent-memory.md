@@ -1301,6 +1301,7 @@ assembler = ContextAssembler(
     retrieval_mode="auto",    # "auto" (default), "hybrid", or "lexical"
     confidence_gate_threshold=None,  # float | None (default). See "Confidence Gate" below.
     confidence_gate_mode="refuse",   # "refuse" (default) or "flag"
+    graph_traversal_relationship_fields=None,  # list[str] | None (default). See "Graph Traversal" below.
 )
 ```
 
@@ -1504,6 +1505,56 @@ It is explicitly *not* `Defaults.CONFIDENCE_GATE_THRESHOLD` — no such
 it to a real default is a policy-level decision requiring maintainer
 sign-off (tracked in [issue #463](https://github.com/tomcounsell/popoto/issues/463)).
 
+### Graph Traversal
+
+An opt-in extension (issue #462) of the existing CoOccurrence graph arm
+(the "CoOccurrence propagation" step in the [Pipeline](#pipeline) diagram
+above). It is off by default — pass `graph_traversal_relationship_fields`
+to enable it; omitting it leaves `assemble()` byte-for-byte identical to
+before this feature.
+
+```python
+assembler = ContextAssembler(
+    model_class=Memory,
+    score_weights={"relevance": 0.6, "confidence": 0.3},
+    graph_traversal_relationship_fields=["related_memory"],
+)
+
+result = assembler.assemble(query_cues={"topic": "deployment"}, agent_id="agent-1")
+```
+
+**Mechanism.** Where the pipeline previously called
+`CoOccurrenceField.propagate()` directly, it now routes through
+[`popoto.recipes.graph_traversal.traverse()`](https://github.com/tomcounsell/popoto/blob/main/src/popoto/recipes/graph_traversal.py),
+which:
+
+1. Runs the existing `CoOccurrenceField.propagate()` BFS (unchanged).
+2. Additionally walks each named `Relationship` field 1-2 hops, in both
+   directions (a node's own relationship value, and other nodes pointing at
+   it via the field's `$RelationshipF:...` index Set), with fan-out bounded
+   per hop via `SRANDMEMBER`.
+3. Merges both signals (max-weight-wins per PK) and caps the result to a
+   fixed `max_candidates` *before* any instance is loaded, so traversal
+   cost stays bounded independent of graph fan-out.
+4. If the model declares a `ConfidenceField` and/or `DecayingSortedField`,
+   multiplies each surviving candidate's weight by its own confidence/decay
+   state, so a low-confidence or heavily decayed node is less likely to
+   survive into the merged candidate set than a fresh, corroborated one.
+
+**`graph_traversal_relationship_fields`** must name **self-referential**
+`Relationship` field(s) — a field on `model_class` whose `model` is
+`model_class` itself (e.g. a `Memory.related_memory = Relationship(model=Memory)`
+edge). A relationship pointing at a different model class is ignored with a
+logged warning at construction time (traversal degrades to the
+CoOccurrence-only signal, not an error), since `ContextAssembler` treats its
+candidate set as homogeneous.
+
+**Evaluation status.** This slice implements and unit-tests the traversal
+mechanism (`tests/test_graph_traversal.py`). The LoCoMo multi-hop slice and
+association-recall benchmark scenarios called for in issue #462 are tracked
+as a follow-up rather than run here — see the note in
+[the benchmarking strategy doc](../plans/benchmarking_strategy_2026-07.md#32-structuredgraph-memory-where-zep-hindsight-byterover-lead).
+
 ### Tuning Constants
 
 | Constant | Default | Description |
@@ -1513,6 +1564,11 @@ sign-off (tracked in [issue #463](https://github.com/tomcounsell/popoto/issues/4
 | `DEFAULT_MAX_ITEMS` | `10` | Default maximum number of records returned. |
 | `DEFAULT_PROPAGATION_DEPTH` | `2` | Default BFS depth for CoOccurrence propagation. |
 | `EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD` | `0.5` | **Not** a shipped default — used only by the confidence-gate refusal benchmark/report script. Requires maintainer sign-off before it could become a real `Defaults` entry or ctor default (issue #463). |
+
+`popoto/recipes/graph_traversal.py` defines its own experimental constants
+(`RELATIONSHIP_HOP_DECAY`, `RELATIONSHIP_HOP_FANOUT_LIMIT`,
+`GRAPH_TRAVERSAL_MAX_CANDIDATES`, `ADMISSION_THRESHOLD`) — in-code magic
+numbers, not user-facing config, matching the convention above.
 
 ### Graceful Degradation
 

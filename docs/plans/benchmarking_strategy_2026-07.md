@@ -128,6 +128,24 @@ The LoCoMo regression (hybrid 0.1667 < lexical 0.2986 at R@1) is a real defect i
 
 The top judged-accuracy systems win multi-hop via **entity-graph traversal** (Zep), **four logical networks + retain-recall-reflect** (Hindsight), and **context-tree architectures** (ByteRover). Popoto has `RelationshipField` and `CoOccurrenceField` but no graph-traversal retrieval. Multi-hop is where flat retrieval structurally loses. Research a lightweight graph/traversal layer over the existing association primitives — this is the biggest *capability* gap, not just a tuning gap.
 
+**Status (#462, PR #483):** `CoOccurrenceField.propagate()`-based BFS graph
+traversal was already wired into `ContextAssembler` (both the composite and
+hybrid/lexical pull paths) prior to this issue being scoped. PR #483 closes
+the remaining gap: a new `popoto.recipes.graph_traversal` module extends
+that graph arm with (1) `RelationshipField` edge expansion — 1-2 hop
+forward/reverse traversal of self-referential `Relationship` fields, bounded
+fan-out via `SRANDMEMBER` — and (2) confidence/decay-modulated hop
+admission, where a candidate's own `ConfidenceField`/decaying-field state
+scales its survival weight. Opt-in via `ContextAssembler(...,
+graph_traversal_relationship_fields=[...])`; see
+[Graph Traversal](../features/agent-memory.md#graph-traversal) in the
+agent-memory feature doc for the full mechanism and API. **The LoCoMo
+multi-hop slice + association-recall evaluation this section calls for is
+still outstanding** — PR #483 implements and unit-tests the traversal
+mechanism only; the judged-accuracy/recall lift is unmeasured and tracked as
+a follow-up under epic #456 Track B, matching how §3.3's extraction-provider
+evaluation gap is tracked.
+
 ### 3.3 LLM-based extraction & structured memory writes
 
 Competitors' big lever is *structuring unstructured chat into semantic memory* on write (Memori explicitly attributes its lead to this). Popoto's default `extract_memories()` is still a **sentence-splitting heuristic** for backward compatibility, but as of #461/PR #481 it is now pluggable: `SubconsciousMemory` accepts an `extraction_provider` (see [LLM Memory Extraction](../features/llm-memory-extraction.md)) that can return entities, typed facts, and importance/confidence scoring on write, feeding `CoOccurrenceField` and `ConfidenceField` directly. The built-in `ClaudeExtractionProvider` covers the LLM-extraction mechanism; **judged-accuracy/recall evaluation of it vs. the heuristic default is still outstanding**, tracked under epic #456 Track B, since the existing benchmark harness has no extraction-provider seam yet. That evaluation -- not the mechanism -- is what remains to confirm the SIQ/MDF lift this section predicted.
