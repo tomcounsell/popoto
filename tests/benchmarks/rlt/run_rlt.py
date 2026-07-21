@@ -35,6 +35,7 @@ import platform
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 import redis
 
@@ -102,16 +103,19 @@ def _point_connection_at_db(target_db: int) -> None:
     old_pool.disconnect()
 
 
-def build_machine_metadata(backend: str) -> dict:
+def build_machine_metadata(backend: str, db: Optional[int] = None) -> dict:
     """Machine metadata block matching ``run_external.py``'s existing convention,
     extended with a ``backend`` field (redis/valkey — the first RLT-specific
     convention, since RLT is the first benchmark where the two backends could
-    measurably differ)."""
+    measurably differ) and the resolved ``db`` the run targeted (so the
+    artifact's DB isolation is self-auditable — a committed result records
+    which non-0/14/15 DB produced it)."""
     return {
         "python_version": platform.python_version(),
         "platform": platform.platform(),
         "cpu_count": os.cpu_count(),
         "backend": backend,
+        "db": db,
     }
 
 
@@ -311,7 +315,7 @@ def main(argv=None):
         "benchmark": "rlt",
         "run_date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         "run_timestamp": datetime.now(timezone.utc).isoformat(),
-        "machine": build_machine_metadata(args.backend),
+        "machine": build_machine_metadata(args.backend, db=args.db),
         "scaling_curve": [p.to_dict() for p in scaling_points],
         "throughput": None,
         "mixed_workload": None,

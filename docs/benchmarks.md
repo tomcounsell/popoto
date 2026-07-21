@@ -757,20 +757,20 @@ treat them as one representative snapshot, not a pinned regression target.
 
 | corpus size | p50 (ms) | p95 (ms) | p99 (ms) |
 |---|---|---|---|
-| 1,000 | 3.09 | 3.89 | 5.63 |
-| 5,000 | 4.91 | 9.87 | 12.16 |
-| 10,000 | 8.13 | 10.72 | 12.16 |
-| 20,000 | 8.69 | 10.39 | 10.81 |
+| 1,000 | 3.02 | 4.01 | 5.79 |
+| 5,000 | 3.30 | 7.05 | 9.58 |
+| 10,000 | 5.90 | 7.94 | 9.56 |
+| 20,000 | 6.02 | 9.27 | 15.26 |
 
-**Throughput** (corpus 20,000): 115.5 queries/sec single-threaded, 288.1
+**Throughput** (corpus 20,000): 149.3 queries/sec single-threaded, 293.9
 queries/sec at concurrency 4.
 
-**Live mixed workload** (corpus 5,000, 4 threads): read p99 goes 10.79 → 27.30 ms
-(2.53× degradation) under concurrent write load; write p99 goes 0.92 → 9.41 ms
-(10.19× degradation) under concurrent read load. The *degradation ratio* (not the
+**Live mixed workload** (corpus 5,000, 4 threads): read p99 goes 6.55 → 21.98 ms
+(3.35× degradation) under concurrent write load; write p99 goes 0.78 → 11.72 ms
+(14.93× degradation) under concurrent read load. The *degradation ratio* (not the
 absolute latency) is the live-agent-relevant number, and note the caveat above
-about thread-scheduling overhead being included — in this run writes (a light
-baseline) were hit harder in relative terms than reads.
+about thread-scheduling overhead being included — in this run writes (a very
+light baseline) were hit far harder in relative terms than reads.
 
 > **Reproduce:** `python -m tests.benchmarks.rlt.run_rlt --db <isolated> --backend redis --mixed-workload`.
 
