@@ -2347,6 +2347,34 @@
   
   
     <li class="md-nav__item">
+      <a href="results/rlt_redis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RLT (Redis)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="results/csr/" class="md-nav__link">
         
   
@@ -2741,6 +2769,111 @@
     <span class="md-ellipsis">
       
         Running It
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rlt-retrieval-latency-throughput-harness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RLT (Retrieval Latency &amp; Throughput) Harness
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="RLT (Retrieval Latency &amp; Throughput) Harness">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#overview_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#percentile-convention" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Percentile Convention
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#headline-numbers-native-popoto-redis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Headline Numbers (native Popoto, Redis)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#still-deferred" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Still Deferred
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#comparator-adapters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Comparator Adapters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#db-hygiene_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DB Hygiene
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#running-it_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running It
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#follow-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Follow-Up
       
     </span>
   </a>
@@ -3175,6 +3308,111 @@
     <span class="md-ellipsis">
       
         Running It
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rlt-retrieval-latency-throughput-harness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RLT (Retrieval Latency &amp; Throughput) Harness
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="RLT (Retrieval Latency &amp; Throughput) Harness">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#overview_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#percentile-convention" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Percentile Convention
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#headline-numbers-native-popoto-redis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Headline Numbers (native Popoto, Redis)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#still-deferred" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Still Deferred
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#comparator-adapters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Comparator Adapters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#db-hygiene_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DB Hygiene
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#running-it_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running It
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#follow-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Follow-Up
       
     </span>
   </a>
@@ -4118,6 +4356,163 @@ uses db14), e.g. <code>POPOTO_BENCH_DB=13</code>.</p>
 <p>To add a trace, drop a committed JSON fixture in <code>tests/benchmarks/siq/fixtures/</code>
 (schema in <code>tests/benchmarks/siq/corpus.py</code>); <code>lint_trace</code> enforces the
 cue-blindness and anticipation-window authoring rules at load time.</p>
+<h2 id="rlt-retrieval-latency-throughput-harness">RLT (Retrieval Latency &amp; Throughput) Harness<a class="headerlink" href="#rlt-retrieval-latency-throughput-harness" title="Permanent link">&para;</a></h2>
+<h3 id="overview_3">Overview<a class="headerlink" href="#overview_3" title="Permanent link">&para;</a></h3>
+<p>RLT (issue #460) is the axis no other harness on this page measures: <strong>speed
+under load</strong>, not retrieval/injection quality. Popoto's substrate premise is
+RAM-speed Redis/Valkey memory with no separate vector-service round-trip — RLT
+is the harness that puts a number on that claim, jointly with recall so the
+result can't be read as "fast but wrong" or "accurate but slow" in isolation.</p>
+<p>Five metrics, one submodule each under <code>tests/benchmarks/rlt/</code>:</p>
+<ol>
+<li><strong>Latency</strong> — p50/p95/p99 per retrieval + end-to-end assemble latency
+   (<code>latency.py</code>). <code>ContextAssembler.assemble()</code> already <em>is</em> the full
+   retrieve→rank→inject pipeline, so "per retrieval" and "end-to-end assemble"
+   are the same measured call in this harness — both labels refer to timing
+   <code>assemble()</code> itself; there is no separate lower-level retrieval-only API
+   surface to isolate without changing <code>src/popoto/</code>.</li>
+<li><strong>Throughput</strong> — queries/sec at a fixed corpus size, single-threaded or
+   under a bounded <code>ThreadPoolExecutor</code> (<code>throughput.py</code>).</li>
+<li><strong>Scaling curve</strong> — latency vs. corpus size, 10³ → 2×10⁴ (<code>scaling.py</code>, the
+   maintainer's scale target; larger points are informational-only and outside
+   this harness's default/CI path — not over-engineered past 20k).</li>
+<li><strong>Live mixed workload</strong> — concurrent turn-ingest writes + assembly reads,
+   measuring read-latency degradation under write load and vice versa
+   (<code>mixed_workload.py</code>). Caveat: a thread-based load generator measures
+   client-side thread-scheduling overhead alongside genuine server-side
+   latency; a multi-process load generator would be needed to fully isolate
+   server-only behavior, which is out of scope for this harness.</li>
+<li><strong>Recall-vs-p99 Pareto frontier</strong> — jointly with the retrieval harness:
+   "at equal p99, who recalls more; at equal recall, who's faster"
+   (<code>pareto.py</code>). The recall axis is the mean of <code>recall_at_k()</code>
+   (<code>tests/benchmarks/metrics/retrieval.py</code>) over the full query set per
+   config, not a per-query binary value.</li>
+</ol>
+<p>The corpus is a synthetic, deterministic, lexical-only (BM25) surface
+(<code>corpus.py</code>) — a fixed topic vocabulary with authored (not derived) ground
+truth per query, following the CSR/SIQ discipline. No EmbeddingField, so no
+model download is needed to run the fast unit-test corpora.</p>
+<h3 id="percentile-convention">Percentile Convention<a class="headerlink" href="#percentile-convention" title="Permanent link">&para;</a></h3>
+<p><code>rlt/latency.py</code>'s <code>percentile()</code> deliberately reuses the <strong>same nearest-rank
+formula</strong> the external harness's <code>compute_aggregate()</code> already uses for its
+own p50/p95 (<code>sorted(values)[int(len(values) * p/100)]</code>) rather than
+introducing a second, numerically different percentile definition into this
+document — RLT's and the external harness's latency numbers are directly
+comparable, not apples-to-oranges.</p>
+<h3 id="headline-numbers-native-popoto-redis">Headline Numbers (native Popoto, Redis)<a class="headerlink" href="#headline-numbers-native-popoto-redis" title="Permanent link">&para;</a></h3>
+<p>First real run of the harness, captured on an isolated DB once the machine was
+quiet (full artifact: <code>tests/benchmarks/results/rlt/rlt_latest_redis.json</code>).
+Backend <strong>redis 8.x</strong>, Python 3.12, Apple-silicon (10 cores). These are native
+Popoto (<code>ContextAssembler</code>) numbers only — competitor comparators are still to
+come (see Follow-Up). Absolute latency is machine-dependent; read the <em>shape</em>
+(sub-6-ms p50 retrieval that grows gently with corpus size, and the
+read-degradation-under-write-load ratio), not the exact millisecond.</p>
+<p>All figures below are the exact values from the committed artifact
+(<code>rlt_20260721_redis.json</code>); they vary run-to-run (warmup, OS scheduling), so
+treat them as one representative snapshot, not a pinned regression target.</p>
+<p><strong>Scaling curve</strong> — latency vs. corpus size (200 samples/point):</p>
+<table>
+<thead>
+<tr>
+<th>corpus size</th>
+<th>p50 (ms)</th>
+<th>p95 (ms)</th>
+<th>p99 (ms)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1,000</td>
+<td>3.02</td>
+<td>4.01</td>
+<td>5.79</td>
+</tr>
+<tr>
+<td>5,000</td>
+<td>3.30</td>
+<td>7.05</td>
+<td>9.58</td>
+</tr>
+<tr>
+<td>10,000</td>
+<td>5.90</td>
+<td>7.94</td>
+<td>9.56</td>
+</tr>
+<tr>
+<td>20,000</td>
+<td>6.02</td>
+<td>9.27</td>
+<td>15.26</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Throughput</strong> (corpus 20,000): 149.3 queries/sec single-threaded, 293.9
+queries/sec at concurrency 4.</p>
+<p><strong>Live mixed workload</strong> (corpus 5,000, 4 threads): read p99 goes 6.55 → 21.98 ms
+(3.35× degradation) under concurrent write load; write p99 goes 0.78 → 11.72 ms
+(14.93× degradation) under concurrent read load. The <em>degradation ratio</em> (not the
+absolute latency) is the live-agent-relevant number, and note the caveat above
+about thread-scheduling overhead being included — in this run writes (a very
+light baseline) were hit far harder in relative terms than reads.</p>
+<blockquote>
+<p><strong>Reproduce:</strong> <code>python -m tests.benchmarks.rlt.run_rlt --db &lt;isolated&gt; --backend redis --mixed-workload</code>.</p>
+</blockquote>
+<h3 id="still-deferred">Still Deferred<a class="headerlink" href="#still-deferred" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Valkey run.</strong> The issue calls for results on <strong>both</strong> Redis and Valkey (the
+  first benchmark where the two could measurably differ). No Valkey server was
+  available in the session that produced the Redis numbers above, so the Valkey
+  run is deferred — the harness is backend-agnostic (<code>--backend valkey</code> against
+  a Valkey-pointed <code>REDIS_URL</code>), so it is purely an ops step, not a code change.</li>
+<li><strong>Real Mem0/Zep/vector-DB comparators.</strong> The <code>RltAdapter</code> Protocol
+  (<code>comparators.py</code>) ships with a <code>NativeAdapter</code> (Popoto) and a dependency-free
+  <code>NullAdapter</code> proving the contract. <strong>No real Mem0/Zep/vector-DB numbers are
+  fabricated here</strong> — real adapters (heavyweight optional deps + live services)
+  and the recall-vs-p99 competitor Pareto are a tracked follow-up.</li>
+</ul>
+<h3 id="comparator-adapters">Comparator Adapters<a class="headerlink" href="#comparator-adapters" title="Permanent link">&para;</a></h3>
+<p><code>RltAdapter</code> (a <code>Protocol</code>, mirroring the Tier-5 <code>JudgeProtocol</code> and SIQ's
+<code>SiqAdapter</code>) is the extension point: <code>ingest(content) -&gt; None</code> and
+<code>query(text) -&gt; (result_ids, latency_ms)</code>. Two adapters ship:</p>
+<ul>
+<li><strong><code>NativeAdapter</code></strong> — wraps <code>ContextAssembler</code> (the system under test).</li>
+<li><strong><code>NullAdapter</code></strong> — a dependency-free stub returning empty results at a
+  fixed synthetic latency, proving the Protocol contract end to end without
+  any real competitor.</li>
+</ul>
+<p>Real Mem0/Zep/vector-DB (pgvector/Qdrant) adapters are heavyweight optional
+dependencies plus live external services — implementing and running them is
+explicitly a follow-up, not part of this PR.</p>
+<h3 id="db-hygiene_1">DB Hygiene<a class="headerlink" href="#db-hygiene_1" title="Permanent link">&para;</a></h3>
+<p>The CI-facing surface is <code>tests/benchmarks/test_rlt.py</code>, which runs under the
+pytest <strong>db15</strong> isolation plugin like every other <code>test_*.py</code> in this suite —
+tiny synthetic corpora (tens of records), never the real 10³–2×10⁴ scaling
+range, never db0 or db14.</p>
+<p>The manual <code>run_rlt.py</code> CLI (for the real, deferred measurement runs) requires
+<code>--db</code> <strong>explicitly</strong> — unlike <code>run_external.py</code>'s <code>POPOTO_BENCH_DB</code> default-14
+pattern, this harness has no default. <code>--db 0</code>, <code>--db 14</code>, and <code>--db 15</code> are
+all rejected: 0 is production-shaped, 14 is reserved for the concurrently
+running external-benchmark chain, and 15 is the project's pytest-isolation DB
+(flushed by every test session — a manual run there would race with or
+pollute tests).</p>
+<h3 id="running-it_2">Running It<a class="headerlink" href="#running-it_2" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># CI gate (pytest, DB-15 isolation, tiny synthetic corpora):</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>pytest<span class="w"> </span>tests/benchmarks/test_rlt.py<span class="w"> </span>-q
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="c1"># Manual real-corpus run (deferred — do NOT run against db0, db14, or db15;</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="c1"># do NOT run concurrently with any other heavy benchmark chain sharing this</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="c1"># machine, since RLT measures wall-clock latency):</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.rlt.run_rlt<span class="w"> </span>--db<span class="w"> </span><span class="m">13</span><span class="w"> </span>--backend<span class="w"> </span>redis
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.rlt.run_rlt<span class="w"> </span>--db<span class="w"> </span><span class="m">13</span><span class="w"> </span>--backend<span class="w"> </span>redis<span class="w"> </span>--dry-run
+</code></pre></div>
+<h3 id="follow-up">Follow-Up<a class="headerlink" href="#follow-up" title="Permanent link">&para;</a></h3>
+<p>Tracked in <a href="https://github.com/tomcounsell/popoto/issues/487">issue #487</a>:
+(1) run the real headline latency/throughput/scaling/mixed-workload
+measurements on both Redis and Valkey once the machine is confirmed quiet,
+against an explicitly isolated DB; (2) implement real Mem0/Zep/vector-DB
+<code>RltAdapter</code>s and run a real competitor comparison producing the
+recall-vs-p99 Pareto frontier this harness computes the machinery for.</p>
 
 
 
