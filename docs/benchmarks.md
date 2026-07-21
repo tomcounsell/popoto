@@ -689,3 +689,122 @@ POPOTO_BENCH_DB=13 python -m tests.benchmarks.siq.run_siq --dry-run
 To add a trace, drop a committed JSON fixture in `tests/benchmarks/siq/fixtures/`
 (schema in `tests/benchmarks/siq/corpus.py`); `lint_trace` enforces the
 cue-blindness and anticipation-window authoring rules at load time.
+
+## RLT (Retrieval Latency & Throughput) Harness
+
+### Overview
+
+RLT (issue #460) is the axis no other harness on this page measures: **speed
+under load**, not retrieval/injection quality. Popoto's substrate premise is
+RAM-speed Redis/Valkey memory with no separate vector-service round-trip — RLT
+is the harness that puts a number on that claim, jointly with recall so the
+result can't be read as "fast but wrong" or "accurate but slow" in isolation.
+
+Five metrics, one submodule each under `tests/benchmarks/rlt/`:
+
+1. **Latency** — p50/p95/p99 per retrieval + end-to-end assemble latency
+   (`latency.py`). `ContextAssembler.assemble()` already *is* the full
+   retrieve→rank→inject pipeline, so "per retrieval" and "end-to-end assemble"
+   are the same measured call in this harness — both labels refer to timing
+   `assemble()` itself; there is no separate lower-level retrieval-only API
+   surface to isolate without changing `src/popoto/`.
+2. **Throughput** — queries/sec at a fixed corpus size, single-threaded or
+   under a bounded `ThreadPoolExecutor` (`throughput.py`).
+3. **Scaling curve** — latency vs. corpus size, 10³ → 2×10⁴ (`scaling.py`, the
+   maintainer's scale target; larger points are informational-only and outside
+   this harness's default/CI path — not over-engineered past 20k).
+4. **Live mixed workload** — concurrent turn-ingest writes + assembly reads,
+   measuring read-latency degradation under write load and vice versa
+   (`mixed_workload.py`). Caveat: a thread-based load generator measures
+   client-side thread-scheduling overhead alongside genuine server-side
+   latency; a multi-process load generator would be needed to fully isolate
+   server-only behavior, which is out of scope for this harness.
+5. **Recall-vs-p99 Pareto frontier** — jointly with the retrieval harness:
+   "at equal p99, who recalls more; at equal recall, who's faster"
+   (`pareto.py`). The recall axis is the mean of `recall_at_k()`
+   (`tests/benchmarks/metrics/retrieval.py`) over the full query set per
+   config, not a per-query binary value.
+
+The corpus is a synthetic, deterministic, lexical-only (BM25) surface
+(`corpus.py`) — a fixed topic vocabulary with authored (not derived) ground
+truth per query, following the CSR/SIQ discipline. No EmbeddingField, so no
+model download is needed to run the fast unit-test corpora.
+
+### Percentile Convention
+
+`rlt/latency.py`'s `percentile()` deliberately reuses the **same nearest-rank
+formula** the external harness's `compute_aggregate()` already uses for its
+own p50/p95 (`sorted(values)[int(len(values) * p/100)]`) rather than
+introducing a second, numerically different percentile definition into this
+document — RLT's and the external harness's latency numbers are directly
+comparable, not apples-to-oranges.
+
+### Why No Headline Numbers Yet
+
+**This section documents the harness, not results.** At the time this harness
+was built, a separate heavy sequential benchmark chain (LoCoMo + LongMemEval,
+issue #457) was running on the same machine against the external-benchmark DB.
+RLT measures wall-clock latency — running real latency/throughput measurements
+concurrently with that chain would have produced invalid numbers in **both**
+directions (garbage RLT results, and corrupted #457 timing). So this PR ships:
+
+- The full measurement harness (latency, throughput, scaling, mixed-workload,
+  Pareto) — code-complete and unit-tested against tiny synthetic corpora.
+- The `RltAdapter` Protocol (`comparators.py`) — the competitor-fair extension
+  point, with a `NativeAdapter` (Popoto) and a dependency-free `NullAdapter`
+  proving the contract. **No real Mem0/Zep/vector-DB numbers are fabricated
+  here** — real adapters and the real headline runs (on both Redis and
+  Valkey, per the issue's constraint) are a tracked follow-up issue, to be run
+  once the machine is confirmed quiet.
+
+### Comparator Adapters
+
+`RltAdapter` (a `Protocol`, mirroring the Tier-5 `JudgeProtocol` and SIQ's
+`SiqAdapter`) is the extension point: `ingest(content) -> None` and
+`query(text) -> (result_ids, latency_ms)`. Two adapters ship:
+
+- **`NativeAdapter`** — wraps `ContextAssembler` (the system under test).
+- **`NullAdapter`** — a dependency-free stub returning empty results at a
+  fixed synthetic latency, proving the Protocol contract end to end without
+  any real competitor.
+
+Real Mem0/Zep/vector-DB (pgvector/Qdrant) adapters are heavyweight optional
+dependencies plus live external services — implementing and running them is
+explicitly a follow-up, not part of this PR.
+
+### DB Hygiene
+
+The CI-facing surface is `tests/benchmarks/test_rlt.py`, which runs under the
+pytest **db15** isolation plugin like every other `test_*.py` in this suite —
+tiny synthetic corpora (tens of records), never the real 10³–2×10⁴ scaling
+range, never db0 or db14.
+
+The manual `run_rlt.py` CLI (for the real, deferred measurement runs) requires
+`--db` **explicitly** — unlike `run_external.py`'s `POPOTO_BENCH_DB` default-14
+pattern, this harness has no default. `--db 0`, `--db 14`, and `--db 15` are
+all rejected: 0 is production-shaped, 14 is reserved for the concurrently
+running external-benchmark chain, and 15 is the project's pytest-isolation DB
+(flushed by every test session — a manual run there would race with or
+pollute tests).
+
+### Running It
+
+```bash
+# CI gate (pytest, DB-15 isolation, tiny synthetic corpora):
+pytest tests/benchmarks/test_rlt.py -q
+
+# Manual real-corpus run (deferred — do NOT run against db0, db14, or db15;
+# do NOT run concurrently with any other heavy benchmark chain sharing this
+# machine, since RLT measures wall-clock latency):
+python -m tests.benchmarks.rlt.run_rlt --db 13 --backend redis
+python -m tests.benchmarks.rlt.run_rlt --db 13 --backend redis --dry-run
+```
+
+### Follow-Up
+
+Tracked in [issue #487](https://github.com/tomcounsell/popoto/issues/487):
+(1) run the real headline latency/throughput/scaling/mixed-workload
+measurements on both Redis and Valkey once the machine is confirmed quiet,
+against an explicitly isolated DB; (2) implement real Mem0/Zep/vector-DB
+`RltAdapter`s and run a real competitor comparison producing the
+recall-vs-p99 Pareto frontier this harness computes the machinery for.
