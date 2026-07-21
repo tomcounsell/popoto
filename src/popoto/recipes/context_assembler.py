@@ -990,6 +990,18 @@ class ContextAssembler:
             ``EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD`` and issue #463).
         confidence_gate_mode: ``"refuse"`` (default) or ``"flag"``. Only
             meaningful when ``confidence_gate_threshold`` is not ``None``.
+        graph_traversal_relationship_fields: Optional list of
+            self-referential ``Relationship`` field name(s) on
+            ``model_class`` (i.e. the field's ``model`` is ``model_class``
+            itself). When set, the existing CoOccurrence graph arm (both
+            pull-path modes) is extended via
+            :func:`popoto.recipes.graph_traversal.traverse` to also expand
+            1-2 hops across those Relationship edges, with hop admission
+            modulated by the model's ``ConfidenceField``/decaying-field
+            state when present. Default ``None`` (disabled; behavior is
+            identical to before #462). Entries that are not a valid
+            self-referential ``Relationship`` field are ignored with a
+            warning rather than raising. See issue #462.
 
     Raises:
         QueryException: If ``retrieval_mode="hybrid"`` is requested but the
@@ -1014,6 +1026,7 @@ class ContextAssembler:
         retrieval_mode: str = "auto",
         confidence_gate_threshold: float | None = None,
         confidence_gate_mode: str = "refuse",
+        graph_traversal_relationship_fields: list | None = None,
     ):
         self.model_class = model_class
         self.score_weights = score_weights
@@ -1024,6 +1037,11 @@ class ContextAssembler:
         self.output_format = output_format
         self.confidence_gate_threshold = confidence_gate_threshold
         self.confidence_gate_mode = confidence_gate_mode
+        self._graph_traversal_relationship_fields = (
+            list(graph_traversal_relationship_fields)
+            if graph_traversal_relationship_fields
+            else None
+        )
         if token_counter is None:
             self._token_counter = _estimate_tokens
         else:
@@ -1106,6 +1124,28 @@ class ContextAssembler:
                     f"confidence_gate_threshold requires ConfidenceField on "
                     f"{model_class.__name__}"
                 )
+
+        # Graph-traversal relationship expansion (issue #462) — opt-in,
+        # off-by-default. Validated here (warn-and-disable, not raise) so a
+        # misconfigured field name degrades to the pre-existing
+        # CoOccurrence-only graph arm instead of breaking assemble().
+        if self._graph_traversal_relationship_fields:
+            from ..fields.relationship import Relationship
+
+            valid_names = []
+            for name in self._graph_traversal_relationship_fields:
+                f = model_class._meta.fields.get(name)
+                if isinstance(f, Relationship) and f.model is model_class:
+                    valid_names.append(name)
+                else:
+                    logger.warning(
+                        "ContextAssembler: graph_traversal_relationship_fields "
+                        "entry %r is not a self-referential Relationship field "
+                        "on %s — ignored",
+                        name,
+                        model_class.__name__,
+                    )
+            self._graph_traversal_relationship_fields = valid_names or None
 
         # Resolve effective retrieval mode.
         #
@@ -1548,17 +1588,40 @@ class ContextAssembler:
         if not candidates:
             return [], []
 
-        # CoOccurrence propagation to discover associated records
-        if self._co_occurrence_field is not None and candidates:
+        # CoOccurrence propagation (+ optional RelationshipField traversal,
+        # #462) to discover associated records
+        if (
+            self._co_occurrence_field is not None
+            or self._graph_traversal_relationship_fields
+        ) and candidates:
             seed_pks = [_get_key(c) for c in candidates[: self.max_items]]
             try:
-                propagated = self._co_occurrence_field.propagate(
-                    self.model_class,
-                    seed_pks,
-                    depth=self.propagation_depth,
-                    decay_per_hop=0.5,
-                    threshold=0.01,
-                )
+                if self._graph_traversal_relationship_fields:
+                    from .graph_traversal import traverse as _graph_traverse
+
+                    propagated = dict(
+                        _graph_traverse(
+                            self.model_class,
+                            seed_pks,
+                            co_occurrence_field=self._co_occurrence_field,
+                            relationship_field_names=(
+                                self._graph_traversal_relationship_fields
+                            ),
+                            depth=self.propagation_depth,
+                            decay_per_hop=0.5,
+                            threshold=0.01,
+                            confidence_field_name=self._confidence_field_name,
+                            decay_field_name=self._decaying_sorted_field_name,
+                        )
+                    )
+                else:
+                    propagated = self._co_occurrence_field.propagate(
+                        self.model_class,
+                        seed_pks,
+                        depth=self.propagation_depth,
+                        decay_per_hop=0.5,
+                        threshold=0.01,
+                    )
                 if propagated:
                     # Re-run composite score with co-occurrence boost
                     query = self.model_class.query
@@ -1655,18 +1718,39 @@ class ContextAssembler:
             )
             return self._pull_path_composite(query_cues, filters)
 
-        # --- Graph propagation (seeds from BM25 top results) ---
-        if self._co_occurrence_field is not None and keyword_results:
+        # --- Graph propagation (+ optional RelationshipField traversal,
+        # #462), seeds from BM25 top results ---
+        if (
+            self._co_occurrence_field is not None
+            or self._graph_traversal_relationship_fields
+        ) and keyword_results:
             seed_pks = [k for k, _ in keyword_results[:5]]
             try:
-                propagated = self._co_occurrence_field.propagate(
-                    self.model_class,
-                    seed_pks,
-                    depth=self.propagation_depth,
-                    decay_per_hop=0.5,
-                    threshold=0.01,
-                )
-                graph_results = list(propagated.items())
+                if self._graph_traversal_relationship_fields:
+                    from .graph_traversal import traverse as _graph_traverse
+
+                    graph_results = _graph_traverse(
+                        self.model_class,
+                        seed_pks,
+                        co_occurrence_field=self._co_occurrence_field,
+                        relationship_field_names=(
+                            self._graph_traversal_relationship_fields
+                        ),
+                        depth=self.propagation_depth,
+                        decay_per_hop=0.5,
+                        threshold=0.01,
+                        confidence_field_name=self._confidence_field_name,
+                        decay_field_name=self._decaying_sorted_field_name,
+                    )
+                else:
+                    propagated = self._co_occurrence_field.propagate(
+                        self.model_class,
+                        seed_pks,
+                        depth=self.propagation_depth,
+                        decay_per_hop=0.5,
+                        threshold=0.01,
+                    )
+                    graph_results = list(propagated.items())
             except Exception as e:
                 logger.warning("Graph propagation failed in hybrid path: %s", e)
 
