@@ -63,10 +63,15 @@ matching CoOccurrenceField's default ``decay_per_hop`` so relationship- and
 co-occurrence-derived edges are comparable in magnitude when merged."""
 
 RELATIONSHIP_HOP_FANOUT_LIMIT = 50
-"""Max related PKs consumed per node per hop, per direction. Enforced via
-``SRANDMEMBER(key, n)`` — a bounded sample read at the Redis level, not a
-full ``SMEMBERS`` followed by a Python-side slice, so a single high-degree
-node cannot force an unbounded Set transfer."""
+"""Dual-purpose fan-out bound for relationship expansion:
+
+1. Max related PKs consumed per node per hop, per direction. Enforced via
+   ``SRANDMEMBER(key, n)`` — a bounded sample read at the Redis level, not a
+   full ``SMEMBERS`` followed by a Python-side slice, so a single
+   high-degree node cannot force an unbounded Set transfer.
+2. Max number of frontier nodes expanded per hop (``frontier[:fanout_limit]``
+   in :func:`expand_relationships`), bounding per-hop instance-load fan-out
+   when a prior hop discovers many nodes."""
 
 GRAPH_TRAVERSAL_MAX_CANDIDATES = 200
 """Candidate expansion is capped to this many PKs (by weight, descending)

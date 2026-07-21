@@ -280,6 +280,42 @@ class TestModulateAdmission:
         assert weight == pytest.approx(1.0 * confidence)
         assert weight < 1.0
 
+    def test_decay_modulation_lowers_stale_weight(self):
+        fresh = GTMixed.create()
+        stale = GTMixed.create()
+
+        relevance_field = GTMixed._meta.fields["relevance"]
+        stale_key = relevance_field.get_partitioned_sortedset_db_key(
+            stale, "relevance"
+        ).redis_key
+        # Backdate the DecayingSortedField score by ~365 days so its
+        # decayed relevance collapses toward 0 under power-law decay.
+        POPOTO_REDIS_DB.zadd(
+            stale_key, {stale.db_key.redis_key: time.time() - 365 * 86400}
+        )
+
+        modulated = graph_traversal._modulate_admission(
+            GTMixed,
+            [
+                (fresh.db_key.redis_key, 1.0),
+                (stale.db_key.redis_key, 1.0),
+            ],
+            decay_field_name="relevance",
+            threshold=0.0,
+        )
+        weights = dict(modulated)
+        assert weights[fresh.db_key.redis_key] > weights[stale.db_key.redis_key]
+
+    def test_decay_modulation_missing_field_neutral_factor(self):
+        node = GTMixed.create()
+        modulated = graph_traversal._modulate_admission(
+            GTMixed,
+            [(node.db_key.redis_key, 0.5)],
+            decay_field_name="not_a_real_field",
+            threshold=0.0,
+        )
+        assert modulated == [(node.db_key.redis_key, 0.5)]
+
     def test_missing_field_neutral_factor(self):
         node = GTMixed.create()
         modulated = graph_traversal._modulate_admission(

@@ -1552,7 +1552,8 @@ candidate set as homogeneous.
 **Evaluation status.** This slice implements and unit-tests the traversal
 mechanism (`tests/test_graph_traversal.py`). The LoCoMo multi-hop slice and
 association-recall benchmark scenarios called for in issue #462 are tracked
-as a follow-up rather than run here — see the note in
+as [issue #484](https://github.com/tomcounsell/popoto/issues/484) rather
+than run here — see the note in
 [the benchmarking strategy doc](../plans/benchmarking_strategy_2026-07.md#32-structuredgraph-memory-where-zep-hindsight-byterover-lead).
 
 ### Tuning Constants

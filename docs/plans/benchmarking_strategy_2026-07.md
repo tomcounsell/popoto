@@ -143,8 +143,9 @@ agent-memory feature doc for the full mechanism and API. **The LoCoMo
 multi-hop slice + association-recall evaluation this section calls for is
 still outstanding** — PR #483 implements and unit-tests the traversal
 mechanism only; the judged-accuracy/recall lift is unmeasured and tracked as
-a follow-up under epic #456 Track B, matching how §3.3's extraction-provider
-evaluation gap is tracked.
+[issue #484](https://github.com/tomcounsell/popoto/issues/484) under epic
+#456 Track B, matching how §3.3's extraction-provider evaluation gap is
+tracked.
 
 ### 3.3 LLM-based extraction & structured memory writes
 
