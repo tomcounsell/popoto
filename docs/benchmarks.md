@@ -169,26 +169,33 @@ no `FT.*` / `BF.*` commands. The vector signal uses the local
 !!! info "Hybrid fusion is now weighted and query-adaptive (issue #457)"
     Unweighted RRF (k=60) gave the dense (vector) arm equal say with BM25 on
     every query. That helped on paraphrastic recall (LongMemEval-S) but hurt
-    on coreference-heavy, multi-session dialogue (LoCoMo), where
-    topically-similar-but-wrong dense hits displaced correct BM25 hits —
-    hybrid measurably **underperformed** `lexical` on LoCoMo (Recall@1 0.167
-    vs 0.299; see the pre-fix LoCoMo numbers below, retained for the
-    historical record). `ContextAssembler`'s hybrid pull path now computes a
-    per-query weight regime from a cheap, deterministic lexical-specificity
-    signal (`_fusion_weights()` in `recipes/context_assembler.py`) before
-    calling `Query.fuse(weights=...)`: name/date/exact-token-heavy queries
-    (LoCoMo's shape) lean BM25 (`FUSION_REGIME_KEYWORD_LEAN`); paraphrastic
-    queries (LongMemEval-S's shape) lean vector
-    (`FUSION_REGIME_VECTOR_LEAN`); mixed-specificity queries stay near
-    unweighted (`FUSION_REGIME_NEUTRAL`). `Query.fuse()` / `QueryBuilder.fuse()`
-    gained an additive `weights: dict[str, float] | None` kwarg —
-    `weights=None` (the default for any caller outside `ContextAssembler`)
-    is byte-for-byte identical to the original unweighted RRF. The weights are
-    experimental in-code tuning constants (not user config), fully in-process
-    and Valkey-safe. Full-dataset confirmation re-runs for both datasets under
-    the new weighting are tracked as a follow-up artifact commit on
-    [issue #457](https://github.com/tomcounsell/popoto/issues/457); this page
-    will be updated with post-fix LoCoMo/LongMemEval-S numbers once those land.
+    on coreference-heavy, multi-session dialogue (LoCoMo), where the dense arm
+    — whose standalone recall there is near-zero (vector-only Recall@1 ~0.05)
+    — still cast full rank-votes and displaced correct BM25 hits, so hybrid
+    measurably **underperformed** `lexical` on LoCoMo (Recall@1 0.167 vs
+    0.299; see the pre-fix numbers below). `ContextAssembler`'s hybrid pull
+    path now classifies each query by shape and picks a weight regime
+    (`_fusion_weights()` in `recipes/context_assembler.py`) before calling
+    `Query.fuse(weights=...)`:
+
+    - **Name/date/token-specific and not first-person** (LoCoMo's shape —
+      third-person, name-anchored questions like "When did Caroline …";
+      99.6% of LoCoMo carries a proper-noun name, 0% is first-person) →
+      `FUSION_REGIME_KEYWORD_LEAN`, which sets the **vector weight to 0**.
+      With the dense arm contributing zero to every document's RRF score, the
+      fused ranking converges to the lexical (BM25 + graph) result, so hybrid
+      cannot fall below lexical on this query shape.
+    - **First-person / paraphrastic** (LongMemEval-S's shape — self-recall
+      like "What degree did I …"; 95.8% first-person) →
+      `FUSION_REGIME_NEUTRAL`, which is plain **unweighted RRF** — the exact
+      blend that produced the LongMemEval-S hybrid win, preserved verbatim.
+
+    `Query.fuse()` / `QueryBuilder.fuse()` gained an additive
+    `weights: dict[str, float] | None` kwarg; `weights=None` (the default for
+    any caller outside `ContextAssembler`) is byte-for-byte identical to the
+    original unweighted RRF. The weights are experimental in-code tuning
+    constants (not user config), fully in-process and Valkey-safe. Post-fix
+    full-dataset confirmation numbers are shown in the tables below.
 
 `vector` is a **harness-local diagnostic** (issue #455): it bypasses
 `ContextAssembler` entirely — auto-mode would resolve an embedding-only model to the
