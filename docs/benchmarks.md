@@ -749,26 +749,30 @@ come (see Follow-Up). Absolute latency is machine-dependent; read the *shape*
 (sub-6-ms p50 retrieval that grows gently with corpus size, and the
 read-degradation-under-write-load ratio), not the exact millisecond.
 
+All figures below are the exact values from the committed artifact
+(`rlt_20260721_redis.json`); they vary run-to-run (warmup, OS scheduling), so
+treat them as one representative snapshot, not a pinned regression target.
+
 **Scaling curve** — latency vs. corpus size (200 samples/point):
 
 | corpus size | p50 (ms) | p95 (ms) | p99 (ms) |
 |---|---|---|---|
-| 1,000 | ~3.1 | ~3.9 | ~5.6 |
-| 5,000 | ~4.9 | ~9.9 | ~12.2 |
-| 10,000 | ~8.1 | ~10.7 | ~12.2 |
-| 20,000 | ~8.7 | ~10.4 | ~10.8 |
+| 1,000 | 3.09 | 3.89 | 5.63 |
+| 5,000 | 4.91 | 9.87 | 12.16 |
+| 10,000 | 8.13 | 10.72 | 12.16 |
+| 20,000 | 8.69 | 10.39 | 10.81 |
 
-**Throughput** (corpus 20,000): ~120–140 queries/sec single-threaded, ~300
+**Throughput** (corpus 20,000): 115.5 queries/sec single-threaded, 288.1
 queries/sec at concurrency 4.
 
-**Live mixed workload** (corpus 5,000, 4 threads): read p99 degrades ~3.7–4.3×
-under concurrent write load; write p99 degrades ~1.8–3.7× under concurrent read
-load. This ratio (not the absolute latency) is the live-agent-relevant number —
-and note the caveat above about thread-scheduling overhead being included.
+**Live mixed workload** (corpus 5,000, 4 threads): read p99 goes 10.79 → 27.30 ms
+(2.53× degradation) under concurrent write load; write p99 goes 0.92 → 9.41 ms
+(10.19× degradation) under concurrent read load. The *degradation ratio* (not the
+absolute latency) is the live-agent-relevant number, and note the caveat above
+about thread-scheduling overhead being included — in this run writes (a light
+baseline) were hit harder in relative terms than reads.
 
 > **Reproduce:** `python -m tests.benchmarks.rlt.run_rlt --db <isolated> --backend redis --mixed-workload`.
-> Numbers vary run-to-run (warmup, OS scheduling); the committed artifact is one
-> representative run with full machine metadata, not a pinned regression target.
 
 ### Still Deferred
 

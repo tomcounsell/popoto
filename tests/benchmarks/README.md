@@ -71,7 +71,7 @@ tests/benchmarks/
         siq/
             siq_*_{adapter}.{json,md}  # SIQ reports (native / query_stub adapters)
         rlt/
-            rlt_*_{backend}.{json,md}  # RLT reports (redis/valkey) — deferred, see docs/benchmarks.md
+            rlt_*_{backend}.{json,md}  # RLT reports (redis committed; valkey deferred — see docs/benchmarks.md)
 ```
 
 ## Quick Start
@@ -101,9 +101,10 @@ POPOTO_BENCH_DB=13 python -m tests.benchmarks.siq.run_siq --adapter query_stub
 
 # RLT — Retrieval Latency & Throughput (#460):
 pytest tests/benchmarks/test_rlt.py -q          # CI gate (db15 plugin, tiny synthetic corpora)
-# Manual real-corpus run is DEFERRED (see docs/benchmarks.md) — --db is required
-# and rejects 0/14/15:
-python -m tests.benchmarks.rlt.run_rlt --db 13 --backend redis --dry-run
+# Manual real-corpus run — --db is required and rejects 0/14/15. A native-Popoto
+# Redis run is committed (results/rlt/); the Valkey run + real competitor
+# adapters remain deferred (see docs/benchmarks.md):
+python -m tests.benchmarks.rlt.run_rlt --db 13 --backend redis --mixed-workload
 
 # External benchmark smoke test (fixture-based, no download):
 python -m tests.benchmarks.run_external \

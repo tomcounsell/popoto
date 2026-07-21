@@ -20,9 +20,11 @@ Plus :mod:`.corpus` (synthetic corpus + query-set builder) and
 Mem0/Zep/vector-DB adapters — real adapters are a tracked follow-up, not
 implemented here; see ``docs/benchmarks.md``'s RLT section).
 
-This package builds and unit-tests the harness only. The real headline
-measurement runs (``run_rlt.py`` against a real corpus) are deliberately NOT
-executed as part of building this package — see the RLT section of
-``docs/benchmarks.md`` for why (machine contention with a concurrently running
-benchmark chain) and the tracked follow-up issue for running them for real.
+The CI-facing surface is ``test_rlt.py`` (tiny synthetic corpora, DB-15
+isolation). The real headline measurement runs go through ``run_rlt.py``
+against a real corpus on an explicitly isolated DB; a native-Popoto **Redis**
+run is committed under ``results/rlt/`` and summarized in the RLT section of
+``docs/benchmarks.md``. The **Valkey** run (no server available at capture
+time) and real Mem0/Zep/vector-DB comparator adapters remain deferred to a
+tracked follow-up issue — no competitor numbers are fabricated.
 """
