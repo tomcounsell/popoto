@@ -6,7 +6,7 @@ owner: valorengels
 created: 2026-07-21
 tracking: https://github.com/tomcounsell/popoto/issues/459
 last_comment_id:
-revision_applied:
+revision_applied: true
 ---
 
 # SIQ Benchmark — Subconscious Injection Quality (flagship native harness)
@@ -342,6 +342,52 @@ workers (if ever used) don't collide, matching `external_base.py`'s existing saf
 - **A CI gate that runs `run_siq.py`'s optional `--judged` LLM path automatically** — tag:
   **deferred** (mirrors Tier 5's posture: judged runs are opt-in/manual, gated on
   `OPENAI_API_KEY`, never a required CI step).
+
+## Critique Response
+
+A plan-critique pass ran against this plan. Its verdict cited "blockers" in
+`ContextAssembler` (`_active_view` raising `NotImplementedError`, `_trace_key` never
+populated, a turn-invariant scaffold). **These findings were invalid** — the critic read a
+non-existent/hallucinated variant of `context_assembler.py`. The real file
+(`src/popoto/recipes/context_assembler.py`, 1940 lines) contains none of those symbols
+(`_active_view`, `_trace_key`, `_relevance_score`, `_approx_tokens` are all absent —
+`grep` confirms zero matches). `assemble()` is a fully-implemented method; `emit_trace=True`
+populates `metadata["trace"]` entries whose `"key"` is the record's real Redis key via
+`_get_key()` (`_redis_key` / `db_key.redis_key`, never `None` for a saved record). So the
+harness reads real injected keys and does not need to subclass or patch `ContextAssembler`.
+
+Two *genuine* design points from the critique are hardened below (they were implied by the
+plan already; now stated unambiguously so the build can't get them wrong):
+
+1. **Incremental planting is mandatory (non-degenerate anticipation).** Memories are planted
+   into Redis *at the turn that establishes them*, not all up front. At turn *K*, only
+   memories from turns ≤ *K* exist, so `assemble()`'s injected set genuinely evolves per turn
+   and anticipation lead time is meaningful (a memory established at turn 2 can begin being
+   injected at turn 3 and become `should_recall` at turn 7 → lead time 4). Each planted memory
+   carries a fixture `timestamp` equal to its establishing turn index (deterministic, never
+   wall-clock) so composite/recency ranking reflects turn order.
+2. **Query-blind pull path, confirmed against the real code.** `_pull_path_composite` ranks
+   via `composite_score(indexes=score_weights)` — it never ranks on `query_cues` *content*
+   (the only cue use is an `ExistenceFilter` pre-check, and the SIQ model declares no
+   `ExistenceFilter`). The pull path only runs when `query_cues` is truthy, so the runner
+   passes a content-free cue (e.g. `{"topic": "_"}`) purely to enter the pull path, plus
+   `agent_id=trace_id` for partition filtering. Ranking is therefore provably independent of
+   the current turn's message — exactly the query-blind property SIQ measures. A unit test
+   asserts `ContextAssembler(...)._effective_mode == "composite"` before scoring.
+
+**Metric edge-case conventions (locked):**
+- Precision `= injected_and_useful / injected_total`; when `injected_total == 0`, precision is
+  `None` (undefined, excluded from aggregates — never `0/0`).
+- Recall `= injected_and_useful / len(should_recall)`; when `should_recall` is empty for a
+  turn, recall is `None` (undefined). The negative-control fixture exercises both `None` paths.
+- Anticipation lead time is **per memory**: `first_should_recall_turn - first_injected_turn`.
+  A memory that is a `should_recall` target but is never injected at or before its
+  first-relevant turn is recorded as a **miss** (excluded from the lead-time mean, counted in a
+  separate `missed` tally) — never a negative or `+inf` value.
+- Budget efficiency `= useful_tokens / injected_tokens`, where `useful_tokens` is the summed
+  token count (via the assembler's serialized per-record token count) of injected records whose
+  key is in that turn's `should_recall`, and `injected_tokens` is the summed token count of all
+  injected records. Undefined (`None`) when `injected_tokens == 0`.
 
 ## Open Questions
 
