@@ -1,7 +1,7 @@
 ---
-status: Planning
+status: Ready
 type: feature
-appetite: Medium
+appetite: Large
 owner: valorengels
 created: 2026-07-25
 tracking: https://github.com/tomcounsell/popoto/issues/491
@@ -260,9 +260,13 @@ odds-ratio form.
    truncation run unchanged.
 6. **Output A — injection.** `ContextAssembler.assemble()` surfaces fewer low-confidence memories,
    directly attacking the 82% dismissal rate.
-7. **Output B — deletion (new).** `MemoryLifecycle.tick()` → `_default_should_forget` additionally
-   tests `confidence < LIFECYCLE_FORGET_CONFIDENCE_CEILING`, so repeatedly-dismissed records become
-   forget-eligible without waiting for importance to bottom out.
+7. **Output B — tombstoning (new).** `MemoryLifecycle.tick()` → `_default_should_forget` additionally
+   tests `confidence < ceiling AND evidence_count >= min_evidence`, so repeatedly-dismissed records
+   become forget-eligible without waiting for importance to bottom out. Eligible records are
+   **tombstoned**, not deleted: dropped from retrieval, fingerprint and death metadata retained.
+8. **Output C — negative prior (future, #494).** Tombstone fingerprints become the corpus's memory of
+   its own dead ends, consulted at write time to draw down the importance of new duplicates. Out of
+   scope here; this plan produces the tombstones that make it possible.
 
 ## Architectural Impact
 
@@ -287,8 +291,12 @@ odds-ratio form.
 **Team:** Solo dev, PM (maintainer decisions), code reviewer
 
 **Interactions:**
-- PM check-ins: 1-2 (opt-in-vs-auto-detect decision; strength constant default)
-- Review rounds: 1-2 (Lua changes touch a heavily-locked-down determinism contract)
+- PM check-ins: 0 remaining (all three decisions resolved 2026-07-25 — see Decisions)
+- Review rounds: 1-2 (Lua changes touch a heavily-locked-down determinism contract; tombstoning
+  changes lifecycle semantics)
+
+Grew from Medium to Large when tombstoning entered scope: forgetting now changes semantics
+(delete → tombstone) and every retrieval path must learn to exclude tombstoned records.
 
 ## Prerequisites
 
@@ -313,8 +321,14 @@ odds-ratio form.
   `CYCLIC_DECAY_LUA`, preserving the cyclic≡plain equivalence contract.
 - **Confidence-aware forgetting**: `MemoryLifecycle._default_should_forget` gains a confidence
   ceiling, closing the promote/forget asymmetry so dismissed memories actually leave the corpus.
-- **Opt-in kwarg**: `DecayingSortedField(confidence_modulation_field="confidence")`. Default `None`
-  = today's behavior exactly.
+- **Tombstone, don't delete**: confidence-driven forgetting marks records inactive (excluded from
+  retrieval) instead of hard-deleting them. This makes an aggressive forget policy reversible, and
+  turns each tombstone into durable negative evidence consumed by #494.
+- **Auto-detect with escape hatch**: when a model has exactly one `ConfidenceField`, modulation
+  switches on automatically — the substrate learns without being configured. A kwarg
+  (`confidence_modulation_field=`) names the field explicitly when several exist, or `False`
+  disables it. Ambiguity (2+ confidence fields, none named) leaves modulation **off** rather than
+  guessing.
 
 ### Flow
 
@@ -343,10 +357,22 @@ idle → **memory is forgotten**.
   `# -- DecayingSortedField` block, with the house sweep-evidence comment. Recommended initial value
   `0.5` (spike-4 advises 0.3–0.7 pending real-data validation), plus the four coordinated
   registrations (`constants.py`, `overrides.py`, `test_defaults_sync.py`, `tuning-magic-numbers.md`).
-- **Lifecycle**: add `LIFECYCLE_FORGET_CONFIDENCE_CEILING` and extend `_default_should_forget` to
-  `(importance < floor OR confidence < ceiling) AND idle > idle_seconds`. Semantic memories stay
-  protected. Note `_get_importance_score` reads the **raw ZSET timestamp** as an acknowledged proxy
+- **Lifecycle**: add `LIFECYCLE_FORGET_CONFIDENCE_CEILING` and `LIFECYCLE_FORGET_MIN_EVIDENCE`, and
+  extend `_default_should_forget` to
+  `(importance < floor OR (confidence < ceiling AND evidence_count >= min_evidence)) AND idle > idle_seconds`.
+  The evidence guard is load-bearing: `ConfidenceField` starts at `0.5` and moves on every signal, so
+  without it a single unlucky dismissal could bury a memory. Semantic memories stay protected. Note
+  `_get_importance_score` reads the **raw ZSET timestamp** as an acknowledged proxy
   (`memory_lifecycle.py:163-170`) — confidence is the sharper signal precisely because it is exact.
+- **Tombstoning**: forgetting sets a tombstone state rather than calling `delete()`. Tombstoned
+  records are excluded from retrieval (all modes) and from lifecycle re-evaluation, and retain their
+  `ExistenceFilter` fingerprint plus death metadata (importance-at-death, dismissal count) so #494
+  can consult them at write time. Tombstone storage must be bounded — oldest tombstones age out.
+  Hard deletion remains available as an explicit, separate operation.
+- **Auto-detection**: introspect `model_class._meta.fields` for `ConfidenceField` instances, mirroring
+  `ContextAssembler`'s existing capability auto-detection (`context_assembler.py:1080`). Exactly one
+  ⇒ use it; zero ⇒ off; two or more without an explicit kwarg ⇒ off, with a `logger.warning` naming
+  the candidates (silence here would be the bad kind of magic).
 - **Drive-by fixes**: correct the stale `decay_rate` docstring (`decaying_sorted_field.py:136`);
   make `tests/test_lua_decay_scoring.py` import the production script instead of its stale private
   copy, or delete the duplicate.
@@ -396,7 +422,13 @@ by `save()`, and duplicates state derivable from confidence. Recorded here so it
 - [ ] `tests/test_lua_decay_scoring.py:29-67` — REPLACE: import the production `DECAY_SCORE_LUA`
   instead of the stale private copy (it silently fails to detect production changes today).
 - [ ] `tests/test_memory_lifecycle.py` — UPDATE: add forget-eligibility cases driven by low
-  confidence; assert semantic-tier protection still holds.
+  confidence; assert semantic-tier protection still holds; assert the min-evidence floor blocks
+  single-dismissal burial.
+- [ ] `tests/test_memory_lifecycle.py` (forget/delete assertions) — REPLACE: any test asserting that
+  `tick()` **deletes** a forgotten record must be rewritten to assert tombstoning (absent from
+  retrieval, still recoverable). This is a deliberate behavior change.
+- [ ] Retrieval suites (`test_context_assembler*.py`, `test_subconscious_memory*.py`,
+  `test_graph_traversal.py`) — UPDATE: assert tombstoned records are excluded from every mode.
 - [ ] `tests/benchmarks/test_defaults_sync.py:52-88` — UPDATE: register the new constant(s) or the
   sync test fails.
 
@@ -447,10 +479,26 @@ unset (which is also the default path, so unmodulated users pay nothing).
 **Mitigation:** The guard is in the formula from the start (spike-4). Add an explicit regression test:
 a freshly-touched low-confidence record must **not** outrank a freshly-touched high-confidence one.
 
-### Risk 5: Behavior change for existing adopters with confidence data
-**Impact:** Anyone already using both fields would see ranking shift on upgrade.
-**Mitigation:** Opt-in kwarg, default `None`. No existing model changes behavior without an explicit
-edit. (See Open Questions — auto-detect was considered and deliberately not chosen.)
+### Risk 5: Auto-detection couples two primitives an adopter meant to keep independent
+**Impact:** A model with a `ConfidenceField` that has nothing semantically to do with the decay
+field's meaning would silently get its ranking modulated.
+**Mitigation:** Accepted deliberately — Valor is the sole adopter and is setting best practice
+(maintainer decision, 2026-07-25), so "surprising a third party" is hypothetical while "the substrate
+should learn without being configured" is the standing hard constraint. Escape hatches:
+`confidence_modulation_field=False` disables, an explicit field name overrides, and ambiguity
+(2+ confidence fields) defaults to off with a warning rather than a guess.
+
+### Risk 6: Aggressive forgetting destroys a memory that mattered
+**Impact:** A memory dismissed at unlucky moments crosses the confidence ceiling and disappears.
+**Mitigation:** Two independent guards. (1) Forgetting **tombstones** rather than deletes, so the
+decision is reversible and auditable. (2) `LIFECYCLE_FORGET_MIN_EVIDENCE` requires a real track
+record before confidence alone can bury anything. Telemetry must report tombstone counts per tick so
+a runaway policy is visible immediately.
+
+### Risk 7: Tombstone accumulation
+**Impact:** Tombstones grow without bound, eventually costing more than the records they replaced.
+**Mitigation:** Bounded retention (oldest age out) with the bound as a named constant and an explicit
+test. Tombstones store fingerprint + small death metadata, not full content.
 
 ## Race Conditions
 
@@ -471,6 +519,11 @@ This race is a property of the rejected Option B and is a primary reason it was 
 
 ## No-Gos (Out of Scope)
 
+- [SEPARATE-SLUG #494] Consuming tombstones as a negative prior (drawing down the importance of new
+  memories that duplicate forgotten ones). This plan **produces** the tombstones and their
+  fingerprints; #494 designs the matching strategy and the drawdown. Split because the matching
+  question (exact fingerprint vs near-duplicate similarity) is its own design problem and spans the
+  write path.
 - [SEPARATE-SLUG #493] Tuning the strength constant `s` against real-world data — requires the mined
   SIQ fixture corpus from #493; this plan ships a conservative literature-grounded default.
 - [SEPARATE-SLUG #492] Any change to scoping/partitioning semantics. This plan *guards* the partition
@@ -522,9 +575,16 @@ wiring is deployment-side work tracked separately, not part of this plan.
   slower.
 - [ ] A **freshly-touched** low-confidence record does not outrank a freshly-touched high-confidence
   record (the sub-one-day sign-flip regression test).
-- [ ] Records with no confidence data, and any model without the opt-in kwarg, produce
+- [ ] Records with no confidence data, and any model with no `ConfidenceField`, produce
   **byte-identical** decayed scores to `c7bd62c` (existing tests pass unchanged).
-- [ ] `s = 0` and `confidence_modulation_field=None` are exact no-ops.
+- [ ] `s = 0` and `confidence_modulation_field=False` are exact no-ops.
+- [ ] Auto-detection: exactly one `ConfidenceField` ⇒ modulation on with no configuration; two or
+  more with no explicit kwarg ⇒ modulation off **and** a warning naming the candidates.
+- [ ] A record forgotten by the confidence path is **tombstoned, not deleted**: absent from every
+  retrieval mode, still recoverable, fingerprint retained.
+- [ ] A low-confidence record with evidence below `LIFECYCLE_FORGET_MIN_EVIDENCE` is **not** forgotten.
+- [ ] Tombstone retention is bounded and the bound is tested.
+- [ ] `tick()` reports tombstone counts.
 - [ ] Both `DECAY_SCORE_LUA` and `CYCLIC_DECAY_LUA` are modulated; cyclic≡plain equivalence holds.
 - [ ] All three EVAL call sites agree (`test_proxy_matches_top_by_decay` passes on a
   confidence-bearing corpus).
@@ -606,8 +666,27 @@ wiring is deployment-side work tracked separately, not part of this plan.
 - **Assigned To**: lifecycle-builder
 - **Agent Type**: builder
 - **Parallel**: false
-- Extend `_default_should_forget`: `(importance < floor OR confidence < ceiling) AND idle > idle_seconds`.
+- Extend `_default_should_forget`:
+  `(importance < floor OR (confidence < ceiling AND evidence_count >= min_evidence)) AND idle > idle_seconds`.
 - Preserve semantic-tier protection and the custom-`should_forget` override path.
+
+### 4b. Tombstoning instead of hard deletion
+- **Task ID**: build-tombstone
+- **Depends On**: build-lifecycle
+- **Validates**: tests/test_memory_lifecycle.py, tests/test_context_assembler.py
+- **Informed By**: maintainer decision 2026-07-25 (tombstone so aggressive forgetting is reversible
+  and becomes negative evidence for #494); `ExistenceFilter` already supplies the fingerprint
+  (`existence_filter.py:367`)
+- **Assigned To**: lifecycle-builder
+- **Agent Type**: builder
+- **Parallel**: false
+- Replace `tick()`'s delete path with a tombstone marker; retain fingerprint + death metadata
+  (importance-at-death, dismissal count, tombstoned-at).
+- Exclude tombstoned records from **all** retrieval modes and from lifecycle re-evaluation — verify
+  every read path, not just `top_by_decay`.
+- Bounded retention: oldest tombstones age out at a named-constant limit; test the bound.
+- Report `tombstoned` count in `tick()`'s summary dict alongside `promoted`/`forgotten`.
+- Keep hard deletion available as an explicit separate operation.
 
 ### 5. Test suite
 - **Task ID**: build-tests
@@ -655,6 +734,8 @@ wiring is deployment-side work tracked separately, not part of this plan.
 | No Redis modules (Valkey parity) | `grep -rnE '\b(BF\.|CMS\.|TOPK\.|TDIGEST\.|FT\.|JSON\.)' src/popoto/ \| wc -l` | match count == 0 |
 | Cyclic Lua also modulated (anti-criterion: no half-edit) | `grep -c "math.max(elapsed_days, 1.0)" src/popoto/fields/cyclic_decay_field.py` | output > 0 |
 | Stale private Lua copy removed | `grep -c "^DECAY_SCORE_LUA = " tests/test_lua_decay_scoring.py` | match count == 0 |
+| Tombstone tests present | `pytest tests/test_memory_lifecycle.py -q -k "tombstone or evidence"` | exit code 0 |
+| Anti-criterion: confidence path never hard-deletes | `grep -rn "\.delete()" src/popoto/recipes/memory_lifecycle.py \| grep -i "confidence" \| wc -l` | match count == 0 |
 
 ## Critique Results
 
@@ -662,19 +743,22 @@ wiring is deployment-side work tracked separately, not part of this plan.
 
 ---
 
-## Open Questions
+## Decisions
 
-1. **Opt-in kwarg vs auto-detect.** This plan proposes an explicit
-   `confidence_modulation_field=None` kwarg (safest; zero surprise on upgrade). The alternative is
-   auto-detecting a ConfidenceField the way `ContextAssembler` auto-detects field capabilities
-   (`context_assembler.py:1080`) — more "subconscious by default," but it silently changes ranking
-   for every existing adopter that has both fields. Given the substrate is in beta and breaking
-   changes were accepted (2026-06-11 decision), auto-detect is defensible. **Recommendation: ship
-   opt-in now, revisit auto-detect after Valor validates the effect on real data.**
-2. **Initial strength constant.** Spike-4 recommends `s ∈ [0.3, 0.7]` pending real-data validation;
-   this plan proposes `0.5` (⇒ ×1.41 faster at `c=0`, ×0.71 slower at `c=1`). Accept, or start more
-   conservative at `0.3`?
-3. **Lifecycle forget semantics.** Proposed `(importance < floor OR confidence < ceiling) AND idle >
-   idle_seconds` — the `OR` means low confidence alone (with idleness) is sufficient to forget. The
-   stricter `AND` would require both low importance *and* low confidence. Given 82% production
-   dismissal, `OR` is the aggressive-but-correct reading; confirm that is the intent.
+Resolved with the maintainer on 2026-07-25; no open questions remain.
+
+1. **Auto-detect, with escape hatch.** Modulation switches on automatically when a model has exactly
+   one `ConfidenceField`; an explicit kwarg names the field or disables it; ambiguity leaves it off
+   with a warning. Rationale: the standing hard constraint is that the system stores, retrieves,
+   validates and prunes *during regular use* — a learning capability that ships dormant until
+   configured contradicts that. **Valor is the sole adopter and is setting best practice**, so
+   upgrade-surprise for hypothetical third parties does not outweigh the north star.
+2. **Strength constant `s = 0.5`.** Decided without escalation: per repo convention, numeric constants
+   are experimental-tuning magic numbers, not user config — this is the literature-grounded midpoint
+   of spike-4's recommended 0.3–0.7 band and gets tuned by sweep, not by hand.
+3. **Forgetting tombstones rather than deletes**, and confidence alone (plus idleness) may trigger it,
+   guarded by a minimum-evidence floor. Rationale: an importance-gated rule would be near-inert
+   against Valor's legacy flat-6.0 corpus (354 of 390 records), which is exactly the junk to clear;
+   tombstoning makes the aggressive policy reversible, and the evidence floor prevents one unlucky
+   dismissal from burying a memory. Tombstones then become durable negative evidence — the seed for
+   #494.
