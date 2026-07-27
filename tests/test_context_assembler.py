@@ -857,7 +857,9 @@ class TestRetrievalQualityAssembler:
         # score_distribution contents (#474): three equal, non-zero decayed
         # relevance scores. DecayingSortedField stores the last_updated
         # timestamp as the ZSET score; the partition-aware proxy decays it via
-        # DECAY_SCORE_LUA (base_score 1.0, default decay_rate 0.3). All three
+        # DECAY_SCORE_LUA (base_score 1.0, decay_rate Defaults.DECAY_RATE --
+        # 0.1 since the 2026-04-17 sweep, not the 0.3 this comment used to
+        # claim; the assertion below has always read the constant). All three
         # records are freshly saved, so elapsed time clamps to the script's
         # 0.01-day floor and each decays to 0.01**(-0.3) ≈ 3.981. Pre-#474 the
         # proxy read the empty non-partitioned key and reported 0.0 for all.
@@ -1325,6 +1327,167 @@ class TestPartitionAwareDecayingScoreProxy:
         # Decayed relevance is O(1), nowhere near an epoch timestamp.
         for v in proxy.values():
             assert 0.0 <= v < 1e6
+
+
+# ---------------------------------------------------------------------------
+# Confidence-modulated decay across all three EVAL call sites (issue #491)
+#
+# query.py:410 (top_by_decay), query.py:1216 (composite score) and
+# context_assembler.py:527 (the metacognitive proxy) are contractually required
+# to agree. Modulation adds a KEYS entry and two ARGV entries to all three; if
+# one site is missed, the proxy silently drifts from top_by_decay.
+# ---------------------------------------------------------------------------
+
+
+class DecayConfPartitionedMemory(Model):
+    """Like ``DecayPartitionedMemory``, plus an auto-detected ConfidenceField.
+
+    ``certainty`` is unpartitioned, so its ``:data`` hash is satisfiable from
+    any query and the partition guard stays out of the way -- these tests are
+    about call-site agreement, not partitioning.
+    """
+
+    memory_id = AutoKeyField()
+    agent_id = KeyField()
+    content = Field(type=str)
+    strength = FloatField(default=1.0)
+    relevance = DecayingSortedField(
+        partition_by="agent_id", base_score_field="strength", decay_rate=0.5
+    )
+    certainty = ConfidenceField()
+
+
+class TestConfidenceModulatedProxyAgreement:
+    AGED_DAYS = 10  # past the max(t, 1.0) guard, so modulation is live
+
+    def setup_method(self):
+        DecayConfPartitionedMemory.delete_all()
+        DecayConfPartitionedMemory._meta.fields[
+            "relevance"
+        ]._confidence_modulation_cache.clear()
+
+    def teardown_method(self):
+        DecayConfPartitionedMemory.delete_all()
+
+    @staticmethod
+    def _partition_key(agent_id):
+        return DecayingSortedField.get_sortedset_db_key(
+            DecayConfPartitionedMemory, "relevance", agent_id
+        ).redis_key
+
+    def _backdate(self, agent_id, records, days=AGED_DAYS):
+        now = time.time()
+        POPOTO_REDIS_DB.zadd(
+            self._partition_key(agent_id),
+            {r.db_key.redis_key: now - 86400 * days for r in records},
+        )
+
+    @staticmethod
+    def _set_confidence(record, confidence):
+        import msgpack
+
+        field = DecayConfPartitionedMemory._meta.fields["certainty"]
+        POPOTO_REDIS_DB.hset(
+            field.get_data_hash_key(record, "certainty"),
+            record.db_key.redis_key,
+            msgpack.packb(
+                {
+                    "confidence": confidence,
+                    "evidence_count": 10,
+                    "corroborations": 10,
+                    "contradictions": 0,
+                },
+                use_bin_type=True,
+            ),
+        )
+
+    def test_proxy_matches_top_by_decay_with_confidence(self):
+        """The #491 extension of ``test_proxy_matches_top_by_decay``.
+
+        Equal base scores and equal ages, so confidence is the ONLY thing that
+        can order these records -- which means the proxy and ``top_by_decay``
+        can only agree if both sites thread the confidence key.
+        """
+        recs = []
+        for i, confidence in enumerate((0.05, 0.95)):
+            r = DecayConfPartitionedMemory(agent_id="a", content=f"c{i}", strength=1.0)
+            r.save()
+            self._set_confidence(r, confidence)
+            recs.append(r)
+        self._backdate("a", recs)
+
+        ranked = DecayConfPartitionedMemory.query.filter(agent_id="a").top_by_decay(
+            "relevance", n=10
+        )
+        proxy = _score_proxy_for_records(
+            recs,
+            model_class=DecayConfPartitionedMemory,
+            score_weights={"relevance": 1.0},
+        )
+        # Modulation is live: identical inputs apart from evidence must diverge.
+        assert len(set(proxy.values())) == 2, "proxy is not modulated by confidence"
+        # And the two call sites order them identically.
+        assert [r.db_key.redis_key for r in ranked] == sorted(
+            proxy, key=proxy.get, reverse=True
+        )
+        # The corroborated record wins at both sites.
+        assert ranked[0].db_key.redis_key == recs[1].db_key.redis_key
+
+    def test_linearity_in_base_score_holds_under_a_neutral_confidence_corpus(self):
+        """Re-verification of ``test_distinct_base_scores_give_nonzero_spread``.
+
+        That test asserts the decayed score is linear in ``base_score`` at
+        ``rel_tol=1e-6``. Here the same claim is re-checked on a corpus that
+        carries confidence data at the field's ``initial_confidence`` and is
+        aged past the ``max(t, 1.0)`` guard, so the modulation branch actually
+        executes. If neutrality were even slightly off, this is where it shows.
+        """
+        recs = []
+        for i, w in enumerate((1.0, 3.0, 9.0)):
+            r = DecayConfPartitionedMemory(agent_id="a", content=f"n{i}", strength=w)
+            r.save()
+            self._set_confidence(r, 0.5)  # == ConfidenceField initial_confidence
+            recs.append(r)
+        self._backdate("a", recs)
+
+        proxy = _score_proxy_for_records(
+            recs,
+            model_class=DecayConfPartitionedMemory,
+            score_weights={"relevance": 1.0},
+        )
+        vals = sorted(proxy.values())
+        decay_rate = DecayConfPartitionedMemory._meta.fields["relevance"].decay_rate
+        factor = self.AGED_DAYS ** (-decay_rate)
+        assert len(vals) == 3
+        for got, w in zip(vals, (1.0, 3.0, 9.0)):
+            assert math.isclose(got, w * factor, rel_tol=1e-6)
+
+        spread, dist = _compute_score_spread(
+            recs,
+            model_class=DecayConfPartitionedMemory,
+            score_weights={"relevance": 1.0},
+        )
+        assert spread > 0.0
+        assert len(dist) == 3
+
+    def test_proxy_is_neutral_when_no_evidence_has_been_recorded(self):
+        """Zero-evidence records must score exactly as they did pre-#491."""
+        recs = []
+        for i, w in enumerate((1.0, 3.0)):
+            r = DecayConfPartitionedMemory(agent_id="a", content=f"z{i}", strength=w)
+            r.save()
+            recs.append(r)
+        self._backdate("a", recs)
+
+        proxy = _score_proxy_for_records(
+            recs,
+            model_class=DecayConfPartitionedMemory,
+            score_weights={"relevance": 1.0},
+        )
+        decay_rate = DecayConfPartitionedMemory._meta.fields["relevance"].decay_rate
+        factor = self.AGED_DAYS ** (-decay_rate)
+        for r, w in zip(recs, (1.0, 3.0)):
+            assert math.isclose(proxy[r.db_key.redis_key], w * factor, rel_tol=1e-9)
 
 
 class CyclicPartitionedMemory(Model):
