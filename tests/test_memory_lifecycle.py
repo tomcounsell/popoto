@@ -67,6 +67,21 @@ class MissingTierModel(popoto.Model):
     relevance = DecayingSortedField(decay_rate=0.5)
 
 
+class LinkedMemory(popoto.Model):
+    """Memory with a self-referential Relationship (graph-traversal retrieval)."""
+
+    key = popoto.AutoKeyField()
+    tier = KeyField(type=str, default="episodic")
+    relevance = DecayingSortedField(decay_rate=0.5)
+    confidence = ConfidenceField(initial_confidence=0.5)
+
+
+# Self-referential Relationship must be registered post-hoc (the class does not
+# exist yet inside its own body) — mirrors tests/test_graph_traversal.py.
+LinkedMemory.related = popoto.Relationship(model=LinkedMemory, null=True)
+LinkedMemory._meta.add_field("related", LinkedMemory.related)
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -75,10 +90,17 @@ class MissingTierModel(popoto.Model):
 @pytest.fixture(autouse=True)
 def clean_db():
     """Flush all test models before and after each test."""
-    for model in [TrackedMemory, UntrackedMemory, BadImportanceModel, MissingTierModel]:
+    models = [
+        TrackedMemory,
+        UntrackedMemory,
+        BadImportanceModel,
+        MissingTierModel,
+        LinkedMemory,
+    ]
+    for model in models:
         model.delete_all()
     yield
-    for model in [TrackedMemory, UntrackedMemory, BadImportanceModel, MissingTierModel]:
+    for model in models:
         model.delete_all()
 
 
@@ -254,7 +276,11 @@ def test_tick_does_not_promote_ineligible():
 
 
 def test_tick_forgets_low_importance_idle():
-    """Records below importance floor and idle too long get deleted."""
+    """Records below importance floor and idle too long are tombstoned.
+
+    Pre-#491 this asserted a hard delete. Forgetting now tombstones: the
+    record still leaves the live corpus, but it is recoverable.
+    """
     lifecycle = MemoryLifecycle(
         model_class=TrackedMemory,
         importance_field="relevance",
@@ -273,9 +299,16 @@ def test_tick_forgets_low_importance_idle():
     summary = lifecycle.tick()
 
     assert summary["forgotten"] >= 1
+    assert summary["tombstoned"] == summary["forgotten"]
     remaining = TrackedMemory.query.filter(tier="episodic").all()
     keys = [r.key for r in remaining]
     assert record_key not in keys
+
+    # Tombstoned, not deleted: the death is recorded and reversible.
+    assert lifecycle.tombstone_count() == summary["forgotten"]
+    assert record._redis_key in [ts.redis_key for ts in lifecycle.list_tombstones()]
+    assert lifecycle.restore(record._redis_key) is not None
+    assert TrackedMemory.query.get(key=record_key) is not None
 
 
 def test_tick_does_not_forget_semantic():
@@ -804,7 +837,7 @@ def test_forget_guard_skips_absent_key():
 
 
 # ---------------------------------------------------------------------------
-# Confidence-driven forgetting (#491)
+# Confidence-driven forgetting (#491) + tombstoning
 # ---------------------------------------------------------------------------
 
 
@@ -889,6 +922,7 @@ def test_semantic_tier_still_protected_from_confidence_forget():
     assert lifecycle.assess(record).forget_eligible is False
     summary = lifecycle.tick()
     assert summary["forgotten"] == 0
+    assert summary["tombstoned"] == 0
 
 
 def test_model_without_confidence_field_unchanged():
@@ -933,3 +967,176 @@ def test_real_dismissal_signals_drive_forget_eligibility():
     assert data["confidence"] < lifecycle.FORGET_CONFIDENCE_CEILING
     assert data["evidence_count"] >= lifecycle.FORGET_MIN_EVIDENCE
     assert lifecycle.assess(record).forget_eligible is True
+
+
+# --- Tombstoning ----------------------------------------------------------
+
+
+def test_tick_tombstones_instead_of_deleting():
+    """A confidence-forgotten record leaves the corpus but leaves a tombstone."""
+    lifecycle = _forget_ready_lifecycle()
+    record = _make_record(tier="episodic")
+    _set_confidence(record, 0.05, 10)
+    redis_key = record._redis_key
+
+    summary = lifecycle.tick()
+
+    assert summary["tombstoned"] == 1
+    assert summary["forgotten"] == 1
+    # Gone from the live corpus
+    assert TrackedMemory.query.get(key=record.key) is None
+    assert record.key not in [r.key for r in TrackedMemory.query.all()]
+    # But remembered
+    tombstones = lifecycle.list_tombstones()
+    assert len(tombstones) == 1
+    ts = tombstones[0]
+    assert ts.redis_key == redis_key
+    assert ts.fingerprint
+    assert ts.tier == "episodic"
+    assert ts.evidence_count == 10
+    assert ts.dismissal_count == 10
+    assert ts.confidence_at_death == pytest.approx(0.05)
+    assert ts.importance_at_death >= 0.0
+    assert ts.tombstoned_at > 0
+
+
+def test_tombstoned_record_excluded_from_all_retrieval_modes():
+    """Every read path must stop returning a tombstoned record."""
+    lifecycle = _forget_ready_lifecycle()
+    keep = _make_record(tier="episodic")
+    _set_confidence(keep, 0.95, 10)
+    doomed = _make_record(tier="episodic")
+    _set_confidence(doomed, 0.05, 10)
+    lifecycle.tick()
+
+    def _keys(records):
+        return [r.key for r in records]
+
+    # Each path must still return `keep` — otherwise "doomed is absent" would
+    # pass vacuously on an empty result.
+    for label, records in [
+        ("query.filter", TrackedMemory.query.filter(tier="episodic").all()),
+        ("query.all", TrackedMemory.query.all()),
+        ("top_by_decay", TrackedMemory.query.top_by_decay("relevance", n=10)),
+        (
+            "composite_score",
+            TrackedMemory.query.composite_score({"relevance": 1.0}, limit=10),
+        ),
+    ]:
+        keys = _keys(records)
+        assert keep.key in keys, f"{label} lost the surviving record"
+        assert doomed.key not in keys, f"{label} still returns a tombstoned record"
+
+    assert TrackedMemory.query.get(key=doomed.key) is None
+    assert TrackedMemory.query.get(key=keep.key) is not None
+
+    # ContextAssembler (push path, no cues)
+    from src.popoto.recipes.context_assembler import ContextAssembler
+
+    assembler = ContextAssembler(
+        model_class=TrackedMemory,
+        score_weights={"relevance": 1.0},
+        surfacing_threshold=0.0,
+    )
+    assembled = _keys(assembler.assemble(query_cues={"tier": "episodic"}).records)
+    assert keep.key in assembled
+    assert doomed.key not in assembled
+
+    # Lifecycle re-evaluation: a second tick must not see it again
+    assert lifecycle.tick()["tombstoned"] == 0
+    assert lifecycle.tombstone_count() == 1
+
+
+def test_tombstoned_record_is_recoverable():
+    """restore() brings a tombstoned record back into the live corpus."""
+    lifecycle = _forget_ready_lifecycle()
+    record = _make_record(tier="episodic")
+    _set_confidence(record, 0.05, 10)
+    key = record.key
+    redis_key = record._redis_key
+
+    lifecycle.tick()
+    assert TrackedMemory.query.get(key=key) is None
+
+    restored = lifecycle.restore(redis_key)
+
+    assert restored is not None
+    assert restored.key == key
+    reloaded = TrackedMemory.query.get(key=key)
+    assert reloaded is not None
+    assert reloaded.tier == "episodic"
+    # Restoring consumes the tombstone
+    assert lifecycle.tombstone_count() == 0
+    # And the record is retrievable by decay rank again
+    ranked = TrackedMemory.query.top_by_decay("relevance", n=10)
+    assert key in [r.key for r in ranked]
+
+
+def test_restore_unknown_key_returns_none(lifecycle):
+    assert lifecycle.restore("TrackedMemory:nope") is None
+
+
+def test_tombstone_retention_is_bounded():
+    """Oldest tombstones age out at LIFECYCLE_TOMBSTONE_RETENTION_LIMIT."""
+    lifecycle = _forget_ready_lifecycle()
+    lifecycle.TOMBSTONE_RETENTION_LIMIT = 3
+
+    keys = []
+    for _ in range(5):
+        record = _make_record(tier="episodic")
+        _set_confidence(record, 0.05, 10)
+        keys.append(record._redis_key)
+        lifecycle.tick()
+
+    assert lifecycle.tombstone_count() == 3
+    retained = {ts.redis_key for ts in lifecycle.list_tombstones()}
+    # Newest three survive; the two oldest aged out
+    assert retained == set(keys[2:])
+    assert lifecycle.restore(keys[0]) is None
+
+
+def test_forget_hard_deletes_without_tombstone(lifecycle):
+    """Hard deletion remains available as an explicit separate operation."""
+    record = _make_record(tier="episodic")
+    key = record.key
+
+    assert lifecycle.forget_hard(record) is True
+
+    assert TrackedMemory.query.get(key=key) is None
+    assert lifecycle.tombstone_count() == 0
+
+
+def test_tick_summary_reports_tombstoned_key(lifecycle):
+    summary = lifecycle.tick()
+    assert "tombstoned" in summary
+    assert isinstance(summary["tombstoned"], int)
+
+
+def test_tombstoned_record_excluded_from_graph_traversal():
+    """A tombstoned record must not be reachable by relationship expansion."""
+    from src.popoto.recipes import graph_traversal
+
+    target = LinkedMemory(tier="episodic")
+    target.save()
+    seed = LinkedMemory(tier="episodic")
+    seed.related = target
+    seed.save()
+    seed_key = seed.db_key.redis_key
+    target_key = target.db_key.redis_key
+
+    reachable = graph_traversal.traverse(
+        LinkedMemory, [seed_key], relationship_field_names=["related"]
+    )
+    assert target_key in [pk for pk, _ in reachable], "traversal precondition failed"
+
+    lifecycle = MemoryLifecycle(
+        model_class=LinkedMemory,
+        importance_field="relevance",
+    )
+    assert lifecycle.tombstone(target) is not None
+
+    reachable = graph_traversal.traverse(
+        LinkedMemory, [seed_key], relationship_field_names=["related"]
+    )
+    assert target_key not in [pk for pk, _ in reachable]
+    assert lifecycle.tombstone_count() == 1

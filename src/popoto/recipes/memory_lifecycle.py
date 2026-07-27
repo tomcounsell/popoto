@@ -36,6 +36,14 @@ Auto-forget criteria (non-semantic records)::
          AND evidence_count >= FORGET_MIN_EVIDENCE))
     AND last_accessed_seconds_ago > FORGET_IDLE_SECONDS
 
+Forgetting **tombstones** rather than deletes (#491). A forgotten record is
+removed from the live corpus — so it is excluded from every retrieval mode by
+construction, not by a filter each read path must remember — while its
+fingerprint, death metadata, and archived payload are retained under
+``$TOMB:{Model}:*``. ``restore()`` reverses the decision, retention is capped
+at ``LIFECYCLE_TOMBSTONE_RETENTION_LIMIT``, and ``forget_hard()`` remains
+available for irreversible deletion.
+
 Example::
 
     from popoto.recipes.memory_lifecycle import MemoryLifecycle
@@ -63,11 +71,17 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Optional, Tuple
 
+import msgpack
+
 from ..exceptions import ModelException
-from ..models.encoding import decode_lazy_field
+from ..models.encoding import decode_lazy_field, decode_popoto_model_hashmap
 from ..redis_db import POPOTO_REDIS_DB
 
 logger = logging.getLogger("POPOTO.MemoryLifecycle")
+
+# Namespace for tombstone structures, kept out of the model's own keyspace so
+# no query, index scan, or key-set walk can ever surface a tombstoned record.
+TOMBSTONE_KEY_PREFIX = "$TOMB"
 
 
 # ---------------------------------------------------------------------------
@@ -94,6 +108,64 @@ class LifecycleState:
     importance_score: float
     promotion_eligible: bool
     forget_eligible: bool
+
+
+# ---------------------------------------------------------------------------
+# Tombstone — the record of a forgetting (#491)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class Tombstone:
+    """Durable record that a memory was forgotten, and what it looked like.
+
+    Forgetting tombstones rather than deletes so an aggressive low-confidence
+    forget policy stays reversible (Risk 6) and so each death becomes negative
+    evidence a future write path can consult (#494).
+
+    Attributes:
+        redis_key: The forgotten record's Redis key. Restore handle.
+        fingerprint: ExistenceFilter fingerprint of the dead record — the
+            identity token #494 matches new writes against.
+        tier: Tier the record held at death.
+        importance_at_death: Importance score at the moment of forgetting.
+        confidence_at_death: ConfidenceField value at death, or None if the
+            model carries no confidence signal.
+        evidence_count: Observations backing that confidence.
+        dismissal_count: Contradiction/dismissal count at death.
+        tombstoned_at: Unix timestamp of the forgetting.
+        reason: Free-form marker for what triggered it.
+    """
+
+    redis_key: str
+    fingerprint: str
+    tier: str
+    importance_at_death: float
+    confidence_at_death: Optional[float]
+    evidence_count: int
+    dismissal_count: int
+    tombstoned_at: float
+    reason: str = "policy"
+
+
+_TOMBSTONE_FIELDS = tuple(Tombstone.__dataclass_fields__)
+
+
+def _unpack_tombstone_entry(raw) -> Optional[dict]:
+    """Decode a stored tombstone entry, or None if absent/corrupt."""
+    if raw is None:
+        return None
+    try:
+        entry = msgpack.unpackb(raw, raw=False)
+    except Exception as exc:
+        logger.warning("tombstone entry is undecodable, skipping: %s", exc)
+        return None
+    return entry if isinstance(entry, dict) else None
+
+
+def _tombstone_from_entry(entry: dict) -> Tombstone:
+    """Build a Tombstone from a stored entry, ignoring the archived payload."""
+    return Tombstone(**{k: entry.get(k) for k in _TOMBSTONE_FIELDS})
 
 
 # ---------------------------------------------------------------------------
@@ -258,7 +330,7 @@ def _default_should_promote(record, lifecycle: "MemoryLifecycle") -> Optional[st
 
 
 def _default_should_forget(record, lifecycle: "MemoryLifecycle") -> bool:
-    """Return True if the record should be forgotten.
+    """Return True if the record should be forgotten (tombstoned).
 
     Criteria (issue #491)::
 
@@ -530,32 +602,43 @@ class MemoryLifecycle:
         re-check-tier guard re-reads the authoritative tier from Redis
         immediately before deletion to prevent concurrent promotion races.
 
-        Safe to run concurrently — promotion and deletion are idempotent at the
-        record level. Worst case: two concurrent ticks both promote the same
-        record (second write is a no-op) or both delete the same record
-        (second delete is a no-op because the record no longer exists).
+        Forgetting **tombstones** rather than deletes (#491): the record leaves
+        the live corpus (and therefore every retrieval path) but its
+        fingerprint and death metadata are retained, and ``restore()`` can undo
+        the decision. Use ``forget_hard()`` for irreversible deletion.
+
+        Safe to run concurrently — promotion and forgetting are idempotent at
+        the record level. Worst case: two concurrent ticks both promote the
+        same record (second write is a no-op) or both forget the same record
+        (the second finds the hash gone and skips).
 
         Returns:
             dict with keys:
                 promoted (int): Number of records promoted this tick.
-                forgotten (int): Number of records deleted this tick.
+                forgotten (int): Number of records forgotten this tick.
+                tombstoned (int): Number of tombstones written this tick.
+                    Equals ``forgotten`` under the default policy; reported
+                    separately so a runaway forget policy is visible in
+                    telemetry.
                 duration_ms (float): Wall time for this tick in milliseconds.
         """
         start = time.time()
 
         # Single-pass: load all non-semantic records once, promote then forget
-        promoted, forgotten = self._tick_pass()
+        promoted, forgotten, tombstoned = self._tick_pass()
 
         duration_ms = (time.time() - start) * 1000
         summary = {
             "promoted": promoted,
             "forgotten": forgotten,
+            "tombstoned": tombstoned,
             "duration_ms": round(duration_ms, 2),
         }
         logger.info(
-            "tick() complete: promoted=%d forgotten=%d duration_ms=%.1f",
+            "tick() complete: promoted=%d forgotten=%d tombstoned=%d duration_ms=%.1f",
             promoted,
             forgotten,
+            tombstoned,
             duration_ms,
         )
         return summary
@@ -621,6 +704,242 @@ class MemoryLifecycle:
         return confidence < self.FORGET_CONFIDENCE_CEILING
 
     # -------------------------------------------------------------------
+    # Tombstones (#491)
+    # -------------------------------------------------------------------
+
+    def _tombstone_keys(self) -> Tuple[str, str]:
+        """Return the (data hash, recency index) Redis keys for tombstones."""
+        name = self.model_class.__name__
+        return (
+            f"{TOMBSTONE_KEY_PREFIX}:{name}:data",
+            f"{TOMBSTONE_KEY_PREFIX}:{name}:index",
+        )
+
+    def _fingerprint(self, record) -> str:
+        """Return the record's ExistenceFilter fingerprint.
+
+        Uses the model's ExistenceFilter fingerprint_fn when one exists so the
+        tombstone carries the same identity token #494 will match new writes
+        against. Falls back to the redis_key, which is exactly what
+        ExistenceFilter itself falls back to when no fingerprint_fn is set.
+        """
+        from ..fields.existence_filter import (
+            ExistenceFilter,
+            _compute_fingerprint_impl,
+        )
+
+        for field in type(record)._meta.fields.values():
+            if isinstance(field, ExistenceFilter):
+                try:
+                    return _compute_fingerprint_impl(field, record)
+                except Exception:
+                    break
+        return record.db_key.redis_key
+
+    def tombstone(self, record, reason: str = "policy") -> Optional[Tombstone]:
+        """Forget a record by tombstoning it: remove from retrieval, keep the death.
+
+        The record is archived (its raw Redis hash, so ``restore()`` can bring
+        it back byte-for-byte) together with death metadata, then removed from
+        the live corpus. Removal — rather than an in-place "hidden" flag — is
+        what makes exclusion from *every* retrieval mode structural instead of
+        a filter each read path must remember to apply.
+
+        Args:
+            record: A saved Popoto model instance.
+            reason: Free-form marker for why it died (e.g. "policy").
+
+        Returns:
+            The Tombstone, or None if the record could not be archived.
+        """
+        live_key = getattr(record, "_redis_key", None) or record.db_key.redis_key
+
+        try:
+            raw_hash = POPOTO_REDIS_DB.hgetall(live_key)
+        except Exception as exc:
+            logger.warning("tombstone: HGETALL failed for %s: %s", live_key, exc)
+            return None
+        if not raw_hash:
+            logger.debug("tombstone: key absent, skipping %s", live_key)
+            return None
+
+        data = _get_confidence_data(record, self._forget_confidence_field) or {}
+        tomb = Tombstone(
+            redis_key=live_key,
+            fingerprint=self._fingerprint(record),
+            tier=_get_tier(record, self.tier_field),
+            importance_at_death=_get_importance_score(record, self.importance_field),
+            confidence_at_death=(
+                float(data["confidence"]) if "confidence" in data else None
+            ),
+            evidence_count=int(data.get("evidence_count", 0) or 0),
+            dismissal_count=int(data.get("contradictions", 0) or 0),
+            tombstoned_at=time.time(),
+            reason=reason,
+        )
+
+        payload = {
+            (k.decode() if isinstance(k, bytes) else str(k)): v
+            for k, v in raw_hash.items()
+        }
+        entry = dict(tomb.__dict__)
+        entry["payload"] = payload
+
+        data_key, index_key = self._tombstone_keys()
+        try:
+            pipeline = POPOTO_REDIS_DB.pipeline()
+            pipeline.hset(data_key, live_key, msgpack.packb(entry, use_bin_type=True))
+            pipeline.zadd(index_key, {live_key: tomb.tombstoned_at})
+            pipeline.execute()
+        except Exception as exc:
+            logger.warning("tombstone: write failed for %s: %s", live_key, exc)
+            return None
+
+        # Only now leave the live corpus — archive first so a crash between the
+        # two steps loses nothing.
+        try:
+            record.delete()
+        except Exception as exc:
+            logger.warning(
+                "tombstone: removal failed for %s: %s — rolling back tombstone",
+                live_key,
+                exc,
+            )
+            self.purge_tombstone(live_key)
+            return None
+
+        self._enforce_tombstone_retention()
+        logger.debug("tombstoned %s (reason=%s)", live_key, reason)
+        return tomb
+
+    def _enforce_tombstone_retention(self) -> int:
+        """Age out the oldest tombstones beyond TOMBSTONE_RETENTION_LIMIT.
+
+        Bounded retention (Risk 7): tombstones must not outgrow the records
+        they replaced. Returns the number evicted.
+        """
+        limit = int(self.TOMBSTONE_RETENTION_LIMIT)
+        data_key, index_key = self._tombstone_keys()
+        try:
+            excess = POPOTO_REDIS_DB.zcard(index_key) - limit
+            if excess <= 0:
+                return 0
+            oldest = POPOTO_REDIS_DB.zrange(index_key, 0, excess - 1)
+            if not oldest:
+                return 0
+            keys = [k.decode() if isinstance(k, bytes) else k for k in oldest]
+            pipeline = POPOTO_REDIS_DB.pipeline()
+            pipeline.hdel(data_key, *keys)
+            pipeline.zrem(index_key, *keys)
+            pipeline.execute()
+        except Exception as exc:
+            logger.warning("tombstone retention sweep failed: %s", exc)
+            return 0
+        logger.debug("aged out %d tombstone(s) past limit %d", len(keys), limit)
+        return len(keys)
+
+    def tombstone_count(self) -> int:
+        """Return the number of retained tombstones for this model class."""
+        _, index_key = self._tombstone_keys()
+        try:
+            return int(POPOTO_REDIS_DB.zcard(index_key))
+        except Exception:
+            return 0
+
+    def list_tombstones(self, limit: Optional[int] = None) -> list:
+        """Return retained Tombstones, newest death first."""
+        data_key, index_key = self._tombstone_keys()
+        stop = -1 if limit is None else max(0, limit - 1)
+        try:
+            keys = POPOTO_REDIS_DB.zrevrange(index_key, 0, stop)
+        except Exception as exc:
+            logger.warning("list_tombstones: index read failed: %s", exc)
+            return []
+        if not keys:
+            return []
+        keys = [k.decode() if isinstance(k, bytes) else k for k in keys]
+        raws = POPOTO_REDIS_DB.hmget(data_key, keys)
+        tombstones = []
+        for raw in raws:
+            entry = _unpack_tombstone_entry(raw)
+            if entry is not None:
+                tombstones.append(_tombstone_from_entry(entry))
+        return tombstones
+
+    def get_tombstone(self, redis_key: str) -> Optional[Tombstone]:
+        """Return the Tombstone for a redis_key, or None if not retained."""
+        data_key, _ = self._tombstone_keys()
+        entry = _unpack_tombstone_entry(POPOTO_REDIS_DB.hget(data_key, redis_key))
+        return None if entry is None else _tombstone_from_entry(entry)
+
+    def restore(self, redis_key: str):
+        """Bring a tombstoned record back into the live corpus.
+
+        Args:
+            redis_key: The tombstoned record's Redis key (``Tombstone.redis_key``).
+
+        Returns:
+            The restored model instance, or None if no tombstone is retained
+            for that key (it may have aged out).
+        """
+        if isinstance(redis_key, Tombstone):
+            redis_key = redis_key.redis_key
+        data_key, _ = self._tombstone_keys()
+        entry = _unpack_tombstone_entry(POPOTO_REDIS_DB.hget(data_key, redis_key))
+        if entry is None:
+            return None
+
+        redis_hash = {
+            (k.encode() if isinstance(k, str) else k): v
+            for k, v in (entry.get("payload") or {}).items()
+        }
+        instance = decode_popoto_model_hashmap(self.model_class, redis_hash)
+        if instance is None:
+            logger.warning("restore: empty payload for %s", redis_key)
+            return None
+        # save() re-runs every on_save hook, so all secondary indexes
+        # (sorted sets, key sets, geo, unique) are rebuilt from scratch.
+        instance.save()
+        self.purge_tombstone(redis_key)
+        logger.debug("restored %s", redis_key)
+        return instance
+
+    def purge_tombstone(self, redis_key: str) -> bool:
+        """Drop a tombstone permanently. Returns True if one was removed."""
+        if isinstance(redis_key, Tombstone):
+            redis_key = redis_key.redis_key
+        data_key, index_key = self._tombstone_keys()
+        pipeline = POPOTO_REDIS_DB.pipeline()
+        pipeline.hdel(data_key, redis_key)
+        pipeline.zrem(index_key, redis_key)
+        removed = pipeline.execute()
+        return bool(removed and removed[0])
+
+    def purge_all_tombstones(self) -> int:
+        """Drop every retained tombstone. Returns the number removed."""
+        count = self.tombstone_count()
+        POPOTO_REDIS_DB.delete(*self._tombstone_keys())
+        return count
+
+    def forget_hard(self, record) -> bool:
+        """Delete a record outright, leaving no tombstone.
+
+        The explicit, irreversible counterpart to ``tombstone()`` — kept
+        available so an adopter can still purge a record entirely (e.g. a
+        deletion request) rather than merely retiring it from retrieval.
+        """
+        try:
+            record.delete()
+        except Exception as exc:
+            logger.warning(
+                "forget_hard failed for %s: %s",
+                getattr(record, "_redis_key", "?"),
+                exc,
+            )
+            return False
+        return True
+
+    # -------------------------------------------------------------------
     # Internal passes
     # -------------------------------------------------------------------
 
@@ -634,7 +953,7 @@ class MemoryLifecycle:
         immediately before deletion to prevent concurrent promotion races.
 
         Returns:
-            Tuple (promoted_count, forgotten_count).
+            Tuple (promoted_count, forgotten_count, tombstoned_count).
         """
         # Load all non-semantic records once (non-tracking — no on_read() side-effects)
         filters = {**self.partition_filters}
@@ -690,6 +1009,7 @@ class MemoryLifecycle:
 
         # --- Phase 2: Forget low-importance idle records (not promoted this pass) ---
         forgotten = 0
+        tombstoned = 0
         for record in non_semantic_records:
             if id(record) in promoted_this_pass:
                 continue
@@ -731,18 +1051,14 @@ class MemoryLifecycle:
                     )
                     continue
 
-                try:
-                    record.delete()
+                # Forgetting tombstones rather than deletes (#491): the record
+                # leaves every retrieval path but its fingerprint and death
+                # metadata survive, and restore() can undo the decision.
+                if self.tombstone(record, reason="lifecycle") is not None:
                     forgotten += 1
-                    logger.debug("forgotten (deleted) %s", live_key)
-                except Exception as exc:
-                    logger.warning(
-                        "tick() delete failed for %s: %s — skipping",
-                        live_key,
-                        exc,
-                    )
+                    tombstoned += 1
 
-        return promoted, forgotten
+        return promoted, forgotten, tombstoned
 
     # -------------------------------------------------------------------
     # Convenience: all() fallback for models without partition filters
