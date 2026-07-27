@@ -442,6 +442,8 @@ def _partition_scores_for_field(records, *, model_class, field_name, now=None):
             field=f,
             key_for_record=key_for_record,
             now=now,
+            model_class=model_class,
+            field_name=field_name,
         )
 
     # Plain SortedField: the stored value IS the score.
@@ -468,24 +470,39 @@ def _partition_scores_for_field(records, *, model_class, field_name, now=None):
     return scores
 
 
-def _decayed_partition_scores(records, *, field, key_for_record, now=None):
+def _decayed_partition_scores(
+    records, *, field, key_for_record, now=None, model_class=None, field_name=None
+):
     """Decayed relevance per record for a DecayingSortedField partition ZSET.
 
     Reuses the same decay scripts :meth:`Query.top_by_decay` runs, so the
     metacognitive proxy sees the same decayed relevance a query would surface,
     rather than the raw last_updated timestamp stored as the ZSET score:
 
-    * :class:`DecayingSortedField` -> ``DECAY_SCORE_LUA`` (1 KEY).
-    * :class:`CyclicDecayField` -> ``CYCLIC_DECAY_LUA`` (3 KEYS: the partition
-      ZSET plus its ``:cycles`` / ``:pressure`` companion hashes), so cyclic
-      cadence/pressure is honoured and the proxy agrees with ``top_by_decay``
-      for cyclic fields too.
+    * :class:`DecayingSortedField` -> ``DECAY_SCORE_LUA`` (2 KEYS: the partition
+      ZSET plus the ConfidenceField ``:data`` hash, ``""`` when modulation is
+      off).
+    * :class:`CyclicDecayField` -> ``CYCLIC_DECAY_LUA`` (4 KEYS: the partition
+      ZSET, its ``:cycles`` / ``:pressure`` companion hashes, and the
+      confidence ``:data`` hash), so cyclic cadence/pressure is honoured and
+      the proxy agrees with ``top_by_decay`` for cyclic fields too.
 
-    The script is evaluated once per distinct partition ZSET (typically a
-    single agent per proxy call). Read-only ``EVAL``, Valkey-safe.
+    Confidence-modulated decay (#491) must be threaded here too, or the proxy
+    would silently disagree with ``top_by_decay`` (the no-drift contract at
+    ``test_proxy_matches_top_by_decay``). Unlike the query paths this one has
+    records rather than filters, so each record's ``:data`` key is read off the
+    instance; the script is evaluated once per distinct
+    ``(partition ZSET, confidence hash)`` pair, which collapses to one EVAL per
+    ZSET in the overwhelmingly common case where both share a partitioning.
+
+    Read-only ``EVAL``, Valkey-safe.
     """
     from ..fields.cyclic_decay_field import CYCLIC_DECAY_LUA
-    from ..fields.decaying_sorted_field import DECAY_SCORE_LUA
+    from ..fields.decaying_sorted_field import (
+        DECAY_SCORE_LUA,
+        MODULATION_DISABLED,
+        confidence_modulation_args,
+    )
 
     if now is None:
         now = time.time()
@@ -493,16 +510,35 @@ def _decayed_partition_scores(records, *, field, key_for_record, now=None):
     base_score_field = field.base_score_field or ""
     is_cyclic = isinstance(field, CyclicDecayField)
 
-    # Distinct partition ZSETs referenced by these records (typically one).
-    partition_keys = {
-        key_for_record[_get_key(r)]
+    # Per-record confidence modulation args. Resolves to MODULATION_DISABLED
+    # (empty key, s="0") whenever modulation is off, which reproduces the
+    # pre-#491 EVAL byte-for-byte apart from the inert trailing key/ARGV.
+    conf_args_for_record = {}
+    for r in records:
+        r_key = _get_key(r)
+        if model_class is None or field_name is None:
+            conf_args_for_record[r_key] = MODULATION_DISABLED
+            continue
+        try:
+            conf_args_for_record[r_key] = confidence_modulation_args(
+                model_class, field, field_name, model_instance=r
+            )
+        except Exception as e:
+            # The proxy is a best-effort metacognitive signal; degrade to
+            # unmodulated decay rather than break assembly.
+            logger.warning("confidence modulation unavailable for %s: %s", r_key, e)
+            conf_args_for_record[r_key] = MODULATION_DISABLED
+
+    # Distinct (partition ZSET, confidence args) pairs (typically one).
+    eval_groups = {
+        (key_for_record[_get_key(r)], conf_args_for_record[_get_key(r)])
         for r in records
         if key_for_record[_get_key(r)] is not None
     }
 
-    # (zset_key, member) -> decayed score
+    # (zset_key, confidence_hash_key, member) -> decayed score
     decayed = {}
-    for zkey in partition_keys:
+    for zkey, (conf_hash_key, conf_s, conf_c0) in eval_groups:
         try:
             cardinality = POPOTO_REDIS_DB.zcard(zkey)
             if not cardinality:
@@ -510,27 +546,35 @@ def _decayed_partition_scores(records, *, field, key_for_record, now=None):
             if is_cyclic:
                 # Companion hashes are the partition ZSET key plus a suffix
                 # (CyclicDecayField.get_cycles/pressure_hash_key), so they are
-                # derivable directly from the partition ZSET key.
+                # derivable directly from the partition ZSET key. The
+                # confidence hash is NOT -- it lives under its own
+                # $ConfidencF: prefix -- so it is resolved Python-side above.
                 result = POPOTO_REDIS_DB.eval(
                     CYCLIC_DECAY_LUA,
-                    3,  # number of KEYS
+                    4,  # number of KEYS: zset + cycles + pressure + confidence
                     zkey,
                     zkey + ":cycles",
                     zkey + ":pressure",
+                    conf_hash_key,
                     str(now),
                     str(field.decay_rate),
                     str(cardinality),  # return every member's decayed score
                     base_score_field,
+                    conf_s,
+                    conf_c0,
                 )
             else:
                 result = POPOTO_REDIS_DB.eval(
                     DECAY_SCORE_LUA,
-                    1,  # number of KEYS
+                    2,  # number of KEYS: zset + confidence
                     zkey,
+                    conf_hash_key,
                     str(now),
                     str(field.decay_rate),
                     str(cardinality),  # return every member's decayed score
                     base_score_field,
+                    conf_s,
+                    conf_c0,
                 )
         except Exception as e:
             logger.warning("decayed partition score eval failed for %s: %s", zkey, e)
@@ -541,7 +585,7 @@ def _decayed_partition_scores(records, *, field, key_for_record, now=None):
             if isinstance(member, bytes):
                 member = member.decode()
             try:
-                decayed[(zkey, member)] = float(result[i + 1])
+                decayed[(zkey, conf_hash_key, member)] = float(result[i + 1])
             except (TypeError, ValueError):
                 pass
 
@@ -549,7 +593,10 @@ def _decayed_partition_scores(records, *, field, key_for_record, now=None):
     for record in records:
         r_key = _get_key(record)
         zkey = key_for_record[r_key]
-        scores[r_key] = decayed.get((zkey, r_key)) if zkey is not None else None
+        conf_hash_key = conf_args_for_record[r_key][0]
+        scores[r_key] = (
+            decayed.get((zkey, conf_hash_key, r_key)) if zkey is not None else None
+        )
     return scores
 
 
