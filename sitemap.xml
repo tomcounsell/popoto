@@ -2,450 +2,450 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://popoto.io/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/async/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/benchmarks/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/configuration/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/fields/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/indexed_fields/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/meta/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/multi-tenancy/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/pubsub/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/query/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/recipes/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/relationship/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/style-guide/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/testing/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/ttl/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/benchmarks/memory_lifecycle_baseline/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/benchmarks/results/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/benchmarks/results/SUMMARY/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/benchmarks/results/csr/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/benchmarks/results/locomo_hybrid/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/benchmarks/results/locomo_lexical/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/benchmarks/results/longmemeval_s_hybrid/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/benchmarks/results/longmemeval_s_lexical/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/benchmarks/results/rlt_redis/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/features/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/features/agent-memory/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/features/co-occurrence-field/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/features/composite-score-query/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/features/confidence-field/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/features/content-and-embedding-fields/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/features/context-assembler/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/features/cyclic-decay-field/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/features/decaying-sorted-field/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/features/existence-filter/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/features/hybrid-retrieval/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/features/kitchen-edge-case-demo/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/features/llm-memory-extraction/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/features/memory-telemetry/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/features/metacognitive-layer/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/features/observation-protocol/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/features/parametric-sweep/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/features/policy-cache/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/features/prediction-ledger/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/guides/agent-memory-quickstart/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/guides/epistemic-flow-cognitive-agent-architectures/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/guides/launch-announcements/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/guides/policy-cache-recipe/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/guides/popoto-memory-roadmap/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/guides/programmable-memory-systems-neuroscience-design-spec/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/guides/rag-chatbot-recipe/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/guides/research-prompt-memory-systems/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/guides/subconscious-memory-recipe/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/guides/trajectory-memory-recipe/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/guides/tuning-magic-numbers/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/SUMMARY/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/_error_reporting/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/exceptions/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/redis_db/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/redis_limits/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/testing/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/embeddings/sentence_transformers/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/extraction/claude/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/fields/_tokenizer/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/fields/access_tracker/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/fields/auto_field_mixin/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/fields/bm25_field/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/fields/co_occurrence_field/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/fields/confidence_field/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/fields/constants/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/fields/content_field/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/fields/cyclic_decay_field/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/fields/dataframe_field/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/fields/datetime_field/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/fields/decaying_sorted_field/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/fields/embedding_field/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/fields/event_stream/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/fields/existence_filter/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/fields/field/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/fields/geo_field/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/fields/indexed_field_mixin/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/fields/key_field_mixin/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/fields/observation/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/fields/prediction_ledger/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/fields/relationship/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/fields/shortcuts/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/fields/sorted_field_mixin/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/fields/unique_field_mixin/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/fields/write_filter/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/models/base/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/models/db_key/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/models/encoding/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/models/expressions/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/models/migrations/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/models/q/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/models/query/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/pubsub/publisher/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/pubsub/subscriber/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/recipes/adaptive_assembler/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/recipes/context_assembler/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/recipes/graph_traversal/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/recipes/memory_lifecycle/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/recipes/memory_telemetry/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/recipes/policy_cache/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/recipes/subconscious_memory/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/recipes/trajectory_memory/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/stores/filesystem/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/streams/consumer/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/utils/list_search/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/utils/multithreading/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/utils/sigfigs/</loc>
-         <lastmod>2026-07-26</lastmod>
+         <lastmod>2026-07-27</lastmod>
     </url>
 </urlset>
