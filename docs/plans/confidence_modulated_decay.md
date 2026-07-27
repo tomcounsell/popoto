@@ -286,7 +286,7 @@ odds-ratio form.
 
 ## Appetite
 
-**Size:** Medium
+**Size:** Large
 
 **Team:** Solo dev, PM (maintainer decisions), code reviewer
 
@@ -312,9 +312,15 @@ Grew from Medium to Large when tombstoning entered scope: forgetting now changes
 - **Read-time confidence modulation (Option A)**: the decay scripts read each member's confidence
   from the existing ConfidenceField `:data` hash and adjust that member's effective decay rate.
   Nothing new is stored.
-- **Bit-exact neutrality**: absent, undecodable, or exactly-neutral (`0.5`) confidence produces
-  byte-identical scores to today. This is a hard requirement, not an aspiration — existing tests
-  assert tied-score bit-exactness and base-score linearity at `rel_tol=1e-6`.
+- **Bit-exact neutrality**: absent, undecodable, or at-initial confidence produces byte-identical
+  scores to today. This is a hard requirement, not an aspiration — existing tests assert tied-score
+  bit-exactness and base-score linearity at `rel_tol=1e-6`. **The zero point is the field's own
+  `initial_confidence`, not the literal `0.5`** — `ConfidenceField.on_save` HSETNXs
+  `initial_confidence` for every saved record (`confidence_field.py:351-358`), so "no confidence
+  data" is nearly never the observed state, and `initial_confidence` is a per-field kwarg
+  (`confidence_field.py:161-173`) that adopters may set anywhere in `[0,1]`. Centering on the literal
+  `0.5` would give a zero-evidence record on an `initial_confidence=0.3` field a permanent
+  `2^(0.4s)` penalty.
 - **Sub-one-day guard**: the correction term applies only to `t ≥ 1 day`, preventing the sign flip
   that would otherwise boost fresh low-confidence junk.
 - **Dual-script parity**: the same change lands in both `DECAY_SCORE_LUA` and the forked
@@ -339,12 +345,24 @@ idle → **memory is forgotten**.
 
 ### Technical Approach
 
-- **Formula** (spike-4): `eff = decay_rate · 2^(s · (1 − 2·c))`, then
-  `decayed = base · t^(−r) · max(t, 1.0)^(−(eff − r))`. Defensive clamp `c = max(0, min(1, c))` before
-  the pow, since the value is read from a hash that could hold anything.
-- **Lua wiring** (spike-1): add `KEYS[2]` = confidence `:data` hash key, `ARGV[5]` = strength `s`
-  (or `""`/`0` to disable), `ARGV[6]` = default confidence. Copy the proven unpack block from
-  `CAPPED_BAYESIAN_UPDATE_LUA:69-83`. Follow the `CyclicDecayField` KEYS-passing precedent.
+- **Formula** (spike-4, revised for `initial_confidence`): `eff = decay_rate · 2^(s · 2 · (c₀ − c))`
+  where `c₀` is the confidence field's own `initial_confidence`, then
+  `decayed = base · t^(−r) · max(t, 1.0)^(−(eff − r))`. This is exactly `1.0` when `c == c₀` for any
+  `c₀`, so neutrality is bit-exact regardless of how the adopter configured the field; at the default
+  `c₀ = 0.5` it reduces to spike-4's original `2^(s·(1−2c))`. Defensive clamp `c = max(0, min(1, c))`
+  before the pow, since the value is read from a hash that could hold anything.
+- **Lua wiring** (spike-1): add a confidence `:data` hash key, `ARGV[5]` = strength `s`
+  (or `""`/`0` to disable), `ARGV[6]` = `c₀` (serving as both the absent-value default **and** the
+  centering constant). Copy the proven unpack block from `CAPPED_BAYESIAN_UPDATE_LUA:69-83`. Follow
+  the `CyclicDecayField` KEYS-passing precedent.
+- **KEYS index differs per script — do not "mirror identically".** `DECAY_SCORE_LUA` binds only
+  `KEYS[1]` today, so the confidence hash is `KEYS[2]` there. But `CYCLIC_DECAY_LUA` **already** binds
+  `KEYS[2]` = cycles hash and `KEYS[3]` = pressure hash (`cyclic_decay_field.py:57-59`), with both
+  EVAL sites passing numkeys `3` (`query.py:399`, `query.py:1205`). Reusing `KEYS[2]` there would
+  `cmsgpack.unpack` the cycles array as a confidence dict — a silent corrupt read, not a clean crash.
+  In the cyclic script the confidence hash is **`KEYS[4]`**, appended after `pressure_hash_key`, and
+  both cyclic EVAL sites bump numkeys to `4`. Both scripts must guard the `HGET` on
+  `confidence_hash_key ~= ''` so the disabled path passes an empty string rather than a missing key.
 - **Three call sites** must thread the new KEYS/ARGV: `query.py:410`, `query.py:1216`,
   `context_assembler.py:527`. They are contractually required to agree
   (`test_context_assembler.py:1236` asserts proxy == `top_by_decay`).
@@ -353,10 +371,26 @@ idle → **memory is forgotten**.
   satisfiable from the query's filters, raise `QueryException` with an actionable message, mirroring
   `query.py:1276-1284`. Do **not** silently disable modulation — silent degradation is how a
   benchmark lies.
-- **Constant**: `Defaults.DECAY_CONFIDENCE_MODULATION_STRENGTH` under the
-  `# -- DecayingSortedField` block, with the house sweep-evidence comment. Recommended initial value
-  `0.5` (spike-4 advises 0.3–0.7 pending real-data validation), plus the four coordinated
-  registrations (`constants.py`, `overrides.py`, `test_defaults_sync.py`, `tuning-magic-numbers.md`).
+- **Constants — four, not two.** All go through the coordinated registration
+  (`src/popoto/fields/constants.py` → `tests/benchmarks/overrides.py` →
+  `tests/benchmarks/test_defaults_sync.py` → `docs/guides/tuning-magic-numbers.md`), or the
+  defaults-sync test fails on any unregistered `Defaults` attribute
+  (`test_defaults_sync.py:38-93`):
+  1. `DECAY_CONFIDENCE_MODULATION_STRENGTH` = `0.5` — under `# -- DecayingSortedField`
+     (spike-4 advises 0.3–0.7 pending real-data validation).
+  2. `LIFECYCLE_FORGET_CONFIDENCE_CEILING` — under `# -- MemoryLifecycle`
+     (`src/popoto/fields/constants.py:162-170`).
+  3. `LIFECYCLE_FORGET_MIN_EVIDENCE` — same block. Resolved as a **class-level** attr via
+     `MemoryLifecycle._LIFECYCLE_ATTRS` (`memory_lifecycle.py:313-319`), so it belongs in
+     `test_defaults_sync.py`'s `field_kwargs_and_class_attrs` exemption set (`:73-79`), **not**
+     `MODULE_CONSTANTS`. Same treatment for #2.
+  4. `LIFECYCLE_TOMBSTONE_RETENTION_LIMIT` — the bounded-retention cap, named so Task 4b consumes a
+     constant rather than a literal.
+- **Kill switch** (`DECAY_CONFIDENCE_MODULATION_ENABLED`, default `True`): a `Defaults`/env-level
+  disable that does **not** require editing model code. Auto-detect turns modulation on at upgrade
+  time, so an adopter who hits a ranking regression after `pip install -U` needs a deploy-level
+  override — they cannot always edit the model definition. Setting it false makes every path a
+  byte-identical no-op, identical to `s = 0`. Registered like the constants above.
 - **Lifecycle**: add `LIFECYCLE_FORGET_CONFIDENCE_CEILING` and `LIFECYCLE_FORGET_MIN_EVIDENCE`, and
   extend `_default_should_forget` to
   `(importance < floor OR (confidence < ceiling AND evidence_count >= min_evidence)) AND idle > idle_seconds`.
@@ -468,10 +502,13 @@ regression oracle; add modulated cases alongside rather than editing the origina
 ### Risk 3: Latency regression from one extra HGET per member
 **Impact:** The decay loop is O(N) over the whole ZSET; an extra HGET per member could threaten the
 1K < 1.0s / 10K < 5.0s budgets and the injection path's latency.
-**Mitigation:** The existing loop already does one HGET per member for `base_score_field`, so this is
-a constant-factor change, not an order change. Benchmarks run with modulation **enabled**; if the 10K
-budget is threatened, fall back to skipping the HGET entirely when `s = 0` or the modulation field is
-unset (which is also the default path, so unmodulated users pay nothing).
+**Mitigation:** It is a constant-factor change, not an order change — but the ratio is worse than it
+first appears. The existing `base_score_field` HGET is **guarded** by `if base_score_field ~= ''`
+(`decaying_sorted_field.py:69`, `cyclic_decay_field.py:77`) and `base_score_field` defaults to `None`,
+so for the common unset config this is **0→1 HGET per member, not 1→2**. Benchmarks must include a
+10K variant with `base_score_field=None` **and** modulation enabled — that is the true worst case.
+If the 10K budget is threatened, skip the HGET entirely when `s = 0`, the kill switch is off, or the
+modulation field is unset (all no-op paths, so unmodulated users pay nothing).
 
 ### Risk 4: The sub-one-day sign flip (would invert the feature)
 **Impact:** Without the `max(t, 1.0)` guard, low-confidence records that were just touched get
@@ -486,7 +523,11 @@ field's meaning would silently get its ranking modulated.
 (maintainer decision, 2026-07-25), so "surprising a third party" is hypothetical while "the substrate
 should learn without being configured" is the standing hard constraint. Escape hatches:
 `confidence_modulation_field=False` disables, an explicit field name overrides, and ambiguity
-(2+ confidence fields) defaults to off with a warning rather than a guess.
+(2+ confidence fields) defaults to off with a warning rather than a guess. **Plus a deploy-level kill
+switch** (`DECAY_CONFIDENCE_MODULATION_ENABLED`, maintainer decision 2026-07-27) — popoto is
+published on PyPI at v1.8.0, and a third party whose ranking regresses after `pip install -U` may not
+be in a position to edit the model definition. The field-level hatches assume code access; the kill
+switch does not. CHANGELOG must call the default-on behavior out explicitly.
 
 ### Risk 6: Aggressive forgetting destroys a memory that mattered
 **Impact:** A memory dismissed at unlucky moments crosses the confidence ceiling and disappears.
@@ -577,7 +618,11 @@ wiring is deployment-side work tracked separately, not part of this plan.
   record (the sub-one-day sign-flip regression test).
 - [ ] Records with no confidence data, and any model with no `ConfidenceField`, produce
   **byte-identical** decayed scores to `c7bd62c` (existing tests pass unchanged).
-- [ ] `s = 0` and `confidence_modulation_field=False` are exact no-ops.
+- [ ] Neutrality holds for a **non-default `initial_confidence`**: a zero-evidence record on a field
+  with `initial_confidence=0.3` is byte-identical, proving the exponent centers on `c₀` not `0.5`.
+- [ ] `s = 0`, `confidence_modulation_field=False`, and
+  `DECAY_CONFIDENCE_MODULATION_ENABLED=False` are all exact no-ops; the kill switch works without
+  editing any model definition.
 - [ ] Auto-detection: exactly one `ConfidenceField` ⇒ modulation on with no configuration; two or
   more with no explicit kwarg ⇒ modulation off **and** a warning naming the candidates.
 - [ ] A record forgotten by the confidence path is **tombstoned, not deleted**: absent from every
@@ -585,7 +630,9 @@ wiring is deployment-side work tracked separately, not part of this plan.
 - [ ] A low-confidence record with evidence below `LIFECYCLE_FORGET_MIN_EVIDENCE` is **not** forgotten.
 - [ ] Tombstone retention is bounded and the bound is tested.
 - [ ] `tick()` reports tombstone counts.
-- [ ] Both `DECAY_SCORE_LUA` and `CYCLIC_DECAY_LUA` are modulated; cyclic≡plain equivalence holds.
+- [ ] Both `DECAY_SCORE_LUA` and `CYCLIC_DECAY_LUA` are modulated; cyclic≡plain equivalence holds;
+  the cyclic script reads confidence from `KEYS[4]` with numkeys `4` at both EVAL sites, and a
+  cycles-bearing modulated corpus ranks correctly (the anti-corruption test).
 - [ ] All three EVAL call sites agree (`test_proxy_matches_top_by_decay` passes on a
   confidence-bearing corpus).
 - [ ] Partition mismatch raises `QueryException` naming the missing filter(s).
@@ -594,6 +641,12 @@ wiring is deployment-side work tracked separately, not part of this plan.
 - [ ] Latency budgets hold with modulation enabled (1K < 1.0s, 10K < 5.0s).
 - [ ] No Redis modules used; runs identically on Redis and Valkey.
 - [ ] Tests pass (`/do-test`); docs updated (`/do-docs`).
+
+**Outcome criterion (post-deploy, not verifiable at merge):** the reference deployment's aggregate
+dismissal rate trends **below** the 2026-07-24 baseline of 82.1% (`/memories/metrics.json`, 390
+records). Every criterion above is mechanism-level — byte-exactness, bounds, counts, latency — and
+none of them would notice if the feature shipped correctly and changed nothing that mattered. Tracked
+via the telemetry loop, reported back on this issue after a soak period.
 
 ## Team Orchestration
 
@@ -623,12 +676,17 @@ wiring is deployment-side work tracked separately, not part of this plan.
 - **Assigned To**: lua-builder
 - **Agent Type**: builder
 - **Parallel**: false
-- Add `KEYS[2]` (confidence `:data` hash), `ARGV[5]` (strength `s`), `ARGV[6]` (default confidence) to
-  `DECAY_SCORE_LUA`; skip the HGET entirely when modulation is disabled.
-- Implement `c = max(0, min(1, c))`; `eff = r * math.pow(2, s*(1-2c))`;
+- Add `KEYS[2]` (confidence `:data` hash), `ARGV[5]` (strength `s`), `ARGV[6]` (`c₀`, the field's
+  `initial_confidence` — both absent-value default and centering constant) to `DECAY_SCORE_LUA`.
+  Guard on `confidence_hash_key ~= ''` and skip the HGET entirely when modulation is disabled.
+- Implement `c = max(0, min(1, c))`; `eff = r * math.pow(2, s*2*(c0-c))`;
   `decayed = base * math.pow(t,-r) * math.pow(math.max(t,1.0), -(eff-r))`.
-- Mirror the identical change into `CYCLIC_DECAY_LUA`, preserving its existing structure.
-- Comment the `max(t,1.0)` guard with the sign-flip rationale.
+- Port the change into `CYCLIC_DECAY_LUA` — **not** as a literal mirror. That script already binds
+  `KEYS[2]` = cycles and `KEYS[3]` = pressure (`cyclic_decay_field.py:57-59`); the confidence hash is
+  **`KEYS[4]`** there. Declare `local confidence_hash_key = KEYS[4]`. Reusing `KEYS[2]` unpacks the
+  cycles array as a confidence dict — silent corruption, no error.
+- Comment the `max(t,1.0)` guard with the sign-flip rationale, and comment why the KEYS index
+  differs between the two scripts (a future reader will otherwise "unify" them back into a bug).
 
 ### 2. Thread confidence key through all three EVAL call sites
 - **Task ID**: build-wiring
@@ -639,23 +697,35 @@ wiring is deployment-side work tracked separately, not part of this plan.
 - **Assigned To**: wiring-builder
 - **Agent Type**: builder
 - **Parallel**: false
-- Add the `confidence_modulation_field=None` kwarg to `DecayingSortedField.__init__`.
-- Resolve the `:data` key and pass KEYS/ARGV at `query.py:410`, `query.py:1216`,
-  `context_assembler.py:527`.
+- Add the `confidence_modulation_field=None` kwarg to `DecayingSortedField.__init__` plus
+  auto-detection over `model_class._meta.fields`, and honor the
+  `DECAY_CONFIDENCE_MODULATION_ENABLED` kill switch ahead of both.
+- Resolve the `:data` key and thread `c₀` (the resolved field's `initial_confidence`) as `ARGV[6]` at
+  `query.py:410`, `query.py:1216`, `context_assembler.py:527`.
+- **Bump numkeys `3 → 4` at both cyclic EVAL sites** (`query.py:397-407`, `query.py:1203-1213`),
+  appending the confidence hash key **after** `pressure_hash_key`. The plain-script sites go `1 → 2`.
+  Passing the key without bumping numkeys silently drops it into `ARGV`.
 - Implement the partition-subset guard raising `QueryException` (mirror `query.py:1276-1284`).
 
-### 3. Constants registration (four coordinated edits)
+### 3. Constants registration (five constants × four coordinated edits)
 - **Task ID**: build-constants
 - **Depends On**: none
 - **Validates**: tests/benchmarks/test_defaults_sync.py
-- **Informed By**: spike-2 (constants.py → overrides.py → test_defaults_sync.py →
-  tuning-magic-numbers.md, or the sync test fails)
+- **Informed By**: spike-2 (`src/popoto/fields/constants.py` → `tests/benchmarks/overrides.py` →
+  `tests/benchmarks/test_defaults_sync.py` → `docs/guides/tuning-magic-numbers.md`, or the sync test
+  fails on any unregistered `Defaults` attribute)
 - **Assigned To**: lifecycle-builder
 - **Agent Type**: builder
 - **Parallel**: true
-- Add `DECAY_CONFIDENCE_MODULATION_STRENGTH` (initial `0.5`) and
-  `LIFECYCLE_FORGET_CONFIDENCE_CEILING` with house-format provenance comments.
-- Register in `overrides.py` (`VALID_RANGES` included) and exempt/list in `test_defaults_sync.py`.
+- Add with house-format provenance comments: `DECAY_CONFIDENCE_MODULATION_STRENGTH` (`0.5`) and
+  `DECAY_CONFIDENCE_MODULATION_ENABLED` (`True`) under `# -- DecayingSortedField`;
+  `LIFECYCLE_FORGET_CONFIDENCE_CEILING`, `LIFECYCLE_FORGET_MIN_EVIDENCE`, and
+  `LIFECYCLE_TOMBSTONE_RETENTION_LIMIT` under `# -- MemoryLifecycle`
+  (`src/popoto/fields/constants.py:162-170`).
+- Register in `overrides.py` (`VALID_RANGES` included). The three `LIFECYCLE_*` constants resolve via
+  `MemoryLifecycle._LIFECYCLE_ATTRS` (`memory_lifecycle.py:313-319`) and therefore belong in
+  `test_defaults_sync.py`'s `field_kwargs_and_class_attrs` exemption set (`:73-79`), **not**
+  `MODULE_CONSTANTS`.
 
 ### 4. Confidence-aware forgetting in MemoryLifecycle
 - **Task ID**: build-lifecycle
@@ -690,22 +760,33 @@ wiring is deployment-side work tracked separately, not part of this plan.
 
 ### 5. Test suite
 - **Task ID**: build-tests
-- **Depends On**: build-lua, build-wiring, build-lifecycle
+- **Depends On**: build-lua, build-wiring, build-constants, build-lifecycle, build-tombstone
 - **Validates**: full suite
 - **Informed By**: spike-2 (must-not-break list; stale private Lua copy in test_lua_decay_scoring.py)
 - **Assigned To**: decay-tester
 - **Agent Type**: test-engineer
 - **Parallel**: false
-- Neutrality: byte-identical scores with no confidence / `s=0` / kwarg unset.
+- Neutrality: byte-identical scores with no confidence / `s=0` / kwarg unset / kill switch off.
+- **Non-default `initial_confidence`**: a field with `initial_confidence=0.3` and zero evidence must
+  still produce byte-identical scores (proves the centering fix, not just the `c₀=0.5` happy path).
 - Sign-flip regression: fresh low-confidence must not outrank fresh high-confidence.
 - Differing-confidence members correctly stop tying; no-confidence members remain bit-exactly tied.
 - Corrupt/out-of-range confidence payload falls back to neutral.
 - Partition mismatch raises with an actionable message.
-- Latency budgets with modulation enabled; fix `test_lua_decay_scoring.py` to import production Lua.
+- **Cyclic KEYS regression**: a `CyclicDecayField` with cycles data **and** modulation enabled ranks
+  correctly — this is the test that catches a `KEYS[2]`/`KEYS[4]` mix-up, which otherwise corrupts
+  silently rather than erroring.
+- **Tombstone tests**: a forget-eligible record is excluded from `top_by_decay`, `ContextAssembler`,
+  and graph traversal but remains recoverable; bounded retention evicts the oldest tombstone past
+  `LIFECYCLE_TOMBSTONE_RETENTION_LIMIT`; `tick()`'s summary reports the tombstone count; the
+  min-evidence floor blocks single-dismissal burial.
+- Latency budgets with modulation enabled, **including a 10K variant with `base_score_field=None`**
+  (the 0→1 HGET worst case, per Risk 3); fix `test_lua_decay_scoring.py` to import production Lua.
 
 ### 6. Documentation
 - **Task ID**: document-feature
 - **Depends On**: build-tests
+- **Validates**: mkdocs build --strict (`scripts/ci-local.sh docs`)
 - **Assigned To**: decay-docs
 - **Agent Type**: documentarian
 - **Parallel**: false
@@ -714,6 +795,7 @@ wiring is deployment-side work tracked separately, not part of this plan.
 ### 7. Final validation
 - **Task ID**: validate-all
 - **Depends On**: document-feature
+- **Validates**: all Success Criteria
 - **Assigned To**: decay-validator
 - **Agent Type**: validator
 - **Parallel**: false
@@ -735,11 +817,56 @@ wiring is deployment-side work tracked separately, not part of this plan.
 | Cyclic Lua also modulated (anti-criterion: no half-edit) | `grep -c "math.max(elapsed_days, 1.0)" src/popoto/fields/cyclic_decay_field.py` | output > 0 |
 | Stale private Lua copy removed | `grep -c "^DECAY_SCORE_LUA = " tests/test_lua_decay_scoring.py` | match count == 0 |
 | Tombstone tests present | `pytest tests/test_memory_lifecycle.py -q -k "tombstone or evidence"` | exit code 0 |
+| Cyclic EVAL sites bumped to numkeys 4 (anti-criterion: no silent KEYS collision) | `grep -cE '^\s+4,' src/popoto/models/query.py` | output == 2 |
+| Cyclic Lua reads confidence from KEYS[4], not KEYS[2] | `grep -c 'confidence_hash_key = KEYS\[4\]' src/popoto/fields/cyclic_decay_field.py` | output == 1 |
+| Exponent centers on c₀ (anti-criterion: no hard-coded 0.5 zero point) | `grep -cE 'math\.pow\(2, *s *\* *2 *\* *\(c0' src/popoto/fields/decaying_sorted_field.py` | output > 0 |
 | Anti-criterion: confidence path never hard-deletes | `grep -rn "\.delete()" src/popoto/recipes/memory_lifecycle.py \| grep -i "confidence" \| wc -l` | match count == 0 |
 
 ## Critique Results
 
-<!-- Populated by /do-plan-critique (war room). Leave empty until critique is run. -->
+**Run:** 2026-07-27 · 3 critics (Risk & Robustness, Scope & Value, History & Consistency; FULL depth
+forced by `appetite: Large`) · 8 findings (3 blockers, 4 concerns, 1 nit) · verdict **NEEDS REVISION**
+→ **resolved**. All code-level claims independently re-verified against `c7bd62c` before acting.
+
+**Blockers — resolved:**
+
+1. **`KEYS[2]` collision in `CYCLIC_DECAY_LUA`.** "Mirror the identical change" was incoherent: the
+   cyclic script already binds `KEYS[2]` = cycles, `KEYS[3]` = pressure, numkeys `3` at both EVAL
+   sites. Following the plan literally unpacks a cycles array as a confidence dict — silent
+   corruption, no error. **Fixed**: confidence is `KEYS[4]` in the cyclic script, numkeys bumped to
+   `4` at `query.py:399` and `:1205`, `HGET` guarded on `confidence_hash_key ~= ''`. Added an
+   anti-corruption test (cycles + modulation together) and two grep anti-criteria, since this failure
+   mode is invisible to a passing suite.
+2. **Bit-exact neutrality was conditional and unstated.** `on_save` HSETNXs `initial_confidence` for
+   every record, and that value is a per-field kwarg — so a field set to `0.3` gave every zero-evidence
+   record a permanent `2^(0.4s)` penalty, contradicting the headline guarantee. **Fixed**: the
+   exponent centers on the field's own `c₀` (`2^(s·2·(c₀−c))`), exactly `1.0` when `c == c₀` for any
+   `c₀`, reducing to the original form at the default. Added a non-default-`initial_confidence`
+   neutrality test and success criterion.
+3. **Tombstoning is a second feature.** Correct observation — `grep -ri tombstone` is zero hits
+   repo-wide and the payoff seeds #494, which is out of scope. **Re-confirmed in scope** by the
+   maintainer on 2026-07-27 at Large appetite: reversibility is precisely what licenses the aggressive
+   low-confidence forget rule against Valor's flat-6.0 legacy corpus (354/390 records), where an
+   importance-gated rule would be near-inert. The critic flagged this as a trade to re-confirm, not an
+   error; it was re-confirmed knowingly.
+
+**Concerns — all four addressed:** constants expanded from 2 to 5 with the correct
+`field_kwargs_and_class_attrs` vs `MODULE_CONSTANTS` placement (the sync test would have failed);
+Task 5 now depends on `build-tombstone` with explicit tombstone-test bullets; Risk 3's latency claim
+corrected (the `base_score_field` HGET is guarded and defaults unset, so it is 0→1 per member, not
+1→2) with a `base_score_field=None` 10K benchmark added; auto-detect gains a deploy-level kill switch
+(`DECAY_CONFIDENCE_MODULATION_ENABLED`) because a PyPI adopter hitting a post-upgrade ranking
+regression cannot always edit model code.
+
+**Nit addressed:** every success criterion was mechanism-level while the plan opens on an 82.1%
+dismissal rate. Added a post-deploy outcome criterion, explicitly marked unverifiable at merge.
+
+**Structural nits fixed:** appetite body Medium → Large (frontmatter already said Large);
+`constants.py` given its real path; `Validates` added to Tasks 6 and 7.
+
+**Prerequisite failure to clear before building:** `popoto.__version__` reports **1.7.1** against
+`pyproject.toml` 1.8.0 — stale editable install. Reinstall first or `test_version` fails falsely
+(per CLAUDE.md).
 
 ---
 
@@ -756,9 +883,14 @@ Resolved with the maintainer on 2026-07-25; no open questions remain.
 2. **Strength constant `s = 0.5`.** Decided without escalation: per repo convention, numeric constants
    are experimental-tuning magic numbers, not user config — this is the literature-grounded midpoint
    of spike-4's recommended 0.3–0.7 band and gets tuned by sweep, not by hand.
-3. **Forgetting tombstones rather than deletes**, and confidence alone (plus idleness) may trigger it,
+3. **Forgetting tombstones rather than deletes** (re-confirmed 2026-07-27 against the critique's
+   scope-split challenge), and confidence alone (plus idleness) may trigger it,
    guarded by a minimum-evidence floor. Rationale: an importance-gated rule would be near-inert
    against Valor's legacy flat-6.0 corpus (354 of 390 records), which is exactly the junk to clear;
    tombstoning makes the aggressive policy reversible, and the evidence floor prevents one unlucky
    dismissal from burying a memory. Tombstones then become durable negative evidence — the seed for
    #494.
+4. **Deploy-level kill switch** (2026-07-27, prompted by the critique): auto-detect stays default-on
+   per decision 1, but `DECAY_CONFIDENCE_MODULATION_ENABLED` lets an adopter disable it without
+   editing model code. The field-level escape hatches all assume code access; a third party on PyPI
+   whose ranking regresses after `pip install -U` may only control deploy config.
