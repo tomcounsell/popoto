@@ -29,9 +29,12 @@ Promotion criteria (episodic → semantic, ALL must hold):
     confidence >= PROMOTION_CONFIDENCE_THRESHOLD
     age_seconds >= PROMOTION_MIN_AGE_SECONDS
 
-Auto-forget criteria (non-semantic records, ALL must hold):
-    importance_score < FORGET_IMPORTANCE_FLOOR
-    last_accessed_seconds_ago > FORGET_IDLE_SECONDS
+Auto-forget criteria (non-semantic records)::
+
+    (importance_score < FORGET_IMPORTANCE_FLOOR
+     OR (confidence < FORGET_CONFIDENCE_CEILING
+         AND evidence_count >= FORGET_MIN_EVIDENCE))
+    AND last_accessed_seconds_ago > FORGET_IDLE_SECONDS
 
 Example::
 
@@ -128,6 +131,27 @@ def _get_confidence(record, confidence_field: Optional[str]) -> float:
     # Fall back to direct attribute if not a ConfidenceField
     val = getattr(record, confidence_field, 0.5)
     return float(val) if val is not None else 0.5
+
+
+def _get_confidence_data(record, confidence_field: Optional[str]) -> Optional[dict]:
+    """Return the full ConfidenceField payload for a record, or None.
+
+    One round trip yields both ``confidence`` and ``evidence_count``, which
+    the confidence-driven forget rule needs together (issue #491). Returns
+    None when the model has no usable ConfidenceField or the read fails —
+    callers treat that as "no evidence", never as "forget it".
+    """
+    if confidence_field is None:
+        return None
+    from ..fields.confidence_field import ConfidenceField
+
+    field = record._meta.fields.get(confidence_field)
+    if not isinstance(field, ConfidenceField):
+        return None
+    try:
+        return ConfidenceField.get_confidence_data(record, confidence_field)
+    except Exception:
+        return None
 
 
 def _get_age_seconds(record) -> float:
@@ -234,20 +258,41 @@ def _default_should_promote(record, lifecycle: "MemoryLifecycle") -> Optional[st
 
 
 def _default_should_forget(record, lifecycle: "MemoryLifecycle") -> bool:
-    """Return True if the record should be hard-deleted.
+    """Return True if the record should be forgotten.
+
+    Criteria (issue #491)::
+
+        (importance < FORGET_IMPORTANCE_FLOOR
+         OR (confidence < FORGET_CONFIDENCE_CEILING
+             AND evidence_count >= FORGET_MIN_EVIDENCE))
+        AND idle > FORGET_IDLE_SECONDS
 
     Semantic memories are protected by default.
-    Both importance floor AND idle threshold must be exceeded.
+
+    The confidence disjunct closes the promote/forget asymmetry: confidence
+    already gated promotion (PROMOTION_CONFIDENCE_THRESHOLD) but was blind to
+    forgetting, so a memory dismissed ten times decayed exactly as fast as one
+    acted on ten times. The min-evidence conjunct is load-bearing —
+    ConfidenceField starts at ``initial_confidence`` and moves on every signal,
+    so without a minimum track record one unlucky dismissal could bury a
+    memory (Risk 6).
+
+    Models with no ConfidenceField take the importance-only path, which is
+    byte-identical to the pre-#491 behavior.
     """
     tier = _get_tier(record, lifecycle.tier_field)
     if tier == "semantic":
         return False
-    importance = _get_importance_score(record, lifecycle.importance_field)
+
     idle = _get_idle_seconds(record)
-    return (
-        importance < lifecycle.FORGET_IMPORTANCE_FLOOR
-        and idle > lifecycle.FORGET_IDLE_SECONDS
-    )
+    if idle <= lifecycle.FORGET_IDLE_SECONDS:
+        return False
+
+    importance = _get_importance_score(record, lifecycle.importance_field)
+    if importance < lifecycle.FORGET_IMPORTANCE_FLOOR:
+        return True
+
+    return lifecycle.confidence_forget_eligible(record)
 
 
 # ---------------------------------------------------------------------------
@@ -384,6 +429,22 @@ class MemoryLifecycle:
             if isinstance(field, ConfidenceField):
                 self._confidence_field = fname
                 break
+
+        # Confidence-driven forgetting (#491) resolves its field through the
+        # same helper the decay path uses, so forgetting and ranking always
+        # listen to the same evidence signal — including the deploy-level
+        # kill switch (DECAY_CONFIDENCE_MODULATION_ENABLED) and the
+        # ambiguity rule (2+ ConfidenceFields => off rather than a guess).
+        from ..fields.decaying_sorted_field import (
+            resolve_confidence_modulation_field,
+        )
+
+        forget_field_name, _ = resolve_confidence_modulation_field(
+            model_class,
+            model_class._meta.fields[importance_field],
+            importance_field,
+        )
+        self._forget_confidence_field: Optional[str] = forget_field_name
 
     def _validate_fields(self) -> None:
         """Validate that required fields exist on the model class.
@@ -538,6 +599,26 @@ class MemoryLifecycle:
             promotion_eligible=promotion_eligible,
             forget_eligible=forget_eligible,
         )
+
+    def confidence_forget_eligible(self, record) -> bool:
+        """Return True if accumulated outcome evidence alone justifies forgetting.
+
+        Requires BOTH a confidence below ``FORGET_CONFIDENCE_CEILING`` and at
+        least ``FORGET_MIN_EVIDENCE`` observations. Returns False whenever the
+        evidence cannot be read at all — absence of evidence is never evidence
+        for forgetting.
+        """
+        data = _get_confidence_data(record, self._forget_confidence_field)
+        if not data:
+            return False
+        try:
+            evidence = int(data.get("evidence_count", 0) or 0)
+            confidence = float(data.get("confidence"))
+        except (TypeError, ValueError):
+            return False
+        if evidence < self.FORGET_MIN_EVIDENCE:
+            return False
+        return confidence < self.FORGET_CONFIDENCE_CEILING
 
     # -------------------------------------------------------------------
     # Internal passes

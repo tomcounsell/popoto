@@ -623,12 +623,12 @@ def test_tick_produces_zero_staged_entries():
     staged_after = list(redis.scan_iter("$AT:TrackedMemory:staged:*"))
     total_len_after = sum(redis.llen(k) for k in staged_after)
 
-    assert len(staged_after) == len(staged_before), (
-        f"tick() created {len(staged_after) - len(staged_before)} new staged keys"
-    )
-    assert total_len_after == total_len_before, (
-        f"tick() appended {total_len_after - total_len_before} new staged entries"
-    )
+    assert len(staged_after) == len(
+        staged_before
+    ), f"tick() created {len(staged_after) - len(staged_before)} new staged keys"
+    assert (
+        total_len_after == total_len_before
+    ), f"tick() appended {total_len_after - total_len_before} new staged entries"
 
 
 def test_tick_produces_zero_staged_entries_with_partition_filters():
@@ -753,7 +753,7 @@ def test_forget_guard_skips_record_promoted_to_semantic():
         importance_field="relevance",
     )
     # Tune so record would normally be forgotten (zero importance, zero idle)
-    lifecycle.FORGET_IMPORTANCE_FLOOR = 1.1   # floor above max importance
+    lifecycle.FORGET_IMPORTANCE_FLOOR = 1.1  # floor above max importance
     lifecycle.FORGET_IDLE_SECONDS = 0.0
 
     record = TrackedMemory(tier="episodic")
@@ -770,9 +770,9 @@ def test_forget_guard_skips_record_promoted_to_semantic():
     lifecycle.tick()
 
     # Record must still exist (not deleted)
-    assert redis.exists(live_key), (
-        "Re-check-tier guard failed: record was deleted despite tier being semantic in Redis"
-    )
+    assert redis.exists(
+        live_key
+    ), "Re-check-tier guard failed: record was deleted despite tier being semantic in Redis"
 
 
 def test_forget_guard_skips_absent_key():
@@ -801,3 +801,135 @@ def test_forget_guard_skips_absent_key():
     # (skip-delete because key is absent — NOT a double-delete error)
     summary = lifecycle.tick()
     assert summary["forgotten"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Confidence-driven forgetting (#491)
+# ---------------------------------------------------------------------------
+
+
+def _set_confidence(record, confidence, evidence_count, field_name="confidence"):
+    """Write a confidence payload directly into the ConfidenceField :data hash.
+
+    Bypasses the Bayesian update so policy tests can pin an exact
+    (confidence, evidence_count) pair instead of depending on how many
+    signals it takes to cross a threshold.
+    """
+    import msgpack
+    import popoto as popoto_pkg
+
+    field = type(record)._meta.fields[field_name]
+    data_key = field.get_data_hash_key(record, field_name)
+    popoto_pkg.get_redis().hset(
+        data_key,
+        record.db_key.redis_key,
+        msgpack.packb(
+            {
+                "confidence": confidence,
+                "evidence_count": evidence_count,
+                "corroborations": 0,
+                "contradictions": evidence_count,
+            },
+            use_bin_type=True,
+        ),
+    )
+
+
+def _forget_ready_lifecycle(**kwargs):
+    """Lifecycle whose importance path can never fire, so only confidence can."""
+    lifecycle = MemoryLifecycle(
+        model_class=TrackedMemory,
+        importance_field="relevance",
+        **kwargs,
+    )
+    # Floor of 0.0 => importance < floor is impossible (scores are >= 0.0),
+    # so the importance branch is disabled and only confidence can forget.
+    lifecycle.FORGET_IMPORTANCE_FLOOR = 0.0
+    lifecycle.FORGET_IDLE_SECONDS = -1.0  # any idle time qualifies
+    return lifecycle
+
+
+def test_low_confidence_with_evidence_is_forget_eligible():
+    """Confidence below the ceiling with enough evidence forgets on its own."""
+    lifecycle = _forget_ready_lifecycle()
+    record = _make_record(tier="episodic")
+    _set_confidence(record, 0.05, lifecycle.FORGET_MIN_EVIDENCE)
+
+    assert lifecycle.assess(record).forget_eligible is True
+
+
+def test_min_evidence_floor_blocks_single_dismissal_burial():
+    """One unlucky dismissal must not bury a memory (LIFECYCLE_FORGET_MIN_EVIDENCE)."""
+    lifecycle = _forget_ready_lifecycle()
+    record = _make_record(tier="episodic")
+    _set_confidence(record, 0.01, 1)
+
+    assert lifecycle.assess(record).forget_eligible is False
+
+    summary = lifecycle.tick()
+    assert summary["forgotten"] == 0
+    assert TrackedMemory.query.get(key=record.key) is not None
+
+
+def test_confidence_above_ceiling_is_not_forget_eligible():
+    """Plenty of evidence but healthy confidence stays."""
+    lifecycle = _forget_ready_lifecycle()
+    record = _make_record(tier="episodic")
+    _set_confidence(record, 0.9, 20)
+
+    assert lifecycle.assess(record).forget_eligible is False
+
+
+def test_semantic_tier_still_protected_from_confidence_forget():
+    """Semantic protection outranks the confidence path."""
+    lifecycle = _forget_ready_lifecycle()
+    record = _make_record(tier="semantic")
+    _set_confidence(record, 0.01, 20)
+
+    assert lifecycle.assess(record).forget_eligible is False
+    summary = lifecycle.tick()
+    assert summary["forgotten"] == 0
+
+
+def test_model_without_confidence_field_unchanged():
+    """A model with no ConfidenceField behaves exactly as before."""
+    lifecycle = MemoryLifecycle(
+        model_class=UntrackedMemory,
+        importance_field="relevance",
+    )
+    lifecycle.FORGET_IMPORTANCE_FLOOR = 0.0  # importance branch disabled
+    lifecycle.FORGET_IDLE_SECONDS = -1.0
+
+    record = UntrackedMemory(tier="episodic")
+    record.save()
+
+    assert lifecycle.assess(record).forget_eligible is False
+    assert lifecycle.tick()["forgotten"] == 0
+
+
+def test_custom_should_forget_override_bypasses_confidence():
+    """A custom should_forget still wins outright."""
+    lifecycle = MemoryLifecycle(
+        model_class=TrackedMemory,
+        importance_field="relevance",
+        should_forget=lambda record, lc: False,
+    )
+    record = _make_record(tier="episodic")
+    _set_confidence(record, 0.0, 20)
+
+    assert lifecycle.assess(record).forget_eligible is False
+    assert lifecycle.tick()["forgotten"] == 0
+
+
+def test_real_dismissal_signals_drive_forget_eligibility():
+    """End-to-end: repeated dismissals via update_confidence make a record forgettable."""
+    lifecycle = _forget_ready_lifecycle()
+    record = _make_record(tier="episodic")
+
+    for _ in range(12):
+        ConfidenceField.update_confidence(record, "confidence", 0.0)
+
+    data = ConfidenceField.get_confidence_data(record, "confidence")
+    assert data["confidence"] < lifecycle.FORGET_CONFIDENCE_CEILING
+    assert data["evidence_count"] >= lifecycle.FORGET_MIN_EVIDENCE
+    assert lifecycle.assess(record).forget_eligible is True
