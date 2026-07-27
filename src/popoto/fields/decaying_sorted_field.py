@@ -45,16 +45,34 @@ logger = logging.getLogger("POPOTO.DecayingSortedField")
 # Returns top-N member keys ranked by decayed score.
 #
 # KEYS[1] = sorted set key (member -> last_updated_timestamp)
+# KEYS[2] = ConfidenceField ":data" companion hash (member -> msgpack payload).
+#           Empty string / absent = confidence modulation disabled.
 # ARGV[1] = current timestamp (seconds)
 # ARGV[2] = decay rate (e.g. 0.5)
 # ARGV[3] = max results to return
 # ARGV[4] = base_score_field name (empty string = default 1.0)
+# ARGV[5] = confidence modulation strength s (0 / absent = disabled)
+# ARGV[6] = c0, the confidence field's initial_confidence. Serves as BOTH the
+#           default for members with no confidence data AND the centering
+#           constant, so a zero-evidence record is bit-exactly neutral for any
+#           configured initial_confidence (not just 0.5).
 DECAY_SCORE_LUA = """
 local zset_key = KEYS[1]
+-- Confidence hash is KEYS[2] *in this script only*. The CyclicDecayField fork
+-- of this math binds KEYS[2] = cycles and KEYS[3] = pressure, so its confidence
+-- hash is KEYS[4]. The indices are deliberately different -- do not "unify"
+-- them: reusing KEYS[2] there would cmsgpack.unpack the cycles array as a
+-- confidence dict, which corrupts silently instead of erroring.
+local confidence_hash_key = KEYS[2] or ''
 local now = tonumber(ARGV[1])
 local decay_rate = tonumber(ARGV[2])
 local max_results = tonumber(ARGV[3])
 local base_score_field = ARGV[4]
+local s = tonumber(ARGV[5]) or 0
+local c0 = tonumber(ARGV[6]) or 0.5
+
+-- When modulation is off, never pay for the extra HGET per member.
+local modulate = confidence_hash_key ~= '' and s ~= 0
 
 -- Get all members with their last_updated timestamps
 local members = redis.call('ZRANGE', zset_key, 0, -1, 'WITHSCORES')
@@ -88,6 +106,44 @@ for i = 1, #members, 2 do
     local sign = base_score < 0 and -1 or 1
     local mag = math.abs(base_score)
     local decayed = sign * mag * math.pow(elapsed_days, -decay_rate)
+
+    if modulate then
+        -- Per-member effective decay rate from accumulated outcome evidence.
+        -- Payload shape matches CAPPED_BAYESIAN_UPDATE_LUA's writer; anything
+        -- missing / undecodable / non-numeric falls back to c0 (neutral).
+        local c = c0
+        local craw = redis.call('HGET', confidence_hash_key, member)
+        if craw then
+            local ok, data = pcall(cmsgpack.unpack, craw)
+            if ok and type(data) == 'table' then
+                local v = data['confidence'] or data[1]
+                if type(v) == 'number' then
+                    c = v
+                end
+            end
+        end
+        -- Defensive clamp: the hash could hold anything.
+        c = math.max(0, math.min(1, c))
+
+        local eff = decay_rate * math.pow(2, s * 2 * (c0 - c))
+
+        -- Correction factor, applied on top of TODAY'S formula so neutrality is
+        -- bit-exact: when c == c0 the exponent is exactly 0 and math.pow(x, -0)
+        -- is exactly 1.0.
+        --
+        -- The math.max(elapsed_days, 1.0) guard is load-bearing, NOT redundant.
+        -- elapsed_days is floored at 0.01, and for t < 1 the term t^(-rate) is a
+        -- multiplier > 1 that a LARGER rate amplifies MORE (at t=0.01, rate 0.66
+        -- gives x21.9 vs x5.0 for rate 0.35). Without the guard, modulation runs
+        -- backwards for the first 24 hours and boosts exactly the low-confidence
+        -- junk it is meant to bury -- and since agent memory is touched
+        -- constantly, most of the working set lives in that region. Clamping the
+        -- correction's base to >= 1.0 makes the term exactly 1.0 for fresh
+        -- records, so modulation only ever applies in the region where a higher
+        -- rate means a lower score.
+        decayed = decayed
+            * math.pow(math.max(elapsed_days, 1.0), -(eff - decay_rate))
+    end
 
     table.insert(scored, {member, decayed})
 end
@@ -133,7 +189,7 @@ class DecayingSortedField(SortedFieldMixin, Field):
 
     Args:
         decay_rate: Controls how fast scores drop. Higher = faster decay.
-            Default 0.5. Must be > 0.
+            Defaults to ``Defaults.DECAY_RATE`` (0.1). Must be > 0.
         base_score_field: Name of a companion field whose value multiplies
             the decay curve. When None, base score is 1.0.
         partition_by: Partition the sorted set by key field values.
