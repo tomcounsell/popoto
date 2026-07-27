@@ -159,6 +159,15 @@ DEFAULT_SCORE_WEIGHTS = {"confidence": 0.6, "last_reinforced": 0.4}
 
 Confidence dominates; freshness breaks ties between equally-confident patterns. Override per-call via `recall(..., score_weights={"confidence": 1.0, "last_reinforced": 0.0})`.
 
+!!! note "Confidence enters the score twice"
+    `recall()` ranks via `composite_score()`, and the `last_reinforced` component is itself
+    [confidence-modulated](../features/decaying-sorted-field.md#confidence-modulated-decay):
+    `ProceduralPattern` declares exactly one `ConfidenceField`, so it is auto-detected and
+    low-confidence patterns decay faster than high-confidence ones of the same age. Confidence
+    therefore influences both the `confidence` term and the `last_reinforced` term. Setting
+    `score_weights={"confidence": 0.0, ...}` does **not** remove confidence from the ranking —
+    pass `confidence_modulation_field=False` on `last_reinforced` for that.
+
 `cluster_threshold` defaults to `Defaults.TRAJECTORY_CLUSTER_THRESHOLD` (currently `3`) when omitted. The constant participates in the project-wide tuning sweeps described in [Magic Numbers Tuning](tuning-magic-numbers.md). Override before model definition or at runtime:
 
 ```python

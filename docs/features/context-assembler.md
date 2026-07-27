@@ -189,6 +189,16 @@ If both BM25 and vector signals return empty results, the path falls back to the
 4. **Post-effects**: Fire `ObservationProtocol.on_read()` for selected records.
 5. **Competitive suppression**: Non-selected pull-path candidates receive a mild contradiction signal via ConfidenceField.
 
+!!! note "Suppression now compounds into ranking and forgetting"
+    Since [confidence-modulated decay](decaying-sorted-field.md#confidence-modulated-decay),
+    the suppression signal in step 5 does more than lower a stored number: a repeatedly
+    suppressed record decays faster than an equally-old record with neutral confidence, so it
+    falls out of future pull-path candidate sets on its own. Once its confidence drops below
+    `FORGET_CONFIDENCE_CEILING` and it has at least `FORGET_MIN_EVIDENCE` observations behind
+    it, an idle record also becomes eligible for
+    [`MemoryLifecycle`](../recipes.md#memorylifecycle) tombstoning. To keep suppression purely
+    a ranking nudge, set `confidence_modulation_field=False` on the decay field.
+
 ## Token Budget Semantics
 
 `max_tokens` is enforced against the serialized text that is actually emitted to the LLM — not against a proxy like the Redis key or `str(record)`.
