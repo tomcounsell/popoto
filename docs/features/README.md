@@ -10,8 +10,8 @@ Agent-memory primitives and recipes shipped in Popoto.
 | [ConfidenceField](confidence-field.md) | Capped-evidence certainty tracking with corroborate/contradict updates | Stable |
 | [ContentField + EmbeddingField](content-and-embedding-fields.md) | Large content routing and vector embedding storage | Stable |
 | [ContextAssembler](context-assembler.md) | Retrieval-to-injection bridge orchestrating pull and push paths | Stable |
-| [CyclicDecayField](cyclic-decay-field.md) | Cyclical resonance, pressure, and proactive surfacing | Stable |
-| [DecayingSortedField](decaying-sorted-field.md) | Time-decayed sorted index for relevance ranking | Stable |
+| [CyclicDecayField](cyclic-decay-field.md) | Cyclical resonance, pressure, proactive surfacing, and confidence-modulated decay | Stable |
+| [DecayingSortedField](decaying-sorted-field.md) | Time-decayed sorted index for relevance ranking, with confidence-modulated per-record decay rates | Stable |
 | [ExistenceFilter](existence-filter.md) | Probabilistic membership pre-check (Bloom-style) | Stable |
 | [Hybrid Retrieval (BM25 + RRF)](hybrid-retrieval.md) | BM25 keyword search fused with vector scores via RRF | Stable |
 | [Kitchen Edge Case Demo](kitchen-edge-case-demo.md) | Worked examples covering edge cases across primitives | Reference |
