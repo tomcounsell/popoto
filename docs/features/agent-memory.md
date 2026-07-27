@@ -1687,8 +1687,11 @@ lifecycle.restore(tomb.redis_key)    # back in the live corpus, indexes rebuilt
 
 Each `Tombstone` carries `redis_key`, `fingerprint`, `tier`, `importance_at_death`,
 `confidence_at_death`, `evidence_count`, `dismissal_count`, `tombstoned_at`, and
-`reason`. Retention is bounded by `LIFECYCLE_TOMBSTONE_RETENTION_LIMIT` (1000) with
-the oldest aging out, so the tombstone corpus cannot outgrow the records it replaced.
+`reason`. Alongside that death metadata, the stored tombstone entry also archives
+the record's **full payload** — that archive is what makes `restore()` possible.
+Because a tombstone is therefore about as large as the record it replaced,
+retention is bounded by `LIFECYCLE_TOMBSTONE_RETENTION_LIMIT` (1000) with the
+oldest aging out, so the tombstone corpus cannot outgrow the live corpus.
 `tick()` reports `tombstoned` alongside `forgotten` so a runaway forget policy is
 visible in telemetry immediately.
 

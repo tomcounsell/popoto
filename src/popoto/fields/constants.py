@@ -201,8 +201,10 @@ class Defaults:
     # rather than deletes, so retention must be capped or tombstones outgrow
     # the records they replaced. Oldest age out past this count. 1000 keeps the
     # negative-evidence corpus meaningful for #494 while staying small next to
-    # the 20k-record scale target; tombstones hold a fingerprint plus small
-    # death metadata, not full content.
+    # the 20k-record scale target. Each tombstone archives the record's full
+    # payload (that archive is what makes restore() possible) plus a
+    # fingerprint and death metadata, so retention has to be bounded rather
+    # than assumed cheap.
     LIFECYCLE_TOMBSTONE_RETENTION_LIMIT = 1000
 
     # -- Extraction (extraction/) ---------------------------------------------

@@ -603,9 +603,10 @@ class MemoryLifecycle:
         immediately before deletion to prevent concurrent promotion races.
 
         Forgetting **tombstones** rather than deletes (#491): the record leaves
-        the live corpus (and therefore every retrieval path) but its
-        fingerprint and death metadata are retained, and ``restore()`` can undo
-        the decision. Use ``forget_hard()`` for irreversible deletion.
+        the live corpus (and therefore every retrieval path) but its full
+        payload, fingerprint, and death metadata are archived, which is what
+        lets ``restore()`` undo the decision. Use ``forget_hard()`` for
+        irreversible deletion.
 
         Safe to run concurrently — promotion and forgetting are idempotent at
         the record level. Worst case: two concurrent ticks both promote the
@@ -943,7 +944,7 @@ class MemoryLifecycle:
     # Internal passes
     # -------------------------------------------------------------------
 
-    def _tick_pass(self) -> Tuple[int, int]:
+    def _tick_pass(self) -> Tuple[int, int, int]:
         """Single-pass hydration: promote then forget, loading all non-semantic records once.
 
         Loads all non-semantic records using a single non-tracking query.
@@ -1052,8 +1053,9 @@ class MemoryLifecycle:
                     continue
 
                 # Forgetting tombstones rather than deletes (#491): the record
-                # leaves every retrieval path but its fingerprint and death
-                # metadata survive, and restore() can undo the decision.
+                # leaves every retrieval path but its full payload, fingerprint,
+                # and death metadata are archived, so restore() can undo the
+                # decision.
                 if self.tombstone(record, reason="lifecycle") is not None:
                     forgotten += 1
                     tombstoned += 1
