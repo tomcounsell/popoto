@@ -160,6 +160,20 @@ _TOMBSTONE_REQUIRED_FIELDS: Tuple[str, ...] = tuple(
 )
 
 
+def _sync(reply: Any) -> Any:
+    """Narrow a redis-py reply out of its ``Awaitable[T] | T`` union.
+
+    redis-py shares one set of command stubs between its sync and asyncio
+    clients, so every command is typed as possibly-awaitable. ``POPOTO_REDIS_DB``
+    is always the sync client, so these replies are never awaitable. Which
+    call sites this affects varies by redis-py version (7.x flags several that
+    8.x does not), so the narrowing is centralized here rather than sprinkled
+    as per-site ``type: ignore`` comments that would go stale in either
+    direction.
+    """
+    return reply
+
+
 def _decoded_members(reply: Any) -> List[str]:
     """Decode a Redis ZSET member reply into ``str`` keys.
 
@@ -847,7 +861,7 @@ class MemoryLifecycle:
 
         payload = {
             (k.decode() if isinstance(k, bytes) else str(k)): v
-            for k, v in raw_hash.items()
+            for k, v in _sync(raw_hash).items()
         }
         entry = dict(tomb.__dict__)
         entry["payload"] = payload
@@ -889,7 +903,7 @@ class MemoryLifecycle:
         data_key, index_key = self._tombstone_keys()
         keys: List[str] = []
         try:
-            excess = int(POPOTO_REDIS_DB.zcard(index_key)) - limit
+            excess = int(_sync(POPOTO_REDIS_DB.zcard(index_key))) - limit
             if excess <= 0:
                 return 0
             oldest = POPOTO_REDIS_DB.zrange(index_key, 0, excess - 1)
@@ -910,7 +924,7 @@ class MemoryLifecycle:
         """Return the number of retained tombstones for this model class."""
         _, index_key = self._tombstone_keys()
         try:
-            return int(POPOTO_REDIS_DB.zcard(index_key))
+            return int(_sync(POPOTO_REDIS_DB.zcard(index_key)))
         except Exception:
             return 0
 
@@ -926,7 +940,7 @@ class MemoryLifecycle:
         if not raw_keys:
             return []
         keys = _decoded_members(raw_keys)
-        raws = POPOTO_REDIS_DB.hmget(data_key, keys)
+        raws = _sync(POPOTO_REDIS_DB.hmget(data_key, keys))
         tombstones: List[Tombstone] = []
         for raw in raws:
             entry = _unpack_tombstone_entry(raw)
