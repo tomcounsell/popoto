@@ -1655,6 +1655,13 @@ the same helper the decay path uses, so ranking and forgetting always listen to 
 same signal — including the `DECAY_CONFIDENCE_MODULATION_ENABLED` kill switch and the
 "two or more `ConfidenceField`s means off" ambiguity rule.
 
+The kill switch is re-read on every call here too, not captured when the
+`MemoryLifecycle` is constructed. Setting
+`Defaults.DECAY_CONFIDENCE_MODULATION_ENABLED = False` therefore suppresses
+confidence-driven forgetting immediately, on lifecycle instances that already exist —
+which matters more on this path than on the ranking path, because this is the half
+that mutates data.
+
 ### Tombstones, not deletes
 
 Forgetting archives the record and removes it from the live corpus rather than
@@ -1682,6 +1689,12 @@ lifecycle.restore(tomb.redis_key)    # back in the live corpus, indexes rebuilt
 | `get_tombstone(redis_key)` | One `Tombstone`, or `None` |
 | `tombstone_count()` | Number retained |
 | `purge_tombstone(redis_key)` / `purge_all_tombstones()` | Drop tombstones permanently |
+
+A stored tombstone entry that is undecodable, is not a mapping, or is missing any
+required field is skipped with a logged warning rather than returned as a partly-empty
+`Tombstone`. So `list_tombstones()` and `get_tombstone()` can return fewer entries than
+`tombstone_count()` reports if the archive has been corrupted or written to by something
+other than `tombstone()` — every `Tombstone` you receive is complete.
 | `forget_hard(record)` | Irreversible delete, no tombstone |
 | `confidence_forget_eligible(record)` | Whether evidence alone justifies forgetting |
 
