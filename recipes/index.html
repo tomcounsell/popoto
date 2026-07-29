@@ -2250,6 +2250,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#tombstones" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tombstones
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#custom-policies" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3061,6 +3072,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#tombstones" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tombstones
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#custom-policies" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3534,7 +3556,7 @@ working → episodic → semantic lifecycle — without replacing any of them.</
 <a id="__codelineno-13-28" name="__codelineno-13-28" href="#__codelineno-13-28"></a><span class="c1"># 4. Run a lifecycle pass periodically (e.g. after each conversation turn,</span>
 <a id="__codelineno-13-29" name="__codelineno-13-29" href="#__codelineno-13-29"></a><span class="c1">#    or on a background schedule)</span>
 <a id="__codelineno-13-30" name="__codelineno-13-30" href="#__codelineno-13-30"></a><span class="n">summary</span> <span class="o">=</span> <span class="n">lifecycle</span><span class="o">.</span><span class="n">tick</span><span class="p">()</span>
-<a id="__codelineno-13-31" name="__codelineno-13-31" href="#__codelineno-13-31"></a><span class="c1"># {&quot;promoted&quot;: 0, &quot;forgotten&quot;: 0, &quot;duration_ms&quot;: 1.4}</span>
+<a id="__codelineno-13-31" name="__codelineno-13-31" href="#__codelineno-13-31"></a><span class="c1"># {&quot;promoted&quot;: 0, &quot;forgotten&quot;: 0, &quot;tombstoned&quot;: 0, &quot;duration_ms&quot;: 1.4}</span>
 <a id="__codelineno-13-32" name="__codelineno-13-32" href="#__codelineno-13-32"></a>
 <a id="__codelineno-13-33" name="__codelineno-13-33" href="#__codelineno-13-33"></a><span class="c1"># 5. Inspect a record&#39;s lifecycle state</span>
 <a id="__codelineno-13-34" name="__codelineno-13-34" href="#__codelineno-13-34"></a><span class="n">state</span> <span class="o">=</span> <span class="n">lifecycle</span><span class="o">.</span><span class="n">assess</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>
@@ -3570,7 +3592,12 @@ hold simultaneously:</p>
 </table>
 <p>Promotion is non-reversible in v1 (no demotion from semantic).</p>
 <h3 id="auto-forget-criteria">Auto-forget criteria<a class="headerlink" href="#auto-forget-criteria" title="Permanent link">&para;</a></h3>
-<p>A non-semantic record is deleted when <strong>both</strong> hold:</p>
+<p>A non-semantic record is forgotten when it is idle <strong>and</strong> either its importance has
+bottomed out or its accumulated outcome evidence has turned decisively negative:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>(importance_score &lt; FORGET_IMPORTANCE_FLOOR
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a> OR (confidence &lt; FORGET_CONFIDENCE_CEILING AND evidence_count &gt;= FORGET_MIN_EVIDENCE))
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>AND idle_seconds &gt; FORGET_IDLE_SECONDS
+</code></pre></div>
 <table>
 <thead>
 <tr>
@@ -3584,80 +3611,163 @@ hold simultaneously:</p>
 <td>0.1</td>
 </tr>
 <tr>
+<td><code>confidence &lt; FORGET_CONFIDENCE_CEILING</code></td>
+<td>0.3</td>
+</tr>
+<tr>
+<td><code>evidence_count &gt;= FORGET_MIN_EVIDENCE</code></td>
+<td>5</td>
+</tr>
+<tr>
 <td><code>idle_seconds &gt; FORGET_IDLE_SECONDS</code></td>
 <td>86 400 (24 h)</td>
 </tr>
 </tbody>
 </table>
-<p>Semantic records are <strong>never</strong> deleted by the default policy.</p>
+<p>The confidence disjunct closes the promote/forget asymmetry — confidence already gated
+promotion but was blind to forgetting. <code>FORGET_MIN_EVIDENCE</code> is a safety floor rather
+than a tuning knob: confidence moves on every reported outcome, so without a minimum
+track record one unlucky dismissal could bury a memory. Models with no
+<code>ConfidenceField</code> take the importance-only path, unchanged from before.</p>
+<p>Semantic records are <strong>never</strong> forgotten by the default policy.</p>
+<h3 id="tombstones">Tombstones<a class="headerlink" href="#tombstones" title="Permanent link">&para;</a></h3>
+<p>Forgetting archives the record and removes it from the live corpus rather than deleting
+it, so exclusion from every retrieval mode is structural — no read path has to remember
+to filter tombstones out. The fingerprint, archived payload, and death metadata are kept
+under <code>$TOMB:{Model}:*</code>, and the decision is reversible.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="n">summary</span> <span class="o">=</span> <span class="n">lifecycle</span><span class="o">.</span><span class="n">tick</span><span class="p">()</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="c1"># {&quot;promoted&quot;: 0, &quot;forgotten&quot;: 3, &quot;tombstoned&quot;: 3, &quot;duration_ms&quot;: 2.1}</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="n">lifecycle</span><span class="o">.</span><span class="n">tombstone_count</span><span class="p">()</span>                 <span class="c1"># 3</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="n">tombs</span> <span class="o">=</span> <span class="n">lifecycle</span><span class="o">.</span><span class="n">list_tombstones</span><span class="p">(</span><span class="n">limit</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span> <span class="c1"># newest death first</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="n">tombs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">confidence_at_death</span>                <span class="c1"># e.g. 0.12</span>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="n">tombs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">dismissal_count</span>                    <span class="c1"># e.g. 7</span>
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a>
+<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a><span class="n">lifecycle</span><span class="o">.</span><span class="n">restore</span><span class="p">(</span><span class="n">tombs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">redis_key</span><span class="p">)</span>       <span class="c1"># live again, all indexes rebuilt</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>tombstone(record, reason="policy")</code></td>
+<td>Forget one record explicitly; returns a <code>Tombstone</code> or <code>None</code></td>
+</tr>
+<tr>
+<td><code>restore(redis_key)</code></td>
+<td>Re-save the archived record (re-runs every <code>on_save</code> hook, so sorted/unique/geo indexes are rebuilt) and drop its tombstone</td>
+</tr>
+<tr>
+<td><code>list_tombstones(limit=None)</code></td>
+<td>Retained <code>Tombstone</code>s, newest death first</td>
+</tr>
+<tr>
+<td><code>get_tombstone(redis_key)</code></td>
+<td>One <code>Tombstone</code>, or <code>None</code> if it aged out</td>
+</tr>
+<tr>
+<td><code>tombstone_count()</code></td>
+<td>Number currently retained</td>
+</tr>
+<tr>
+<td><code>purge_tombstone(redis_key)</code></td>
+<td>Drop one tombstone permanently</td>
+</tr>
+<tr>
+<td><code>purge_all_tombstones()</code></td>
+<td>Drop every tombstone for this model class</td>
+</tr>
+<tr>
+<td><code>forget_hard(record)</code></td>
+<td>Irreversible delete with no tombstone</td>
+</tr>
+<tr>
+<td><code>confidence_forget_eligible(record)</code></td>
+<td>Whether evidence alone justifies forgetting</td>
+</tr>
+</tbody>
+</table>
+<p>A <code>Tombstone</code> carries <code>redis_key</code>, <code>fingerprint</code> (the <code>ExistenceFilter</code> fingerprint when
+the model has one, else the <code>redis_key</code>), <code>tier</code>, <code>importance_at_death</code>,
+<code>confidence_at_death</code>, <code>evidence_count</code>, <code>dismissal_count</code>, <code>tombstoned_at</code>, and <code>reason</code>.</p>
+<p>Retention is bounded by <code>TOMBSTONE_RETENTION_LIMIT</code> (1000); the oldest age out, so a
+restore is only available while the tombstone is still retained. Archiving happens before
+removal, so a crash between the two steps loses nothing.</p>
 <h3 id="custom-policies">Custom policies<a class="headerlink" href="#custom-policies" title="Permanent link">&para;</a></h3>
 <p>Override the default promotion or forget logic at construction time:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">my_should_promote</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="n">lifecycle</span><span class="p">):</span>
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Promote immediately if content contains a confirmed fact.&quot;&quot;&quot;</span>
-<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>    <span class="k">if</span> <span class="s2">&quot;confirmed:&quot;</span> <span class="ow">in</span> <span class="n">record</span><span class="o">.</span><span class="n">content</span><span class="p">:</span>
-<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>        <span class="k">return</span> <span class="s2">&quot;semantic&quot;</span>
-<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>    <span class="k">return</span> <span class="kc">None</span>  <span class="c1"># defer to normal criteria</span>
-<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>
-<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="k">def</span><span class="w"> </span><span class="nf">my_should_forget</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="n">lifecycle</span><span class="p">):</span>
-<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Never forget anything tagged &#39;keep&#39;.&quot;&quot;&quot;</span>
-<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>    <span class="k">if</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;[keep]&quot;</span><span class="p">):</span>
-<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>        <span class="k">return</span> <span class="kc">False</span>
-<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a>    <span class="c1"># Fall through to default behavior</span>
-<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes.memory_lifecycle</span><span class="w"> </span><span class="kn">import</span> <span class="n">_default_should_forget</span>
-<a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a>    <span class="k">return</span> <span class="n">_default_should_forget</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="n">lifecycle</span><span class="p">)</span>
-<a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a>
-<a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a><span class="n">lifecycle</span> <span class="o">=</span> <span class="n">MemoryLifecycle</span><span class="p">(</span>
-<a id="__codelineno-14-16" name="__codelineno-14-16" href="#__codelineno-14-16"></a>    <span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span>
-<a id="__codelineno-14-17" name="__codelineno-14-17" href="#__codelineno-14-17"></a>    <span class="n">importance_field</span><span class="o">=</span><span class="s2">&quot;relevance&quot;</span><span class="p">,</span>
-<a id="__codelineno-14-18" name="__codelineno-14-18" href="#__codelineno-14-18"></a>    <span class="n">should_promote</span><span class="o">=</span><span class="n">my_should_promote</span><span class="p">,</span>
-<a id="__codelineno-14-19" name="__codelineno-14-19" href="#__codelineno-14-19"></a>    <span class="n">should_forget</span><span class="o">=</span><span class="n">my_should_forget</span><span class="p">,</span>
-<a id="__codelineno-14-20" name="__codelineno-14-20" href="#__codelineno-14-20"></a><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">my_should_promote</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="n">lifecycle</span><span class="p">):</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Promote immediately if content contains a confirmed fact.&quot;&quot;&quot;</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>    <span class="k">if</span> <span class="s2">&quot;confirmed:&quot;</span> <span class="ow">in</span> <span class="n">record</span><span class="o">.</span><span class="n">content</span><span class="p">:</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>        <span class="k">return</span> <span class="s2">&quot;semantic&quot;</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>    <span class="k">return</span> <span class="kc">None</span>  <span class="c1"># defer to normal criteria</span>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a><span class="k">def</span><span class="w"> </span><span class="nf">my_should_forget</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="n">lifecycle</span><span class="p">):</span>
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Never forget anything tagged &#39;keep&#39;.&quot;&quot;&quot;</span>
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a>    <span class="k">if</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;[keep]&quot;</span><span class="p">):</span>
+<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a>        <span class="k">return</span> <span class="kc">False</span>
+<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a>    <span class="c1"># Fall through to default behavior</span>
+<a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes.memory_lifecycle</span><span class="w"> </span><span class="kn">import</span> <span class="n">_default_should_forget</span>
+<a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a>    <span class="k">return</span> <span class="n">_default_should_forget</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="n">lifecycle</span><span class="p">)</span>
+<a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a>
+<a id="__codelineno-16-15" name="__codelineno-16-15" href="#__codelineno-16-15"></a><span class="n">lifecycle</span> <span class="o">=</span> <span class="n">MemoryLifecycle</span><span class="p">(</span>
+<a id="__codelineno-16-16" name="__codelineno-16-16" href="#__codelineno-16-16"></a>    <span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span>
+<a id="__codelineno-16-17" name="__codelineno-16-17" href="#__codelineno-16-17"></a>    <span class="n">importance_field</span><span class="o">=</span><span class="s2">&quot;relevance&quot;</span><span class="p">,</span>
+<a id="__codelineno-16-18" name="__codelineno-16-18" href="#__codelineno-16-18"></a>    <span class="n">should_promote</span><span class="o">=</span><span class="n">my_should_promote</span><span class="p">,</span>
+<a id="__codelineno-16-19" name="__codelineno-16-19" href="#__codelineno-16-19"></a>    <span class="n">should_forget</span><span class="o">=</span><span class="n">my_should_forget</span><span class="p">,</span>
+<a id="__codelineno-16-20" name="__codelineno-16-20" href="#__codelineno-16-20"></a><span class="p">)</span>
 </code></pre></div>
 <h3 id="composing-with-subconsciousmemory">Composing with SubconsciousMemory<a class="headerlink" href="#composing-with-subconsciousmemory" title="Permanent link">&para;</a></h3>
 <p><code>MemoryLifecycle</code> is an independent policy layer — it composes <em>alongside</em>
 <code>SubconsciousMemory</code>, not as a replacement:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes</span><span class="w"> </span><span class="kn">import</span> <span class="n">MemoryLifecycle</span><span class="p">,</span> <span class="n">SubconsciousMemory</span>
-<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>
-<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="n">sm</span> <span class="o">=</span> <span class="n">SubconsciousMemory</span><span class="p">(</span><span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span> <span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">,</span> <span class="o">...</span><span class="p">)</span>
-<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="n">lifecycle</span> <span class="o">=</span> <span class="n">MemoryLifecycle</span><span class="p">(</span><span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span> <span class="n">importance_field</span><span class="o">=</span><span class="s2">&quot;relevance&quot;</span><span class="p">)</span>
-<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>
-<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="c1"># Pre-turn: inject context from all tiers</span>
-<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="n">messages</span><span class="p">,</span> <span class="n">result</span> <span class="o">=</span> <span class="n">sm</span><span class="o">.</span><span class="n">inject_context</span><span class="p">(</span><span class="n">messages</span><span class="p">)</span>
-<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a>
-<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a><span class="c1"># ... LLM inference ...</span>
-<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a>
-<a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a><span class="c1"># Post-turn: extract new memories into episodic tier</span>
-<a id="__codelineno-15-12" name="__codelineno-15-12" href="#__codelineno-15-12"></a><span class="n">new_memories</span> <span class="o">=</span> <span class="n">sm</span><span class="o">.</span><span class="n">extract_memories</span><span class="p">(</span><span class="n">response_text</span><span class="p">)</span>
-<a id="__codelineno-15-13" name="__codelineno-15-13" href="#__codelineno-15-13"></a><span class="k">for</span> <span class="n">record</span> <span class="ow">in</span> <span class="n">new_memories</span><span class="p">:</span>
-<a id="__codelineno-15-14" name="__codelineno-15-14" href="#__codelineno-15-14"></a>    <span class="n">lifecycle</span><span class="o">.</span><span class="n">tag_new</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>  <span class="c1"># assigns tier = &quot;episodic&quot;</span>
-<a id="__codelineno-15-15" name="__codelineno-15-15" href="#__codelineno-15-15"></a>
-<a id="__codelineno-15-16" name="__codelineno-15-16" href="#__codelineno-15-16"></a><span class="c1"># Periodically: consolidate and prune</span>
-<a id="__codelineno-15-17" name="__codelineno-15-17" href="#__codelineno-15-17"></a><span class="n">summary</span> <span class="o">=</span> <span class="n">lifecycle</span><span class="o">.</span><span class="n">tick</span><span class="p">()</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes</span><span class="w"> </span><span class="kn">import</span> <span class="n">MemoryLifecycle</span><span class="p">,</span> <span class="n">SubconsciousMemory</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="n">sm</span> <span class="o">=</span> <span class="n">SubconsciousMemory</span><span class="p">(</span><span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span> <span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">,</span> <span class="o">...</span><span class="p">)</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="n">lifecycle</span> <span class="o">=</span> <span class="n">MemoryLifecycle</span><span class="p">(</span><span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span> <span class="n">importance_field</span><span class="o">=</span><span class="s2">&quot;relevance&quot;</span><span class="p">)</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="c1"># Pre-turn: inject context from all tiers</span>
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="n">messages</span><span class="p">,</span> <span class="n">result</span> <span class="o">=</span> <span class="n">sm</span><span class="o">.</span><span class="n">inject_context</span><span class="p">(</span><span class="n">messages</span><span class="p">)</span>
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a>
+<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a><span class="c1"># ... LLM inference ...</span>
+<a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a>
+<a id="__codelineno-17-11" name="__codelineno-17-11" href="#__codelineno-17-11"></a><span class="c1"># Post-turn: extract new memories into episodic tier</span>
+<a id="__codelineno-17-12" name="__codelineno-17-12" href="#__codelineno-17-12"></a><span class="n">new_memories</span> <span class="o">=</span> <span class="n">sm</span><span class="o">.</span><span class="n">extract_memories</span><span class="p">(</span><span class="n">response_text</span><span class="p">)</span>
+<a id="__codelineno-17-13" name="__codelineno-17-13" href="#__codelineno-17-13"></a><span class="k">for</span> <span class="n">record</span> <span class="ow">in</span> <span class="n">new_memories</span><span class="p">:</span>
+<a id="__codelineno-17-14" name="__codelineno-17-14" href="#__codelineno-17-14"></a>    <span class="n">lifecycle</span><span class="o">.</span><span class="n">tag_new</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>  <span class="c1"># assigns tier = &quot;episodic&quot;</span>
+<a id="__codelineno-17-15" name="__codelineno-17-15" href="#__codelineno-17-15"></a>
+<a id="__codelineno-17-16" name="__codelineno-17-16" href="#__codelineno-17-16"></a><span class="c1"># Periodically: consolidate and prune</span>
+<a id="__codelineno-17-17" name="__codelineno-17-17" href="#__codelineno-17-17"></a><span class="n">summary</span> <span class="o">=</span> <span class="n">lifecycle</span><span class="o">.</span><span class="n">tick</span><span class="p">()</span>
 </code></pre></div>
 <h3 id="partition-filtering">Partition filtering<a class="headerlink" href="#partition-filtering" title="Permanent link">&para;</a></h3>
 <p>In multi-agent deployments, scope each lifecycle instance to one agent:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="n">lifecycle</span> <span class="o">=</span> <span class="n">MemoryLifecycle</span><span class="p">(</span>
-<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>    <span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span>
-<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>    <span class="n">importance_field</span><span class="o">=</span><span class="s2">&quot;relevance&quot;</span><span class="p">,</span>
-<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>    <span class="n">partition_filters</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;agent_id&quot;</span><span class="p">:</span> <span class="s2">&quot;agent-1&quot;</span><span class="p">},</span>
-<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="p">)</span>
-<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="n">lifecycle</span><span class="o">.</span><span class="n">tick</span><span class="p">()</span>  <span class="c1"># only touches agent-1&#39;s records</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="n">lifecycle</span> <span class="o">=</span> <span class="n">MemoryLifecycle</span><span class="p">(</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>    <span class="n">model_class</span><span class="o">=</span><span class="n">Memory</span><span class="p">,</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>    <span class="n">importance_field</span><span class="o">=</span><span class="s2">&quot;relevance&quot;</span><span class="p">,</span>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>    <span class="n">partition_filters</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;agent_id&quot;</span><span class="p">:</span> <span class="s2">&quot;agent-1&quot;</span><span class="p">},</span>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="p">)</span>
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a><span class="n">lifecycle</span><span class="o">.</span><span class="n">tick</span><span class="p">()</span>  <span class="c1"># only touches agent-1&#39;s records</span>
 </code></pre></div>
 <h3 id="tuning-the-thresholds">Tuning the thresholds<a class="headerlink" href="#tuning-the-thresholds" title="Permanent link">&para;</a></h3>
-<p>The five magic-number constants are class attributes:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="c1"># Inspect defaults</span>
-<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">MemoryLifecycle</span><span class="o">.</span><span class="n">PROMOTION_ACCESS_COUNT</span><span class="p">)</span>          <span class="c1"># 3</span>
-<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="nb">print</span><span class="p">(</span><span class="n">MemoryLifecycle</span><span class="o">.</span><span class="n">PROMOTION_CONFIDENCE_THRESHOLD</span><span class="p">)</span>  <span class="c1"># 0.6</span>
-<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="nb">print</span><span class="p">(</span><span class="n">MemoryLifecycle</span><span class="o">.</span><span class="n">PROMOTION_MIN_AGE_SECONDS</span><span class="p">)</span>       <span class="c1"># 300.0</span>
-<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="nb">print</span><span class="p">(</span><span class="n">MemoryLifecycle</span><span class="o">.</span><span class="n">FORGET_IMPORTANCE_FLOOR</span><span class="p">)</span>         <span class="c1"># 0.1</span>
-<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">MemoryLifecycle</span><span class="o">.</span><span class="n">FORGET_IDLE_SECONDS</span><span class="p">)</span>             <span class="c1"># 86400.0</span>
-<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>
-<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="c1"># Override for a specific instance</span>
-<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a><span class="n">lifecycle</span><span class="o">.</span><span class="n">PROMOTION_ACCESS_COUNT</span> <span class="o">=</span> <span class="mi">5</span>
-<a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a><span class="n">lifecycle</span><span class="o">.</span><span class="n">FORGET_IDLE_SECONDS</span> <span class="o">=</span> <span class="mf">43200.0</span>  <span class="c1"># 12 hours</span>
+<p>The magic-number constants are class attributes:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="c1"># Inspect defaults</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">MemoryLifecycle</span><span class="o">.</span><span class="n">PROMOTION_ACCESS_COUNT</span><span class="p">)</span>          <span class="c1"># 3</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="nb">print</span><span class="p">(</span><span class="n">MemoryLifecycle</span><span class="o">.</span><span class="n">PROMOTION_CONFIDENCE_THRESHOLD</span><span class="p">)</span>  <span class="c1"># 0.6</span>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="nb">print</span><span class="p">(</span><span class="n">MemoryLifecycle</span><span class="o">.</span><span class="n">PROMOTION_MIN_AGE_SECONDS</span><span class="p">)</span>       <span class="c1"># 300.0</span>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a><span class="nb">print</span><span class="p">(</span><span class="n">MemoryLifecycle</span><span class="o">.</span><span class="n">FORGET_IMPORTANCE_FLOOR</span><span class="p">)</span>         <span class="c1"># 0.1</span>
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">MemoryLifecycle</span><span class="o">.</span><span class="n">FORGET_IDLE_SECONDS</span><span class="p">)</span>             <span class="c1"># 86400.0</span>
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a><span class="nb">print</span><span class="p">(</span><span class="n">MemoryLifecycle</span><span class="o">.</span><span class="n">FORGET_CONFIDENCE_CEILING</span><span class="p">)</span>       <span class="c1"># 0.3</span>
+<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a><span class="nb">print</span><span class="p">(</span><span class="n">MemoryLifecycle</span><span class="o">.</span><span class="n">FORGET_MIN_EVIDENCE</span><span class="p">)</span>             <span class="c1"># 5</span>
+<a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a><span class="nb">print</span><span class="p">(</span><span class="n">MemoryLifecycle</span><span class="o">.</span><span class="n">TOMBSTONE_RETENTION_LIMIT</span><span class="p">)</span>       <span class="c1"># 1000</span>
+<a id="__codelineno-19-10" name="__codelineno-19-10" href="#__codelineno-19-10"></a>
+<a id="__codelineno-19-11" name="__codelineno-19-11" href="#__codelineno-19-11"></a><span class="c1"># Override for a specific instance</span>
+<a id="__codelineno-19-12" name="__codelineno-19-12" href="#__codelineno-19-12"></a><span class="n">lifecycle</span><span class="o">.</span><span class="n">PROMOTION_ACCESS_COUNT</span> <span class="o">=</span> <span class="mi">5</span>
+<a id="__codelineno-19-13" name="__codelineno-19-13" href="#__codelineno-19-13"></a><span class="n">lifecycle</span><span class="o">.</span><span class="n">FORGET_IDLE_SECONDS</span> <span class="o">=</span> <span class="mf">43200.0</span>  <span class="c1"># 12 hours</span>
 </code></pre></div>
 <p>Systematic tuning is done via the Tier 5 benchmark sweep:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_sweeps<span class="w"> </span>--tier<span class="w"> </span><span class="m">5</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_sweeps<span class="w"> </span>--tier<span class="w"> </span><span class="m">5</span>
 </code></pre></div>
 <p>See <code>docs/benchmarks/memory_lifecycle_baseline.md</code> for the sweep grid and
 pre-lifecycle retrieval baselines.</p>

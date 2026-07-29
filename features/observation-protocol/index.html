@@ -1365,6 +1365,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#outcomes-now-reach-forgetting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Outcomes Now Reach Forgetting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#recallproposal" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2826,6 +2837,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#outcomes-now-reach-forgetting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Outcomes Now Reach Forgetting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#recallproposal" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3090,6 +3112,28 @@
 <li><strong>ConfidenceField</strong>: <code>acted</code> corroborates; <code>contradicted</code> contradicts.</li>
 <li><strong>PredictionLedgerMixin</strong>: <code>acted</code>, <code>used</code>, <code>dismissed</code>, and <code>contradicted</code> auto-resolve pending predictions with appropriate error values (<code>used</code> maps to moderate error <code>Defaults.PL_AUTO_RESOLVE_USED</code>).</li>
 </ul>
+<h2 id="outcomes-now-reach-forgetting">Outcomes Now Reach Forgetting<a class="headerlink" href="#outcomes-now-reach-forgetting" title="Permanent link">&para;</a></h2>
+<p>Reporting an outcome used to affect ranking and cycle amplitudes but never the <em>rate</em> at which a
+memory left the corpus: a memory dismissed ten times decayed exactly as fast as one acted on ten
+times, because <code>decay_rate</code> was a field-level constant shared by every record. The only asymmetry
+was <code>acted</code>, which calls <code>touch()</code> and so slows effective decay by resetting the clock — with no
+matching mechanism by which dismissal could accelerate it.</p>
+<p>The confidence this protocol writes now feeds two further consumers:</p>
+<ol>
+<li><strong>Decay rate.</strong> <code>DecayingSortedField</code> and <code>CyclicDecayField</code> derive a per-record effective decay
+   rate from confidence
+   (<code>eff = decay_rate * 2 ^ (s * 2 * (c0 - c))</code>), so a contradicted memory both ranks lower <em>and</em>
+   fades faster. See
+   <a href="../decaying-sorted-field/#confidence-modulated-decay">Confidence-Modulated Decay</a>.</li>
+<li><strong>Forget eligibility.</strong> <code>MemoryLifecycle</code> forgets a low-confidence idle record once it has at
+   least <code>FORGET_MIN_EVIDENCE</code> observations behind it, tombstoning rather than deleting so the
+   decision stays reversible.</li>
+</ol>
+<p>The full loop: <code>on_context_used(..., "dismissed")</code> → confidence drops → next retrieval ranks the
+memory lower → next lifecycle tick tombstones it. Nothing new is required at the call site; the
+outcome reporting deployments already do is what drives it.</p>
+<p>Neutrality is preserved for corpora with no outcome data at all — a record that has never been
+reported on scores byte-identically to pre-modulation Popoto.</p>
 <h2 id="recallproposal">RecallProposal<a class="headerlink" href="#recallproposal" title="Permanent link">&para;</a></h2>
 <p>Internal ORM infrastructure for tracking proactively surfaced memories.</p>
 <ul>

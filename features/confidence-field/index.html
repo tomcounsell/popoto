@@ -1392,6 +1392,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#confidence-feeds-forgetting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Confidence Feeds Forgetting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#redis-key-patterns" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3059,6 +3070,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#confidence-feeds-forgetting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Confidence Feeds Forgetting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#redis-key-patterns" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3339,6 +3361,28 @@ without loading all entries into memory:</p>
 <a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="c1"># Execute migration</span>
 <a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="n">report</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">migrate_to_partitioned</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">)</span>
 </code></pre></div>
+<h2 id="confidence-feeds-forgetting">Confidence Feeds Forgetting<a class="headerlink" href="#confidence-feeds-forgetting" title="Permanent link">&para;</a></h2>
+<p>Confidence used to be a read-only signal for ranking and promotion. It now closes the loop: the
+evidence a record accumulates changes how fast it is forgotten.</p>
+<p><strong>Faster decay.</strong> <a href="../decaying-sorted-field/#confidence-modulated-decay"><code>DecayingSortedField</code></a> and
+<a href="../cyclic-decay-field/#confidence-modulated-decay"><code>CyclicDecayField</code></a> read each record's confidence
+inside their ranking Lua and derive a per-record effective decay rate,
+<code>eff = decay_rate * 2 ^ (s * 2 * (c0 - c))</code>. The zero point is this field's own
+<code>initial_confidence</code>, so a record with no evidence is bit-exactly neutral for any configured <code>c0</code>.
+When a model has exactly one <code>ConfidenceField</code>, this is on with no configuration.</p>
+<p><strong>Eligibility for forgetting.</strong> <a href="../agent-memory/#memorylifecycle"><code>MemoryLifecycle</code></a> previously used
+confidence only to <em>promote</em> records to the protected semantic tier — it could grant permanence but
+never hasten removal. Its forget rule is now:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>(importance &lt; FORGET_IMPORTANCE_FLOOR
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a> OR (confidence &lt; FORGET_CONFIDENCE_CEILING AND evidence_count &gt;= FORGET_MIN_EVIDENCE))
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>AND idle &gt; FORGET_IDLE_SECONDS
+</code></pre></div>
+<p><code>evidence_count</code> is load-bearing. Confidence starts at <code>initial_confidence</code> and moves on <em>every</em>
+signal, so without a minimum track record one unlucky dismissal could bury a memory. Records that
+cross the rule are <strong>tombstoned</strong>, not deleted — reversible via <code>restore()</code>.</p>
+<p><code>ConfidenceField</code> remains the single source of truth for evidence. Nothing about modulation or
+forgetting is persisted back onto the record: the decay path is a pure reader of this field's
+<code>:data</code> hash, so there is no second copy of derived state to desync.</p>
 <h2 id="redis-key-patterns">Redis Key Patterns<a class="headerlink" href="#redis-key-patterns" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -3366,9 +3410,9 @@ without loading all entries into memory:</p>
 includes a <code>ReviewScore</code> model that demonstrates <code>ConfidenceField</code> with
 <code>partition_by="restaurant"</code>. Run the operations demo to see capped-evidence updates,
 companion hash key inspection, and partitioned confidence in action:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nb">cd</span><span class="w"> </span>examples
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>uv<span class="w"> </span>run<span class="w"> </span>popoto-kitchen<span class="w"> </span>--seed-only<span class="w"> </span>--clear
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>uv<span class="w"> </span>run<span class="w"> </span>popoto-kitchen<span class="w"> </span>--ops
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nb">cd</span><span class="w"> </span>examples
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>uv<span class="w"> </span>run<span class="w"> </span>popoto-kitchen<span class="w"> </span>--seed-only<span class="w"> </span>--clear
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>uv<span class="w"> </span>run<span class="w"> </span>popoto-kitchen<span class="w"> </span>--ops
 </code></pre></div>
 <p>See <a href="https://github.com/tomcounsell/popoto/blob/main/examples/popoto_kitchen/operations.py"><code>examples/popoto_kitchen/operations.py</code></a>
 for the full source, and the
@@ -3377,8 +3421,13 @@ for a walkthrough.</p>
 <h2 id="companion-fields">Companion Fields<a class="headerlink" href="#companion-fields" title="Permanent link">&para;</a></h2>
 <p><code>ConfidenceField</code> works alongside other memory system fields:</p>
 <ul>
-<li><strong>DecayingSortedField</strong>: Composite scoring via <code>priority = decay_score * confidence</code></li>
-<li><strong>CyclicDecayField</strong>: Auto-discharge when confidence drops below threshold</li>
+<li><strong>DecayingSortedField</strong>: Composite scoring via <code>priority = decay_score * confidence</code>, and
+  <a href="../decaying-sorted-field/#confidence-modulated-decay">confidence-modulated decay</a> — confidence sets
+  each record's effective decay <em>rate</em>, not just its magnitude</li>
+<li><strong>CyclicDecayField</strong>: Auto-discharge when confidence drops below threshold; inherits confidence
+  modulation (confidence hash bound at <code>KEYS[4]</code> in its forked Lua)</li>
+<li><strong>MemoryLifecycle</strong>: Confidence gates promotion <em>and</em> forgetting; low-confidence idle records with
+  enough evidence are tombstoned</li>
 <li><strong>WriteFilterMixin</strong>: Use confidence in <code>compute_filter_score()</code> for directed forgetting</li>
 <li><strong><a href="../context-assembler/#confidence-gate">ContextAssembler</a></strong>: <code>get_confidence()</code> on the rank-0 pull-path candidate drives the opt-in confidence gate — <code>assemble()</code> can refuse or flag a low-confidence answer instead of injecting it</li>
 <li><strong>AccessTrackerMixin</strong>: Read tracking independent of confidence</li>

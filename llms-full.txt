@@ -1487,11 +1487,70 @@ memory.touch("relevance")  # Resets the decay clock
 |-----------|------|---------|-------------|
 | `decay_rate` | `float` | `0.1` | Controls how fast scores drop. Higher = faster decay. Must be > 0. (Empirically tuned in sweep 2026-04-17; prior default was `0.5`.) |
 | `base_score_field` | `str` | `None` | Name of a companion field whose value multiplies the decay curve. When `None`, base score is 1.0. |
+| `confidence_modulation_field` | `str`, `False`, or `None` | `None` | Which `ConfidenceField` modulates each record's effective decay rate. `None` auto-detects a single `ConfidenceField` on the model; a `str` names one; `False` disables. |
 | `partition_by` | `str` or `tuple` | `()` | Partition the sorted set by key field values (inherited from `SortedField`). |
 
 Use `InteractionWeight` constants with `base_score_field` for source/role-based importance
 weighting in multi-agent teams. See [Agent Memory — Source weighting](features/agent-memory.md#source-weighting-for-teamwork)
 for the full pattern.
+
+**Confidence-modulated decay.** `base_score_field` scales the curve's magnitude, which
+never changes relative order. Confidence modulation changes the *rate*, so accumulated
+outcome evidence alters how fast a record actually leaves the corpus:
+
+```
+eff   = decay_rate × 2 ^ (s × 2 × (c0 − c))
+score = base_score × t ^ (−decay_rate) × max(t, 1.0) ^ (−(eff − decay_rate))
+```
+
+where `c` is the record's `ConfidenceField` value, `c0` is that field's own
+`initial_confidence`, `s` is `Defaults.DECAY_CONFIDENCE_MODULATION_STRENGTH` (0.5), and
+`t` is `elapsed_days`.
+
+```python
+from popoto.fields.confidence_field import ConfidenceField
+
+class Memory(Model):
+    agent_id = KeyField()
+    content = Field(type=str)
+    certainty = ConfidenceField()      # exactly one -> modulation is ON, no config
+    relevance = DecayingSortedField()
+
+# Or name it explicitly / opt out:
+#   DecayingSortedField(confidence_modulation_field="certainty")
+#   DecayingSortedField(confidence_modulation_field=False)
+```
+
+Modulation is **default-on**: a model with exactly one `ConfidenceField` gets it with no
+configuration; zero `ConfidenceField`s means off; two or more with no explicit kwarg means
+off plus a warning naming the candidates. The deploy-level kill switch disables it
+everywhere without editing model definitions:
+
+```python
+from popoto.fields.constants import Defaults
+
+Defaults.DECAY_CONFIDENCE_MODULATION_ENABLED = False
+```
+
+Scores are **byte-identical** to the unmodulated formula when a record has no confidence
+evidence, when the model has no `ConfidenceField`, when the kwarg is `False`, when the kill
+switch is off, or when `s = 0` — the correction term is exactly `1.0` at `c == c0`. Disabled
+paths skip the per-member `HGET` entirely.
+
+The `max(t, 1.0)` clamp is load-bearing, not cosmetic. `elapsed_days` is floored at `0.01`,
+and for `t < 1` the term `t^(−rate)` is a multiplier greater than 1 that a *larger* rate
+amplifies *more*. Without the clamp, modulation would run backwards for the first 24 hours
+and boost exactly the low-confidence records it exists to bury.
+
+!!! warning "Rank inversion"
+    Rate modulation makes two records' log-log score lines cross exactly once, so a record's
+    **rank can improve over time even as its score falls** — behavior magnitude weighting
+    never produces. Cached top-N snapshots drift accordingly; re-run `top_by_decay()` rather
+    than caching its output if ordering stability matters.
+
+If the `ConfidenceField` declares `partition_by`, the query must filter on those fields or
+`top_by_decay()` raises `QueryException` naming the missing filters — modulation never
+silently degrades to partial coverage.
 
 All standard `SortedField` range filters (`__gt`, `__gte`, `__lt`, `__lte`, `__between`)
 work against the timestamp score. See [Agent Memory](features/agent-memory.md) for the
@@ -1544,6 +1603,7 @@ directive.touch("relevance")
 |-----------|------|---------|-------------|
 | `decay_rate` | `float` | `0.1` | Power-law decay exponent (inherited). Empirically tuned in sweep 2026-04-17; prior default was `0.5`. |
 | `base_score_field` | `str` | `None` | Companion field whose value multiplies the decay curve (inherited). |
+| `confidence_modulation_field` | `str`, `False`, or `None` | `None` | Which `ConfidenceField` modulates the per-record decay rate (inherited). |
 | `cycles` | `list` | `[]` | List of `(period, amplitude, phase)` tuples. Use `TemporalPeriod` constants for period. |
 | `pressure_rate` | `float` | `0.0` | Rate of urgency buildup per unresolved day. |
 | `partition_by` | `str` or `tuple` | `()` | Partition the sorted set by key field values (inherited). |
@@ -1551,6 +1611,16 @@ directive.touch("relevance")
 **Ordering** is deterministic, same as `DecayingSortedField`: equal effective
 scores (`decay + cyclic + pressure`) are tie-broken by `redis_key` ascending
 (byte-wise) inside the Lua script, before the top-N truncation.
+
+**Confidence-modulated decay** is inherited unchanged and applies to the `decay` term only;
+`cyclic` and `pressure` are untouched. Auto-detection, the `confidence_modulation_field`
+kwarg, the `DECAY_CONFIDENCE_MODULATION_ENABLED` kill switch, bit-exact neutrality, and the
+rank-inversion caveat all behave exactly as documented for `DecayingSortedField` above.
+One internal difference matters if you read the Lua: `CyclicDecayField` forks the decay
+script and already binds `KEYS[2]` = cycles hash and `KEYS[3]` = pressure hash, so the
+confidence `:data` hash is `KEYS[4]` there rather than `KEYS[2]` (`ARGV` indices are the same
+in both). The two scripts must not be "unified" on `KEYS[2]` — that would unpack the cycles
+array as a confidence payload and corrupt scores silently.
 
 See [CyclicDecayField feature docs](features/cyclic-decay-field.md) for the full reference including
 the scoring formula, Redis data model, `TemporalPeriod` constants, and error handling.
@@ -5766,6 +5836,26 @@ ConfidenceField.update_confidence(memory, "certainty", signal=0.9)
 confidence = ConfidenceField.get_confidence(memory, "certainty")
 ```
 
+### Decay queries against a partitioned ConfidenceField
+
+If the same model also declares a `DecayingSortedField` (or `CyclicDecayField`),
+[confidence-modulated decay](features/decaying-sorted-field.md#confidence-modulated-decay)
+joins the decay index to the confidence `:data` hash. A partitioned `ConfidenceField`
+spreads that hash across tenants, so a single decay query cannot cover the result set
+unless it names the partition. `top_by_decay()` and `composite_score()` raise
+`QueryException` listing the filters they need:
+
+```python
+Memory.query.filter(project="atlas").top_by_decay(10)   # OK
+
+Memory.query.filter(key="fact1").top_by_decay(10)
+# QueryException: ... ConfidenceField 'certainty' ... is partitioned by project.
+# Query must include filter(s) for: project.
+```
+
+Add the partition filter, or set `confidence_modulation_field=False` on the decay
+field to opt that field out of modulation.
+
 ### Partition key changes
 
 If a model instance changes its partition key value (e.g., moves from project A to
@@ -6444,7 +6534,7 @@ The primitives ship incrementally. Each builds on the ones before it.
 | [StreamConsumer](#streamconsumer) | Background processing framework for Redis Streams | Shipped ([PR #238](https://github.com/tomcounsell/popoto/pull/238)) |
 | [PolicyCache](#policycache) | Learned action selection — crystallized state-action-outcome patterns | Shipped ([PR #239](https://github.com/tomcounsell/popoto/pull/239)) |
 | [ContextAssembler](#contextassembler) | Retrieval-to-injection bridge — assemble LLM-ready context within token budgets | Shipped |
-| [MemoryLifecycle](#memorylifecycle) | Policy layer orchestrating episodic→semantic promotion and auto-forget | Shipped ([PR #396](https://github.com/tomcounsell/popoto/pull/396)) |
+| [MemoryLifecycle](#memorylifecycle) | Policy layer orchestrating episodic→semantic promotion, confidence-aware forgetting, and tombstones | Shipped ([PR #396](https://github.com/tomcounsell/popoto/pull/396), [#491](https://github.com/tomcounsell/popoto/issues/491)) |
 
 ## DecayingSortedField
 
@@ -8035,9 +8125,81 @@ staged entries. The access-frequency signal therefore reflects only genuine
 application reads, not maintenance sweeps.
 
 A single pass hydrates the corpus once; promote-eligibility and forget-eligibility
-are evaluated over that same in-memory snapshot. Before any `record.delete()` the
+are evaluated over that same in-memory snapshot. Before any record is forgotten the
 record's authoritative tier is re-read from Redis — if the tier is now `"semantic"`
-(promoted by a concurrent tick) or the key no longer exists, the delete is skipped.
+(promoted by a concurrent tick) or the key no longer exists, the forget is skipped.
+
+### Confidence-aware forgetting
+
+Confidence used to gate promotion only, so it could grant a memory permanence but
+never hasten its removal. The default forget rule now reads outcome evidence too:
+
+```text
+(importance < FORGET_IMPORTANCE_FLOOR
+ OR (confidence < FORGET_CONFIDENCE_CEILING AND evidence_count >= FORGET_MIN_EVIDENCE))
+AND idle > FORGET_IDLE_SECONDS
+```
+
+The `evidence_count` conjunct is a safety floor, not a tuning knob: confidence moves
+on every reported outcome, so without a minimum track record one unlucky dismissal
+could bury a memory. Models with no `ConfidenceField` take the importance-only path,
+which is identical to the previous behavior. The confidence field is resolved through
+the same helper the decay path uses, so ranking and forgetting always listen to the
+same signal — including the `DECAY_CONFIDENCE_MODULATION_ENABLED` kill switch and the
+"two or more `ConfidenceField`s means off" ambiguity rule.
+
+The kill switch is re-read on every call here too, not captured when the
+`MemoryLifecycle` is constructed. Setting
+`Defaults.DECAY_CONFIDENCE_MODULATION_ENABLED = False` therefore suppresses
+confidence-driven forgetting immediately, on lifecycle instances that already exist —
+which matters more on this path than on the ranking path, because this is the half
+that mutates data.
+
+### Tombstones, not deletes
+
+Forgetting archives the record and removes it from the live corpus rather than
+deleting it. Exclusion from every retrieval mode is therefore **structural** — the
+record is gone from the model keyspace, so no read path has to remember to filter it
+— while its fingerprint, archived payload, and death metadata survive under
+`$TOMB:{Model}:*`.
+
+```python
+summary = lifecycle.tick()
+# {"promoted": 2, "forgotten": 5, "tombstoned": 5, "duration_ms": 8.3}
+
+lifecycle.tombstone_count()          # 5
+for tomb in lifecycle.list_tombstones(limit=10):
+    print(tomb.redis_key, tomb.confidence_at_death, tomb.dismissal_count)
+
+lifecycle.restore(tomb.redis_key)    # back in the live corpus, indexes rebuilt
+```
+
+| Method | Purpose |
+|--------|---------|
+| `tombstone(record, reason="policy")` | Forget one record; returns a `Tombstone` |
+| `restore(redis_key)` | Bring a tombstoned record back and rebuild its indexes |
+| `list_tombstones(limit=None)` | Retained tombstones, newest death first |
+| `get_tombstone(redis_key)` | One `Tombstone`, or `None` |
+| `tombstone_count()` | Number retained |
+| `purge_tombstone(redis_key)` / `purge_all_tombstones()` | Drop tombstones permanently |
+| `forget_hard(record)` | Irreversible delete, no tombstone |
+| `confidence_forget_eligible(record)` | Whether evidence alone justifies forgetting |
+
+A stored tombstone entry that is undecodable, is not a mapping, or is missing any
+required field is skipped with a logged warning rather than returned as a partly-empty
+`Tombstone`. So `list_tombstones()` and `get_tombstone()` can return fewer entries than
+`tombstone_count()` reports if the archive has been corrupted or written to by something
+other than `tombstone()` — every `Tombstone` you receive is complete.
+
+Each `Tombstone` carries `redis_key`, `fingerprint`, `tier`, `importance_at_death`,
+`confidence_at_death`, `evidence_count`, `dismissal_count`, `tombstoned_at`, and
+`reason`. Alongside that death metadata, the stored tombstone entry also archives
+the record's **full payload** — that archive is what makes `restore()` possible.
+Because a tombstone is therefore about as large as the record it replaced,
+retention is bounded by `LIFECYCLE_TOMBSTONE_RETENTION_LIMIT` (1000) with the
+oldest aging out, so the tombstone corpus cannot outgrow the live corpus.
+`tick()` reports `tombstoned` alongside `forgotten` so a runaway forget policy is
+visible in telemetry immediately.
 
 ### Usage
 
@@ -8054,7 +8216,7 @@ lifecycle.tag_new(record)  # assigns tier = "episodic"
 
 # Periodic consolidation pass (non-tracking — zero staged AccessTracker entries)
 summary = lifecycle.tick()
-# {"promoted": 2, "forgotten": 5, "duration_ms": 8.3}
+# {"promoted": 2, "forgotten": 5, "tombstoned": 5, "duration_ms": 8.3}
 
 # Inspect lifecycle state
 state = lifecycle.assess(record)
@@ -8455,6 +8617,7 @@ With the default `decay_rate=0.1` (empirically tuned in sweep 2026-04-17; prior 
 |-----------|------|---------|-------------|
 | `decay_rate` | `float` | `0.1` | Controls how fast scores drop. Higher = faster decay. Configurable via `Defaults.DECAY_RATE`. (Empirically tuned in sweep 2026-04-17; prior default was `0.5`.) |
 | `base_score_field` | `str` | `None` | Name of a companion field whose value multiplies the decay curve. When `None`, base score is 1.0. |
+| `confidence_modulation_field` | `str`, `False`, or `None` | `None` | Which `ConfidenceField` modulates each record's effective decay rate. `None` auto-detects a single `ConfidenceField` on the model; a `str` names one explicitly; `False` disables modulation for this field. See [Confidence-Modulated Decay](#confidence-modulated-decay). |
 | `partition_by` | `str` or `tuple` | `()` | Partition the sorted set by key field values, inherited from `SortedField`. |
 
 ## Usage
@@ -8529,6 +8692,134 @@ Override `decay_rate` per query for different retrieval contexts:
 hot = Memory.query.filter(agent_id="agent-1").top_by_decay(5, decay_rate=1.0)
 ```
 
+## Confidence-Modulated Decay
+
+`base_score_field` scales the curve's **magnitude**, which never changes relative order: a demoted
+record starts lower but is never forgotten *sooner*. Confidence modulation changes the **rate**, so
+accumulated outcome evidence actually alters how fast a record leaves the corpus. Corroborated
+memories persist longer; repeatedly dismissed or contradicted ones fall away faster.
+
+### The formula
+
+Per record, the effective decay rate is derived from that record's
+[`ConfidenceField`](confidence-field.md) value:
+
+```text
+eff   = decay_rate * 2 ^ (s * 2 * (c0 - c))
+score = base_score * t ^ (-decay_rate) * max(t, 1.0) ^ (-(eff - decay_rate))
+```
+
+- `c` — the record's confidence, clamped to `[0, 1]`
+- `c0` — the confidence field's own `initial_confidence` (**not** a hard-coded `0.5`)
+- `s` — `Defaults.DECAY_CONFIDENCE_MODULATION_STRENGTH` (0.5), read as "doublings of the decay rate
+  at zero confidence"
+- `t` — `elapsed_days`, floored at `0.01`
+
+The exponential form (Pavlik & Anderson 2005; Duolingo half-life regression) keeps the multiplier
+bounded in `[2^-s, 2^s]` and positive by construction, with no clamping needed for correctness.
+
+### Neutrality is bit-exact
+
+When `c == c0` the exponent is exactly `0` and `math.pow(x, -0)` is exactly `1.0`, so the whole
+correction term vanishes. Scores are **byte-identical** to the pre-modulation formula whenever:
+
+- the record has no confidence evidence yet,
+- the model carries no `ConfidenceField`,
+- `confidence_modulation_field=False`,
+- `Defaults.DECAY_CONFIDENCE_MODULATION_STRENGTH` is `0`, or
+- `Defaults.DECAY_CONFIDENCE_MODULATION_ENABLED` is `False`.
+
+Centering on the field's own `c0` matters: `ConfidenceField.on_save` writes `initial_confidence` for
+every saved record, so "no evidence" is nearly never literally absent data. A field configured with
+`initial_confidence=0.3` would otherwise carry a permanent `2^(0.4s)` penalty on every zero-evidence
+record.
+
+Every disabled path also skips the per-member `HGET` entirely, so unmodulated deployments pay
+nothing.
+
+### Why `max(t, 1.0)` is load-bearing
+
+The guard is not redundant tidying — removing it inverts the feature. `elapsed_days` is floored at
+`0.01`, and for `t < 1` the term `t^(-rate)` is a multiplier **greater than 1** that a *larger* rate
+amplifies *more*: at `t = 0.01`, rate 0.66 gives ×21.9 while rate 0.35 gives only ×5.0. Without the
+clamp, modulation would run backwards for the first 24 hours and boost exactly the low-confidence
+junk it exists to bury — and because agent memory is touched constantly, most of the working set
+lives in that region. Clamping the correction's base to `>= 1.0` makes the term exactly `1.0` for
+fresh records, so modulation only ever applies where a higher rate means a lower score.
+
+### Caveat: rank inversion
+
+Rate modulation makes two records' log-log score lines cross **exactly once**. That is semantically
+what you want — salience wins short-run, evidence wins long-run — but it has a consequence magnitude
+weighting never produces: a record's **rank can improve over time even as its score falls**. Cached
+top-N snapshots therefore drift, and a record absent from yesterday's top 10 may appear in today's
+without anything being written. Re-run `top_by_decay()` rather than caching its output if ordering
+stability matters to your application.
+
+### Usage
+
+Auto-detection means the common case needs no configuration at all:
+
+```python
+from popoto import Model, KeyField, Field
+from popoto.fields import DecayingSortedField
+from popoto.fields.confidence_field import ConfidenceField
+
+class Memory(Model):
+    agent_id = KeyField()
+    content = Field(type=str)
+    certainty = ConfidenceField()          # exactly one -> modulation is ON
+    relevance = DecayingSortedField()
+```
+
+Name the field explicitly when a model carries more than one `ConfidenceField`, or opt out:
+
+```python
+relevance = DecayingSortedField(confidence_modulation_field="certainty")
+relevance = DecayingSortedField(confidence_modulation_field=False)   # opt out
+```
+
+Resolution order:
+
+| Condition | Result |
+|-----------|--------|
+| `Defaults.DECAY_CONFIDENCE_MODULATION_ENABLED = False` | Off (deploy-level kill switch) |
+| `confidence_modulation_field=False` | Off |
+| `confidence_modulation_field="name"` | That field; `ModelException` if missing or not a `ConfidenceField` |
+| Exactly one `ConfidenceField` on the model | That field (auto-detected) |
+| No `ConfidenceField` on the model | Off |
+| Two or more, none named | Off, plus a `logger.warning` naming the candidates |
+
+### Kill switch
+
+Modulation is **default-on** via auto-detection, so an upgrade can change ranking without any model
+change. The deploy-level kill switch restores the previous behavior byte-for-byte without editing
+model definitions:
+
+```python
+from popoto.fields.constants import Defaults
+
+Defaults.DECAY_CONFIDENCE_MODULATION_ENABLED = False
+```
+
+Set it at process start, before queries run. It is re-read on every call, so toggling it at runtime
+takes effect immediately.
+
+### Partitioned confidence fields
+
+The Lua script joins the decay sorted set to the `ConfidenceField` `:data` hash on the member key.
+When that field declares `partition_by`, one decay index can span several `:data` hashes and no
+single hash covers the result set. Rather than silently modulating some members and not others, the
+query raises `QueryException` naming the filters it needs:
+
+```python
+Memory.query.filter(agent_id="agent-1").top_by_decay(10)
+# QueryException: ... ConfidenceField 'certainty' ... is partitioned by project.
+# Query must include filter(s) for: project.
+```
+
+Add the missing filter, or set `confidence_modulation_field=False` on the decay field.
+
 ## Tuning
 
 The `decay_rate` default is configurable via `Defaults`:
@@ -8546,15 +8837,31 @@ Explicit kwargs always override `Defaults`:
 fast_decay = DecayingSortedField(decay_rate=0.7)
 ```
 
+Modulation strength is tuned the same way:
+
+```python
+Defaults.DECAY_CONFIDENCE_MODULATION_STRENGTH = 0.3  # gentler evidence coupling
+Defaults.DECAY_CONFIDENCE_MODULATION_STRENGTH = 0.0  # exact no-op
+```
+
+See [Tuning Magic Numbers](../guides/tuning-magic-numbers.md#decayingsortedfield-cyclicdecayfield)
+for ranges and provenance.
+
 ## Architecture
 
 - **Redis key pattern**: `ClassName:_field_name` (sorted set with timestamp scores)
 - **Lua script**: Computes `base_score * elapsed_days^(-decay_rate)` server-side, reads base scores from model hash via cmsgpack
+- **Confidence join**: the `ConfidenceField` `:data` hash is passed as `KEYS[2]`, with strength `s` as
+  `ARGV[5]` and `c0` as `ARGV[6]`. The ZSET member string *is* the record's `redis_key`, and the
+  `:data` hash is keyed by the same string, so the join needs no translation. One extra `HGET` per
+  member, issued only when modulation is active. (`CyclicDecayField` forks this script and binds the
+  confidence hash at `KEYS[4]` instead — see its docs.)
 - **Inheritance**: Extends `SortedFieldMixin` + `Field`
 
 ## See Also
 
 - [CyclicDecayField](cyclic-decay-field.md) — adds cyclical resonance and homeostatic pressure
+- [ConfidenceField](confidence-field.md) — the evidence signal that modulates the rate
 - [Agent Memory overview](agent-memory.md) — full primitives reference
 
 ---
@@ -8582,6 +8889,7 @@ When `cycles=[]` and `pressure_rate=0.0`, behavior is identical to `DecayingSort
 |-----------|------|---------|-------------|
 | `decay_rate` | float | 0.1 | Power-law decay exponent (inherited). Empirically tuned in sweep 2026-04-17; prior default was `0.5`. |
 | `base_score_field` | str | None | Companion field whose value multiplies the decay curve (inherited) |
+| `confidence_modulation_field` | str / `False` / None | None | Which `ConfidenceField` modulates the per-record decay rate (inherited). See [Confidence-Modulated Decay](#confidence-modulated-decay). |
 | `cycles` | list | `[]` | List of `(period, amplitude, phase)` tuples |
 | `pressure_rate` | float | 0.0 | Rate of urgency buildup per unresolved day |
 | `partition_by` | str/tuple | `()` | Partition sorted set by key fields (inherited) |
@@ -8690,6 +8998,41 @@ effective_score = decay + cyclic + pressure
 ```
 
 When companion hashes return nil (no cycle/pressure data), the overhead is two nil HGET lookups per member.
+
+## Confidence-Modulated Decay
+
+`CyclicDecayField` inherits confidence modulation from `DecayingSortedField` unchanged: the `decay`
+term above is computed with a per-record effective rate derived from the record's `ConfidenceField`
+value, while `cyclic` and `pressure` are untouched.
+
+```text
+eff   = decay_rate * 2 ^ (s * 2 * (c0 - c))
+decay = base_score * t ^ (-decay_rate) * max(t, 1.0) ^ (-(eff - decay_rate))
+```
+
+Auto-detection, the `confidence_modulation_field` kwarg, the
+`Defaults.DECAY_CONFIDENCE_MODULATION_ENABLED` kill switch, bit-exact neutrality, the `max(t, 1.0)`
+sign-flip guard, and the rank-inversion caveat all behave identically — see
+[DecayingSortedField → Confidence-Modulated Decay](decaying-sorted-field.md#confidence-modulated-decay)
+for the full explanation. Cyclic ≡ plain equivalence still holds: with `cycles=[]` and
+`pressure_rate=0.0`, a modulated `CyclicDecayField` ranks identically to a modulated
+`DecayingSortedField`.
+
+### The confidence hash is `KEYS[4]` here
+
+`CyclicDecayField` carries a fork of the decay Lua, and that fork already binds `KEYS[2]` = cycles
+hash and `KEYS[3]` = pressure hash. The confidence `:data` hash is therefore appended at **`KEYS[4]`**
+(numkeys 4 at both EVAL sites), not `KEYS[2]` as in `DECAY_SCORE_LUA`. The `ARGV` indices are the
+same in both scripts (`ARGV[5]` = strength, `ARGV[6]` = `c0`); only the KEYS index differs.
+
+Do not "unify" the two scripts on `KEYS[2]`: reusing it here would `cmsgpack.unpack` the cycles array
+as a confidence dict, which corrupts scores silently instead of raising.
+
+### Redis structure
+
+A fourth structure joins the three above when modulation is active — the `ConfidenceField` `:data`
+hash, `$ConfidencF:{Model}:{field}:data[:{partition}]`. It is read-only from this script's
+perspective; `ConfidenceField` remains its sole writer.
 
 ## Error Handling
 
@@ -8931,6 +9274,36 @@ report = ConfidenceField.migrate_to_partitioned(Memory, "certainty", dry_run=Tru
 report = ConfidenceField.migrate_to_partitioned(Memory, "certainty")
 ```
 
+## Confidence Feeds Forgetting
+
+Confidence used to be a read-only signal for ranking and promotion. It now closes the loop: the
+evidence a record accumulates changes how fast it is forgotten.
+
+**Faster decay.** [`DecayingSortedField`](decaying-sorted-field.md#confidence-modulated-decay) and
+[`CyclicDecayField`](cyclic-decay-field.md#confidence-modulated-decay) read each record's confidence
+inside their ranking Lua and derive a per-record effective decay rate,
+`eff = decay_rate * 2 ^ (s * 2 * (c0 - c))`. The zero point is this field's own
+`initial_confidence`, so a record with no evidence is bit-exactly neutral for any configured `c0`.
+When a model has exactly one `ConfidenceField`, this is on with no configuration.
+
+**Eligibility for forgetting.** [`MemoryLifecycle`](agent-memory.md#memorylifecycle) previously used
+confidence only to *promote* records to the protected semantic tier — it could grant permanence but
+never hasten removal. Its forget rule is now:
+
+```text
+(importance < FORGET_IMPORTANCE_FLOOR
+ OR (confidence < FORGET_CONFIDENCE_CEILING AND evidence_count >= FORGET_MIN_EVIDENCE))
+AND idle > FORGET_IDLE_SECONDS
+```
+
+`evidence_count` is load-bearing. Confidence starts at `initial_confidence` and moves on *every*
+signal, so without a minimum track record one unlucky dismissal could bury a memory. Records that
+cross the rule are **tombstoned**, not deleted — reversible via `restore()`.
+
+`ConfidenceField` remains the single source of truth for evidence. Nothing about modulation or
+forgetting is persisted back onto the record: the decay path is a pure reader of this field's
+`:data` hash, so there is no second copy of derived state to desync.
+
 ## Redis Key Patterns
 
 | Key | Type | Description |
@@ -8960,8 +9333,13 @@ for a walkthrough.
 
 `ConfidenceField` works alongside other memory system fields:
 
-- **DecayingSortedField**: Composite scoring via `priority = decay_score * confidence`
-- **CyclicDecayField**: Auto-discharge when confidence drops below threshold
+- **DecayingSortedField**: Composite scoring via `priority = decay_score * confidence`, and
+  [confidence-modulated decay](decaying-sorted-field.md#confidence-modulated-decay) — confidence sets
+  each record's effective decay *rate*, not just its magnitude
+- **CyclicDecayField**: Auto-discharge when confidence drops below threshold; inherits confidence
+  modulation (confidence hash bound at `KEYS[4]` in its forked Lua)
+- **MemoryLifecycle**: Confidence gates promotion *and* forgetting; low-confidence idle records with
+  enough evidence are tombstoned
 - **WriteFilterMixin**: Use confidence in `compute_filter_score()` for directed forgetting
 - **[ContextAssembler](context-assembler.md#confidence-gate)**: `get_confidence()` on the rank-0 pull-path candidate drives the opt-in confidence gate — `assemble()` can refuse or flag a low-confidence answer instead of injecting it
 - **AccessTrackerMixin**: Read tracking independent of confidence
@@ -9500,6 +9878,32 @@ Supporting notes:
 - **CyclicDecayField**: `acted` strengthens cycles and resolves pressure; `dismissed` and `contradicted` weaken cycles (`contradicted` more aggressively).
 - **ConfidenceField**: `acted` corroborates; `contradicted` contradicts.
 - **PredictionLedgerMixin**: `acted`, `used`, `dismissed`, and `contradicted` auto-resolve pending predictions with appropriate error values (`used` maps to moderate error `Defaults.PL_AUTO_RESOLVE_USED`).
+
+## Outcomes Now Reach Forgetting
+
+Reporting an outcome used to affect ranking and cycle amplitudes but never the *rate* at which a
+memory left the corpus: a memory dismissed ten times decayed exactly as fast as one acted on ten
+times, because `decay_rate` was a field-level constant shared by every record. The only asymmetry
+was `acted`, which calls `touch()` and so slows effective decay by resetting the clock — with no
+matching mechanism by which dismissal could accelerate it.
+
+The confidence this protocol writes now feeds two further consumers:
+
+1. **Decay rate.** `DecayingSortedField` and `CyclicDecayField` derive a per-record effective decay
+   rate from confidence
+   (`eff = decay_rate * 2 ^ (s * 2 * (c0 - c))`), so a contradicted memory both ranks lower *and*
+   fades faster. See
+   [Confidence-Modulated Decay](decaying-sorted-field.md#confidence-modulated-decay).
+2. **Forget eligibility.** `MemoryLifecycle` forgets a low-confidence idle record once it has at
+   least `FORGET_MIN_EVIDENCE` observations behind it, tombstoning rather than deleting so the
+   decision stays reversible.
+
+The full loop: `on_context_used(..., "dismissed")` → confidence drops → next retrieval ranks the
+memory lower → next lifecycle tick tombstones it. Nothing new is required at the call site; the
+outcome reporting deployments already do is what drives it.
+
+Neutrality is preserved for corpora with no outcome data at all — a record that has never been
+reported on scores byte-identically to pre-modulation Popoto.
 
 ## RecallProposal
 
@@ -10139,6 +10543,16 @@ If both BM25 and vector signals return empty results, the path falls back to the
 3. **Budget-select**: Fit within `max_items` and `max_tokens` constraints. See [Token Budget Semantics](#token-budget-semantics) for the exact packing rules and counter contract.
 4. **Post-effects**: Fire `ObservationProtocol.on_read()` for selected records.
 5. **Competitive suppression**: Non-selected pull-path candidates receive a mild contradiction signal via ConfidenceField.
+
+!!! note "Suppression now compounds into ranking and forgetting"
+    Since [confidence-modulated decay](decaying-sorted-field.md#confidence-modulated-decay),
+    the suppression signal in step 5 does more than lower a stored number: a repeatedly
+    suppressed record decays faster than an equally-old record with neutral confidence, so it
+    falls out of future pull-path candidate sets on its own. Once its confidence drops below
+    `FORGET_CONFIDENCE_CEILING` and it has at least `FORGET_MIN_EVIDENCE` observations behind
+    it, an idle record also becomes eligible for
+    [`MemoryLifecycle`](../recipes.md#memorylifecycle) tombstoning. To keep suppression purely
+    a ranking nudge, set `confidence_modulation_field=False` on the decay field.
 
 ## Token Budget Semantics
 
@@ -11199,6 +11613,18 @@ Reports how the agent used the injected memories via `ObservationProtocol.on_con
 - `"deferred"` -- the agent noted but deferred action (neutral)
 - `"used"` -- the memory informed reasoning without appearing in the response (confirms access, no strength signal)
 
+### Outcomes prune the corpus
+
+Reported outcomes are not only a ranking nudge -- they set how fast a memory leaves the corpus, so the layer stores, retrieves, validates, *and* prunes during regular use with no extra call site:
+
+1. `report_outcomes(..., "dismissed")` lowers the record's `ConfidenceField` value.
+2. The next retrieval reads that confidence inside the decay Lua and raises the record's effective decay rate (`eff = decay_rate * 2 ^ (s * 2 * (c0 - c))`), so it ranks lower -- see [Confidence-Modulated Decay](../features/decaying-sorted-field.md#confidence-modulated-decay).
+3. The next [`MemoryLifecycle.tick()`](../recipes.md#memorylifecycle) tombstones it once it is idle, its confidence is below `FORGET_CONFIDENCE_CEILING`, and it has at least `FORGET_MIN_EVIDENCE` observations behind it.
+
+Modulation is on by default whenever the model carries exactly one `ConfidenceField`, and forgetting tombstones rather than deletes, so a memory pruned by an unlucky run of dismissals can be brought back with `lifecycle.restore(redis_key)`. If a post-upgrade ranking change is unwelcome, `Defaults.DECAY_CONFIDENCE_MODULATION_ENABLED = False` restores the previous behavior byte-for-byte without touching model code.
+
+`SubconsciousMemory` itself does not run lifecycle ticks -- compose it with a `MemoryLifecycle` instance as shown in [Composing with SubconsciousMemory](../recipes.md#composing-with-subconsciousmemory).
+
 ## Tuning
 
 | Parameter | Default | Description |
@@ -11615,6 +12041,15 @@ DEFAULT_SCORE_WEIGHTS = {"confidence": 0.6, "last_reinforced": 0.4}
 ```
 
 Confidence dominates; freshness breaks ties between equally-confident patterns. Override per-call via `recall(..., score_weights={"confidence": 1.0, "last_reinforced": 0.0})`.
+
+!!! note "Confidence enters the score twice"
+    `recall()` ranks via `composite_score()`, and the `last_reinforced` component is itself
+    [confidence-modulated](../features/decaying-sorted-field.md#confidence-modulated-decay):
+    `ProceduralPattern` declares exactly one `ConfidenceField`, so it is auto-detected and
+    low-confidence patterns decay faster than high-confidence ones of the same age. Confidence
+    therefore influences both the `confidence` term and the `last_reinforced` term. Setting
+    `score_weights={"confidence": 0.0, ...}` does **not** remove confidence from the ranking —
+    pass `confidence_modulation_field=False` on `last_reinforced` for that.
 
 `cluster_threshold` defaults to `Defaults.TRAJECTORY_CLUSTER_THRESHOLD` (currently `3`) when omitted. The constant participates in the project-wide tuning sweeps described in [Magic Numbers Tuning](tuning-magic-numbers.md). Override before model definition or at runtime:
 
@@ -12151,6 +12586,35 @@ Source: `src/popoto/fields/write_filter.py`
 | Constant | Default | Optimal Range | Sensitivity |
 |----------|---------|--------------|-------------|
 | `decay_rate` | **0.1** (sweep 2026-04-17) | [0.1, 1.0] | **Medium** (variance 0.067) |
+| `DECAY_CONFIDENCE_MODULATION_STRENGTH` | 0.5 (not yet swept) | [0.3, 0.7] | Unmeasured |
+| `DECAY_CONFIDENCE_MODULATION_ENABLED` | `True` | n/a (boolean) | n/a |
+
+`DECAY_CONFIDENCE_MODULATION_STRENGTH` is the `s` in the per-record effective rate
+`decay_rate * 2^(s * 2 * (c0 - confidence))`, where `c0` is the confidence field's own
+`initial_confidence` — so `s` reads as "doublings of the decay rate at zero confidence", and
+`s = 0` is a bit-exact no-op. The default is the literature-grounded midpoint of the 0.3–0.7 band
+(Pavlik & Anderson 2005; Duolingo half-life regression), pending tuning against real dismissal data
+([issue #493](https://github.com/tomcounsell/popoto/issues/493)) rather than synthetic corpora.
+`DECAY_CONFIDENCE_MODULATION_ENABLED` is a deploy-level kill switch, not a tuning knob: modulation
+is default-on via auto-detection, and setting this `False` restores pre-modulation behavior
+byte-for-byte without editing any model definition.
+
+### MemoryLifecycle
+
+Source: `src/popoto/recipes/memory_lifecycle.py`
+
+| Constant | Default | Optimal Range | Sensitivity |
+|----------|---------|--------------|-------------|
+| `LIFECYCLE_FORGET_CONFIDENCE_CEILING` | 0.3 (not yet swept) | [0.1, 0.5] | Unmeasured |
+| `LIFECYCLE_FORGET_MIN_EVIDENCE` | 5 (not yet swept) | [3, 20] | Unmeasured |
+| `LIFECYCLE_TOMBSTONE_RETENTION_LIMIT` | 1000 (by design) | n/a (capacity bound) | n/a |
+
+The ceiling sits below `INITIAL_CONFIDENCE` (0.5) so a record must have moved decisively negative
+before confidence alone can bury it, and below `LIFECYCLE_PROMOTION_CONFIDENCE_THRESHOLD` (0.6) so
+the forget and promote bands cannot overlap. `LIFECYCLE_FORGET_MIN_EVIDENCE` is a safety floor, not
+a performance knob — confidence moves on every signal, so without it one unlucky dismissal could
+forget a memory. `LIFECYCLE_TOMBSTONE_RETENTION_LIMIT` bounds the tombstone corpus (oldest age out);
+it is a capacity bound rather than a quality parameter.
 
 ### CoOccurrenceField
 
@@ -15299,7 +15763,7 @@ lifecycle.tag_new(record)           # sets tier = "episodic" and saves
 # 4. Run a lifecycle pass periodically (e.g. after each conversation turn,
 #    or on a background schedule)
 summary = lifecycle.tick()
-# {"promoted": 0, "forgotten": 0, "duration_ms": 1.4}
+# {"promoted": 0, "forgotten": 0, "tombstoned": 0, "duration_ms": 1.4}
 
 # 5. Inspect a record's lifecycle state
 state = lifecycle.assess(record)
@@ -15324,14 +15788,68 @@ Promotion is non-reversible in v1 (no demotion from semantic).
 
 ### Auto-forget criteria
 
-A non-semantic record is deleted when **both** hold:
+A non-semantic record is forgotten when it is idle **and** either its importance has
+bottomed out or its accumulated outcome evidence has turned decisively negative:
+
+```text
+(importance_score < FORGET_IMPORTANCE_FLOOR
+ OR (confidence < FORGET_CONFIDENCE_CEILING AND evidence_count >= FORGET_MIN_EVIDENCE))
+AND idle_seconds > FORGET_IDLE_SECONDS
+```
 
 | Criterion | Default |
 |-----------|---------|
 | `importance_score < FORGET_IMPORTANCE_FLOOR` | 0.1 |
+| `confidence < FORGET_CONFIDENCE_CEILING` | 0.3 |
+| `evidence_count >= FORGET_MIN_EVIDENCE` | 5 |
 | `idle_seconds > FORGET_IDLE_SECONDS` | 86 400 (24 h) |
 
-Semantic records are **never** deleted by the default policy.
+The confidence disjunct closes the promote/forget asymmetry — confidence already gated
+promotion but was blind to forgetting. `FORGET_MIN_EVIDENCE` is a safety floor rather
+than a tuning knob: confidence moves on every reported outcome, so without a minimum
+track record one unlucky dismissal could bury a memory. Models with no
+`ConfidenceField` take the importance-only path, unchanged from before.
+
+Semantic records are **never** forgotten by the default policy.
+
+### Tombstones
+
+Forgetting archives the record and removes it from the live corpus rather than deleting
+it, so exclusion from every retrieval mode is structural — no read path has to remember
+to filter tombstones out. The fingerprint, archived payload, and death metadata are kept
+under `$TOMB:{Model}:*`, and the decision is reversible.
+
+```python
+summary = lifecycle.tick()
+# {"promoted": 0, "forgotten": 3, "tombstoned": 3, "duration_ms": 2.1}
+
+lifecycle.tombstone_count()                 # 3
+tombs = lifecycle.list_tombstones(limit=10) # newest death first
+tombs[0].confidence_at_death                # e.g. 0.12
+tombs[0].dismissal_count                    # e.g. 7
+
+lifecycle.restore(tombs[0].redis_key)       # live again, all indexes rebuilt
+```
+
+| Method | Purpose |
+|--------|---------|
+| `tombstone(record, reason="policy")` | Forget one record explicitly; returns a `Tombstone` or `None` |
+| `restore(redis_key)` | Re-save the archived record (re-runs every `on_save` hook, so sorted/unique/geo indexes are rebuilt) and drop its tombstone |
+| `list_tombstones(limit=None)` | Retained `Tombstone`s, newest death first |
+| `get_tombstone(redis_key)` | One `Tombstone`, or `None` if it aged out |
+| `tombstone_count()` | Number currently retained |
+| `purge_tombstone(redis_key)` | Drop one tombstone permanently |
+| `purge_all_tombstones()` | Drop every tombstone for this model class |
+| `forget_hard(record)` | Irreversible delete with no tombstone |
+| `confidence_forget_eligible(record)` | Whether evidence alone justifies forgetting |
+
+A `Tombstone` carries `redis_key`, `fingerprint` (the `ExistenceFilter` fingerprint when
+the model has one, else the `redis_key`), `tier`, `importance_at_death`,
+`confidence_at_death`, `evidence_count`, `dismissal_count`, `tombstoned_at`, and `reason`.
+
+Retention is bounded by `TOMBSTONE_RETENTION_LIMIT` (1000); the oldest age out, so a
+restore is only available while the tombstone is still retained. Archiving happens before
+removal, so a crash between the two steps loses nothing.
 
 ### Custom policies
 
@@ -15400,7 +15918,7 @@ lifecycle.tick()  # only touches agent-1's records
 
 ### Tuning the thresholds
 
-The five magic-number constants are class attributes:
+The magic-number constants are class attributes:
 
 ```python
 # Inspect defaults
@@ -15409,6 +15927,9 @@ print(MemoryLifecycle.PROMOTION_CONFIDENCE_THRESHOLD)  # 0.6
 print(MemoryLifecycle.PROMOTION_MIN_AGE_SECONDS)       # 300.0
 print(MemoryLifecycle.FORGET_IMPORTANCE_FLOOR)         # 0.1
 print(MemoryLifecycle.FORGET_IDLE_SECONDS)             # 86400.0
+print(MemoryLifecycle.FORGET_CONFIDENCE_CEILING)       # 0.3
+print(MemoryLifecycle.FORGET_MIN_EVIDENCE)             # 5
+print(MemoryLifecycle.TOMBSTONE_RETENTION_LIMIT)       # 1000
 
 # Override for a specific instance
 lifecycle.PROMOTION_ACCESS_COUNT = 5

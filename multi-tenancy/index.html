@@ -931,6 +931,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#decay-queries-against-a-partitioned-confidencefield" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decay queries against a partitioned ConfidenceField
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#partition-key-changes" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2785,6 +2796,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#decay-queries-against-a-partitioned-confidencefield" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decay queries against a partitioned ConfidenceField
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#partition-key-changes" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3016,6 +3038,21 @@ automatically from the model instance:</p>
 <a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="c1"># Reads from the &#39;atlas&#39; partition hash automatically</span>
 <a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="n">confidence</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">get_confidence</span><span class="p">(</span><span class="n">memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">)</span>
 </code></pre></div>
+<h3 id="decay-queries-against-a-partitioned-confidencefield">Decay queries against a partitioned ConfidenceField<a class="headerlink" href="#decay-queries-against-a-partitioned-confidencefield" title="Permanent link">&para;</a></h3>
+<p>If the same model also declares a <code>DecayingSortedField</code> (or <code>CyclicDecayField</code>),
+<a href="../features/decaying-sorted-field/#confidence-modulated-decay">confidence-modulated decay</a>
+joins the decay index to the confidence <code>:data</code> hash. A partitioned <code>ConfidenceField</code>
+spreads that hash across tenants, so a single decay query cannot cover the result set
+unless it names the partition. <code>top_by_decay()</code> and <code>composite_score()</code> raise
+<code>QueryException</code> listing the filters they need:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">project</span><span class="o">=</span><span class="s2">&quot;atlas&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">top_by_decay</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>   <span class="c1"># OK</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="s2">&quot;fact1&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">top_by_decay</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="c1"># QueryException: ... ConfidenceField &#39;certainty&#39; ... is partitioned by project.</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="c1"># Query must include filter(s) for: project.</span>
+</code></pre></div>
+<p>Add the partition filter, or set <code>confidence_modulation_field=False</code> on the decay
+field to opt that field out of modulation.</p>
 <h3 id="partition-key-changes">Partition key changes<a class="headerlink" href="#partition-key-changes" title="Permanent link">&para;</a></h3>
 <p>If a model instance changes its partition key value (e.g., moves from project A to
 project B), ConfidenceField automatically detects the change during <code>on_save()</code> and
@@ -3024,13 +3061,13 @@ is needed.</p>
 <h3 id="migrating-existing-data">Migrating existing data<a class="headerlink" href="#migrating-existing-data" title="Permanent link">&para;</a></h3>
 <p>If you add <code>partition_by</code> to an existing ConfidenceField that already has data in a
 single unpartitioned hash, use the migration helper:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Preview what would happen</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="n">report</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">migrate_to_partitioned</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">,</span> <span class="n">dry_run</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="nb">print</span><span class="p">(</span><span class="n">report</span><span class="p">)</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="c1"># {&#39;total&#39;: 1200, &#39;migrated&#39;: 0, &#39;errors&#39;: [], &#39;partitions&#39;: {&#39;atlas&#39;: 800, &#39;hermes&#39;: 400}}</span>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>
-<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="c1"># Run the actual migration</span>
-<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="n">report</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">migrate_to_partitioned</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># Preview what would happen</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="n">report</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">migrate_to_partitioned</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">,</span> <span class="n">dry_run</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="nb">print</span><span class="p">(</span><span class="n">report</span><span class="p">)</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="c1"># {&#39;total&#39;: 1200, &#39;migrated&#39;: 0, &#39;errors&#39;: [], &#39;partitions&#39;: {&#39;atlas&#39;: 800, &#39;hermes&#39;: 400}}</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="c1"># Run the actual migration</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="n">report</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">migrate_to_partitioned</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">)</span>
 </code></pre></div>
 <p>The migration reads each entry from the unpartitioned hash, loads the corresponding
 model instance to determine its partition field values, and writes to the correct
@@ -3039,39 +3076,39 @@ partitioned hash. The old unpartitioned hash is deleted after a successful migra
 <p>Use the companion key methods to confirm that each tenant's companion hash is stored
 under a separate Redis key. This is useful for auditing, monitoring dashboards, or
 integration tests that validate isolation.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">field</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">_options</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="s2">&quot;certainty&quot;</span><span class="p">]</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="c1"># Build keys for each tenant without loading instances</span>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="n">atlas_key</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_data_hash_key_from_values</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">,</span> <span class="n">project</span><span class="o">=</span><span class="s2">&quot;atlas&quot;</span><span class="p">)</span>
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="n">hermes_key</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_data_hash_key_from_values</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">,</span> <span class="n">project</span><span class="o">=</span><span class="s2">&quot;hermes&quot;</span><span class="p">)</span>
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>
-<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="nb">print</span><span class="p">(</span><span class="n">atlas_key</span><span class="p">)</span>   <span class="c1"># =&gt; &quot;$ConfidencF:Memory:certainty:data:atlas&quot;</span>
-<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="nb">print</span><span class="p">(</span><span class="n">hermes_key</span><span class="p">)</span>  <span class="c1"># =&gt; &quot;$ConfidencF:Memory:certainty:data:hermes&quot;</span>
-<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="k">assert</span> <span class="n">atlas_key</span> <span class="o">!=</span> <span class="n">hermes_key</span>  <span class="c1"># Companion hashes are fully isolated</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">field</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">_options</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="s2">&quot;certainty&quot;</span><span class="p">]</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="c1"># Build keys for each tenant without loading instances</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="n">atlas_key</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_data_hash_key_from_values</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">,</span> <span class="n">project</span><span class="o">=</span><span class="s2">&quot;atlas&quot;</span><span class="p">)</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="n">hermes_key</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_data_hash_key_from_values</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">,</span> <span class="n">project</span><span class="o">=</span><span class="s2">&quot;hermes&quot;</span><span class="p">)</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="nb">print</span><span class="p">(</span><span class="n">atlas_key</span><span class="p">)</span>   <span class="c1"># =&gt; &quot;$ConfidencF:Memory:certainty:data:atlas&quot;</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="nb">print</span><span class="p">(</span><span class="n">hermes_key</span><span class="p">)</span>  <span class="c1"># =&gt; &quot;$ConfidencF:Memory:certainty:data:hermes&quot;</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="k">assert</span> <span class="n">atlas_key</span> <span class="o">!=</span> <span class="n">hermes_key</span>  <span class="c1"># Companion hashes are fully isolated</span>
 </code></pre></div>
 <p>You can also verify isolation for instance-based keys:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">memory_a</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">project</span><span class="o">=</span><span class="s2">&quot;atlas&quot;</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="s2">&quot;fact1&quot;</span><span class="p">)</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="n">memory_b</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">project</span><span class="o">=</span><span class="s2">&quot;hermes&quot;</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="s2">&quot;fact2&quot;</span><span class="p">)</span>
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="n">key_a</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_data_hash_key</span><span class="p">(</span><span class="n">memory_a</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">)</span>
-<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="n">key_b</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_data_hash_key</span><span class="p">(</span><span class="n">memory_b</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">)</span>
-<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="k">assert</span> <span class="n">key_a</span> <span class="o">!=</span> <span class="n">key_b</span>  <span class="c1"># Each tenant&#39;s data lives in a separate hash</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">memory_a</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">project</span><span class="o">=</span><span class="s2">&quot;atlas&quot;</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="s2">&quot;fact1&quot;</span><span class="p">)</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="n">memory_b</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">project</span><span class="o">=</span><span class="s2">&quot;hermes&quot;</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="s2">&quot;fact2&quot;</span><span class="p">)</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="n">key_a</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_data_hash_key</span><span class="p">(</span><span class="n">memory_a</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">)</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="n">key_b</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_data_hash_key</span><span class="p">(</span><span class="n">memory_b</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">)</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="k">assert</span> <span class="n">key_a</span> <span class="o">!=</span> <span class="n">key_b</span>  <span class="c1"># Each tenant&#39;s data lives in a separate hash</span>
 </code></pre></div>
 <h3 id="filtered-reads-without-partitioning">Filtered reads without partitioning<a class="headerlink" href="#filtered-reads-without-partitioning" title="Permanent link">&para;</a></h3>
 <p>If partitioning is not appropriate for your use case, <code>get_confidence_filtered()</code>
 provides an HSCAN-based alternative that avoids loading all entries into memory:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># Match members by Redis key pattern</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="n">results</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">get_confidence_filtered</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">,</span> <span class="n">pattern</span><span class="o">=</span><span class="s2">&quot;Memory:atlas:*&quot;</span><span class="p">)</span>
-<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="c1"># Returns: {member_key: {confidence, evidence_count, ...}} for matching entries</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="c1"># Match members by Redis key pattern</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="n">results</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">get_confidence_filtered</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">,</span> <span class="n">pattern</span><span class="o">=</span><span class="s2">&quot;Memory:atlas:*&quot;</span><span class="p">)</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="c1"># Returns: {member_key: {confidence, evidence_count, ...}} for matching entries</span>
 </code></pre></div>
 <h2 id="when-to-use-separate-redis-databases-instead">When to use separate Redis databases instead<a class="headerlink" href="#when-to-use-separate-redis-databases-instead" title="Permanent link">&para;</a></h2>
 <p>For stronger isolation (e.g., compliance requirements, independent TTL policies,
 or different Redis instances per tenant), use separate Redis connections rather
 than key prefixing:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.redis_db</span><span class="w"> </span><span class="kn">import</span> <span class="n">set_REDIS_DB_settings</span>
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
-<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="c1"># Switch the entire connection for a tenant</span>
-<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="n">set_REDIS_DB_settings</span><span class="p">(</span><span class="n">redis_url</span><span class="o">=</span><span class="s2">&quot;redis://tenant-a-host:6379/0&quot;</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.redis_db</span><span class="w"> </span><span class="kn">import</span> <span class="n">set_REDIS_DB_settings</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="c1"># Switch the entire connection for a tenant</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="n">set_REDIS_DB_settings</span><span class="p">(</span><span class="n">redis_url</span><span class="o">=</span><span class="s2">&quot;redis://tenant-a-host:6379/0&quot;</span><span class="p">)</span>
 </code></pre></div>
 <p>This is heavier but provides complete data separation at the connection level.</p>
 <h2 id="summary">Summary<a class="headerlink" href="#summary" title="Permanent link">&para;</a></h2>

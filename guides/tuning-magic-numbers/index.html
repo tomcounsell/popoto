@@ -1822,6 +1822,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#memorylifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MemoryLifecycle
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#cooccurrencefield" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2914,6 +2925,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#memorylifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MemoryLifecycle
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#cooccurrencefield" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3245,8 +3267,67 @@
 <td>[0.1, 1.0]</td>
 <td><strong>Medium</strong> (variance 0.067)</td>
 </tr>
+<tr>
+<td><code>DECAY_CONFIDENCE_MODULATION_STRENGTH</code></td>
+<td>0.5 (not yet swept)</td>
+<td>[0.3, 0.7]</td>
+<td>Unmeasured</td>
+</tr>
+<tr>
+<td><code>DECAY_CONFIDENCE_MODULATION_ENABLED</code></td>
+<td><code>True</code></td>
+<td>n/a (boolean)</td>
+<td>n/a</td>
+</tr>
 </tbody>
 </table>
+<p><code>DECAY_CONFIDENCE_MODULATION_STRENGTH</code> is the <code>s</code> in the per-record effective rate
+<code>decay_rate * 2^(s * 2 * (c0 - confidence))</code>, where <code>c0</code> is the confidence field's own
+<code>initial_confidence</code> — so <code>s</code> reads as "doublings of the decay rate at zero confidence", and
+<code>s = 0</code> is a bit-exact no-op. The default is the literature-grounded midpoint of the 0.3–0.7 band
+(Pavlik &amp; Anderson 2005; Duolingo half-life regression), pending tuning against real dismissal data
+(<a href="https://github.com/tomcounsell/popoto/issues/493">issue #493</a>) rather than synthetic corpora.
+<code>DECAY_CONFIDENCE_MODULATION_ENABLED</code> is a deploy-level kill switch, not a tuning knob: modulation
+is default-on via auto-detection, and setting this <code>False</code> restores pre-modulation behavior
+byte-for-byte without editing any model definition.</p>
+<h3 id="memorylifecycle">MemoryLifecycle<a class="headerlink" href="#memorylifecycle" title="Permanent link">&para;</a></h3>
+<p>Source: <code>src/popoto/recipes/memory_lifecycle.py</code></p>
+<table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Default</th>
+<th>Optimal Range</th>
+<th>Sensitivity</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>LIFECYCLE_FORGET_CONFIDENCE_CEILING</code></td>
+<td>0.3 (not yet swept)</td>
+<td>[0.1, 0.5]</td>
+<td>Unmeasured</td>
+</tr>
+<tr>
+<td><code>LIFECYCLE_FORGET_MIN_EVIDENCE</code></td>
+<td>5 (not yet swept)</td>
+<td>[3, 20]</td>
+<td>Unmeasured</td>
+</tr>
+<tr>
+<td><code>LIFECYCLE_TOMBSTONE_RETENTION_LIMIT</code></td>
+<td>1000 (by design)</td>
+<td>n/a (capacity bound)</td>
+<td>n/a</td>
+</tr>
+</tbody>
+</table>
+<p>The ceiling sits below <code>INITIAL_CONFIDENCE</code> (0.5) so a record must have moved decisively negative
+before confidence alone can bury it, and below <code>LIFECYCLE_PROMOTION_CONFIDENCE_THRESHOLD</code> (0.6) so
+the forget and promote bands cannot overlap. <code>LIFECYCLE_FORGET_MIN_EVIDENCE</code> is a safety floor, not
+a performance knob — confidence moves on every signal, so without it one unlucky dismissal could
+forget a memory. <code>LIFECYCLE_TOMBSTONE_RETENTION_LIMIT</code> bounds the tombstone corpus (oldest age out);
+it is a capacity bound rather than a quality parameter.</p>
 <h3 id="cooccurrencefield">CoOccurrenceField<a class="headerlink" href="#cooccurrencefield" title="Permanent link">&para;</a></h3>
 <p>Source: <code>src/popoto/fields/co_occurrence_field.py</code></p>
 <table>

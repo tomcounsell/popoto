@@ -3449,6 +3449,17 @@ recipe to turn live <code>assemble()</code> calls into a real-workload benchmark
 <li><strong>Post-effects</strong>: Fire <code>ObservationProtocol.on_read()</code> for selected records.</li>
 <li><strong>Competitive suppression</strong>: Non-selected pull-path candidates receive a mild contradiction signal via ConfidenceField.</li>
 </ol>
+<div class="admonition note">
+<p class="admonition-title">Suppression now compounds into ranking and forgetting</p>
+<p>Since <a href="../decaying-sorted-field/#confidence-modulated-decay">confidence-modulated decay</a>,
+the suppression signal in step 5 does more than lower a stored number: a repeatedly
+suppressed record decays faster than an equally-old record with neutral confidence, so it
+falls out of future pull-path candidate sets on its own. Once its confidence drops below
+<code>FORGET_CONFIDENCE_CEILING</code> and it has at least <code>FORGET_MIN_EVIDENCE</code> observations behind
+it, an idle record also becomes eligible for
+<a href="../../recipes/#memorylifecycle"><code>MemoryLifecycle</code></a> tombstoning. To keep suppression purely
+a ranking nudge, set <code>confidence_modulation_field=False</code> on the decay field.</p>
+</div>
 <h2 id="token-budget-semantics">Token Budget Semantics<a class="headerlink" href="#token-budget-semantics" title="Permanent link">&para;</a></h2>
 <p><code>max_tokens</code> is enforced against the serialized text that is actually emitted to the LLM — not against a proxy like the Redis key or <code>str(record)</code>.</p>
 <h3 id="counter-contract">Counter contract<a class="headerlink" href="#counter-contract" title="Permanent link">&para;</a></h3>

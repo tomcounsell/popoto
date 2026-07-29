@@ -3148,6 +3148,16 @@
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">DEFAULT_SCORE_WEIGHTS</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;confidence&quot;</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">,</span> <span class="s2">&quot;last_reinforced&quot;</span><span class="p">:</span> <span class="mf">0.4</span><span class="p">}</span>
 </code></pre></div>
 <p>Confidence dominates; freshness breaks ties between equally-confident patterns. Override per-call via <code>recall(..., score_weights={"confidence": 1.0, "last_reinforced": 0.0})</code>.</p>
+<div class="admonition note">
+<p class="admonition-title">Confidence enters the score twice</p>
+<p><code>recall()</code> ranks via <code>composite_score()</code>, and the <code>last_reinforced</code> component is itself
+<a href="../../features/decaying-sorted-field/#confidence-modulated-decay">confidence-modulated</a>:
+<code>ProceduralPattern</code> declares exactly one <code>ConfidenceField</code>, so it is auto-detected and
+low-confidence patterns decay faster than high-confidence ones of the same age. Confidence
+therefore influences both the <code>confidence</code> term and the <code>last_reinforced</code> term. Setting
+<code>score_weights={"confidence": 0.0, ...}</code> does <strong>not</strong> remove confidence from the ranking —
+pass <code>confidence_modulation_field=False</code> on <code>last_reinforced</code> for that.</p>
+</div>
 <p><code>cluster_threshold</code> defaults to <code>Defaults.TRAJECTORY_CLUSTER_THRESHOLD</code> (currently <code>3</code>) when omitted. The constant participates in the project-wide tuning sweeps described in <a href="../tuning-magic-numbers/">Magic Numbers Tuning</a>. Override before model definition or at runtime:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">Defaults</span>
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">Defaults</span><span class="o">.</span><span class="n">TRAJECTORY_CLUSTER_THRESHOLD</span> <span class="o">=</span> <span class="mi">5</span>  <span class="c1"># require more evidence</span>

@@ -1646,6 +1646,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#outcomes-prune-the-corpus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Outcomes prune the corpus
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2859,6 +2870,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#outcomes-prune-the-corpus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Outcomes prune the corpus
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -3079,6 +3101,15 @@
 <li><code>"deferred"</code> -- the agent noted but deferred action (neutral)</li>
 <li><code>"used"</code> -- the memory informed reasoning without appearing in the response (confirms access, no strength signal)</li>
 </ul>
+<h3 id="outcomes-prune-the-corpus">Outcomes prune the corpus<a class="headerlink" href="#outcomes-prune-the-corpus" title="Permanent link">&para;</a></h3>
+<p>Reported outcomes are not only a ranking nudge -- they set how fast a memory leaves the corpus, so the layer stores, retrieves, validates, <em>and</em> prunes during regular use with no extra call site:</p>
+<ol>
+<li><code>report_outcomes(..., "dismissed")</code> lowers the record's <code>ConfidenceField</code> value.</li>
+<li>The next retrieval reads that confidence inside the decay Lua and raises the record's effective decay rate (<code>eff = decay_rate * 2 ^ (s * 2 * (c0 - c))</code>), so it ranks lower -- see <a href="../../features/decaying-sorted-field/#confidence-modulated-decay">Confidence-Modulated Decay</a>.</li>
+<li>The next <a href="../../recipes/#memorylifecycle"><code>MemoryLifecycle.tick()</code></a> tombstones it once it is idle, its confidence is below <code>FORGET_CONFIDENCE_CEILING</code>, and it has at least <code>FORGET_MIN_EVIDENCE</code> observations behind it.</li>
+</ol>
+<p>Modulation is on by default whenever the model carries exactly one <code>ConfidenceField</code>, and forgetting tombstones rather than deletes, so a memory pruned by an unlucky run of dismissals can be brought back with <code>lifecycle.restore(redis_key)</code>. If a post-upgrade ranking change is unwelcome, <code>Defaults.DECAY_CONFIDENCE_MODULATION_ENABLED = False</code> restores the previous behavior byte-for-byte without touching model code.</p>
+<p><code>SubconsciousMemory</code> itself does not run lifecycle ticks -- compose it with a <code>MemoryLifecycle</code> instance as shown in <a href="../../recipes/#composing-with-subconsciousmemory">Composing with SubconsciousMemory</a>.</p>
 <h2 id="tuning">Tuning<a class="headerlink" href="#tuning" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
