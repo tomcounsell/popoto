@@ -65,11 +65,12 @@ Example::
     print(state.tier, state.promotion_eligible, state.forget_eligible)
 """
 
+import dataclasses
 import logging
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Callable, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union, cast
 
 import msgpack
 
@@ -148,11 +149,38 @@ class Tombstone:
     reason: str = "policy"
 
 
-_TOMBSTONE_FIELDS = tuple(Tombstone.__dataclass_fields__)
+_TOMBSTONE_FIELDS: Tuple[str, ...] = tuple(Tombstone.__dataclass_fields__)
+
+# Fields with no dataclass default must be present in a stored entry — a
+# Tombstone missing one of them is not a Tombstone, it is a None-filled shell.
+_TOMBSTONE_REQUIRED_FIELDS: Tuple[str, ...] = tuple(
+    name
+    for name, f in Tombstone.__dataclass_fields__.items()
+    if f.default is dataclasses.MISSING and f.default_factory is dataclasses.MISSING
+)
 
 
-def _unpack_tombstone_entry(raw) -> Optional[dict]:
-    """Decode a stored tombstone entry, or None if absent/corrupt."""
+def _decoded_members(reply: Any) -> List[str]:
+    """Decode a Redis ZSET member reply into ``str`` keys.
+
+    redis-py types ``zrange``/``zrevrange`` as a union covering their
+    ``withscores`` overloads (member, or ``(member, score)`` pairs). These
+    call sites never pass ``withscores``, so the reply is always a flat list
+    of members — the cast records that, rather than blanket-ignoring the
+    resulting type error at each call site.
+    """
+    return [
+        m.decode() if isinstance(m, bytes) else m for m in cast(Iterable[Any], reply)
+    ]
+
+
+def _unpack_tombstone_entry(raw: Any) -> Optional[Dict[str, Any]]:
+    """Decode a stored tombstone entry, or None if absent/corrupt/incomplete.
+
+    A partial or foreign msgpack dict under ``$TOMB:{Model}:data`` is dropped
+    on the same log-and-skip path as undecodable bytes, rather than being
+    inflated into a Tombstone whose non-Optional fields are all None.
+    """
     if raw is None:
         return None
     try:
@@ -160,12 +188,25 @@ def _unpack_tombstone_entry(raw) -> Optional[dict]:
     except Exception as exc:
         logger.warning("tombstone entry is undecodable, skipping: %s", exc)
         return None
-    return entry if isinstance(entry, dict) else None
+    if not isinstance(entry, dict):
+        logger.warning(
+            "tombstone entry is not a mapping (%s), skipping", type(entry).__name__
+        )
+        return None
+    missing = [k for k in _TOMBSTONE_REQUIRED_FIELDS if k not in entry]
+    if missing:
+        logger.warning("tombstone entry is missing required keys %s, skipping", missing)
+        return None
+    return entry
 
 
-def _tombstone_from_entry(entry: dict) -> Tombstone:
-    """Build a Tombstone from a stored entry, ignoring the archived payload."""
-    return Tombstone(**{k: entry.get(k) for k in _TOMBSTONE_FIELDS})
+def _tombstone_from_entry(entry: Dict[str, Any]) -> Tombstone:
+    """Build a Tombstone from a stored entry, ignoring the archived payload.
+
+    Callers must pass an entry that has already cleared
+    ``_unpack_tombstone_entry``, which guarantees every required key is present.
+    """
+    return Tombstone(**{k: entry[k] for k in _TOMBSTONE_FIELDS if k in entry})
 
 
 # ---------------------------------------------------------------------------
@@ -205,7 +246,9 @@ def _get_confidence(record, confidence_field: Optional[str]) -> float:
     return float(val) if val is not None else 0.5
 
 
-def _get_confidence_data(record, confidence_field: Optional[str]) -> Optional[dict]:
+def _get_confidence_data(
+    record: Any, confidence_field: Optional[str]
+) -> Optional[Dict[str, Any]]:
     """Return the full ConfidenceField payload for a record, or None.
 
     One round trip yields both ``confidence`` and ``evidence_count``, which
@@ -507,16 +550,36 @@ class MemoryLifecycle:
         # listen to the same evidence signal — including the deploy-level
         # kill switch (DECAY_CONFIDENCE_MODULATION_ENABLED) and the
         # ambiguity rule (2+ ConfidenceFields => off rather than a guess).
+        # This eager call exists only to fail fast on a misconfigured
+        # confidence_modulation_field spec at construction time; the result is
+        # deliberately discarded. Consumers re-resolve per call (see
+        # _resolve_forget_confidence_field) so the kill switch is honoured the
+        # moment it is flipped, exactly as on the decay path.
+        self._resolve_forget_confidence_field()
+
+    def _resolve_forget_confidence_field(self) -> Optional[str]:
+        """Return the ConfidenceField name driving confidence-based forgetting.
+
+        Re-resolved on every call rather than frozen at construction: the
+        deploy-level kill switch (``Defaults.DECAY_CONFIDENCE_MODULATION_ENABLED``)
+        must be able to suppress confidence-driven *tombstoning* — the
+        data-mutating half of #491 — the instant it is toggled, matching the
+        decay path's behaviour. ``resolve_confidence_modulation_field`` caches
+        per model class, so the steady-state cost is a dict lookup.
+
+        Returns:
+            The ConfidenceField name, or None when modulation is off.
+        """
         from ..fields.decaying_sorted_field import (
             resolve_confidence_modulation_field,
         )
 
-        forget_field_name, _ = resolve_confidence_modulation_field(
-            model_class,
-            model_class._meta.fields[importance_field],
-            importance_field,
+        field_name, _ = resolve_confidence_modulation_field(
+            self.model_class,
+            self.model_class._meta.fields[self.importance_field],
+            self.importance_field,
         )
-        self._forget_confidence_field: Optional[str] = forget_field_name
+        return field_name
 
     def _validate_fields(self) -> None:
         """Validate that required fields exist on the model class.
@@ -684,21 +747,22 @@ class MemoryLifecycle:
             forget_eligible=forget_eligible,
         )
 
-    def confidence_forget_eligible(self, record) -> bool:
+    def confidence_forget_eligible(self, record: Any) -> bool:
         """Return True if accumulated outcome evidence alone justifies forgetting.
 
         Requires BOTH a confidence below ``FORGET_CONFIDENCE_CEILING`` and at
         least ``FORGET_MIN_EVIDENCE`` observations. Returns False whenever the
         evidence cannot be read at all — absence of evidence is never evidence
-        for forgetting.
+        for forgetting, and the kill switch (re-read on every call) forces
+        this path off entirely.
         """
-        data = _get_confidence_data(record, self._forget_confidence_field)
+        data = _get_confidence_data(record, self._resolve_forget_confidence_field())
         if not data:
             return False
         try:
             evidence = int(data.get("evidence_count", 0) or 0)
-            confidence = float(data.get("confidence"))
-        except (TypeError, ValueError):
+            confidence = float(data["confidence"])
+        except (KeyError, TypeError, ValueError):
             return False
         if evidence < self.FORGET_MIN_EVIDENCE:
             return False
@@ -716,7 +780,7 @@ class MemoryLifecycle:
             f"{TOMBSTONE_KEY_PREFIX}:{name}:index",
         )
 
-    def _fingerprint(self, record) -> str:
+    def _fingerprint(self, record: Any) -> str:
         """Return the record's ExistenceFilter fingerprint.
 
         Uses the model's ExistenceFilter fingerprint_fn when one exists so the
@@ -737,7 +801,7 @@ class MemoryLifecycle:
                     break
         return record.db_key.redis_key
 
-    def tombstone(self, record, reason: str = "policy") -> Optional[Tombstone]:
+    def tombstone(self, record: Any, reason: str = "policy") -> Optional[Tombstone]:
         """Forget a record by tombstoning it: remove from retrieval, keep the death.
 
         The record is archived (its raw Redis hash, so ``restore()`` can bring
@@ -764,7 +828,9 @@ class MemoryLifecycle:
             logger.debug("tombstone: key absent, skipping %s", live_key)
             return None
 
-        data = _get_confidence_data(record, self._forget_confidence_field) or {}
+        data = (
+            _get_confidence_data(record, self._resolve_forget_confidence_field()) or {}
+        )
         tomb = Tombstone(
             redis_key=live_key,
             fingerprint=self._fingerprint(record),
@@ -821,14 +887,15 @@ class MemoryLifecycle:
         """
         limit = int(self.TOMBSTONE_RETENTION_LIMIT)
         data_key, index_key = self._tombstone_keys()
+        keys: List[str] = []
         try:
-            excess = POPOTO_REDIS_DB.zcard(index_key) - limit
+            excess = int(POPOTO_REDIS_DB.zcard(index_key)) - limit
             if excess <= 0:
                 return 0
             oldest = POPOTO_REDIS_DB.zrange(index_key, 0, excess - 1)
             if not oldest:
                 return 0
-            keys = [k.decode() if isinstance(k, bytes) else k for k in oldest]
+            keys = _decoded_members(oldest)
             pipeline = POPOTO_REDIS_DB.pipeline()
             pipeline.hdel(data_key, *keys)
             pipeline.zrem(index_key, *keys)
@@ -847,20 +914,20 @@ class MemoryLifecycle:
         except Exception:
             return 0
 
-    def list_tombstones(self, limit: Optional[int] = None) -> list:
+    def list_tombstones(self, limit: Optional[int] = None) -> List[Tombstone]:
         """Return retained Tombstones, newest death first."""
         data_key, index_key = self._tombstone_keys()
         stop = -1 if limit is None else max(0, limit - 1)
         try:
-            keys = POPOTO_REDIS_DB.zrevrange(index_key, 0, stop)
+            raw_keys = POPOTO_REDIS_DB.zrevrange(index_key, 0, stop)
         except Exception as exc:
             logger.warning("list_tombstones: index read failed: %s", exc)
             return []
-        if not keys:
+        if not raw_keys:
             return []
-        keys = [k.decode() if isinstance(k, bytes) else k for k in keys]
+        keys = _decoded_members(raw_keys)
         raws = POPOTO_REDIS_DB.hmget(data_key, keys)
-        tombstones = []
+        tombstones: List[Tombstone] = []
         for raw in raws:
             entry = _unpack_tombstone_entry(raw)
             if entry is not None:
@@ -873,7 +940,7 @@ class MemoryLifecycle:
         entry = _unpack_tombstone_entry(POPOTO_REDIS_DB.hget(data_key, redis_key))
         return None if entry is None else _tombstone_from_entry(entry)
 
-    def restore(self, redis_key: str):
+    def restore(self, redis_key: Union[str, Tombstone]) -> Optional[Any]:
         """Bring a tombstoned record back into the live corpus.
 
         Args:
@@ -905,7 +972,7 @@ class MemoryLifecycle:
         logger.debug("restored %s", redis_key)
         return instance
 
-    def purge_tombstone(self, redis_key: str) -> bool:
+    def purge_tombstone(self, redis_key: Union[str, Tombstone]) -> bool:
         """Drop a tombstone permanently. Returns True if one was removed."""
         if isinstance(redis_key, Tombstone):
             redis_key = redis_key.redis_key
@@ -922,7 +989,7 @@ class MemoryLifecycle:
         POPOTO_REDIS_DB.delete(*self._tombstone_keys())
         return count
 
-    def forget_hard(self, record) -> bool:
+    def forget_hard(self, record: Any) -> bool:
         """Delete a record outright, leaving no tombstone.
 
         The explicit, irreversible counterpart to ``tombstone()`` — kept

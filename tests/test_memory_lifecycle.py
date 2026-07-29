@@ -1140,3 +1140,86 @@ def test_tombstoned_record_excluded_from_graph_traversal():
     )
     assert target_key not in [pk for pk, _ in reachable]
     assert lifecycle.tombstone_count() == 1
+
+
+def test_partial_tombstone_entry_is_dropped_not_inflated(caplog):
+    """A partial msgpack entry is skipped, never inflated into a None-filled Tombstone.
+
+    `_unpack_tombstone_entry` used to validate only `isinstance(entry, dict)`, so a
+    foreign or truncated payload under `$TOMB:{Model}:data` produced a Tombstone whose
+    non-Optional fields (redis_key, tier, importance_at_death, ...) were all None.
+    """
+    import logging
+
+    import msgpack
+    import popoto as popoto_pkg
+
+    lifecycle = _forget_ready_lifecycle()
+    good = _make_record(tier="episodic")
+    _set_confidence(good, 0.05, 10)
+    lifecycle.tick()
+    good_key = good._redis_key
+    assert lifecycle.tombstone_count() == 1
+
+    # Inject a partial entry alongside the good one.
+    data_key, index_key = lifecycle._tombstone_keys()
+    partial_key = "TrackedMemory:partial"
+    redis = popoto_pkg.get_redis()
+    redis.hset(
+        data_key,
+        partial_key,
+        msgpack.packb(
+            {"redis_key": partial_key, "reason": "policy"}, use_bin_type=True
+        ),
+    )
+    redis.zadd(index_key, {partial_key: 1.0})
+    assert lifecycle.tombstone_count() == 2
+
+    with caplog.at_level(logging.WARNING, logger="POPOTO.MemoryLifecycle"):
+        tombstones = lifecycle.list_tombstones()
+        assert lifecycle.get_tombstone(partial_key) is None
+        assert lifecycle.restore(partial_key) is None
+
+    assert [ts.redis_key for ts in tombstones] == [good_key]
+    assert any("missing required keys" in r.message for r in caplog.records)
+    # And no None-filled shell escaped into the result set.
+    for ts in tombstones:
+        assert ts.tier is not None
+        assert ts.importance_at_death is not None
+        assert ts.tombstoned_at is not None
+
+
+def test_kill_switch_suppresses_confidence_forgetting_after_construction():
+    """The deploy-level kill switch stops confidence-driven tombstoning at runtime.
+
+    The switch is re-read on every call, so flipping it AFTER a MemoryLifecycle
+    exists must immediately disarm the data-mutating half of #491 — not just decay
+    ranking.
+    """
+    from src.popoto.fields.constants import Defaults
+
+    lifecycle = _forget_ready_lifecycle()
+    record = _make_record(tier="episodic")
+    _set_confidence(record, 0.01, 20)
+
+    # Precondition: with the switch on, this record is doomed.
+    assert lifecycle.confidence_forget_eligible(record) is True
+    assert lifecycle.assess(record).forget_eligible is True
+
+    original = Defaults.DECAY_CONFIDENCE_MODULATION_ENABLED
+    try:
+        Defaults.DECAY_CONFIDENCE_MODULATION_ENABLED = False
+
+        assert lifecycle.confidence_forget_eligible(record) is False
+        assert lifecycle.assess(record).forget_eligible is False
+
+        summary = lifecycle.tick()
+        assert summary["forgotten"] == 0
+        assert summary["tombstoned"] == 0
+        assert TrackedMemory.query.get(key=record.key) is not None
+        assert lifecycle.tombstone_count() == 0
+    finally:
+        Defaults.DECAY_CONFIDENCE_MODULATION_ENABLED = original
+
+    # Restoring the switch re-arms it.
+    assert lifecycle.confidence_forget_eligible(record) is True
