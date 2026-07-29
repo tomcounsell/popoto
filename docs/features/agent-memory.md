@@ -1689,14 +1689,14 @@ lifecycle.restore(tomb.redis_key)    # back in the live corpus, indexes rebuilt
 | `get_tombstone(redis_key)` | One `Tombstone`, or `None` |
 | `tombstone_count()` | Number retained |
 | `purge_tombstone(redis_key)` / `purge_all_tombstones()` | Drop tombstones permanently |
+| `forget_hard(record)` | Irreversible delete, no tombstone |
+| `confidence_forget_eligible(record)` | Whether evidence alone justifies forgetting |
 
 A stored tombstone entry that is undecodable, is not a mapping, or is missing any
 required field is skipped with a logged warning rather than returned as a partly-empty
 `Tombstone`. So `list_tombstones()` and `get_tombstone()` can return fewer entries than
 `tombstone_count()` reports if the archive has been corrupted or written to by something
 other than `tombstone()` — every `Tombstone` you receive is complete.
-| `forget_hard(record)` | Irreversible delete, no tombstone |
-| `confidence_forget_eligible(record)` | Whether evidence alone justifies forgetting |
 
 Each `Tombstone` carries `redis_key`, `fingerprint`, `tier`, `importance_at_death`,
 `confidence_at_death`, `evidence_count`, `dismissal_count`, `tombstoned_at`, and
