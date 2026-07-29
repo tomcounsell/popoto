@@ -19,6 +19,7 @@ When `cycles=[]` and `pressure_rate=0.0`, behavior is identical to `DecayingSort
 |-----------|------|---------|-------------|
 | `decay_rate` | float | 0.1 | Power-law decay exponent (inherited). Empirically tuned in sweep 2026-04-17; prior default was `0.5`. |
 | `base_score_field` | str | None | Companion field whose value multiplies the decay curve (inherited) |
+| `confidence_modulation_field` | str / `False` / None | None | Which `ConfidenceField` modulates the per-record decay rate (inherited). See [Confidence-Modulated Decay](#confidence-modulated-decay). |
 | `cycles` | list | `[]` | List of `(period, amplitude, phase)` tuples |
 | `pressure_rate` | float | 0.0 | Rate of urgency buildup per unresolved day |
 | `partition_by` | str/tuple | `()` | Partition sorted set by key fields (inherited) |
@@ -127,6 +128,41 @@ effective_score = decay + cyclic + pressure
 ```
 
 When companion hashes return nil (no cycle/pressure data), the overhead is two nil HGET lookups per member.
+
+## Confidence-Modulated Decay
+
+`CyclicDecayField` inherits confidence modulation from `DecayingSortedField` unchanged: the `decay`
+term above is computed with a per-record effective rate derived from the record's `ConfidenceField`
+value, while `cyclic` and `pressure` are untouched.
+
+```text
+eff   = decay_rate * 2 ^ (s * 2 * (c0 - c))
+decay = base_score * t ^ (-decay_rate) * max(t, 1.0) ^ (-(eff - decay_rate))
+```
+
+Auto-detection, the `confidence_modulation_field` kwarg, the
+`Defaults.DECAY_CONFIDENCE_MODULATION_ENABLED` kill switch, bit-exact neutrality, the `max(t, 1.0)`
+sign-flip guard, and the rank-inversion caveat all behave identically — see
+[DecayingSortedField → Confidence-Modulated Decay](decaying-sorted-field.md#confidence-modulated-decay)
+for the full explanation. Cyclic ≡ plain equivalence still holds: with `cycles=[]` and
+`pressure_rate=0.0`, a modulated `CyclicDecayField` ranks identically to a modulated
+`DecayingSortedField`.
+
+### The confidence hash is `KEYS[4]` here
+
+`CyclicDecayField` carries a fork of the decay Lua, and that fork already binds `KEYS[2]` = cycles
+hash and `KEYS[3]` = pressure hash. The confidence `:data` hash is therefore appended at **`KEYS[4]`**
+(numkeys 4 at both EVAL sites), not `KEYS[2]` as in `DECAY_SCORE_LUA`. The `ARGV` indices are the
+same in both scripts (`ARGV[5]` = strength, `ARGV[6]` = `c0`); only the KEYS index differs.
+
+Do not "unify" the two scripts on `KEYS[2]`: reusing it here would `cmsgpack.unpack` the cycles array
+as a confidence dict, which corrupts scores silently instead of raising.
+
+### Redis structure
+
+A fourth structure joins the three above when modulation is active — the `ConfidenceField` `:data`
+hash, `$ConfidencF:{Model}:{field}:data[:{partition}]`. It is read-only from this script's
+perspective; `ConfidenceField` remains its sole writer.
 
 ## Error Handling
 

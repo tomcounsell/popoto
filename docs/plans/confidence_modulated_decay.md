@@ -611,36 +611,36 @@ wiring is deployment-side work tracked separately, not part of this plan.
 
 ## Success Criteria
 
-- [ ] A record with low confidence (repeated `dismissed`/`contradicted`) has a measurably faster
+- [x] A record with low confidence (repeated `dismissed`/`contradicted`) has a measurably faster
   effective decay than an identical record with neutral confidence; high confidence is measurably
   slower.
-- [ ] A **freshly-touched** low-confidence record does not outrank a freshly-touched high-confidence
+- [x] A **freshly-touched** low-confidence record does not outrank a freshly-touched high-confidence
   record (the sub-one-day sign-flip regression test).
-- [ ] Records with no confidence data, and any model with no `ConfidenceField`, produce
+- [x] Records with no confidence data, and any model with no `ConfidenceField`, produce
   **byte-identical** decayed scores to `c7bd62c` (existing tests pass unchanged).
-- [ ] Neutrality holds for a **non-default `initial_confidence`**: a zero-evidence record on a field
+- [x] Neutrality holds for a **non-default `initial_confidence`**: a zero-evidence record on a field
   with `initial_confidence=0.3` is byte-identical, proving the exponent centers on `c₀` not `0.5`.
-- [ ] `s = 0`, `confidence_modulation_field=False`, and
+- [x] `s = 0`, `confidence_modulation_field=False`, and
   `DECAY_CONFIDENCE_MODULATION_ENABLED=False` are all exact no-ops; the kill switch works without
   editing any model definition.
-- [ ] Auto-detection: exactly one `ConfidenceField` ⇒ modulation on with no configuration; two or
+- [x] Auto-detection: exactly one `ConfidenceField` ⇒ modulation on with no configuration; two or
   more with no explicit kwarg ⇒ modulation off **and** a warning naming the candidates.
-- [ ] A record forgotten by the confidence path is **tombstoned, not deleted**: absent from every
+- [x] A record forgotten by the confidence path is **tombstoned, not deleted**: absent from every
   retrieval mode, still recoverable, fingerprint retained.
-- [ ] A low-confidence record with evidence below `LIFECYCLE_FORGET_MIN_EVIDENCE` is **not** forgotten.
-- [ ] Tombstone retention is bounded and the bound is tested.
-- [ ] `tick()` reports tombstone counts.
-- [ ] Both `DECAY_SCORE_LUA` and `CYCLIC_DECAY_LUA` are modulated; cyclic≡plain equivalence holds;
+- [x] A low-confidence record with evidence below `LIFECYCLE_FORGET_MIN_EVIDENCE` is **not** forgotten.
+- [x] Tombstone retention is bounded and the bound is tested.
+- [x] `tick()` reports tombstone counts.
+- [x] Both `DECAY_SCORE_LUA` and `CYCLIC_DECAY_LUA` are modulated; cyclic≡plain equivalence holds;
   the cyclic script reads confidence from `KEYS[4]` with numkeys `4` at both EVAL sites, and a
   cycles-bearing modulated corpus ranks correctly (the anti-corruption test).
-- [ ] All three EVAL call sites agree (`test_proxy_matches_top_by_decay` passes on a
+- [x] All three EVAL call sites agree (`test_proxy_matches_top_by_decay` passes on a
   confidence-bearing corpus).
-- [ ] Partition mismatch raises `QueryException` naming the missing filter(s).
-- [ ] `MemoryLifecycle` forgets a low-confidence idle record that today's importance+idle criteria
+- [x] Partition mismatch raises `QueryException` naming the missing filter(s).
+- [x] `MemoryLifecycle` forgets a low-confidence idle record that today's importance+idle criteria
   would retain; semantic tier remains protected.
-- [ ] Latency budgets hold with modulation enabled (1K < 1.0s, 10K < 5.0s).
-- [ ] No Redis modules used; runs identically on Redis and Valkey.
-- [ ] Tests pass (`/do-test`); docs updated (`/do-docs`).
+- [x] Latency budgets hold with modulation enabled (1K < 1.0s, 10K < 5.0s).
+- [x] No Redis modules used; runs identically on Redis and Valkey.
+- [x] Tests pass (`/do-test`); docs updated (`/do-docs`).
 
 **Outcome criterion (post-deploy, not verifiable at merge):** the reference deployment's aggregate
 dismissal rate trends **below** the 2026-07-24 baseline of 82.1% (`/memories/metrics.json`, 390

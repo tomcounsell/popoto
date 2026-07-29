@@ -77,6 +77,16 @@ class TestDefaultsSync:
             "LIFECYCLE_PROMOTION_MIN_AGE_SECONDS",
             "LIFECYCLE_FORGET_IMPORTANCE_FLOOR",
             "LIFECYCLE_FORGET_IDLE_SECONDS",
+            # Confidence-driven forgetting + tombstone retention (#491) —
+            # resolved via MemoryLifecycle._LIFECYCLE_ATTRS, same as above.
+            "LIFECYCLE_FORGET_CONFIDENCE_CEILING",
+            "LIFECYCLE_FORGET_MIN_EVIDENCE",
+            "LIFECYCLE_TOMBSTONE_RETENTION_LIMIT",
+            # Confidence-modulated decay (#491) — read directly from Defaults
+            # in the decay query path; no module-level alias exists, so not in
+            # MODULE_CONSTANTS.
+            "DECAY_CONFIDENCE_MODULATION_STRENGTH",
+            "DECAY_CONFIDENCE_MODULATION_ENABLED",
             # Extraction (extraction/, #461) — read directly from Defaults
             # (popoto.extraction.claude, popoto.recipes.subconscious_memory);
             # no module-level alias exists, so not in MODULE_CONSTANTS.

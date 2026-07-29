@@ -17,11 +17,14 @@ import time
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
 
+import msgpack
 import pytest
 from src import popoto
+from src.popoto.fields.confidence_field import ConfidenceField
 from src.popoto.fields.decaying_sorted_field import (
     DecayingSortedField,
     DECAY_SCORE_LUA,
+    confidence_modulation_args,
 )
 from src.popoto.models.query import QueryException
 
@@ -32,6 +35,14 @@ class DecayItem(popoto.Model):
     name = popoto.UniqueKeyField()
     relevance = DecayingSortedField()
     importance = popoto.FloatField(default=1.0)
+
+
+class DecayConfItem(popoto.Model):
+    """Auto-detects ``certainty`` for confidence-modulated decay (#491)."""
+
+    name = popoto.UniqueKeyField()
+    relevance = DecayingSortedField(decay_rate=0.5)
+    certainty = ConfidenceField()
 
 
 class DecayWithBase(popoto.Model):
@@ -56,13 +67,25 @@ class NonDecayModel(popoto.Model):
 
 def setup_module():
     """Clean up test data before running tests."""
-    for model in [DecayItem, DecayWithBase, PartitionedDecay, NonDecayModel]:
+    for model in [
+        DecayItem,
+        DecayConfItem,
+        DecayWithBase,
+        PartitionedDecay,
+        NonDecayModel,
+    ]:
         model.delete_all()
 
 
 def teardown_module():
     """Clean up test data after running tests."""
-    for model in [DecayItem, DecayWithBase, PartitionedDecay, NonDecayModel]:
+    for model in [
+        DecayItem,
+        DecayConfItem,
+        DecayWithBase,
+        PartitionedDecay,
+        NonDecayModel,
+    ]:
         model.delete_all()
 
 
@@ -499,6 +522,80 @@ class TestDecayBenchmarks:
         popoto.POPOTO_REDIS_DB.delete(ss_key.redis_key)
 
 
+class TestDecayBenchmarksWithModulation:
+    """Same budgets as ``TestDecayBenchmarks``, with modulation ENABLED.
+
+    Risk 3: modulation adds one HGET per member inside an O(N) loop. The
+    existing ``base_score_field`` HGET is guarded by ``base_score_field ~= ''``
+    and ``base_score_field`` defaults to ``None``, so for the common config
+    this is 0 -> 1 HGET per member, not 1 -> 2. Both cases below therefore run
+    with ``base_score_field=""`` -- the true worst case, not the flattering one.
+    """
+
+    CONF_KEY = "_bench:decay:confidence"
+    ZSET_KEY = "_bench:decay:timestamps"
+
+    def setup_method(self):
+        popoto.POPOTO_REDIS_DB.delete(self.ZSET_KEY, self.CONF_KEY)
+
+    def teardown_method(self):
+        popoto.POPOTO_REDIS_DB.delete(self.ZSET_KEY, self.CONF_KEY)
+
+    def _load(self, count, spacing_seconds):
+        """Plant `count` members plus a confidence payload for every one."""
+        now = time.time()
+        members = {}
+        confidences = {}
+        for i in range(count):
+            redis_key = f"DecayItem:bench_{i}"
+            members[redis_key] = now - (i * spacing_seconds)
+            # Distinct confidences so no member short-circuits to neutral.
+            confidences[redis_key] = msgpack.packb(
+                {
+                    "confidence": (i % 100) / 100.0,
+                    "evidence_count": 10,
+                    "corroborations": 5,
+                    "contradictions": 5,
+                },
+                use_bin_type=True,
+            )
+        pipe = popoto.POPOTO_REDIS_DB.pipeline()
+        pipe.zadd(self.ZSET_KEY, members)
+        pipe.hset(self.CONF_KEY, mapping=confidences)
+        pipe.execute()
+        return now
+
+    def _timed_eval(self, now):
+        start = time.time()
+        result = popoto.POPOTO_REDIS_DB.eval(
+            DECAY_SCORE_LUA,
+            2,
+            self.ZSET_KEY,
+            self.CONF_KEY,
+            str(now),
+            "0.5",
+            "10",
+            "",  # base_score_field unset: the 0 -> 1 HGET worst case
+            "0.5",  # strength s
+            "0.5",  # c0
+        )
+        return result, time.time() - start
+
+    def test_1k_members_modulated(self):
+        now = self._load(1000, 3600)
+        result, elapsed = self._timed_eval(now)
+
+        assert len(result) == 20  # 10 items * 2 (key + score)
+        assert elapsed < 1.0, f"1K modulated took {elapsed:.3f}s (expected < 1s)"
+
+    def test_10k_members_modulated_without_base_score_field(self):
+        now = self._load(10000, 360)
+        result, elapsed = self._timed_eval(now)
+
+        assert len(result) == 20
+        assert elapsed < 5.0, f"10K modulated took {elapsed:.3f}s (expected < 5s)"
+
+
 # --- Deterministic tie-ordering (issue #448) ---
 
 
@@ -575,6 +672,134 @@ class TestDecayTieOrdering:
         """With 5 tied members and n=3, exactly the 3 lowest keys return."""
         expected = self._plant_tied()
         results = DecayItem.query.top_by_decay("relevance", n=3)
+        assert [r.db_key.redis_key for r in results] == expected[:3]
+
+
+class TestDecayTieOrderingWithConfidence:
+    """Tie-ordering under confidence modulation (#491), alongside #448.
+
+    The class above is the regression oracle and is deliberately left
+    untouched. These cases add the two claims modulation introduces:
+
+    - members with NO recorded evidence stay bit-exactly tied, so #448's
+      key-ascending tie-break still decides their order;
+    - members with DIFFERENT confidence correctly STOP tying.
+
+    Records are aged 30 days: past the ``max(t, 1.0)`` guard, so modulation is
+    actually live rather than clamped to 1.0.
+    """
+
+    NAMES = ["tie_a", "tie_b", "tie_c", "tie_d", "tie_e"]
+    AGED_DAYS = 30
+
+    def setup_method(self):
+        DecayConfItem.delete_all()
+        DecayConfItem._meta.fields["relevance"]._confidence_modulation_cache.clear()
+
+    def teardown_method(self):
+        DecayConfItem.delete_all()
+
+    def _plant_tied(self, names=None):
+        """Create members in reversed key order, then plant one shared age."""
+        names = names or self.NAMES
+        records = {}
+        for name in reversed(names):
+            records[name] = DecayConfItem.create(name=name)
+        ss_key = DecayingSortedField.get_sortedset_db_key(DecayConfItem, "relevance")
+        shared_ts = time.time() - 86400 * self.AGED_DAYS
+        popoto.POPOTO_REDIS_DB.zadd(
+            ss_key.redis_key,
+            {records[name].db_key.redis_key: shared_ts for name in names},
+        )
+        return records
+
+    @staticmethod
+    def _set_confidence(record, confidence):
+        field = DecayConfItem._meta.fields["certainty"]
+        popoto.POPOTO_REDIS_DB.hset(
+            field.get_data_hash_key(record, "certainty"),
+            record.db_key.redis_key,
+            msgpack.packb(
+                {
+                    "confidence": confidence,
+                    "evidence_count": 10,
+                    "corroborations": 10,
+                    "contradictions": 0,
+                },
+                use_bin_type=True,
+            ),
+        )
+
+    @staticmethod
+    def _scores_via_lua(n=10):
+        """Raw score strings from the modulated EVAL (mirrors query.py:410)."""
+        field = DecayConfItem._meta.fields["relevance"]
+        ss_key = DecayingSortedField.get_sortedset_db_key(DecayConfItem, "relevance")
+        conf_key, s, c0 = confidence_modulation_args(
+            DecayConfItem, field, "relevance", filters={}
+        )
+        assert conf_key != "" and float(s) > 0, "modulation must be live"
+        raw = popoto.POPOTO_REDIS_DB.eval(
+            DECAY_SCORE_LUA,
+            2,
+            ss_key.redis_key,
+            conf_key,
+            str(time.time()),
+            str(field.decay_rate),
+            str(n),
+            "",
+            s,
+            c0,
+        )
+        decoded = [x.decode() if isinstance(x, bytes) else x for x in raw]
+        return [decoded[i + 1] for i in range(0, len(decoded), 2)]
+
+    def test_no_confidence_members_remain_bit_exactly_tied(self):
+        """Zero evidence == c0 for every member, so the tie must survive."""
+        self._plant_tied()
+        scores = self._scores_via_lua()
+        assert len(scores) == len(self.NAMES)
+        assert len(set(scores)) == 1
+
+    def test_untouched_tie_order_is_still_key_ascending(self):
+        """#448's contract holds unchanged when modulation is on but inert."""
+        records = self._plant_tied()
+        expected = sorted(r.db_key.redis_key for r in records.values())
+        results = DecayConfItem.query.top_by_decay("relevance", n=10)
+        assert [r.db_key.redis_key for r in results] == expected
+
+    def test_differing_confidence_members_stop_tying(self):
+        """Distinct evidence must produce distinct scores -- no tie left."""
+        records = self._plant_tied()
+        for name, confidence in zip(self.NAMES, [0.05, 0.25, 0.5, 0.75, 0.95]):
+            self._set_confidence(records[name], confidence)
+
+        scores = self._scores_via_lua()
+        assert len(set(scores)) == len(self.NAMES), "modulation failed to break ties"
+        # Highest confidence ranks first, lowest last.
+        results = DecayConfItem.query.top_by_decay("relevance", n=10)
+        assert [r.name for r in results] == list(reversed(self.NAMES))
+
+    def test_equal_confidence_members_still_tie_and_break_by_key(self):
+        """Same evidence => same score => #448 key-ascending decides."""
+        records = self._plant_tied()
+        for name in self.NAMES:
+            self._set_confidence(records[name], 0.05)
+
+        scores = self._scores_via_lua()
+        assert len(set(scores)) == 1
+        expected = sorted(r.db_key.redis_key for r in records.values())
+        results = DecayConfItem.query.top_by_decay("relevance", n=10)
+        assert [r.db_key.redis_key for r in results] == expected
+
+    def test_deterministic_truncation_at_n_with_modulation(self):
+        """Truncation stays deterministic across the n boundary."""
+        records = self._plant_tied()
+        for name in self.NAMES:
+            self._set_confidence(records[name], 0.05)
+        expected = sorted(r.db_key.redis_key for r in records.values())
+
+        results = DecayConfItem.query.top_by_decay("relevance", n=3)
         assert [r.db_key.redis_key for r in results] == expected[:3]
 
 

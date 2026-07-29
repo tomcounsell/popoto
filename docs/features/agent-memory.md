@@ -41,7 +41,7 @@ The primitives ship incrementally. Each builds on the ones before it.
 | [StreamConsumer](#streamconsumer) | Background processing framework for Redis Streams | Shipped ([PR #238](https://github.com/tomcounsell/popoto/pull/238)) |
 | [PolicyCache](#policycache) | Learned action selection — crystallized state-action-outcome patterns | Shipped ([PR #239](https://github.com/tomcounsell/popoto/pull/239)) |
 | [ContextAssembler](#contextassembler) | Retrieval-to-injection bridge — assemble LLM-ready context within token budgets | Shipped |
-| [MemoryLifecycle](#memorylifecycle) | Policy layer orchestrating episodic→semantic promotion and auto-forget | Shipped ([PR #396](https://github.com/tomcounsell/popoto/pull/396)) |
+| [MemoryLifecycle](#memorylifecycle) | Policy layer orchestrating episodic→semantic promotion, confidence-aware forgetting, and tombstones | Shipped ([PR #396](https://github.com/tomcounsell/popoto/pull/396), [#491](https://github.com/tomcounsell/popoto/issues/491)) |
 
 ## DecayingSortedField
 
@@ -1632,9 +1632,81 @@ staged entries. The access-frequency signal therefore reflects only genuine
 application reads, not maintenance sweeps.
 
 A single pass hydrates the corpus once; promote-eligibility and forget-eligibility
-are evaluated over that same in-memory snapshot. Before any `record.delete()` the
+are evaluated over that same in-memory snapshot. Before any record is forgotten the
 record's authoritative tier is re-read from Redis — if the tier is now `"semantic"`
-(promoted by a concurrent tick) or the key no longer exists, the delete is skipped.
+(promoted by a concurrent tick) or the key no longer exists, the forget is skipped.
+
+### Confidence-aware forgetting
+
+Confidence used to gate promotion only, so it could grant a memory permanence but
+never hasten its removal. The default forget rule now reads outcome evidence too:
+
+```text
+(importance < FORGET_IMPORTANCE_FLOOR
+ OR (confidence < FORGET_CONFIDENCE_CEILING AND evidence_count >= FORGET_MIN_EVIDENCE))
+AND idle > FORGET_IDLE_SECONDS
+```
+
+The `evidence_count` conjunct is a safety floor, not a tuning knob: confidence moves
+on every reported outcome, so without a minimum track record one unlucky dismissal
+could bury a memory. Models with no `ConfidenceField` take the importance-only path,
+which is identical to the previous behavior. The confidence field is resolved through
+the same helper the decay path uses, so ranking and forgetting always listen to the
+same signal — including the `DECAY_CONFIDENCE_MODULATION_ENABLED` kill switch and the
+"two or more `ConfidenceField`s means off" ambiguity rule.
+
+The kill switch is re-read on every call here too, not captured when the
+`MemoryLifecycle` is constructed. Setting
+`Defaults.DECAY_CONFIDENCE_MODULATION_ENABLED = False` therefore suppresses
+confidence-driven forgetting immediately, on lifecycle instances that already exist —
+which matters more on this path than on the ranking path, because this is the half
+that mutates data.
+
+### Tombstones, not deletes
+
+Forgetting archives the record and removes it from the live corpus rather than
+deleting it. Exclusion from every retrieval mode is therefore **structural** — the
+record is gone from the model keyspace, so no read path has to remember to filter it
+— while its fingerprint, archived payload, and death metadata survive under
+`$TOMB:{Model}:*`.
+
+```python
+summary = lifecycle.tick()
+# {"promoted": 2, "forgotten": 5, "tombstoned": 5, "duration_ms": 8.3}
+
+lifecycle.tombstone_count()          # 5
+for tomb in lifecycle.list_tombstones(limit=10):
+    print(tomb.redis_key, tomb.confidence_at_death, tomb.dismissal_count)
+
+lifecycle.restore(tomb.redis_key)    # back in the live corpus, indexes rebuilt
+```
+
+| Method | Purpose |
+|--------|---------|
+| `tombstone(record, reason="policy")` | Forget one record; returns a `Tombstone` |
+| `restore(redis_key)` | Bring a tombstoned record back and rebuild its indexes |
+| `list_tombstones(limit=None)` | Retained tombstones, newest death first |
+| `get_tombstone(redis_key)` | One `Tombstone`, or `None` |
+| `tombstone_count()` | Number retained |
+| `purge_tombstone(redis_key)` / `purge_all_tombstones()` | Drop tombstones permanently |
+| `forget_hard(record)` | Irreversible delete, no tombstone |
+| `confidence_forget_eligible(record)` | Whether evidence alone justifies forgetting |
+
+A stored tombstone entry that is undecodable, is not a mapping, or is missing any
+required field is skipped with a logged warning rather than returned as a partly-empty
+`Tombstone`. So `list_tombstones()` and `get_tombstone()` can return fewer entries than
+`tombstone_count()` reports if the archive has been corrupted or written to by something
+other than `tombstone()` — every `Tombstone` you receive is complete.
+
+Each `Tombstone` carries `redis_key`, `fingerprint`, `tier`, `importance_at_death`,
+`confidence_at_death`, `evidence_count`, `dismissal_count`, `tombstoned_at`, and
+`reason`. Alongside that death metadata, the stored tombstone entry also archives
+the record's **full payload** — that archive is what makes `restore()` possible.
+Because a tombstone is therefore about as large as the record it replaced,
+retention is bounded by `LIFECYCLE_TOMBSTONE_RETENTION_LIMIT` (1000) with the
+oldest aging out, so the tombstone corpus cannot outgrow the live corpus.
+`tick()` reports `tombstoned` alongside `forgotten` so a runaway forget policy is
+visible in telemetry immediately.
 
 ### Usage
 
@@ -1651,7 +1723,7 @@ lifecycle.tag_new(record)  # assigns tier = "episodic"
 
 # Periodic consolidation pass (non-tracking — zero staged AccessTracker entries)
 summary = lifecycle.tick()
-# {"promoted": 2, "forgotten": 5, "duration_ms": 8.3}
+# {"promoted": 2, "forgotten": 5, "tombstoned": 5, "duration_ms": 8.3}
 
 # Inspect lifecycle state
 state = lifecycle.assess(record)

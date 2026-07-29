@@ -157,6 +157,18 @@ Reports how the agent used the injected memories via `ObservationProtocol.on_con
 - `"deferred"` -- the agent noted but deferred action (neutral)
 - `"used"` -- the memory informed reasoning without appearing in the response (confirms access, no strength signal)
 
+### Outcomes prune the corpus
+
+Reported outcomes are not only a ranking nudge -- they set how fast a memory leaves the corpus, so the layer stores, retrieves, validates, *and* prunes during regular use with no extra call site:
+
+1. `report_outcomes(..., "dismissed")` lowers the record's `ConfidenceField` value.
+2. The next retrieval reads that confidence inside the decay Lua and raises the record's effective decay rate (`eff = decay_rate * 2 ^ (s * 2 * (c0 - c))`), so it ranks lower -- see [Confidence-Modulated Decay](../features/decaying-sorted-field.md#confidence-modulated-decay).
+3. The next [`MemoryLifecycle.tick()`](../recipes.md#memorylifecycle) tombstones it once it is idle, its confidence is below `FORGET_CONFIDENCE_CEILING`, and it has at least `FORGET_MIN_EVIDENCE` observations behind it.
+
+Modulation is on by default whenever the model carries exactly one `ConfidenceField`, and forgetting tombstones rather than deletes, so a memory pruned by an unlucky run of dismissals can be brought back with `lifecycle.restore(redis_key)`. If a post-upgrade ranking change is unwelcome, `Defaults.DECAY_CONFIDENCE_MODULATION_ENABLED = False` restores the previous behavior byte-for-byte without touching model code.
+
+`SubconsciousMemory` itself does not run lifecycle ticks -- compose it with a `MemoryLifecycle` instance as shown in [Composing with SubconsciousMemory](../recipes.md#composing-with-subconsciousmemory).
+
 ## Tuning
 
 | Parameter | Default | Description |

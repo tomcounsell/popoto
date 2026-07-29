@@ -70,7 +70,8 @@ Review open issues and merged PRs to understand what's already shipped vs. in pr
 - **DecayingSortedField** subclasses `SortedFieldMixin` — score is always a timestamp, inherits partition_by
 - **Lua scripts compute decay at query time** (Option C) — store raw data, compute on read
 - **`base_score_field`** parameter with default 1.0, overridable at query time via `top_by_decay()`
-- **`decay_rate`** parameter with default 0.5, overridable at query time
+- **`decay_rate`** parameter defaulting to `Defaults.DECAY_RATE` (0.1), overridable at query time
+- **Confidence-modulated decay** (#491) — a `DecayingSortedField` auto-detects a single `ConfidenceField` on the model and scales each record's effective decay rate by its accumulated evidence. Per-field opt-out is `confidence_modulation_field=False`; the deploy-level kill switch is `Defaults.DECAY_CONFIDENCE_MODULATION_ENABLED = False`
 - **`touch()` method** for timestamp refresh without full save
 - **CS terminology throughout** — not neuroscience. See naming conventions table in the roadmap.
 - **No Redis module dependencies** — all features use core Redis commands + Lua scripts for Valkey compatibility. ExistenceFilter uses SETBIT/GETBIT + Lua (not RedisBloom BF.*). FrequencySketch uses HINCRBY/HGET + Lua (not CMS.*).
