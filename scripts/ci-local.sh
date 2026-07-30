@@ -113,9 +113,15 @@ if $needs_redis; then
   #    venv's editable install points somewhere else, the suite silently
   #    tests that other tree. Symptom: failures on brand-new APIs that look
   #    exactly like real regressions.
+  #    $ROOT goes through argv, never string-interpolated into the Python
+  #    source: a repo path containing a quote would otherwise raise
+  #    SyntaxError, leave `expected` empty, and hard-fail a perfectly healthy
+  #    venv. An empty result on either side means "cannot tell" -- skip the
+  #    guard rather than fail it, since a guard that blocks good runs is worse
+  #    than one that misses a bad one.
   resolved="$("$PY" -c "import popoto,os;print(os.path.realpath(os.path.dirname(popoto.__file__)))" 2>/dev/null || echo "")"
-  expected="$("$PY" -c "import os;print(os.path.realpath('$ROOT/src/popoto'))")"
-  if [ -n "$resolved" ] && [ "$resolved" != "$expected" ]; then
+  expected="$("$PY" -c 'import os,sys;print(os.path.realpath(os.path.join(sys.argv[1],"src","popoto")))' "$ROOT" 2>/dev/null || echo "")"
+  if [ -n "$resolved" ] && [ -n "$expected" ] && [ "$resolved" != "$expected" ]; then
     warn "popoto resolves to $resolved, not this checkout — refreshing editable install"
     if command -v uv >/dev/null 2>&1; then
       VIRTUAL_ENV="$ROOT/.venv" uv pip install -e . --no-deps -q
@@ -133,19 +139,19 @@ if $needs_redis; then
   # 2. A fresh worktree venv built from '.[dev]' alone is missing the
   #    optional extras, which silently DESELECTS roughly 95 tests. A green
   #    suite then covers far less than CI does, with no error to notice.
+  #    find_spec, not __import__: this asks "was the extra installed", and
+  #    fully importing sentence_transformers drags in torch for ~5s on every
+  #    single run of this script. A module that is installed but broken will
+  #    slip past, which the test run itself will report anyway.
   missing_extras="$("$PY" - <<'PYEOF' 2>/dev/null || true
-mods = ("numpy", "sentence_transformers")
-missing = []
-for m in mods:
-    try:
-        __import__(m)
-    except Exception:
-        missing.append(m)
+from importlib.util import find_spec
+
+missing = [m for m in ("numpy", "sentence_transformers") if find_spec(m) is None]
 print(" ".join(missing))
 PYEOF
 )"
   if [ -n "${missing_extras// /}" ]; then
-    warn "optional extras missing (${missing_extras# }) — ~95 tests will be silently skipped"
+    warn "optional extras missing ($missing_extras) — ~95 tests will be silently skipped"
     warn "  a green run here does NOT match CI coverage; install: uv pip install -e '.[dev,embeddings,benchmark]'"
   fi
 
@@ -164,7 +170,9 @@ PYEOF
   #    from a real regression until you check out base into the SAME worktree
   #    and compare. Warn before the number is trusted, not after.
   # Counted before this script starts its own pytest, so every hit is someone
-  # else's run. The bracket trick keeps pgrep from matching its own pattern.
+  # else's run. `pgrep -f` substring-matches whole command lines, so this can
+  # over-count (a `vim notes_pytest.txt` counts as one). It is warning-only and
+  # errs toward telling you to double-check a number, which is the safe side.
   others="$(pgrep -f "[p]ytest" 2>/dev/null | wc -l | tr -d ' ')"
   others="${others:-0}"
   if [ "$others" -gt 0 ] 2>/dev/null; then
