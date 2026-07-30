@@ -49,6 +49,40 @@ scripts/ci-local.sh docs build   # only the named gates
 
 Gates mirror the workflows: `tests` → `test-valkey.yml` (full suite vs local Redis), `stress` → `stress-tests.yml`, `docs` → `deploy-docs.yml` (`mkdocs build --strict`), `build` → `release.yml` (`uv build`), `guard` → `guard-main-push.yml`. Valkey is intentionally skipped — redis-py treats both identically and the project never uses Redis modules, so the local-Redis suite covers it; GitHub still runs the real Valkey job on PR/merge as the final word. The runner auto-refreshes the editable install if `popoto.__version__` (read from package metadata) drifts from `pyproject.toml`, which otherwise causes a false `test_version` failure locally.
 
+### Verifying in a worktree (read before trusting a test or mypy number)
+
+Work done in a `.worktrees/` checkout can report a confident, wrong number in five
+ways. Four are checked automatically in `scripts/ci-local.sh`'s preflight — run it (or
+at least its `tests` gate) instead of bare `pytest` when the number will be reported to
+anyone. The fifth cannot be automated.
+
+1. **Tests exercise the installed package, not your branch.** The pytest plugin
+   collapses `src.popoto` onto canonical `popoto`, so if the venv's editable install
+   points elsewhere the suite silently tests *that* tree — failures on new APIs look
+   exactly like real regressions. Preflight hard-fails on this.
+2. **A fresh worktree venv silently deselects ~95 tests.** `.[dev]` alone omits
+   `numpy`/`sentence-transformers`; a green run then covers far less than CI. Install
+   `.[dev,embeddings,benchmark]`. (Adding `dataframe` pulls pandas, which on 3.x breaks
+   `test_dataframe_field.py` collection.) Preflight warns.
+3. **redis-py 8.x fails `test_pytest_plugin.py::test_isolated_db_subprocess`**
+   (`maint_notifications_pool_handler`). Environmental, not a regression. Preflight
+   predicts it so it isn't chased.
+4. **Every worktree shares Redis DB 15.** Concurrent suites from other checkouts have
+   produced 73–158 phantom failures. To separate contention from regression, check out
+   base into the *same* worktree and compare — don't trust either number alone.
+   Preflight warns when other `pytest` processes are running.
+5. **The `mypy` error delta is redis-py-version-dependent.** redis-py shares one stub
+   set between its sync and asyncio clients, typing every command `Awaitable[T] | T`;
+   7.x flags sites 8.x narrows. A delta of `+0` in one environment can be `+4` in
+   another, so "verified in one consistent environment" proves nothing about the diff.
+   Measure base-vs-branch in both a 7.x and an 8.x environment, and prefer a
+   centralized narrowing helper (see `_sync` in `recipes/memory_lifecycle.py`) over
+   per-site `type: ignore`.
+
+The general rule behind all five: **state the environment alongside any count**, and
+reproduce a subagent's metric before relaying it. Three separate "verified" claims on
+PR #495 failed independent review, each for an environmental reason.
+
 ## Debugging with Redis/Valkey CLI
 
 Use `redis-cli` (or `valkey-cli` for Valkey) to inspect database state when debugging Popoto models. Both CLIs use identical commands.
