@@ -524,9 +524,13 @@ class TestIsolatedDbSubprocess:
                 """))
 
         # DB-0 client for the (non-destructive) leak check.  Connect on the same
-        # host/port the suite uses, but always DB 0.
-        kwargs = redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs.copy()
-        kwargs["db"] = 0
+        # host/port the suite uses, but always DB 0.  Whitelist the params:
+        # redis-py 8 injects pool-internal keys (himport_registry,
+        # maint_notifications_*) into connection_kwargs that redis.Redis(**kw)
+        # rejects with TypeError.
+        kwargs = redis_db.sibling_client_kwargs(
+            redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs, db=0
+        )
         db0 = _redis.Redis(**kwargs)
 
         def _marker_keys():
@@ -578,3 +582,70 @@ class TestIsolatedDbSubprocess:
             f"src.popoto write leaked to DB 0 — isolation bypassed. "
             f"Found {len(leaked)} key(s): {leaked[:10]}"
         )
+
+
+class TestSiblingClientKwargs:
+    """Regression tests for ``redis_db.sibling_client_kwargs`` (issue #490).
+
+    redis-py 8 injects pool-internal bookkeeping keys (``himport_registry``,
+    ``maint_notifications_config``, ``maint_notifications_pool_handler``,
+    ``orig_*``) into a connection pool's ``connection_kwargs``. Splatting that
+    dict wholesale into ``redis.Redis(**kwargs)`` — as the DB-0 tripwire and the
+    subprocess-isolation test used to — raises ``TypeError: Redis.__init__() got
+    an unexpected keyword argument 'himport_registry'`` on redis-py 8. The
+    helper whitelists only the standard connection params, so it is robust on
+    every redis-py version. These tests inject a synthetic pool-only key so they
+    are meaningful even on redis-py 7 (where the real keys do not exist).
+    """
+
+    def test_strips_unknown_pool_only_keys(self):
+        """Pool-internal keys are dropped; standard params survive."""
+        source = {
+            "host": "localhost",
+            "port": 6379,
+            "password": "secret",
+            "socket_timeout": 5,
+            # redis-py 8 pool-injected keys that Redis.__init__ rejects:
+            "himport_registry": object(),
+            "maint_notifications_pool_handler": object(),
+            "orig_host_address": "10.0.0.1",
+        }
+        out = redis_db.sibling_client_kwargs(source)
+        assert out["host"] == "localhost"
+        assert out["port"] == 6379
+        assert out["password"] == "secret"
+        assert out["socket_timeout"] == 5
+        assert "himport_registry" not in out
+        assert "maint_notifications_pool_handler" not in out
+        assert "orig_host_address" not in out
+
+    def test_overrides_win(self):
+        """Explicit overrides replace inherited values (e.g. db=0 probe)."""
+        source = {"host": "localhost", "port": 6379, "db": 15}
+        out = redis_db.sibling_client_kwargs(source, db=0)
+        assert out["db"] == 0
+
+    def test_drops_none_values(self):
+        """``None`` params are dropped so they never mask real defaults."""
+        source = {"host": "localhost", "port": 6379, "password": None}
+        out = redis_db.sibling_client_kwargs(source)
+        assert "password" not in out
+
+    def test_result_builds_a_real_client_from_a_live_pool(self):
+        """The whitelisted kwargs from the LIVE pool build a usable client.
+
+        This is the end-to-end guard: take the running connection's actual
+        ``connection_kwargs`` (which on redis-py 8 carry the poisonous
+        pool-internal keys), whitelist them for DB 0, and confirm the resulting
+        ``redis.Redis(**kwargs)`` constructs and pings without a TypeError.
+        Non-destructive: only pings, never writes.
+        """
+        import redis as _redis
+
+        live_kwargs = redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs
+        kwargs = redis_db.sibling_client_kwargs(live_kwargs, db=0)
+        client = _redis.Redis(**kwargs)
+        try:
+            assert client.ping() is True
+        finally:
+            client.close()

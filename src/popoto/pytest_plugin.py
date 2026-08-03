@@ -238,8 +238,13 @@ def _popoto_db0_tripwire(request):
     db0_client = None
     before = None
     try:
-        pool_kwargs = redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs.copy()
-        pool_kwargs["db"] = 0
+        # Whitelist the connection params: a pool's connection_kwargs carries
+        # redis-py 8 pool-internal keys (himport_registry, maint_notifications_*)
+        # that redis.Redis(**kwargs) rejects, which would silently disable the
+        # tripwire (this branch is except-guarded) on redis-py 8.
+        pool_kwargs = redis_db.sibling_client_kwargs(
+            redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs, db=0
+        )
         db0_client = _redis.Redis(**pool_kwargs)
         before = db0_client.dbsize()
     except Exception:

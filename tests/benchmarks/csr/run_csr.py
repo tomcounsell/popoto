@@ -45,6 +45,18 @@ RESULTS_DIR = Path(__file__).parent.parent / "results" / "csr"
 
 RUN_LABELS = ("standard", "adversarial")
 
+# Key shapes this harness writes, for the bench-DB residue sweep (issue #490).
+# Per-case models are named ``CsrMem<8hex>`` (see corpus._build_csr_model_class),
+# so record keys are ``CsrMem<hex>:...``, sorted indexes ``CsrMem<hex>:_importance``
+# and BM25 keys ``$BM25:CsrMem<hex>:content_index...``. ``$`` is not a SCAN
+# metacharacter, so both patterns are literal outside the trailing glob. Before
+# #490 run_csr ran against the default DB 0 with only per-case cleanup, so any
+# case that errored/was killed before cleanup leaked these keys into DB 0.
+_CSR_STALE_KEY_PATTERNS = (
+    "CsrMem*",
+    "$BM25:CsrMem*",
+)
+
 
 def _run_one_query(assembler, model_class, agent_id, query):
     """Execute one assemble() run and score it.
@@ -363,10 +375,43 @@ def main(argv=None) -> int:
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
+    # DB hygiene (issue #490): before #490 this harness ran against the live
+    # default connection (DB 0), so any case killed/errored before its per-case
+    # cleanup leaked CsrMem*/$BM25:CsrMem* keys into production-shaped DB 0
+    # (~6741 stray keys observed) and polluted concurrent runs — which also made
+    # the CSR determinism tests fail non-deterministically. Point the connection
+    # at the shared bench DB (default 14, db0 rejected) and sweep residue before
+    # and after. Reuses run_external's helpers so the isolation posture is
+    # identical to the SIQ/external harnesses. Scoped to this entrypoint — never
+    # runs at import time, so the pytest DB-15 plugin is unaffected.
+    from src.popoto.redis_db import POPOTO_REDIS_DB
+    from tests.benchmarks.run_external import (
+        _point_connection_at_db,
+        _resolve_bench_db,
+        _sweep_stale_benchmark_keys,
+    )
+
+    bench_db = _resolve_bench_db()
+    _point_connection_at_db(bench_db)
+    swept = _sweep_stale_benchmark_keys(POPOTO_REDIS_DB, _CSR_STALE_KEY_PATTERNS)
+    print(
+        f"CSR: bench DB = {bench_db} (db0 rejected; db15 is pytest-only); "
+        f"swept {swept} stale key(s) at startup."
+    )
+
     # Import here so `--help` never touches Redis or the suite lint.
     from .suites.default import SUITE
 
-    aggregate = run_suite(SUITE)
+    try:
+        aggregate = run_suite(SUITE)
+    finally:
+        # Sweep this run's own residue so a completed run leaves the bench DB
+        # clean (issue #490); never a blanket flushdb (DB 14 is shared with
+        # concurrent benchmarks). Best-effort — must not mask the run result.
+        try:
+            _sweep_stale_benchmark_keys(POPOTO_REDIS_DB, _CSR_STALE_KEY_PATTERNS)
+        except Exception as exc:  # noqa: BLE001 - teardown never crashes the run
+            logger.warning("CSR teardown sweep failed (non-fatal): %s", exc)
     s = aggregate["summary"]
     print(f"Cases: {s['n_cases']} (errors: {s['n_errors']})")
     print(f"RSR (standard):    {s['rsr_std']:.6f}")

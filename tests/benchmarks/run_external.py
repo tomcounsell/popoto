@@ -162,22 +162,24 @@ def _point_connection_at_db(target_db: int) -> None:
     old_pool.disconnect()
 
 
-def _sweep_stale_benchmark_keys(redis_conn) -> int:
+def _sweep_stale_benchmark_keys(redis_conn, patterns=_STALE_KEY_PATTERNS) -> int:
     """SCAN + DEL any benchmark residue left by prior/interrupted runs.
 
     Uses cursor-based SCAN (non-blocking, Valkey-safe — no Redis modules) to
-    enumerate keys matching :data:`_STALE_KEY_PATTERNS` and DELs them. Operates
-    on whatever connection it is handed, so it targets exactly the DB the
-    harness is pointed at.
+    enumerate keys matching ``patterns`` and DELs them. Operates on whatever
+    connection it is handed, so it targets exactly the DB the harness is
+    pointed at. Reused by other harnesses (e.g. CSR) with their own patterns.
 
     Args:
         redis_conn: A ``redis.Redis`` client (the live Popoto connection).
+        patterns: Iterable of glob patterns to sweep (default:
+            :data:`_STALE_KEY_PATTERNS`, the external harness's own key shapes).
 
     Returns:
         The number of stale keys deleted.
     """
     deleted = 0
-    for pattern in _STALE_KEY_PATTERNS:
+    for pattern in patterns:
         cursor = 0
         while True:
             cursor, keys = redis_conn.scan(cursor, match=pattern, count=500)
@@ -211,6 +213,30 @@ def _select_bench_db() -> int:
         bench_db,
     )
     return bench_db
+
+
+def _teardown_bench_db(bench_db: int) -> None:
+    """Sweep this harness's residue from the bench DB after a run.
+
+    The startup sweep (:func:`_select_bench_db`) protects the *next* run, but a
+    completed run that never sweeps at exit leaves its own keys behind (issue
+    #490 observed ~1251 stray keys accumulating in DB 14). This sweeps only the
+    external harness's own key shapes (:data:`_STALE_KEY_PATTERNS`), never a
+    blanket ``flushdb`` — DB 14 is shared with concurrently-running benchmarks,
+    so a flush would nuke a neighbour's in-flight keyspace. Best-effort: swallows
+    connection errors so a teardown hiccup never masks the run's real exit code.
+    """
+    try:
+        from src.popoto.redis_db import POPOTO_REDIS_DB
+
+        swept = _sweep_stale_benchmark_keys(POPOTO_REDIS_DB)
+        logger.info(
+            "Swept %d benchmark key(s) from DB %d at teardown.",
+            swept,
+            bench_db,
+        )
+    except Exception as exc:  # noqa: BLE001 - teardown must never crash the run
+        logger.warning("Benchmark teardown sweep failed (non-fatal): %s", exc)
 
 
 # ---------------------------------------------------------------------------
@@ -976,7 +1002,22 @@ def main():
     # by prior/interrupted runs BEFORE any ingestion. Scoped to this entrypoint
     # so it never affects import-time behavior or the pytest db15 plugin.
     bench_db = _select_bench_db()
+    try:
+        return _run_benchmark(args, bench_db)
+    finally:
+        # Sweep this run's own residue so a completed run leaves the bench DB
+        # clean (issue #490). Runs on every exit path — success, error, or
+        # non-zero return — because ingestion has already written keys by then.
+        _teardown_bench_db(bench_db)
 
+
+def _run_benchmark(args, bench_db):
+    """Execute the benchmark run itself (post DB-isolation setup).
+
+    Extracted from :func:`main` so the caller can guarantee a teardown sweep of
+    the bench DB in a ``finally`` regardless of which return path exits (issue
+    #490). Returns the process exit code.
+    """
     # When --limit is combined with the legacy contiguous-prefix mode, warn:
     # 'head' benchmarks only the easiest on-disk category and is not
     # representative of the whole dataset.

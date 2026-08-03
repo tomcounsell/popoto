@@ -813,6 +813,41 @@ class TestStaleKeySweep:
         assert POPOTO_REDIS_DB.exists(keeper) == 1
         POPOTO_REDIS_DB.delete(keeper)
 
+    def test_custom_patterns_sweep_only_matching_keys(self):
+        """The generalized sweep (issue #490) accepts caller-supplied patterns.
+
+        CSR reuses ``_sweep_stale_benchmark_keys`` with its own key shapes
+        (``CsrMem*`` / ``$BM25:CsrMem*``). Passing those patterns must sweep the
+        CSR residue while leaving the external harness's ExtMem* keys — and any
+        unrelated key — untouched.
+        """
+        from src.popoto.redis_db import POPOTO_REDIS_DB
+        from tests.benchmarks.run_external import _sweep_stale_benchmark_keys
+
+        csr_keys = {
+            "CsrMemdeadbeef:abc": "1",
+            "CsrMemdeadbeef:_importance": "1",
+            "$BM25:CsrMemdeadbeef:content_index": "1",
+        }
+        ext_key = "ExtMem12345678:xyz"  # external residue — must survive
+        keeper = "SomeOtherModel:keepme"
+        for k, v in csr_keys.items():
+            POPOTO_REDIS_DB.set(k, v)
+        POPOTO_REDIS_DB.set(ext_key, "1")
+        POPOTO_REDIS_DB.set(keeper, "1")
+
+        csr_patterns = ("CsrMem*", "$BM25:CsrMem*")
+        swept = _sweep_stale_benchmark_keys(POPOTO_REDIS_DB, csr_patterns)
+
+        assert swept >= len(csr_keys)
+        for k in csr_keys:
+            assert POPOTO_REDIS_DB.exists(k) == 0
+        # The external-harness residue and unrelated keys are untouched — the
+        # custom patterns only matched CsrMem*.
+        assert POPOTO_REDIS_DB.exists(ext_key) == 1
+        assert POPOTO_REDIS_DB.exists(keeper) == 1
+        POPOTO_REDIS_DB.delete(ext_key, keeper)
+
     def test_sweep_on_clean_db_returns_zero(self):
         """A DB with no residue sweeps zero keys."""
         from src.popoto.redis_db import POPOTO_REDIS_DB
