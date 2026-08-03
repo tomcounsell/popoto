@@ -26,6 +26,7 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 from popoto import (  # noqa: E402
     AccessTrackerMixin,
     AutoKeyField,
+    BM25Field,
     ConfidenceField,
     DecayingSortedField,
     FloatField,
@@ -36,7 +37,6 @@ from popoto import (  # noqa: E402
 )
 from popoto.recipes.subconscious_memory import SubconsciousMemory  # noqa: E402
 from popoto.redis_db import POPOTO_REDIS_DB  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # Test Models
@@ -81,6 +81,39 @@ class AltMemory(WriteFilterMixin, AccessTrackerMixin, Model):
         return self.score or 0.0
 
 
+class RetrievalMemory(WriteFilterMixin, AccessTrackerMixin, Model):
+    """Retrieval-relevance model with a BM25 index over ``content``.
+
+    Unlike ``SCMemory``, this model carries a ``BM25Field``, so
+    ``ContextAssembler`` auto-resolves to ``lexical`` retrieval mode: the
+    user query actually filters candidates by keyword overlap. Without the
+    BM25 index, retrieval falls back to ``composite`` mode, which is
+    query-blind -- it returns the top ``max_items`` by decay/confidence score
+    regardless of the query. Under that mode the topical assertions below are
+    a coin flip on tie order (issue #496: ~3% flake, exactly the
+    hypergeometric odds of no deployment memory landing in a query-blind
+    10-of-22 draw), which is why relevance must be exercised through a
+    genuinely query-aware model.
+    """
+
+    memory_id = AutoKeyField()
+    agent_id = KeyField()
+    content = StringField(default="")
+    content_search = BM25Field(source="content")
+    importance = FloatField(default=1.0)
+    relevance = DecayingSortedField(
+        base_score_field="importance",
+        partition_by="agent_id",
+    )
+    confidence = ConfidenceField(initial_confidence=0.5)
+
+    _wf_min_threshold = 0.2
+    _wf_priority_threshold = 0.7
+
+    def compute_filter_score(self):
+        return self.importance or 0.0
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -111,6 +144,15 @@ def _clean_all():
         "$SortedF:*AltMemory*",
         "$AT:*AltMemory*",
         "$WF:*AltMemory*",
+        "*RetrievalMemory*",
+        "$EF:*RetrievalMemory*",
+        "$FS:*RetrievalMemory*",
+        "$CoOcF:*RetrievalMemory*",
+        "$ConfidencF:*RetrievalMemory*",
+        "$SortedF:*RetrievalMemory*",
+        "$AT:*RetrievalMemory*",
+        "$WF:*RetrievalMemory*",
+        "$BM25:*RetrievalMemory*",
     )
 
 
@@ -138,21 +180,36 @@ def sm():
 
 
 class TestRetrievalRelevance:
-    """Verify that inject_context surfaces topically relevant memories."""
+    """Verify that inject_context surfaces topically relevant memories.
+
+    Retrieval runs over ``RetrievalMemory`` (BM25-indexed), so ``inject_context``
+    resolves to ``lexical`` mode and the query genuinely filters candidates by
+    keyword overlap. Every cluster memory carries its cluster's anchor token
+    ("database" / "deployment") and no distractor from another cluster does, so a
+    cluster query returns exactly that cluster's memories -- deterministically,
+    with no dependence on tie order. That determinism is the point of #496: the
+    old query-blind ``composite`` fixture returned a top-10 slice of 22 near-tied
+    memories and flaked ~3% of the time (the hypergeometric odds of no deployment
+    memory landing in the slice). The assertions below are therefore purity
+    checks -- *every* returned memory must be on-topic -- which fail loudly if
+    retrieval ever regresses to query-blind selection.
+    """
 
     MEMORIES = [
-        # Database topic cluster
-        "PostgreSQL connection pooling reduces latency by reusing connections.",
+        # Database topic cluster -- every entry carries the anchor token "database"
+        "PostgreSQL database connection pooling reduces latency by reusing"
+        " connections.",
         "Database indexes should be analyzed monthly for bloat.",
-        "Redis sorted sets provide O(log N) insertion and retrieval.",
-        "MySQL replication lag can be monitored with pt-heartbeat.",
+        "Redis database sorted sets provide O(log N) insertion and retrieval.",
+        "MySQL database replication lag can be monitored with pt-heartbeat.",
         "Database migrations should always be backward-compatible.",
-        # Deployment topic cluster
-        "Blue-green deployments minimize downtime during releases.",
-        "Kubernetes rolling updates gradually replace old pods.",
-        "Docker images should use multi-stage builds for smaller size.",
-        "CI pipeline runs linting, tests, and security scans.",
-        "Canary releases route a small percentage of traffic to new code.",
+        # Deployment topic cluster -- every entry carries the anchor token
+        # "deployment"
+        "Blue-green deployment strategies minimize downtime during releases.",
+        "Kubernetes rolling deployment gradually replaces old pods.",
+        "Docker deployment images should use multi-stage builds for smaller" " size.",
+        "A CI deployment pipeline runs linting, tests, and security scans.",
+        "Canary deployment routes a small percentage of traffic to new code.",
         # Frontend topic cluster
         "CSS grid layout handles two-dimensional page layouts.",
         "React hooks replaced class component lifecycle methods.",
@@ -170,21 +227,32 @@ class TestRetrievalRelevance:
         "The office kitchen has free coffee and snacks.",
     ]
 
-    def test_database_query_returns_database_memories(self, sm):
-        """Querying about databases should surface database-related memories."""
+    @pytest.fixture
+    def ret_sm(self):
+        return SubconsciousMemory(
+            model_class=RetrievalMemory,
+            agent_id="integ-agent-1",
+            score_weights={"relevance": 0.6, "confidence": 0.3},
+            max_items=10,
+            max_tokens=4000,
+        )
+
+    def _seed(self):
         for text in self.MEMORIES:
-            SCMemory(agent_id="integ-agent-1", content=text, importance=0.8).save()
+            RetrievalMemory(
+                agent_id="integ-agent-1", content=text, importance=0.8
+            ).save()
+
+    def test_database_query_returns_database_memories(self, ret_sm):
+        """Querying about databases should surface database-related memories."""
+        self._seed()
 
         messages = [
             {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": "How should we optimize our database?"},
+            {"role": "user", "content": "How can we optimize database performance?"},
         ]
-        result_msgs, assembly = sm.inject_context(messages)
+        result_msgs, assembly = ret_sm.inject_context(messages)
 
-        # Should have retrieved some memories
-        assert len(assembly.records) > 0
-
-        # Verify at least some retrieved memories are database-related
         db_keywords = {"database", "postgresql", "redis", "mysql", "index", "migration"}
         retrieved_contents = [
             getattr(r, "content", "").lower() for r in assembly.records
@@ -194,31 +262,29 @@ class TestRetrievalRelevance:
             for content in retrieved_contents
             if any(kw in content for kw in db_keywords)
         )
-        # At least one database-related memory should appear
-        assert db_matches >= 1, (
-            f"Expected database-related memories in results, got: {retrieved_contents}"
-        )
+        # Lexical retrieval returns only the database cluster (5 entries). Assert
+        # purity -- every returned memory is on-topic -- not a >=1 lottery ticket.
+        assert len(assembly.records) > 0
+        assert (
+            db_matches == len(assembly.records) >= 3
+        ), f"Expected only database-related memories, got: {retrieved_contents}"
 
-    def test_retrieves_multiple_relevant_memories(self, sm):
-        """A broad query should surface memories from the relevant topic cluster."""
-        for text in self.MEMORIES:
-            SCMemory(agent_id="integ-agent-1", content=text, importance=0.8).save()
+    def test_retrieves_multiple_relevant_memories(self, ret_sm):
+        """A topical query should surface only the relevant topic cluster."""
+        self._seed()
 
         messages = [
             {"role": "system", "content": "You are a helpful assistant."},
             {"role": "user", "content": "Tell me about deployment strategies."},
         ]
-        _, assembly = sm.inject_context(messages)
+        _, assembly = ret_sm.inject_context(messages)
 
-        assert len(assembly.records) > 0
-
-        # With 22 diverse memories, at least some deployment-related ones should appear
         deploy_keywords = {
             "deploy",
             "kubernetes",
             "docker",
             "canary",
-            "ci pipeline",
+            "ci ",
             "rolling",
         }
         all_contents = [getattr(r, "content", "").lower() for r in assembly.records]
@@ -227,9 +293,13 @@ class TestRetrievalRelevance:
             for content in all_contents
             if any(kw in content for kw in deploy_keywords)
         )
-        assert deploy_matches >= 1, (
-            f"Expected deployment-related memories in results, got: {all_contents}"
-        )
+        # Lexical retrieval returns exactly the 5-entry deployment cluster.
+        # Assert purity: every returned memory is deployment-related. This is the
+        # deterministic replacement for the old ~3%-flaky >=1 threshold (#496).
+        assert len(assembly.records) > 0
+        assert (
+            deploy_matches == len(assembly.records) >= 3
+        ), f"Expected only deployment-related memories, got: {all_contents}"
 
 
 # ===========================================================================
@@ -273,15 +343,15 @@ class TestAgentIsolation:
 
         # agent-1 query should only contain agent-1 content
         for r in agent1_records:
-            assert "Agent two" not in r.content, (
-                f"Agent-2 memory leaked into agent-1 query: {r.content}"
-            )
+            assert (
+                "Agent two" not in r.content
+            ), f"Agent-2 memory leaked into agent-1 query: {r.content}"
 
         # agent-2 query should only contain agent-2 content
         for r in agent2_records:
-            assert "Agent one" not in r.content, (
-                f"Agent-1 memory leaked into agent-2 query: {r.content}"
-            )
+            assert (
+                "Agent one" not in r.content
+            ), f"Agent-1 memory leaked into agent-2 query: {r.content}"
 
     def test_extract_saves_to_correct_agent(self):
         """Extracted memories are saved under the correct agent_id."""
@@ -347,9 +417,9 @@ class TestMultiTurnAccumulation:
 
         # Memory count should strictly increase each cycle
         for i in range(1, len(counts)):
-            assert counts[i] > counts[i - 1], (
-                f"Memory count did not grow at cycle {i}: {counts}"
-            )
+            assert (
+                counts[i] > counts[i - 1]
+            ), f"Memory count did not grow at cycle {i}: {counts}"
 
     def test_decay_ranks_older_memories_lower(self):
         """Older memories should rank lower due to DecayingSortedField decay."""
@@ -388,9 +458,9 @@ class TestMultiTurnAccumulation:
         contents = [getattr(r, "content", "") for r in assembly.records]
         new_idx = next(i for i, c in enumerate(contents) if "New fact" in c)
         old_idx = next(i for i, c in enumerate(contents) if "Old fact" in c)
-        assert new_idx < old_idx, (
-            f"New memory (idx {new_idx}) should rank before old (idx {old_idx})"
-        )
+        assert (
+            new_idx < old_idx
+        ), f"New memory (idx {new_idx}) should rank before old (idx {old_idx})"
 
 
 # ===========================================================================
@@ -430,9 +500,9 @@ class TestObservationFeedback:
 
         # Confidence should have increased
         new_conf = ConfidenceField.get_confidence(m, "confidence")
-        assert new_conf > initial_conf, (
-            f"Confidence should increase after 'acted': {initial_conf} -> {new_conf}"
-        )
+        assert (
+            new_conf > initial_conf
+        ), f"Confidence should increase after 'acted': {initial_conf} -> {new_conf}"
 
     def test_contradicted_penalizes_confidence(self):
         """Reporting 'contradicted' should decrease the memory's confidence."""
@@ -460,9 +530,9 @@ class TestObservationFeedback:
         sm.report_outcomes(assembly, outcome="contradicted")
 
         new_conf = ConfidenceField.get_confidence(m, "confidence")
-        assert new_conf < initial_conf, (
-            f"Confidence should decrease after 'contradicted': {initial_conf} -> {new_conf}"
-        )
+        assert (
+            new_conf < initial_conf
+        ), f"Confidence should decrease after 'contradicted': {initial_conf} -> {new_conf}"
 
     def test_feedback_changes_ranking(self):
         """After feedback, high-confidence memory should rank above low-confidence."""
@@ -494,22 +564,24 @@ class TestObservationFeedback:
         _, assembly = sm.inject_context(messages)
 
         # Apply acted to good, contradicted to bad
-        assert assembly.records, "inject_context should return at least one memory record"
+        assert (
+            assembly.records
+        ), "inject_context should return at least one memory record"
         for record in assembly.records:
-                content = getattr(record, "content", "")
-                if "Verified correct" in content:
-                    ConfidenceField.update_confidence(record, "confidence", signal=0.9)
-                elif "Possibly wrong" in content:
-                    ConfidenceField.update_confidence(record, "confidence", signal=0.1)
+            content = getattr(record, "content", "")
+            if "Verified correct" in content:
+                ConfidenceField.update_confidence(record, "confidence", signal=0.9)
+            elif "Possibly wrong" in content:
+                ConfidenceField.update_confidence(record, "confidence", signal=0.1)
 
         # Re-query and check ranking
         _, assembly2 = sm.inject_context(
             [{"role": "user", "content": "Tell me about deployment steps."}]
         )
 
-        assert len(assembly2.records) >= 2, (
-            f"Expected at least 2 records for ranking comparison, got {len(assembly2.records)}"
-        )
+        assert (
+            len(assembly2.records) >= 2
+        ), f"Expected at least 2 records for ranking comparison, got {len(assembly2.records)}"
         contents = [getattr(r, "content", "") for r in assembly2.records]
         good_idx = next(
             (i for i, c in enumerate(contents) if "Verified correct" in c), None
@@ -517,7 +589,9 @@ class TestObservationFeedback:
         bad_idx = next(
             (i for i, c in enumerate(contents) if "Possibly wrong" in c), None
         )
-        assert good_idx is not None, "Good memory ('Verified correct') not found in results"
+        assert (
+            good_idx is not None
+        ), "Good memory ('Verified correct') not found in results"
         assert bad_idx is not None, "Bad memory ('Possibly wrong') not found in results"
         assert good_idx < bad_idx, (
             f"High-confidence memory (idx {good_idx}) should rank before "
@@ -565,9 +639,9 @@ class TestTokenBudgetEnforcement:
 
         # Budget enforcement: the assembler should have limited records
         assert len(assembly.records) > 0
-        assert len(assembly.records) < 30, (
-            f"Expected budget to limit records, got {len(assembly.records)} of 30"
-        )
+        assert (
+            len(assembly.records) < 30
+        ), f"Expected budget to limit records, got {len(assembly.records)} of 30"
 
     def test_large_budget_returns_more_records(self):
         """A larger token budget should allow more records through."""
@@ -623,9 +697,9 @@ class TestExtractionEdgeCases:
         text = "- item one\n- item two\n- item three"
         sentences = SubconsciousMemory._split_sentences(text)
         # Without .!? at end of each bullet, they stay as one block
-        assert len(sentences) == 1, (
-            f"Expected 1 block (known limitation), got: {sentences}"
-        )
+        assert (
+            len(sentences) == 1
+        ), f"Expected 1 block (known limitation), got: {sentences}"
 
     def test_markdown_bullets_with_periods_split(self):
         """Markdown bullets ending with periods ARE split correctly."""
@@ -706,9 +780,9 @@ class TestConfigurableFieldNames:
         for record in saved:
             assert record.text != "", "text field should be populated"
             assert record.score == 0.8, f"score field should be 0.8, got {record.score}"
-            assert record.owner == "alt-agent", (
-                f"owner field should be 'alt-agent', got {record.owner}"
-            )
+            assert (
+                record.owner == "alt-agent"
+            ), f"owner field should be 'alt-agent', got {record.owner}"
 
     def test_inject_retrieves_with_default_agent_id_field(self):
         """inject_context retrieves memories when using default 'agent_id' field name.
