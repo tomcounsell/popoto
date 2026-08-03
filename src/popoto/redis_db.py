@@ -105,9 +105,7 @@ _async_redis_lock = asyncio.Lock()
 # Using a BlockingConnectionPool with this cap makes excess coroutines wait for
 # a free connection instead of erroring. Override via POPOTO_ASYNC_MAX_CONNECTIONS.
 try:
-    _ASYNC_MAX_CONNECTIONS = int(
-        os.environ.get("POPOTO_ASYNC_MAX_CONNECTIONS", "128")
-    )
+    _ASYNC_MAX_CONNECTIONS = int(os.environ.get("POPOTO_ASYNC_MAX_CONNECTIONS", "128"))
 except ValueError:
     _ASYNC_MAX_CONNECTIONS = 128
 
@@ -120,9 +118,7 @@ except ValueError:
 # connections"). A BlockingConnectionPool makes excess threads wait for a free
 # connection instead. Override via POPOTO_SYNC_MAX_CONNECTIONS.
 try:
-    _SYNC_MAX_CONNECTIONS = int(
-        os.environ.get("POPOTO_SYNC_MAX_CONNECTIONS", "128")
-    )
+    _SYNC_MAX_CONNECTIONS = int(os.environ.get("POPOTO_SYNC_MAX_CONNECTIONS", "128"))
 except ValueError:
     _SYNC_MAX_CONNECTIONS = 128
 
@@ -197,6 +193,75 @@ def set_REDIS_DB_settings(env_partition_name: str = "", *args, **kwargs) -> None
     # global REDIS_GRAPH
     # REDIS_GRAPH = Graph('social', POPOTO_REDIS_DB)
     logger.debug("Redis connection reset.")
+
+
+# Connection parameters that are safe to copy from a connection pool's
+# ``connection_kwargs`` when constructing a *sibling* ``redis.Redis`` client
+# (e.g. a DB-0 probe that reuses the live host/port/auth but targets a
+# different DB). redis-py 8 injects pool-internal bookkeeping keys —
+# ``himport_registry``, ``maint_notifications_config``,
+# ``maint_notifications_pool_handler``, ``orig_host_address``,
+# ``orig_socket_timeout``, ``orig_socket_connect_timeout`` — into a pool's
+# ``connection_kwargs``. Splatting that full dict into ``redis.Redis(**kwargs)``
+# raises ``TypeError: Redis.__init__() got an unexpected keyword argument
+# 'himport_registry'`` (the exact key surfaced depends on kwarg-check order).
+# Whitelisting the standard connection params sidesteps this on every redis-py
+# version, and stays Valkey-safe (no Redis-module-specific options).
+_SIBLING_CONNECTION_KEYS = (
+    "host",
+    "port",
+    "db",
+    "username",
+    "password",
+    "socket_timeout",
+    "socket_connect_timeout",
+    "ssl",
+    "ssl_keyfile",
+    "ssl_certfile",
+    "ssl_ca_certs",
+    "unix_socket_path",
+)
+
+
+def sibling_client_kwargs(
+    source_kwargs: dict[str, object], **overrides: object
+) -> dict[str, object]:
+    """Whitelist connection kwargs safe to splat into ``redis.Redis(**kw)``.
+
+    A connection pool's ``connection_kwargs`` cannot be passed wholesale to the
+    ``redis.Redis`` constructor on redis-py 8: the pool injects internal keys
+    (``himport_registry``, ``maint_notifications_pool_handler``, ``orig_*`` …)
+    that ``Redis.__init__`` rejects. This returns only the standard connection
+    parameters present in ``source_kwargs`` (dropping ``None`` values), then
+    applies any explicit ``overrides`` (e.g. ``db=0`` to build a DB-0 probe on
+    the same host/port/auth).
+
+    Args:
+        source_kwargs: A pool's ``connection_kwargs`` (or any mapping of
+            connection parameters) to copy the safe subset from.
+        **overrides: Parameters to set/replace on the returned dict, applied
+            after the whitelist (so ``db=0`` wins over any inherited ``db``).
+
+    Returns:
+        A dict containing only whitelisted params plus the overrides, ready to
+        splat into ``redis.Redis(**kwargs)`` on any redis-py version.
+
+    Example::
+
+        from popoto.redis_db import POPOTO_REDIS_DB, sibling_client_kwargs
+
+        kwargs = sibling_client_kwargs(
+            POPOTO_REDIS_DB.connection_pool.connection_kwargs, db=0
+        )
+        db0 = redis.Redis(**kwargs)
+    """
+    out = {
+        key: source_kwargs[key]
+        for key in _SIBLING_CONNECTION_KEYS
+        if source_kwargs.get(key) is not None
+    }
+    out.update(overrides)
+    return out
 
 
 def get_REDIS_DB():
