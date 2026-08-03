@@ -50,6 +50,20 @@ class Defaults:
 
     # -- DecayingSortedField --------------------------------------------------
     DECAY_RATE = 0.1  # best from sweep 2026-04-20, variance=0.067, prior=0.1 (stable)
+    # Confidence-modulated decay (issue #491). Effective per-record rate is
+    # decay_rate * 2^(s * 2 * (c0 - confidence)), so s is literally "doublings
+    # of the decay rate at zero confidence". Not yet swept: 0.5 is the
+    # literature-grounded midpoint of the 0.3-0.7 band recommended by spike-4
+    # (Pavlik & Anderson 2005 strength-dependent decay; Duolingo half-life
+    # regression), to be tuned against real dismissal data (#493) rather than
+    # synthetic corpora. s = 0 makes modulation a bit-exact no-op.
+    DECAY_CONFIDENCE_MODULATION_STRENGTH = 0.5
+    # Deploy-level kill switch (issue #491 decision 4, 2026-07-27). Modulation
+    # is default-ON via auto-detection, so a PyPI adopter whose ranking
+    # regresses after `pip install -U` needs a disable that does not require
+    # editing model definitions. False makes every path byte-identical to
+    # pre-#491 behavior (equivalent to s = 0). Boolean, not swept.
+    DECAY_CONFIDENCE_MODULATION_ENABLED = True
 
     # -- ConfidenceField ------------------------------------------------------
     INITIAL_CONFIDENCE = 0.5  # empirically inert (sweep 2026-04-20, variance=0.0011)
@@ -168,6 +182,39 @@ class Defaults:
         0.1  # importance below this → eligible for forget
     )
     LIFECYCLE_FORGET_IDLE_SECONDS = 86400.0  # 24 h idle → eligible for forget
+    # Confidence-driven forgetting (issue #491). Closes the promote/forget
+    # asymmetry: confidence could already promote a memory to permanence but
+    # never hasten its removal.
+    # Conservative by design — 0.3 sits well below INITIAL_CONFIDENCE (0.5), so
+    # a record must have moved decisively negative rather than merely failing to
+    # accumulate positive evidence, and below
+    # LIFECYCLE_PROMOTION_CONFIDENCE_THRESHOLD (0.6) so the forget and promote
+    # bands cannot overlap.
+    LIFECYCLE_FORGET_CONFIDENCE_CEILING = 0.3
+    # Load-bearing guard: ConfidenceField starts at 0.5 and moves on every
+    # signal, so without a minimum track record a single unlucky dismissal
+    # could bury a memory. 5 observations is roughly a quarter of
+    # CONFIDENCE_EVIDENCE_CAP (20) — enough for the running mean to reflect a
+    # pattern rather than an accident.
+    LIFECYCLE_FORGET_MIN_EVIDENCE = 5
+    # Bounded tombstone retention (issue #491 Risk 7): forgetting tombstones
+    # rather than deletes, so retention must be capped or tombstones outgrow
+    # the records they replaced. Oldest age out past this count. 1000 keeps the
+    # negative-evidence corpus meaningful for #494 while staying small next to
+    # the 20k-record scale target. Each tombstone archives the record's full
+    # payload (that archive is what makes restore() possible) plus a
+    # fingerprint and death metadata, so retention has to be bounded rather
+    # than assumed cheap.
+    LIFECYCLE_TOMBSTONE_RETENTION_LIMIT = 1000
+
+    # -- Extraction (extraction/) ---------------------------------------------
+    # Experimental tuning constants for the pluggable LLM-extraction path
+    # (popoto.extraction). Not yet swept -- initial values set by design,
+    # per issue #461 / docs/plans/llm_memory_extraction_path.md.
+    EXTRACTION_DEFAULT_IMPORTANCE = 0.5  # aligns with SubconsciousMemory.extract_memories()'s current flat importance default
+    EXTRACTION_DEFAULT_CONFIDENCE = 0.7  # signal applied when a provider asserts a fact but returns no explicit confidence
+    EXTRACTION_ENTITY_PAIR_LINK_WEIGHT = 0.1  # matches CO_OCCURRENCE_INITIAL_WEIGHT; must stay <= CO_OCCURRENCE_WEIGHT_CAP (1.0) or CoOccurrenceField.link() raises
+    EXTRACTION_MAX_ENTITIES_PER_FACT = 12  # cap on deduped entities paired per fact; combinations grow O(n^2), so a malformed/adversarial extraction with many entities can't blow up co-occurrence writes
 
 
 class TemporalPeriod:

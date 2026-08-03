@@ -402,7 +402,7 @@ lifecycle.tag_new(record)           # sets tier = "episodic" and saves
 # 4. Run a lifecycle pass periodically (e.g. after each conversation turn,
 #    or on a background schedule)
 summary = lifecycle.tick()
-# {"promoted": 0, "forgotten": 0, "duration_ms": 1.4}
+# {"promoted": 0, "forgotten": 0, "tombstoned": 0, "duration_ms": 1.4}
 
 # 5. Inspect a record's lifecycle state
 state = lifecycle.assess(record)
@@ -427,14 +427,68 @@ Promotion is non-reversible in v1 (no demotion from semantic).
 
 ### Auto-forget criteria
 
-A non-semantic record is deleted when **both** hold:
+A non-semantic record is forgotten when it is idle **and** either its importance has
+bottomed out or its accumulated outcome evidence has turned decisively negative:
+
+```text
+(importance_score < FORGET_IMPORTANCE_FLOOR
+ OR (confidence < FORGET_CONFIDENCE_CEILING AND evidence_count >= FORGET_MIN_EVIDENCE))
+AND idle_seconds > FORGET_IDLE_SECONDS
+```
 
 | Criterion | Default |
 |-----------|---------|
 | `importance_score < FORGET_IMPORTANCE_FLOOR` | 0.1 |
+| `confidence < FORGET_CONFIDENCE_CEILING` | 0.3 |
+| `evidence_count >= FORGET_MIN_EVIDENCE` | 5 |
 | `idle_seconds > FORGET_IDLE_SECONDS` | 86 400 (24 h) |
 
-Semantic records are **never** deleted by the default policy.
+The confidence disjunct closes the promote/forget asymmetry — confidence already gated
+promotion but was blind to forgetting. `FORGET_MIN_EVIDENCE` is a safety floor rather
+than a tuning knob: confidence moves on every reported outcome, so without a minimum
+track record one unlucky dismissal could bury a memory. Models with no
+`ConfidenceField` take the importance-only path, unchanged from before.
+
+Semantic records are **never** forgotten by the default policy.
+
+### Tombstones
+
+Forgetting archives the record and removes it from the live corpus rather than deleting
+it, so exclusion from every retrieval mode is structural — no read path has to remember
+to filter tombstones out. The fingerprint, archived payload, and death metadata are kept
+under `$TOMB:{Model}:*`, and the decision is reversible.
+
+```python
+summary = lifecycle.tick()
+# {"promoted": 0, "forgotten": 3, "tombstoned": 3, "duration_ms": 2.1}
+
+lifecycle.tombstone_count()                 # 3
+tombs = lifecycle.list_tombstones(limit=10) # newest death first
+tombs[0].confidence_at_death                # e.g. 0.12
+tombs[0].dismissal_count                    # e.g. 7
+
+lifecycle.restore(tombs[0].redis_key)       # live again, all indexes rebuilt
+```
+
+| Method | Purpose |
+|--------|---------|
+| `tombstone(record, reason="policy")` | Forget one record explicitly; returns a `Tombstone` or `None` |
+| `restore(redis_key)` | Re-save the archived record (re-runs every `on_save` hook, so sorted/unique/geo indexes are rebuilt) and drop its tombstone |
+| `list_tombstones(limit=None)` | Retained `Tombstone`s, newest death first |
+| `get_tombstone(redis_key)` | One `Tombstone`, or `None` if it aged out |
+| `tombstone_count()` | Number currently retained |
+| `purge_tombstone(redis_key)` | Drop one tombstone permanently |
+| `purge_all_tombstones()` | Drop every tombstone for this model class |
+| `forget_hard(record)` | Irreversible delete with no tombstone |
+| `confidence_forget_eligible(record)` | Whether evidence alone justifies forgetting |
+
+A `Tombstone` carries `redis_key`, `fingerprint` (the `ExistenceFilter` fingerprint when
+the model has one, else the `redis_key`), `tier`, `importance_at_death`,
+`confidence_at_death`, `evidence_count`, `dismissal_count`, `tombstoned_at`, and `reason`.
+
+Retention is bounded by `TOMBSTONE_RETENTION_LIMIT` (1000); the oldest age out, so a
+restore is only available while the tombstone is still retained. Archiving happens before
+removal, so a crash between the two steps loses nothing.
 
 ### Custom policies
 
@@ -503,7 +557,7 @@ lifecycle.tick()  # only touches agent-1's records
 
 ### Tuning the thresholds
 
-The five magic-number constants are class attributes:
+The magic-number constants are class attributes:
 
 ```python
 # Inspect defaults
@@ -512,6 +566,9 @@ print(MemoryLifecycle.PROMOTION_CONFIDENCE_THRESHOLD)  # 0.6
 print(MemoryLifecycle.PROMOTION_MIN_AGE_SECONDS)       # 300.0
 print(MemoryLifecycle.FORGET_IMPORTANCE_FLOOR)         # 0.1
 print(MemoryLifecycle.FORGET_IDLE_SECONDS)             # 86400.0
+print(MemoryLifecycle.FORGET_CONFIDENCE_CEILING)       # 0.3
+print(MemoryLifecycle.FORGET_MIN_EVIDENCE)             # 5
+print(MemoryLifecycle.TOMBSTONE_RETENTION_LIMIT)       # 1000
 
 # Override for a specific instance
 lifecycle.PROMOTION_ACCESS_COUNT = 5

@@ -1,0 +1,39 @@
+{
+  "trace_id": "need_to_know_allergy",
+  "description": "User mentions a severe peanut allergy once, early. Turns later they ask for a dinner recipe recommendation without repeating the allergy. The need-to-know memory must surface subconsciously even though the request never cues it.",
+  "max_items": 5,
+  "max_tokens": null,
+  "turns": [
+    {
+      "speaker": "user",
+      "message": "Just so you know, I have a severe peanut allergy that gets dangerous fast.",
+      "establishes": {
+        "id": "mem_allergy",
+        "content": "User has a severe peanut allergy that becomes dangerous quickly.",
+        "importance": 0.92
+      }
+    },
+    {
+      "speaker": "assistant",
+      "message": "Thanks for telling me, I will keep that front of mind."
+    },
+    {
+      "speaker": "user",
+      "message": "Work has been relentless this quarter honestly.",
+      "establishes": {
+        "id": "mem_busy",
+        "content": "User has been extremely busy at work this quarter.",
+        "importance": 0.3
+      }
+    },
+    {
+      "speaker": "assistant",
+      "message": "That is a lot to carry; hope it eases soon."
+    },
+    {
+      "speaker": "user",
+      "message": "Could you suggest an easy weeknight dinner recipe I could cook tonight?",
+      "should_recall": ["mem_allergy"]
+    }
+  ]
+}

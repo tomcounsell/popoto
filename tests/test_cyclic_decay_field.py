@@ -26,8 +26,13 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 import msgpack
 import pytest
 from src import popoto
+from src.popoto.fields.confidence_field import ConfidenceField
 from src.popoto.fields.cyclic_decay_field import CyclicDecayField, CYCLIC_DECAY_LUA
-from src.popoto.fields.decaying_sorted_field import DecayingSortedField, DECAY_SCORE_LUA
+from src.popoto.fields.decaying_sorted_field import (
+    DecayingSortedField,
+    DECAY_SCORE_LUA,
+    confidence_modulation_args,
+)
 from src.popoto.fields.constants import TemporalPeriod
 from src.popoto.models.query import QueryException
 
@@ -92,6 +97,48 @@ class PlainDecayItem(popoto.Model):
     relevance = DecayingSortedField(decay_rate=0.5)
 
 
+# --- Confidence-modulated decay models (#491) ---
+
+
+class CyclicConfItem(popoto.Model):
+    """No cycles / no pressure, but auto-detects ``certainty`` for modulation."""
+
+    name = popoto.UniqueKeyField()
+    relevance = CyclicDecayField(decay_rate=0.5)
+    certainty = ConfidenceField()
+
+
+class CyclicConfWithCycles(popoto.Model):
+    """Cycles data AND modulation: the KEYS[2]/KEYS[4] anti-corruption model."""
+
+    name = popoto.UniqueKeyField()
+    relevance = CyclicDecayField(
+        decay_rate=0.5,
+        cycles=[(TemporalPeriod.YEARLY, 5.0, 0)],
+    )
+    certainty = ConfidenceField()
+
+
+class CyclicConfFull(popoto.Model):
+    """Cycles + pressure + modulation: all four KEYS bound at once."""
+
+    name = popoto.UniqueKeyField()
+    relevance = CyclicDecayField(
+        decay_rate=0.5,
+        cycles=[(TemporalPeriod.YEARLY, 5.0, 0)],
+        pressure_rate=0.1,
+    )
+    certainty = ConfidenceField()
+
+
+class PlainConfItem(popoto.Model):
+    """DecayingSortedField twin of ``CyclicConfItem`` for the equivalence test."""
+
+    name = popoto.UniqueKeyField()
+    relevance = DecayingSortedField(decay_rate=0.5)
+    certainty = ConfidenceField()
+
+
 ALL_MODELS = [
     CyclicItem,
     CyclicWithCycles,
@@ -100,6 +147,10 @@ ALL_MODELS = [
     CyclicWithBase,
     PartitionedCyclic,
     PlainDecayItem,
+    CyclicConfItem,
+    CyclicConfWithCycles,
+    CyclicConfFull,
+    PlainConfItem,
 ]
 
 
@@ -116,6 +167,83 @@ def teardown_module():
     """Clean up test data after running tests."""
     for model in ALL_MODELS:
         model.delete_all()
+
+
+# --- Confidence-modulation helpers (#491) ---
+
+
+def _decode_scores(raw):
+    """Raw Lua output -> {member: raw score string} (Lua's own tostring)."""
+    decoded = [x.decode() if isinstance(x, bytes) else x for x in (raw or [])]
+    return {decoded[i]: decoded[i + 1] for i in range(0, len(decoded), 2)}
+
+
+def _plant_confidence(record, confidence, evidence_count=10):
+    field = type(record)._meta.fields["certainty"]
+    popoto.POPOTO_REDIS_DB.hset(
+        field.get_data_hash_key(record, "certainty"),
+        record.db_key.redis_key,
+        msgpack.packb(
+            {
+                "confidence": confidence,
+                "evidence_count": evidence_count,
+                "corroborations": evidence_count,
+                "contradictions": 0,
+            },
+            use_bin_type=True,
+        ),
+    )
+
+
+def _modulated_eval(model_class, now, n=50, disable=False, cycles_key=None):
+    """Run the right decay script for ``model_class`` with modulation wired.
+
+    Mirrors ``query.py``: the cyclic script gets numkeys 4 with the confidence
+    hash appended AFTER cycles (KEYS[2]) and pressure (KEYS[3]); the plain
+    script gets numkeys 2 with the confidence hash at KEYS[2]. ``disable``
+    reproduces the pre-#491 call shape as a byte-exact oracle.
+    """
+    field = model_class._meta.fields["relevance"]
+    ss_key = field.__class__.get_sortedset_db_key(model_class, "relevance").redis_key
+    conf_key, s, c0 = confidence_modulation_args(
+        model_class, field, "relevance", filters={}
+    )
+    if disable:
+        conf_key, s = "", "0"
+    args = [
+        str(now),
+        str(field.decay_rate),
+        str(n),
+        field.base_score_field or "",
+        s,
+        c0,
+    ]
+    if isinstance(field, CyclicDecayField):
+        if cycles_key is None:
+            cycles_key = CyclicDecayField.get_cycles_hash_key_from_parts(
+                model_class, "relevance"
+            )
+        raw = popoto.POPOTO_REDIS_DB.eval(
+            CYCLIC_DECAY_LUA,
+            4,
+            ss_key,
+            cycles_key,
+            CyclicDecayField.get_pressure_hash_key_from_parts(model_class, "relevance"),
+            conf_key,
+            *args,
+        )
+    else:
+        raw = popoto.POPOTO_REDIS_DB.eval(DECAY_SCORE_LUA, 2, ss_key, conf_key, *args)
+    return _decode_scores(raw)
+
+
+def _modulated_scores_by_name(model_class, now, **kwargs):
+    """``{record.name: raw score string}`` for the modulated EVAL."""
+    key_to_name = {r.db_key.redis_key: r.name for r in model_class.query.all()}
+    return {
+        key_to_name[k]: v
+        for k, v in _modulated_eval(model_class, now, **kwargs).items()
+    }
 
 
 # --- TemporalPeriod constants tests ---
@@ -580,6 +708,59 @@ class TestEquivalenceWithDecaySortedField:
         assert cyclic_results[0].name == plain_results[0].name
         assert cyclic_results[1].name == plain_results[1].name
 
+    def test_same_ranking_with_confidence_modulation(self):
+        """Equivalence must survive #491: the forked CYCLIC_DECAY_LUA carries a
+        copy of the decay math, so a half-edit would show up as cyclic and
+        plain disagreeing under identical confidence evidence.
+
+        Scores are compared byte-for-byte, not just by rank order — the two
+        scripts must compute the *same number*, not merely the same ordering.
+        """
+        CyclicConfItem.delete_all()
+        PlainConfItem.delete_all()
+        for model in (CyclicConfItem, PlainConfItem):
+            model._meta.fields["relevance"]._confidence_modulation_cache.clear()
+
+        now = time.time()
+        confidences = {"a": 0.95, "b": 0.05}
+        records = {}
+        for model in (CyclicConfItem, PlainConfItem):
+            zscores = {}
+            for name, confidence in confidences.items():
+                rec = model.create(name=name)
+                records[(model, name)] = rec
+                zscores[rec.db_key.redis_key] = now - 86400 * 10
+                conf_field = model._meta.fields["certainty"]
+                popoto.POPOTO_REDIS_DB.hset(
+                    conf_field.get_data_hash_key(rec, "certainty"),
+                    rec.db_key.redis_key,
+                    msgpack.packb(
+                        {
+                            "confidence": confidence,
+                            "evidence_count": 10,
+                            "corroborations": 10,
+                            "contradictions": 0,
+                        },
+                        use_bin_type=True,
+                    ),
+                )
+            ss = model._meta.fields["relevance"].__class__.get_sortedset_db_key(
+                model, "relevance"
+            )
+            popoto.POPOTO_REDIS_DB.zadd(ss.redis_key, zscores)
+
+        cyclic_results = CyclicConfItem.query.top_by_decay("relevance", n=10)
+        plain_results = PlainConfItem.query.top_by_decay("relevance", n=10)
+
+        # Modulation is live and non-trivial: high confidence wins in both.
+        assert [r.name for r in cyclic_results] == ["a", "b"]
+        assert [r.name for r in plain_results] == ["a", "b"]
+
+        # Byte-identical scores, evaluated at the same `now` in both scripts.
+        assert _modulated_scores_by_name(
+            CyclicConfItem, now
+        ) == _modulated_scores_by_name(PlainConfItem, now)
+
 
 # --- Partitioned CyclicDecayField ---
 
@@ -921,6 +1102,175 @@ class TestCyclicTieOrdering:
         """With 5 tied members and n=3, exactly the 3 lowest keys return."""
         expected = self._plant_tied()
         results = CyclicItem.query.top_by_decay("relevance", n=3)
+        assert [r.db_key.redis_key for r in results] == expected[:3]
+
+
+# --- Confidence modulation on the forked cyclic script (#491) ---
+
+
+class TestCyclicConfidenceKeysRegression:
+    """The KEYS[2] vs KEYS[4] anti-corruption suite.
+
+    ``CYCLIC_DECAY_LUA`` already binds KEYS[2] = cycles and KEYS[3] = pressure,
+    so its confidence hash MUST be KEYS[4]. A mix-up does not raise: reading
+    the cycles hash as confidence unpacks an array-of-arrays, whose first
+    element is a table rather than a number, so ``c`` silently stays at ``c0``
+    and modulation goes quietly inert. Nothing errors and no unmodulated test
+    notices.
+
+    The only thing that catches it is asserting modulation has a REAL effect on
+    a corpus that also carries cycles data -- which is what these tests do.
+    """
+
+    AGED_DAYS = 30
+
+    def setup_method(self):
+        for model in (CyclicConfWithCycles, CyclicConfFull):
+            model.delete_all()
+            model._meta.fields["relevance"]._confidence_modulation_cache.clear()
+
+    def teardown_method(self):
+        for model in (CyclicConfWithCycles, CyclicConfFull):
+            model.delete_all()
+
+    def _corpus(self, model_class):
+        """Two identically-aged records with cycles data and opposed evidence."""
+        now = time.time()
+        records = {}
+        zscores = {}
+        for name, confidence in (("high", 0.95), ("low", 0.05)):
+            rec = model_class.create(name=name)
+            records[name] = rec
+            _plant_confidence(rec, confidence)
+            zscores[rec.db_key.redis_key] = now - 86400 * self.AGED_DAYS
+        ss_key = CyclicDecayField.get_sortedset_db_key(model_class, "relevance")
+        popoto.POPOTO_REDIS_DB.zadd(ss_key.redis_key, zscores)
+        return now, records
+
+    def test_cycles_data_is_actually_present(self):
+        """Guard the guard: without cycles on disk this suite proves nothing."""
+        now, records = self._corpus(CyclicConfWithCycles)
+        cycles_key = CyclicDecayField.get_cycles_hash_key_from_parts(
+            CyclicConfWithCycles, "relevance"
+        )
+        for rec in records.values():
+            assert popoto.POPOTO_REDIS_DB.hget(cycles_key, rec.db_key.redis_key)
+
+        # And the cycle term genuinely moves the score. Compared against the
+        # same EVAL with an empty cycles hash rather than a hand-computed
+        # constant: the yearly resonance depends on the absolute calendar date,
+        # so any fixed expected value would be date-flaky.
+        with_cycles = _modulated_scores_by_name(CyclicConfWithCycles, now)
+        without = _modulated_scores_by_name(
+            CyclicConfWithCycles, now, cycles_key="_test:no_such_cycles_hash"
+        )
+        assert with_cycles != without
+
+    def test_modulation_is_live_when_cycles_data_is_present(self):
+        """The headline anti-corruption assertion.
+
+        If the confidence hash were read from KEYS[2], both members would
+        decode the cycles array, fall back to c0, and tie exactly.
+        """
+        now, _ = self._corpus(CyclicConfWithCycles)
+        scores = _modulated_scores_by_name(CyclicConfWithCycles, now)
+        assert scores["high"] != scores["low"], (
+            "cycles-bearing corpus is not modulated -- confidence is probably "
+            "being read from the cycles hash (KEYS[2]) instead of KEYS[4]"
+        )
+        assert float(scores["high"]) > float(scores["low"])
+
+    def test_ranking_through_top_by_decay_with_cycles(self):
+        """Same claim through the real query path (numkeys 4 at the EVAL site)."""
+        self._corpus(CyclicConfWithCycles)
+        ranked = CyclicConfWithCycles.query.top_by_decay("relevance", n=10)
+        assert [r.name for r in ranked] == ["high", "low"]
+
+    def test_all_four_keys_bound_at_once(self):
+        """Cycles + pressure + confidence together still rank correctly."""
+        now, _ = self._corpus(CyclicConfFull)
+        scores = _modulated_scores_by_name(CyclicConfFull, now)
+        assert float(scores["high"]) > float(scores["low"])
+        ranked = CyclicConfFull.query.top_by_decay("relevance", n=10)
+        assert [r.name for r in ranked] == ["high", "low"]
+
+    def test_cycles_and_pressure_survive_modulation_unchanged(self):
+        """Turning modulation off must leave the cyclic/pressure terms intact.
+
+        Equal-confidence members are bit-exactly identical with modulation on
+        and off, which is only true if KEYS[2]/KEYS[3] still resolve to the
+        cycles and pressure hashes after the confidence key was appended.
+        """
+        now, records = self._corpus(CyclicConfFull)
+        for rec in records.values():
+            _plant_confidence(rec, 0.5)  # == initial_confidence => neutral
+
+        assert _modulated_scores_by_name(CyclicConfFull, now) == (
+            _modulated_scores_by_name(CyclicConfFull, now, disable=True)
+        )
+
+
+class TestCyclicTieOrderingWithConfidence:
+    """Mirrors ``TestDecayTieOrderingWithConfidence`` on the cyclic script.
+
+    The unmodulated ``TestCyclicTieOrdering`` above is the regression oracle
+    and is left untouched.
+    """
+
+    NAMES = ["tie_a", "tie_b", "tie_c", "tie_d", "tie_e"]
+    AGED_DAYS = 30
+
+    def setup_method(self):
+        CyclicConfItem.delete_all()
+        CyclicConfItem._meta.fields["relevance"]._confidence_modulation_cache.clear()
+
+    def teardown_method(self):
+        CyclicConfItem.delete_all()
+
+    def _plant_tied(self):
+        """Create in reversed key order, then plant one shared age."""
+        records = {}
+        for name in reversed(self.NAMES):
+            records[name] = CyclicConfItem.create(name=name)
+        ss_key = CyclicDecayField.get_sortedset_db_key(CyclicConfItem, "relevance")
+        shared_ts = time.time() - 86400 * self.AGED_DAYS
+        popoto.POPOTO_REDIS_DB.zadd(
+            ss_key.redis_key,
+            {records[n].db_key.redis_key: shared_ts for n in self.NAMES},
+        )
+        return records
+
+    def test_no_confidence_members_remain_bit_exactly_tied(self):
+        self._plant_tied()
+        scores = _modulated_scores_by_name(CyclicConfItem, time.time())
+        assert len(scores) == len(self.NAMES)
+        assert len(set(scores.values())) == 1
+
+    def test_untouched_tie_order_is_still_key_ascending(self):
+        records = self._plant_tied()
+        expected = sorted(r.db_key.redis_key for r in records.values())
+        results = CyclicConfItem.query.top_by_decay("relevance", n=10)
+        assert [r.db_key.redis_key for r in results] == expected
+
+    def test_differing_confidence_members_stop_tying(self):
+        records = self._plant_tied()
+        for name, confidence in zip(self.NAMES, [0.05, 0.25, 0.5, 0.75, 0.95]):
+            _plant_confidence(records[name], confidence)
+
+        scores = _modulated_scores_by_name(CyclicConfItem, time.time())
+        assert len(set(scores.values())) == len(self.NAMES)
+        results = CyclicConfItem.query.top_by_decay("relevance", n=10)
+        assert [r.name for r in results] == list(reversed(self.NAMES))
+
+    def test_equal_confidence_members_still_tie_and_break_by_key(self):
+        records = self._plant_tied()
+        for name in self.NAMES:
+            _plant_confidence(records[name], 0.05)
+
+        scores = _modulated_scores_by_name(CyclicConfItem, time.time())
+        assert len(set(scores.values())) == 1
+        expected = sorted(r.db_key.redis_key for r in records.values())
+        results = CyclicConfItem.query.top_by_decay("relevance", n=3)
         assert [r.db_key.redis_key for r in results] == expected[:3]
 
 

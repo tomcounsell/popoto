@@ -17,6 +17,27 @@ tests/benchmarks/
     test_sweep.py            # Tests for sweep engine
     test_external.py         # Tests for external benchmark (fixture-based, no network)
     test_csr.py              # CI gate for the deterministic CSR harness
+    test_siq.py              # CI gate for the SIQ (query-blind injection) harness
+    test_rlt.py               # CI gate for the RLT (latency/throughput) harness
+    rlt/
+        __init__.py           # RLT overview (5 metrics -> 1 submodule each)
+        corpus.py              # Synthetic lexical corpus + authored-ground-truth queries
+        latency.py             # percentile(), measure_latency() (p50/p95/p99)
+        throughput.py          # measure_throughput() (queries/sec, optional concurrency)
+        scaling.py              # run_scaling_curve() (latency vs. corpus size)
+        mixed_workload.py       # run_mixed_workload() (concurrent ingest + reads)
+        pareto.py                # pareto_frontier() (recall-vs-p99 joint artifact)
+        comparators.py           # RltAdapter Protocol + NativeAdapter + NullAdapter
+        run_rlt.py                # CLI entry point (--db required, rejects 0/14/15)
+    siq/
+        __init__.py          # SIQ overview + design invariants
+        corpus.py            # SiqTrace/SiqTurn/SiqMemory schema, load, lint, plant
+        metrics.py           # precision/recall @ budget, anticipation lead, efficiency
+        adapters.py          # SiqAdapter Protocol + NativeAdapter + QueryOnlyStubAdapter
+        runner.py            # turn-by-turn replay driver
+        run_siq.py           # CLI entry point + report writer (bench DB, db0 rejected)
+        fixtures/
+            *.json           # Deterministic committed multi-turn traces (no runtime RNG)
     csr/
         __init__.py          # CSR constants (DEFAULT_TOP_K, alert thresholds)
         satisfaction.py      # Assertion engine (InTopK, RanksAbove, ...)
@@ -47,6 +68,10 @@ tests/benchmarks/
             locomo_*.{json,md}         # External benchmark reports
         csr/
             csr_*.{json,md}            # Deterministic CSR reports
+        siq/
+            siq_*_{adapter}.{json,md}  # SIQ reports (native / query_stub adapters)
+        rlt/
+            rlt_*_{backend}.{json,md}  # RLT reports (redis committed; valkey deferred — see docs/benchmarks.md)
 ```
 
 ## Quick Start
@@ -65,6 +90,21 @@ POPOTO_BENCH_DB=13 python -m tests.benchmarks.run_external --dataset locomo
 # Deterministic CSR harness (no network, no model download):
 pytest tests/benchmarks/test_csr.py -q          # CI gate
 python -m tests.benchmarks.csr.run_csr          # write report artifact
+
+# SIQ — Subconscious Injection Quality (query-blind injection; #459):
+pytest tests/benchmarks/test_siq.py -q          # CI gate (db15 plugin, no network)
+POPOTO_BENCH_DB=13 python -m tests.benchmarks.siq.run_siq --adapter native
+POPOTO_BENCH_DB=13 python -m tests.benchmarks.siq.run_siq --adapter query_stub
+# NOTE: the CLI plants to a dedicated bench DB (default 14; db0 rejected). Point
+# it away from any in-flight external run (which also uses db14). The CI-facing
+# surface is test_siq.py, which runs under the pytest db15 isolation plugin.
+
+# RLT — Retrieval Latency & Throughput (#460):
+pytest tests/benchmarks/test_rlt.py -q          # CI gate (db15 plugin, tiny synthetic corpora)
+# Manual real-corpus run — --db is required and rejects 0/14/15. A native-Popoto
+# Redis run is committed (results/rlt/); the Valkey run + real competitor
+# adapters remain deferred (see docs/benchmarks.md):
+python -m tests.benchmarks.rlt.run_rlt --db 13 --backend redis --mixed-workload
 
 # External benchmark smoke test (fixture-based, no download):
 python -m tests.benchmarks.run_external \

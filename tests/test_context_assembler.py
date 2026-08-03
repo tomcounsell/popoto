@@ -13,21 +13,31 @@ Tests cover:
 """
 
 import json
+import math
 import os
 import sys
+import time
+from unittest.mock import patch
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 import pytest  # noqa: E402
 
+from src.popoto.exceptions import QueryException  # noqa: E402
 from src.popoto.fields.co_occurrence_field import CoOccurrenceField  # noqa: E402
 from src.popoto.fields.confidence_field import ConfidenceField  # noqa: E402
+from src.popoto.fields.constants import Defaults  # noqa: E402
 from src.popoto.fields.cyclic_decay_field import CyclicDecayField  # noqa: E402
 from src.popoto.fields.decaying_sorted_field import DecayingSortedField  # noqa: E402
 from src.popoto.fields.existence_filter import ExistenceFilter  # noqa: E402
 from src.popoto.fields.field import Field  # noqa: E402
-from src.popoto.fields.shortcuts import AutoKeyField, KeyField  # noqa: E402
+from src.popoto.fields.shortcuts import (  # noqa: E402
+    AutoKeyField,
+    FloatField,
+    KeyField,
+    SortedField,
+)
 from src.popoto.models.base import Model  # noqa: E402
 from src.popoto.recipes.context_assembler import (  # noqa: E402
     COMPETITIVE_SUPPRESSION_SIGNAL,
@@ -40,6 +50,8 @@ from src.popoto.recipes.context_assembler import (  # noqa: E402
     AssemblyResult,
     ContextAssembler,
     RetrievalQuality,
+    _compute_score_spread,
+    _score_proxy_for_records,
     format_natural,
     format_structured,
     format_xml,
@@ -98,6 +110,25 @@ class FixtureMemory(Model):
     )
 
 
+class GateMemory(Model):
+    """Model with ConfidenceField + CyclicDecayField for confidence-gate
+    tests (issue #463) — lets a single test exercise both the pull path
+    (gated) and the push path (never gated, must stay intact)."""
+
+    memory_id = AutoKeyField()
+    agent_id = KeyField()
+    topic = Field(type=str)
+    content = Field(type=str)
+    relevance = DecayingSortedField(partition_by="agent_id")
+    urgency = CyclicDecayField(partition_by="agent_id")
+    confidence = ConfidenceField(initial_confidence=0.5)
+    bloom = ExistenceFilter(
+        error_rate=0.01,
+        capacity=10_000,
+        fingerprint_fn=lambda inst: inst.topic,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -118,6 +149,7 @@ def _clean_all():
         "*FullMemory*",
         "*FixtureMemory*",
         "*AltFixtureMemory*",
+        "*GateMemory*",
         "$EF:*Memory*",
         "$CoOcF:*Memory*",
         "$ConfidencF:*Memory*",
@@ -799,9 +831,19 @@ class TestRetrievalQualityAssembler:
         # ((0.5+0.9)/2 + (0.5+0.5)/2 + (0.5+0.3)/2) / 3
         #   = (0.7 + 0.5 + 0.4) / 3 = 1.6 / 3 = 0.5333...
         assert self._isclose(quality.avg_confidence, 1.6 / 3)
+        # score_spread stays 0.0 -- but now for the RIGHT reason (#474). The
+        # three records are equally fresh, so their decayed relevance scores
+        # are identical (see score_distribution below) -> zero dispersion.
+        # Pre-#474 this was 0.0 because the proxy read the empty non-partitioned
+        # key and every record scored 0.0.
         assert self._isclose(quality.score_spread, 0.0)
         assert self._isclose(quality.fok_score, 0.64)
-        assert self._isclose(quality.staleness_ratio, 1.0)
+        # staleness_ratio: 1.0 -> 0.0 (#474). Pre-fix, the staleness loop read
+        # the non-partitioned base key, got None for every partitioned record
+        # and counted them all "stale". The partition-aware helper now reads the
+        # decayed relevance (~3.98, see below), which is well above the 0.5
+        # surfacing_threshold, so these freshly-saved records are NOT stale.
+        assert self._isclose(quality.staleness_ratio, 0.0)
 
         # Per-cue components also hardcoded.
         assert set(quality.per_cue_fok.keys()) == {"alpha", "beta"}
@@ -812,12 +854,19 @@ class TestRetrievalQualityAssembler:
             assert self._isclose(comp["subthreshold_activation"], 0.0)
             assert self._isclose(comp["component_score"], 0.64)
 
-        # score_distribution contents: three zero-valued proxy scores
-        # (decayed to 0 because DecayingSortedField starts at 0 score on a
-        # freshly saved record — the deterministic fixture relies on this).
+        # score_distribution contents (#474): three equal, non-zero decayed
+        # relevance scores. DecayingSortedField stores the last_updated
+        # timestamp as the ZSET score; the partition-aware proxy decays it via
+        # DECAY_SCORE_LUA (base_score 1.0, decay_rate Defaults.DECAY_RATE --
+        # 0.1 since the 2026-04-17 sweep, not the 0.3 this comment used to
+        # claim; the assertion below has always read the constant). All three
+        # records are freshly saved, so elapsed time clamps to the script's
+        # 0.01-day floor and each decays to 0.01**(-0.3) ≈ 3.981. Pre-#474 the
+        # proxy read the empty non-partitioned key and reported 0.0 for all.
+        expected_decayed = 0.01 ** (-Defaults.DECAY_RATE)
         assert len(quality.score_distribution) == 3
         for s in quality.score_distribution:
-            assert self._isclose(s, 0.0)
+            assert self._isclose(s, expected_decayed)
 
 
 # ---------------------------------------------------------------------------
@@ -1009,3 +1058,714 @@ class TestAssessWithNoSavedMemories:
         # The early-return path returns avg_confidence=0.5 when ConfidenceField is
         # present (neutral sentinel: no evidence against, but also none for).
         assert result.avg_confidence == 0.5
+
+
+# ---------------------------------------------------------------------------
+# TestPartitionAwareScoreProxy (issue #474)
+#
+# The shared `_score_proxy_for_records` / `RetrievalQuality` helper historically
+# read each record's score from the NON-partitioned sorted-set index key. Agent
+# memory models declare `partition_by` on their sorted fields, so the real
+# scores live in a partition-specific ZSET; the base key has zero members and
+# every ZSCORE returned None -> 0.0 for every record -> score_spread == 0.0.
+# ---------------------------------------------------------------------------
+
+
+class PlainSortedPartitionedMemory(Model):
+    """Plain (non-decaying) SortedField partitioned by agent_id.
+
+    A plain SortedField stores the field *value itself* as the ZSET score, so
+    distinct saved values must surface as distinct proxy scores once the helper
+    reads the partition-specific ZSET.
+    """
+
+    memory_id = AutoKeyField()
+    agent_id = KeyField()
+    content = Field(type=str)
+    relevance = SortedField(type=float, partition_by="agent_id")
+
+
+class TestPartitionAwareScoreProxy:
+    def _mk(self, agent_id="a", scores=(0.2, 0.6, 0.9)):
+        records = []
+        for i, s in enumerate(scores):
+            r = PlainSortedPartitionedMemory(
+                agent_id=agent_id, content=f"c{i}", relevance=s
+            )
+            r.save()
+            records.append(r)
+        return records
+
+    def test_proxy_reads_partition_specific_scores(self):
+        """`_score_proxy_for_records` returns the true per-record partition
+        scores for a partitioned SortedField (was all 0.0 pre-#474)."""
+        records = self._mk(scores=(0.2, 0.6, 0.9))
+        proxy = _score_proxy_for_records(
+            records,
+            model_class=PlainSortedPartitionedMemory,
+            score_weights={"relevance": 1.0},
+        )
+        vals = sorted(proxy.values())
+        assert len(vals) == 3
+        assert math.isclose(vals[0], 0.2, abs_tol=1e-9)
+        assert math.isclose(vals[1], 0.6, abs_tol=1e-9)
+        assert math.isclose(vals[2], 0.9, abs_tol=1e-9)
+
+    def test_score_spread_nonzero_for_partitioned_model(self):
+        """score_spread reflects real dispersion for a partitioned model."""
+        records = self._mk(scores=(0.2, 0.6, 0.9))
+        spread, dist = _compute_score_spread(
+            records,
+            model_class=PlainSortedPartitionedMemory,
+            score_weights={"relevance": 1.0},
+        )
+        assert spread > 0.0
+        assert len(dist) == 3
+
+    def test_single_partition_record_value_is_the_score(self):
+        """Single record -> proxy equals its stored value (sanity)."""
+        records = self._mk(scores=(0.42,))
+        proxy = _score_proxy_for_records(
+            records,
+            model_class=PlainSortedPartitionedMemory,
+            score_weights={"relevance": 1.0},
+        )
+        assert math.isclose(list(proxy.values())[0], 0.42, abs_tol=1e-9)
+
+    def test_missing_partition_value_does_not_corrupt_others(self):
+        """A record missing its partition field scores 0.0 without crashing or
+        corrupting the other records' scores."""
+        records = self._mk(scores=(0.6, 0.9))
+        orphan = PlainSortedPartitionedMemory(content="orphan", relevance=0.5)
+        # deliberately do NOT set agent_id / do not save -> partition missing
+        proxy = _score_proxy_for_records(
+            records + [orphan],
+            model_class=PlainSortedPartitionedMemory,
+            score_weights={"relevance": 1.0},
+        )
+        good = sorted(v for v in proxy.values() if v > 0)
+        assert len(good) == 2
+        assert math.isclose(good[0], 0.6, abs_tol=1e-9)
+        assert math.isclose(good[1], 0.9, abs_tol=1e-9)
+
+
+# ---------------------------------------------------------------------------
+# TestPartitionAwareDecayingScoreProxy (issue #474 — the decay branch)
+#
+# The subtle half of #474: a DecayingSortedField stores each member's
+# last_updated TIMESTAMP as the ZSET score, not its relevance. A naive
+# partition key-swap would surface ~1.7e9 timestamps as "relevance" (inverting
+# staleness and flattening spread). The fix decays the timestamp into relevance
+# via DECAY_SCORE_LUA on the partition ZSET. These tests exercise that branch
+# directly (the plain-SortedField tests above would mask the decay defect).
+# ---------------------------------------------------------------------------
+
+
+class DecayPartitionedMemory(Model):
+    """Partitioned DecayingSortedField with a base_score companion.
+
+    Distinct ``strength`` values give freshly-saved records distinct decayed
+    relevance scores (base * elapsed^-decay_rate, elapsed clamped to the
+    script's 0.01-day floor), so score_spread is non-zero without any aging.
+    """
+
+    memory_id = AutoKeyField()
+    agent_id = KeyField()
+    content = Field(type=str)
+    strength = FloatField(default=1.0)
+    # Explicit decay_rate=0.5 (not the 0.1 default) so aged-record tests reach
+    # sub-threshold decayed scores within a reasonable number of days:
+    # 40 days -> 40**-0.5 ≈ 0.158 < the 0.5 surfacing threshold.
+    relevance = DecayingSortedField(
+        partition_by="agent_id", base_score_field="strength", decay_rate=0.5
+    )
+    bloom = ExistenceFilter(
+        error_rate=0.01,
+        capacity=10_000,
+        fingerprint_fn=lambda inst: inst.content,
+    )
+
+
+class TestPartitionAwareDecayingScoreProxy:
+    @staticmethod
+    def _partition_key(agent_id):
+        return DecayingSortedField.get_sortedset_db_key(
+            DecayPartitionedMemory, "relevance", agent_id
+        ).redis_key
+
+    def _backdate(self, agent_id, members_days):
+        """Set each member's partition-ZSET score to now - days*86400."""
+        now = time.time()
+        POPOTO_REDIS_DB.zadd(
+            self._partition_key(agent_id),
+            {m.db_key.redis_key: now - 86400 * d for m, d in members_days},
+        )
+
+    def test_distinct_base_scores_give_nonzero_spread(self):
+        """Fresh partitioned decaying records with distinct base scores decay to
+        distinct relevances -> real per-record proxy scores and score_spread>0.
+        This is the primary #474 decay-branch repro (all 0.0 pre-fix)."""
+        recs = []
+        for i, w in enumerate((1.0, 3.0, 9.0)):
+            r = DecayPartitionedMemory(agent_id="a", content=f"c{i}", strength=w)
+            r.save()
+            recs.append(r)
+
+        proxy = _score_proxy_for_records(
+            recs,
+            model_class=DecayPartitionedMemory,
+            score_weights={"relevance": 1.0},
+        )
+        vals = sorted(proxy.values())
+        # Three distinct, strictly increasing, non-zero decayed scores.
+        assert len(vals) == 3
+        assert vals[0] > 0.0
+        assert vals[0] < vals[1] < vals[2]
+        # Decayed relevance scales linearly in base_score at equal freshness.
+        decay_rate = DecayPartitionedMemory._meta.fields["relevance"].decay_rate
+        factor = 0.01 ** (-decay_rate)
+        for got, w in zip(vals, (1.0, 3.0, 9.0)):
+            assert math.isclose(got, w * factor, rel_tol=1e-6)
+
+        spread, dist = _compute_score_spread(
+            recs,
+            model_class=DecayPartitionedMemory,
+            score_weights={"relevance": 1.0},
+        )
+        assert spread > 0.0
+        assert len(dist) == 3
+
+    def test_proxy_matches_top_by_decay(self):
+        """The proxy's decayed score agrees with Query.top_by_decay (both reuse
+        DECAY_SCORE_LUA on the same partition ZSET) — no drift."""
+        recs = []
+        for i, w in enumerate((1.0, 4.0)):
+            r = DecayPartitionedMemory(agent_id="a", content=f"c{i}", strength=w)
+            r.save()
+            recs.append(r)
+        # Age them so ordering is unambiguous.
+        self._backdate("a", [(recs[0], 1), (recs[1], 4)])
+
+        ranked = DecayPartitionedMemory.query.filter(agent_id="a").top_by_decay(
+            "relevance", n=10
+        )
+        proxy = _score_proxy_for_records(
+            recs,
+            model_class=DecayPartitionedMemory,
+            score_weights={"relevance": 1.0},
+        )
+        # top_by_decay returns instances in decayed-score order; the proxy's
+        # highest score must correspond to top_by_decay's first result.
+        best_key = max(proxy, key=proxy.get)
+        assert ranked[0].db_key.redis_key == best_key
+
+    def test_aged_records_are_stale_fresh_are_not(self):
+        """staleness_ratio regression (#474): records aged past the surfacing
+        threshold count as stale; freshly-saved records do not."""
+        aged = DecayPartitionedMemory(agent_id="a", content="old", strength=1.0)
+        aged.save()
+        fresh = DecayPartitionedMemory(agent_id="a", content="new", strength=1.0)
+        fresh.save()
+        # Age one record ~40 days: decayed = 1.0 * 40**-0.5 ≈ 0.158 < 0.5.
+        self._backdate("a", [(aged, 40)])
+
+        assembler = ContextAssembler(
+            model_class=DecayPartitionedMemory,
+            score_weights={"relevance": 1.0},
+            surfacing_threshold=0.5,
+        )
+        # All fresh -> staleness 0.0.
+        fresh_only = _staleness_ratio_wrapper(assembler, [fresh])
+        assert fresh_only == 0.0
+        # One of two aged past threshold -> staleness 0.5.
+        mixed = _staleness_ratio_wrapper(assembler, [aged, fresh])
+        assert mixed == 0.5
+
+    def test_fok_subthreshold_activation_for_aged_records(self):
+        """FOK subthreshold regression (#474): records whose decayed relevance
+        falls in (0, surfacing_threshold) drive subthreshold_activation > 0."""
+        recs = []
+        for i in range(3):
+            r = DecayPartitionedMemory(
+                agent_id="a", content=f"deployment{i}", strength=1.0
+            )
+            r.save()
+            recs.append(r)
+        # Age all three ~40 days -> decayed = 40**-0.5 ≈ 0.158, inside (0, 0.5).
+        self._backdate("a", [(r, 40) for r in recs])
+
+        assembler = ContextAssembler(
+            model_class=DecayPartitionedMemory,
+            score_weights={"relevance": 1.0},
+            surfacing_threshold=0.5,
+        )
+        quality = assembler.assess(
+            query_cues={"content": "deployment0"},
+            partition_filters={"agent_id": "a"},
+        )
+        subthreshold = [
+            c["subthreshold_activation"] for c in quality.per_cue_fok.values()
+        ]
+        assert subthreshold
+        assert all(s > 0.0 for s in subthreshold)
+
+    def test_cyclic_field_uses_cyclic_decay_not_raw_timestamp(self):
+        """A CyclicDecayField is scored via CYCLIC_DECAY_LUA on the partition
+        ZSET, so the proxy returns a bounded decayed relevance -- NOT the raw
+        ~1.7e9 last_updated timestamp a naive ZSCORE would surface (#474)."""
+        recs = []
+        for i in range(2):
+            r = CyclicPartitionedMemory(agent_id="a", content=f"c{i}")
+            r.save()
+            recs.append(r)
+        proxy = _score_proxy_for_records(
+            recs,
+            model_class=CyclicPartitionedMemory,
+            score_weights={"urgency": 1.0},
+        )
+        assert len(proxy) == 2
+        # Decayed relevance is O(1), nowhere near an epoch timestamp.
+        for v in proxy.values():
+            assert 0.0 <= v < 1e6
+
+
+# ---------------------------------------------------------------------------
+# Confidence-modulated decay across all three EVAL call sites (issue #491)
+#
+# query.py:410 (top_by_decay), query.py:1216 (composite score) and
+# context_assembler.py:527 (the metacognitive proxy) are contractually required
+# to agree. Modulation adds a KEYS entry and two ARGV entries to all three; if
+# one site is missed, the proxy silently drifts from top_by_decay.
+# ---------------------------------------------------------------------------
+
+
+class DecayConfPartitionedMemory(Model):
+    """Like ``DecayPartitionedMemory``, plus an auto-detected ConfidenceField.
+
+    ``certainty`` is unpartitioned, so its ``:data`` hash is satisfiable from
+    any query and the partition guard stays out of the way -- these tests are
+    about call-site agreement, not partitioning.
+    """
+
+    memory_id = AutoKeyField()
+    agent_id = KeyField()
+    content = Field(type=str)
+    strength = FloatField(default=1.0)
+    relevance = DecayingSortedField(
+        partition_by="agent_id", base_score_field="strength", decay_rate=0.5
+    )
+    certainty = ConfidenceField()
+
+
+class TestConfidenceModulatedProxyAgreement:
+    AGED_DAYS = 10  # past the max(t, 1.0) guard, so modulation is live
+
+    def setup_method(self):
+        DecayConfPartitionedMemory.delete_all()
+        DecayConfPartitionedMemory._meta.fields[
+            "relevance"
+        ]._confidence_modulation_cache.clear()
+
+    def teardown_method(self):
+        DecayConfPartitionedMemory.delete_all()
+
+    @staticmethod
+    def _partition_key(agent_id):
+        return DecayingSortedField.get_sortedset_db_key(
+            DecayConfPartitionedMemory, "relevance", agent_id
+        ).redis_key
+
+    def _backdate(self, agent_id, records, days=AGED_DAYS):
+        now = time.time()
+        POPOTO_REDIS_DB.zadd(
+            self._partition_key(agent_id),
+            {r.db_key.redis_key: now - 86400 * days for r in records},
+        )
+
+    @staticmethod
+    def _set_confidence(record, confidence):
+        import msgpack
+
+        field = DecayConfPartitionedMemory._meta.fields["certainty"]
+        POPOTO_REDIS_DB.hset(
+            field.get_data_hash_key(record, "certainty"),
+            record.db_key.redis_key,
+            msgpack.packb(
+                {
+                    "confidence": confidence,
+                    "evidence_count": 10,
+                    "corroborations": 10,
+                    "contradictions": 0,
+                },
+                use_bin_type=True,
+            ),
+        )
+
+    def test_proxy_matches_top_by_decay_with_confidence(self):
+        """The #491 extension of ``test_proxy_matches_top_by_decay``.
+
+        Equal base scores and equal ages, so confidence is the ONLY thing that
+        can order these records -- which means the proxy and ``top_by_decay``
+        can only agree if both sites thread the confidence key.
+        """
+        recs = []
+        for i, confidence in enumerate((0.05, 0.95)):
+            r = DecayConfPartitionedMemory(agent_id="a", content=f"c{i}", strength=1.0)
+            r.save()
+            self._set_confidence(r, confidence)
+            recs.append(r)
+        self._backdate("a", recs)
+
+        ranked = DecayConfPartitionedMemory.query.filter(agent_id="a").top_by_decay(
+            "relevance", n=10
+        )
+        proxy = _score_proxy_for_records(
+            recs,
+            model_class=DecayConfPartitionedMemory,
+            score_weights={"relevance": 1.0},
+        )
+        # Modulation is live: identical inputs apart from evidence must diverge.
+        assert len(set(proxy.values())) == 2, "proxy is not modulated by confidence"
+        # And the two call sites order them identically.
+        assert [r.db_key.redis_key for r in ranked] == sorted(
+            proxy, key=proxy.get, reverse=True
+        )
+        # The corroborated record wins at both sites.
+        assert ranked[0].db_key.redis_key == recs[1].db_key.redis_key
+
+    def test_linearity_in_base_score_holds_under_a_neutral_confidence_corpus(self):
+        """Re-verification of ``test_distinct_base_scores_give_nonzero_spread``.
+
+        That test asserts the decayed score is linear in ``base_score`` at
+        ``rel_tol=1e-6``. Here the same claim is re-checked on a corpus that
+        carries confidence data at the field's ``initial_confidence`` and is
+        aged past the ``max(t, 1.0)`` guard, so the modulation branch actually
+        executes. If neutrality were even slightly off, this is where it shows.
+        """
+        recs = []
+        for i, w in enumerate((1.0, 3.0, 9.0)):
+            r = DecayConfPartitionedMemory(agent_id="a", content=f"n{i}", strength=w)
+            r.save()
+            self._set_confidence(r, 0.5)  # == ConfidenceField initial_confidence
+            recs.append(r)
+        self._backdate("a", recs)
+
+        proxy = _score_proxy_for_records(
+            recs,
+            model_class=DecayConfPartitionedMemory,
+            score_weights={"relevance": 1.0},
+        )
+        vals = sorted(proxy.values())
+        decay_rate = DecayConfPartitionedMemory._meta.fields["relevance"].decay_rate
+        factor = self.AGED_DAYS ** (-decay_rate)
+        assert len(vals) == 3
+        for got, w in zip(vals, (1.0, 3.0, 9.0)):
+            assert math.isclose(got, w * factor, rel_tol=1e-6)
+
+        spread, dist = _compute_score_spread(
+            recs,
+            model_class=DecayConfPartitionedMemory,
+            score_weights={"relevance": 1.0},
+        )
+        assert spread > 0.0
+        assert len(dist) == 3
+
+    def test_proxy_is_neutral_when_no_evidence_has_been_recorded(self):
+        """Zero-evidence records must score exactly as they did pre-#491."""
+        recs = []
+        for i, w in enumerate((1.0, 3.0)):
+            r = DecayConfPartitionedMemory(agent_id="a", content=f"z{i}", strength=w)
+            r.save()
+            recs.append(r)
+        self._backdate("a", recs)
+
+        proxy = _score_proxy_for_records(
+            recs,
+            model_class=DecayConfPartitionedMemory,
+            score_weights={"relevance": 1.0},
+        )
+        decay_rate = DecayConfPartitionedMemory._meta.fields["relevance"].decay_rate
+        factor = self.AGED_DAYS ** (-decay_rate)
+        for r, w in zip(recs, (1.0, 3.0)):
+            assert math.isclose(proxy[r.db_key.redis_key], w * factor, rel_tol=1e-9)
+
+
+class CyclicPartitionedMemory(Model):
+    """Partitioned CyclicDecayField — exercises the CYCLIC_DECAY_LUA branch."""
+
+    memory_id = AutoKeyField()
+    agent_id = KeyField()
+    content = Field(type=str)
+    urgency = CyclicDecayField(partition_by="agent_id")
+
+
+def _staleness_ratio_wrapper(assembler, records):
+    """Call the module-level _staleness_ratio the way ContextAssembler does."""
+    from src.popoto.recipes.context_assembler import _staleness_ratio
+
+    return _staleness_ratio(
+        records,
+        model_class=assembler.model_class,
+        score_weights=assembler.score_weights,
+        surfacing_threshold=assembler.surfacing_threshold,
+        decaying_sorted_field_name="relevance",
+    )
+
+
+# ---------------------------------------------------------------------------
+# TestConfidenceGate — confidence-gated retrieval (issue #463)
+# ---------------------------------------------------------------------------
+
+
+class TestConfidenceGate:
+    """Unit tests for the opt-in confidence gate on ContextAssembler.
+
+    The gate reads the rank-0 pull-path candidate's ConfidenceField value
+    and, when below ``confidence_gate_threshold``, either drops all
+    pull-path records ("refuse") or keeps them and only flags the decision
+    in ``metadata["gate"]`` ("flag"). Disabled by default (threshold=None).
+    """
+
+    # -- Construction-time validation -------------------------------------
+
+    def test_default_threshold_none_no_gate_key(self):
+        """confidence_gate_threshold=None (default) -> metadata has no
+        "gate" key at all, bit-for-bit identical to pre-change behavior."""
+        assembler = ContextAssembler(
+            model_class=SimpleMemory,
+            score_weights={"relevance": 1.0},
+        )
+        assert assembler.confidence_gate_threshold is None
+        assert assembler.confidence_gate_mode == "refuse"
+        result = assembler.assemble()
+        assert "gate" not in result.metadata
+
+    def test_threshold_without_confidence_field_raises(self):
+        """A model with no ConfidenceField cannot use the gate."""
+        with pytest.raises(QueryException, match="ConfidenceField"):
+            ContextAssembler(
+                model_class=SimpleMemory,
+                score_weights={"relevance": 1.0},
+                confidence_gate_threshold=0.5,
+            )
+
+    def test_invalid_gate_mode_raises(self):
+        with pytest.raises(QueryException, match="not a recognised mode"):
+            ContextAssembler(
+                model_class=GateMemory,
+                score_weights={"relevance": 1.0},
+                confidence_gate_threshold=0.5,
+                confidence_gate_mode="bogus",
+            )
+
+    # -- Empty / skipped pull-path -----------------------------------------
+
+    def test_empty_pull_records_with_threshold(self):
+        """No candidates matched: applied=False, gate_score=None,
+        gated=False, but the dict is still attached."""
+        assembler = ContextAssembler(
+            model_class=GateMemory,
+            score_weights={"relevance": 1.0},
+            confidence_gate_threshold=0.5,
+        )
+        result = assembler.assemble(
+            query_cues={"topic": "nonexistent_xyz"},
+            partition_filters={"agent_id": "a1"},
+        )
+        assert result.metadata["pull_count"] == 0
+        assert result.metadata["gate"] == {
+            "applied": False,
+            "gate_score": None,
+            "threshold": 0.5,
+            "mode": "refuse",
+            "gated": False,
+        }
+
+    def test_query_cues_none_skips_pull_path_gate_still_empty(self):
+        """query_cues=None skips the pull path entirely: same empty-path
+        gate behavior as an unmatched query."""
+        assembler = ContextAssembler(
+            model_class=GateMemory,
+            score_weights={"relevance": 1.0},
+            confidence_gate_threshold=0.5,
+        )
+        result = assembler.assemble()
+        assert result.metadata["gate"] == {
+            "applied": False,
+            "gate_score": None,
+            "threshold": 0.5,
+            "mode": "refuse",
+            "gated": False,
+        }
+
+    # -- "refuse" mode -------------------------------------------------------
+
+    def test_refuse_mode_gated_drops_pull_records_keeps_push(self):
+        """refuse + gate_score < threshold: pull records dropped, push
+        path intact, and no competitive suppression runs (suppression
+        candidates were zeroed, not punished, for a refusal already made)."""
+        record = GateMemory(agent_id="a1", topic="pull-topic", content="c")
+        record.save()  # confidence starts at initial_confidence == 0.5
+
+        assembler = ContextAssembler(
+            model_class=GateMemory,
+            score_weights={"relevance": 0.5, "urgency": 0.5},
+            surfacing_threshold=0.0,  # accept all push candidates
+            confidence_gate_threshold=0.9,  # 0.5 < 0.9 -> gated
+            confidence_gate_mode="refuse",
+        )
+        # Force the pull path to return our low-confidence record as rank 0,
+        # deterministically, regardless of real scoring.
+        assembler._pull_path = lambda cues, filters: ([record], [record])
+
+        with patch.object(ConfidenceField, "update_confidence") as mock_update:
+            result = assembler.assemble(
+                query_cues={"topic": "pull-topic"},
+                partition_filters={"agent_id": "a1"},
+            )
+            mock_update.assert_not_called()
+
+        assert result.metadata["pull_count"] == 0
+        assert result.metadata["gate"] == {
+            "applied": True,
+            "gate_score": 0.5,
+            "threshold": 0.9,
+            "mode": "refuse",
+            "gated": True,
+        }
+        # The push path is never gated: the same underlying record is still
+        # discoverable via the real (unmocked) push scan and gets injected.
+        assert result.metadata["push_count"] >= 1
+
+    def test_refuse_not_gated_retains_records(self):
+        """refuse mode but gate_score >= threshold: nothing is dropped."""
+        record = GateMemory(agent_id="a1", topic="pull-topic", content="c")
+        record.save()
+
+        assembler = ContextAssembler(
+            model_class=GateMemory,
+            score_weights={"relevance": 1.0},
+            confidence_gate_threshold=0.1,  # 0.5 >= 0.1 -> not gated
+            confidence_gate_mode="refuse",
+        )
+        assembler._pull_path = lambda cues, filters: ([record], [record])
+
+        result = assembler.assemble(
+            query_cues={"topic": "pull-topic"},
+            partition_filters={"agent_id": "a1"},
+        )
+        assert result.metadata["pull_count"] == 1
+        assert result.metadata["gate"]["gated"] is False
+        assert result.metadata["gate"]["applied"] is True
+
+    def test_refuse_assess_quality_fok_not_corrupted(self):
+        """BLOCKER fix: a refusal must not corrupt _compute_quality's FoK
+        score. all_pull_candidates is left untouched by the refuse clear
+        (only the suppression copy fed to _post_effects is zeroed), so
+        assess_quality=True still reports a non-degenerate FoK reflecting
+        that candidates WERE found, even though they were refused."""
+        record = GateMemory(agent_id="a1", topic="pull-topic", content="c")
+        record.save()
+
+        assembler = ContextAssembler(
+            model_class=GateMemory,
+            score_weights={"relevance": 1.0},
+            confidence_gate_threshold=0.9,
+            confidence_gate_mode="refuse",
+        )
+        assembler._pull_path = lambda cues, filters: ([record], [record])
+
+        result = assembler.assemble(
+            query_cues={"topic": "pull-topic"},
+            partition_filters={"agent_id": "a1"},
+            assess_quality=True,
+        )
+        assert result.metadata["gate"]["gated"] is True
+        assert result.metadata["pull_count"] == 0
+        assert result.metadata["quality"].fok_score > 0.0
+
+    # -- "flag" mode -----------------------------------------------------
+
+    def test_flag_mode_gated_retains_records(self):
+        """flag + gate_score < threshold: nothing is dropped, only the
+        metadata annotation reports the decision."""
+        record = GateMemory(agent_id="a1", topic="pull-topic", content="c")
+        record.save()
+
+        assembler = ContextAssembler(
+            model_class=GateMemory,
+            score_weights={"relevance": 1.0},
+            confidence_gate_threshold=0.9,
+            confidence_gate_mode="flag",
+        )
+        assembler._pull_path = lambda cues, filters: ([record], [record])
+
+        result = assembler.assemble(
+            query_cues={"topic": "pull-topic"},
+            partition_filters={"agent_id": "a1"},
+        )
+        assert result.metadata["pull_count"] == 1
+        assert result.metadata["gate"] == {
+            "applied": True,
+            "gate_score": 0.5,
+            "threshold": 0.9,
+            "mode": "flag",
+            "gated": True,
+        }
+
+    def test_flag_not_gated_retains_records(self):
+        """flag mode, gate_score >= threshold: not gated, retained."""
+        record = GateMemory(agent_id="a1", topic="pull-topic", content="c")
+        record.save()
+
+        assembler = ContextAssembler(
+            model_class=GateMemory,
+            score_weights={"relevance": 1.0},
+            confidence_gate_threshold=0.1,
+            confidence_gate_mode="flag",
+        )
+        assembler._pull_path = lambda cues, filters: ([record], [record])
+
+        result = assembler.assemble(
+            query_cues={"topic": "pull-topic"},
+            partition_filters={"agent_id": "a1"},
+        )
+        assert result.metadata["pull_count"] == 1
+        assert result.metadata["gate"]["gated"] is False
+
+    # -- Fault tolerance ----------------------------------------------------
+
+    def test_get_confidence_raises_gate_not_applied(self, caplog):
+        """A get_confidence() failure degrades gracefully: a warning is
+        logged, the gate is treated as not-applied, and records are
+        returned unchanged (no crash)."""
+        record = GateMemory(agent_id="a1", topic="pull-topic", content="c")
+        record.save()
+
+        assembler = ContextAssembler(
+            model_class=GateMemory,
+            score_weights={"relevance": 1.0},
+            confidence_gate_threshold=0.9,
+            confidence_gate_mode="refuse",
+        )
+        assembler._pull_path = lambda cues, filters: ([record], [record])
+
+        with patch.object(
+            ConfidenceField, "get_confidence", side_effect=RuntimeError("boom")
+        ):
+            with caplog.at_level("WARNING", logger="POPOTO.ContextAssembler"):
+                result = assembler.assemble(
+                    query_cues={"topic": "pull-topic"},
+                    partition_filters={"agent_id": "a1"},
+                )
+
+        assert "confidence gate get_confidence failed" in caplog.text
+        assert result.metadata["gate"] == {
+            "applied": False,
+            "gate_score": None,
+            "threshold": 0.9,
+            "mode": "refuse",
+            "gated": False,
+        }
+        # Not applied -> records untouched, even in refuse mode.
+        assert result.metadata["pull_count"] == 1

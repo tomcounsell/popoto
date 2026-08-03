@@ -324,6 +324,60 @@ audit shows its spans are meaningful), publish the 4-category parity slice
 alongside it for leaderboard comparability, and always carry the caveat above.
 A refusal metric is not applicable to this dataset and is deferred to #463.
 
+#### Confidence-gated retrieval — refusal precision (issue #463)
+
+Issue #463 shipped an opt-in confidence gate on `ContextAssembler`
+(`confidence_gate_threshold` / `confidence_gate_mode`; see
+[ContextAssembler](features/agent-memory.md#contextassembler) for the API).
+`tests/benchmarks/test_confidence_gate_refusal.py` measures how well the gate
+identifies genuinely-unanswerable questions on the same category-5 slice
+audited above.
+
+**CAVEAT — this is a seeded simulation, not an organic measurement.** Read the
+caveat before the number:
+
+- As established in the cat-5 audit directly above, **only 2 of the 446
+  category-5 items are genuinely unanswerable**. Refusal precision =
+  TP/(TP+FP) therefore has **at most 2 true positives** — a single false
+  positive swings the reported precision by tens of points. This is not a
+  statistically meaningful sample size.
+- `ConfidenceField` gating is **cold-start-degenerate** on LoCoMo: the harness
+  performs single-shot retrieval with no correction loop, so every candidate's
+  confidence sits at the same `initial_confidence` with no observation history
+  to diverge it. Left unseeded, `gate_score` would be constant across all 446
+  items and the gate would refuse either everything or nothing. To make the
+  gate exercisable at all, the benchmark manually seeds a deterministic,
+  content-hash-derived confidence spread (roughly `[0.05, 0.95]`) onto every
+  ingested record before querying, simulating "a realistic post-interaction
+  confidence spread" — this is a **simulation of a spread**, not a measurement
+  of one.
+
+**Result (lexical retrieval, `EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD = 0.5`,
+`confidence_gate_mode="refuse"`, full 446-item cat-5 slice):**
+
+| Items refused | True positives (TP) | False positives (FP) | Refusal precision TP/(TP+FP) |
+|---:|---:|---:|---:|
+| 221 | 2 | 219 | 0.009 (≈0.9%) |
+
+!!! warning "Not leaderboard-comparable, not a real-world refusal-accuracy claim"
+    This number demonstrates that the gate mechanism works end-to-end — it
+    faithfully refuses when the (seeded) rank-0 confidence is low — not that
+    Popoto's confidence gate achieves ~1% precision in production. With only 2
+    true positives available on this dataset, and a confidence spread that was
+    manually seeded rather than organically observed, the figure carries no
+    statistical weight and must **never** be cross-compared against any
+    recall or judged-accuracy number from the sections above (metric-family
+    doctrine) or against another system's refusal-capability claim. See the
+    [category 5 audit](#category-5-adversarial-evidence-audit-and-leaderboard-parity-slice)
+    above for why LoCoMo cat-5 is a poor substrate for a refusal metric in the
+    first place — the same limitation applies here.
+
+Reproduce: `pytest tests/benchmarks/test_confidence_gate_refusal.py -v` (the
+deterministic `TestRefusalGateMechanics` class runs unconditionally in CI; the
+446-item `TestRefusalPrecisionLoCoMoCat5` class is cache-gated on
+`~/.cache/popoto_benchmarks/locomo.json` and prints the same caveat inline
+with the report).
+
 ### Judged-Answer Accuracy (Tier 5)
 
 The metrics above are **retrieval-level** — did the right memory get retrieved.
@@ -549,3 +603,259 @@ the harness pre-flights every query so a fallback can never masquerade as a
 lexical number) and `rankings_identical` per case.
 
 To add a test case, see "Adding a CsrTestCase" in `tests/benchmarks/README.md`.
+
+## Subconscious Injection Quality (SIQ) Harness
+
+### Overview
+
+SIQ (issue #459) is Popoto's flagship **native** benchmark — it measures the
+one thing composite (query-blind) retrieval does that no public benchmark
+scores: *without an explicit query cueing it, did the right memory get injected
+into context at the right turn?* Every other harness on this page (the external
+LongMemEval-S/LoCoMo runs, the Tier-5 judged-answer harness, even CSR) is
+**query-driven** — an explicit question or `query_cues` dict is supplied and the
+harness scores whether the right evidence came back. SIQ is the complement.
+
+Each case is a multi-turn agent **trace**: a later turn needs a memory that was
+established several turns earlier, but the turn's own message never lexically
+restates it (coreference, implication, or need-to-know). This is exactly the
+regime where query-blind importance/decay ranking should beat query-driven
+retrieval — and where a pure retriever scores ~0 by construction. The traces are
+**committed deterministic fixtures** (CSR discipline: no runtime generation RNG,
+no wall-clock in ranking, bit-identical scores every run), and retrieval runs
+through `ContextAssembler` in `composite` mode (a plain `importance` SortedField,
+no BM25/embedding field on the model, so the pull path is genuinely query-blind).
+
+An authoring **cue-blindness lint** makes the ground truth un-gameable: using the
+*real* BM25 tokenizer (`src.popoto.fields._tokenizer.tokenize` — the same
+preprocessing BM25 indexes with), `lint_trace` rejects any trace whose
+`should_recall` turn shares even one indexed token with the target memory. The
+constraint only ever gets *harder* to satisfy, never easier.
+
+### Metrics and What They Mean
+
+| Metric | Meaning |
+|--------|---------|
+| **Injection Precision @ budget** | Of the memories injected under the `max_items`/`max_tokens` budget at an evaluation turn, the fraction that are ground-truth useful |
+| **Injection Recall @ budget** | Of that turn's `should_recall` targets, the fraction actually injected |
+| **Anticipation lead time** | Per memory: the number of consecutive turns immediately before it becomes explicitly relevant during which it was already injected (rewards proactive recall; a query retriever scores 0 here by construction) |
+| **Budget efficiency** | `useful_tokens / injected_tokens` — quality tied to the token budget the recipe already enforces |
+
+Precision, recall, and budget efficiency are evaluated **only at turns that
+carry a `should_recall` annotation** — the moments of defined information need.
+Narrative turns contribute nothing to them; proactive injection at those turns
+is credited by *anticipation lead time* instead. Edge cases resolve to
+`None` (undefined), never a `ZeroDivisionError`: precision is `None` when
+nothing was injected, recall is `None` at a non-evaluation turn, and a memory
+never injected when it mattered is a **miss** (excluded from the mean, counted
+separately) rather than a bogus lead value.
+
+### Why It's Competitor-Fair
+
+`SiqAdapter` (a `Protocol`, mirroring the Tier-5 `JudgeProtocol`) is the
+extension point: any memory system replayed turn-by-turn can be scored on
+identical footing. Two adapters ship:
+
+- **`NativeAdapter`** — Popoto's query-blind composite mode (the system under
+  test); the composite-mode invariant is asserted before scoring.
+- **`QueryOnlyStubAdapter`** — a dependency-free, deterministic *query-driven*
+  baseline (the Mem0/Zep/Hindsight stand-in). It injects only memories whose
+  content lexically overlaps the current message, so by the cue-blindness lint
+  it injects **nothing** at the recall turn — scoring ~0 recall and all-miss
+  anticipation *by construction*. That near-zero baseline is the harness's own
+  validity proof (asserted in `test_siq.py`), not a rigged result.
+
+Real Mem0/Zep/Hindsight adapters (heavyweight optional deps + live API keys) are
+a tracked follow-up; no competitor numbers are fabricated here. An optional
+LLM-judged "usefulness" cross-check reuses the Tier-5 pinned judge
+(`gpt-4o-mini`, temperature 0) and is never in the default/CI path.
+
+Baseline over the four committed fixtures (`coreference_relocation`,
+`implication_deadline`, `need_to_know_allergy`, `multi_recall_preferences`):
+
+| adapter | recall @ budget | anticipation misses | mean lead |
+|---|---|---|---|
+| `native` (query-blind) | **1.000** | 0 / 5 targets | 4.0 turns |
+| `query_stub` (query-driven) | 0.000 | 5 / 5 targets | n/a |
+
+Everything is Valkey-safe — core Redis commands only, no modules — and the
+whole default suite needs no network, no model download, and no API key.
+
+### DB Hygiene
+
+The CI-facing surface is `tests/benchmarks/test_siq.py`, which runs under the
+pytest **db15** isolation plugin like every other `test_*.py` — it plants
+per-trace, uniquely-prefixed model classes and tears them down, never touching
+db0. The optional `run_siq.py` CLI is a manual (non-pytest) report generator, so
+it reuses `run_external`'s bench-DB machinery: a dedicated bench DB (default
+**14**, `POPOTO_BENCH_DB` override, **db0 rejected**), pointed at only at
+`main()` time. Point the CLI away from any in-flight external run (which also
+uses db14), e.g. `POPOTO_BENCH_DB=13`.
+
+### Running It
+
+```bash
+# CI gate (pytest, DB-15 isolation, deterministic — no network, no API key):
+pytest tests/benchmarks/test_siq.py -q
+
+# Manual run — writes tests/benchmarks/results/siq/siq_{date}_{adapter}.{json,md}
+# and siq_latest_{adapter}.{json,md}. Use a free bench DB (db0 rejected):
+POPOTO_BENCH_DB=13 python -m tests.benchmarks.siq.run_siq --adapter native
+POPOTO_BENCH_DB=13 python -m tests.benchmarks.siq.run_siq --adapter query_stub
+
+# Summary only, no report written:
+POPOTO_BENCH_DB=13 python -m tests.benchmarks.siq.run_siq --dry-run
+```
+
+To add a trace, drop a committed JSON fixture in `tests/benchmarks/siq/fixtures/`
+(schema in `tests/benchmarks/siq/corpus.py`); `lint_trace` enforces the
+cue-blindness and anticipation-window authoring rules at load time.
+
+## RLT (Retrieval Latency & Throughput) Harness
+
+### Overview
+
+RLT (issue #460) is the axis no other harness on this page measures: **speed
+under load**, not retrieval/injection quality. Popoto's substrate premise is
+RAM-speed Redis/Valkey memory with no separate vector-service round-trip — RLT
+is the harness that puts a number on that claim, jointly with recall so the
+result can't be read as "fast but wrong" or "accurate but slow" in isolation.
+
+Five metrics, one submodule each under `tests/benchmarks/rlt/`:
+
+1. **Latency** — p50/p95/p99 per retrieval + end-to-end assemble latency
+   (`latency.py`). `ContextAssembler.assemble()` already *is* the full
+   retrieve→rank→inject pipeline, so "per retrieval" and "end-to-end assemble"
+   are the same measured call in this harness — both labels refer to timing
+   `assemble()` itself; there is no separate lower-level retrieval-only API
+   surface to isolate without changing `src/popoto/`.
+2. **Throughput** — queries/sec at a fixed corpus size, single-threaded or
+   under a bounded `ThreadPoolExecutor` (`throughput.py`).
+3. **Scaling curve** — latency vs. corpus size, 10³ → 2×10⁴ (`scaling.py`, the
+   maintainer's scale target; larger points are informational-only and outside
+   this harness's default/CI path — not over-engineered past 20k).
+4. **Live mixed workload** — concurrent turn-ingest writes + assembly reads,
+   measuring read-latency degradation under write load and vice versa
+   (`mixed_workload.py`). Caveat: a thread-based load generator measures
+   client-side thread-scheduling overhead alongside genuine server-side
+   latency; a multi-process load generator would be needed to fully isolate
+   server-only behavior, which is out of scope for this harness.
+5. **Recall-vs-p99 Pareto frontier** — jointly with the retrieval harness:
+   "at equal p99, who recalls more; at equal recall, who's faster"
+   (`pareto.py`). The recall axis is the mean of `recall_at_k()`
+   (`tests/benchmarks/metrics/retrieval.py`) over the full query set per
+   config, not a per-query binary value.
+
+The corpus is a synthetic, deterministic, lexical-only (BM25) surface
+(`corpus.py`) — a fixed topic vocabulary with authored (not derived) ground
+truth per query, following the CSR/SIQ discipline. No EmbeddingField, so no
+model download is needed to run the fast unit-test corpora.
+
+### Percentile Convention
+
+`rlt/latency.py`'s `percentile()` deliberately reuses the **same nearest-rank
+formula** the external harness's `compute_aggregate()` already uses for its
+own p50/p95 (`sorted(values)[int(len(values) * p/100)]`) rather than
+introducing a second, numerically different percentile definition into this
+document — RLT's and the external harness's latency numbers are directly
+comparable, not apples-to-oranges.
+
+### Headline Numbers (native Popoto, Redis)
+
+First real run of the harness, captured on an isolated DB once the machine was
+quiet (full artifact: `tests/benchmarks/results/rlt/rlt_latest_redis.json`).
+Backend **redis 8.x**, Python 3.12, Apple-silicon (10 cores). These are native
+Popoto (`ContextAssembler`) numbers only — competitor comparators are still to
+come (see Follow-Up). Absolute latency is machine-dependent; read the *shape*
+(sub-6-ms p50 retrieval that grows gently with corpus size, and the
+read-degradation-under-write-load ratio), not the exact millisecond.
+
+All figures below are the exact values from the committed artifact
+(`rlt_20260721_redis.json`); they vary run-to-run (warmup, OS scheduling), so
+treat them as one representative snapshot, not a pinned regression target.
+
+**Scaling curve** — latency vs. corpus size (200 samples/point):
+
+| corpus size | p50 (ms) | p95 (ms) | p99 (ms) |
+|---|---|---|---|
+| 1,000 | 3.02 | 4.01 | 5.79 |
+| 5,000 | 3.30 | 7.05 | 9.58 |
+| 10,000 | 5.90 | 7.94 | 9.56 |
+| 20,000 | 6.02 | 9.27 | 15.26 |
+
+**Throughput** (corpus 20,000): 149.3 queries/sec single-threaded, 293.9
+queries/sec at concurrency 4.
+
+**Live mixed workload** (corpus 5,000, 4 threads): read p99 goes 6.55 → 21.98 ms
+(3.35× degradation) under concurrent write load; write p99 goes 0.78 → 11.72 ms
+(14.93× degradation) under concurrent read load. The *degradation ratio* (not the
+absolute latency) is the live-agent-relevant number, and note the caveat above
+about thread-scheduling overhead being included — in this run writes (a very
+light baseline) were hit far harder in relative terms than reads.
+
+> **Reproduce:** `python -m tests.benchmarks.rlt.run_rlt --db <isolated> --backend redis --mixed-workload`.
+
+### Still Deferred
+
+- **Valkey run.** The issue calls for results on **both** Redis and Valkey (the
+  first benchmark where the two could measurably differ). No Valkey server was
+  available in the session that produced the Redis numbers above, so the Valkey
+  run is deferred — the harness is backend-agnostic (`--backend valkey` against
+  a Valkey-pointed `REDIS_URL`), so it is purely an ops step, not a code change.
+- **Real Mem0/Zep/vector-DB comparators.** The `RltAdapter` Protocol
+  (`comparators.py`) ships with a `NativeAdapter` (Popoto) and a dependency-free
+  `NullAdapter` proving the contract. **No real Mem0/Zep/vector-DB numbers are
+  fabricated here** — real adapters (heavyweight optional deps + live services)
+  and the recall-vs-p99 competitor Pareto are a tracked follow-up.
+
+### Comparator Adapters
+
+`RltAdapter` (a `Protocol`, mirroring the Tier-5 `JudgeProtocol` and SIQ's
+`SiqAdapter`) is the extension point: `ingest(content) -> None` and
+`query(text) -> (result_ids, latency_ms)`. Two adapters ship:
+
+- **`NativeAdapter`** — wraps `ContextAssembler` (the system under test).
+- **`NullAdapter`** — a dependency-free stub returning empty results at a
+  fixed synthetic latency, proving the Protocol contract end to end without
+  any real competitor.
+
+Real Mem0/Zep/vector-DB (pgvector/Qdrant) adapters are heavyweight optional
+dependencies plus live external services — implementing and running them is
+explicitly a follow-up, not part of this PR.
+
+### DB Hygiene
+
+The CI-facing surface is `tests/benchmarks/test_rlt.py`, which runs under the
+pytest **db15** isolation plugin like every other `test_*.py` in this suite —
+tiny synthetic corpora (tens of records), never the real 10³–2×10⁴ scaling
+range, never db0 or db14.
+
+The manual `run_rlt.py` CLI (for the real, deferred measurement runs) requires
+`--db` **explicitly** — unlike `run_external.py`'s `POPOTO_BENCH_DB` default-14
+pattern, this harness has no default. `--db 0`, `--db 14`, and `--db 15` are
+all rejected: 0 is production-shaped, 14 is reserved for the concurrently
+running external-benchmark chain, and 15 is the project's pytest-isolation DB
+(flushed by every test session — a manual run there would race with or
+pollute tests).
+
+### Running It
+
+```bash
+# CI gate (pytest, DB-15 isolation, tiny synthetic corpora):
+pytest tests/benchmarks/test_rlt.py -q
+
+# Manual real-corpus run (deferred — do NOT run against db0, db14, or db15;
+# do NOT run concurrently with any other heavy benchmark chain sharing this
+# machine, since RLT measures wall-clock latency):
+python -m tests.benchmarks.rlt.run_rlt --db 13 --backend redis
+python -m tests.benchmarks.rlt.run_rlt --db 13 --backend redis --dry-run
+```
+
+### Follow-Up
+
+Tracked in [issue #487](https://github.com/tomcounsell/popoto/issues/487):
+(1) run the real headline latency/throughput/scaling/mixed-workload
+measurements on both Redis and Valkey once the machine is confirmed quiet,
+against an explicitly isolated DB; (2) implement real Mem0/Zep/vector-DB
+`RltAdapter`s and run a real competitor comparison producing the
+recall-vs-p99 Pareto frontier this harness computes the machinery for.

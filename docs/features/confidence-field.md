@@ -220,6 +220,36 @@ report = ConfidenceField.migrate_to_partitioned(Memory, "certainty", dry_run=Tru
 report = ConfidenceField.migrate_to_partitioned(Memory, "certainty")
 ```
 
+## Confidence Feeds Forgetting
+
+Confidence used to be a read-only signal for ranking and promotion. It now closes the loop: the
+evidence a record accumulates changes how fast it is forgotten.
+
+**Faster decay.** [`DecayingSortedField`](decaying-sorted-field.md#confidence-modulated-decay) and
+[`CyclicDecayField`](cyclic-decay-field.md#confidence-modulated-decay) read each record's confidence
+inside their ranking Lua and derive a per-record effective decay rate,
+`eff = decay_rate * 2 ^ (s * 2 * (c0 - c))`. The zero point is this field's own
+`initial_confidence`, so a record with no evidence is bit-exactly neutral for any configured `c0`.
+When a model has exactly one `ConfidenceField`, this is on with no configuration.
+
+**Eligibility for forgetting.** [`MemoryLifecycle`](agent-memory.md#memorylifecycle) previously used
+confidence only to *promote* records to the protected semantic tier — it could grant permanence but
+never hasten removal. Its forget rule is now:
+
+```text
+(importance < FORGET_IMPORTANCE_FLOOR
+ OR (confidence < FORGET_CONFIDENCE_CEILING AND evidence_count >= FORGET_MIN_EVIDENCE))
+AND idle > FORGET_IDLE_SECONDS
+```
+
+`evidence_count` is load-bearing. Confidence starts at `initial_confidence` and moves on *every*
+signal, so without a minimum track record one unlucky dismissal could bury a memory. Records that
+cross the rule are **tombstoned**, not deleted — reversible via `restore()`.
+
+`ConfidenceField` remains the single source of truth for evidence. Nothing about modulation or
+forgetting is persisted back onto the record: the decay path is a pure reader of this field's
+`:data` hash, so there is no second copy of derived state to desync.
+
 ## Redis Key Patterns
 
 | Key | Type | Description |
@@ -249,7 +279,13 @@ for a walkthrough.
 
 `ConfidenceField` works alongside other memory system fields:
 
-- **DecayingSortedField**: Composite scoring via `priority = decay_score * confidence`
-- **CyclicDecayField**: Auto-discharge when confidence drops below threshold
+- **DecayingSortedField**: Composite scoring via `priority = decay_score * confidence`, and
+  [confidence-modulated decay](decaying-sorted-field.md#confidence-modulated-decay) — confidence sets
+  each record's effective decay *rate*, not just its magnitude
+- **CyclicDecayField**: Auto-discharge when confidence drops below threshold; inherits confidence
+  modulation (confidence hash bound at `KEYS[4]` in its forked Lua)
+- **MemoryLifecycle**: Confidence gates promotion *and* forgetting; low-confidence idle records with
+  enough evidence are tombstoned
 - **WriteFilterMixin**: Use confidence in `compute_filter_score()` for directed forgetting
+- **[ContextAssembler](context-assembler.md#confidence-gate)**: `get_confidence()` on the rank-0 pull-path candidate drives the opt-in confidence gate — `assemble()` can refuse or flag a low-confidence answer instead of injecting it
 - **AccessTrackerMixin**: Read tracking independent of confidence

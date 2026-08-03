@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "popoto"
-version = "1.8.0"
+version = "1.8.1"
 description = "A Python Redis ORM"
 readme = "README.md"
 authors = [{ name = "Tom Counsell", email = "other@tomcounsell.com" }]
@@ -42,6 +42,9 @@ voyage = [
 openai = [
     "openai>=1.0.0",
     "numpy>=1.23.1",
+]
+anthropic = [
+    "anthropic>=0.40.0",
 ]
 monitoring = [
     "sentry-sdk>=2.0.0",

@@ -117,6 +117,32 @@ Supporting notes:
 - **ConfidenceField**: `acted` corroborates; `contradicted` contradicts.
 - **PredictionLedgerMixin**: `acted`, `used`, `dismissed`, and `contradicted` auto-resolve pending predictions with appropriate error values (`used` maps to moderate error `Defaults.PL_AUTO_RESOLVE_USED`).
 
+## Outcomes Now Reach Forgetting
+
+Reporting an outcome used to affect ranking and cycle amplitudes but never the *rate* at which a
+memory left the corpus: a memory dismissed ten times decayed exactly as fast as one acted on ten
+times, because `decay_rate` was a field-level constant shared by every record. The only asymmetry
+was `acted`, which calls `touch()` and so slows effective decay by resetting the clock — with no
+matching mechanism by which dismissal could accelerate it.
+
+The confidence this protocol writes now feeds two further consumers:
+
+1. **Decay rate.** `DecayingSortedField` and `CyclicDecayField` derive a per-record effective decay
+   rate from confidence
+   (`eff = decay_rate * 2 ^ (s * 2 * (c0 - c))`), so a contradicted memory both ranks lower *and*
+   fades faster. See
+   [Confidence-Modulated Decay](decaying-sorted-field.md#confidence-modulated-decay).
+2. **Forget eligibility.** `MemoryLifecycle` forgets a low-confidence idle record once it has at
+   least `FORGET_MIN_EVIDENCE` observations behind it, tombstoning rather than deleting so the
+   decision stays reversible.
+
+The full loop: `on_context_used(..., "dismissed")` → confidence drops → next retrieval ranks the
+memory lower → next lifecycle tick tombstones it. Nothing new is required at the call site; the
+outcome reporting deployments already do is what drives it.
+
+Neutrality is preserved for corpora with no outcome data at all — a record that has never been
+reported on scores byte-identically to pre-modulation Popoto.
+
 ## RecallProposal
 
 Internal ORM infrastructure for tracking proactively surfaced memories.

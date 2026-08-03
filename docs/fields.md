@@ -714,11 +714,70 @@ memory.touch("relevance")  # Resets the decay clock
 |-----------|------|---------|-------------|
 | `decay_rate` | `float` | `0.1` | Controls how fast scores drop. Higher = faster decay. Must be > 0. (Empirically tuned in sweep 2026-04-17; prior default was `0.5`.) |
 | `base_score_field` | `str` | `None` | Name of a companion field whose value multiplies the decay curve. When `None`, base score is 1.0. |
+| `confidence_modulation_field` | `str`, `False`, or `None` | `None` | Which `ConfidenceField` modulates each record's effective decay rate. `None` auto-detects a single `ConfidenceField` on the model; a `str` names one; `False` disables. |
 | `partition_by` | `str` or `tuple` | `()` | Partition the sorted set by key field values (inherited from `SortedField`). |
 
 Use `InteractionWeight` constants with `base_score_field` for source/role-based importance
 weighting in multi-agent teams. See [Agent Memory — Source weighting](features/agent-memory.md#source-weighting-for-teamwork)
 for the full pattern.
+
+**Confidence-modulated decay.** `base_score_field` scales the curve's magnitude, which
+never changes relative order. Confidence modulation changes the *rate*, so accumulated
+outcome evidence alters how fast a record actually leaves the corpus:
+
+```
+eff   = decay_rate × 2 ^ (s × 2 × (c0 − c))
+score = base_score × t ^ (−decay_rate) × max(t, 1.0) ^ (−(eff − decay_rate))
+```
+
+where `c` is the record's `ConfidenceField` value, `c0` is that field's own
+`initial_confidence`, `s` is `Defaults.DECAY_CONFIDENCE_MODULATION_STRENGTH` (0.5), and
+`t` is `elapsed_days`.
+
+```python
+from popoto.fields.confidence_field import ConfidenceField
+
+class Memory(Model):
+    agent_id = KeyField()
+    content = Field(type=str)
+    certainty = ConfidenceField()      # exactly one -> modulation is ON, no config
+    relevance = DecayingSortedField()
+
+# Or name it explicitly / opt out:
+#   DecayingSortedField(confidence_modulation_field="certainty")
+#   DecayingSortedField(confidence_modulation_field=False)
+```
+
+Modulation is **default-on**: a model with exactly one `ConfidenceField` gets it with no
+configuration; zero `ConfidenceField`s means off; two or more with no explicit kwarg means
+off plus a warning naming the candidates. The deploy-level kill switch disables it
+everywhere without editing model definitions:
+
+```python
+from popoto.fields.constants import Defaults
+
+Defaults.DECAY_CONFIDENCE_MODULATION_ENABLED = False
+```
+
+Scores are **byte-identical** to the unmodulated formula when a record has no confidence
+evidence, when the model has no `ConfidenceField`, when the kwarg is `False`, when the kill
+switch is off, or when `s = 0` — the correction term is exactly `1.0` at `c == c0`. Disabled
+paths skip the per-member `HGET` entirely.
+
+The `max(t, 1.0)` clamp is load-bearing, not cosmetic. `elapsed_days` is floored at `0.01`,
+and for `t < 1` the term `t^(−rate)` is a multiplier greater than 1 that a *larger* rate
+amplifies *more*. Without the clamp, modulation would run backwards for the first 24 hours
+and boost exactly the low-confidence records it exists to bury.
+
+!!! warning "Rank inversion"
+    Rate modulation makes two records' log-log score lines cross exactly once, so a record's
+    **rank can improve over time even as its score falls** — behavior magnitude weighting
+    never produces. Cached top-N snapshots drift accordingly; re-run `top_by_decay()` rather
+    than caching its output if ordering stability matters.
+
+If the `ConfidenceField` declares `partition_by`, the query must filter on those fields or
+`top_by_decay()` raises `QueryException` naming the missing filters — modulation never
+silently degrades to partial coverage.
 
 All standard `SortedField` range filters (`__gt`, `__gte`, `__lt`, `__lte`, `__between`)
 work against the timestamp score. See [Agent Memory](features/agent-memory.md) for the
@@ -771,6 +830,7 @@ directive.touch("relevance")
 |-----------|------|---------|-------------|
 | `decay_rate` | `float` | `0.1` | Power-law decay exponent (inherited). Empirically tuned in sweep 2026-04-17; prior default was `0.5`. |
 | `base_score_field` | `str` | `None` | Companion field whose value multiplies the decay curve (inherited). |
+| `confidence_modulation_field` | `str`, `False`, or `None` | `None` | Which `ConfidenceField` modulates the per-record decay rate (inherited). |
 | `cycles` | `list` | `[]` | List of `(period, amplitude, phase)` tuples. Use `TemporalPeriod` constants for period. |
 | `pressure_rate` | `float` | `0.0` | Rate of urgency buildup per unresolved day. |
 | `partition_by` | `str` or `tuple` | `()` | Partition the sorted set by key field values (inherited). |
@@ -778,6 +838,16 @@ directive.touch("relevance")
 **Ordering** is deterministic, same as `DecayingSortedField`: equal effective
 scores (`decay + cyclic + pressure`) are tie-broken by `redis_key` ascending
 (byte-wise) inside the Lua script, before the top-N truncation.
+
+**Confidence-modulated decay** is inherited unchanged and applies to the `decay` term only;
+`cyclic` and `pressure` are untouched. Auto-detection, the `confidence_modulation_field`
+kwarg, the `DECAY_CONFIDENCE_MODULATION_ENABLED` kill switch, bit-exact neutrality, and the
+rank-inversion caveat all behave exactly as documented for `DecayingSortedField` above.
+One internal difference matters if you read the Lua: `CyclicDecayField` forks the decay
+script and already binds `KEYS[2]` = cycles hash and `KEYS[3]` = pressure hash, so the
+confidence `:data` hash is `KEYS[4]` there rather than `KEYS[2]` (`ARGV` indices are the same
+in both). The two scripts must not be "unified" on `KEYS[2]` — that would unpack the cycles
+array as a confidence payload and corrupt scores silently.
 
 See [CyclicDecayField feature docs](features/cyclic-decay-field.md) for the full reference including
 the scoring formula, Redis data model, `TemporalPeriod` constants, and error handling.

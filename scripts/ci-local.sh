@@ -98,6 +98,88 @@ if $needs_redis; then
       "$PY" -m pip install -e . --no-deps -q
     fi
   fi
+
+  # --- worktree verification guards (#495 post-mortem) -----------------------
+  #
+  # Four ways a run in a .worktrees/ checkout reports a confident, wrong
+  # number. Each cost a review round on PR #495, and none of them announce
+  # themselves -- the suite goes green, or fails in a way that looks like a
+  # real regression. They are checked here rather than documented in prose
+  # because every agent that shipped a bad number already had CLAUDE.md
+  # loaded.
+
+  # 1. Tests exercise the INSTALLED package, not this checkout. The pytest
+  #    plugin collapses `src.popoto` onto canonical `popoto`, so when the
+  #    venv's editable install points somewhere else, the suite silently
+  #    tests that other tree. Symptom: failures on brand-new APIs that look
+  #    exactly like real regressions.
+  #    $ROOT goes through argv, never string-interpolated into the Python
+  #    source: a repo path containing a quote would otherwise raise
+  #    SyntaxError, leave `expected` empty, and hard-fail a perfectly healthy
+  #    venv. An empty result on either side means "cannot tell" -- skip the
+  #    guard rather than fail it, since a guard that blocks good runs is worse
+  #    than one that misses a bad one.
+  resolved="$("$PY" -c "import popoto,os;print(os.path.realpath(os.path.dirname(popoto.__file__)))" 2>/dev/null || echo "")"
+  expected="$("$PY" -c 'import os,sys;print(os.path.realpath(os.path.join(sys.argv[1],"src","popoto")))' "$ROOT" 2>/dev/null || echo "")"
+  if [ -n "$resolved" ] && [ -n "$expected" ] && [ "$resolved" != "$expected" ]; then
+    warn "popoto resolves to $resolved, not this checkout — refreshing editable install"
+    if command -v uv >/dev/null 2>&1; then
+      VIRTUAL_ENV="$ROOT/.venv" uv pip install -e . --no-deps -q
+    else
+      "$PY" -m pip install -e . --no-deps -q
+    fi
+    resolved="$("$PY" -c "import popoto,os;print(os.path.realpath(os.path.dirname(popoto.__file__)))" 2>/dev/null || echo "")"
+    if [ "$resolved" != "$expected" ]; then
+      fail "popoto still resolves to $resolved — tests would not exercise this checkout"
+      fail "  fix: PYTHONPATH=$ROOT/src, or recreate .venv in this worktree"
+      exit 2
+    fi
+  fi
+
+  # 2. A fresh worktree venv built from '.[dev]' alone is missing the
+  #    optional extras, which silently DESELECTS roughly 95 tests. A green
+  #    suite then covers far less than CI does, with no error to notice.
+  #    find_spec, not __import__: this asks "was the extra installed", and
+  #    fully importing sentence_transformers drags in torch for ~5s on every
+  #    single run of this script. A module that is installed but broken will
+  #    slip past, which the test run itself will report anyway.
+  missing_extras="$("$PY" - <<'PYEOF' 2>/dev/null || true
+from importlib.util import find_spec
+
+missing = [m for m in ("numpy", "sentence_transformers") if find_spec(m) is None]
+print(" ".join(missing))
+PYEOF
+)"
+  if [ -n "${missing_extras// /}" ]; then
+    warn "optional extras missing ($missing_extras) — ~95 tests will be silently skipped"
+    warn "  a green run here does NOT match CI coverage; install: uv pip install -e '.[dev,embeddings,benchmark]'"
+  fi
+
+  # 3. redis-py 8.x breaks the plugin's subprocess isolation test
+  #    (maint_notifications_pool_handler). Pre-existing and environmental --
+  #    predicted here so it is not mistaken for a regression introduced by
+  #    whatever branch is being tested.
+  redis_major="$("$PY" -c "import redis;print(redis.__version__.split('.')[0])" 2>/dev/null || echo "")"
+  if [ -n "$redis_major" ] && [ "$redis_major" -ge 8 ] 2>/dev/null; then
+    warn "redis-py ${redis_major}.x — expect test_pytest_plugin.py::test_isolated_db_subprocess to FAIL"
+    warn "  that failure is environmental, not a regression; confirm against base before chasing it"
+  fi
+
+  # 4. Every worktree shares Redis DB 15. Concurrent suites from other agent
+  #    checkouts produced 73-158 phantom failures on #495 -- indistinguishable
+  #    from a real regression until you check out base into the SAME worktree
+  #    and compare. Warn before the number is trusted, not after.
+  # Counted before this script starts its own pytest, so every hit is someone
+  # else's run. `pgrep -f` substring-matches whole command lines, so this can
+  # over-count (a `vim notes_pytest.txt` counts as one). It is warning-only and
+  # errs toward telling you to double-check a number, which is the safe side.
+  others="$(pgrep -f "[p]ytest" 2>/dev/null | wc -l | tr -d ' ')"
+  others="${others:-0}"
+  if [ "$others" -gt 0 ] 2>/dev/null; then
+    warn "$others other pytest process(es) running — they share Redis DB 15 with this run"
+    warn "  full-suite counts are UNRELIABLE right now; to separate contention from regression,"
+    warn "  check out base into this same worktree and compare, or wait for them to finish"
+  fi
 fi
 
 declare -a RESULTS

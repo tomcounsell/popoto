@@ -132,6 +132,12 @@ HYBRID_CANDIDATE_MULTIPLIER = 5
 """candidate_limit = max_items * HYBRID_CANDIDATE_MULTIPLIER for per-signal
 retrieval in the hybrid pull path before RRF fusion."""
 
+EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD = 0.5
+"""NOT a shipped default — used only by the benchmark/report script; needs
+maintainer sign-off before becoming Defaults.CONFIDENCE_GATE_THRESHOLD or a
+ctor default (see issue #463)."""
+
+
 # ---------------------------------------------------------------------------
 # Weighted / query-adaptive RRF fusion (issue #457) — experimental tuning
 # constants, in-code only, never user config (magic-number doctrine).
@@ -565,13 +571,228 @@ def _cue_familiarity(cue_value, *, existence_filter, model_class) -> float:
     return 1.0 if present else 0.0
 
 
-def _score_proxy_for_records(records, *, model_class, score_weights):
-    """Pipelined ZSCORE proxy for composite scores.
+def _partition_scores_for_field(records, *, model_class, field_name, now=None):
+    """Per-record relevance score read from the PARTITION-specific sorted set.
 
-    Read-only (no ZUNIONSTORE, no temp keys). Only sorted-field-backed
-    entries in ``score_weights`` contribute; other weights are ignored
-    (ConfidenceField / WriteFilter are computed elsewhere in the quality
-    signal).
+    Agent-memory sorted fields almost always declare ``partition_by``, so the
+    real scores live in a partition-specific ZSET (``$SortF:Model:field:<part>``),
+    not the base key. Reading the base key -- the historical behaviour of the
+    shared proxy -- returned ``None`` for every partitioned record and silently
+    collapsed every metacognitive signal to its degenerate value (issue #474).
+
+    Scoring is field-type aware, because the two sorted-field families store
+    *different quantities* as the ZSET score:
+
+    * A plain :class:`SortedField` stores the field *value itself* as the
+      score, so a raw pipelined ``ZSCORE`` on the partition key is the score.
+    * A :class:`DecayingSortedField` (and its :class:`CyclicDecayField`
+      subclass) stores the *last_updated timestamp* as the score, not
+      relevance. A naive ``ZSCORE`` would surface ~1.7e9 timestamps and invert
+      staleness. This reuses ``DECAY_SCORE_LUA`` to compute the power-law
+      decayed relevance on the partition ZSET -- identical math to
+      :meth:`Query.top_by_decay`, so the proxy and the query agree.
+
+    Records whose member is absent from the partition ZSET, or whose partition
+    field value is missing, map to ``None`` (never corrupting other records'
+    scores). Read-only and Valkey-safe (``ZSCORE`` / read-only ``EVAL``; no
+    ``ZUNIONSTORE``, no temp keys, no Redis modules).
+
+    Returns:
+        ``{record_key: score_or_None}`` for every record in ``records``.
+    """
+    f = model_class._meta.fields[field_name]
+
+    # Resolve each record's partition-specific ZSET key up front. A record
+    # whose partition value is missing raises QueryException in the key
+    # builder -- it scores None and never perturbs the pipeline for the rest.
+    key_for_record = {}
+    for record in records:
+        r_key = _get_key(record)
+        try:
+            key_for_record[r_key] = f.get_partitioned_sortedset_db_key(
+                record, field_name
+            ).redis_key
+        except Exception:
+            key_for_record[r_key] = None
+
+    if isinstance(f, DecayingSortedField):
+        return _decayed_partition_scores(
+            records,
+            field=f,
+            key_for_record=key_for_record,
+            now=now,
+            model_class=model_class,
+            field_name=field_name,
+        )
+
+    # Plain SortedField: the stored value IS the score.
+    scores = {}
+    ordered_keys = []
+    pipe = POPOTO_REDIS_DB.pipeline()
+    for record in records:
+        r_key = _get_key(record)
+        ordered_keys.append(r_key)
+        zkey = key_for_record[r_key]
+        if zkey is None:
+            pipe.zscore("", "")  # placeholder keeps the pipeline plan aligned
+        else:
+            pipe.zscore(zkey, r_key)
+    raw = pipe.execute()
+    for r_key, val in zip(ordered_keys, raw):
+        if val is None:
+            scores[r_key] = None
+        else:
+            try:
+                scores[r_key] = float(val)
+            except (TypeError, ValueError):
+                scores[r_key] = None
+    return scores
+
+
+def _decayed_partition_scores(
+    records, *, field, key_for_record, now=None, model_class=None, field_name=None
+):
+    """Decayed relevance per record for a DecayingSortedField partition ZSET.
+
+    Reuses the same decay scripts :meth:`Query.top_by_decay` runs, so the
+    metacognitive proxy sees the same decayed relevance a query would surface,
+    rather than the raw last_updated timestamp stored as the ZSET score:
+
+    * :class:`DecayingSortedField` -> ``DECAY_SCORE_LUA`` (2 KEYS: the partition
+      ZSET plus the ConfidenceField ``:data`` hash, ``""`` when modulation is
+      off).
+    * :class:`CyclicDecayField` -> ``CYCLIC_DECAY_LUA`` (4 KEYS: the partition
+      ZSET, its ``:cycles`` / ``:pressure`` companion hashes, and the
+      confidence ``:data`` hash), so cyclic cadence/pressure is honoured and
+      the proxy agrees with ``top_by_decay`` for cyclic fields too.
+
+    Confidence-modulated decay (#491) must be threaded here too, or the proxy
+    would silently disagree with ``top_by_decay`` (the no-drift contract at
+    ``test_proxy_matches_top_by_decay``). Unlike the query paths this one has
+    records rather than filters, so each record's ``:data`` key is read off the
+    instance; the script is evaluated once per distinct
+    ``(partition ZSET, confidence hash)`` pair, which collapses to one EVAL per
+    ZSET in the overwhelmingly common case where both share a partitioning.
+
+    Read-only ``EVAL``, Valkey-safe.
+    """
+    from ..fields.cyclic_decay_field import CYCLIC_DECAY_LUA
+    from ..fields.decaying_sorted_field import (
+        DECAY_SCORE_LUA,
+        MODULATION_DISABLED,
+        confidence_modulation_args,
+    )
+
+    if now is None:
+        now = time.time()
+
+    base_score_field = field.base_score_field or ""
+    is_cyclic = isinstance(field, CyclicDecayField)
+
+    # Per-record confidence modulation args. Resolves to MODULATION_DISABLED
+    # (empty key, s="0") whenever modulation is off, which reproduces the
+    # pre-#491 EVAL byte-for-byte apart from the inert trailing key/ARGV.
+    conf_args_for_record = {}
+    for r in records:
+        r_key = _get_key(r)
+        if model_class is None or field_name is None:
+            conf_args_for_record[r_key] = MODULATION_DISABLED
+            continue
+        try:
+            conf_args_for_record[r_key] = confidence_modulation_args(
+                model_class, field, field_name, model_instance=r
+            )
+        except Exception as e:
+            # The proxy is a best-effort metacognitive signal; degrade to
+            # unmodulated decay rather than break assembly.
+            logger.warning("confidence modulation unavailable for %s: %s", r_key, e)
+            conf_args_for_record[r_key] = MODULATION_DISABLED
+
+    # Distinct (partition ZSET, confidence args) pairs (typically one).
+    eval_groups = {
+        (key_for_record[_get_key(r)], conf_args_for_record[_get_key(r)])
+        for r in records
+        if key_for_record[_get_key(r)] is not None
+    }
+
+    # (zset_key, confidence_hash_key, member) -> decayed score
+    decayed = {}
+    for zkey, (conf_hash_key, conf_s, conf_c0) in eval_groups:
+        try:
+            cardinality = POPOTO_REDIS_DB.zcard(zkey)
+            if not cardinality:
+                continue
+            if is_cyclic:
+                # Companion hashes are the partition ZSET key plus a suffix
+                # (CyclicDecayField.get_cycles/pressure_hash_key), so they are
+                # derivable directly from the partition ZSET key. The
+                # confidence hash is NOT -- it lives under its own
+                # $ConfidencF: prefix -- so it is resolved Python-side above.
+                result = POPOTO_REDIS_DB.eval(
+                    CYCLIC_DECAY_LUA,
+                    4,  # number of KEYS: zset + cycles + pressure + confidence
+                    zkey,
+                    zkey + ":cycles",
+                    zkey + ":pressure",
+                    conf_hash_key,
+                    str(now),
+                    str(field.decay_rate),
+                    str(cardinality),  # return every member's decayed score
+                    base_score_field,
+                    conf_s,
+                    conf_c0,
+                )
+            else:
+                result = POPOTO_REDIS_DB.eval(
+                    DECAY_SCORE_LUA,
+                    2,  # number of KEYS: zset + confidence
+                    zkey,
+                    conf_hash_key,
+                    str(now),
+                    str(field.decay_rate),
+                    str(cardinality),  # return every member's decayed score
+                    base_score_field,
+                    conf_s,
+                    conf_c0,
+                )
+        except Exception as e:
+            logger.warning("decayed partition score eval failed for %s: %s", zkey, e)
+            continue
+        # Flat array: [member1, score1, member2, score2, ...]
+        for i in range(0, len(result), 2):
+            member = result[i]
+            if isinstance(member, bytes):
+                member = member.decode()
+            try:
+                decayed[(zkey, conf_hash_key, member)] = float(result[i + 1])
+            except (TypeError, ValueError):
+                pass
+
+    scores = {}
+    for record in records:
+        r_key = _get_key(record)
+        zkey = key_for_record[r_key]
+        conf_hash_key = conf_args_for_record[r_key][0]
+        scores[r_key] = (
+            decayed.get((zkey, conf_hash_key, r_key)) if zkey is not None else None
+        )
+    return scores
+
+
+def _score_proxy_for_records(records, *, model_class, score_weights):
+    """Partition-aware weighted score proxy for composite scores.
+
+    Reads each record's per-field score from the *partition-specific* sorted
+    set (see :func:`_partition_scores_for_field`), so partitioned agent-memory
+    models get real per-record scores instead of the all-zero result the base
+    key produced before #474. Non-partitioned models are unaffected:
+    ``get_partitioned_sortedset_db_key`` returns the identical base key when
+    ``partition_by`` is empty.
+
+    Read-only and Valkey-safe (``ZSCORE`` / read-only ``EVAL``; no
+    ``ZUNIONSTORE``, no temp keys). Only sorted-field-backed entries in
+    ``score_weights`` contribute; other weights are ignored (ConfidenceField /
+    WriteFilter are computed elsewhere in the quality signal).
     """
     if not records:
         return {}
@@ -588,40 +809,16 @@ def _score_proxy_for_records(records, *, model_class, score_weights):
     if not sorted_field_names:
         return {r_key: 0.0 for r_key in (_get_key(r) for r in records)}
 
-    per_field_keys = {}
-    for field_name in sorted_field_names:
-        f = model_class._meta.fields[field_name]
-        per_field_keys[field_name] = []
-        for record in records:
-            try:
-                key = f.get_special_use_field_db_key(record, field_name).redis_key
-            except Exception:
-                key = None
-            per_field_keys[field_name].append(key)
-
-    pipe = POPOTO_REDIS_DB.pipeline()
-    for field_name in sorted_field_names:
-        zset_keys = per_field_keys[field_name]
-        for record, zset_key in zip(records, zset_keys):
-            if zset_key is None:
-                pipe.zscore("", "")  # placeholder
-                continue
-            pipe.zscore(zset_key, _get_key(record))
-    raw = pipe.execute()
-
+    now = time.time()
     scores = {_get_key(r): 0.0 for r in records}
-    idx = 0
     for field_name in sorted_field_names:
         weight = float(score_weights.get(field_name, 0.0))
-        for record in records:
-            r_key = _get_key(record)
-            val = raw[idx]
-            idx += 1
+        field_scores = _partition_scores_for_field(
+            records, model_class=model_class, field_name=field_name, now=now
+        )
+        for r_key, val in field_scores.items():
             if val is not None:
-                try:
-                    scores[r_key] += weight * float(val)
-                except (TypeError, ValueError):
-                    pass
+                scores[r_key] += weight * val
     return scores
 
 
@@ -758,41 +955,34 @@ def _staleness_ratio(
     surfacing_threshold,
     decaying_sorted_field_name,
 ):
-    """Fraction of records whose DecayingSortedField score is below the
-    surfacing threshold. ``0.0`` when the model has no DecayingSortedField
+    """Fraction of records whose decayed DecayingSortedField relevance is below
+    the surfacing threshold. ``0.0`` when the model has no DecayingSortedField
     or when that field is not in ``score_weights``.
+
+    Reads the *partition-specific* decayed relevance via
+    :func:`_partition_scores_for_field` (issue #474). Before the fix this read
+    the non-partitioned base key -- ``None`` for every partitioned record --
+    and reported ``1.0`` (all records "stale") regardless of freshness. It now
+    compares each record's decayed relevance against ``surfacing_threshold``,
+    so freshly-updated partitioned records are correctly not stale.
     """
     if not records or not decaying_sorted_field_name:
         return 0.0
     field_name = decaying_sorted_field_name
+    if field_name not in score_weights:
+        return 0.0
     try:
-        _score_proxy_for_records(
-            records, model_class=model_class, score_weights=score_weights
+        field_scores = _partition_scores_for_field(
+            records, model_class=model_class, field_name=field_name
         )
     except Exception as e:
         logger.warning("_staleness_ratio proxy failed: %s", e)
         return 0.0
-    if field_name not in score_weights:
-        return 0.0
-    f = model_class._meta.fields[field_name]
-    pipe = POPOTO_REDIS_DB.pipeline()
-    for record in records:
-        try:
-            zkey = f.get_special_use_field_db_key(record, field_name).redis_key
-            pipe.zscore(zkey, _get_key(record))
-        except Exception:
-            pipe.zscore("", "")
-    raw = pipe.execute()
 
     stale_count = 0
-    for val in raw:
-        if val is None:
-            stale_count += 1
-            continue
-        try:
-            if float(val) < surfacing_threshold:
-                stale_count += 1
-        except (TypeError, ValueError):
+    for record in records:
+        val = field_scores.get(_get_key(record))
+        if val is None or val < surfacing_threshold:
             stale_count += 1
     return stale_count / len(records)
 
@@ -1014,10 +1204,38 @@ class ContextAssembler:
             (``_estimate_tokens``).
         retrieval_mode: ``"auto"`` (default), ``"hybrid"``, or
             ``"composite"``. See class docstring for semantics.
+        confidence_gate_threshold: Optional confidence gate. When not
+            ``None``, ``assemble()`` reads the rank-0 pull-path candidate's
+            ``ConfidenceField`` value and compares it to this threshold. If
+            the value is below the threshold the gate is "gated": in
+            ``"refuse"`` mode all pull-path records are dropped before
+            injection; in ``"flag"`` mode records are retained and only
+            ``AssemblyResult.metadata["gate"]`` reports the decision. Requires
+            the model to declare a ``ConfidenceField``. Default ``None``
+            (gate disabled; no shipped default — see
+            ``EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD`` and issue #463).
+        confidence_gate_mode: ``"refuse"`` (default) or ``"flag"``. Only
+            meaningful when ``confidence_gate_threshold`` is not ``None``.
+        graph_traversal_relationship_fields: Optional list of
+            self-referential ``Relationship`` field name(s) on
+            ``model_class`` (i.e. the field's ``model`` is ``model_class``
+            itself). When set, the existing CoOccurrence graph arm (both
+            pull-path modes) is extended via
+            :func:`popoto.recipes.graph_traversal.traverse` to also expand
+            1-2 hops across those Relationship edges, with hop admission
+            modulated by the model's ``ConfidenceField``/decaying-field
+            state when present. Default ``None`` (disabled; behavior is
+            identical to before #462). Entries that are not a valid
+            self-referential ``Relationship`` field are ignored with a
+            warning rather than raising. See issue #462.
 
     Raises:
         QueryException: If ``retrieval_mode="hybrid"`` is requested but the
-            model lacks ``BM25Field`` or ``EmbeddingField``.
+            model lacks ``BM25Field`` or ``EmbeddingField``; if
+            ``confidence_gate_threshold`` is set and ``confidence_gate_mode``
+            is not one of ``{"refuse", "flag"}``; or if
+            ``confidence_gate_threshold`` is set but the model lacks a
+            ``ConfidenceField``.
     """
 
     def __init__(
@@ -1032,6 +1250,9 @@ class ContextAssembler:
         token_counter=None,
         *,
         retrieval_mode: str = "auto",
+        confidence_gate_threshold: float | None = None,
+        confidence_gate_mode: str = "refuse",
+        graph_traversal_relationship_fields: list | None = None,
     ):
         self.model_class = model_class
         self.score_weights = score_weights
@@ -1040,6 +1261,13 @@ class ContextAssembler:
         self.surfacing_threshold = surfacing_threshold
         self.propagation_depth = propagation_depth
         self.output_format = output_format
+        self.confidence_gate_threshold = confidence_gate_threshold
+        self.confidence_gate_mode = confidence_gate_mode
+        self._graph_traversal_relationship_fields = (
+            list(graph_traversal_relationship_fields)
+            if graph_traversal_relationship_fields
+            else None
+        )
         if token_counter is None:
             self._token_counter = _estimate_tokens
         else:
@@ -1099,6 +1327,51 @@ class ContextAssembler:
             if isinstance(f, EmbeddingField) and self._embedding_field is None:
                 self._embedding_field = f
                 self._embedding_field_name = name
+
+        # Confidence-gate construction-time validation (issue #463). The gate
+        # is opt-in — no-op unless confidence_gate_threshold is set — but
+        # once enabled it must be self-consistent (valid mode) and backed by
+        # a ConfidenceField on the model, mirroring the hybrid-mode
+        # validation block below.
+        _VALID_GATE_MODES = {"refuse", "flag"}
+        if self.confidence_gate_threshold is not None:
+            if self.confidence_gate_mode not in _VALID_GATE_MODES:
+                from ..exceptions import QueryException
+
+                raise QueryException(
+                    f"confidence_gate_mode={self.confidence_gate_mode!r} is not "
+                    f"a recognised mode. Allowed values: "
+                    f"{sorted(_VALID_GATE_MODES)}"
+                )
+            if self._confidence_field_name is None:
+                from ..exceptions import QueryException
+
+                raise QueryException(
+                    f"confidence_gate_threshold requires ConfidenceField on "
+                    f"{model_class.__name__}"
+                )
+
+        # Graph-traversal relationship expansion (issue #462) — opt-in,
+        # off-by-default. Validated here (warn-and-disable, not raise) so a
+        # misconfigured field name degrades to the pre-existing
+        # CoOccurrence-only graph arm instead of breaking assemble().
+        if self._graph_traversal_relationship_fields:
+            from ..fields.relationship import Relationship
+
+            valid_names = []
+            for name in self._graph_traversal_relationship_fields:
+                f = model_class._meta.fields.get(name)
+                if isinstance(f, Relationship) and f.model is model_class:
+                    valid_names.append(name)
+                else:
+                    logger.warning(
+                        "ContextAssembler: graph_traversal_relationship_fields "
+                        "entry %r is not a self-referential Relationship field "
+                        "on %s — ignored",
+                        name,
+                        model_class.__name__,
+                    )
+            self._graph_traversal_relationship_fields = valid_names or None
 
         # Resolve effective retrieval mode.
         #
@@ -1216,6 +1489,70 @@ class ContextAssembler:
         if query_cues:
             pull_records, all_pull_candidates = self._pull_path(query_cues, filters)
 
+        # [CONFIDENCE GATE] Opt-in, off-by-default (issue #463). Reads the
+        # rank-0 pull-path candidate's ConfidenceField value and compares it
+        # to confidence_gate_threshold. Kept as a small, self-contained,
+        # additive block that does not touch RRF/fusion logic — it is
+        # mode-agnostic because ConfidenceField.get_confidence() always
+        # returns a value in [0, 1] regardless of the underlying ranking
+        # score scale (composite weighted-sum vs RRF-fused). suppression_candidates
+        # starts as an alias of all_pull_candidates and is only ever
+        # replaced (never mutated in place), so all_pull_candidates itself is
+        # never touched here.
+        suppression_candidates = all_pull_candidates
+        gate_meta = None
+        if self.confidence_gate_threshold is not None:
+            if not pull_records:
+                gate_meta = {
+                    "applied": False,
+                    "gate_score": None,
+                    "threshold": self.confidence_gate_threshold,
+                    "mode": self.confidence_gate_mode,
+                    "gated": False,
+                }
+            else:
+                try:
+                    gate_score = float(
+                        ConfidenceField.get_confidence(
+                            pull_records[0], self._confidence_field_name
+                        )
+                    )
+                except Exception as e:
+                    # Fault-tolerant, matching the style of emit_trace /
+                    # _compute_quality elsewhere in this method: a
+                    # get_confidence() failure degrades to "gate not
+                    # applied" rather than crashing assemble().
+                    logger.warning("confidence gate get_confidence failed: %s", e)
+                    gate_score = None
+
+                if gate_score is None:
+                    gate_meta = {
+                        "applied": False,
+                        "gate_score": None,
+                        "threshold": self.confidence_gate_threshold,
+                        "mode": self.confidence_gate_mode,
+                        "gated": False,
+                    }
+                else:
+                    gated = gate_score < self.confidence_gate_threshold
+                    if gated and self.confidence_gate_mode == "refuse":
+                        pull_records = []
+                        # Don't punish other candidates in competitive
+                        # suppression for a refusal that already happened:
+                        # zero only the copy fed to _post_effects.
+                        # all_pull_candidates itself is left untouched so
+                        # _compute_quality's feeling-of-knowing (FoK) score
+                        # still reflects that candidates WERE found, even
+                        # though the assembler chose not to inject them.
+                        suppression_candidates = []
+                    gate_meta = {
+                        "applied": True,
+                        "gate_score": gate_score,
+                        "threshold": self.confidence_gate_threshold,
+                        "mode": self.confidence_gate_mode,
+                        "gated": gated,
+                    }
+
         # --- Push path ---
         if self._cyclic_decay_field_name is not None:
             push_records = self._push_path(filters)
@@ -1298,8 +1635,11 @@ class ContextAssembler:
                 )
 
         # --- Post-retrieval effects ---
+        # suppression_candidates (not all_pull_candidates) so a "refuse"
+        # gate decision does not competitively suppress candidates for an
+        # answer that was never injected.
         self._post_effects(
-            selected, pull_keys, push_keys, all_pull_candidates, agent_id
+            selected, pull_keys, push_keys, suppression_candidates, agent_id
         )
 
         # --- Format ---
@@ -1329,6 +1669,12 @@ class ContextAssembler:
         if trace is not None:
             metadata["trace"] = trace
 
+        # [CONFIDENCE GATE] Attach only when configured — callers who pass
+        # no threshold get bit-for-bit identical metadata to pre-change
+        # behavior (no "gate" key at all).
+        if gate_meta is not None:
+            metadata["gate"] = gate_meta
+
         # [METACOGNITIVE] Quality assessment — opt-in, off-by-default so existing
         # callers see bit-for-bit identical metadata.
         if assess_quality:
@@ -1350,64 +1696,33 @@ class ContextAssembler:
         )
 
     def _injection_scores(self, records):
-        """Partition-aware composite-score proxy for the telemetry trace (#464).
+        """Composite-score proxy for the telemetry trace (#464).
 
-        Unlike the metacognitive :func:`_score_proxy_for_records` helper (which
-        keys the non-partitioned sorted-set index), this reads each record's
-        score from the *partition-specific* sorted set via
-        ``get_partitioned_sortedset_db_key`` — so scores are correct for models
-        whose sorted fields declare ``partition_by`` (the common agent-memory
-        case, where the metacognitive proxy would return 0.0). Read-only,
-        pipelined ZSCORE only — Valkey-safe, no temp keys.
+        Reconciled onto the shared metacognitive
+        :func:`_score_proxy_for_records` (#474), so the trace and the
+        metacognitive layer share one partition- **and** decay-aware
+        implementation -- eliminating the drift that produced #474. Scores are
+        read from the *partition-specific* sorted set, and
+        ``DecayingSortedField`` / ``CyclicDecayField`` timestamps are decayed
+        into relevance (previously the trace emitted raw ~1.7e9 timestamps for
+        decaying fields). Read-only and Valkey-safe.
 
         Only sorted-field-backed entries in ``score_weights`` contribute
         (ConfidenceField / WriteFilter scores are not persisted in a ZSET). In
         hybrid/lexical retrieval the fused RRF score is not persisted either, so
         the trace score reflects only ``score_weights`` sorted fields (0.0 when
-        none) — per-arm score decomposition is the documented fast-follow.
+        none) -- per-arm score decomposition is the documented fast-follow.
 
         Returns:
             ``{record_key: weighted_score}`` for every record in ``records``.
         """
         if not records or not self.score_weights:
             return {_get_key(r): 0.0 for r in records}
-
-        sorted_field_names = []
-        for field_name in self.score_weights:
-            try:
-                f = self.model_class._meta.fields.get(field_name)
-            except Exception:
-                f = None
-            if f is not None and isinstance(f, SortedFieldMixin):
-                sorted_field_names.append(field_name)
-
-        if not sorted_field_names:
-            return {_get_key(r): 0.0 for r in records}
-
-        pipe = POPOTO_REDIS_DB.pipeline()
-        plan = []  # parallel list of (record_key, weight) per queued ZSCORE
-        for field_name in sorted_field_names:
-            f = self.model_class._meta.fields[field_name]
-            weight = float(self.score_weights.get(field_name, 0.0))
-            for record in records:
-                try:
-                    zkey = f.get_partitioned_sortedset_db_key(
-                        record, field_name
-                    ).redis_key
-                    pipe.zscore(zkey, _get_key(record))
-                except Exception:
-                    pipe.zscore("", "")  # placeholder to keep plan aligned
-                plan.append((_get_key(record), weight))
-        raw = pipe.execute()
-
-        scores = {_get_key(r): 0.0 for r in records}
-        for (r_key, weight), val in zip(plan, raw):
-            if val is not None:
-                try:
-                    scores[r_key] += weight * float(val)
-                except (TypeError, ValueError):
-                    pass
-        return scores
+        return _score_proxy_for_records(
+            records,
+            model_class=self.model_class,
+            score_weights=self.score_weights,
+        )
 
     def _count_record_tokens(self, record):
         """Serialize ``record`` for the active output format and count tokens.
@@ -1499,17 +1814,40 @@ class ContextAssembler:
         if not candidates:
             return [], []
 
-        # CoOccurrence propagation to discover associated records
-        if self._co_occurrence_field is not None and candidates:
+        # CoOccurrence propagation (+ optional RelationshipField traversal,
+        # #462) to discover associated records
+        if (
+            self._co_occurrence_field is not None
+            or self._graph_traversal_relationship_fields
+        ) and candidates:
             seed_pks = [_get_key(c) for c in candidates[: self.max_items]]
             try:
-                propagated = self._co_occurrence_field.propagate(
-                    self.model_class,
-                    seed_pks,
-                    depth=self.propagation_depth,
-                    decay_per_hop=0.5,
-                    threshold=0.01,
-                )
+                if self._graph_traversal_relationship_fields:
+                    from .graph_traversal import traverse as _graph_traverse
+
+                    propagated = dict(
+                        _graph_traverse(
+                            self.model_class,
+                            seed_pks,
+                            co_occurrence_field=self._co_occurrence_field,
+                            relationship_field_names=(
+                                self._graph_traversal_relationship_fields
+                            ),
+                            depth=self.propagation_depth,
+                            decay_per_hop=0.5,
+                            threshold=0.01,
+                            confidence_field_name=self._confidence_field_name,
+                            decay_field_name=self._decaying_sorted_field_name,
+                        )
+                    )
+                else:
+                    propagated = self._co_occurrence_field.propagate(
+                        self.model_class,
+                        seed_pks,
+                        depth=self.propagation_depth,
+                        decay_per_hop=0.5,
+                        threshold=0.01,
+                    )
                 if propagated:
                     # Re-run composite score with co-occurrence boost
                     query = self.model_class.query
@@ -1606,18 +1944,39 @@ class ContextAssembler:
             )
             return self._pull_path_composite(query_cues, filters)
 
-        # --- Graph propagation (seeds from BM25 top results) ---
-        if self._co_occurrence_field is not None and keyword_results:
+        # --- Graph propagation (+ optional RelationshipField traversal,
+        # #462), seeds from BM25 top results ---
+        if (
+            self._co_occurrence_field is not None
+            or self._graph_traversal_relationship_fields
+        ) and keyword_results:
             seed_pks = [k for k, _ in keyword_results[:5]]
             try:
-                propagated = self._co_occurrence_field.propagate(
-                    self.model_class,
-                    seed_pks,
-                    depth=self.propagation_depth,
-                    decay_per_hop=0.5,
-                    threshold=0.01,
-                )
-                graph_results = list(propagated.items())
+                if self._graph_traversal_relationship_fields:
+                    from .graph_traversal import traverse as _graph_traverse
+
+                    graph_results = _graph_traverse(
+                        self.model_class,
+                        seed_pks,
+                        co_occurrence_field=self._co_occurrence_field,
+                        relationship_field_names=(
+                            self._graph_traversal_relationship_fields
+                        ),
+                        depth=self.propagation_depth,
+                        decay_per_hop=0.5,
+                        threshold=0.01,
+                        confidence_field_name=self._confidence_field_name,
+                        decay_field_name=self._decaying_sorted_field_name,
+                    )
+                else:
+                    propagated = self._co_occurrence_field.propagate(
+                        self.model_class,
+                        seed_pks,
+                        depth=self.propagation_depth,
+                        decay_per_hop=0.5,
+                        threshold=0.01,
+                    )
+                    graph_results = list(propagated.items())
             except Exception as e:
                 logger.warning("Graph propagation failed in hybrid path: %s", e)
 

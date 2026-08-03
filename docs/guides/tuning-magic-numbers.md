@@ -53,6 +53,35 @@ Source: `src/popoto/fields/write_filter.py`
 | Constant | Default | Optimal Range | Sensitivity |
 |----------|---------|--------------|-------------|
 | `decay_rate` | **0.1** (sweep 2026-04-17) | [0.1, 1.0] | **Medium** (variance 0.067) |
+| `DECAY_CONFIDENCE_MODULATION_STRENGTH` | 0.5 (not yet swept) | [0.3, 0.7] | Unmeasured |
+| `DECAY_CONFIDENCE_MODULATION_ENABLED` | `True` | n/a (boolean) | n/a |
+
+`DECAY_CONFIDENCE_MODULATION_STRENGTH` is the `s` in the per-record effective rate
+`decay_rate * 2^(s * 2 * (c0 - confidence))`, where `c0` is the confidence field's own
+`initial_confidence` — so `s` reads as "doublings of the decay rate at zero confidence", and
+`s = 0` is a bit-exact no-op. The default is the literature-grounded midpoint of the 0.3–0.7 band
+(Pavlik & Anderson 2005; Duolingo half-life regression), pending tuning against real dismissal data
+([issue #493](https://github.com/tomcounsell/popoto/issues/493)) rather than synthetic corpora.
+`DECAY_CONFIDENCE_MODULATION_ENABLED` is a deploy-level kill switch, not a tuning knob: modulation
+is default-on via auto-detection, and setting this `False` restores pre-modulation behavior
+byte-for-byte without editing any model definition.
+
+### MemoryLifecycle
+
+Source: `src/popoto/recipes/memory_lifecycle.py`
+
+| Constant | Default | Optimal Range | Sensitivity |
+|----------|---------|--------------|-------------|
+| `LIFECYCLE_FORGET_CONFIDENCE_CEILING` | 0.3 (not yet swept) | [0.1, 0.5] | Unmeasured |
+| `LIFECYCLE_FORGET_MIN_EVIDENCE` | 5 (not yet swept) | [3, 20] | Unmeasured |
+| `LIFECYCLE_TOMBSTONE_RETENTION_LIMIT` | 1000 (by design) | n/a (capacity bound) | n/a |
+
+The ceiling sits below `INITIAL_CONFIDENCE` (0.5) so a record must have moved decisively negative
+before confidence alone can bury it, and below `LIFECYCLE_PROMOTION_CONFIDENCE_THRESHOLD` (0.6) so
+the forget and promote bands cannot overlap. `LIFECYCLE_FORGET_MIN_EVIDENCE` is a safety floor, not
+a performance knob — confidence moves on every signal, so without it one unlucky dismissal could
+forget a memory. `LIFECYCLE_TOMBSTONE_RETENTION_LIMIT` bounds the tombstone corpus (oldest age out);
+it is a capacity bound rather than a quality parameter.
 
 ### CoOccurrenceField
 

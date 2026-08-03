@@ -384,6 +384,14 @@ class QueryBuilder:
 
         # Use extended Lua script for CyclicDecayField, plain script otherwise
         from ..fields.cyclic_decay_field import CyclicDecayField, CYCLIC_DECAY_LUA
+        from ..fields.decaying_sorted_field import confidence_modulation_args
+
+        # Confidence-modulated decay (#491). Resolves to ("", "0", ...) whenever
+        # modulation is off, which makes the Lua guard skip the extra HGET and
+        # produce byte-identical scores.
+        conf_hash_key, conf_s, conf_c0 = confidence_modulation_args(
+            model_class, field, field_name, filters=self._filters
+        )
 
         if isinstance(field, CyclicDecayField):
             # Build companion hash keys from partition values
@@ -396,24 +404,33 @@ class QueryBuilder:
 
             result = POPOTO_REDIS_DB.eval(
                 CYCLIC_DECAY_LUA,
-                3,  # number of KEYS
+                # numkeys: zset + cycles + pressure + confidence (KEYS[4]).
+                # Passing the confidence key without bumping this would shunt
+                # it into ARGV and silently disable modulation.
+                4,
                 sortedset_db_key.redis_key,
                 cycles_hash_key,
                 pressure_hash_key,
+                conf_hash_key,
                 str(now),
                 str(effective_decay_rate),
                 str(n),
                 effective_base_score_field,
+                conf_s,
+                conf_c0,
             )
         else:
             result = POPOTO_REDIS_DB.eval(
                 DECAY_SCORE_LUA,
-                1,  # number of KEYS
+                2,  # number of KEYS: zset + confidence (KEYS[2])
                 sortedset_db_key.redis_key,
+                conf_hash_key,
                 str(now),
                 str(effective_decay_rate),
                 str(n),
                 effective_base_score_field,
+                conf_s,
+                conf_c0,
             )
 
         if not result:
@@ -1201,6 +1218,14 @@ class QueryBuilder:
         now = time.time()
         base_score_field = field.base_score_field or ""
 
+        # Confidence-modulated decay (#491) — same resolution as top_by_decay,
+        # so composite_score and top_by_decay never disagree on a score.
+        from ..fields.decaying_sorted_field import confidence_modulation_args
+
+        conf_hash_key, conf_s, conf_c0 = confidence_modulation_args(
+            model_class, field, field_name, filters=self._filters
+        )
+
         # Get all decay scores via Lua
         if isinstance(field, CyclicDecayField):
             cycles_hash_key = CyclicDecayField.get_cycles_hash_key_from_parts(
@@ -1211,24 +1236,31 @@ class QueryBuilder:
             )
             result = POPOTO_REDIS_DB.eval(
                 CYCLIC_DECAY_LUA,
-                3,
+                # numkeys: zset + cycles + pressure + confidence (KEYS[4]).
+                4,
                 sortedset_db_key.redis_key,
                 cycles_hash_key,
                 pressure_hash_key,
+                conf_hash_key,
                 str(now),
                 str(field.decay_rate),
                 str(999999),  # get all members
                 base_score_field,
+                conf_s,
+                conf_c0,
             )
         else:
             result = POPOTO_REDIS_DB.eval(
                 DECAY_SCORE_LUA,
-                1,
+                2,  # number of KEYS: zset + confidence (KEYS[2])
                 sortedset_db_key.redis_key,
+                conf_hash_key,
                 str(now),
                 str(field.decay_rate),
                 str(999999),  # get all members
                 base_score_field,
+                conf_s,
+                conf_c0,
             )
 
         temp_key = f"$CSQ:{model_name}:decay:{field_name}:{uid}"

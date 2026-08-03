@@ -129,3 +129,7 @@ data/
 /src/popoto/_archive/
 .claude/hooks/
 .claude/worktrees/
+# The SDLC pipeline creates worktrees here too. Untracked, these get swept in
+# by `git add -A` as embedded-repo gitlinks — five of them landed in a commit
+# on this branch before being caught.
+.worktrees/

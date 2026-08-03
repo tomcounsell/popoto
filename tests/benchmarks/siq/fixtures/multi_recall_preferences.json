@@ -1,0 +1,48 @@
+{
+  "trace_id": "multi_recall_preferences",
+  "description": "Two constraints (vegetarian, tight budget) plus one low-importance distractor hobby are established across early turns. A later planning request cues none of them lexically but needs both constraints — exercises multi-memory recall and sub-1.0 precision (the distractor is also injected under budget).",
+  "max_items": 5,
+  "max_tokens": null,
+  "turns": [
+    {
+      "speaker": "user",
+      "message": "For meals, note that I am strictly vegetarian and never eat meat or fish.",
+      "establishes": {
+        "id": "mem_vegetarian",
+        "content": "User is strictly vegetarian and never eats meat or fish.",
+        "importance": 0.85
+      }
+    },
+    {
+      "speaker": "assistant",
+      "message": "Noted clearly, I will honor that."
+    },
+    {
+      "speaker": "user",
+      "message": "Please keep the overall trip budget beneath one thousand dollars.",
+      "establishes": {
+        "id": "mem_budget",
+        "content": "Keep the overall trip budget beneath one thousand dollars.",
+        "importance": 0.8
+      }
+    },
+    {
+      "speaker": "user",
+      "message": "On free days I really enjoy long weekend hikes.",
+      "establishes": {
+        "id": "mem_hobby",
+        "content": "On free days user really enjoys long weekend hikes.",
+        "importance": 0.4
+      }
+    },
+    {
+      "speaker": "assistant",
+      "message": "Sounds wonderful, thanks for sharing."
+    },
+    {
+      "speaker": "user",
+      "message": "Could you organize the group outing please?",
+      "should_recall": ["mem_vegetarian", "mem_budget"]
+    }
+  ]
+}

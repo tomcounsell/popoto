@@ -30,9 +30,11 @@ from popoto.recipes import RetrievalQuality
 | `avg_confidence` | `float` | Mean `ConfidenceField.get_confidence()` across selected records. `1.0` when the model has no `ConfidenceField` — "no evidence against the retrieval." |
 | `score_spread` | `float` | Coefficient of variation (`stddev / mean`) of per-record composite scores. High spread: one record dominates. Low spread: results are roughly equivalent. `0.0` when `abs(mean) < 1e-9`. |
 | `fok_score` | `float` | Feeling-of-knowing, `0.0–1.0`. Formula: `0.4 * cue_familiarity + 0.4 * partial_retrieval_count + 0.2 * subthreshold_activation`, averaged across query cues. `0.0` when no cues were provided. |
-| `staleness_ratio` | `float` | Fraction of selected records whose `DecayingSortedField` score falls below the surfacing threshold. `0.0` when the model has no `DecayingSortedField`. |
+| `staleness_ratio` | `float` | Fraction of selected records whose decayed `DecayingSortedField` relevance falls below the surfacing threshold. `0.0` when the model has no `DecayingSortedField`. |
 | `score_distribution` | `list[float]` | Full list of per-record scores for histogram analysis. Empty when unavailable. |
 | `per_cue_fok` | `dict` | Maps cue value → `{cue_familiarity, partial_retrieval_count, subthreshold_activation, component_score}` for debugging. |
+
+> **Partition- and decay-aware scoring.** The per-record score signals (`score_spread`, `score_distribution`, `staleness_ratio`, and the FOK `subthreshold_activation` component) are read from the **partition-specific** sorted-set index, so they are correct for models whose sorted fields declare `partition_by` (the common agent-memory case). For `DecayingSortedField` / `CyclicDecayField`, whose index stores a last-updated timestamp rather than relevance, the signals use the field's **decayed** score (the same value `Query.top_by_decay()` surfaces), not the raw timestamp.
 
 **FOK components:**
 

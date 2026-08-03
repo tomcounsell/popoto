@@ -1,0 +1,71 @@
+{
+  "adapter": "query_stub",
+  "n_traces": 4,
+  "aggregate": {
+    "precision_at_budget": null,
+    "recall_at_budget": 0.0,
+    "budget_efficiency": null,
+    "mean_anticipation_lead": null,
+    "total_anticipation_misses": 5,
+    "total_recall_targets": 5
+  },
+  "per_trace": [
+    {
+      "n_turns": 5,
+      "precision_at_budget": null,
+      "recall_at_budget": 0.0,
+      "budget_efficiency": null,
+      "anticipation_lead_times": {
+        "mem_relocation": null
+      },
+      "mean_anticipation_lead": null,
+      "anticipation_misses": 1,
+      "n_recall_targets": 1,
+      "trace_id": "coreference_relocation",
+      "adapter": "query_stub"
+    },
+    {
+      "n_turns": 5,
+      "precision_at_budget": null,
+      "recall_at_budget": 0.0,
+      "budget_efficiency": null,
+      "anticipation_lead_times": {
+        "mem_locked_demo": null
+      },
+      "mean_anticipation_lead": null,
+      "anticipation_misses": 1,
+      "n_recall_targets": 1,
+      "trace_id": "implication_deadline",
+      "adapter": "query_stub"
+    },
+    {
+      "n_turns": 6,
+      "precision_at_budget": null,
+      "recall_at_budget": 0.0,
+      "budget_efficiency": null,
+      "anticipation_lead_times": {
+        "mem_budget": null,
+        "mem_vegetarian": null
+      },
+      "mean_anticipation_lead": null,
+      "anticipation_misses": 2,
+      "n_recall_targets": 2,
+      "trace_id": "multi_recall_preferences",
+      "adapter": "query_stub"
+    },
+    {
+      "n_turns": 5,
+      "precision_at_budget": null,
+      "recall_at_budget": 0.0,
+      "budget_efficiency": null,
+      "anticipation_lead_times": {
+        "mem_allergy": null
+      },
+      "mean_anticipation_lead": null,
+      "anticipation_misses": 1,
+      "n_recall_targets": 1,
+      "trace_id": "need_to_know_allergy",
+      "adapter": "query_stub"
+    }
+  ]
+}

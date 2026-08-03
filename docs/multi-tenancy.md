@@ -161,6 +161,26 @@ ConfidenceField.update_confidence(memory, "certainty", signal=0.9)
 confidence = ConfidenceField.get_confidence(memory, "certainty")
 ```
 
+### Decay queries against a partitioned ConfidenceField
+
+If the same model also declares a `DecayingSortedField` (or `CyclicDecayField`),
+[confidence-modulated decay](features/decaying-sorted-field.md#confidence-modulated-decay)
+joins the decay index to the confidence `:data` hash. A partitioned `ConfidenceField`
+spreads that hash across tenants, so a single decay query cannot cover the result set
+unless it names the partition. `top_by_decay()` and `composite_score()` raise
+`QueryException` listing the filters they need:
+
+```python
+Memory.query.filter(project="atlas").top_by_decay(10)   # OK
+
+Memory.query.filter(key="fact1").top_by_decay(10)
+# QueryException: ... ConfidenceField 'certainty' ... is partitioned by project.
+# Query must include filter(s) for: project.
+```
+
+Add the partition filter, or set `confidence_modulation_field=False` on the decay
+field to opt that field out of modulation.
+
 ### Partition key changes
 
 If a model instance changes its partition key value (e.g., moves from project A to

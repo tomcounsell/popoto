@@ -41,7 +41,7 @@ The primitives ship incrementally. Each builds on the ones before it.
 | [StreamConsumer](#streamconsumer) | Background processing framework for Redis Streams | Shipped ([PR #238](https://github.com/tomcounsell/popoto/pull/238)) |
 | [PolicyCache](#policycache) | Learned action selection — crystallized state-action-outcome patterns | Shipped ([PR #239](https://github.com/tomcounsell/popoto/pull/239)) |
 | [ContextAssembler](#contextassembler) | Retrieval-to-injection bridge — assemble LLM-ready context within token budgets | Shipped |
-| [MemoryLifecycle](#memorylifecycle) | Policy layer orchestrating episodic→semantic promotion and auto-forget | Shipped ([PR #396](https://github.com/tomcounsell/popoto/pull/396)) |
+| [MemoryLifecycle](#memorylifecycle) | Policy layer orchestrating episodic→semantic promotion, confidence-aware forgetting, and tombstones | Shipped ([PR #396](https://github.com/tomcounsell/popoto/pull/396), [#491](https://github.com/tomcounsell/popoto/issues/491)) |
 
 ## DecayingSortedField
 
@@ -1297,10 +1297,21 @@ assembler = ContextAssembler(
     propagation_depth=2,      # BFS depth for CoOccurrence propagation
     output_format="structured",  # "structured" (JSON), "xml", or "natural"
     token_counter=None,       # Optional callable(serialized_text: str) -> int; default: stdlib heuristic
+    # Keyword-only:
+    retrieval_mode="auto",    # "auto" (default), "hybrid", or "lexical"
+    confidence_gate_threshold=None,  # float | None (default). See "Confidence Gate" below.
+    confidence_gate_mode="refuse",   # "refuse" (default) or "flag"
+    graph_traversal_relationship_fields=None,  # list[str] | None (default). See "Graph Traversal" below.
 )
 ```
 
 The assembler auto-detects which fields are present on `model_class` and adapts the pipeline accordingly. Models without `ExistenceFilter` skip the pre-check; models without `CoOccurrenceField` skip propagation; models without `CyclicDecayField` skip the push path entirely.
+
+**Raises** `QueryException` at construction if `retrieval_mode="hybrid"` is
+requested but the model lacks `BM25Field`/`EmbeddingField`; if
+`confidence_gate_threshold` is set and `confidence_gate_mode` is not one of
+`{"refuse", "flag"}`; or if `confidence_gate_threshold` is set but the model
+lacks a `ConfidenceField`.
 
 #### `ContextAssembler.assemble()`
 
@@ -1336,6 +1347,7 @@ The `metadata` dict contains:
 | `token_count` | Estimated total tokens across selected records |
 | `timing_ms` | Wall-clock time for the full pipeline |
 | `total_candidates` | Total candidates before budget selection |
+| `gate` | Confidence-gate decision dict. Present **only** when `confidence_gate_threshold` was set at construction — see [Confidence Gate](#confidence-gate) below. |
 
 ### Usage Examples
 
@@ -1415,6 +1427,135 @@ assembler = ContextAssembler(
 )
 ```
 
+### Confidence Gate
+
+An opt-in gate (issue #463) that lets `assemble()` decline to inject a
+pull-path answer when it isn't confident enough. It is off by default and has
+**no shipped default threshold** — a caller must explicitly pass
+`confidence_gate_threshold` to enable it.
+
+```python
+assembler = ContextAssembler(
+    model_class=Memory,
+    score_weights={"relevance": 0.6, "confidence": 0.3},
+    confidence_gate_threshold=0.5,
+    confidence_gate_mode="refuse",  # or "flag"
+)
+
+result = assembler.assemble(query_cues={"topic": "deployment"}, agent_id="agent-1")
+print(result.metadata["gate"])
+# {"applied": True, "gate_score": 0.42, "threshold": 0.5, "mode": "refuse", "gated": True}
+```
+
+**Mechanism.** After the pull path runs, the gate reads the `ConfidenceField`
+value of the rank-0 pull-path candidate — the single best-matching record,
+which is the one the assembler would otherwise inject — via
+`ConfidenceField.get_confidence()`, and compares it to
+`confidence_gate_threshold`. This makes the gate **mode-agnostic**:
+`get_confidence()` always returns a value in `[0, 1]` regardless of whether
+the pull path is running composite (weighted-sum) or hybrid/RRF-fused
+retrieval, so the same threshold means the same thing under either ranking
+mode. Aggregating across multiple candidates (mean/max/quorum) is out of
+scope — the rank-0 record is the deliberate, fixed design choice.
+
+If reading `get_confidence()` raises (e.g. a candidate is missing its
+confidence companion hash), the gate degrades gracefully: it logs
+`logger.warning` and treats the gate as **not applied**
+(`gate_score=None`, `applied=False`, `gated=False`), returning records
+unchanged rather than crashing `assemble()` — matching the fault-tolerant
+style already used by `emit_trace`/`_compute_quality` elsewhere in the same
+method.
+
+**`confidence_gate_mode`:**
+
+| Mode | Behavior when `gate_score < threshold` |
+|------|------------------------------------------|
+| `"refuse"` (default) | Drops **all** pull-path records before injection. The push path is never touched. Competitive suppression is also skipped for the refused candidates (a refusal isn't punished as a "loss"), but the untouched candidate set still flows into `_compute_quality`, so a feeling-of-knowing (FoK) score computed via `assess_quality=True` correctly reflects that candidates *were found* even though the assembler chose not to inject them. |
+| `"flag"` | Never drops records. The only effect is the `metadata["gate"]` annotation — `assess_quality`, suppression, and `result.formatted` are otherwise byte-for-byte identical to leaving the gate off. A caller who wants to act on a flagged low-confidence answer (e.g. prepend a disclaimer) must inspect `metadata["gate"]` itself; ContextAssembler ships no automated consumer of the flag. |
+
+**`metadata["gate"]` shape** — attached to `AssemblyResult.metadata` only
+when `confidence_gate_threshold` is not `None` (callers who never pass a
+threshold get metadata that is bit-for-bit identical to pre-gate behavior —
+no `"gate"` key at all):
+
+| Key | Type | Description |
+|-----|------|--------------|
+| `applied` | `bool` | Whether the gate actually evaluated a confidence score (`False` if the pull path returned no records, or if `get_confidence()` raised). |
+| `gate_score` | `float \| None` | The rank-0 candidate's confidence, or `None` when `applied` is `False`. |
+| `threshold` | `float` | The configured `confidence_gate_threshold`, echoed back for convenience. |
+| `mode` | `str` | The configured `confidence_gate_mode` (`"refuse"` or `"flag"`). |
+| `gated` | `bool` | Whether `gate_score < threshold` (i.e. whether the gate decision fired). Always `False` when `applied` is `False`. |
+
+**Construction-time validation.** Enabling the gate raises `QueryException`
+if `confidence_gate_mode` is not one of `{"refuse", "flag"}`, or if the model
+does not declare a `ConfidenceField` — mirroring the validation `retrieval_mode="hybrid"`
+already performs for `BM25Field`/`EmbeddingField`.
+
+**No-default policy.** `confidence_gate_threshold` ships with **no default** —
+it must be explicitly opted into by the caller. The module also defines:
+
+```python
+EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD = 0.5  # NOT a shipped default
+```
+
+This constant exists **only** for the refusal-metric benchmark and report
+scripts (see [Confidence-gated retrieval — refusal precision](../benchmarks.md#confidence-gated-retrieval-refusal-precision-issue-463)).
+It is explicitly *not* `Defaults.CONFIDENCE_GATE_THRESHOLD` — no such
+`Defaults` entry exists — and it is not used as the ctor default.  Promoting
+it to a real default is a policy-level decision requiring maintainer
+sign-off (tracked in [issue #463](https://github.com/tomcounsell/popoto/issues/463)).
+
+### Graph Traversal
+
+An opt-in extension (issue #462) of the existing CoOccurrence graph arm
+(the "CoOccurrence propagation" step in the [Pipeline](#pipeline) diagram
+above). It is off by default — pass `graph_traversal_relationship_fields`
+to enable it; omitting it leaves `assemble()` byte-for-byte identical to
+before this feature.
+
+```python
+assembler = ContextAssembler(
+    model_class=Memory,
+    score_weights={"relevance": 0.6, "confidence": 0.3},
+    graph_traversal_relationship_fields=["related_memory"],
+)
+
+result = assembler.assemble(query_cues={"topic": "deployment"}, agent_id="agent-1")
+```
+
+**Mechanism.** Where the pipeline previously called
+`CoOccurrenceField.propagate()` directly, it now routes through
+[`popoto.recipes.graph_traversal.traverse()`](https://github.com/tomcounsell/popoto/blob/main/src/popoto/recipes/graph_traversal.py),
+which:
+
+1. Runs the existing `CoOccurrenceField.propagate()` BFS (unchanged).
+2. Additionally walks each named `Relationship` field 1-2 hops, in both
+   directions (a node's own relationship value, and other nodes pointing at
+   it via the field's `$RelationshipF:...` index Set), with fan-out bounded
+   per hop via `SRANDMEMBER`.
+3. Merges both signals (max-weight-wins per PK) and caps the result to a
+   fixed `max_candidates` *before* any instance is loaded, so traversal
+   cost stays bounded independent of graph fan-out.
+4. If the model declares a `ConfidenceField` and/or `DecayingSortedField`,
+   multiplies each surviving candidate's weight by its own confidence/decay
+   state, so a low-confidence or heavily decayed node is less likely to
+   survive into the merged candidate set than a fresh, corroborated one.
+
+**`graph_traversal_relationship_fields`** must name **self-referential**
+`Relationship` field(s) — a field on `model_class` whose `model` is
+`model_class` itself (e.g. a `Memory.related_memory = Relationship(model=Memory)`
+edge). A relationship pointing at a different model class is ignored with a
+logged warning at construction time (traversal degrades to the
+CoOccurrence-only signal, not an error), since `ContextAssembler` treats its
+candidate set as homogeneous.
+
+**Evaluation status.** This slice implements and unit-tests the traversal
+mechanism (`tests/test_graph_traversal.py`). The LoCoMo multi-hop slice and
+association-recall benchmark scenarios called for in issue #462 are tracked
+as [issue #484](https://github.com/tomcounsell/popoto/issues/484) rather
+than run here — see the note in
+[the benchmarking strategy doc](../plans/benchmarking_strategy_2026-07.md#32-structuredgraph-memory-where-zep-hindsight-byterover-lead).
+
 ### Tuning Constants
 
 | Constant | Default | Description |
@@ -1423,6 +1564,12 @@ assembler = ContextAssembler(
 | `DEFAULT_SURFACING_THRESHOLD` | `0.5` | Minimum score for push-path records to be surfaced. |
 | `DEFAULT_MAX_ITEMS` | `10` | Default maximum number of records returned. |
 | `DEFAULT_PROPAGATION_DEPTH` | `2` | Default BFS depth for CoOccurrence propagation. |
+| `EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD` | `0.5` | **Not** a shipped default — used only by the confidence-gate refusal benchmark/report script. Requires maintainer sign-off before it could become a real `Defaults` entry or ctor default (issue #463). |
+
+`popoto/recipes/graph_traversal.py` defines its own experimental constants
+(`RELATIONSHIP_HOP_DECAY`, `RELATIONSHIP_HOP_FANOUT_LIMIT`,
+`GRAPH_TRAVERSAL_MAX_CANDIDATES`, `ADMISSION_THRESHOLD`) — in-code magic
+numbers, not user-facing config, matching the convention above.
 
 ### Graceful Degradation
 
@@ -1485,9 +1632,81 @@ staged entries. The access-frequency signal therefore reflects only genuine
 application reads, not maintenance sweeps.
 
 A single pass hydrates the corpus once; promote-eligibility and forget-eligibility
-are evaluated over that same in-memory snapshot. Before any `record.delete()` the
+are evaluated over that same in-memory snapshot. Before any record is forgotten the
 record's authoritative tier is re-read from Redis — if the tier is now `"semantic"`
-(promoted by a concurrent tick) or the key no longer exists, the delete is skipped.
+(promoted by a concurrent tick) or the key no longer exists, the forget is skipped.
+
+### Confidence-aware forgetting
+
+Confidence used to gate promotion only, so it could grant a memory permanence but
+never hasten its removal. The default forget rule now reads outcome evidence too:
+
+```text
+(importance < FORGET_IMPORTANCE_FLOOR
+ OR (confidence < FORGET_CONFIDENCE_CEILING AND evidence_count >= FORGET_MIN_EVIDENCE))
+AND idle > FORGET_IDLE_SECONDS
+```
+
+The `evidence_count` conjunct is a safety floor, not a tuning knob: confidence moves
+on every reported outcome, so without a minimum track record one unlucky dismissal
+could bury a memory. Models with no `ConfidenceField` take the importance-only path,
+which is identical to the previous behavior. The confidence field is resolved through
+the same helper the decay path uses, so ranking and forgetting always listen to the
+same signal — including the `DECAY_CONFIDENCE_MODULATION_ENABLED` kill switch and the
+"two or more `ConfidenceField`s means off" ambiguity rule.
+
+The kill switch is re-read on every call here too, not captured when the
+`MemoryLifecycle` is constructed. Setting
+`Defaults.DECAY_CONFIDENCE_MODULATION_ENABLED = False` therefore suppresses
+confidence-driven forgetting immediately, on lifecycle instances that already exist —
+which matters more on this path than on the ranking path, because this is the half
+that mutates data.
+
+### Tombstones, not deletes
+
+Forgetting archives the record and removes it from the live corpus rather than
+deleting it. Exclusion from every retrieval mode is therefore **structural** — the
+record is gone from the model keyspace, so no read path has to remember to filter it
+— while its fingerprint, archived payload, and death metadata survive under
+`$TOMB:{Model}:*`.
+
+```python
+summary = lifecycle.tick()
+# {"promoted": 2, "forgotten": 5, "tombstoned": 5, "duration_ms": 8.3}
+
+lifecycle.tombstone_count()          # 5
+for tomb in lifecycle.list_tombstones(limit=10):
+    print(tomb.redis_key, tomb.confidence_at_death, tomb.dismissal_count)
+
+lifecycle.restore(tomb.redis_key)    # back in the live corpus, indexes rebuilt
+```
+
+| Method | Purpose |
+|--------|---------|
+| `tombstone(record, reason="policy")` | Forget one record; returns a `Tombstone` |
+| `restore(redis_key)` | Bring a tombstoned record back and rebuild its indexes |
+| `list_tombstones(limit=None)` | Retained tombstones, newest death first |
+| `get_tombstone(redis_key)` | One `Tombstone`, or `None` |
+| `tombstone_count()` | Number retained |
+| `purge_tombstone(redis_key)` / `purge_all_tombstones()` | Drop tombstones permanently |
+| `forget_hard(record)` | Irreversible delete, no tombstone |
+| `confidence_forget_eligible(record)` | Whether evidence alone justifies forgetting |
+
+A stored tombstone entry that is undecodable, is not a mapping, or is missing any
+required field is skipped with a logged warning rather than returned as a partly-empty
+`Tombstone`. So `list_tombstones()` and `get_tombstone()` can return fewer entries than
+`tombstone_count()` reports if the archive has been corrupted or written to by something
+other than `tombstone()` — every `Tombstone` you receive is complete.
+
+Each `Tombstone` carries `redis_key`, `fingerprint`, `tier`, `importance_at_death`,
+`confidence_at_death`, `evidence_count`, `dismissal_count`, `tombstoned_at`, and
+`reason`. Alongside that death metadata, the stored tombstone entry also archives
+the record's **full payload** — that archive is what makes `restore()` possible.
+Because a tombstone is therefore about as large as the record it replaced,
+retention is bounded by `LIFECYCLE_TOMBSTONE_RETENTION_LIMIT` (1000) with the
+oldest aging out, so the tombstone corpus cannot outgrow the live corpus.
+`tick()` reports `tombstoned` alongside `forgotten` so a runaway forget policy is
+visible in telemetry immediately.
 
 ### Usage
 
@@ -1504,7 +1723,7 @@ lifecycle.tag_new(record)  # assigns tier = "episodic"
 
 # Periodic consolidation pass (non-tracking — zero staged AccessTracker entries)
 summary = lifecycle.tick()
-# {"promoted": 2, "forgotten": 5, "duration_ms": 8.3}
+# {"promoted": 2, "forgotten": 5, "tombstoned": 5, "duration_ms": 8.3}
 
 # Inspect lifecycle state
 state = lifecycle.assess(record)

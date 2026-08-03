@@ -120,6 +120,12 @@ CLASS_ATTR_CONSTANTS = {
     "CO_OCCURRENCE_INITIAL_WEIGHT": "CO_OCCURRENCE_INITIAL_WEIGHT",
     "decay_per_hop": "CO_OCCURRENCE_DECAY_PER_HOP",
     "CO_OCCURRENCE_DECAY_PER_HOP": "CO_OCCURRENCE_DECAY_PER_HOP",
+    # Confidence-modulated decay (issue #491). Read from Defaults at query
+    # time, so patching Defaults is the whole override.
+    "DECAY_CONFIDENCE_MODULATION_STRENGTH": "DECAY_CONFIDENCE_MODULATION_STRENGTH",
+    # Boolean kill switch — registered so it can be flipped for A/B runs, but
+    # deliberately absent from VALID_RANGES (a boolean has no sweepable range).
+    "DECAY_CONFIDENCE_MODULATION_ENABLED": "DECAY_CONFIDENCE_MODULATION_ENABLED",
     # Note: `delta` is a field-constructor kwarg for CyclicDecayField — it
     # has no corresponding Defaults.* constant. Included in the registry
     # as a no-op (None) marker so sweeps that reference it don't hit the
@@ -136,6 +142,10 @@ CLASS_ATTR_CONSTANTS = {
     "LIFECYCLE_PROMOTION_MIN_AGE_SECONDS": "LIFECYCLE_PROMOTION_MIN_AGE_SECONDS",
     "LIFECYCLE_FORGET_IMPORTANCE_FLOOR": "LIFECYCLE_FORGET_IMPORTANCE_FLOOR",
     "LIFECYCLE_FORGET_IDLE_SECONDS": "LIFECYCLE_FORGET_IDLE_SECONDS",
+    # Confidence-driven forgetting + bounded tombstone retention (#491).
+    "LIFECYCLE_FORGET_CONFIDENCE_CEILING": "LIFECYCLE_FORGET_CONFIDENCE_CEILING",
+    "LIFECYCLE_FORGET_MIN_EVIDENCE": "LIFECYCLE_FORGET_MIN_EVIDENCE",
+    "LIFECYCLE_TOMBSTONE_RETENTION_LIMIT": "LIFECYCLE_TOMBSTONE_RETENTION_LIMIT",
 }
 
 # Valid ranges for boundary checking
@@ -169,6 +179,17 @@ VALID_RANGES = {
     # PolicyCache (already in MODULE_CONSTANTS but missing valid ranges)
     "CHI_SQUARED_P_THRESHOLD": (0.001, 0.5, True, True),
     "INITIAL_CYCLE_AMPLITUDE": (0.0, 5.0, False, True),
+    # Confidence-modulated decay (#491). s = 0 is the disabled no-op, so the
+    # lower bound is included but degenerate-by-meaning rather than invalid;
+    # spike-4's recommended band is [0.3, 0.7] and 2.0 (4x rate swing at the
+    # extremes) is the outer edge of anything defensible.
+    "DECAY_CONFIDENCE_MODULATION_STRENGTH": (0.0, 2.0, True, True),
+    # MemoryLifecycle confidence-driven forgetting (#491). The ceiling must
+    # stay a probability; the evidence floor is a count (1 = no protection at
+    # all, hence excluded).
+    "LIFECYCLE_FORGET_CONFIDENCE_CEILING": (0.0, 1.0, True, True),
+    "LIFECYCLE_FORGET_MIN_EVIDENCE": (1, 100, False, True),
+    "LIFECYCLE_TOMBSTONE_RETENTION_LIMIT": (0, 100000, False, True),
 }
 
 
