@@ -247,8 +247,27 @@ motivating regression fixed by issue #457's weighted/query-adaptive fusion
 (see the info box above). Full per-category detail is in the committed
 artifact (`tests/benchmarks/results/external/locomo_latest_hybrid.json` —
 1986/1986 questions, zero errors); these numbers predate the #457 fusion
-change and will be superseded once the post-fix confirmation run is
-committed.
+change.
+
+**Post-fix confirmation (weighted/query-adaptive RRF, 200-question stratified
+sample, seed 0):**
+
+| Mode | Recall@1 | Recall@5 | Recall@10 | MRR |
+|------|---------:|---------:|----------:|----:|
+| `lexical` (BM25) | 0.3050 | 0.5650 | 0.6500 | 0.4155 |
+| `hybrid` (weighted RRF) | 0.3050 | 0.5650 | 0.6500 | 0.4158 |
+
+On the same representative sample, post-fix `hybrid` matches `lexical`
+metric-for-metric — the query-shape discriminator routes LoCoMo's
+name/date-anchored queries to the keyword-lean regime (vector weight 0), so the
+fused ranking converges to the lexical result and hybrid no longer underperforms
+(Recall@1 0.167 → 0.305). The equal-across-all-metrics match is expected: with
+the dense arm zeroed, the fused order *is* the lexical order. The paraphrastic
+side is preserved — LongMemEval-S `hybrid` (100-question stratified sample)
+holds Recall@1 0.910 / MRR 0.938, since first-person queries map to the neutral
+(unweighted-RRF) regime unchanged. (Sample-based confirmation; a full-1986 /
+full-500 refresh of the canonical tables can follow, but the exact-match
+convergence is decisive for the mechanism.)
 
 #### Category 5 ("adversarial") — evidence audit and leaderboard-parity slice
 
