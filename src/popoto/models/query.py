@@ -917,13 +917,14 @@ class QueryBuilder:
         k: int = 60,
         limit: int = 10,
         post_filter: Optional[Callable] = None,
+        weights: Optional[dict] = None,
         **ranked_lists,
     ) -> list:
         """Reciprocal Rank Fusion across heterogeneous ranked lists.
 
         Combines multiple ranked lists from different retrieval signals
         (keyword search, semantic search, graph propagation, etc.) using
-        the RRF formula: ``score(d) = sum(1 / (k + rank_i(d)))``
+        the RRF formula: ``score(d) = sum(w_i / (k + rank_i(d)))``
 
         Each ranked list is a sequence of ``(redis_key, score)`` tuples.
         The scores are used only for ordering within each list -- RRF uses
@@ -935,6 +936,12 @@ class QueryBuilder:
             limit: Maximum results to return. Default 10.
             post_filter: Optional ``(redis_key, rrf_score) -> bool`` callback.
                 Return True to keep the result.
+            weights: Optional ``{list_name: multiplier}`` mapping applying a
+                per-list weight to the RRF sum. Lists not present in the
+                mapping default to a weight of ``1.0``. ``None`` (the
+                default) is byte-for-byte equivalent to unweighted RRF --
+                fully backward compatible. Must be passed as an explicit
+                keyword argument (never inside ``**ranked_lists``).
             **ranked_lists: Named ranked lists. Each value is a list of
                 ``(redis_key, score)`` tuples sorted by score descending.
 
@@ -948,6 +955,7 @@ class QueryBuilder:
             results = Memory.query.fuse(
                 keyword=BM25Field.search(Memory, "content", "redis", limit=50),
                 semantic=[(key, sim) for key, sim in similarity_results],
+                weights={"keyword": 1.0, "semantic": 0.4},
                 k=60,
                 limit=10,
             )
@@ -967,10 +975,11 @@ class QueryBuilder:
         for list_name, ranked_list in ranked_lists.items():
             if not ranked_list:
                 continue
+            list_weight = 1.0 if weights is None else weights.get(list_name, 1.0)
             for rank_idx, (doc_key, _score) in enumerate(ranked_list):
                 doc_key = str(doc_key)
                 rrf_scores[doc_key] = rrf_scores.get(doc_key, 0.0) + (
-                    1.0 / (k + rank_idx + 1)
+                    list_weight * (1.0 / (k + rank_idx + 1))
                 )
 
         if not rrf_scores:
@@ -2334,6 +2343,7 @@ class Query:
         k: int = 60,
         limit: int = 10,
         post_filter: Optional[Callable] = None,
+        weights: Optional[dict] = None,
         **ranked_lists,
     ) -> list:
         """Reciprocal Rank Fusion across heterogeneous ranked lists.
@@ -2344,6 +2354,10 @@ class Query:
             k: RRF constant (default 60).
             limit: Maximum results to return. Default 10.
             post_filter: Optional (redis_key, rrf_score) -> bool callback.
+            weights: Optional ``{list_name: multiplier}`` mapping for
+                per-list RRF weighting. ``None`` == unweighted (default).
+                Must be an explicit keyword argument -- never swept into
+                ``**ranked_lists``.
             **ranked_lists: Named ranked lists of (redis_key, score) tuples.
 
         Returns:
@@ -2354,6 +2368,7 @@ class Query:
             k=k,
             limit=limit,
             post_filter=post_filter,
+            weights=weights,
             **ranked_lists,
         )
 

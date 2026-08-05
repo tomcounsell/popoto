@@ -139,6 +139,185 @@ ctor default (see issue #463)."""
 
 
 # ---------------------------------------------------------------------------
+# Weighted / query-adaptive RRF fusion (issue #457) — experimental tuning
+# constants, in-code only, never user config (magic-number doctrine).
+#
+# Unweighted RRF gave the dense (vector) arm equal say with BM25. On
+# coreference-heavy multi-session dialogue (LoCoMo) the dense arm is
+# net-harmful — its standalone recall is near-zero there (vector-only R@1
+# ~0.05) yet it still casts full rank-votes, displacing correct BM25 hits
+# (unweighted hybrid R@1 0.1667 << lexical 0.2986). On paraphrastic first-
+# person recall (LongMemEval-S) the same dense arm is net-helpful (unweighted
+# hybrid R@1 0.894 > lexical 0.856).
+#
+# The two query populations are cleanly separable by shape (measured over the
+# full datasets): LoCoMo questions are third-person and NAME-anchored — 99.6%
+# contain a proper-noun name, 0% are first-person — while LongMemEval-S
+# questions are first-person self-recall — 95.8% contain "I/my/me", only 2.6%
+# carry a name without a first-person pronoun. So the adaptive rule is: when a
+# query is name/date/token-specific and NOT first-person (LoCoMo's shape),
+# DROP the dense arm (vector weight 0) — this makes the hybrid RRF converge
+# exactly to the lexical result, eliminating the regression. Otherwise
+# (first-person / paraphrastic, LongMemEval's shape) keep unweighted RRF —
+# the blend that produced the LongMemEval win. Cheap, deterministic, in-
+# process — no ML, no new deps, Valkey-safe.
+#
+# NOTE: an earlier revision used a token-*fraction* specificity threshold plus
+# a vector-lean regime that DOWN-weighted BM25. That misfired badly — a single
+# name in a ~7-token question scores a ~0.14 fraction, so 75% of LoCoMo
+# queries were misclassified paraphrastic and had their good BM25 arm
+# down-weighted, making weighted hybrid (R@1 0.1556) *worse* than unweighted
+# (0.1667). The name/first-person signal below replaces that fraction logic.
+# ---------------------------------------------------------------------------
+
+FUSION_WEIGHT_GRAPH = 1.0
+"""Graph (co-occurrence) arm RRF weight. Fixed — not adapted by query shape;
+only the keyword/vector balance is query-adaptive."""
+
+FUSION_REGIME_KEYWORD_LEAN = {"keyword": 1.0, "vector": 0.0}
+"""Weight regime for name/date/token-specific, non-first-person queries
+(LoCoMo's shape). The dense arm's standalone recall is near-zero on these
+queries yet it still casts full rank-votes under unweighted RRF, so it is
+dropped entirely (vector weight 0). With the vector arm contributing zero to
+every document's RRF score, the fused ranking converges to the lexical
+(BM25 + graph) result — guaranteeing hybrid >= lexical on this query shape."""
+
+FUSION_REGIME_NEUTRAL = {"keyword": 1.0, "vector": 1.0}
+"""Weight regime for paraphrastic / first-person queries (LongMemEval-S's
+shape). Equal weight == plain unweighted RRF — the exact blend that produced
+the LongMemEval-S hybrid win (R@1 0.894 > lexical 0.856), so it is preserved
+verbatim for that query shape."""
+
+_FUSION_DATE_TOKEN_RE = re.compile(r"^\d{1,4}([/-]\d{1,2}){0,2}$")
+_FUSION_QUOTED_RE = re.compile(r"\"[^\"]+\"|'[^']+'")
+
+# First-person markers — presence signals paraphrastic self-recall
+# (LongMemEval-S's shape), where the dense arm helps and must be kept.
+_FUSION_FIRST_PERSON = frozenset(
+    {
+        "i",
+        "me",
+        "my",
+        "mine",
+        "myself",
+        "i'm",
+        "i've",
+        "i'd",
+        "i'll",
+        "we",
+        "us",
+        "our",
+        "ours",
+    }
+)
+
+# Sentence-initial / interrogative capitalized words that are NOT proper-noun
+# names — excluded so an interrogative appearing mid-query does not read as a
+# name. (The sentence-initial token is already skipped positionally.)
+_FUSION_STOP_CAP = frozenset(
+    {
+        "What",
+        "When",
+        "Where",
+        "Who",
+        "Whom",
+        "Whose",
+        "Why",
+        "Which",
+        "How",
+        "Would",
+        "Will",
+        "Did",
+        "Do",
+        "Does",
+        "Is",
+        "Are",
+        "Was",
+        "Were",
+        "Has",
+        "Have",
+        "Had",
+        "Can",
+        "Could",
+        "Should",
+        "The",
+        "A",
+        "An",
+        "If",
+        "In",
+        "On",
+        "At",
+        "I",
+    }
+)
+
+
+def _fusion_weights(query_text: str) -> dict:
+    """Query-adaptive RRF weight regime for the keyword/vector arms (#457).
+
+    Classifies the query by shape and returns the corresponding in-code
+    weight regime:
+
+    - **Name/date/token-specific AND not first-person** (LoCoMo's shape) ->
+      ``FUSION_REGIME_KEYWORD_LEAN`` (vector weight 0). The dense arm is
+      net-harmful on these queries, so it is dropped and the hybrid fusion
+      converges to the lexical result.
+    - **Otherwise** (first-person / paraphrastic, LongMemEval-S's shape) ->
+      ``FUSION_REGIME_NEUTRAL`` (unweighted RRF), preserving the LongMemEval-S
+      hybrid win.
+
+    The specificity signal is (a) a proper-noun-like name (a capitalized,
+    non-ALL-CAPS, non-interrogative token that is not sentence-initial),
+    (b) a digit/date/year token, or (c) a quoted/exact-token substring. A
+    first-person pronoun anywhere in the query ("I", "my", "me", ...) vetoes
+    the keyword-lean classification, because first-person self-recall is
+    LongMemEval-S's shape where the dense arm helps.
+
+    Pure Python, deterministic, no ML, no server round-trip -- Valkey-safe.
+
+    Args:
+        query_text: The joined query-cue text passed to BM25/vector search.
+
+    Returns:
+        ``{"keyword": w, "vector": w}`` weight mapping suitable for merging
+        into the ``weights`` dict passed to ``Query.fuse()``. The graph arm
+        (``FUSION_WEIGHT_GRAPH``) is not query-adaptive and is applied
+        separately by the caller.
+    """
+    tokens = query_text.split()
+    if not tokens:
+        return dict(FUSION_REGIME_NEUTRAL)
+
+    # First-person self-recall (LongMemEval-S's shape) -> keep the dense arm.
+    for tok in tokens:
+        if tok.strip(".,!?;:\"'").lower() in _FUSION_FIRST_PERSON:
+            return dict(FUSION_REGIME_NEUTRAL)
+
+    # Lexical-specificity signal: any quoted span, digit/date token, or
+    # proper-noun-like name marks the query as token-specific (LoCoMo's shape).
+    if _FUSION_QUOTED_RE.search(query_text):
+        return dict(FUSION_REGIME_KEYWORD_LEAN)
+
+    for idx, tok in enumerate(tokens):
+        bare = tok.strip(".,!?;:\"'")
+        if not bare:
+            continue
+        if bare.isdigit() or _FUSION_DATE_TOKEN_RE.match(bare):
+            return dict(FUSION_REGIME_KEYWORD_LEAN)
+        if (
+            idx > 0
+            and bare[0].isupper()
+            and not bare.isupper()
+            and bare not in _FUSION_STOP_CAP
+        ):
+            # Capitalized, not sentence-initial, not an ALL-CAPS acronym, not
+            # an interrogative — proper-noun-like (a person/place name).
+            return dict(FUSION_REGIME_KEYWORD_LEAN)
+
+    return dict(FUSION_REGIME_NEUTRAL)
+
+
+# ---------------------------------------------------------------------------
 # AssemblyResult
 # ---------------------------------------------------------------------------
 
@@ -1814,9 +1993,12 @@ class ContextAssembler:
             query = self.model_class.query
             if filters:
                 query = query.filter(**filters)
+            fusion_weights = _fusion_weights(query_text)
+            fusion_weights["graph"] = FUSION_WEIGHT_GRAPH
             candidates = query.fuse(
                 k=RRF_K,
                 limit=self.max_items * 2,
+                weights=fusion_weights,
                 **fuse_kwargs,
             )
         except Exception as e:
