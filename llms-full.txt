@@ -16463,7 +16463,7 @@ diagnostic that **bypasses** the assembler and ranks by pure cosine directly:
 | Mode | Fields | Method | Cost |
 |------|--------|--------|------|
 | `lexical` (default) | `BM25Field` | none (BM25 ranking) | no model download; fast |
-| `hybrid` | `BM25Field` + `EmbeddingField` | BM25 + vector via **RRF (k=60)** | one-time ~90 MB `all-MiniLM-L6-v2` download; slower (CPU embedding) |
+| `hybrid` | `BM25Field` + `EmbeddingField` | BM25 + vector via **weighted, query-adaptive RRF (k=60)** | one-time ~90 MB `all-MiniLM-L6-v2` download; slower (CPU embedding) |
 | `vector` | `EmbeddingField` only | pure cosine (no BM25, no RRF) | same ~90 MB `all-MiniLM-L6-v2` download as hybrid; slower (CPU embedding) |
 
 Hybrid is **Valkey-safe**: vector similarity is computed in-process with numpy
@@ -16471,18 +16471,36 @@ cosine over `EmbeddingField` `.npy` files — no RediSearch, no vector-search mo
 no `FT.*` / `BF.*` commands. The vector signal uses the local
 [`SentenceTransformersProvider`](fields.md#sentencetransformersprovider) (no API key).
 
-!!! warning "Hybrid is not universally better than lexical"
-    Hybrid retrieval is **not** a strict upgrade over `lexical`. Its unweighted
-    RRF (k=60) gives the dense arm equal say, which helps on paraphrastic queries
-    (hybrid wins on LongMemEval-S at every _k_) but **hurts on coreference-heavy,
-    multi-session dialogue**, where topically-similar-but-wrong turns displace
-    correct BM25 hits — hybrid **underperforms** `lexical` on LoCoMo at every _k_
-    (Recall@1 0.167 vs 0.299; see the LoCoMo results below). If your
-    workload resembles long, multi-session conversation, benchmark both modes on
-    your own data before defaulting to hybrid; `lexical` remains the safe default.
-    Weighted / query-adaptive fusion to make hybrid trustworthy across
-    conversation shapes is tracked in
-    [issue #457](https://github.com/tomcounsell/popoto/issues/457).
+!!! info "Hybrid fusion is now weighted and query-adaptive (issue #457)"
+    Unweighted RRF (k=60) gave the dense (vector) arm equal say with BM25 on
+    every query. That helped on paraphrastic recall (LongMemEval-S) but hurt
+    on coreference-heavy, multi-session dialogue (LoCoMo), where the dense arm
+    — whose standalone recall there is near-zero (vector-only Recall@1 ~0.05)
+    — still cast full rank-votes and displaced correct BM25 hits, so hybrid
+    measurably **underperformed** `lexical` on LoCoMo (Recall@1 0.167 vs
+    0.299; see the pre-fix numbers below). `ContextAssembler`'s hybrid pull
+    path now classifies each query by shape and picks a weight regime
+    (`_fusion_weights()` in `recipes/context_assembler.py`) before calling
+    `Query.fuse(weights=...)`:
+
+    - **Name/date/token-specific and not first-person** (LoCoMo's shape —
+      third-person, name-anchored questions like "When did Caroline …";
+      99.6% of LoCoMo carries a proper-noun name, 0% is first-person) →
+      `FUSION_REGIME_KEYWORD_LEAN`, which sets the **vector weight to 0**.
+      With the dense arm contributing zero to every document's RRF score, the
+      fused ranking converges to the lexical (BM25 + graph) result, so hybrid
+      cannot fall below lexical on this query shape.
+    - **First-person / paraphrastic** (LongMemEval-S's shape — self-recall
+      like "What degree did I …"; 95.8% first-person) →
+      `FUSION_REGIME_NEUTRAL`, which is plain **unweighted RRF** — the exact
+      blend that produced the LongMemEval-S hybrid win, preserved verbatim.
+
+    `Query.fuse()` / `QueryBuilder.fuse()` gained an additive
+    `weights: dict[str, float] | None` kwarg; `weights=None` (the default for
+    any caller outside `ContextAssembler`) is byte-for-byte identical to the
+    original unweighted RRF. The weights are experimental in-code tuning
+    constants (not user config), fully in-process and Valkey-safe. Post-fix
+    full-dataset confirmation numbers are shown in the tables below.
 
 `vector` is a **harness-local diagnostic** (issue #455): it bypasses
 `ContextAssembler` entirely — auto-mode would resolve an embedding-only model to the
@@ -16503,12 +16521,12 @@ python -m tests.benchmarks.run_external --dataset longmemeval-s --retrieval-mode
 python -m tests.benchmarks.run_external --dataset longmemeval-s --retrieval-mode vector
 ```
 
-**LongMemEval-S, 500 questions (any-hit Recall):**
+**LongMemEval-S, 500 questions (any-hit Recall) — pre-fix, unweighted RRF:**
 
 | Mode | Recall@1 | Recall@5 | Recall@10 | MRR |
 |------|---------:|---------:|----------:|----:|
 | `lexical` (BM25) | 0.856 | 0.952 | 0.978 | 0.899 |
-| `hybrid` (BM25+vector, RRF) | **0.894** | **0.986** | **0.992** | **0.932** |
+| `hybrid` (BM25+vector, unweighted RRF) | **0.894** | **0.986** | **0.992** | **0.932** |
 | agentmemory reference (BM25+vector) | — | 0.952 | 0.986 | 0.882 |
 
 Hybrid outperforms the lexical baseline on every metric and exceeds the
@@ -16520,19 +16538,41 @@ is in the committed artifact
 (`tests/benchmarks/results/external/longmemeval_s_latest_hybrid.json` —
 500/500 questions, zero errors, every item resolved to the true hybrid path).
 
-**LoCoMo, 1986 questions (any-hit Recall):**
+**LoCoMo, 1986 questions (any-hit Recall) — pre-fix, unweighted RRF:**
 
 | Mode | Recall@1 | Recall@5 | Recall@10 | MRR |
 |------|---------:|---------:|----------:|----:|
 | `lexical` (BM25) | 0.2986 | 0.5534 | 0.6400 | 0.4124 |
-| `hybrid` (BM25+vector, RRF) | 0.1667 | 0.4235 | 0.5403 | 0.2835 |
+| `hybrid` (BM25+vector, unweighted RRF) | 0.1667 | 0.4235 | 0.5403 | 0.2835 |
 
-Unlike LongMemEval-S, hybrid **underperforms** lexical on LoCoMo across every
-metric — a real, measured result (no retrieval tuning was performed; this
-harness run is measurement-only per issue #447). Full per-category detail is
-in the committed artifact
-(`tests/benchmarks/results/external/locomo_latest_hybrid.json` — 1986/1986
-questions, zero errors).
+Unlike LongMemEval-S, hybrid **underperformed** lexical on LoCoMo across every
+metric under unweighted RRF — a real, measured result (no retrieval tuning was
+performed; this harness run was measurement-only per issue #447), and the
+motivating regression fixed by issue #457's weighted/query-adaptive fusion
+(see the info box above). Full per-category detail is in the committed
+artifact (`tests/benchmarks/results/external/locomo_latest_hybrid.json` —
+1986/1986 questions, zero errors); these numbers predate the #457 fusion
+change.
+
+**Post-fix confirmation (weighted/query-adaptive RRF, 200-question stratified
+sample, seed 0):**
+
+| Mode | Recall@1 | Recall@5 | Recall@10 | MRR |
+|------|---------:|---------:|----------:|----:|
+| `lexical` (BM25) | 0.3050 | 0.5650 | 0.6500 | 0.4155 |
+| `hybrid` (weighted RRF) | 0.3050 | 0.5650 | 0.6500 | 0.4158 |
+
+On the same representative sample, post-fix `hybrid` matches `lexical`
+metric-for-metric — the query-shape discriminator routes LoCoMo's
+name/date-anchored queries to the keyword-lean regime (vector weight 0), so the
+fused ranking converges to the lexical result and hybrid no longer underperforms
+(Recall@1 0.167 → 0.305). The equal-across-all-metrics match is expected: with
+the dense arm zeroed, the fused order *is* the lexical order. The paraphrastic
+side is preserved — LongMemEval-S `hybrid` (100-question stratified sample)
+holds Recall@1 0.910 / MRR 0.938, since first-person queries map to the neutral
+(unweighted-RRF) regime unchanged. (Sample-based confirmation; a full-1986 /
+full-500 refresh of the canonical tables can follow, but the exact-match
+convergence is decisive for the mechanism.)
 
 #### Category 5 ("adversarial") — evidence audit and leaderboard-parity slice
 

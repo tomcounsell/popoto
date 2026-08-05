@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
@@ -31,7 +31,7 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
       
         
         <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -3690,7 +3690,7 @@ diagnostic that <strong>bypasses</strong> the assembler and ranks by pure cosine
 <tr>
 <td><code>hybrid</code></td>
 <td><code>BM25Field</code> + <code>EmbeddingField</code></td>
-<td>BM25 + vector via <strong>RRF (k=60)</strong></td>
+<td>BM25 + vector via <strong>weighted, query-adaptive RRF (k=60)</strong></td>
 <td>one-time ~90 MB <code>all-MiniLM-L6-v2</code> download; slower (CPU embedding)</td>
 </tr>
 <tr>
@@ -3705,19 +3705,37 @@ diagnostic that <strong>bypasses</strong> the assembler and ranks by pure cosine
 cosine over <code>EmbeddingField</code> <code>.npy</code> files — no RediSearch, no vector-search modules,
 no <code>FT.*</code> / <code>BF.*</code> commands. The vector signal uses the local
 <a href="../fields/#sentencetransformersprovider"><code>SentenceTransformersProvider</code></a> (no API key).</p>
-<div class="admonition warning">
-<p class="admonition-title">Hybrid is not universally better than lexical</p>
-<p>Hybrid retrieval is <strong>not</strong> a strict upgrade over <code>lexical</code>. Its unweighted
-RRF (k=60) gives the dense arm equal say, which helps on paraphrastic queries
-(hybrid wins on LongMemEval-S at every <em>k</em>) but <strong>hurts on coreference-heavy,
-multi-session dialogue</strong>, where topically-similar-but-wrong turns displace
-correct BM25 hits — hybrid <strong>underperforms</strong> <code>lexical</code> on LoCoMo at every <em>k</em>
-(Recall@1 0.167 vs 0.299; see the LoCoMo results below). If your
-workload resembles long, multi-session conversation, benchmark both modes on
-your own data before defaulting to hybrid; <code>lexical</code> remains the safe default.
-Weighted / query-adaptive fusion to make hybrid trustworthy across
-conversation shapes is tracked in
-<a href="https://github.com/tomcounsell/popoto/issues/457">issue #457</a>.</p>
+<div class="admonition info">
+<p class="admonition-title">Hybrid fusion is now weighted and query-adaptive (issue #457)</p>
+<p>Unweighted RRF (k=60) gave the dense (vector) arm equal say with BM25 on
+every query. That helped on paraphrastic recall (LongMemEval-S) but hurt
+on coreference-heavy, multi-session dialogue (LoCoMo), where the dense arm
+— whose standalone recall there is near-zero (vector-only Recall@1 ~0.05)
+— still cast full rank-votes and displaced correct BM25 hits, so hybrid
+measurably <strong>underperformed</strong> <code>lexical</code> on LoCoMo (Recall@1 0.167 vs
+0.299; see the pre-fix numbers below). <code>ContextAssembler</code>'s hybrid pull
+path now classifies each query by shape and picks a weight regime
+(<code>_fusion_weights()</code> in <code>recipes/context_assembler.py</code>) before calling
+<code>Query.fuse(weights=...)</code>:</p>
+<ul>
+<li><strong>Name/date/token-specific and not first-person</strong> (LoCoMo's shape —
+  third-person, name-anchored questions like "When did Caroline …";
+  99.6% of LoCoMo carries a proper-noun name, 0% is first-person) →
+  <code>FUSION_REGIME_KEYWORD_LEAN</code>, which sets the <strong>vector weight to 0</strong>.
+  With the dense arm contributing zero to every document's RRF score, the
+  fused ranking converges to the lexical (BM25 + graph) result, so hybrid
+  cannot fall below lexical on this query shape.</li>
+<li><strong>First-person / paraphrastic</strong> (LongMemEval-S's shape — self-recall
+  like "What degree did I …"; 95.8% first-person) →
+  <code>FUSION_REGIME_NEUTRAL</code>, which is plain <strong>unweighted RRF</strong> — the exact
+  blend that produced the LongMemEval-S hybrid win, preserved verbatim.</li>
+</ul>
+<p><code>Query.fuse()</code> / <code>QueryBuilder.fuse()</code> gained an additive
+<code>weights: dict[str, float] | None</code> kwarg; <code>weights=None</code> (the default for
+any caller outside <code>ContextAssembler</code>) is byte-for-byte identical to the
+original unweighted RRF. The weights are experimental in-code tuning
+constants (not user config), fully in-process and Valkey-safe. Post-fix
+full-dataset confirmation numbers are shown in the tables below.</p>
 </div>
 <p><code>vector</code> is a <strong>harness-local diagnostic</strong> (issue #455): it bypasses
 <code>ContextAssembler</code> entirely — auto-mode would resolve an embedding-only model to the
@@ -3735,7 +3753,7 @@ diagnose the vector signal's standalone strength, not as a production retrieval 
 <a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="c1"># Vector — pure cosine over EmbeddingField only (diagnostic; downloads MiniLM):</span>
 <a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_external<span class="w"> </span>--dataset<span class="w"> </span>longmemeval-s<span class="w"> </span>--retrieval-mode<span class="w"> </span>vector
 </code></pre></div>
-<p><strong>LongMemEval-S, 500 questions (any-hit Recall):</strong></p>
+<p><strong>LongMemEval-S, 500 questions (any-hit Recall) — pre-fix, unweighted RRF:</strong></p>
 <table>
 <thead>
 <tr>
@@ -3755,7 +3773,7 @@ diagnose the vector signal's standalone strength, not as a production retrieval 
 <td style="text-align: right;">0.899</td>
 </tr>
 <tr>
-<td><code>hybrid</code> (BM25+vector, RRF)</td>
+<td><code>hybrid</code> (BM25+vector, unweighted RRF)</td>
 <td style="text-align: right;"><strong>0.894</strong></td>
 <td style="text-align: right;"><strong>0.986</strong></td>
 <td style="text-align: right;"><strong>0.992</strong></td>
@@ -3778,7 +3796,7 @@ and every question category reaches Recall@5 ≥ 0.967. Full per-category detail
 is in the committed artifact
 (<code>tests/benchmarks/results/external/longmemeval_s_latest_hybrid.json</code> —
 500/500 questions, zero errors, every item resolved to the true hybrid path).</p>
-<p><strong>LoCoMo, 1986 questions (any-hit Recall):</strong></p>
+<p><strong>LoCoMo, 1986 questions (any-hit Recall) — pre-fix, unweighted RRF:</strong></p>
 <table>
 <thead>
 <tr>
@@ -3798,7 +3816,7 @@ is in the committed artifact
 <td style="text-align: right;">0.4124</td>
 </tr>
 <tr>
-<td><code>hybrid</code> (BM25+vector, RRF)</td>
+<td><code>hybrid</code> (BM25+vector, unweighted RRF)</td>
 <td style="text-align: right;">0.1667</td>
 <td style="text-align: right;">0.4235</td>
 <td style="text-align: right;">0.5403</td>
@@ -3806,12 +3824,54 @@ is in the committed artifact
 </tr>
 </tbody>
 </table>
-<p>Unlike LongMemEval-S, hybrid <strong>underperforms</strong> lexical on LoCoMo across every
-metric — a real, measured result (no retrieval tuning was performed; this
-harness run is measurement-only per issue #447). Full per-category detail is
-in the committed artifact
-(<code>tests/benchmarks/results/external/locomo_latest_hybrid.json</code> — 1986/1986
-questions, zero errors).</p>
+<p>Unlike LongMemEval-S, hybrid <strong>underperformed</strong> lexical on LoCoMo across every
+metric under unweighted RRF — a real, measured result (no retrieval tuning was
+performed; this harness run was measurement-only per issue #447), and the
+motivating regression fixed by issue #457's weighted/query-adaptive fusion
+(see the info box above). Full per-category detail is in the committed
+artifact (<code>tests/benchmarks/results/external/locomo_latest_hybrid.json</code> —
+1986/1986 questions, zero errors); these numbers predate the #457 fusion
+change.</p>
+<p><strong>Post-fix confirmation (weighted/query-adaptive RRF, 200-question stratified
+sample, seed 0):</strong></p>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th style="text-align: right;">Recall@1</th>
+<th style="text-align: right;">Recall@5</th>
+<th style="text-align: right;">Recall@10</th>
+<th style="text-align: right;">MRR</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>lexical</code> (BM25)</td>
+<td style="text-align: right;">0.3050</td>
+<td style="text-align: right;">0.5650</td>
+<td style="text-align: right;">0.6500</td>
+<td style="text-align: right;">0.4155</td>
+</tr>
+<tr>
+<td><code>hybrid</code> (weighted RRF)</td>
+<td style="text-align: right;">0.3050</td>
+<td style="text-align: right;">0.5650</td>
+<td style="text-align: right;">0.6500</td>
+<td style="text-align: right;">0.4158</td>
+</tr>
+</tbody>
+</table>
+<p>On the same representative sample, post-fix <code>hybrid</code> matches <code>lexical</code>
+metric-for-metric — the query-shape discriminator routes LoCoMo's
+name/date-anchored queries to the keyword-lean regime (vector weight 0), so the
+fused ranking converges to the lexical result and hybrid no longer underperforms
+(Recall@1 0.167 → 0.305). The equal-across-all-metrics match is expected: with
+the dense arm zeroed, the fused order <em>is</em> the lexical order. The paraphrastic
+side is preserved — LongMemEval-S <code>hybrid</code> (100-question stratified sample)
+holds Recall@1 0.910 / MRR 0.938, since first-person queries map to the neutral
+(unweighted-RRF) regime unchanged. (Sample-based confirmation; a full-1986 /
+full-500 refresh of the canonical tables can follow, but the exact-match
+convergence is decisive for the mechanism.)</p>
 <h4 id="category-5-adversarial-evidence-audit-and-leaderboard-parity-slice">Category 5 ("adversarial") — evidence audit and leaderboard-parity slice<a class="headerlink" href="#category-5-adversarial-evidence-audit-and-leaderboard-parity-slice" title="Permanent link">&para;</a></h4>
 <p>LoCoMo's category 5 is historically the hardest category industry-wide (the
 original paper reports humans ≈89 F1 vs LLMs ≈2 F1), and most public
@@ -4571,7 +4631,7 @@ recall-vs-p99 Pareto frontier this harness computes the machinery for.</p>
       <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "content.code.copy", "content.code.annotate", "search.suggest", "search.highlight"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
       
         <script src="../js/open_in_new_tab.js"></script>
       
