@@ -1813,21 +1813,27 @@ hybrid, lexical, push):
 ```python
 assembler = ContextAssembler(Memory, score_weights={"relevance": 1.0})
 
-# Scope retrieval to one agent's memories (AND semantics by default)
+# Scope retrieval to one agent's memories
 assembler.assemble(query_cues={"topic": "deploy"}, tags=["agent:valor"])
 
-# any-of semantics
+# Multiple tags: any-of (OR) by default — surfaces memories in either scope
 assembler.assemble(
     query_cues={"topic": "deploy"},
-    tags=["agent:valor", "agent:peer"],
-    tag_match="any",
+    tags=["agent:valor", "project:popoto"],
+)
+
+# all-of semantics (intersection)
+assembler.assemble(
+    query_cues={"topic": "deploy"},
+    tags=["agent:valor", "project:popoto"],
+    tag_match="all",
 )
 
 # Omitting tags is byte-identical to a model with no TagField.
 assembler.assemble(query_cues={"topic": "deploy"})
 ```
 
-`tag_match` defaults to `"all"` (AND / `SINTER`); pass `"any"` for OR (`SUNION`).
+`tag_match` defaults to `"any"` (OR / `SUNION`) — in a shared central pool you'd rather over-surface scoped memories and let ranking sort them than silently miss a memory tagged on only one dimension; pass `"all"` for AND (`SINTER`) when you need the precise intersection. (The `Query.filter` arms — `tags__any` / `tags__all` / `tags__contains` — are always explicit.)
 
 ### Deploy-level kill switch
 

@@ -1487,7 +1487,7 @@ class ContextAssembler:
         assess_quality=False,
         emit_trace=False,
         tags=None,
-        tag_match="all",
+        tag_match="any",
     ):
         """Execute the full retrieval pipeline.
 

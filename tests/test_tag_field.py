@@ -327,6 +327,27 @@ class TestTagFieldAssembler:
         assert self.valor.key in keys and self.other.key in keys
         assert self.shared.key not in keys
 
+    def test_default_tag_match_is_any(self):
+        # Default (no tag_match) is OR/"any": multiple tags surface a memory
+        # in EITHER scope (maintainer decision 2026-08-05, #492).
+        result = self.assembler.assemble(
+            query_cues={"content": "deploy"},
+            tags=["agent:valor", "agent:other"],
+        )
+        keys = self._keys(result)
+        assert self.valor.key in keys and self.other.key in keys
+        assert self.shared.key not in keys
+
+    def test_tag_match_all_intersects(self):
+        # Explicit "all" is AND: two disjoint single-agent tags → no memory
+        # carries both, so nothing scoped in.
+        result = self.assembler.assemble(
+            query_cues={"content": "deploy"},
+            tags=["agent:valor", "agent:other"],
+            tag_match="all",
+        )
+        assert self._keys(result) == set()
+
     def test_kill_switch_disables_scoping(self):
         original = Defaults.TAG_SCOPING_ENABLED
         Defaults.TAG_SCOPING_ENABLED = False
