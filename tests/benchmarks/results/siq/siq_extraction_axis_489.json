@@ -1,0 +1,430 @@
+{
+  "bench_db": 13,
+  "n_traces": 4,
+  "arms": {
+    "native": {
+      "identity": {
+        "arm": "native (fixture-authored memories)"
+      },
+      "aggregate": {
+        "precision_at_budget": 0.6666666666666666,
+        "recall_at_budget": 1.0,
+        "budget_efficiency": 0.706015037593985,
+        "mean_anticipation_lead": 4.0,
+        "total_anticipation_misses": 0,
+        "total_recall_targets": 5
+      },
+      "per_trace": [
+        {
+          "n_turns": 5,
+          "precision_at_budget": 1.0,
+          "recall_at_budget": 1.0,
+          "budget_efficiency": 1.0,
+          "anticipation_lead_times": {
+            "mem_relocation": 4
+          },
+          "mean_anticipation_lead": 4.0,
+          "anticipation_misses": 0,
+          "n_recall_targets": 1,
+          "trace_id": "coreference_relocation",
+          "adapter": "native"
+        },
+        {
+          "n_turns": 5,
+          "precision_at_budget": 0.5,
+          "recall_at_budget": 1.0,
+          "budget_efficiency": 0.5526315789473685,
+          "anticipation_lead_times": {
+            "mem_locked_demo": 4
+          },
+          "mean_anticipation_lead": 4.0,
+          "anticipation_misses": 0,
+          "n_recall_targets": 1,
+          "trace_id": "implication_deadline",
+          "adapter": "native"
+        },
+        {
+          "n_turns": 6,
+          "precision_at_budget": 0.6666666666666666,
+          "recall_at_budget": 1.0,
+          "budget_efficiency": 0.7,
+          "anticipation_lead_times": {
+            "mem_budget": 3,
+            "mem_vegetarian": 5
+          },
+          "mean_anticipation_lead": 4.0,
+          "anticipation_misses": 0,
+          "n_recall_targets": 2,
+          "trace_id": "multi_recall_preferences",
+          "adapter": "native"
+        },
+        {
+          "n_turns": 5,
+          "precision_at_budget": 0.5,
+          "recall_at_budget": 1.0,
+          "budget_efficiency": 0.5714285714285714,
+          "anticipation_lead_times": {
+            "mem_allergy": 4
+          },
+          "mean_anticipation_lead": 4.0,
+          "anticipation_misses": 0,
+          "n_recall_targets": 1,
+          "trace_id": "need_to_know_allergy",
+          "adapter": "native"
+        }
+      ]
+    },
+    "heuristic": {
+      "identity": {
+        "arm": "heuristic",
+        "provider": "popoto.extraction.HeuristicExtractionProvider",
+        "min_length": 10,
+        "description": "Sentence split + min-length filter; no API cost."
+      },
+      "aggregate": {
+        "precision_at_budget": 0.25,
+        "recall_at_budget": 1.0,
+        "budget_efficiency": 0.32051943584451326,
+        "mean_anticipation_lead": 4.0,
+        "total_anticipation_misses": 0,
+        "total_recall_targets": 5
+      },
+      "per_trace": [
+        {
+          "n_turns": 5,
+          "precision_at_budget": 0.2,
+          "recall_at_budget": 1.0,
+          "budget_efficiency": 0.2638888888888889,
+          "anticipation_lead_times": {
+            "mem_relocation": 4
+          },
+          "mean_anticipation_lead": 4.0,
+          "anticipation_misses": 0,
+          "n_recall_targets": 1,
+          "trace_id": "coreference_relocation",
+          "adapter": "extract:heuristic"
+        },
+        {
+          "n_turns": 5,
+          "precision_at_budget": 0.2,
+          "recall_at_budget": 1.0,
+          "budget_efficiency": 0.2916666666666667,
+          "anticipation_lead_times": {
+            "mem_locked_demo": 4
+          },
+          "mean_anticipation_lead": 4.0,
+          "anticipation_misses": 0,
+          "n_recall_targets": 1,
+          "trace_id": "implication_deadline",
+          "adapter": "extract:heuristic"
+        },
+        {
+          "n_turns": 6,
+          "precision_at_budget": 0.4,
+          "recall_at_budget": 1.0,
+          "budget_efficiency": 0.49122807017543857,
+          "anticipation_lead_times": {
+            "mem_budget": 3,
+            "mem_vegetarian": 5
+          },
+          "mean_anticipation_lead": 4.0,
+          "anticipation_misses": 0,
+          "n_recall_targets": 2,
+          "trace_id": "multi_recall_preferences",
+          "adapter": "extract:heuristic"
+        },
+        {
+          "n_turns": 5,
+          "precision_at_budget": 0.2,
+          "recall_at_budget": 1.0,
+          "budget_efficiency": 0.23529411764705882,
+          "anticipation_lead_times": {
+            "mem_allergy": 4
+          },
+          "mean_anticipation_lead": 4.0,
+          "anticipation_misses": 0,
+          "n_recall_targets": 1,
+          "trace_id": "need_to_know_allergy",
+          "adapter": "extract:heuristic"
+        }
+      ],
+      "ingest_stats": {
+        "turns": 21,
+        "records_written": 21,
+        "establishing_turns": 8,
+        "memories_recovered": 8,
+        "noise_records": 13
+      }
+    },
+    "claude-opus-4-8": {
+      "identity": {
+        "arm": "claude",
+        "provider": "tests.benchmarks.extraction_axis.TieredClaudeExtractionProvider",
+        "model": "claude-opus-4-8",
+        "prompt_sha256": "78fb978cda5a31a9c79dfd42e813ced04a03ccac32cd282adfaa814e3f3b0632",
+        "prompt_source": "popoto.extraction.claude.EXTRACTION_PROMPT (verbatim)",
+        "max_tokens": 4096,
+        "structured_output": "json_schema (FACTS_SCHEMA, verbatim)",
+        "cache": "on-disk, keyed by sha256(model+prompt+text)",
+        "pricing_usd_per_mtok": [
+          5.0,
+          25.0
+        ]
+      },
+      "aggregate": {
+        "precision_at_budget": 0.3625,
+        "recall_at_budget": 1.0,
+        "budget_efficiency": 0.40432379262841794,
+        "mean_anticipation_lead": 4.0,
+        "total_anticipation_misses": 0,
+        "total_recall_targets": 5
+      },
+      "per_trace": [
+        {
+          "n_turns": 5,
+          "precision_at_budget": 0.3333333333333333,
+          "recall_at_budget": 1.0,
+          "budget_efficiency": 0.4634146341463415,
+          "anticipation_lead_times": {
+            "mem_relocation": 4
+          },
+          "mean_anticipation_lead": 4.0,
+          "anticipation_misses": 0,
+          "n_recall_targets": 1,
+          "trace_id": "coreference_relocation",
+          "adapter": "extract:claude-opus-4-8"
+        },
+        {
+          "n_turns": 5,
+          "precision_at_budget": 0.25,
+          "recall_at_budget": 1.0,
+          "budget_efficiency": 0.30434782608695654,
+          "anticipation_lead_times": {
+            "mem_locked_demo": 4
+          },
+          "mean_anticipation_lead": 4.0,
+          "anticipation_misses": 0,
+          "n_recall_targets": 1,
+          "trace_id": "implication_deadline",
+          "adapter": "extract:claude-opus-4-8"
+        },
+        {
+          "n_turns": 6,
+          "precision_at_budget": 0.6666666666666666,
+          "recall_at_budget": 1.0,
+          "budget_efficiency": 0.7,
+          "anticipation_lead_times": {
+            "mem_budget": 3,
+            "mem_vegetarian": 5
+          },
+          "mean_anticipation_lead": 4.0,
+          "anticipation_misses": 0,
+          "n_recall_targets": 2,
+          "trace_id": "multi_recall_preferences",
+          "adapter": "extract:claude-opus-4-8"
+        },
+        {
+          "n_turns": 5,
+          "precision_at_budget": 0.2,
+          "recall_at_budget": 1.0,
+          "budget_efficiency": 0.14953271028037382,
+          "anticipation_lead_times": {
+            "mem_allergy": 4
+          },
+          "mean_anticipation_lead": 4.0,
+          "anticipation_misses": 0,
+          "n_recall_targets": 1,
+          "trace_id": "need_to_know_allergy",
+          "adapter": "extract:claude-opus-4-8"
+        }
+      ],
+      "ingest_stats": {
+        "turns": 21,
+        "records_written": 16,
+        "establishing_turns": 8,
+        "memories_recovered": 8,
+        "noise_records": 8
+      }
+    },
+    "claude-sonnet-5": {
+      "identity": {
+        "arm": "claude",
+        "provider": "tests.benchmarks.extraction_axis.TieredClaudeExtractionProvider",
+        "model": "claude-sonnet-5",
+        "prompt_sha256": "78fb978cda5a31a9c79dfd42e813ced04a03ccac32cd282adfaa814e3f3b0632",
+        "prompt_source": "popoto.extraction.claude.EXTRACTION_PROMPT (verbatim)",
+        "max_tokens": 4096,
+        "structured_output": "json_schema (FACTS_SCHEMA, verbatim)",
+        "cache": "on-disk, keyed by sha256(model+prompt+text)",
+        "pricing_usd_per_mtok": [
+          2.0,
+          10.0
+        ]
+      },
+      "aggregate": {
+        "precision_at_budget": 0.3333333333333333,
+        "recall_at_budget": 1.0,
+        "budget_efficiency": 0.3983822897123202,
+        "mean_anticipation_lead": 4.0,
+        "total_anticipation_misses": 0,
+        "total_recall_targets": 5
+      },
+      "per_trace": [
+        {
+          "n_turns": 5,
+          "precision_at_budget": 0.25,
+          "recall_at_budget": 1.0,
+          "budget_efficiency": 0.296875,
+          "anticipation_lead_times": {
+            "mem_relocation": 4
+          },
+          "mean_anticipation_lead": 4.0,
+          "anticipation_misses": 0,
+          "n_recall_targets": 1,
+          "trace_id": "coreference_relocation",
+          "adapter": "extract:claude-sonnet-5"
+        },
+        {
+          "n_turns": 5,
+          "precision_at_budget": 0.25,
+          "recall_at_budget": 1.0,
+          "budget_efficiency": 0.3230769230769231,
+          "anticipation_lead_times": {
+            "mem_locked_demo": 4
+          },
+          "mean_anticipation_lead": 4.0,
+          "anticipation_misses": 0,
+          "n_recall_targets": 1,
+          "trace_id": "implication_deadline",
+          "adapter": "extract:claude-sonnet-5"
+        },
+        {
+          "n_turns": 6,
+          "precision_at_budget": 0.5,
+          "recall_at_budget": 1.0,
+          "budget_efficiency": 0.5833333333333334,
+          "anticipation_lead_times": {
+            "mem_budget": 3,
+            "mem_vegetarian": 5
+          },
+          "mean_anticipation_lead": 4.0,
+          "anticipation_misses": 0,
+          "n_recall_targets": 2,
+          "trace_id": "multi_recall_preferences",
+          "adapter": "extract:claude-sonnet-5"
+        },
+        {
+          "n_turns": 5,
+          "precision_at_budget": 0.3333333333333333,
+          "recall_at_budget": 1.0,
+          "budget_efficiency": 0.3902439024390244,
+          "anticipation_lead_times": {
+            "mem_allergy": 4
+          },
+          "mean_anticipation_lead": 4.0,
+          "anticipation_misses": 0,
+          "n_recall_targets": 1,
+          "trace_id": "need_to_know_allergy",
+          "adapter": "extract:claude-sonnet-5"
+        }
+      ],
+      "ingest_stats": {
+        "turns": 21,
+        "records_written": 15,
+        "establishing_turns": 8,
+        "memories_recovered": 8,
+        "noise_records": 7
+      }
+    },
+    "claude-haiku-4-5": {
+      "identity": {
+        "arm": "claude",
+        "provider": "tests.benchmarks.extraction_axis.TieredClaudeExtractionProvider",
+        "model": "claude-haiku-4-5",
+        "prompt_sha256": "78fb978cda5a31a9c79dfd42e813ced04a03ccac32cd282adfaa814e3f3b0632",
+        "prompt_source": "popoto.extraction.claude.EXTRACTION_PROMPT (verbatim)",
+        "max_tokens": 4096,
+        "structured_output": "json_schema (FACTS_SCHEMA, verbatim)",
+        "cache": "on-disk, keyed by sha256(model+prompt+text)",
+        "pricing_usd_per_mtok": [
+          1.0,
+          5.0
+        ]
+      },
+      "aggregate": {
+        "precision_at_budget": 0.5,
+        "recall_at_budget": 1.0,
+        "budget_efficiency": 0.5718686961305703,
+        "mean_anticipation_lead": 4.0,
+        "total_anticipation_misses": 0,
+        "total_recall_targets": 5
+      },
+      "per_trace": [
+        {
+          "n_turns": 5,
+          "precision_at_budget": 0.3333333333333333,
+          "recall_at_budget": 1.0,
+          "budget_efficiency": 0.4634146341463415,
+          "anticipation_lead_times": {
+            "mem_relocation": 4
+          },
+          "mean_anticipation_lead": 4.0,
+          "anticipation_misses": 0,
+          "n_recall_targets": 1,
+          "trace_id": "coreference_relocation",
+          "adapter": "extract:claude-haiku-4-5"
+        },
+        {
+          "n_turns": 5,
+          "precision_at_budget": 0.5,
+          "recall_at_budget": 1.0,
+          "budget_efficiency": 0.5526315789473685,
+          "anticipation_lead_times": {
+            "mem_locked_demo": 4
+          },
+          "mean_anticipation_lead": 4.0,
+          "anticipation_misses": 0,
+          "n_recall_targets": 1,
+          "trace_id": "implication_deadline",
+          "adapter": "extract:claude-haiku-4-5"
+        },
+        {
+          "n_turns": 6,
+          "precision_at_budget": 0.6666666666666666,
+          "recall_at_budget": 1.0,
+          "budget_efficiency": 0.7,
+          "anticipation_lead_times": {
+            "mem_budget": 3,
+            "mem_vegetarian": 5
+          },
+          "mean_anticipation_lead": 4.0,
+          "anticipation_misses": 0,
+          "n_recall_targets": 2,
+          "trace_id": "multi_recall_preferences",
+          "adapter": "extract:claude-haiku-4-5"
+        },
+        {
+          "n_turns": 5,
+          "precision_at_budget": 0.5,
+          "recall_at_budget": 1.0,
+          "budget_efficiency": 0.5714285714285714,
+          "anticipation_lead_times": {
+            "mem_allergy": 4
+          },
+          "mean_anticipation_lead": 4.0,
+          "anticipation_misses": 0,
+          "n_recall_targets": 1,
+          "trace_id": "need_to_know_allergy",
+          "adapter": "extract:claude-haiku-4-5"
+        }
+      ],
+      "ingest_stats": {
+        "turns": 21,
+        "records_written": 10,
+        "establishing_turns": 8,
+        "memories_recovered": 8,
+        "noise_records": 2
+      }
+    }
+  }
+}
