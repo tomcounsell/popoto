@@ -42,6 +42,7 @@ The primitives ship incrementally. Each builds on the ones before it.
 | [PolicyCache](#policycache) | Learned action selection — crystallized state-action-outcome patterns | Shipped ([PR #239](https://github.com/tomcounsell/popoto/pull/239)) |
 | [ContextAssembler](#contextassembler) | Retrieval-to-injection bridge — assemble LLM-ready context within token budgets | Shipped |
 | [MemoryLifecycle](#memorylifecycle) | Policy layer orchestrating episodic→semantic promotion, confidence-aware forgetting, and tombstones | Shipped ([PR #396](https://github.com/tomcounsell/popoto/pull/396), [#491](https://github.com/tomcounsell/popoto/issues/491)) |
+| [TagField](#tagfield) | Optional multi-value scoping — agent/project/arbitrary tags for a central shared Redis | Shipped ([#492](https://github.com/tomcounsell/popoto/issues/492)) |
 
 ## DecayingSortedField
 
@@ -1733,6 +1734,110 @@ print(state.tier, state.promotion_eligible, state.forget_eligible)
 See [`docs/recipes.md#memorylifecycle`](../recipes.md#memorylifecycle) for the
 full API reference, custom policy examples, multi-agent partitioning, and
 benchmark tuning instructions.
+
+## TagField
+
+`TagField` adds **optional, indexed, multi-value scoping** to a model. It is the
+scoping primitive for a **centrally hosted Redis/Valkey serving many agents**: a
+memory can be scoped by the agent it belongs to, a relevant project, or arbitrary
+tags — and **every scoping dimension is optional**. A record with zero tags
+transparently lives in the shared pool and is returned by unscoped queries.
+
+Unlike KeyField partitioning (where the partition value becomes part of the
+record's Redis key and is *required* at query time), tags are **metadata, not
+identity**: a record can carry several tags at once, or none, and scoping is
+opt-in per query.
+
+### Basic usage
+
+```python
+from popoto import Model, AutoKeyField, Field, TagField
+
+class Memory(Model):
+    key = AutoKeyField()
+    content = Field(type=str)
+    tags = TagField()          # optional; zero tags == shared pool
+
+Memory.create(content="deploy runbook", tags=["agent:valor", "project:popoto"])
+Memory.create(content="general note")          # untagged — shared pool
+
+# Membership / any-of (OR) / all-of (AND)
+Memory.query.filter(tags__contains="agent:valor")
+Memory.query.filter(tags__any=["agent:a", "agent:b"])       # SUNION
+Memory.query.filter(tags__all=["agent:valor", "project:popoto"])  # SINTER
+
+# Tag filters compose with any other filter through the same pipeline.
+Memory.query.filter(project="popoto", tags__contains="agent:valor")
+```
+
+Accepts a `list`, `set`, or `tuple` of scalar tags; values are normalized to a
+sorted, de-duplicated list. A bare exact-match `filter(tags=[...])` raises a
+`QueryException` (use `__contains`/`__any`/`__all`) — a multi-value field has no
+meaningful exact-match semantics.
+
+### Convention over schema
+
+popoto stays agnostic about which scoping dimensions exist. Agents cooperate on
+prefixes — `agent:`, `project:` — or use bare tags; nothing is declared in the
+schema. Colons in tag values are escaped in the index key, so `agent:valor` never
+collides with popoto's key structure.
+
+### Not a security boundary
+
+Tags are a **cooperative** scoping mechanism between trusted agents, **not** access
+control. A query with the right tag filter can read any tagged record; there is no
+enforcement or isolation. Do not use tags to gate access to sensitive data.
+
+### How it is indexed (Valkey-safe)
+
+Per tag value, a plain Redis Set of instance keys:
+
+```
+$TagF:ModelName:field_name:tag_value -> Set of redis_keys
+```
+
+Index maintenance rides a single atomic Lua script (`TAG_SWAP_LUA`) that **diffs**
+the record's previous tag membership against the new one and issues only the
+necessary `SREM`/`SADD` calls — so re-saving with changed tags never leaves
+orphaned Set members. The previous membership is read from a server-authoritative
+pointer side key (a standalone Redis Set), never a client snapshot. All commands
+are core Redis Set operations (`SADD`/`SREM`/`SMEMBERS`/`SUNION`/`SINTER`/`DEL`) —
+**no Redis modules**, so it runs identically on Redis and Valkey.
+
+### ContextAssembler integration
+
+`ContextAssembler.assemble()` auto-detects a `TagField` on the model and accepts
+optional tag constraints applied across **all** retrieval modes (composite,
+hybrid, lexical, push):
+
+```python
+assembler = ContextAssembler(Memory, score_weights={"relevance": 1.0})
+
+# Scope retrieval to one agent's memories (AND semantics by default)
+assembler.assemble(query_cues={"topic": "deploy"}, tags=["agent:valor"])
+
+# any-of semantics
+assembler.assemble(
+    query_cues={"topic": "deploy"},
+    tags=["agent:valor", "agent:peer"],
+    tag_match="any",
+)
+
+# Omitting tags is byte-identical to a model with no TagField.
+assembler.assemble(query_cues={"topic": "deploy"})
+```
+
+`tag_match` defaults to `"all"` (AND / `SINTER`); pass `"any"` for OR (`SUNION`).
+
+### Deploy-level kill switch
+
+Tag scoping in the assembler is default-on via auto-detection. Because a PyPI
+adopter cannot always edit model definitions, `Defaults.TAG_SCOPING_ENABLED`
+(default `True`) is a deploy-level escape hatch: set it `False` to make the
+assembler ignore tag constraints entirely (retrieval becomes identical to a model
+without a TagField). Index maintenance and explicit
+`Model.query.filter(tags__all=...)` queries are unaffected — the switch governs
+only the subconscious assembler path.
 
 ## Further reading
 
