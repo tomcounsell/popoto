@@ -2329,6 +2329,89 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#tagfield" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TagField
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="TagField">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#basic-usage_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Basic usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#convention-over-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Convention over schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#not-a-security-boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Not a security boundary
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-it-is-indexed-valkey-safe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How it is indexed (Valkey-safe)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#contextassembler-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ContextAssembler integration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deploy-level-kill-switch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deploy-level kill switch
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#further-reading" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5247,6 +5330,89 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#tagfield" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TagField
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="TagField">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#basic-usage_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Basic usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#convention-over-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Convention over schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#not-a-security-boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Not a security boundary
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-it-is-indexed-valkey-safe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How it is indexed (Valkey-safe)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#contextassembler-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ContextAssembler integration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deploy-level-kill-switch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deploy-level kill switch
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#further-reading" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5393,6 +5559,11 @@
 <td><a href="#memorylifecycle">MemoryLifecycle</a></td>
 <td>Policy layer orchestrating episodic→semantic promotion, confidence-aware forgetting, and tombstones</td>
 <td>Shipped (<a href="https://github.com/tomcounsell/popoto/pull/396">PR #396</a>, <a href="https://github.com/tomcounsell/popoto/issues/491">#491</a>)</td>
+</tr>
+<tr>
+<td><a href="#tagfield">TagField</a></td>
+<td>Optional multi-value scoping — agent/project/arbitrary tags for a central shared Redis</td>
+<td>Shipped (<a href="https://github.com/tomcounsell/popoto/issues/492">#492</a>)</td>
 </tr>
 </tbody>
 </table>
@@ -7629,6 +7800,93 @@ visible in telemetry immediately.</p>
 <p>See <a href="../../recipes/#memorylifecycle"><code>docs/recipes.md#memorylifecycle</code></a> for the
 full API reference, custom policy examples, multi-agent partitioning, and
 benchmark tuning instructions.</p>
+<h2 id="tagfield">TagField<a class="headerlink" href="#tagfield" title="Permanent link">&para;</a></h2>
+<p><code>TagField</code> adds <strong>optional, indexed, multi-value scoping</strong> to a model. It is the
+scoping primitive for a <strong>centrally hosted Redis/Valkey serving many agents</strong>: a
+memory can be scoped by the agent it belongs to, a relevant project, or arbitrary
+tags — and <strong>every scoping dimension is optional</strong>. A record with zero tags
+transparently lives in the shared pool and is returned by unscoped queries.</p>
+<p>Unlike KeyField partitioning (where the partition value becomes part of the
+record's Redis key and is <em>required</em> at query time), tags are <strong>metadata, not
+identity</strong>: a record can carry several tags at once, or none, and scoping is
+opt-in per query.</p>
+<h3 id="basic-usage_10">Basic usage<a class="headerlink" href="#basic-usage_10" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-57-1" name="__codelineno-57-1" href="#__codelineno-57-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">AutoKeyField</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">TagField</span>
+<a id="__codelineno-57-2" name="__codelineno-57-2" href="#__codelineno-57-2"></a>
+<a id="__codelineno-57-3" name="__codelineno-57-3" href="#__codelineno-57-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">Memory</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
+<a id="__codelineno-57-4" name="__codelineno-57-4" href="#__codelineno-57-4"></a>    <span class="n">key</span> <span class="o">=</span> <span class="n">AutoKeyField</span><span class="p">()</span>
+<a id="__codelineno-57-5" name="__codelineno-57-5" href="#__codelineno-57-5"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
+<a id="__codelineno-57-6" name="__codelineno-57-6" href="#__codelineno-57-6"></a>    <span class="n">tags</span> <span class="o">=</span> <span class="n">TagField</span><span class="p">()</span>          <span class="c1"># optional; zero tags == shared pool</span>
+<a id="__codelineno-57-7" name="__codelineno-57-7" href="#__codelineno-57-7"></a>
+<a id="__codelineno-57-8" name="__codelineno-57-8" href="#__codelineno-57-8"></a><span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s2">&quot;deploy runbook&quot;</span><span class="p">,</span> <span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;agent:valor&quot;</span><span class="p">,</span> <span class="s2">&quot;project:popoto&quot;</span><span class="p">])</span>
+<a id="__codelineno-57-9" name="__codelineno-57-9" href="#__codelineno-57-9"></a><span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s2">&quot;general note&quot;</span><span class="p">)</span>          <span class="c1"># untagged — shared pool</span>
+<a id="__codelineno-57-10" name="__codelineno-57-10" href="#__codelineno-57-10"></a>
+<a id="__codelineno-57-11" name="__codelineno-57-11" href="#__codelineno-57-11"></a><span class="c1"># Membership / any-of (OR) / all-of (AND)</span>
+<a id="__codelineno-57-12" name="__codelineno-57-12" href="#__codelineno-57-12"></a><span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">tags__contains</span><span class="o">=</span><span class="s2">&quot;agent:valor&quot;</span><span class="p">)</span>
+<a id="__codelineno-57-13" name="__codelineno-57-13" href="#__codelineno-57-13"></a><span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">tags__any</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;agent:a&quot;</span><span class="p">,</span> <span class="s2">&quot;agent:b&quot;</span><span class="p">])</span>       <span class="c1"># SUNION</span>
+<a id="__codelineno-57-14" name="__codelineno-57-14" href="#__codelineno-57-14"></a><span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">tags__all</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;agent:valor&quot;</span><span class="p">,</span> <span class="s2">&quot;project:popoto&quot;</span><span class="p">])</span>  <span class="c1"># SINTER</span>
+<a id="__codelineno-57-15" name="__codelineno-57-15" href="#__codelineno-57-15"></a>
+<a id="__codelineno-57-16" name="__codelineno-57-16" href="#__codelineno-57-16"></a><span class="c1"># Tag filters compose with any other filter through the same pipeline.</span>
+<a id="__codelineno-57-17" name="__codelineno-57-17" href="#__codelineno-57-17"></a><span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">project</span><span class="o">=</span><span class="s2">&quot;popoto&quot;</span><span class="p">,</span> <span class="n">tags__contains</span><span class="o">=</span><span class="s2">&quot;agent:valor&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p>Accepts a <code>list</code>, <code>set</code>, or <code>tuple</code> of scalar tags; values are normalized to a
+sorted, de-duplicated list. A bare exact-match <code>filter(tags=[...])</code> raises a
+<code>QueryException</code> (use <code>__contains</code>/<code>__any</code>/<code>__all</code>) — a multi-value field has no
+meaningful exact-match semantics.</p>
+<h3 id="convention-over-schema">Convention over schema<a class="headerlink" href="#convention-over-schema" title="Permanent link">&para;</a></h3>
+<p>popoto stays agnostic about which scoping dimensions exist. Agents cooperate on
+prefixes — <code>agent:</code>, <code>project:</code> — or use bare tags; nothing is declared in the
+schema. Colons in tag values are escaped in the index key, so <code>agent:valor</code> never
+collides with popoto's key structure.</p>
+<h3 id="not-a-security-boundary">Not a security boundary<a class="headerlink" href="#not-a-security-boundary" title="Permanent link">&para;</a></h3>
+<p>Tags are a <strong>cooperative</strong> scoping mechanism between trusted agents, <strong>not</strong> access
+control. A query with the right tag filter can read any tagged record; there is no
+enforcement or isolation. Do not use tags to gate access to sensitive data.</p>
+<h3 id="how-it-is-indexed-valkey-safe">How it is indexed (Valkey-safe)<a class="headerlink" href="#how-it-is-indexed-valkey-safe" title="Permanent link">&para;</a></h3>
+<p>Per tag value, a plain Redis Set of instance keys:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-58-1" name="__codelineno-58-1" href="#__codelineno-58-1"></a>$TagF:ModelName:field_name:tag_value -&gt; Set of redis_keys
+</code></pre></div>
+<p>Index maintenance rides a single atomic Lua script (<code>TAG_SWAP_LUA</code>) that <strong>diffs</strong>
+the record's previous tag membership against the new one and issues only the
+necessary <code>SREM</code>/<code>SADD</code> calls — so re-saving with changed tags never leaves
+orphaned Set members. The previous membership is read from a server-authoritative
+pointer side key (a standalone Redis Set), never a client snapshot. All commands
+are core Redis Set operations (<code>SADD</code>/<code>SREM</code>/<code>SMEMBERS</code>/<code>SUNION</code>/<code>SINTER</code>/<code>DEL</code>) —
+<strong>no Redis modules</strong>, so it runs identically on Redis and Valkey.</p>
+<h3 id="contextassembler-integration">ContextAssembler integration<a class="headerlink" href="#contextassembler-integration" title="Permanent link">&para;</a></h3>
+<p><code>ContextAssembler.assemble()</code> auto-detects a <code>TagField</code> on the model and accepts
+optional tag constraints applied across <strong>all</strong> retrieval modes (composite,
+hybrid, lexical, push):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-59-1" name="__codelineno-59-1" href="#__codelineno-59-1"></a><span class="n">assembler</span> <span class="o">=</span> <span class="n">ContextAssembler</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;relevance&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">})</span>
+<a id="__codelineno-59-2" name="__codelineno-59-2" href="#__codelineno-59-2"></a>
+<a id="__codelineno-59-3" name="__codelineno-59-3" href="#__codelineno-59-3"></a><span class="c1"># Scope retrieval to one agent&#39;s memories</span>
+<a id="__codelineno-59-4" name="__codelineno-59-4" href="#__codelineno-59-4"></a><span class="n">assembler</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span><span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;topic&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy&quot;</span><span class="p">},</span> <span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;agent:valor&quot;</span><span class="p">])</span>
+<a id="__codelineno-59-5" name="__codelineno-59-5" href="#__codelineno-59-5"></a>
+<a id="__codelineno-59-6" name="__codelineno-59-6" href="#__codelineno-59-6"></a><span class="c1"># Multiple tags: any-of (OR) by default — surfaces memories in either scope</span>
+<a id="__codelineno-59-7" name="__codelineno-59-7" href="#__codelineno-59-7"></a><span class="n">assembler</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span>
+<a id="__codelineno-59-8" name="__codelineno-59-8" href="#__codelineno-59-8"></a>    <span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;topic&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy&quot;</span><span class="p">},</span>
+<a id="__codelineno-59-9" name="__codelineno-59-9" href="#__codelineno-59-9"></a>    <span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;agent:valor&quot;</span><span class="p">,</span> <span class="s2">&quot;project:popoto&quot;</span><span class="p">],</span>
+<a id="__codelineno-59-10" name="__codelineno-59-10" href="#__codelineno-59-10"></a><span class="p">)</span>
+<a id="__codelineno-59-11" name="__codelineno-59-11" href="#__codelineno-59-11"></a>
+<a id="__codelineno-59-12" name="__codelineno-59-12" href="#__codelineno-59-12"></a><span class="c1"># all-of semantics (intersection)</span>
+<a id="__codelineno-59-13" name="__codelineno-59-13" href="#__codelineno-59-13"></a><span class="n">assembler</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span>
+<a id="__codelineno-59-14" name="__codelineno-59-14" href="#__codelineno-59-14"></a>    <span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;topic&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy&quot;</span><span class="p">},</span>
+<a id="__codelineno-59-15" name="__codelineno-59-15" href="#__codelineno-59-15"></a>    <span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;agent:valor&quot;</span><span class="p">,</span> <span class="s2">&quot;project:popoto&quot;</span><span class="p">],</span>
+<a id="__codelineno-59-16" name="__codelineno-59-16" href="#__codelineno-59-16"></a>    <span class="n">tag_match</span><span class="o">=</span><span class="s2">&quot;all&quot;</span><span class="p">,</span>
+<a id="__codelineno-59-17" name="__codelineno-59-17" href="#__codelineno-59-17"></a><span class="p">)</span>
+<a id="__codelineno-59-18" name="__codelineno-59-18" href="#__codelineno-59-18"></a>
+<a id="__codelineno-59-19" name="__codelineno-59-19" href="#__codelineno-59-19"></a><span class="c1"># Omitting tags is byte-identical to a model with no TagField.</span>
+<a id="__codelineno-59-20" name="__codelineno-59-20" href="#__codelineno-59-20"></a><span class="n">assembler</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span><span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;topic&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy&quot;</span><span class="p">})</span>
+</code></pre></div>
+<p><code>tag_match</code> defaults to <code>"any"</code> (OR / <code>SUNION</code>) — in a shared central pool you'd rather over-surface scoped memories and let ranking sort them than silently miss a memory tagged on only one dimension; pass <code>"all"</code> for AND (<code>SINTER</code>) when you need the precise intersection. (The <code>Query.filter</code> arms — <code>tags__any</code> / <code>tags__all</code> / <code>tags__contains</code> — are always explicit.)</p>
+<h3 id="deploy-level-kill-switch">Deploy-level kill switch<a class="headerlink" href="#deploy-level-kill-switch" title="Permanent link">&para;</a></h3>
+<p>Tag scoping in the assembler is default-on via auto-detection. Because a PyPI
+adopter cannot always edit model definitions, <code>Defaults.TAG_SCOPING_ENABLED</code>
+(default <code>True</code>) is a deploy-level escape hatch: set it <code>False</code> to make the
+assembler ignore tag constraints entirely (retrieval becomes identical to a model
+without a TagField). Index maintenance and explicit
+<code>Model.query.filter(tags__all=...)</code> queries are unaffected — the switch governs
+only the subconscious assembler path.</p>
 <h2 id="further-reading">Further reading<a class="headerlink" href="#further-reading" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../metacognitive-layer/">Metacognitive Layer</a> — quality assessment (<code>RetrievalQuality</code>, <code>assess()</code>), grouped error analysis (<code>error_summary</code>), and <code>AdaptiveAssembler</code></li>
