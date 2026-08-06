@@ -57,6 +57,7 @@ from typing import Any, Dict, List, Optional
 from src import popoto
 from src.popoto.embeddings.sentence_transformers import SentenceTransformersProvider
 from src.popoto.fields.bm25_field import BM25Field
+from src.popoto.fields.co_occurrence_field import CoOccurrenceField
 from src.popoto.fields.confidence_field import ConfidenceField
 from src.popoto.fields.decaying_sorted_field import DecayingSortedField
 from src.popoto.fields.embedding_field import (
@@ -106,6 +107,56 @@ def _get_shared_provider():
     if _SHARED_PROVIDER is None:
         _SHARED_PROVIDER = SentenceTransformersProvider()
     return _SHARED_PROVIDER
+
+
+def _build_graph_model_class(safe_prefix: str):
+    """Build a BM25 + association-graph Model class for one benchmark item.
+
+    Used by ``retrieval_mode="graph"`` (issue #484). Identical to the lexical
+    model (BM25Field only, no EmbeddingField) plus the two association
+    primitives graph traversal walks:
+
+    - ``associations``: a ``CoOccurrenceField`` — weighted, symmetric edges.
+    - ``prev_turn``: a self-referential ``Relationship`` — the only edge kind
+      ``graph_traversal.expand_relationships()`` honors (a ``Relationship``
+      pointing at a different model class is skipped by design).
+
+    Edge *content* is a harness decision, not a library one: the LoCoMo/
+    LongMemEval adapters carry no annotated entity graph, so ``setup()``
+    builds conversational-adjacency edges (turn i <-> turn i-1 within a
+    session). That is the only association signal derivable from the raw
+    datasets without inventing an extraction model, and it is stated
+    explicitly in the report so the number is not read as "popoto's semantic
+    graph".
+    """
+    from src.popoto.fields.relationship import Relationship
+
+    class ExternalBenchmarkMemory(popoto.Model):
+        turn_id = popoto.AutoKeyField()
+        agent_id = popoto.KeyField()
+        content = popoto.StringField(default="")
+        importance = popoto.FloatField(default=0.5)
+        relevance = DecayingSortedField(
+            decay_rate=0.5,
+            base_score_field="importance",
+            partition_by="agent_id",
+        )
+        certainty = ConfidenceField(initial_confidence=0.5)
+        content_index = BM25Field(source="content")
+        associations = CoOccurrenceField(symmetric=True, max_edges=100)
+
+    ExternalBenchmarkMemory.__name__ = f"ExtMem{safe_prefix}"
+    ExternalBenchmarkMemory.__qualname__ = f"ExtMem{safe_prefix}"
+    # Self-referential Relationship must be registered post-hoc — the class
+    # object does not exist inside its own body (same pattern as
+    # tests/test_graph_traversal.py).
+    ExternalBenchmarkMemory.prev_turn = Relationship(
+        model=ExternalBenchmarkMemory, null=True
+    )
+    ExternalBenchmarkMemory._meta.add_field(
+        "prev_turn", ExternalBenchmarkMemory.prev_turn
+    )
+    return ExternalBenchmarkMemory
 
 
 def _build_external_model_class(
@@ -215,8 +266,9 @@ class ExternalScenario(Scenario):
         overrides: Optional override dict (unused in baseline; present for
             API compatibility with sweep infrastructure).
         retrieval_mode: ``"lexical"`` (default, BM25 only), ``"hybrid"``
-            (BM25 + vector via RRF), or ``"vector"`` (EmbeddingField-only,
-            pure cosine). Hybrid additionally declares an EmbeddingField on
+            (BM25 + vector via RRF), ``"graph"`` (BM25 + graph traversal over
+            CoOccurrence/Relationship adjacency edges), or ``"vector"``
+            (EmbeddingField-only, pure cosine). Hybrid additionally declares an EmbeddingField on
             the model so auto-mode resolves to hybrid. Vector declares an
             EmbeddingField and no BM25Field, and ``run()`` ranks by raw
             cosine directly (the assembler is bypassed — a harness-local
@@ -253,12 +305,16 @@ class ExternalScenario(Scenario):
         """
         safe_prefix = uuid.uuid4().hex[:8]
         # Field presence per mode:
-        #   lexical → BM25 only; hybrid → BM25 + embedding; vector → embedding only.
-        self._model_class = _build_external_model_class(
-            safe_prefix,
-            with_bm25=self.retrieval_mode != "vector",
-            with_embedding=self.retrieval_mode in ("hybrid", "vector"),
-        )
+        #   lexical → BM25 only; hybrid → BM25 + embedding; vector → embedding
+        #   only; graph → BM25 + CoOccurrenceField + self-referential Relationship.
+        if self.retrieval_mode == "graph":
+            self._model_class = _build_graph_model_class(safe_prefix)
+        else:
+            self._model_class = _build_external_model_class(
+                safe_prefix,
+                with_bm25=self.retrieval_mode != "vector",
+                with_embedding=self.retrieval_mode in ("hybrid", "vector"),
+            )
         # lexical/hybrid drive ContextAssembler.assemble() as the primary path with
         # retrieval_mode="auto": field presence resolves the mode (issue #395) —
         # BM25 + EmbeddingField → "hybrid" (RRF k=60); BM25 only → "lexical".
@@ -268,6 +324,17 @@ class ExternalScenario(Scenario):
         # build an assembler — run() ranks by pure cosine directly.
         if self.retrieval_mode == "vector":
             self._assembler = None
+        elif self.retrieval_mode == "graph":
+            # BM25 + graph arm. `graph_traversal_relationship_fields` is the
+            # opt-in kwarg from PR #483 — without it the assembler walks
+            # CoOccurrence edges only and never the Relationship field.
+            self._assembler = ContextAssembler(
+                model_class=self._model_class,
+                score_weights=BASELINE_SCORE_WEIGHTS,
+                max_items=MAX_ITEMS,
+                retrieval_mode="auto",
+                graph_traversal_relationship_fields=["prev_turn"],
+            )
         else:
             self._assembler = ContextAssembler(
                 model_class=self._model_class,
@@ -275,6 +342,8 @@ class ExternalScenario(Scenario):
                 max_items=MAX_ITEMS,
                 retrieval_mode="auto",
             )
+
+        prev_by_session: Dict[str, Any] = {}
 
         for turn in self.item.history:
             content = turn.get("content", "")
@@ -297,6 +366,31 @@ class ExternalScenario(Scenario):
                     )
                     continue
                 self._saved_records.append(instance)
+
+                # Graph mode: build conversational-adjacency edges. Each turn
+                # points at the previous turn of the same session via the
+                # self-referential Relationship (walked forward AND reverse by
+                # expand_relationships), and the same pair is linked as a
+                # symmetric CoOccurrence edge so both association primitives
+                # carry signal. The datasets ship no annotated entity graph, so
+                # adjacency is the only edge derivable without inventing an
+                # extraction model — see the report caveat.
+                if self.retrieval_mode == "graph":
+                    prev = prev_by_session.get(session_id)
+                    if prev is not None:
+                        try:
+                            instance.prev_turn = prev
+                            instance.save()
+                            self._model_class._meta.fields["associations"].link(
+                                self._model_class,
+                                instance.db_key.redis_key,
+                                prev.db_key.redis_key,
+                                initial_weight=0.5,
+                            )
+                        except Exception as e:
+                            logger.warning("graph edge build failed: %s", e)
+                    prev_by_session[session_id] = instance
+
                 # Track session_id -> redis_key AND turn_id -> redis_key mappings.
                 # LongMemEval-S uses session_id as relevant_id; LoCoMo uses turn_id.
                 try:
