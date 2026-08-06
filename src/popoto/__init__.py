@@ -34,6 +34,7 @@ from .fields.shortcuts import (
     SortedKeyField,
     IndexedField,
     UniqueField,
+    TagField,
 )
 from .fields.decaying_sorted_field import DecayingSortedField
 from .fields.access_tracker import AccessTrackerMixin
@@ -174,6 +175,7 @@ __all__ = [
     "SortedKeyField",
     "IndexedField",
     "UniqueField",
+    "TagField",
     "DecayingSortedField",
     "AccessTrackerMixin",
     "WriteFilterMixin",

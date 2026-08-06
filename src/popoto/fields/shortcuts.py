@@ -53,6 +53,7 @@ from .key_field_mixin import KeyFieldMixin
 from .auto_field_mixin import AutoFieldMixin
 from .sorted_field_mixin import SortedFieldMixin
 from .indexed_field_mixin import IndexedFieldMixin
+from .tag_field import TagFieldMixin
 from ..exceptions import ModelException
 from ..redis_db import POPOTO_REDIS_DB
 
@@ -1044,5 +1045,51 @@ class UniqueField(IndexedFieldMixin, Field):
         if kwargs.get("null") is True:
             raise ModelException("you may not set null=True on this field type")
         kwargs["null"] = False
+        kwargs["indexed"] = True
+        super().__init__(**kwargs)
+
+
+class TagField(TagFieldMixin, Field):
+    """An optional, indexed, multi-value scoping field backed by Redis Sets.
+
+    A record may carry any number of tag values, or none. Untagged records
+    transparently live in the shared pool and are returned by unscoped queries.
+    Tags are metadata, never part of the record's Redis key (identity), so
+    scoping is opt-in per query rather than mandatory-once-declared like a
+    KeyField partition.
+
+    Filter lookups:
+        - ``tags__contains="agent:valor"`` — membership (SMEMBERS)
+        - ``tags__any=["agent:a", "agent:b"]`` — any-of / OR (SUNION)
+        - ``tags__all=["agent:valor", "project:popoto"]`` — all-of / AND (SINTER)
+
+    Convention over schema: agents cooperate on prefixes (``agent:``, ``project:``)
+    or use bare tags; popoto stays agnostic. Tags are a cooperative scoping
+    mechanism between trusted agents, NOT a security boundary.
+
+    Example:
+        class Memory(Model):
+            key = AutoKeyField()
+            tags = TagField()
+
+        Memory.create(tags=["agent:valor", "project:popoto"])
+        Memory.create()  # untagged — shared pool
+        Memory.query.filter(tags__all=["agent:valor"])
+
+    See Also:
+        - IndexedField: single-value Set-based secondary index
+        - KeyField: mandatory partitioning that becomes part of record identity
+    """
+
+    def __init__(self, *args, **kwargs):
+        """
+        Initialize a TagField with multi-value Set indexing enabled.
+
+        Args:
+            **kwargs: Passed through the mixin chain. Common options:
+                - null (bool): Allow None (untagged). Default: True
+                - default: Default tag collection. Default: None (untagged)
+        """
+        kwargs["type"] = list
         kwargs["indexed"] = True
         super().__init__(**kwargs)

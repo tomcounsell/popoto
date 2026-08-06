@@ -78,6 +78,7 @@ from ..fields.embedding_field import EmbeddingField
 from ..fields.existence_filter import ExistenceFilter
 from ..fields.observation import ObservationProtocol
 from ..fields.sorted_field_mixin import SortedFieldMixin
+from ..fields.tag_field import TagFieldMixin
 from ..redis_db import POPOTO_REDIS_DB
 
 logger = logging.getLogger("POPOTO.ContextAssembler")
@@ -1302,6 +1303,7 @@ class ContextAssembler:
         self._bm25_field_name = None
         self._embedding_field = None
         self._embedding_field_name = None
+        self._tag_field_name = None
 
         for name, f in model_class._meta.fields.items():
             if isinstance(f, ExistenceFilter) and self._existence_filter is None:
@@ -1327,6 +1329,8 @@ class ContextAssembler:
             if isinstance(f, EmbeddingField) and self._embedding_field is None:
                 self._embedding_field = f
                 self._embedding_field_name = name
+            if isinstance(f, TagFieldMixin) and self._tag_field_name is None:
+                self._tag_field_name = name
 
         # Confidence-gate construction-time validation (issue #463). The gate
         # is opt-in — no-op unless confidence_gate_threshold is set — but
@@ -1435,6 +1439,46 @@ class ContextAssembler:
                 "score_weights are ignored for the pull path"
             )
 
+    def _resolve_tag_keys(self, tags, tag_match):
+        """Resolve optional tag constraints to the set of allowed Redis keys.
+
+        Auto-detects a TagField on the model (``self._tag_field_name``) and, when
+        ``tags`` is provided and the deploy kill switch
+        ``Defaults.TAG_SCOPING_ENABLED`` is on, evaluates the tag membership Sets
+        directly (``__all`` → SINTER, ``__any`` → SUNION) and returns the matching
+        instance keys as a ``set[str]``. This set is used to *post-filter* retrieved
+        candidates across every mode, so scoping is uniform whether the pull path
+        ran composite, hybrid, or lexical (``composite_score`` only honors a
+        sorted-field partition, not an arbitrary field filter, so a candidate-set
+        intersection is the only mode-agnostic seam).
+
+        Returns ``None`` — meaning "no scoping, behavior identical to today" — when
+        ``tags`` is empty, the model has no TagField, or the kill switch is off.
+        Tag scoping is cooperative, not a security boundary: an unusable request
+        degrades to unscoped retrieval rather than raising.
+        """
+        if not tags or self._tag_field_name is None:
+            return None
+        if not Defaults.TAG_SCOPING_ENABLED:
+            return None
+        lookup = "any" if tag_match == "any" else "all"
+        param = f"{self._tag_field_name}__{lookup}"
+        field_cls = self.model_class._meta.fields[self._tag_field_name].__class__
+        matched = field_cls.filter_query(
+            self.model_class, self._tag_field_name, **{param: list(tags)}
+        )
+        return {k.decode() if isinstance(k, bytes) else k for k in matched}
+
+    @staticmethod
+    def _scope_by_tags(records, allowed_keys):
+        """Keep only records whose Redis key is in ``allowed_keys``.
+
+        No-op passthrough when ``allowed_keys`` is None (no tag scoping requested).
+        """
+        if allowed_keys is None:
+            return records
+        return [r for r in records if _get_key(r) in allowed_keys]
+
     def assemble(
         self,
         query_cues=None,
@@ -1442,6 +1486,8 @@ class ContextAssembler:
         partition_filters=None,
         assess_quality=False,
         emit_trace=False,
+        tags=None,
+        tag_match="any",
     ):
         """Execute the full retrieval pipeline.
 
@@ -1471,6 +1517,18 @@ class ContextAssembler:
                 read-only, pipelined score proxy (ZSCORE), so it is
                 Valkey-safe and adds bounded overhead.
 
+            tags: Optional list of tag values to scope retrieval (issue #492).
+                Requires a TagField on the model (auto-detected). Applied as a
+                pre-filter across ALL retrieval modes via the shared filter dict.
+                When None/empty, or when the model has no TagField, or when
+                ``Defaults.TAG_SCOPING_ENABLED`` is False, retrieval is
+                byte-identical to the pre-#492 behavior. Tag scoping is
+                cooperative, not a security boundary.
+            tag_match: How to combine multiple ``tags`` — ``"all"`` (default,
+                AND / SINTER: records carrying every listed tag) or ``"any"``
+                (OR / SUNION: records carrying at least one). Ignored when
+                ``tags`` is empty.
+
         Returns:
             AssemblyResult with records, proactive, formatted, and metadata.
         """
@@ -1481,6 +1539,11 @@ class ContextAssembler:
         if agent_id is not None:
             filters["agent_id"] = agent_id
 
+        # Optional tag scoping (issue #492): resolve the allowed-key set once and
+        # post-filter retrieved candidates across every mode. ``None`` means no
+        # scoping — every code path below is then byte-identical to pre-#492.
+        allowed_tag_keys = self._resolve_tag_keys(tags, tag_match)
+
         pull_records = []
         push_records = []
         all_pull_candidates = []  # For competitive suppression
@@ -1488,6 +1551,10 @@ class ContextAssembler:
         # --- Pull path ---
         if query_cues:
             pull_records, all_pull_candidates = self._pull_path(query_cues, filters)
+            pull_records = self._scope_by_tags(pull_records, allowed_tag_keys)
+            all_pull_candidates = self._scope_by_tags(
+                all_pull_candidates, allowed_tag_keys
+            )
 
         # [CONFIDENCE GATE] Opt-in, off-by-default (issue #463). Reads the
         # rank-0 pull-path candidate's ConfidenceField value and compares it
@@ -1556,6 +1623,7 @@ class ContextAssembler:
         # --- Push path ---
         if self._cyclic_decay_field_name is not None:
             push_records = self._push_path(filters)
+            push_records = self._scope_by_tags(push_records, allowed_tag_keys)
 
         # --- Merge + deduplicate ---
         seen_keys = set()
