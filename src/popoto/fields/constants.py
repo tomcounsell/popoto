@@ -94,6 +94,18 @@ class Defaults:
         0.7  # not swept separately (Tier 1 covers WF_MIN); kept at prior
     )
 
+    # -- TagField / optional scoping (fields/tag_field.py, issue #492) ---------
+    # Deploy-level kill switch for subconscious, retrieval-time tag scoping.
+    # ContextAssembler auto-detects a TagField on the model and applies the
+    # caller's tag constraints across all retrieval modes; this default-ON
+    # behavior means a PyPI adopter cannot always edit model code to disable it.
+    # Setting this False makes the assembler ignore tag constraints entirely, so
+    # retrieval is byte-identical to a model without a TagField. Index
+    # maintenance (per-tag Redis Sets) always runs for correctness, and explicit
+    # `Model.query.filter(tags__all=...)` still works — this switch governs only
+    # the subconscious assembler path, not deliberate queries. Boolean, not swept.
+    TAG_SCOPING_ENABLED = True
+
     # -- CoOccurrenceField (fields/co_occurrence_field.py) --------------------
     CO_OCCURRENCE_DECAY_FACTOR = 0.95  # empirically inert (sweep 2026-04-20, variance=0.0) — family scenario never calls weaken_all()
     CO_OCCURRENCE_INITIAL_WEIGHT = 0.1  # sweep 2026-04-20 variance=0.144; best 0.01 but curve has noise cliff, 0.1 is safer default for new users

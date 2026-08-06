@@ -1,11 +1,13 @@
 ---
-status: Planning
+status: In Progress
 type: feature
 appetite: Medium
 owner: valorengels
 created: 2026-08-06
 tracking: https://github.com/tomcounsell/popoto/issues/492
 last_comment_id:
+revision_applied: true
+revision_applied_at: 2026-08-06T00:00:00Z
 ---
 
 # TagField — Optional Multi-Value Scoping for a Central Shared Redis/Valkey
@@ -350,9 +352,30 @@ scope for this popoto-side plan.
 
 ## Critique Results
 
-<!-- Populated by /do-plan-critique (war room). Leave empty until critique is run. -->
+Verdict: **READY TO BUILD (with concerns)** — 0 blockers, 5 concerns, 3 nits. All
+resolved in the implementation (below).
+
 | Severity | Critic | Finding | Addressed By | Implementation Note |
 |----------|--------|---------|--------------|---------------------|
+| CONCERN | History | C1: shipped default `tag_match` could resolve to OR while plan ratifies AND | Resolved | `_resolve_tag_keys` maps `tag_match` to `"any" if == "any" else "all"`, so `None`/default → `all` (AND). Matches Open Question #1 default. |
+| CONCERN | Risk | C2: `on_delete` reading SMEMBERS *inside* the queued pipeline would orphan members | Resolved | `on_delete` reads `POPOTO_REDIS_DB.smembers(ptr_key)` EAGERLY, then queues per-Set `srem` + `delete(ptr)` — mirrors IndexedFieldMixin. |
+| CONCERN | Risk | C3: TAG_SWAP_LUA passed value-Set keys as ARGV, violating the scripting key contract | Resolved | Value-Set keys are now `KEYS[3..]`; `numkeys = 2 + len(set_keys)`. Cluster caveat documented (popoto index model is inherently single-node). |
+| CONCERN | Risk | C4: bare `filter(tags=[...])` silently degrades to client-side list-equality | Resolved | `get_filter_query_params` includes the bare name; `filter_query` raises `QueryException` directing to `__contains`/`__any`/`__all`. Test: `test_bare_exact_match_filter_raises`. |
+| CONCERN | Scope | C5: `assess()` tag scoping is scope-creep beyond #492's retrieval focus | Resolved | Dropped `tags`/`tag_match` from `assess()`; tag scoping lands on `assemble()` only. |
+| NIT | Scope | N1: RLT criterion had no numeric threshold | Resolved | Benchmark asserts `scoped < max(base*3.0, base+0.05)` and prints the ratio (measured 1.01x). |
+| NIT | History | N2: `_tag_field_name` detection attributed to two sites | Resolved | Cached once in `__init__`; read by `assemble()`. |
+| NIT | History | N3: atomicity mis-credited to the #476 "unique-conflict window" | Resolved | Reworded: TagField inherits orphan-free membership diffing via the eager `pipeline=None` commit ordering (no uniqueness check). |
+
+**Design change surfaced during build (recorded for reviewers):** the plan's
+"inject tags into the shared `filters` dict" seam does NOT scope composite mode —
+`composite_score` only honors a sorted-field *partition*, not an arbitrary field
+filter (verified against `query.py:551-562`). The implementation instead resolves
+the tag-allowed key set once (`_resolve_tag_keys`) and post-filters retrieved
+candidates in `assemble()` (`_scope_by_tags`), which is uniform across composite /
+hybrid / lexical / push and preserves "omitting tags == identical behavior."
+
+Out-of-scope observation from the critique: `existence_filter.py` matches the
+module-command grep (`BF.`) — pre-existing, unrelated to this field, left untouched.
 
 ---
 
