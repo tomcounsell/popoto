@@ -11,8 +11,8 @@ understand what each piece buys before you keep or drop it.
 
 ## Level 0: Import the defaults
 
-Skip the schema. `DefaultMemory` ships the benchmarked configuration — decay,
-confidence, keyword search, and an association graph — and `SubconsciousMemory`
+Skip the schema. `DefaultMemory` ships the benchmarked configuration (decay,
+confidence, keyword search, and an association graph) and `SubconsciousMemory`
 wraps it into a per-turn loop:
 
 ```python
@@ -37,7 +37,7 @@ The levels below exist for when you want to shape the schema yourself. See the
 [SubconsciousMemory recipe](subconscious-memory-recipe.md) for the default
 model's exact fields and every knob on the loop.
 
-## Level 1: Recall — time-weighted, query-sensitive retrieval
+## Level 1: Recall, time-weighted and query-sensitive
 
 The smallest useful memory. Records decay over time so recent, important ones
 surface first, and a `BM25Field` makes retrieval respond to the query text
@@ -86,9 +86,9 @@ for memory in Memory.query.filter():
     memory.save()
 ```
 
-This is idempotent — safe to run more than once.
+This is idempotent, so it is safe to run more than once.
 
-## Level 2: Attention — filter noise, track reads
+## Level 2: Attention, filtering noise and tracking reads
 
 Add `WriteFilterMixin` to discard low-value records before they hit Redis, and
 `AccessTrackerMixin` to know which memories the agent actually uses.
@@ -128,7 +128,7 @@ results[0].confirm_access()  # marks as actually used
 **What you get:** cleaner memory, since noise never persists. Read tracking
 shows which memories drive agent behavior.
 
-## Level 3: Learning — outcomes strengthen or weaken beliefs
+## Level 3: Learning, where outcomes strengthen or weaken beliefs
 
 Add `ConfidenceField` for certainty tracking. Use `ObservationProtocol` to
 report how the agent used each memory: acted on, dismissed, or contradicted.
@@ -171,7 +171,7 @@ ObservationProtocol.on_context_used([m], outcome_map)
 **What you get:** memories the agent acts on grow stronger. Contradicted
 memories fade. The system learns from outcomes.
 
-## Level 4: Association — multi-factor ranking
+## Level 4: Association and multi-factor ranking
 
 Add `CoOccurrenceField` for weighted associations between memories. Use
 `composite_score()` to rank by several factors at once.
@@ -220,7 +220,7 @@ ones, and multiple ranking factors combine into a single query.
 This model now carries the same fields as the shipped `DefaultMemory` from
 Level 0.
 
-## Level 5: Cognition — LLM-ready context assembly
+## Level 5: Cognition, assembling LLM-ready context
 
 Use `ContextAssembler` to orchestrate the primitives into a single `assemble()`
 call returning formatted, token-budgeted context.
@@ -242,7 +242,7 @@ result = assembler.assemble(
 )
 
 # result.records   — selected model instances
-# result.formatted — LLM-ready string
+# result.formatted : LLM-ready string
 # result.metadata  — scores, timing, token counts
 
 # Inject into your LLM prompt
@@ -297,14 +297,14 @@ Wrapping this in a per-turn loop is what
 [`SubconsciousMemory`](subconscious-memory-recipe.md) does, which brings you
 back to Level 0.
 
-## Level 6: Semantic search — find memories by meaning
+## Level 6: Semantic search, finding memories by meaning
 
 Add `ContentField` and `EmbeddingField` to store large content on the
 filesystem and search it by semantic similarity. Redis stays lean; content and
 vectors live on disk.
 
 Keep `BM25Field` when you add `EmbeddingField`. The two together resolve to
-**hybrid** retrieval — BM25 and vector fused by weighted Reciprocal Rank
+**hybrid** retrieval, BM25 and vector fused by weighted Reciprocal Rank
 Fusion. `EmbeddingField` alone, without `BM25Field`, resolves to the
 query-blind composite path and is a regression, not an upgrade.
 
@@ -344,7 +344,7 @@ class SemanticMemory(Model):
         partition_by="agent_id",
     )
     confidence = ConfidenceField(initial_confidence=0.5)
-    content_bm25 = BM25Field(source="content")    # keep this — hybrid needs both arms
+    content_bm25 = BM25Field(source="content")    # keep this: hybrid needs both arms
     embedding = EmbeddingField(source="content")  # auto-generates vector on save
 
 # Save memories — embeddings are generated automatically
@@ -436,16 +436,16 @@ Recipes — including the batteries-included model — live one level down:
 from popoto.recipes import DefaultMemory, SubconsciousMemory
 ```
 
-**Never** use `from popoto.fields import ...` — the `popoto.fields` subpackage
+**Never** use `from popoto.fields import ...`. The `popoto.fields` subpackage
 does not re-export field types. Always import from `popoto` directly.
 
 ## What's next
 
-- **[SubconsciousMemory Recipe](subconscious-memory-recipe.md)** — the per-turn loop from Level 0, with every knob
-- **[Query-Blind Retrieval](query-blind-retrieval.md)** — when composite ranking is right, and when it costs you the answer
-- **[Agent Memory](../features/agent-memory.md)** — all 14 primitives and the layers composed on them
-- **[Benchmarks](../benchmarks.md)** — the numbers behind the defaults, including the runs that came out badly
-- **[Tuning Magic Numbers](tuning-magic-numbers.md)** — decay rates, confidence signals, and thresholds
-- **[PolicyCache Recipe](policy-cache-recipe.md)** — RL-style learned action selection on these primitives
-- **[Trajectory Memory Recipe](trajectory-memory-recipe.md)** — fingerprint-keyed procedural patterns
-- **[RAG Chatbot Recipe](rag-chatbot-recipe.md)** — retrieval-augmented chatbot with Popoto
+- **[SubconsciousMemory Recipe](subconscious-memory-recipe.md):** the per-turn loop from Level 0, with every knob
+- **[Query-Blind Retrieval](query-blind-retrieval.md):** when composite ranking is right, and when it costs you the answer
+- **[Agent Memory](../features/agent-memory.md):** all 14 primitives and the layers composed on them
+- **[Benchmarks](../benchmarks.md):** the numbers behind the defaults, including the runs that came out badly
+- **[Tuning Magic Numbers](tuning-magic-numbers.md):** decay rates, confidence signals, and thresholds
+- **[PolicyCache Recipe](policy-cache-recipe.md):** RL-style learned action selection on these primitives
+- **[Trajectory Memory Recipe](trajectory-memory-recipe.md):** fingerprint-keyed procedural patterns
+- **[RAG Chatbot Recipe](rag-chatbot-recipe.md):** retrieval-augmented chatbot with Popoto

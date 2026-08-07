@@ -123,7 +123,7 @@ popoto.enable_error_reporting()
 ```
 
 Install `popoto[monitoring]` for the `sentry-sdk` dependency, or skip this
-entirely — Popoto works the same either way.
+entirely. Popoto works the same either way.
 
 ---
 

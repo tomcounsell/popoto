@@ -265,7 +265,7 @@ is in the committed artifact
     fewer than 20 distinct sessions, which makes the top-K window effectively
     wider in session terms than a system that ranks whole sessions directly.
     The agentmemory reference row is the closest available like-for-like
-    comparison — same dataset, same any-hit recall metric family — and it still
+    comparison (same dataset, same any-hit recall metric family), and it still
     differs on this axis. Systems that rank whole sessions are answering a
     differently shaped question; the numbers are not interchangeable.
 
@@ -412,7 +412,7 @@ targets. The 4-category parity slice is published alongside it for leaderboard
 comparability, and the caveat above travels with both. A refusal metric is not
 applicable to this dataset; refusal capability is measured separately.
 
-#### Confidence-gated retrieval — refusal precision
+#### Confidence-gated retrieval: refusal precision
 
 `ContextAssembler` carries an opt-in confidence gate
 (`confidence_gate_threshold` / `confidence_gate_mode`; see
@@ -526,13 +526,13 @@ front.
 **LoCoMo, lexical retrieval, judged answer accuracy: 0.3636.** Scored items
 n=77 (100 questions sampled, 23 adversarial items excluded because the Mem0/GAM
 prompt is a factual-match judge and cannot score a refusal), 28 correct, zero
-judge errors. 95% confidence interval **≈ 0.25–0.47** — at n=77 a single flipped
+judge errors. 95% confidence interval **≈ 0.25–0.47**. At n=77 a single flipped
 item moves the point estimate by 1.3 points, so read the interval, not the third
 decimal. Artifact: `tests/benchmarks/results/external/locomo_latest_judged.json`.
 
 **Scope of the run.** The 100 questions are a stratified sample (seed 0) from a
-derived two-dialogue LoCoMo subset — conversations 26 and 30, 788 turns, 304 QA
-pairs — chosen so the five extraction arms below could be run against an
+derived two-dialogue LoCoMo subset (conversations 26 and 30, 788 turns, 304 QA
+pairs), chosen so the five extraction arms below could be run against an
 identical corpus at a bounded API cost. This is not the full 1986-pair LoCoMo,
 and the interval above covers only sampling error within this subset, not
 dialogue-selection variance across the other eight conversations.
@@ -543,8 +543,8 @@ retrieval layer is the part that measures well, and closing the generation gap
 is open work rather than a solved problem.
 
 **Chronology.** [Epic #456](https://github.com/tomcounsell/popoto/issues/456)
-set this project's benchmark doctrine — native benchmarks, retrieval parity,
-never cross-compare recall with judged accuracy — **before** this judged number
+set this project's benchmark doctrine (native benchmarks, retrieval parity,
+never cross-compare recall with judged accuracy) **before** this judged number
 existed. The doctrine was not written to accommodate the result.
 
 **Scoring provenance.** The [#514](https://github.com/tomcounsell/popoto/issues/514)
@@ -631,7 +631,7 @@ multi-hop LoCoMo slice):
 
 Graph traversal widens the candidate net: Recall@5 and Recall@10 rise
 substantially, Recall@1 falls, MRR is flat, and latency goes up 3.7×. That is
-the real trade-off — better coverage at rank 5–10, worse precision at rank 1,
+the real trade-off: better coverage at rank 5–10, worse precision at rank 1,
 for roughly four times the latency. Enable it when your reader consumes a
 top-5/top-10 window; leave it off when rank 1 is what gets injected.
 
@@ -775,7 +775,7 @@ To add a test case, see "Adding a CsrTestCase" in `tests/benchmarks/README.md`.
 
 ### Overview
 
-SIQ is Popoto's **native** benchmark — it measures the
+SIQ is Popoto's **native** benchmark. It measures the
 one thing composite (query-blind) retrieval does that no public benchmark
 scores: *without an explicit query cueing it, did the right memory get injected
 into context at the right turn?* Every other harness on this page (the external
@@ -841,7 +841,7 @@ LLM-judged "usefulness" cross-check reuses the Tier-5 pinned judge
     The harness runs against four committed fixtures and both adapters, and the
     scores are asserted in `test_siq.py` as a validity check on the harness
     itself. They are not published as a result, because the only comparator
-    that currently exists is `QueryOnlyStubAdapter` — a stand-in that scores
+    that currently exists is `QueryOnlyStubAdapter`, a stand-in that scores
     near zero *by construction*, since the cue-blindness lint guarantees the
     recall turn shares no indexed token with the target. Reporting a Popoto
     number beside it would be reporting the lint, not a capability. A published
@@ -946,7 +946,7 @@ not the exact millisecond.
 The comparable published anchor is MEMTIER (arXiv:2605.03675), which reports
 hybrid-RRF retrieval at **96.7 ms/query** on comparable hardware. Scope the
 Popoto figures before reading them against it: the curve above is the
-**in-process lexical** path. Adding arms costs time — LongMemEval-S hybrid
+**in-process lexical** path. Adding arms costs time. LongMemEval-S hybrid
 (BM25 + CPU embedding + RRF) runs p50 41.5 ms over 500 questions, and graph
 traversal runs p50 22.1 ms on its 282-question LoCoMo slice. None of these are
 compared against hosted-service latencies, which bundle a network round trip

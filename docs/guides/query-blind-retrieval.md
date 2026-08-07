@@ -104,9 +104,9 @@ list, with `AssemblyResult.proactive` naming which came from where.
 ## See also
 
 - [ContextAssembler retrieval modes](../features/context-assembler.md#pull-path-modes-retrieval_mode)
-  — the full mode table, fallback behavior, and construction-time validation
-- [CSR regression gate](../benchmarks.md#deterministic-csr-harness) — the
+  (the full mode table, fallback behavior, and construction-time validation)
+- [CSR regression gate](../benchmarks.md#deterministic-csr-harness): the
   deterministic detector that distinguishes query-blindness from ordinary
   keyword dependence
-- [SubconsciousMemory recipe](subconscious-memory-recipe.md) — the per-turn
+- [SubconsciousMemory recipe](subconscious-memory-recipe.md): the per-turn
   loop that consumes whichever mode your model resolves to

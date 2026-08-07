@@ -19,11 +19,11 @@ you compose `KeyField`, `SortedField`, and `Relationship` into any Popoto model.
 A language model reasons well over whatever is in its context window. What it
 cannot do unaided is decide what belongs there:
 
-- **Prioritize by recency and importance** — know which records are hot now
-- **Learn from outcomes** — track what worked and what did not
-- **Manage certainty** — downweight contradicted knowledge automatically
-- **Retrieve associatively** — surface related records without an explicit graph query
-- **Filter noise** — keep low-value observations out of storage entirely
+- **Prioritize by recency and importance.** Know which records are hot now.
+- **Learn from outcomes.** Track what worked and what did not.
+- **Manage certainty.** Downweight contradicted knowledge automatically.
+- **Retrieve associatively.** Surface related records without an explicit graph query.
+- **Filter noise.** Keep low-value observations out of storage entirely.
 
 Each primitive below covers one of those. Each is independently useful.
 
@@ -31,18 +31,18 @@ Each primitive below covers one of those. Each is independently useful.
 
 | Primitive | What it does | Full reference |
 |-----------|--------------|----------------|
-| DecayingSortedField | Time-weighted scoring — records lose relevance unless refreshed | [page](decaying-sorted-field.md) |
+| DecayingSortedField | Time-weighted scoring: records lose relevance unless refreshed | [page](decaying-sorted-field.md) |
 | CyclicDecayField | Temporal rhythms and homeostatic pressure on top of decay | [page](cyclic-decay-field.md) |
-| ConfidenceField | Capped-evidence Bayesian certainty — corroboration strengthens, contradiction weakens | [page](confidence-field.md) |
+| ConfidenceField | Capped-evidence Bayesian certainty: corroboration strengthens, contradiction weakens | [page](confidence-field.md) |
 | CoOccurrenceField | Weighted association edges, strengthened by co-access, traversed by BFS | [page](co-occurrence-field.md) |
-| BM25Field | Ranked keyword search in Redis sorted sets — what makes retrieval query-sensitive | [page](hybrid-retrieval.md#bm25field) |
-| CompositeScoreQuery | Multi-factor retrieval — combine N sorted indexes with weights, server-side | [page](composite-score-query.md) |
+| BM25Field | Ranked keyword search in Redis sorted sets, and what makes retrieval query-sensitive | [page](hybrid-retrieval.md#bm25field) |
+| CompositeScoreQuery | Multi-factor retrieval: combine N sorted indexes with weights, server-side | [page](composite-score-query.md) |
 | ExistenceFilter | Bloom filter for O(1) "do I know anything about X?" | [page](existence-filter.md) |
 | FrequencySketch | Count-Min Sketch for approximate frequency counting | [reference](../fields.md#frequencysketch) |
 | PredictionLedger | Record a prediction, observe the outcome, feed the error back into confidence | [page](prediction-ledger.md) |
-| ObservationProtocol | Outcome-driven effects — acted, dismissed, deferred, contradicted, used | [page](observation-protocol.md) |
+| ObservationProtocol | Outcome-driven effects: acted, dismissed, deferred, contradicted, used | [page](observation-protocol.md) |
 | AccessTrackerMixin | Two-stage read tracking: reads stage cheaply, then promote on confirmation | [reference](../fields.md#accesstrackermixin) |
-| WriteFilterMixin | Gates persistence — low-value records are discarded before they reach Redis | [reference](../fields.md#writefiltermixin) |
+| WriteFilterMixin | Gates persistence: low-value records are discarded before they reach Redis | [reference](../fields.md#writefiltermixin) |
 | EventStreamMixin | Append-only mutation log via Redis Streams | [reference](../fields.md#eventstreammixin) |
 | TagField | Optional multi-value scoping for a centrally hosted Redis serving many agents | [reference](../fields.md#tagfield) |
 
@@ -89,7 +89,7 @@ counted separately, never summed into the primitive count.
     DecayingSortedField · ConfidenceField · WriteFilterMixin ·
     PredictionLedger · TagField · EventStreamMixin
   over time, across the corpus:
-    MemoryLifecycle — promote, forget, tombstone, restore
+    MemoryLifecycle: promote, forget, tombstone, restore
 ```
 
 The pull path answers "what matches this query". The push path answers "what
@@ -120,13 +120,13 @@ the right choice for some workloads and quietly wrong for others.
    for atomic execution, consistent with all Popoto field hooks.
 
 5. **Centralized tuning.** Behavioral constants live in `Defaults`, importable
-   from the package root. Override globally or per field — explicit kwargs
+   from the package root. Override globally or per field. Explicit kwargs
    always win.
 
 ```python
 from popoto import Defaults
 
-# Global override — all DecayingSortedFields default to 0.7
+# Global override: all DecayingSortedFields default to 0.7
 Defaults.DECAY_RATE = 0.7
 
 # Per-field override still wins
@@ -139,13 +139,13 @@ table and the empirical basis behind each value.
 
 ## Where to go next
 
-- **Building something** — [Quickstart](../guides/agent-memory-quickstart.md),
+- **Building something:** [Quickstart](../guides/agent-memory-quickstart.md),
   then the [SubconsciousMemory recipe](../guides/subconscious-memory-recipe.md)
-- **Deciding whether retrieval will respond to your queries** —
+- **Deciding whether retrieval will respond to your queries:**
   [Query-blind retrieval](../guides/query-blind-retrieval.md)
-- **Checking the claims** — [Benchmarks](../benchmarks.md), including the
+- **Checking the claims:** [Benchmarks](../benchmarks.md), including the
   measurements that came out badly
-- **Tuning** — [Magic Numbers](../guides/tuning-magic-numbers.md) and
+- **Tuning:** [Magic Numbers](../guides/tuning-magic-numbers.md) and
   [Parametric Sweep](parametric-sweep.md)
-- **Field-level API** — [Models and Fields](../fields.md) and the
+- **Field-level API:** [Models and Fields](../fields.md) and the
   [API Reference](../reference/index.md)

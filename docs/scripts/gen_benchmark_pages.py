@@ -171,10 +171,10 @@ SPECS: tuple[Spec, ...] = (
             "    Read this as *retrieval recall*, not answer accuracy. The nearest\n"
             "    published reference point measured the same way is MEMTIER\n"
             "    (arXiv:2605.03675), whose own LoCoMo retrieval baselines its authors\n"
-            "    describe as uninformative — so treat it as evidence that LoCoMo\n"
+            "    describe as uninformative, so treat it as evidence that LoCoMo\n"
             "    retrieval numbers run low across systems, not as a ranking to place\n"
             "    Popoto within. This variant is the 10-dialogue / 5-category\n"
-            "    (adversarial included) / 1986-QA-pair LoCoMo — not the 1,540-QA /\n"
+            "    (adversarial included) / 1986-QA-pair LoCoMo, not the 1,540-QA /\n"
             "    4-category leaderboard variant.\n"
             "\n"
             '!!! info "Corrected 2026-08-07 — these numbers replace an inflated set"\n'
@@ -226,7 +226,7 @@ SPECS: tuple[Spec, ...] = (
             "    that also lives inside hybrid — so a weak number here does not by\n"
             "    itself explain the hybrid-vs-lexical gap. Read it against the same\n"
             "    10-dialogue / 5-category / 1986-QA-pair LoCoMo variant used by the\n"
-            "    lexical and hybrid pages — same retrieval-recall metric family\n"
+            "    lexical and hybrid pages: same retrieval-recall metric family\n"
             "    throughout, and the nearest published retrieval-measured reference\n"
             "    is MEMTIER (arXiv:2605.03675).\n"
         ),
@@ -375,7 +375,7 @@ deploy, with no hand-edited tables to drift.
     language model produce a correct final answer? These are **different metric
     families and are not convertible in either direction**, so Popoto's recall
     is never tabulated beside a judge-accuracy percentage. (Note: Dakera
-    advertises "88.2% recall", but their methodology is judge-scored — it is
+    advertises "88.2% recall", but their methodology is judge-scored: it is
     not retrieval recall despite the name.)
 
     Popoto's own judged answer accuracy is published, with its N, its interval,
@@ -402,7 +402,7 @@ carry pre-correction scoring.
 !!! note "MEMTIER anchor (arXiv:2605.03675)"
     MEMTIER is the nearest published work that measures LoCoMo *as retrieval*
     rather than as judged answers, which makes it the right anchor for latency
-    and for the shape of the regime — it reports hybrid-RRF retrieval at
+    and for the shape of the regime. It reports hybrid-RRF retrieval at
     **96.7 ms/query** on comparable hardware. Its own LoCoMo retrieval scores
     are baselines its authors describe as uninformative, so they are not used
     here to place Popoto on a scale.
@@ -429,7 +429,7 @@ carry pre-correction scoring.
 ## Further reading
 
 - [Benchmarking](../../benchmarks.md) — how the harnesses work and how to run them.
-- [Query-blind retrieval](../../guides/query-blind-retrieval.md) — when composite
+- [Query-blind retrieval](../../guides/query-blind-retrieval.md): when composite
   mode is the right ranking and when it is the wrong one.
 """
 

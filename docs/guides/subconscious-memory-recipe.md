@@ -67,7 +67,7 @@ class DefaultMemory(AccessTrackerMixin, Model):
 
 The `BM25Field` is the load-bearing piece: it makes `retrieval_mode='auto'` resolve to the query-sensitive `lexical` mode. A model without one resolves to `composite`, which ignores the query text entirely (and now logs a warning saying so).
 
-`DefaultMemory` deliberately omits `WriteFilterMixin` — it discards records below a score threshold and `save()` returns `False`, which is the wrong surprise for a first run. Add it once you want that behavior; the [quickstart](agent-memory-quickstart.md#level-2-attention-filter-noise-track-reads) covers it at Level 2. `EmbeddingField` is omitted too, since it needs an embedding provider; adding one to a subclass flips retrieval from `lexical` to `hybrid` with no change at this call site.
+`DefaultMemory` deliberately omits `WriteFilterMixin` — it discards records below a score threshold and `save()` returns `False`, which is the wrong surprise for a first run. Add it once you want that behavior; the [quickstart](agent-memory-quickstart.md#level-2-attention-filtering-noise-and-tracking-reads) covers it at Level 2. `EmbeddingField` is omitted too, since it needs an embedding provider; adding one to a subclass flips retrieval from `lexical` to `hybrid` with no change at this call site.
 
 Two more defaults follow from the default model: `score_weights` becomes `{"relevance": 1.0}` (the benchmarked vector), and `confidence_field` / `co_occurrence_field` are wired to the model's `confidence` and `associations` fields.
 
