@@ -2,10 +2,17 @@
 Tests for Model.__eq__ identity semantics (#503).
 
 Equality is *identity* equality, not value equality: two instances are equal
-when they are the same class with the same db_key. Instances with any unset
-KeyField have no stable key yet -- db_key renders a missing value as the
-literal string "None", collapsing every such instance onto the same key -- so
-they must compare equal only to themselves.
+when they are the same class with the same db_key.
+
+The exception is a never-saved instance whose KeyFields are *all* None.
+db_key renders a missing KeyField as the literal string "None", so every such
+instance collapses onto one class-wide placeholder key; they compare equal
+only to themselves.
+
+A partially-set key is NOT an exception -- it still addresses one specific
+record -- and neither is a persisted None key, since KeyField(null=True)
+(typically paired with an AutoKeyField) stores None as a legitimate key
+component. See TestNullableKeyFieldEquality.
 """
 
 import pytest
