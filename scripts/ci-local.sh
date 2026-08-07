@@ -11,6 +11,7 @@
 #   stress    stress-tests.yml        pytest tests/test_stress.py (+durations)
 #   docs      deploy-docs.yml         mkdocs build --strict (the deploy gate)
 #   build     release.yml             python -m build (sdist + wheel sanity)
+#   lock      lock-check.yml          uv lock --check (lock matches pyproject)
 #   guard     guard-main-push.yml     warns if a main push isn't docs-only
 #
 # Valkey is intentionally skipped: redis-py talks to Redis and Valkey
@@ -20,12 +21,12 @@
 #
 # Usage:
 #   scripts/ci-local.sh              # default gates: tests + stress + docs
-#   scripts/ci-local.sh --all        # everything, incl. build + guard
+#   scripts/ci-local.sh --all        # everything, incl. build + lock + guard
 #   scripts/ci-local.sh --fast       # tests only (skip stress + docs)
 #   scripts/ci-local.sh tests docs   # run only the named gates
 #
 # Flags:
-#   --all     run every gate (tests stress docs build guard)
+#   --all     run every gate (tests stress docs build lock guard)
 #   --fast    run only the test suite
 #   -h|--help show this help
 
@@ -58,9 +59,9 @@ case "${1:-}" in
 esac
 for arg in "$@"; do
   case "$arg" in
-    --all)  GATES=(tests stress docs build guard) ;;
+    --all)  GATES=(tests stress docs build lock guard) ;;
     --fast) GATES=(tests) ;;
-    tests|stress|docs|build|guard) GATES+=("$arg") ;;
+    tests|stress|docs|build|lock|guard) GATES+=("$arg") ;;
     *) fail "unknown argument: $arg"; exit 2 ;;
   esac
 done
@@ -215,6 +216,31 @@ gate_build()  {
     return 1
   fi
 }
+gate_lock() {
+  # uv.lock must match pyproject.toml. Without this, an added dependency or a
+  # version bump can ship unlocked -- the `anthropic` extra was declared in
+  # pyproject but absent from the lock for several releases (#523).
+  if ! command -v uv >/dev/null 2>&1; then
+    warn "uv not installed — skipping lock gate"
+    return 0
+  fi
+  # An old uv rewrites the lock in an older revision format and drops
+  # upload-time metadata, so it reports a current lock as out of date. Refuse
+  # to judge rather than emit a bogus failure.
+  local lock_revision uv_version
+  lock_revision="$(grep -m1 '^revision = ' "${ROOT}/uv.lock" 2>/dev/null | tr -dc '0-9')"
+  uv_version="$(uv --version 2>/dev/null | awk '{print $2}')"
+  if [ "${lock_revision:-0}" -ge 3 ] 2>/dev/null; then
+    case "$uv_version" in
+      0.[0-9].*|0.1[01].*)
+        warn "uv $uv_version is too old for lock revision $lock_revision — skipping"
+        warn "(it would downgrade the lock format; upgrade uv to run this gate)"
+        return 0
+        ;;
+    esac
+  fi
+  uv lock --check
+}
 gate_guard() {
   # Mirror guard-main-push.yml: a *direct* push to main may only touch
   # docs/, CLAUDE.md, .claude/commands/. Compare the current branch's
@@ -248,6 +274,7 @@ for g in "${GATES[@]}"; do
     stress) run_gate stress gate_stress ;;
     docs)   run_gate docs   gate_docs   ;;
     build)  run_gate build  gate_build  ;;
+    lock)   run_gate lock   gate_lock   ;;
     guard)  run_gate guard  gate_guard  ;;
   esac
 done
