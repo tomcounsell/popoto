@@ -8429,6 +8429,23 @@ Add programmable memory to your AI agent in 5 progressive levels. Each level is 
 >
 > **Full reference:** [Agent Memory Feature Overview](../features/agent-memory.md) covers all 14 primitives in depth.
 
+## Level 0: Import the defaults
+
+Before building a schema, know that you can skip one. `DefaultMemory` ships the benchmarked configuration — decay, confidence, keyword search, and an association graph — and `SubconsciousMemory` wraps it into a per-turn loop:
+
+```python
+from popoto.recipes import SubconsciousMemory
+
+sm = SubconsciousMemory(agent_id="agent-1")
+
+messages, assembly = sm.inject_context(messages)   # pre-turn: retrieve + inject
+answer = call_your_llm(messages)                   # your LLM call
+sm.extract_memories(answer, importance=0.6)        # post-turn: save what was learned
+sm.report_outcomes(assembly, outcome="acted")      # feedback: reinforce what was used
+```
+
+That is a working memory loop in six lines, with query-sensitive retrieval on by default. The levels below exist for when you want to shape the schema yourself — read them to understand what each field buys, then keep whichever ones you need. See the [Subconscious Memory Recipe](subconscious-memory-recipe.md) for the default model's exact fields and every knob on the loop.
+
 ## Level 1: Recall — Time-Weighted Retrieval
 
 The simplest useful memory. Records decay over time so recent, important memories surface first.
@@ -8602,7 +8619,7 @@ from popoto import ContextAssembler
 # Use any Memory model from Levels 1-4
 assembler = ContextAssembler(
     model_class=Memory,
-    score_weights={"relevance": 0.6, "confidence": 0.3},
+    score_weights={"relevance": 1.0},  # benchmarked default; see the sweep note below
     max_items=10,
     max_tokens=4000,
 )
@@ -8653,6 +8670,8 @@ ObservationProtocol.on_context_used(result.records, outcome_map)
 ```
 
 **What you get:** One call assembles the right memories, respects token budgets, and formats output for your LLM. Pull-path (query-driven) and push-path (proactive surfacing) retrieval in a single pipeline.
+
+**On `score_weights={"relevance": 1.0}`:** this is the `best_value` from the Tier 4 sweep (`tests/benchmarks/results/sweep_20260326_125145.json`, coding_assistant / research_agent / support_agent scenarios, 18/18 points OK). Transparency about how strong that evidence is: all six swept weight vectors tied at nDCG@5 = 1.0 on those scenarios, so this is the selected best_value and the simplest single-index vector, not a configuration measured to beat the others. In lexical and hybrid modes `score_weights` is ignored by the pull path entirely.
 
 ## Level 6: Semantic Search — Find Memories by Meaning
 
@@ -8751,6 +8770,12 @@ from popoto import ObservationProtocol, ContextAssembler
 
 # Constants for tuning
 from popoto import InteractionWeight, TemporalPeriod, Defaults
+```
+
+Recipes — including the batteries-included model — live one level down:
+
+```python
+from popoto.recipes import DefaultMemory, SubconsciousMemory
 ```
 
 **Never** use `from popoto.fields import ...` — the `popoto.fields` subpackage does not re-export field types. Always import from `popoto` directly.
@@ -10552,6 +10577,20 @@ The pull path supports four modes controlled by the `retrieval_mode` constructor
 
 **`EmbeddingField` alone does not enable query-sensitive retrieval.** A model with `EmbeddingField` but no `BM25Field` resolves to `"composite"` under `"auto"` — query-blind, ranked by score indexes. Query-sensitive retrieval (lexical or hybrid) requires a `BM25Field`.
 
+**`"auto"` warns when it lands on `"composite"`.** That resolution is the one case where the emergent-mode convenience can quietly cost you correctness: query cues are accepted and then ignored, so the right memory can rank below unrelated ones with the call site looking healthy. Since v1.9 the fall-through logs a `WARNING` on the `POPOTO.ContextAssembler` logger naming the model and the missing `BM25Field`:
+
+```
+WARNING POPOTO.ContextAssembler: ContextAssembler: retrieval_mode='auto' resolved
+to 'composite' (QUERY-BLIND) because Memory declares no BM25Field. Query cues
+passed to assemble() are IGNORED; records are ranked by score_weights alone.
+Add a BM25Field to Memory for query-sensitive retrieval, e.g.
+content_bm25 = BM25Field(source="content"), or import the batteries-included
+model: from popoto.recipes import DefaultMemory. Pass retrieval_mode='composite'
+to silence this warning if query-blind ranking is intended.
+```
+
+Three ways to resolve it: declare a `BM25Field`, import [`DefaultMemory`](../guides/subconscious-memory-recipe.md#quick-start) which declares one, or pass `retrieval_mode="composite"` explicitly to affirm that query-blind ranking is what you want. The explicit mode never warns.
+
 **Reindex caveat:** `BM25Field` populates its keyword index via the `on_save()` hook. New records are indexed automatically on save. Records that existed before `BM25Field` was added are not in the index and will not appear in BM25-driven retrieval. To backfill an existing corpus after adding `BM25Field`:
 
 ```python
@@ -10657,6 +10696,32 @@ The `assemble()` call returns an `AssemblyResult` dataclass:
 | `formatted` | `str` | LLM-ready formatted string |
 | `metadata` | `dict` | Scores, timing, token counts |
 
+### Output formats (`output_format`)
+
+| Format | Per-record slice | Carries |
+|--------|------------------|---------|
+| `"structured"` *(default)* | JSON object, indented inside a JSON array | Every non-null field, including keys and score indexes |
+| `"xml"` | `<record><field>value</field></record>` | Every non-null field |
+| `"natural"` | `key: value, key: value` on one enumerated line | Every non-null field |
+| `"content"` | The memory text alone, as a `- ` bullet | Content only |
+
+`"content"` exists because the identifiers the other formats spend characters on — `memory_id` UUIDs, the `agent_id` the caller already supplied, `relevance` as a bare epoch float — are not something a model can act on. Measured over the [`DefaultMemory`](../guides/subconscious-memory-recipe.md#quick-start) schema with a 71-character memory: `"structured"` emitted 262 characters (3.69x the content, ~104 estimated tokens), `"content"` emitted 73 (1.03x, ~16 tokens).
+
+Pick the format for the job: `"content"` when you are injecting memories as prose context for the model to read, `"structured"` when downstream code parses the payload or the model needs to cite record IDs.
+
+```python
+assembler = ContextAssembler(
+    model_class=Memory,
+    score_weights={"relevance": 1.0},
+    output_format="content",
+    content_field="content",  # optional; auto-detected from the BM25Field source
+)
+```
+
+`content_field` names the text field `"content"` reads. Left at `None` it resolves from the model's `BM25Field` source, then a field literally named `content`, then (per record) the longest string value. A model with no string field at all yields an empty context block rather than an error.
+
+[`SubconsciousMemory`](../guides/subconscious-memory-recipe.md) defaults to `"content"`; `ContextAssembler` keeps `"structured"` so existing call sites are untouched.
+
 ### Telemetry hook: `emit_trace`
 
 `assemble(..., emit_trace=True)` attaches `metadata["trace"]` — a list of
@@ -10732,7 +10797,7 @@ If both BM25 and vector signals return empty results, the path falls back to the
 
 ### Counter contract
 
-`token_counter` receives one argument: the serialized per-record string for the active `output_format` (the exact slice the formatter emits — JSON object indented inside the array, `<record>...</record>` block, or `key: value` line). It must return a non-negative `int`.
+`token_counter` receives one argument: the serialized per-record string for the active `output_format` (the exact slice the formatter emits — JSON object indented inside the array, `<record>...</record>` block, `key: value` line, or bare content text). It must return a non-negative `int`.
 
 ```python
 # Correct contract — text is the serialized record string
@@ -10770,7 +10835,7 @@ Budget selection is greedy first-fit in rank order with **skip-not-break** behav
 
 ### Wrapper framing exclusion
 
-Wrapper framing (JSON array brackets `[...]`, `<records>...</records>` envelope, enumeration prefixes in natural format) is excluded from per-record token counting. This residual is a fixed handful of tokens per assembly — less than 20 tokens per format, independent of record count or size — and is asserted by golden composition tests.
+Wrapper framing (JSON array brackets `[...]`, `<records>...</records>` envelope, enumeration prefixes in natural format, `- ` bullets in content format) is excluded from per-record token counting. This residual is a fixed handful of tokens per assembly — less than 20 tokens per format, independent of record count or size — and is asserted by golden composition tests.
 
 `metadata["token_count"]` reflects the serialized per-record content actually emitted. It does not include the wrapper framing residual.
 
@@ -11637,6 +11702,8 @@ Automatic memory injection and extraction around every LLM turn. The agent's mem
 
     `SubconsciousMemory` uses `retrieval_mode='auto'` — the effective mode is determined by which fields are on the model at init time. Adding or removing `BM25Field`/`EmbeddingField` changes the effective mode without any change at the `SubconsciousMemory` call site. Adding `EmbeddingField` to a BM25-only model silently flips `lexical → hybrid`.
 
+    The default model declares a `BM25Field`, so the zero-argument path below is query-sensitive. Bring a model without one and `ContextAssembler` logs a `WARNING` naming the missing field.
+
 ## Architecture
 
 ```
@@ -11661,41 +11728,76 @@ Agent response
 ## Quick Start
 
 ```python
-from popoto import (
-    Model, AutoKeyField, KeyField, StringField, FloatField,
-    DecayingSortedField, ConfidenceField, BM25Field,
-    WriteFilterMixin, AccessTrackerMixin,
-)
-from popoto.recipes.subconscious_memory import SubconsciousMemory
+from popoto.recipes import SubconsciousMemory
 
-# Define your Memory model (any level from the quickstart guide)
-class Memory(WriteFilterMixin, AccessTrackerMixin, Model):
+sm = SubconsciousMemory(agent_id="agent-1")
+
+messages, assembly = sm.inject_context(messages)   # pre-turn
+answer = call_your_llm(messages)                   # your LLM call
+sm.extract_memories(answer, importance=0.6)        # post-turn
+sm.report_outcomes(assembly, outcome="acted")      # feedback
+```
+
+That is the whole loop. `agent_id` is the only required argument — it partitions every index, so two agents sharing one Redis never see each other's memories.
+
+### What the defaults give you
+
+Leaving `model_class` unset selects `popoto.recipes.DefaultMemory`, the shipped model:
+
+```python
+from popoto.recipes import DefaultMemory
+
+class DefaultMemory(AccessTrackerMixin, Model):
     memory_id = AutoKeyField()
     agent_id = KeyField()
     content = StringField(default="")
     importance = FloatField(default=1.0)
-    relevance = DecayingSortedField(
-        base_score_field="importance",
-        partition_by="agent_id",
-    )
-    confidence = ConfidenceField(initial_confidence=0.5)
-    content_bm25 = BM25Field(source="content")  # keyword search index
+    relevance = DecayingSortedField(base_score_field="importance", partition_by="agent_id")
+    confidence = ConfidenceField()
+    content_bm25 = BM25Field(source="content")
+    associations = CoOccurrenceField()
+```
 
-    _wf_min_threshold = 0.1  # default after sweep 2026-04-17 (was 0.2)
-    _wf_priority_threshold = 0.7
+The `BM25Field` is the load-bearing piece: it makes `retrieval_mode='auto'` resolve to the query-sensitive `lexical` mode. A model without one resolves to `composite`, which ignores the query text entirely (and now logs a warning saying so).
 
-    def compute_filter_score(self):
-        return self.importance or 0.0
+`DefaultMemory` deliberately omits `WriteFilterMixin` — it discards records below a score threshold and `save()` returns `False`, which is the wrong surprise for a first run. Add it once you want that behavior; the [quickstart](agent-memory-quickstart.md#level-2-attention-filter-noise-track-reads) covers it at Level 2. `EmbeddingField` is omitted too, since it needs an embedding provider; adding one to a subclass flips retrieval from `lexical` to `hybrid` with no change at this call site.
 
-# Create the subconscious memory layer
+Two more defaults follow from the default model: `score_weights` becomes `{"relevance": 1.0}` (the benchmarked vector), and `confidence_field` / `co_occurrence_field` are wired to the model's `confidence` and `associations` fields.
+
+### Bringing your own model
+
+Every argument is still there. Passing `model_class` explicitly keeps the pre-existing defaults for `confidence_field` and `co_occurrence_field` (both `None`), so upgrading changes nothing for existing code:
+
+```python
 sm = SubconsciousMemory(
-    model_class=Memory,
+    model_class=Memory,          # any level from the quickstart guide
     agent_id="agent-1",
     score_weights={"relevance": 0.6, "confidence": 0.3},
     max_items=10,
     max_tokens=4000,
 )
 ```
+
+Applications that want their own Redis keyspace can subclass instead of authoring a schema:
+
+```python
+class ProjectMemory(DefaultMemory):
+    pass  # keys become ProjectMemory:* instead of DefaultMemory:*
+```
+
+### Injected context format
+
+The injected block carries the memory text and nothing else:
+
+```
+Relevant context:
+- The deploy pipeline uses a blue-green strategy with automatic rollback.
+- Q4 revenue exceeded projections by 12%, driven by enterprise deals.
+```
+
+Earlier versions injected the full JSON record — `memory_id` UUIDs, the `agent_id` the caller had just supplied, and `relevance` as a raw epoch float. Measured over `DefaultMemory` with a 71-character memory, that payload ran 262 characters (3.69x the content, ~104 estimated tokens) against 73 characters for the content format (1.03x, ~16 tokens).
+
+Pass `output_format="structured"` to restore the JSON payload verbatim, or `"xml"` / `"natural"` for the other [ContextAssembler formats](../features/context-assembler.md#output-formats-output_format).
 
 ### Reindexing Existing Records
 
@@ -11804,13 +11906,15 @@ Modulation is on by default whenever the model carries exactly one `ConfidenceFi
 | `max_items` | 10 | Maximum memories injected per turn |
 | `max_tokens` | 4000 | Token budget for injected context (enforced; see [Token Budget Semantics](../features/context-assembler.md#token-budget-semantics)) |
 | `extraction_min_length` | 10 | Minimum chars for a sentence to become a memory |
-| `score_weights` | (required) | Weight dict for composite scoring (e.g. `{"relevance": 0.6, "confidence": 0.3}`) |
+| `model_class` | `None` (-> `DefaultMemory`) | Memory model. Leave unset for the batteries-included model |
+| `score_weights` | `{"relevance": 1.0}` | Weight dict for composite scoring. The benchmarked vector; ignored by the pull path in lexical/hybrid modes |
+| `output_format` | `"content"` | Injected payload shape. `"structured"` restores the pre-v1.9 JSON |
 | `system_preamble` | "You are a helpful assistant." | Prefix for auto-created system messages |
 | `content_field` | "content" | Name of the text content field on your model |
 | `importance_field` | "importance" | Name of the importance score field |
 | `extraction_provider` | `None` (-> `HeuristicExtractionProvider`) | `AbstractExtractionProvider` used by `extract_memories()`. See [LLM Memory Extraction](../features/llm-memory-extraction.md) |
-| `confidence_field` | `None` | Name of a `ConfidenceField` to seed from extracted facts' confidence opinions; no-op unless set |
-| `co_occurrence_field` | `None` | Name of a `CoOccurrenceField` to link co-mentioned entities in; no-op unless set |
+| `confidence_field` | `None`, or `"confidence"` with the default model | Name of a `ConfidenceField` to seed from extracted facts' confidence opinions; no-op unless set |
+| `co_occurrence_field` | `None`, or `"associations"` with the default model | Name of a `CoOccurrenceField` to link co-mentioned entities in; no-op unless set |
 
 These constants can be tuned experimentally using the Tier 4 benchmark harness. See the [Tuning Magic Numbers](tuning-magic-numbers.md) guide for the full constant catalog, optimal ranges, and how to run parameter sweeps.
 
@@ -11832,9 +11936,7 @@ class MyProvider(AbstractExtractionProvider):
         ]
 
 sm = SubconsciousMemory(
-    model_class=Memory,
     agent_id="agent-1",
-    score_weights={"relevance": 0.6, "confidence": 0.3},
     extraction_provider=MyProvider(),
 )
 ```
@@ -16056,9 +16158,11 @@ lifecycle = MemoryLifecycle(
 `SubconsciousMemory`, not as a replacement:
 
 ```python
-from popoto.recipes import MemoryLifecycle, SubconsciousMemory
+from popoto.recipes import DefaultMemory, MemoryLifecycle, SubconsciousMemory
 
-sm = SubconsciousMemory(model_class=Memory, agent_id="agent-1", ...)
+Memory = DefaultMemory  # or your own model class
+
+sm = SubconsciousMemory(model_class=Memory, agent_id="agent-1")
 lifecycle = MemoryLifecycle(model_class=Memory, importance_field="relevance")
 
 # Pre-turn: inject context from all tiers
