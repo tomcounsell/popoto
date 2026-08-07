@@ -10,9 +10,10 @@ covers the *value* itself.
 Two invariants, and the second matters as much as the first:
 
 1. awareness and offset round-trip for values written from #521 onward;
-2. values already on disk in the offset-free form still decode, and decode
-   *naive*, because their offset was never written and inventing one would
-   move the value.
+2. values already on disk in the offset-free form still decode, and are
+   assumed to be UTC -- an assumption rather than a recovery, since their
+   offset was never written. `time` is excluded from that assumption because
+   its legacy and post-fix naive shapes are byte-identical.
 
 The tests pin a non-UTC process timezone for the same reason #519's do: on a
 UTC box a dropped offset is indistinguishable from a preserved one.
@@ -129,20 +130,55 @@ def test_naive_stays_naive():
 def test_legacy_offset_free_datetime_still_decodes():
     """Pre-#521 rows must keep loading; the decoder reads both shapes."""
     decoded = DATETIME_CODEC.decoder({"as_encodable": "20260807T12:00:00.123456"})
-    assert decoded == datetime.datetime(2026, 8, 7, 12, 0, 0, 123456)
+    assert decoded == datetime.datetime(
+        2026, 8, 7, 12, 0, 0, 123456, tzinfo=datetime.timezone.utc
+    )
 
 
-def test_legacy_datetime_decodes_naive_not_assumed_utc():
-    """A legacy string has no offset to recover, so none is invented.
+def test_legacy_datetime_is_assumed_utc():
+    """A legacy string carries no offset, so UTC is assumed on read.
 
-    Stamping UTC onto it would move every value ever written by a non-UTC
-    process and would break callers comparing it to `datetime.now()`.
+    An assumption, not a recovery: a value originally written by a non-UTC
+    process held a different instant and that offset was never stored.
     """
     decoded = DATETIME_CODEC.decoder({"as_encodable": "20260807T12:00:00.123456"})
-    assert decoded.tzinfo is None
+    assert decoded.tzinfo is not None
+    assert decoded.utcoffset() == datetime.timedelta(0)
+    assert decoded.hour == 12
 
 
-def test_legacy_offset_free_time_still_decodes():
+def test_legacy_format_is_tried_before_isoformat():
+    """Version-independence, and the reason for the try-order in the decoder.
+
+    `fromisoformat` accepts the legacy basic-date form on 3.12 but rejects it
+    on the 3.10 floor. If isoformat were tried first, this same row would
+    decode naive on 3.12 and aware on 3.10. Asserting the aware result pins
+    the order on every interpreter the project supports.
+    """
+    decoded = DATETIME_CODEC.decoder({"as_encodable": "20260807T12:00:00.123456"})
+    assert decoded.tzinfo is datetime.timezone.utc
+
+
+def test_post_fix_naive_value_is_not_assumed_utc():
+    """The two offset-free shapes must not be conflated.
+
+    A post-#521 naive value was deliberately written naive and carries date
+    separators, so it must stay naive rather than picking up the legacy
+    assumption.
+    """
+    value = datetime.datetime(2026, 8, 7, 12, 0)
+    encoded = DATETIME_CODEC.encoder(value)["as_encodable"]
+    assert "-" in encoded  # extended date form, unlike the legacy shape
+    assert DATETIME_CODEC.decoder({"as_encodable": encoded}).tzinfo is None
+
+
+def test_legacy_offset_free_time_stays_naive():
+    """`time` does not get the UTC assumption, and cannot.
+
+    The legacy format and `time.isoformat()` of a naive time with microseconds
+    are byte-identical, so a legacy value is indistinguishable from one
+    deliberately written naive after #521.
+    """
     decoded = TIME_CODEC.decoder({"as_encodable": "12:30:00.000000"})
     assert decoded == datetime.time(12, 30)
     assert decoded.tzinfo is None

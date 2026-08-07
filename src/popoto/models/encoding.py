@@ -79,32 +79,50 @@ def _decode_datetime(obj) -> datetime.datetime:
     """Decode a stored datetime, tolerating the pre-#521 offset-free form.
 
     Values written from #521 onward are `isoformat()`, which carries the UTC
-    offset when there is one. Values written before it used
-    `%Y%m%dT%H:%M:%S.%f`, which has no offset directive, so an aware value was
-    stored as its own wall clock with the offset discarded (#521).
+    offset when there is one and omits it when the value is genuinely naive.
+    Values written before it used `%Y%m%dT%H:%M:%S.%f`, which has no offset
+    directive, so an aware value was stored as its own wall clock with the
+    offset discarded (#521).
 
-    A legacy string is decoded naive, exactly as before. That is deliberate:
-    the offset is not merely absent from the string, it was never written, so
-    there is nothing to recover and inventing one would silently move the
-    value. Naive-in/naive-out also keeps existing callers comparing legacy
-    values against `datetime.now()` working rather than raising TypeError on a
-    naive/aware comparison.
+    **A legacy string is assumed to be UTC and decoded aware.** UTC is the only
+    defensible assumption: it agrees with #519's naive-as-UTC scoring and with
+    v1.7.1 stamping `auto_now`/`auto_now_add` in UTC (#421). It is an
+    assumption rather than a recovery -- a value originally written by a
+    non-UTC process carried a different instant, and that offset was never
+    stored, so it cannot be recovered here or anywhere else.
 
-    `SortedFieldMixin.convert_to_numeric` treats a naive value as UTC when
-    deriving a score (#519), so legacy rows still score consistently.
+    The legacy format is tried *first*, and the order is load-bearing rather
+    than stylistic. `fromisoformat` accepts the legacy basic-date form
+    ("20260807T12:00:00.123456") on 3.12 but rejects it on the 3.10
+    `requires-python` floor. Trying isoformat first would therefore decode a
+    legacy row naive on 3.12 and aware on 3.10 -- the same row, a different
+    value, depending on the interpreter. Legacy-first is unambiguous in both
+    directions: a post-#521 string always carries date separators, so it can
+    never match `%Y%m%dT%H:%M:%S.%f`.
     """
     as_encodable = obj["as_encodable"]
     try:
-        return datetime.datetime.fromisoformat(as_encodable)
+        legacy = datetime.datetime.strptime(as_encodable, _LEGACY_DATETIME_FORMAT)
     except ValueError:
-        return datetime.datetime.strptime(as_encodable, _LEGACY_DATETIME_FORMAT)
+        return datetime.datetime.fromisoformat(as_encodable)
+    return legacy.replace(tzinfo=datetime.timezone.utc)
 
 
 def _decode_time(obj) -> datetime.time:
     """Decode a stored time, tolerating the pre-#521 offset-free form.
 
-    Same split as :func:`_decode_datetime`: `isoformat()` going forward,
-    `%H:%M:%S.%f` accepted for anything already on disk.
+    `isoformat()` going forward, `%H:%M:%S.%f` accepted for anything already on
+    disk.
+
+    Unlike :func:`_decode_datetime`, an offset-free `time` is **not** assumed
+    to be UTC, and that is a limitation rather than a preference. The legacy
+    format and `time.isoformat()` of a naive time with microseconds produce
+    byte-identical strings ("12:30:00.000005"), so a legacy value and a
+    genuinely-naive post-#521 value cannot be told apart. Assuming UTC would
+    stamp an offset onto values deliberately written naive. A bare time also
+    has no date for an offset to be meaningful against, and
+    `SortedFieldMixin.convert_to_numeric` ignores `tzinfo` when scoring a time
+    for that reason, so nothing downstream depends on the assumption.
     """
     as_encodable = obj["as_encodable"]
     try:
