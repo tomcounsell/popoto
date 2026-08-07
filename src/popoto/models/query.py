@@ -1883,7 +1883,104 @@ class Query:
             **kwargs,
         )
 
-    def filter_for_keys_set(self, **kwargs) -> set:
+    def _resolve_range_pushdown(
+        self, limit: Optional[int], kwargs: dict
+    ) -> Optional[tuple]:
+        """Decide whether ``limit`` may be pushed into the sorted set read.
+
+        Reading only the top ``limit`` members of a sorted set is sound exactly
+        when the rows Redis hands back are the rows the caller will keep. Any
+        predicate that can drop a row after hydration breaks that: the query
+        would return fewer than ``limit`` valid rows while a full read would
+        have found more further down the range. So this returns a plan only for
+        the narrow shape where it holds, and ``None`` — meaning "read the whole
+        range, exactly as before" — for everything else.
+
+        The shape that qualifies:
+
+        1. A positive integer ``limit``.
+        2. Exactly one SortedField participates in the filter, and it uses the
+           stock range reader (a subclass that overrides ``filter_query`` may
+           mean something else by these params).
+        3. Every predicate on that field is a range predicate, so all of them
+           fold into the ZRANGE min/max rather than surviving as a separate
+           test.
+        4. Every other predicate names one of that field's ``partition_by``
+           fields. Those select *which* sorted set to read and cannot eliminate
+           a member of it. A predicate on any other field would intersect a
+           second key set after the read, and an unindexed field would be
+           filtered client side after hydration — both disqualify.
+        5. The effective ordering is that same sorted field, so the range's own
+           order already is the result order. Direction comes from the explicit
+           ``order_by``, falling back to ``Meta.order_by``, falling back to the
+           set's natural ascending order.
+
+        Known limitation: if the index holds members whose hashes are gone,
+        a bounded read can return fewer rows than an unbounded one would.
+        That is a corrupt index either way (``on_delete`` maintains it);
+        ``Model.query.keys(clean=True)`` repairs it.
+
+        Args:
+            limit: The caller's limit, or None.
+            kwargs: The full filter kwargs, including result modifiers.
+
+        Returns:
+            ``(field_name, limit, desc)`` if the pushdown is sound, else None.
+        """
+        if limit is None or isinstance(limit, bool) or not isinstance(limit, int):
+            return None
+        if limit <= 0:
+            return None
+
+        filter_params = set(kwargs).difference({"limit", "order_by", "values"})
+        if not filter_params:
+            return None
+
+        candidates = [
+            field_name
+            for field_name in self.options.sorted_field_names
+            if filter_params & self.options.filter_query_params_by_field[field_name]
+        ]
+        if len(candidates) != 1:
+            return None
+        field_name = candidates[0]
+        field = self.options.fields[field_name]
+
+        from ..fields.sorted_field_mixin import SortedFieldMixin
+
+        if (
+            field.__class__.filter_query.__func__
+            is not SortedFieldMixin.filter_query.__func__
+        ):
+            return None
+
+        range_params = {
+            f"{field_name}{suffix}"
+            for suffix in ("", "__gt", "__gte", "__lt", "__lte", "__between")
+        }
+        params_on_field = (
+            filter_params & self.options.filter_query_params_by_field[field_name]
+        )
+        if not params_on_field.issubset(range_params):
+            return None
+        if not filter_params.difference(params_on_field).issubset(
+            set(field.partition_by)
+        ):
+            return None
+
+        order_by = kwargs.get("order_by") or self.model_class._meta.order_by
+        if not order_by:
+            return (field_name, limit, False)
+        if not isinstance(order_by, str):
+            return None
+        desc = order_by.startswith("-")
+        if (order_by[1:] if desc else order_by) != field_name:
+            return None
+        return (field_name, limit, desc)
+
+    def filter_for_keys_set(
+        self, _range_pushdown_limit: Optional[int] = None, **kwargs
+    ) -> set:
         """
         Execute filter logic and return matching Redis keys (without loading objects).
 
@@ -1906,6 +2003,12 @@ class Query:
            The final result is the intersection of all sets, implementing AND logic.
 
         Args:
+            _range_pushdown_limit: Opt-in from the caller that a bounded read of
+                     the sorted set would be equivalent to a full one for this
+                     query. Callers that intersect these keys with anything else
+                     afterwards (Q objects) or that need a full count must leave
+                     it None. Whether the bound is actually applied is decided by
+                     `_resolve_range_pushdown`, which vets the predicate shape.
             **kwargs: Filter parameters. Each parameter is matched to a field that
                      supports it. Reserved params (limit, order_by, values) are
                      excluded from field matching.
@@ -1935,6 +2038,8 @@ class Query:
 
         # todo: use redis.SINTER for keyfield exact match filters
 
+        pushdown = self._resolve_range_pushdown(_range_pushdown_limit, kwargs)
+
         # do sorted_fields first - because they can obviate some keyfield filters
         for field_name in self.options.sorted_field_names:
             field = self.options.fields[field_name]
@@ -1953,9 +2058,18 @@ class Query:
                     if k in kwargs
                 }
             )
-            result = field.__class__.filter_query(
-                self.model_class, field_name, **kwargs
-            )
+            if pushdown and pushdown[0] == field_name:
+                result = field.__class__.filter_query(
+                    self.model_class,
+                    field_name,
+                    _limit=pushdown[1],
+                    _desc=pushdown[2],
+                    **kwargs,
+                )
+            else:
+                result = field.__class__.filter_query(
+                    self.model_class, field_name, **kwargs
+                )
             # Handle tuple return from GeoField with distances
             if isinstance(result, tuple) and len(result) == 3:
                 keys_set, distances, unit = result
@@ -2400,7 +2514,9 @@ class Query:
             self._sorted_field_order = None
             self._sorted_field_name = None
         else:
-            db_keys_set = self.filter_for_keys_set(**kwargs)
+            db_keys_set = self.filter_for_keys_set(
+                _range_pushdown_limit=kwargs.get("limit", None), **kwargs
+            )
         if not len(db_keys_set):
             return []
 
@@ -2864,7 +2980,11 @@ class Query:
         self._geo_distance_unit = None
 
         # Get keys using sync method in thread pool (field query implementations are sync)
-        db_keys_set = await to_thread(self.filter_for_keys_set, **kwargs)
+        db_keys_set = await to_thread(
+            self.filter_for_keys_set,
+            _range_pushdown_limit=kwargs.get("limit", None),
+            **kwargs,
+        )
         if not len(db_keys_set):
             return []
 

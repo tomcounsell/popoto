@@ -611,7 +611,14 @@ class SortedFieldMixin:
             return POPOTO_REDIS_DB.zrem(sortedset_db_key.redis_key, sortedset_member)
 
     @classmethod
-    def filter_query(cls, model_class: "Model", field_name: str, **query_params) -> set:
+    def filter_query(
+        cls,
+        model_class: "Model",
+        field_name: str,
+        _limit: typing.Optional[int] = None,
+        _desc: bool = False,
+        **query_params,
+    ) -> set:
         """
         Execute a range query against the Sorted Set index.
 
@@ -638,9 +645,20 @@ class SortedFieldMixin:
             number of results. For large datasets, partitioning via partition_by
             reduces N significantly, improving query performance.
 
+            When ``_limit`` is supplied, the read switches to the bounded
+            ``ZRANGE ... BYSCORE LIMIT 0 <n>`` form so M is capped at ``_limit``
+            instead of the full matching range. Only ``Query`` sets it, and only
+            for queries where no predicate can drop a row after hydration — see
+            ``Query._resolve_range_pushdown``.
+
         Args:
             model_class: The Model class to query.
             field_name: The name of the sorted field being filtered.
+            _limit: Optional cap on the number of keys read back. Underscore
+                prefixed because Popoto field names cannot start with an
+                underscore, so it can never collide with a filter param.
+            _desc: Read the range from the high end instead of the low end.
+                Only meaningful together with ``_limit``.
             **query_params: Filter parameters (e.g., price__gte=10, price__lt=100).
 
         Returns:
@@ -714,12 +732,24 @@ class SortedFieldMixin:
                 f"{', '.join(model_class._meta.fields[field_name].partition_by)}"
             )
 
-        redis_db_keys_list = POPOTO_REDIS_DB.zrangebyscore(
-            sortedset_db_key.redis_key, value_range["min"], value_range["max"]
-        )
-        # redis_db_keys_list = POPOTO_REDIS_DB.zrange(
-        #     sortedset_db_key.redis_key, value_range['min'], value_range['max'],
-        #     desc=False, withscores=False,
-        #     byscore=True, offset=None, num=None
-        # )
+        if _limit is None:
+            redis_db_keys_list = POPOTO_REDIS_DB.zrangebyscore(
+                sortedset_db_key.redis_key, value_range["min"], value_range["max"]
+            )
+        else:
+            # ZRANGE ... REV BYSCORE takes its bounds high-to-low.
+            start, stop = (
+                (value_range["max"], value_range["min"])
+                if _desc
+                else (value_range["min"], value_range["max"])
+            )
+            redis_db_keys_list = POPOTO_REDIS_DB.zrange(
+                sortedset_db_key.redis_key,
+                start,
+                stop,
+                desc=_desc,
+                byscore=True,
+                offset=0,
+                num=_limit,
+            )
         return list(redis_db_keys_list)
