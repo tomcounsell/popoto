@@ -312,3 +312,47 @@ recorded in the [#511 alignment comment](https://github.com/tomcounsell/popoto/i
 1. **Homepage evidence line:** the trio as drafted — LongMemEval-S R@1 0.894, the latency curve (3.0 ms @1k → 6.0 ms @20k), and the 3-package/zero-API-key install. Matches the README hero shipped in PR #524.
 2. **Judged-accuracy placement:** Benchmarks section only, with CI, protocol, and chronology. The homepage transparency line links to Benchmarks generally, never deep-links the number. Ships only after the #514 re-run.
 3. **Removed pages:** clean removal, no stubs, no redirect plugin. All seven URLs 404; the files remain in the repo under `docs/plans/`.
+
+## Build Notes (2026-08-07)
+
+Deviations from the plan as written, and why:
+
+1. **Judged 0.36 shipped in this PR.** Resolved Question 2 gated it on the #514
+   re-run, which merged as PR #528 the same day. The correction changed how
+   retrieved turns collapse to *result IDs for recall scoring*; the judged stage
+   consumes retrieved memory **text** in rank order, so `judged_accuracy` is
+   untouched by the defect. The Benchmarks section says exactly that, and labels
+   the retrieval summary co-reported inside the judged artifact as
+   pre-correction, pointing at #530. The pre-correction hybrid/graph/judged
+   retrieval arms are not amplified anywhere.
+2. **Sampling scope disclosed alongside the judged number.** The committed
+   judged artifacts are a 100-question stratified sample of a derived
+   two-dialogue LoCoMo subset (conv-26, conv-30; 788 turns, 304 QA), not the
+   full 1986. The plan did not name this; publishing the CI without it would
+   have understated the uncertainty.
+3. **Extraction mechanism corrected.** The plan attributed the loss to the
+   extraction prompt discarding evidence. That holds for the three Claude arms
+   (accuracy falls monotonically with turn-drop rate) but not for the heuristic
+   arm, which drops 0.3% of turns and still loses 16 points by fragmenting each
+   turn into ~3 sentences. Both mechanisms are documented.
+4. **Four primitives relocated rather than deleted.** Cutting
+   `features/agent-memory.md` to an orientation page would have destroyed the
+   only reference for AccessTrackerMixin, EventStreamMixin, TagField, and
+   StreamConsumer, none of which has a per-primitive page. They moved to
+   `fields.md` (fields and mixins) and `recipes.md` (StreamConsumer), and the
+   InteractionWeight lifetime table moved to `decaying-sorted-field.md`.
+5. **Canonical count of 14 defined explicitly.** 19 rows existed in the status
+   table. The overview now lists 14 primitives and 7 composed layers
+   (ContextAssembler, Hybrid Retrieval, SubconsciousMemory, MemoryLifecycle,
+   PolicyCache, StreamConsumer, Metacognitive Layer) in a separate table, never
+   summed.
+6. **Wiring test tightened, not just kept passing.** Level 1 now declares
+   `BM25Field`, so `test_default_recipe_wiring.py` asserts it on **every**
+   quickstart model rather than from the second onward.
+7. **Em dashes removed from newly authored prose**, matching the memory-first
+   README shipped in PR #524. Pre-existing pages keep their own punctuation;
+   this was not a repo-wide sweep.
+8. **Query-blind explainer is a new page**
+   (`docs/guides/query-blind-retrieval.md`), linked from the generated
+   benchmarks Overview, the SubconsciousMemory recipe, the quickstart, and the
+   agent-memory overview.
