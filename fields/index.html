@@ -6,6 +6,8 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
+        <meta name="description" content="Agent memory on Redis and Valkey, as primitives you program rather than a service you call. Records decay, confidence moves with evidence, associations form, and a context assembler packs the result into a token budget before each turn. Built on a full Redis/Valkey ORM.">
+      
       
         <meta name="author" content="Tom Counsell">
       
@@ -244,37 +246,15 @@
   
   
   
-    
-  
-  
-    
-    
-      <li class="md-tabs__item md-tabs__item--active">
-        <a href="../configuration/" class="md-tabs__link">
-          
-  
-  
-  Getting Started
-
-        </a>
-      </li>
-    
-  
-
-      
-        
-  
-  
-  
   
     
     
       <li class="md-tabs__item">
-        <a href="../meta/" class="md-tabs__link">
+        <a href="../guides/agent-memory-quickstart/" class="md-tabs__link">
           
   
   
-  Core Features
+  Add Memory to Your Agent
 
         </a>
       </li>
@@ -294,27 +274,7 @@
           
   
   
-  Agent Memory
-
-        </a>
-      </li>
-    
-  
-
-      
-        
-  
-  
-  
-  
-    
-    
-      <li class="md-tabs__item">
-        <a href="../recipes/" class="md-tabs__link">
-          
-  
-  
-  Cookbook
+  Understand & Tune
 
         </a>
       </li>
@@ -341,7 +301,41 @@
           
   
   
-  Benchmarks
+  Benchmarks & Method
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../configuration/" class="md-tabs__link">
+          
+  
+  
+  Redis ORM
 
         </a>
       </li>
@@ -466,6 +460,1319 @@
       
   
   
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Add Memory to Your Agent
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Add Memory to Your Agent
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/agent-memory-quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/subconscious-memory-recipe/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SubconsciousMemory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/query-blind-retrieval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Query-Blind Retrieval
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/llm-memory-extraction/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Memory Extraction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Understand & Tune
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Understand & Tune
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/agent-memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent Memory Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Primitives
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Primitives
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/decaying-sorted-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DecayingSortedField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/cyclic-decay-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CyclicDecayField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/confidence-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ConfidenceField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/co-occurrence-field/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CoOccurrenceField
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/existence-filter/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ExistenceFilter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/observation-protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ObservationProtocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/prediction-ledger/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PredictionLedger
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/composite-score-query/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Composite Score Query
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/policy-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PolicyCache
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/context-assembler/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ContextAssembler
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/hybrid-retrieval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hybrid Retrieval (BM25 + RRF)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/metacognitive-layer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metacognitive Layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recipes
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Recipes
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/policy-cache-recipe/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PolicyCache
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/trajectory-memory-recipe/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TrajectoryMemory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/rag-chatbot-recipe/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RAG Chatbot
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/memory-telemetry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory Telemetry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MemoryLifecycle and more
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tuning
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tuning
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/tuning-magic-numbers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Magic Numbers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/parametric-sweep/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Parametric Sweep
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmarks & Method
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Benchmarks & Method
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_1" id="__nav_4_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Results
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Results
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../benchmarks/results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../benchmarks/results/longmemeval_s_lexical/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LongMemEval-S (lexical)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../benchmarks/results/longmemeval_s_hybrid/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LongMemEval-S (hybrid)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../benchmarks/results/locomo_lexical/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LoCoMo (lexical)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../benchmarks/results/locomo_hybrid/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LoCoMo (hybrid)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../benchmarks/results/rlt_redis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RLT (Redis)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../benchmarks/results/csr/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CSR Regression Gate
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../benchmarks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Method and How-To
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
     
   
   
@@ -487,10 +1794,67 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
         
           
-          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Redis ORM
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Redis ORM
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_1" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5_1" id="__nav_5_1_label" tabindex="">
             
   
   
@@ -508,8 +1872,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_2">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_1_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5_1">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1134,6 +2498,288 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#accesstrackermixin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AccessTrackerMixin
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="AccessTrackerMixin">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#basic-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Basic usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-staging-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How staging works
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#staged-read-ttl-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Staged-read TTL contract
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#suppressing-tracking-for-bulk-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Suppressing tracking for bulk operations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete-cleanup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delete cleanup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#redis-key-patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Redis key patterns
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#eventstreammixin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EventStreamMixin
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="EventStreamMixin">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#quick-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Start
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configuration_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stream-entry-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stream Entry Fields
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#partitioned-streams" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Partitioned Streams
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#custom-events-non-save-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Custom Events (Non-Save Operations)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#error-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error Handling
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#writefilter-interaction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WriteFilter Interaction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#redis-key-patterns_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Redis Key Patterns
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tagfield" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TagField
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="TagField">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#basic-usage_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Basic usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#convention-over-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Convention over schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#not-a-security-boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Not a security boundary
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-it-is-indexed-valkey-safe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How it is indexed (Valkey-safe)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#contextassembler-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ContextAssembler integration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deploy-level-kill-switch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deploy-level kill switch
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#reserved-field-names" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1298,9 +2944,10 @@
     </li>
   
 
-    
-      
-      
+              
+            
+              
+                
   
   
   
@@ -1311,18 +2958,21 @@
     
       
       
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
         
           
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_2" id="__nav_5_2_label" tabindex="">
             
   
   
@@ -1340,8 +2990,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_2">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1553,1112 +3203,6 @@
     </li>
   
 
-    
-      
-      
-  
-  
-  
-  
-    
-    
-    
-    
-      
-      
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
-        
-          
-          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Agent Memory
-  
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_4">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    Agent Memory
-  
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../features/agent-memory/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Overview
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../guides/agent-memory-quickstart/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Quickstart
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    
-    
-    
-    
-      
-      
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_3" >
-        
-          
-          <label class="md-nav__link" for="__nav_4_3" id="__nav_4_3_label" tabindex="0">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Primitives
-  
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_3_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_4_3">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    Primitives
-  
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../features/decaying-sorted-field/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    DecayingSortedField
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../features/cyclic-decay-field/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    CyclicDecayField
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../features/confidence-field/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    ConfidenceField
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../features/co-occurrence-field/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    CoOccurrenceField
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../features/existence-filter/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    ExistenceFilter
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../features/observation-protocol/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    ObservationProtocol
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../features/prediction-ledger/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    PredictionLedger
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../features/composite-score-query/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Composite Score Query
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../features/policy-cache/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    PolicyCache
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../features/context-assembler/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    ContextAssembler
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../features/hybrid-retrieval/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Hybrid Retrieval (BM25 + RRF)
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../features/metacognitive-layer/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Metacognitive Layer
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    
-    
-    
-    
-      
-      
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_4" >
-        
-          
-          <label class="md-nav__link" for="__nav_4_4" id="__nav_4_4_label" tabindex="0">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Recipes
-  
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_4_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_4_4">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    Recipes
-  
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../guides/policy-cache-recipe/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    PolicyCache
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../guides/subconscious-memory-recipe/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    SubconsciousMemory
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../features/llm-memory-extraction/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    LLM Memory Extraction
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../guides/trajectory-memory-recipe/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    TrajectoryMemory
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../guides/rag-chatbot-recipe/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    RAG Chatbot
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../features/memory-telemetry/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Memory Telemetry
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    
-    
-    
-    
-      
-      
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_5" >
-        
-          
-          <label class="md-nav__link" for="__nav_4_5" id="__nav_4_5_label" tabindex="0">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Tuning
-  
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_5_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_4_5">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    Tuning
-  
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../guides/tuning-magic-numbers/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Magic Numbers
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../features/parametric-sweep/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Parametric Sweep
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    
-    
-    
-    
-      
-      
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_6" >
-        
-          
-          <label class="md-nav__link" for="__nav_4_6" id="__nav_4_6_label" tabindex="0">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Background Reading
-  
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_6_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_4_6">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    Background Reading
-  
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../guides/popoto-memory-roadmap/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Memory Roadmap
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../guides/programmable-memory-systems-neuroscience-design-spec/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Neuroscience Design Spec
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../guides/epistemic-flow-cognitive-agent-architectures/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Epistemic Flow
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../guides/research-prompt-memory-systems/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Memory Systems Research
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
-    
-    
-    
-    
-      
-      
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
-        
-          
-          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Cookbook
-  
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    Cookbook
-  
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../recipes/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Recipes
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
               
             
               
@@ -2676,433 +3220,6 @@
     
   
     Testing
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../features/kitchen-edge-case-demo/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Kitchen Edge Case Demo
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../guides/launch-announcements/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Launch Announcements
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
-    
-    
-    
-    
-      
-      
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
-        
-          
-          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Benchmarks
-  
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_6">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    Benchmarks
-  
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    
-    
-    
-    
-      
-      
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_1" >
-        
-          
-          <label class="md-nav__link" for="__nav_6_1" id="__nav_6_1_label" tabindex="0">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Results
-  
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_1_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_6_1">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    Results
-  
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../benchmarks/results/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Overview
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../benchmarks/results/longmemeval_s_lexical/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    LongMemEval-S (lexical)
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../benchmarks/results/longmemeval_s_hybrid/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    LongMemEval-S (hybrid)
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../benchmarks/results/locomo_lexical/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    LoCoMo (lexical)
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../benchmarks/results/locomo_hybrid/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    LoCoMo (hybrid)
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../benchmarks/results/rlt_redis/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    RLT (Redis)
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../benchmarks/results/csr/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    CSR Regression Gate
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../benchmarks/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Benchmarking How-To
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../benchmarks/memory_lifecycle_baseline/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Memory Lifecycle Baseline
   
 
     
@@ -3720,6 +3837,288 @@
       
     </span>
   </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#accesstrackermixin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AccessTrackerMixin
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="AccessTrackerMixin">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#basic-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Basic usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-staging-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How staging works
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#staged-read-ttl-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Staged-read TTL contract
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#suppressing-tracking-for-bulk-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Suppressing tracking for bulk operations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete-cleanup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delete cleanup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#redis-key-patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Redis key patterns
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#eventstreammixin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EventStreamMixin
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="EventStreamMixin">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#quick-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Start
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configuration_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stream-entry-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stream Entry Fields
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#partitioned-streams" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Partitioned Streams
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#custom-events-non-save-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Custom Events (Non-Save Operations)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#error-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error Handling
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#writefilter-interaction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WriteFilter Interaction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#redis-key-patterns_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Redis Key Patterns
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tagfield" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TagField
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="TagField">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#basic-usage_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Basic usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#convention-over-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Convention over schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#not-a-security-boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Not a security boundary
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-it-is-indexed-valkey-safe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How it is indexed (Valkey-safe)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#contextassembler-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ContextAssembler integration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deploy-level-kill-switch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deploy-level kill switch
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -4525,8 +4924,7 @@ following a power-law decay curve. The sorted set score is always a timestamp, a
 Lua script computes decay-ranked results server-side:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a>decayed_score = base_score × elapsed_days ^ (-decay_rate)
 </code></pre></div>
-<p>With the default <code>decay_rate=0.1</code> (empirically tuned in sweep 2026-04-17; prior default
-was <code>0.5</code>), a record scores 1.0 after 1 day, 0.87 after 4 days, and 0.63 after 100 days.</p>
+<p>With the default <code>decay_rate=0.1</code>, a record scores 1.0 after 1 day, 0.87 after 4 days, and 0.63 after 100 days.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">KeyField</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">FloatField</span>
 <a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.decaying_sorted_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">DecayingSortedField</span>
 <a id="__codelineno-34-3" name="__codelineno-34-3" href="#__codelineno-34-3"></a>
@@ -4565,7 +4963,7 @@ exactly one <code>DecayingSortedField</code>, the field name is auto-detected:</
 <td><code>decay_rate</code></td>
 <td><code>float</code></td>
 <td><code>0.1</code></td>
-<td>Controls how fast scores drop. Higher = faster decay. Must be &gt; 0. (Empirically tuned in sweep 2026-04-17; prior default was <code>0.5</code>.)</td>
+<td>Controls how fast scores drop. Higher = faster decay. Must be &gt; 0. Empirically tuned; see <a href="../guides/tuning-magic-numbers/">Tuning Magic Numbers</a>.</td>
 </tr>
 <tr>
 <td><code>base_score_field</code></td>
@@ -4588,7 +4986,7 @@ exactly one <code>DecayingSortedField</code>, the field name is auto-detected:</
 </tbody>
 </table>
 <p>Use <code>InteractionWeight</code> constants with <code>base_score_field</code> for source/role-based importance
-weighting in multi-agent teams. See <a href="../features/agent-memory/#source-weighting-for-teamwork">Agent Memory — Source weighting</a>
+weighting in multi-agent teams. See <a href="../features/decaying-sorted-field/#source-weighting-with-interactionweight">DecayingSortedField — Source weighting</a>
 for the full pattern.</p>
 <p><strong>Confidence-modulated decay.</strong> <code>base_score_field</code> scales the curve's magnitude, which
 never changes relative order. Confidence modulation changes the <em>rate</em>, so accumulated
@@ -4689,7 +5087,7 @@ atomically in a single Lua script:</p>
 <td><code>decay_rate</code></td>
 <td><code>float</code></td>
 <td><code>0.1</code></td>
-<td>Power-law decay exponent (inherited). Empirically tuned in sweep 2026-04-17; prior default was <code>0.5</code>.</td>
+<td>Power-law decay exponent (inherited).</td>
 </tr>
 <tr>
 <td><code>base_score_field</code></td>
@@ -4883,7 +5281,7 @@ Queries are normalized with the same rules (lowercase, stop word removal, min-le
 See <a href="../features/existence-filter/#tokenization">ExistenceFilter feature docs</a> for details.</p>
 <p><code>on_delete()</code> is a no-op -- Bloom filters do not support removal. Stale positives are
 harmless for a pre-filter use case.</p>
-<p>See <a href="../features/agent-memory/#existencefilter">Agent Memory -- ExistenceFilter</a> for the
+<p>See <a href="../features/existence-filter/">ExistenceFilter</a> for the
 full agent memory context.</p>
 <h2 id="bm25field">BM25Field<a class="headerlink" href="#bm25field" title="Permanent link">&para;</a></h2>
 <p><code>BM25Field</code> provides ranked keyword search using BM25 scoring, backed entirely by Redis
@@ -5041,7 +5439,7 @@ modules required -- works on both Redis and Valkey.</p>
 </table>
 <p><code>on_delete()</code> is a no-op -- CMS counters are monotonically increasing.</p>
 <p>Both <code>ExistenceFilter</code> and <code>FrequencySketch</code> can be used together on the same model.
-See <a href="../features/agent-memory/#frequencysketch">Agent Memory -- FrequencySketch</a> for
+See <a href="../features/agent-memory/">Agent Memory</a> for
 the full agent memory context.</p>
 <h2 id="predictionledgermixin">PredictionLedgerMixin<a class="headerlink" href="#predictionledgermixin" title="Permanent link">&para;</a></h2>
 <p><code>PredictionLedgerMixin</code> adds prediction recording, resolution, and error tracking to any
@@ -5112,7 +5510,7 @@ resolving an already-resolved prediction is a no-op.</p>
 <p>Redis keys: <code>$PL:{ClassName}:meta:{pk}</code> (hash), <code>$PL:{ClassName}:errors:{partition}</code> (sorted set).</p>
 <p>Implemented entirely with Redis hashes, sorted sets, and Lua scripts. No Redis modules
 required -- works on both Redis and Valkey.</p>
-<p>See <a href="../features/agent-memory/#predictionledger">Agent Memory -- PredictionLedger</a> for
+<p>See <a href="../features/prediction-ledger/">PredictionLedger</a> for
 the full agent memory context.</p>
 <h2 id="partition_by">partition_by<a class="headerlink" href="#partition_by" title="Permanent link">&para;</a></h2>
 <p>When you always query a <code>SortedField</code> together with a specific <code>KeyField</code>, you can
@@ -5234,8 +5632,7 @@ preferential retrieval.</p>
 <ol>
 <li>
 <p><strong>Gate on save</strong>: Before persisting, <code>compute_filter_score()</code> is called. If the
-   score is below <code>_wf_min_threshold</code> (default <code>0.1</code> after sweep 2026-04-17; prior
-   default was <code>0.2</code>), a <code>SkipSaveException</code> is raised and caught by <code>Model.save()</code>,
+   score is below <code>_wf_min_threshold</code> (default <code>0.1</code>), a <code>SkipSaveException</code> is raised and caught by <code>Model.save()</code>,
    silently aborting the write.</p>
 </li>
 <li>
@@ -5278,7 +5675,7 @@ preferential retrieval.</p>
 <tr>
 <td><code>_wf_min_threshold</code></td>
 <td><code>0.1</code></td>
-<td>Minimum score to persist. (Empirically tuned in sweep 2026-04-17; prior default was <code>0.2</code>.)</td>
+<td>Minimum score to persist. Empirically tuned; see <a href="../guides/tuning-magic-numbers/">Tuning Magic Numbers</a>.</td>
 </tr>
 <tr>
 <td><code>_wf_priority_threshold</code></td>
@@ -5293,7 +5690,7 @@ preferential retrieval.</p>
 its <code>on_save()</code> hook is called. The scoring function is application logic — Popoto
 provides the gating mechanism, not the scoring logic.</p>
 </div>
-<p>See <a href="../features/agent-memory/#writefilter">Agent Memory — WriteFilter</a> for the broader
+<p>See <a href="../features/agent-memory/">Agent Memory</a> for the broader
 agent memory context and how WriteFilter fits with DecayingSortedField and AccessTracker.</p>
 <h2 id="contentfield">ContentField<a class="headerlink" href="#contentfield" title="Permanent link">&para;</a></h2>
 <p><code>ContentField</code> routes large content values (documents, text, binary data) to filesystem
@@ -5658,6 +6055,327 @@ Because it depends on Pandas, it uses a separate model outside the canonical set
 <p><code>DataFrameField</code> requires the <code>pandas</code> package. Install it separately if it is
 not already in your environment.</p>
 </div>
+<h2 id="accesstrackermixin">AccessTrackerMixin<a class="headerlink" href="#accesstrackermixin" title="Permanent link">&para;</a></h2>
+<p>Tracks read access patterns on any model using a two-stage pipeline: reads are first staged (cheap), then atomically promoted to a confirmed access log. This prevents naive "every read strengthens" behavior — only meaningful reads count.</p>
+<h3 id="basic-usage">Basic usage<a class="headerlink" href="#basic-usage" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-77-1" name="__codelineno-77-1" href="#__codelineno-77-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">KeyField</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">AccessTrackerMixin</span><span class="p">,</span> <span class="n">DecayingSortedField</span>
+<a id="__codelineno-77-2" name="__codelineno-77-2" href="#__codelineno-77-2"></a>
+<a id="__codelineno-77-3" name="__codelineno-77-3" href="#__codelineno-77-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">Memory</span><span class="p">(</span><span class="n">Model</span><span class="p">,</span> <span class="n">AccessTrackerMixin</span><span class="p">):</span>
+<a id="__codelineno-77-4" name="__codelineno-77-4" href="#__codelineno-77-4"></a>    <span class="n">agent_id</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
+<a id="__codelineno-77-5" name="__codelineno-77-5" href="#__codelineno-77-5"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
+<a id="__codelineno-77-6" name="__codelineno-77-6" href="#__codelineno-77-6"></a>    <span class="n">relevance</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">()</span>
+<a id="__codelineno-77-7" name="__codelineno-77-7" href="#__codelineno-77-7"></a>
+<a id="__codelineno-77-8" name="__codelineno-77-8" href="#__codelineno-77-8"></a><span class="c1"># Reading triggers on_read() automatically via query hooks</span>
+<a id="__codelineno-77-9" name="__codelineno-77-9" href="#__codelineno-77-9"></a><span class="n">memories</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">top_by_decay</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
+<a id="__codelineno-77-10" name="__codelineno-77-10" href="#__codelineno-77-10"></a>
+<a id="__codelineno-77-11" name="__codelineno-77-11" href="#__codelineno-77-11"></a><span class="c1"># After the agent acts on a memory, confirm the read</span>
+<a id="__codelineno-77-12" name="__codelineno-77-12" href="#__codelineno-77-12"></a><span class="n">memories</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">confirm_access</span><span class="p">()</span>       <span class="c1"># promotes staged → confirmed</span>
+<a id="__codelineno-77-13" name="__codelineno-77-13" href="#__codelineno-77-13"></a><span class="n">memories</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">discard_staged_access</span><span class="p">()</span> <span class="c1"># clears staging without promoting</span>
+<a id="__codelineno-77-14" name="__codelineno-77-14" href="#__codelineno-77-14"></a>
+<a id="__codelineno-77-15" name="__codelineno-77-15" href="#__codelineno-77-15"></a><span class="c1"># Inspect access patterns</span>
+<a id="__codelineno-77-16" name="__codelineno-77-16" href="#__codelineno-77-16"></a><span class="nb">print</span><span class="p">(</span><span class="n">memories</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">access_count</span><span class="p">)</span>    <span class="c1"># 42</span>
+<a id="__codelineno-77-17" name="__codelineno-77-17" href="#__codelineno-77-17"></a><span class="nb">print</span><span class="p">(</span><span class="n">memories</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">last_accessed</span><span class="p">)</span>   <span class="c1"># 1741872000.0</span>
+</code></pre></div>
+<h3 id="how-staging-works">How staging works<a class="headerlink" href="#how-staging-works" title="Permanent link">&para;</a></h3>
+<p><code>on_read()</code> fires automatically when instances are hydrated via <code>Query.get()</code>, <code>Query.filter()</code>, <code>top_by_decay()</code>, and their async variants. Each call appends a timestamp to a per-instance staging list (<code>RPUSH</code> — single Redis command, batched via pipeline).</p>
+<p>Staged reads are not yet "real" — they represent candidate accesses. Your application decides which reads were meaningful:</p>
+<ul>
+<li><code>confirm_access()</code> — atomically promotes all staged timestamps to the confirmed access log using a Lua script. Updates <code>access_count</code> and <code>last_accessed</code>.</li>
+<li><code>discard_staged_access()</code> — clears staging without affecting confirmed data.</li>
+</ul>
+<h3 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>_max_access_log</code></td>
+<td><code>int</code></td>
+<td><code>100</code></td>
+<td>Maximum timestamps kept in the confirmed access log. Older entries trimmed on confirm.</td>
+</tr>
+<tr>
+<td><code>_track_reads</code></td>
+<td><code>bool</code></td>
+<td><code>True</code></td>
+<td>Set to <code>False</code> to disable automatic <code>on_read()</code> from queries.</td>
+</tr>
+<tr>
+<td><code>_staged_ttl_seconds</code></td>
+<td><code>int</code></td>
+<td><code>86400</code></td>
+<td>TTL applied to the staged list on every <code>on_read()</code> call (24h default). Magic-number tuning knob — increase if your stage→confirm cadence exceeds 24h.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="staged-read-ttl-contract">Staged-read TTL contract<a class="headerlink" href="#staged-read-ttl-contract" title="Permanent link">&para;</a></h3>
+<p>Staged reads self-expire after <code>_staged_ttl_seconds</code> (default 24h). This bounds
+Redis memory for records that are read but <strong>never confirmed</strong> without truncating
+the count for records that confirm within the window.</p>
+<p><strong>Contract:</strong> Call <code>confirm_access()</code> within <code>_staged_ttl_seconds</code> of staging reads
+via <code>on_read()</code>. Reads left unconfirmed past the TTL window are <strong>permanently dropped</strong>
+from <code>access_count</code> / <code>last_accessed</code> by design — the <code>CONFIRM_ACCESS_LUA</code> script
+finds an empty staged key and returns 0. Set <code>_staged_ttl_seconds</code> higher if your
+agent's stage→confirm cadence exceeds 24h.</p>
+<h3 id="suppressing-tracking-for-bulk-operations">Suppressing tracking for bulk operations<a class="headerlink" href="#suppressing-tracking-for-bulk-operations" title="Permanent link">&para;</a></h3>
+<p>Use <code>no_track()</code> on the query builder to prevent <code>on_read()</code> from firing during
+internal operations like reindexing, migration, or lifecycle ticks:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-78-1" name="__codelineno-78-1" href="#__codelineno-78-1"></a><span class="c1"># These reads won&#39;t be tracked</span>
+<a id="__codelineno-78-2" name="__codelineno-78-2" href="#__codelineno-78-2"></a><span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">no_track</span><span class="p">()</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
+</code></pre></div>
+<p><code>MemoryLifecycle.tick()</code> uses <code>.no_track()</code> automatically — a periodic tick
+produces <strong>zero</strong> new staged entries and does not inflate access-frequency signals.</p>
+<p>Note: <code>Model.query.all()</code> (without <code>.filter()</code>) is non-tracking by design and
+does not call <code>on_read()</code>. The tracking path is the <code>QueryBuilder</code>
+(<code>.filter().all()</code>); chain <code>.no_track()</code> there for any internal sweep that
+should not count as a user-originated read.</p>
+<h3 id="delete-cleanup">Delete cleanup<a class="headerlink" href="#delete-cleanup" title="Permanent link">&para;</a></h3>
+<p>When a tracked model instance is deleted, all three AccessTracker Redis keys (staged, access_log, meta) are automatically removed.</p>
+<h3 id="redis-key-patterns">Redis key patterns<a class="headerlink" href="#redis-key-patterns" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>$AT:{ClassName}:staged:{pk}</code></td>
+<td>List</td>
+<td>Pending read timestamps</td>
+</tr>
+<tr>
+<td><code>$AT:{ClassName}:access_log:{pk}</code></td>
+<td>List</td>
+<td>Confirmed access timestamps (capped)</td>
+</tr>
+<tr>
+<td><code>$AT:{ClassName}:meta:{pk}</code></td>
+<td>Hash</td>
+<td><code>access_count</code> (int) and <code>last_accessed</code> (float)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="eventstreammixin">EventStreamMixin<a class="headerlink" href="#eventstreammixin" title="Permanent link">&para;</a></h2>
+<p>Automatically appends to a Redis Stream on every <code>save()</code>, <code>update()</code>, or <code>delete()</code>. This is infrastructure for background processing — the mixin writes events, your application consumes them via Redis Streams' consumer group API.</p>
+<h3 id="quick-start">Quick Start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-79-1" name="__codelineno-79-1" href="#__codelineno-79-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">EventStreamMixin</span><span class="p">,</span> <span class="n">UniqueKeyField</span><span class="p">,</span> <span class="n">StringField</span>
+<a id="__codelineno-79-2" name="__codelineno-79-2" href="#__codelineno-79-2"></a>
+<a id="__codelineno-79-3" name="__codelineno-79-3" href="#__codelineno-79-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">Memory</span><span class="p">(</span><span class="n">EventStreamMixin</span><span class="p">,</span> <span class="n">Model</span><span class="p">):</span>
+<a id="__codelineno-79-4" name="__codelineno-79-4" href="#__codelineno-79-4"></a>    <span class="n">_stream_name</span> <span class="o">=</span> <span class="s2">&quot;memory_mutations&quot;</span>       <span class="c1"># Stream key: stream:memory_mutations</span>
+<a id="__codelineno-79-5" name="__codelineno-79-5" href="#__codelineno-79-5"></a>    <span class="n">_stream_max_length</span> <span class="o">=</span> <span class="mi">10000</span>              <span class="c1"># Approximate MAXLEN trimming</span>
+<a id="__codelineno-79-6" name="__codelineno-79-6" href="#__codelineno-79-6"></a>    <span class="n">_stream_metadata_fields</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;source&quot;</span><span class="p">,)</span>   <span class="c1"># Extra fields in each entry</span>
+<a id="__codelineno-79-7" name="__codelineno-79-7" href="#__codelineno-79-7"></a>
+<a id="__codelineno-79-8" name="__codelineno-79-8" href="#__codelineno-79-8"></a>    <span class="n">key</span> <span class="o">=</span> <span class="n">UniqueKeyField</span><span class="p">()</span>
+<a id="__codelineno-79-9" name="__codelineno-79-9" href="#__codelineno-79-9"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">()</span>
+<a id="__codelineno-79-10" name="__codelineno-79-10" href="#__codelineno-79-10"></a>    <span class="n">source</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">)</span>
+<a id="__codelineno-79-11" name="__codelineno-79-11" href="#__codelineno-79-11"></a>
+<a id="__codelineno-79-12" name="__codelineno-79-12" href="#__codelineno-79-12"></a><span class="n">memory</span> <span class="o">=</span> <span class="n">Memory</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="s2">&quot;fact1&quot;</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="s2">&quot;hello&quot;</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="s2">&quot;user&quot;</span><span class="p">)</span>
+<a id="__codelineno-79-13" name="__codelineno-79-13" href="#__codelineno-79-13"></a><span class="n">memory</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>    <span class="c1"># XADD with op=&quot;create&quot;</span>
+<a id="__codelineno-79-14" name="__codelineno-79-14" href="#__codelineno-79-14"></a><span class="n">memory</span><span class="o">.</span><span class="n">content</span> <span class="o">=</span> <span class="s2">&quot;updated&quot;</span>
+<a id="__codelineno-79-15" name="__codelineno-79-15" href="#__codelineno-79-15"></a><span class="n">memory</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>    <span class="c1"># XADD with op=&quot;update&quot;</span>
+<a id="__codelineno-79-16" name="__codelineno-79-16" href="#__codelineno-79-16"></a><span class="n">memory</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>  <span class="c1"># XADD with op=&quot;delete&quot;</span>
+</code></pre></div>
+<h3 id="configuration_1">Configuration<a class="headerlink" href="#configuration_1" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>_stream_name</code></td>
+<td><code>str</code></td>
+<td><code>"mutations"</code></td>
+<td>Name for the Redis Stream (key: <code>stream:{name}</code>)</td>
+</tr>
+<tr>
+<td><code>_stream_partition_field</code></td>
+<td><code>str</code></td>
+<td><code>None</code></td>
+<td>Field name to partition streams by (key becomes <code>stream:{name}:{value}</code>)</td>
+</tr>
+<tr>
+<td><code>_stream_max_length</code></td>
+<td><code>int</code></td>
+<td><code>10000</code></td>
+<td>Approximate max entries via <code>MAXLEN ~</code> trimming</td>
+</tr>
+<tr>
+<td><code>_stream_metadata_fields</code></td>
+<td><code>tuple</code></td>
+<td><code>()</code></td>
+<td>Field names whose values are included in stream entries</td>
+</tr>
+</tbody>
+</table>
+<h3 id="stream-entry-fields">Stream Entry Fields<a class="headerlink" href="#stream-entry-fields" title="Permanent link">&para;</a></h3>
+<p>Every stream entry contains these string fields:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>model</code></td>
+<td>Model class name</td>
+</tr>
+<tr>
+<td><code>pk</code></td>
+<td>Redis key of the instance</td>
+</tr>
+<tr>
+<td><code>op</code></td>
+<td>Operation: <code>"create"</code>, <code>"update"</code>, <code>"delete"</code>, or custom</td>
+</tr>
+<tr>
+<td><code>ts</code></td>
+<td>Unix timestamp</td>
+</tr>
+<tr>
+<td><code>changed_fields</code></td>
+<td>Comma-separated list of updated fields (from <code>update_fields</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>Plus any fields listed in <code>_stream_metadata_fields</code>.</p>
+<h3 id="partitioned-streams">Partitioned Streams<a class="headerlink" href="#partitioned-streams" title="Permanent link">&para;</a></h3>
+<p>Route events to different streams based on a field value:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-80-1" name="__codelineno-80-1" href="#__codelineno-80-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">TenantMemory</span><span class="p">(</span><span class="n">EventStreamMixin</span><span class="p">,</span> <span class="n">Model</span><span class="p">):</span>
+<a id="__codelineno-80-2" name="__codelineno-80-2" href="#__codelineno-80-2"></a>    <span class="n">_stream_name</span> <span class="o">=</span> <span class="s2">&quot;mutations&quot;</span>
+<a id="__codelineno-80-3" name="__codelineno-80-3" href="#__codelineno-80-3"></a>    <span class="n">_stream_partition_field</span> <span class="o">=</span> <span class="s2">&quot;tenant&quot;</span>
+<a id="__codelineno-80-4" name="__codelineno-80-4" href="#__codelineno-80-4"></a>
+<a id="__codelineno-80-5" name="__codelineno-80-5" href="#__codelineno-80-5"></a>    <span class="n">key</span> <span class="o">=</span> <span class="n">UniqueKeyField</span><span class="p">()</span>
+<a id="__codelineno-80-6" name="__codelineno-80-6" href="#__codelineno-80-6"></a>    <span class="n">tenant</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">()</span>
+<a id="__codelineno-80-7" name="__codelineno-80-7" href="#__codelineno-80-7"></a>
+<a id="__codelineno-80-8" name="__codelineno-80-8" href="#__codelineno-80-8"></a><span class="c1"># Writes to stream:mutations:acme</span>
+<a id="__codelineno-80-9" name="__codelineno-80-9" href="#__codelineno-80-9"></a><span class="n">TenantMemory</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="n">tenant</span><span class="o">=</span><span class="s2">&quot;acme&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<a id="__codelineno-80-10" name="__codelineno-80-10" href="#__codelineno-80-10"></a>
+<a id="__codelineno-80-11" name="__codelineno-80-11" href="#__codelineno-80-11"></a><span class="c1"># Writes to stream:mutations:beta</span>
+<a id="__codelineno-80-12" name="__codelineno-80-12" href="#__codelineno-80-12"></a><span class="n">TenantMemory</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="s2">&quot;y&quot;</span><span class="p">,</span> <span class="n">tenant</span><span class="o">=</span><span class="s2">&quot;beta&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+</code></pre></div>
+<h3 id="custom-events-non-save-operations">Custom Events (Non-Save Operations)<a class="headerlink" href="#custom-events-non-save-operations" title="Permanent link">&para;</a></h3>
+<p>Operations that bypass <code>Model.save()</code> (like <code>ConfidenceField.update_confidence()</code> and <code>CoOccurrenceField.strengthen()</code>) can log events via the public <code>_xadd_event()</code> method:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-81-1" name="__codelineno-81-1" href="#__codelineno-81-1"></a><span class="c1"># Called automatically by ConfidenceField.update_confidence()</span>
+<a id="__codelineno-81-2" name="__codelineno-81-2" href="#__codelineno-81-2"></a><span class="n">instance</span><span class="o">.</span><span class="n">_xadd_event</span><span class="p">(</span>
+<a id="__codelineno-81-3" name="__codelineno-81-3" href="#__codelineno-81-3"></a>    <span class="n">op</span><span class="o">=</span><span class="s2">&quot;confidence_update&quot;</span><span class="p">,</span>
+<a id="__codelineno-81-4" name="__codelineno-81-4" href="#__codelineno-81-4"></a>    <span class="n">extra_fields</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;field&quot;</span><span class="p">:</span> <span class="s2">&quot;trust&quot;</span><span class="p">,</span> <span class="s2">&quot;signal&quot;</span><span class="p">:</span> <span class="s2">&quot;0.8&quot;</span><span class="p">},</span>
+<a id="__codelineno-81-5" name="__codelineno-81-5" href="#__codelineno-81-5"></a><span class="p">)</span>
+</code></pre></div>
+<h3 id="error-handling">Error Handling<a class="headerlink" href="#error-handling" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Non-pipeline mode</strong>: XADD failures are caught and logged — <code>save()</code> always succeeds if the data write succeeded.</li>
+<li><strong>Pipeline mode</strong>: XADD is queued atomically with the save. If the pipeline fails, both data and stream entry fail together.</li>
+</ul>
+<h3 id="writefilter-interaction">WriteFilter Interaction<a class="headerlink" href="#writefilter-interaction" title="Permanent link">&para;</a></h3>
+<p>When <code>WriteFilterMixin</code> discards a record (score below threshold), the <code>save()</code> returns before reaching the EventStreamMixin hook. No stream entry is produced for filtered records.</p>
+<h3 id="redis-key-patterns_1">Redis Key Patterns<a class="headerlink" href="#redis-key-patterns_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>stream:{stream_name}</code> — default stream key</li>
+<li><code>stream:{stream_name}:{partition_value}</code> — partitioned stream key</li>
+</ul>
+<h2 id="tagfield">TagField<a class="headerlink" href="#tagfield" title="Permanent link">&para;</a></h2>
+<p><code>TagField</code> adds <strong>optional, indexed, multi-value scoping</strong> to a model. It is the
+scoping primitive for a <strong>centrally hosted Redis/Valkey serving many agents</strong>: a
+memory can be scoped by the agent it belongs to, a relevant project, or arbitrary
+tags — and <strong>every scoping dimension is optional</strong>. A record with zero tags
+transparently lives in the shared pool and is returned by unscoped queries.</p>
+<p>Unlike KeyField partitioning (where the partition value becomes part of the
+record's Redis key and is <em>required</em> at query time), tags are <strong>metadata, not
+identity</strong>: a record can carry several tags at once, or none, and scoping is
+opt-in per query.</p>
+<h3 id="basic-usage_1">Basic usage<a class="headerlink" href="#basic-usage_1" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-82-1" name="__codelineno-82-1" href="#__codelineno-82-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">AutoKeyField</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">TagField</span>
+<a id="__codelineno-82-2" name="__codelineno-82-2" href="#__codelineno-82-2"></a>
+<a id="__codelineno-82-3" name="__codelineno-82-3" href="#__codelineno-82-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">Memory</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
+<a id="__codelineno-82-4" name="__codelineno-82-4" href="#__codelineno-82-4"></a>    <span class="n">key</span> <span class="o">=</span> <span class="n">AutoKeyField</span><span class="p">()</span>
+<a id="__codelineno-82-5" name="__codelineno-82-5" href="#__codelineno-82-5"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
+<a id="__codelineno-82-6" name="__codelineno-82-6" href="#__codelineno-82-6"></a>    <span class="n">tags</span> <span class="o">=</span> <span class="n">TagField</span><span class="p">()</span>          <span class="c1"># optional; zero tags == shared pool</span>
+<a id="__codelineno-82-7" name="__codelineno-82-7" href="#__codelineno-82-7"></a>
+<a id="__codelineno-82-8" name="__codelineno-82-8" href="#__codelineno-82-8"></a><span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s2">&quot;deploy runbook&quot;</span><span class="p">,</span> <span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;agent:valor&quot;</span><span class="p">,</span> <span class="s2">&quot;project:popoto&quot;</span><span class="p">])</span>
+<a id="__codelineno-82-9" name="__codelineno-82-9" href="#__codelineno-82-9"></a><span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s2">&quot;general note&quot;</span><span class="p">)</span>          <span class="c1"># untagged — shared pool</span>
+<a id="__codelineno-82-10" name="__codelineno-82-10" href="#__codelineno-82-10"></a>
+<a id="__codelineno-82-11" name="__codelineno-82-11" href="#__codelineno-82-11"></a><span class="c1"># Membership / any-of (OR) / all-of (AND)</span>
+<a id="__codelineno-82-12" name="__codelineno-82-12" href="#__codelineno-82-12"></a><span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">tags__contains</span><span class="o">=</span><span class="s2">&quot;agent:valor&quot;</span><span class="p">)</span>
+<a id="__codelineno-82-13" name="__codelineno-82-13" href="#__codelineno-82-13"></a><span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">tags__any</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;agent:a&quot;</span><span class="p">,</span> <span class="s2">&quot;agent:b&quot;</span><span class="p">])</span>       <span class="c1"># SUNION</span>
+<a id="__codelineno-82-14" name="__codelineno-82-14" href="#__codelineno-82-14"></a><span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">tags__all</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;agent:valor&quot;</span><span class="p">,</span> <span class="s2">&quot;project:popoto&quot;</span><span class="p">])</span>  <span class="c1"># SINTER</span>
+<a id="__codelineno-82-15" name="__codelineno-82-15" href="#__codelineno-82-15"></a>
+<a id="__codelineno-82-16" name="__codelineno-82-16" href="#__codelineno-82-16"></a><span class="c1"># Tag filters compose with any other filter through the same pipeline.</span>
+<a id="__codelineno-82-17" name="__codelineno-82-17" href="#__codelineno-82-17"></a><span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">project</span><span class="o">=</span><span class="s2">&quot;popoto&quot;</span><span class="p">,</span> <span class="n">tags__contains</span><span class="o">=</span><span class="s2">&quot;agent:valor&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p>Accepts a <code>list</code>, <code>set</code>, or <code>tuple</code> of scalar tags; values are normalized to a
+sorted, de-duplicated list. A bare exact-match <code>filter(tags=[...])</code> raises a
+<code>QueryException</code> (use <code>__contains</code>/<code>__any</code>/<code>__all</code>) — a multi-value field has no
+meaningful exact-match semantics.</p>
+<h3 id="convention-over-schema">Convention over schema<a class="headerlink" href="#convention-over-schema" title="Permanent link">&para;</a></h3>
+<p>popoto stays agnostic about which scoping dimensions exist. Agents cooperate on
+prefixes — <code>agent:</code>, <code>project:</code> — or use bare tags; nothing is declared in the
+schema. Colons in tag values are escaped in the index key, so <code>agent:valor</code> never
+collides with popoto's key structure.</p>
+<h3 id="not-a-security-boundary">Not a security boundary<a class="headerlink" href="#not-a-security-boundary" title="Permanent link">&para;</a></h3>
+<p>Tags are a <strong>cooperative</strong> scoping mechanism between trusted agents, <strong>not</strong> access
+control. A query with the right tag filter can read any tagged record; there is no
+enforcement or isolation. Do not use tags to gate access to sensitive data.</p>
+<h3 id="how-it-is-indexed-valkey-safe">How it is indexed (Valkey-safe)<a class="headerlink" href="#how-it-is-indexed-valkey-safe" title="Permanent link">&para;</a></h3>
+<p>Per tag value, a plain Redis Set of instance keys:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-83-1" name="__codelineno-83-1" href="#__codelineno-83-1"></a>$TagF:ModelName:field_name:tag_value -&gt; Set of redis_keys
+</code></pre></div>
+<p>Index maintenance rides a single atomic Lua script (<code>TAG_SWAP_LUA</code>) that <strong>diffs</strong>
+the record's previous tag membership against the new one and issues only the
+necessary <code>SREM</code>/<code>SADD</code> calls — so re-saving with changed tags never leaves
+orphaned Set members. The previous membership is read from a server-authoritative
+pointer side key (a standalone Redis Set), never a client snapshot. All commands
+are core Redis Set operations (<code>SADD</code>/<code>SREM</code>/<code>SMEMBERS</code>/<code>SUNION</code>/<code>SINTER</code>/<code>DEL</code>) —
+<strong>no Redis modules</strong>, so it runs identically on Redis and Valkey.</p>
+<h3 id="contextassembler-integration">ContextAssembler integration<a class="headerlink" href="#contextassembler-integration" title="Permanent link">&para;</a></h3>
+<p><code>ContextAssembler.assemble()</code> auto-detects a <code>TagField</code> on the model and accepts
+optional tag constraints applied across <strong>all</strong> retrieval modes (composite,
+hybrid, lexical, push):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-84-1" name="__codelineno-84-1" href="#__codelineno-84-1"></a><span class="n">assembler</span> <span class="o">=</span> <span class="n">ContextAssembler</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="n">score_weights</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;relevance&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">})</span>
+<a id="__codelineno-84-2" name="__codelineno-84-2" href="#__codelineno-84-2"></a>
+<a id="__codelineno-84-3" name="__codelineno-84-3" href="#__codelineno-84-3"></a><span class="c1"># Scope retrieval to one agent&#39;s memories</span>
+<a id="__codelineno-84-4" name="__codelineno-84-4" href="#__codelineno-84-4"></a><span class="n">assembler</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span><span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;topic&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy&quot;</span><span class="p">},</span> <span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;agent:valor&quot;</span><span class="p">])</span>
+<a id="__codelineno-84-5" name="__codelineno-84-5" href="#__codelineno-84-5"></a>
+<a id="__codelineno-84-6" name="__codelineno-84-6" href="#__codelineno-84-6"></a><span class="c1"># Multiple tags: any-of (OR) by default — surfaces memories in either scope</span>
+<a id="__codelineno-84-7" name="__codelineno-84-7" href="#__codelineno-84-7"></a><span class="n">assembler</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span>
+<a id="__codelineno-84-8" name="__codelineno-84-8" href="#__codelineno-84-8"></a>    <span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;topic&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy&quot;</span><span class="p">},</span>
+<a id="__codelineno-84-9" name="__codelineno-84-9" href="#__codelineno-84-9"></a>    <span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;agent:valor&quot;</span><span class="p">,</span> <span class="s2">&quot;project:popoto&quot;</span><span class="p">],</span>
+<a id="__codelineno-84-10" name="__codelineno-84-10" href="#__codelineno-84-10"></a><span class="p">)</span>
+<a id="__codelineno-84-11" name="__codelineno-84-11" href="#__codelineno-84-11"></a>
+<a id="__codelineno-84-12" name="__codelineno-84-12" href="#__codelineno-84-12"></a><span class="c1"># all-of semantics (intersection)</span>
+<a id="__codelineno-84-13" name="__codelineno-84-13" href="#__codelineno-84-13"></a><span class="n">assembler</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span>
+<a id="__codelineno-84-14" name="__codelineno-84-14" href="#__codelineno-84-14"></a>    <span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;topic&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy&quot;</span><span class="p">},</span>
+<a id="__codelineno-84-15" name="__codelineno-84-15" href="#__codelineno-84-15"></a>    <span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;agent:valor&quot;</span><span class="p">,</span> <span class="s2">&quot;project:popoto&quot;</span><span class="p">],</span>
+<a id="__codelineno-84-16" name="__codelineno-84-16" href="#__codelineno-84-16"></a>    <span class="n">tag_match</span><span class="o">=</span><span class="s2">&quot;all&quot;</span><span class="p">,</span>
+<a id="__codelineno-84-17" name="__codelineno-84-17" href="#__codelineno-84-17"></a><span class="p">)</span>
+<a id="__codelineno-84-18" name="__codelineno-84-18" href="#__codelineno-84-18"></a>
+<a id="__codelineno-84-19" name="__codelineno-84-19" href="#__codelineno-84-19"></a><span class="c1"># Omitting tags is byte-identical to a model with no TagField.</span>
+<a id="__codelineno-84-20" name="__codelineno-84-20" href="#__codelineno-84-20"></a><span class="n">assembler</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span><span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;topic&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy&quot;</span><span class="p">})</span>
+</code></pre></div>
+<p><code>tag_match</code> defaults to <code>"any"</code> (OR / <code>SUNION</code>) — in a shared central pool you'd rather over-surface scoped memories and let ranking sort them than silently miss a memory tagged on only one dimension; pass <code>"all"</code> for AND (<code>SINTER</code>) when you need the precise intersection. (The <code>Query.filter</code> arms — <code>tags__any</code> / <code>tags__all</code> / <code>tags__contains</code> — are always explicit.)</p>
+<h3 id="deploy-level-kill-switch">Deploy-level kill switch<a class="headerlink" href="#deploy-level-kill-switch" title="Permanent link">&para;</a></h3>
+<p>Tag scoping in the assembler is default-on via auto-detection. Because a PyPI
+adopter cannot always edit model definitions, <code>Defaults.TAG_SCOPING_ENABLED</code>
+(default <code>True</code>) is a deploy-level escape hatch: set it <code>False</code> to make the
+assembler ignore tag constraints entirely (retrieval becomes identical to a model
+without a TagField). Index maintenance and explicit
+<code>Model.query.filter(tags__all=...)</code> queries are unaffected — the switch governs
+only the subconscious assembler path.</p>
 <h2 id="reserved-field-names">Reserved Field Names<a class="headerlink" href="#reserved-field-names" title="Permanent link">&para;</a></h2>
 <p>The following names are reserved and cannot be used as field names:</p>
 <ul>
@@ -5669,70 +6387,70 @@ not already in your environment.</p>
 <p>This section summarizes the core methods available on every Popoto model.</p>
 <h3 id="creating-and-saving">Creating and Saving<a class="headerlink" href="#creating-and-saving" title="Permanent link">&para;</a></h3>
 <p>Create and save in one step with <code>create()</code>, or instantiate and call <code>save()</code> later:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-77-1" name="__codelineno-77-1" href="#__codelineno-77-1"></a><span class="c1"># One-step creation</span>
-<a id="__codelineno-77-2" name="__codelineno-77-2" href="#__codelineno-77-2"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
-<a id="__codelineno-77-3" name="__codelineno-77-3" href="#__codelineno-77-3"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Siam Garden&quot;</span><span class="p">,</span>
-<a id="__codelineno-77-4" name="__codelineno-77-4" href="#__codelineno-77-4"></a>    <span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Thai&quot;</span><span class="p">,</span>
-<a id="__codelineno-77-5" name="__codelineno-77-5" href="#__codelineno-77-5"></a>    <span class="n">rating</span><span class="o">=</span><span class="mf">4.5</span><span class="p">,</span>
-<a id="__codelineno-77-6" name="__codelineno-77-6" href="#__codelineno-77-6"></a>    <span class="n">location</span><span class="o">=</span><span class="n">GeoField</span><span class="o">.</span><span class="n">Coordinates</span><span class="p">(</span><span class="n">latitude</span><span class="o">=</span><span class="mf">40.7484</span><span class="p">,</span> <span class="n">longitude</span><span class="o">=-</span><span class="mf">73.9857</span><span class="p">),</span>
-<a id="__codelineno-77-7" name="__codelineno-77-7" href="#__codelineno-77-7"></a><span class="p">)</span>
-<a id="__codelineno-77-8" name="__codelineno-77-8" href="#__codelineno-77-8"></a>
-<a id="__codelineno-77-9" name="__codelineno-77-9" href="#__codelineno-77-9"></a><span class="c1"># Two-step creation</span>
-<a id="__codelineno-77-10" name="__codelineno-77-10" href="#__codelineno-77-10"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Bella Napoli&quot;</span><span class="p">)</span>
-<a id="__codelineno-77-11" name="__codelineno-77-11" href="#__codelineno-77-11"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">cuisine</span> <span class="o">=</span> <span class="s2">&quot;Italian&quot;</span>
-<a id="__codelineno-77-12" name="__codelineno-77-12" href="#__codelineno-77-12"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">rating</span> <span class="o">=</span> <span class="mf">4.2</span>
-<a id="__codelineno-77-13" name="__codelineno-77-13" href="#__codelineno-77-13"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-85-1" name="__codelineno-85-1" href="#__codelineno-85-1"></a><span class="c1"># One-step creation</span>
+<a id="__codelineno-85-2" name="__codelineno-85-2" href="#__codelineno-85-2"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
+<a id="__codelineno-85-3" name="__codelineno-85-3" href="#__codelineno-85-3"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Siam Garden&quot;</span><span class="p">,</span>
+<a id="__codelineno-85-4" name="__codelineno-85-4" href="#__codelineno-85-4"></a>    <span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Thai&quot;</span><span class="p">,</span>
+<a id="__codelineno-85-5" name="__codelineno-85-5" href="#__codelineno-85-5"></a>    <span class="n">rating</span><span class="o">=</span><span class="mf">4.5</span><span class="p">,</span>
+<a id="__codelineno-85-6" name="__codelineno-85-6" href="#__codelineno-85-6"></a>    <span class="n">location</span><span class="o">=</span><span class="n">GeoField</span><span class="o">.</span><span class="n">Coordinates</span><span class="p">(</span><span class="n">latitude</span><span class="o">=</span><span class="mf">40.7484</span><span class="p">,</span> <span class="n">longitude</span><span class="o">=-</span><span class="mf">73.9857</span><span class="p">),</span>
+<a id="__codelineno-85-7" name="__codelineno-85-7" href="#__codelineno-85-7"></a><span class="p">)</span>
+<a id="__codelineno-85-8" name="__codelineno-85-8" href="#__codelineno-85-8"></a>
+<a id="__codelineno-85-9" name="__codelineno-85-9" href="#__codelineno-85-9"></a><span class="c1"># Two-step creation</span>
+<a id="__codelineno-85-10" name="__codelineno-85-10" href="#__codelineno-85-10"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Bella Napoli&quot;</span><span class="p">)</span>
+<a id="__codelineno-85-11" name="__codelineno-85-11" href="#__codelineno-85-11"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">cuisine</span> <span class="o">=</span> <span class="s2">&quot;Italian&quot;</span>
+<a id="__codelineno-85-12" name="__codelineno-85-12" href="#__codelineno-85-12"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">rating</span> <span class="o">=</span> <span class="mf">4.2</span>
+<a id="__codelineno-85-13" name="__codelineno-85-13" href="#__codelineno-85-13"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
 </code></pre></div>
 <h3 id="loading">Loading<a class="headerlink" href="#loading" title="Permanent link">&para;</a></h3>
 <p>Load an instance by its KeyField values. For <code>AutoKeyField</code> models, load by the
 generated key:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-78-1" name="__codelineno-78-1" href="#__codelineno-78-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Siam Garden&quot;</span><span class="p">)</span>
-<a id="__codelineno-78-2" name="__codelineno-78-2" href="#__codelineno-78-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">restaurant</span><span class="o">.</span><span class="n">cuisine</span><span class="p">)</span>
-<a id="__codelineno-78-3" name="__codelineno-78-3" href="#__codelineno-78-3"></a><span class="c1"># =&gt; &quot;Thai&quot;</span>
-<a id="__codelineno-78-4" name="__codelineno-78-4" href="#__codelineno-78-4"></a>
-<a id="__codelineno-78-5" name="__codelineno-78-5" href="#__codelineno-78-5"></a><span class="n">order</span> <span class="o">=</span> <span class="n">Order</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">order_id</span><span class="o">=</span><span class="n">order</span><span class="o">.</span><span class="n">order_id</span><span class="p">)</span>
-<a id="__codelineno-78-6" name="__codelineno-78-6" href="#__codelineno-78-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">order</span><span class="o">.</span><span class="n">status</span><span class="p">)</span>
-<a id="__codelineno-78-7" name="__codelineno-78-7" href="#__codelineno-78-7"></a><span class="c1"># =&gt; &quot;pending&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-86-1" name="__codelineno-86-1" href="#__codelineno-86-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Siam Garden&quot;</span><span class="p">)</span>
+<a id="__codelineno-86-2" name="__codelineno-86-2" href="#__codelineno-86-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">restaurant</span><span class="o">.</span><span class="n">cuisine</span><span class="p">)</span>
+<a id="__codelineno-86-3" name="__codelineno-86-3" href="#__codelineno-86-3"></a><span class="c1"># =&gt; &quot;Thai&quot;</span>
+<a id="__codelineno-86-4" name="__codelineno-86-4" href="#__codelineno-86-4"></a>
+<a id="__codelineno-86-5" name="__codelineno-86-5" href="#__codelineno-86-5"></a><span class="n">order</span> <span class="o">=</span> <span class="n">Order</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">order_id</span><span class="o">=</span><span class="n">order</span><span class="o">.</span><span class="n">order_id</span><span class="p">)</span>
+<a id="__codelineno-86-6" name="__codelineno-86-6" href="#__codelineno-86-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">order</span><span class="o">.</span><span class="n">status</span><span class="p">)</span>
+<a id="__codelineno-86-7" name="__codelineno-86-7" href="#__codelineno-86-7"></a><span class="c1"># =&gt; &quot;pending&quot;</span>
 </code></pre></div>
 <h3 id="updating">Updating<a class="headerlink" href="#updating" title="Permanent link">&para;</a></h3>
 <p>Modify fields and call <code>save()</code> to persist changes. For models with
 <code>DatetimeField(auto_now=True)</code>, the timestamp is refreshed automatically:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-79-1" name="__codelineno-79-1" href="#__codelineno-79-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Siam Garden&quot;</span><span class="p">)</span>
-<a id="__codelineno-79-2" name="__codelineno-79-2" href="#__codelineno-79-2"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">rating</span> <span class="o">=</span> <span class="mf">4.7</span>
-<a id="__codelineno-79-3" name="__codelineno-79-3" href="#__codelineno-79-3"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
-<a id="__codelineno-79-4" name="__codelineno-79-4" href="#__codelineno-79-4"></a>
-<a id="__codelineno-79-5" name="__codelineno-79-5" href="#__codelineno-79-5"></a><span class="n">order</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="s2">&quot;delivered&quot;</span>
-<a id="__codelineno-79-6" name="__codelineno-79-6" href="#__codelineno-79-6"></a><span class="n">order</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
-<a id="__codelineno-79-7" name="__codelineno-79-7" href="#__codelineno-79-7"></a><span class="c1"># order.updated_at is automatically refreshed</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-87-1" name="__codelineno-87-1" href="#__codelineno-87-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Siam Garden&quot;</span><span class="p">)</span>
+<a id="__codelineno-87-2" name="__codelineno-87-2" href="#__codelineno-87-2"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">rating</span> <span class="o">=</span> <span class="mf">4.7</span>
+<a id="__codelineno-87-3" name="__codelineno-87-3" href="#__codelineno-87-3"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<a id="__codelineno-87-4" name="__codelineno-87-4" href="#__codelineno-87-4"></a>
+<a id="__codelineno-87-5" name="__codelineno-87-5" href="#__codelineno-87-5"></a><span class="n">order</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="s2">&quot;delivered&quot;</span>
+<a id="__codelineno-87-6" name="__codelineno-87-6" href="#__codelineno-87-6"></a><span class="n">order</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<a id="__codelineno-87-7" name="__codelineno-87-7" href="#__codelineno-87-7"></a><span class="c1"># order.updated_at is automatically refreshed</span>
 </code></pre></div>
 <h3 id="deleting">Deleting<a class="headerlink" href="#deleting" title="Permanent link">&para;</a></h3>
 <p>Call <code>delete()</code> to remove an instance and clean up all associated indexes (sorted
 set entries, geo set entries, unique field indexes, and relationship indexes):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-80-1" name="__codelineno-80-1" href="#__codelineno-80-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Siam Garden&quot;</span><span class="p">)</span>
-<a id="__codelineno-80-2" name="__codelineno-80-2" href="#__codelineno-80-2"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-88-1" name="__codelineno-88-1" href="#__codelineno-88-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Siam Garden&quot;</span><span class="p">)</span>
+<a id="__codelineno-88-2" name="__codelineno-88-2" href="#__codelineno-88-2"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
 </code></pre></div>
 <h3 id="validation">Validation<a class="headerlink" href="#validation" title="Permanent link">&para;</a></h3>
 <p>Use <code>is_valid()</code> to check whether a model instance passes all field validations
 before saving:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-81-1" name="__codelineno-81-1" href="#__codelineno-81-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Thai&quot;</span><span class="p">,</span> <span class="n">rating</span><span class="o">=</span><span class="mf">4.5</span><span class="p">)</span>
-<a id="__codelineno-81-2" name="__codelineno-81-2" href="#__codelineno-81-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">restaurant</span><span class="o">.</span><span class="n">is_valid</span><span class="p">())</span>
-<a id="__codelineno-81-3" name="__codelineno-81-3" href="#__codelineno-81-3"></a><span class="c1"># =&gt; False  (name is a required KeyField)</span>
-<a id="__codelineno-81-4" name="__codelineno-81-4" href="#__codelineno-81-4"></a>
-<a id="__codelineno-81-5" name="__codelineno-81-5" href="#__codelineno-81-5"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;Siam Garden&quot;</span>
-<a id="__codelineno-81-6" name="__codelineno-81-6" href="#__codelineno-81-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">restaurant</span><span class="o">.</span><span class="n">is_valid</span><span class="p">())</span>
-<a id="__codelineno-81-7" name="__codelineno-81-7" href="#__codelineno-81-7"></a><span class="c1"># =&gt; True</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-89-1" name="__codelineno-89-1" href="#__codelineno-89-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Thai&quot;</span><span class="p">,</span> <span class="n">rating</span><span class="o">=</span><span class="mf">4.5</span><span class="p">)</span>
+<a id="__codelineno-89-2" name="__codelineno-89-2" href="#__codelineno-89-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">restaurant</span><span class="o">.</span><span class="n">is_valid</span><span class="p">())</span>
+<a id="__codelineno-89-3" name="__codelineno-89-3" href="#__codelineno-89-3"></a><span class="c1"># =&gt; False  (name is a required KeyField)</span>
+<a id="__codelineno-89-4" name="__codelineno-89-4" href="#__codelineno-89-4"></a>
+<a id="__codelineno-89-5" name="__codelineno-89-5" href="#__codelineno-89-5"></a><span class="n">restaurant</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;Siam Garden&quot;</span>
+<a id="__codelineno-89-6" name="__codelineno-89-6" href="#__codelineno-89-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">restaurant</span><span class="o">.</span><span class="n">is_valid</span><span class="p">())</span>
+<a id="__codelineno-89-7" name="__codelineno-89-7" href="#__codelineno-89-7"></a><span class="c1"># =&gt; True</span>
 </code></pre></div>
 <h3 id="the-db_key-property">The db_key Property<a class="headerlink" href="#the-db_key-property" title="Permanent link">&para;</a></h3>
 <p>Every saved instance has a <code>db_key</code> property that exposes its Redis key:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-82-1" name="__codelineno-82-1" href="#__codelineno-82-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Siam Garden&quot;</span><span class="p">,</span> <span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Thai&quot;</span><span class="p">,</span> <span class="n">rating</span><span class="o">=</span><span class="mf">4.5</span><span class="p">)</span>
-<a id="__codelineno-82-2" name="__codelineno-82-2" href="#__codelineno-82-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">restaurant</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">)</span>
-<a id="__codelineno-82-3" name="__codelineno-82-3" href="#__codelineno-82-3"></a><span class="c1"># =&gt; &quot;Restaurant:Siam Garden&quot;</span>
-<a id="__codelineno-82-4" name="__codelineno-82-4" href="#__codelineno-82-4"></a>
-<a id="__codelineno-82-5" name="__codelineno-82-5" href="#__codelineno-82-5"></a><span class="n">reservation</span> <span class="o">=</span> <span class="n">Reservation</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
-<a id="__codelineno-82-6" name="__codelineno-82-6" href="#__codelineno-82-6"></a>    <span class="n">restaurant</span><span class="o">=</span><span class="s2">&quot;Siam Garden&quot;</span><span class="p">,</span> <span class="n">customer</span><span class="o">=</span><span class="s2">&quot;foodie42&quot;</span><span class="p">,</span> <span class="n">party_size</span><span class="o">=</span><span class="mi">4</span>
-<a id="__codelineno-82-7" name="__codelineno-82-7" href="#__codelineno-82-7"></a><span class="p">)</span>
-<a id="__codelineno-82-8" name="__codelineno-82-8" href="#__codelineno-82-8"></a><span class="nb">print</span><span class="p">(</span><span class="n">reservation</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">)</span>
-<a id="__codelineno-82-9" name="__codelineno-82-9" href="#__codelineno-82-9"></a><span class="c1"># =&gt; &quot;Reservation:Siam Garden:foodie42&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-90-1" name="__codelineno-90-1" href="#__codelineno-90-1"></a><span class="n">restaurant</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Siam Garden&quot;</span><span class="p">,</span> <span class="n">cuisine</span><span class="o">=</span><span class="s2">&quot;Thai&quot;</span><span class="p">,</span> <span class="n">rating</span><span class="o">=</span><span class="mf">4.5</span><span class="p">)</span>
+<a id="__codelineno-90-2" name="__codelineno-90-2" href="#__codelineno-90-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">restaurant</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">)</span>
+<a id="__codelineno-90-3" name="__codelineno-90-3" href="#__codelineno-90-3"></a><span class="c1"># =&gt; &quot;Restaurant:Siam Garden&quot;</span>
+<a id="__codelineno-90-4" name="__codelineno-90-4" href="#__codelineno-90-4"></a>
+<a id="__codelineno-90-5" name="__codelineno-90-5" href="#__codelineno-90-5"></a><span class="n">reservation</span> <span class="o">=</span> <span class="n">Reservation</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
+<a id="__codelineno-90-6" name="__codelineno-90-6" href="#__codelineno-90-6"></a>    <span class="n">restaurant</span><span class="o">=</span><span class="s2">&quot;Siam Garden&quot;</span><span class="p">,</span> <span class="n">customer</span><span class="o">=</span><span class="s2">&quot;foodie42&quot;</span><span class="p">,</span> <span class="n">party_size</span><span class="o">=</span><span class="mi">4</span>
+<a id="__codelineno-90-7" name="__codelineno-90-7" href="#__codelineno-90-7"></a><span class="p">)</span>
+<a id="__codelineno-90-8" name="__codelineno-90-8" href="#__codelineno-90-8"></a><span class="nb">print</span><span class="p">(</span><span class="n">reservation</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">)</span>
+<a id="__codelineno-90-9" name="__codelineno-90-9" href="#__codelineno-90-9"></a><span class="c1"># =&gt; &quot;Reservation:Siam Garden:foodie42&quot;</span>
 </code></pre></div>
 <p>The <code>db_key</code> is useful for debugging, logging, or performing custom Redis operations
 outside of Popoto's query API.</p>

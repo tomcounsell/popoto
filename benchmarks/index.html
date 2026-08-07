@@ -6,6 +6,8 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
+        <meta name="description" content="Agent memory on Redis and Valkey, as primitives you program rather than a service you call. Records decay, confidence moves with evidence, associations form, and a context assembler packs the result into a token budget before each turn. Built on a full Redis/Valkey ORM.">
+      
       
         <meta name="author" content="Tom Counsell">
       
@@ -16,7 +18,7 @@
         <link rel="prev" href="results/csr/">
       
       
-        <link rel="next" href="memory_lifecycle_baseline/">
+        <link rel="next" href="../configuration/">
       
       
         
@@ -27,7 +29,7 @@
     
     
       
-        <title>Benchmarking How-To - Popoto Documentation</title>
+        <title>Method and How-To - Popoto Documentation</title>
       
     
     
@@ -114,7 +116,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Benchmarking How-To
+              Method and How-To
             
           </span>
         </div>
@@ -248,31 +250,11 @@
     
     
       <li class="md-tabs__item">
-        <a href="../configuration/" class="md-tabs__link">
+        <a href="../guides/agent-memory-quickstart/" class="md-tabs__link">
           
   
   
-  Getting Started
-
-        </a>
-      </li>
-    
-  
-
-      
-        
-  
-  
-  
-  
-    
-    
-      <li class="md-tabs__item">
-        <a href="../meta/" class="md-tabs__link">
-          
-  
-  
-  Core Features
+  Add Memory to Your Agent
 
         </a>
       </li>
@@ -292,27 +274,7 @@
           
   
   
-  Agent Memory
-
-        </a>
-      </li>
-    
-  
-
-      
-        
-  
-  
-  
-  
-    
-    
-      <li class="md-tabs__item">
-        <a href="../recipes/" class="md-tabs__link">
-          
-  
-  
-  Cookbook
+  Understand & Tune
 
         </a>
       </li>
@@ -343,7 +305,37 @@
           
   
   
-  Benchmarks
+  Benchmarks & Method
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../configuration/" class="md-tabs__link">
+          
+  
+  
+  Redis ORM
 
         </a>
       </li>
@@ -494,7 +486,7 @@
   <span class="md-ellipsis">
     
   
-    Getting Started
+    Add Memory to Your Agent
   
 
     
@@ -510,7 +502,7 @@
             <span class="md-nav__icon md-icon"></span>
             
   
-    Getting Started
+    Add Memory to Your Agent
   
 
           </label>
@@ -523,14 +515,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../configuration/" class="md-nav__link">
+      <a href="../guides/agent-memory-quickstart/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Configuration
+    Quickstart
   
 
     
@@ -551,14 +543,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../fields/" class="md-nav__link">
+      <a href="../guides/subconscious-memory-recipe/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Models and Fields
+    SubconsciousMemory
   
 
     
@@ -579,14 +571,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../query/" class="md-nav__link">
+      <a href="../guides/query-blind-retrieval/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Making Queries
+    Query-Blind Retrieval
   
 
     
@@ -607,14 +599,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../async/" class="md-nav__link">
+      <a href="../features/llm-memory-extraction/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Async Operations
+    LLM Memory Extraction
   
 
     
@@ -665,7 +657,7 @@
   <span class="md-ellipsis">
     
   
-    Core Features
+    Understand & Tune
   
 
     
@@ -681,262 +673,7 @@
             <span class="md-nav__icon md-icon"></span>
             
   
-    Core Features
-  
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../meta/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Model Meta Options
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../ttl/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    TTL (Time-to-Live)
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../indexed_fields/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Indexed Fields
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../relationship/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Relationship Field
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../multi-tenancy/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Multi-Tenancy
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../pubsub/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    PubSub
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../features/content-and-embedding-fields/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Content & Embeddings
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
-    
-    
-    
-    
-      
-      
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
-        
-          
-          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Agent Memory
-  
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_4">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    Agent Memory
+    Understand & Tune
   
 
           </label>
@@ -956,35 +693,7 @@
   <span class="md-ellipsis">
     
   
-    Overview
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../guides/agent-memory-quickstart/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Quickstart
+    Agent Memory Overview
   
 
     
@@ -1018,10 +727,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_2" >
         
           
-          <label class="md-nav__link" for="__nav_4_3" id="__nav_4_3_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
             
   
   
@@ -1039,8 +748,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_3_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_4_3">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1414,10 +1123,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_4" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" >
         
           
-          <label class="md-nav__link" for="__nav_4_4" id="__nav_4_4_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
             
   
   
@@ -1435,8 +1144,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_4_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_4_4">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1461,62 +1170,6 @@
     
   
     PolicyCache
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../guides/subconscious-memory-recipe/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    SubconsciousMemory
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../features/llm-memory-extraction/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    LLM Memory Extraction
   
 
     
@@ -1614,6 +1267,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MemoryLifecycle and more
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1642,10 +1323,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_5" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4" >
         
           
-          <label class="md-nav__link" for="__nav_4_5" id="__nav_4_5_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
             
   
   
@@ -1663,8 +1344,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_5_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_4_5">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1738,349 +1419,6 @@
 
               
             
-              
-                
-  
-  
-  
-  
-    
-    
-    
-    
-      
-      
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_6" >
-        
-          
-          <label class="md-nav__link" for="__nav_4_6" id="__nav_4_6_label" tabindex="0">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Background Reading
-  
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_6_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_4_6">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    Background Reading
-  
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../guides/popoto-memory-roadmap/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Memory Roadmap
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../guides/programmable-memory-systems-neuroscience-design-spec/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Neuroscience Design Spec
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../guides/epistemic-flow-cognitive-agent-architectures/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Epistemic Flow
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../guides/research-prompt-memory-systems/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Memory Systems Research
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
-    
-    
-    
-    
-      
-      
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
-        
-          
-          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Cookbook
-  
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    Cookbook
-  
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../recipes/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Recipes
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../testing/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Testing
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../features/kitchen-edge-case-demo/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Kitchen Edge Case Demo
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../guides/launch-announcements/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Launch Announcements
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
           </ul>
         </nav>
       
@@ -2113,17 +1451,17 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
         
           
-          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
             
   
   
   <span class="md-ellipsis">
     
   
-    Benchmarks
+    Benchmarks & Method
   
 
     
@@ -2134,12 +1472,12 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_6">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             
   
-    Benchmarks
+    Benchmarks & Method
   
 
           </label>
@@ -2168,10 +1506,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_1" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_1" >
         
           
-          <label class="md-nav__link" for="__nav_6_1" id="__nav_6_1_label" tabindex="">
+          <label class="md-nav__link" for="__nav_4_1" id="__nav_4_1_label" tabindex="">
             
   
   
@@ -2189,8 +1527,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_1_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_6_1">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_1">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -2427,7 +1765,7 @@
   <span class="md-ellipsis">
     
   
-    Benchmarking How-To
+    Method and How-To
   
 
     
@@ -2445,7 +1783,7 @@
   <span class="md-ellipsis">
     
   
-    Benchmarking How-To
+    Method and How-To
   
 
     
@@ -2469,6 +1807,17 @@
       Table of contents
     </label>
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#how-to-check-any-number-on-this-page" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How to check any number on this page
+      
+    </span>
+  </a>
+  
+</li>
       
         <li class="md-nav__item">
   <a href="#external-benchmark-harness" class="md-nav__link">
@@ -2572,10 +1921,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#confidence-gated-retrieval-refusal-precision-issue-463" class="md-nav__link">
+  <a href="#confidence-gated-retrieval-refusal-precision" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Confidence-gated retrieval — refusal precision (issue #463)
+        Confidence-gated retrieval: refusal precision
       
     </span>
   </a>
@@ -2596,13 +1945,41 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Judged-Answer Accuracy (Tier 5)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#popotos-judged-accuracy-036" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Popoto's judged accuracy: 0.36
+      
+    </span>
+  </a>
+  
 </li>
         
           <li class="md-nav__item">
-  <a href="#baseline-numbers-v163" class="md-nav__link">
+  <a href="#extraction-measured" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Baseline Numbers (v1.6.3)
+        Extraction, measured
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#graph-traversal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Graph Traversal
       
     </span>
   </a>
@@ -2894,6 +2271,117 @@
 
               
             
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Redis ORM
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Redis ORM
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_1" id="__nav_5_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
               
                 
   
@@ -2901,14 +2389,390 @@
   
   
     <li class="md-nav__item">
-      <a href="memory_lifecycle_baseline/" class="md-nav__link">
+      <a href="../configuration/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Memory Lifecycle Baseline
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fields/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models and Fields
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../query/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Making Queries
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../async/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Async Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_2" id="__nav_5_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core Features
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Core Features
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../meta/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model Meta Options
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ttl/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TTL (Time-to-Live)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../indexed_fields/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Indexed Fields
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../relationship/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relationship Field
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../multi-tenancy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multi-Tenancy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pubsub/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PubSub
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/content-and-embedding-fields/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Content & Embeddings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
   
 
     
@@ -3008,6 +2872,17 @@
       Table of contents
     </label>
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#how-to-check-any-number-on-this-page" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How to check any number on this page
+      
+    </span>
+  </a>
+  
+</li>
       
         <li class="md-nav__item">
   <a href="#external-benchmark-harness" class="md-nav__link">
@@ -3111,10 +2986,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#confidence-gated-retrieval-refusal-precision-issue-463" class="md-nav__link">
+  <a href="#confidence-gated-retrieval-refusal-precision" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Confidence-gated retrieval — refusal precision (issue #463)
+        Confidence-gated retrieval: refusal precision
       
     </span>
   </a>
@@ -3135,13 +3010,41 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Judged-Answer Accuracy (Tier 5)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#popotos-judged-accuracy-036" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Popoto's judged accuracy: 0.36
+      
+    </span>
+  </a>
+  
 </li>
         
           <li class="md-nav__item">
-  <a href="#baseline-numbers-v163" class="md-nav__link">
+  <a href="#extraction-measured" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Baseline Numbers (v1.6.3)
+        Extraction, measured
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#graph-traversal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Graph Traversal
       
     </span>
   </a>
@@ -3461,6 +3364,30 @@
    this page (see <a href="#deterministic-csr-harness">Deterministic CSR Harness</a>).</p>
 </li>
 </ol>
+<h2 id="how-to-check-any-number-on-this-page">How to check any number on this page<a class="headerlink" href="#how-to-check-any-number-on-this-page" title="Permanent link">&para;</a></h2>
+<p>Every figure published here comes from a JSON artifact committed in this
+repository, and the practices below exist so you can audit one rather than
+trust it.</p>
+<ul>
+<li><strong>The artifact is the source.</strong> Result pages under
+  <a href="results/">Benchmarks results</a> are generated at build time
+  from <code>tests/benchmarks/results/</code>. There are no hand-typed result tables to
+  drift from the run that produced them.</li>
+<li><strong>The judge is pinned and hashed.</strong> Judged runs record the judge model, the
+  generator model, the temperature, and the SHA-256 of both the judge and
+  generation prompts. A silent prompt or model swap is a test failure, not a
+  quiet accuracy shift.</li>
+<li><strong>The environment is captured.</strong> Every report carries Python version, OS,
+  CPU count, dataset variant, sample mode, seed, and limit, so a report is
+  reproducible from itself.</li>
+<li><strong>Negative results are published.</strong> The measurements that went against the
+  design ship on this page beside the ones that went for it: LLM extraction
+  losing to raw ingestion, hybrid retrieval underperforming lexical on LoCoMo,
+  graph traversal trading rank-1 precision for rank-5 coverage, and a scoring
+  defect that inflated LoCoMo numbers before it was found and corrected.</li>
+<li><strong>Metric families stay apart.</strong> Retrieval recall and judged answer accuracy
+  are never tabulated together or combined into a ranking.</li>
+</ul>
 <hr />
 <h2 id="external-benchmark-harness">External Benchmark Harness<a class="headerlink" href="#external-benchmark-harness" title="Permanent link">&para;</a></h2>
 <h3 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h3>
@@ -3704,9 +3631,9 @@ diagnostic that <strong>bypasses</strong> the assembler and ranks by pure cosine
 <p>Hybrid is <strong>Valkey-safe</strong>: vector similarity is computed in-process with numpy
 cosine over <code>EmbeddingField</code> <code>.npy</code> files — no RediSearch, no vector-search modules,
 no <code>FT.*</code> / <code>BF.*</code> commands. The vector signal uses the local
-<a href="../fields/#sentencetransformersprovider"><code>SentenceTransformersProvider</code></a> (no API key).</p>
+<a href="../fields/#embeddingfield"><code>SentenceTransformersProvider</code></a> (no API key).</p>
 <div class="admonition info">
-<p class="admonition-title">Hybrid fusion is now weighted and query-adaptive (issue #457)</p>
+<p class="admonition-title">Hybrid fusion is weighted and query-adaptive</p>
 <p>Unweighted RRF (k=60) gave the dense (vector) arm equal say with BM25 on
 every query. That helped on paraphrastic recall (LongMemEval-S) but hurt
 on coreference-heavy, multi-session dialogue (LoCoMo), where the dense arm
@@ -3737,7 +3664,7 @@ original unweighted RRF. The weights are experimental in-code tuning
 constants (not user config), fully in-process and Valkey-safe. Post-fix
 full-dataset confirmation numbers are shown in the tables below.</p>
 </div>
-<p><code>vector</code> is a <strong>harness-local diagnostic</strong> (issue #455): it bypasses
+<p><code>vector</code> is a <strong>harness-local diagnostic</strong>: it bypasses
 <code>ContextAssembler</code> entirely — auto-mode would resolve an embedding-only model to the
 query-blind <code>composite</code> path, so the harness ranks by raw cosine over the
 <code>EmbeddingField</code> directly. It isolates <strong>only</strong> the dense arm; it does <strong>not</strong>
@@ -3796,6 +3723,20 @@ and every question category reaches Recall@5 ≥ 0.967. Full per-category detail
 is in the committed artifact
 (<code>tests/benchmarks/results/external/longmemeval_s_latest_hybrid.json</code> —
 500/500 questions, zero errors, every item resolved to the true hybrid path).</p>
+<div class="admonition info">
+<p class="admonition-title">Read the retrieval granularity before comparing these to anything</p>
+<p>Popoto indexes <strong>one record per conversation turn</strong>, and a retrieved turn
+counts as a hit for its parent session. So these are session-level recall
+figures produced by turn-level ranking: 20 retrieved turns can cover far
+fewer than 20 distinct sessions, which makes the top-K window effectively
+wider in session terms than a system that ranks whole sessions directly.
+The agentmemory reference row is the closest available like-for-like
+comparison (same dataset, same any-hit recall metric family), and it still
+differs on this axis. Systems that rank whole sessions are answering a
+differently shaped question; the numbers are not interchangeable.</p>
+<p>The same source reports MemPalace at <strong>Recall@5 96.6%</strong> on LongMemEval-S,
+which is the number to beat at that rank, not the agentmemory row.</p>
+</div>
 <div class="admonition info">
 <p class="admonition-title">Scoring correction — LoCoMo numbers were re-measured on 2026-08-07</p>
 <p>Every LoCoMo retrieval number published before 2026-08-07 was produced by a
@@ -3858,8 +3799,8 @@ each other; that is the like-for-like pair, since both were scored the same
 way. A corrected hybrid run is pending.</p>
 <p>Unlike LongMemEval-S, hybrid <strong>underperformed</strong> lexical on LoCoMo across every
 metric under unweighted RRF — a real, measured result (no retrieval tuning was
-performed; this harness run was measurement-only per issue #447), and the
-motivating regression fixed by issue #457's weighted/query-adaptive fusion
+performed; this harness run measured the untuned path deliberately), and the
+regression that motivated the weighted/query-adaptive fusion
 (see the info box above). Full per-category detail is in the committed
 artifact (<code>tests/benchmarks/results/external/locomo_latest_hybrid.json</code> —
 1986/1986 questions, zero errors); these numbers predate the #457 fusion
@@ -3909,7 +3850,7 @@ convergence is decisive for the mechanism.)</p>
 original paper reports humans ≈89 F1 vs LLMs ≈2 F1), and most public
 leaderboards exclude it. Popoto scores it <em>comparably</em> to the other categories
 (n=446, Recall@1=0.3341, Recall@5=0.5897, Recall@10=0.6502, MRR=0.4453), which
-warranted an audit (issue #454) of whether that number means anything.</p>
+warranted an audit of whether that number means anything.</p>
 <p><strong>Audit finding — the cat-5 spans are genuinely meaningful for retrieval in
 this snapshot.</strong> Direct inspection of all 446 category-5 items in the cached
 LoCoMo dataset (the <code>snap-research/locomo</code> HuggingFace release, file
@@ -4022,15 +3963,15 @@ further evidence it is neither anomalously easy nor a scoring artifact. (The
 slice re-aggregates 4-decimal per-category means, so it can differ from a raw
 re-aggregation in the 4th place; reproducibility from the committed artifact is
 the priority.)</p>
-<p><strong>Recommendation (pending maintainer sign-off — scoring semantics is
-policy-level).</strong> Keep category 5 in the full 5-category aggregate (the evidence
-audit shows its spans are meaningful), publish the 4-category parity slice
-alongside it for leaderboard comparability, and always carry the caveat above.
-A refusal metric is not applicable to this dataset and is deferred to #463.</p>
-<h4 id="confidence-gated-retrieval-refusal-precision-issue-463">Confidence-gated retrieval — refusal precision (issue #463)<a class="headerlink" href="#confidence-gated-retrieval-refusal-precision-issue-463" title="Permanent link">&para;</a></h4>
-<p>Issue #463 shipped an opt-in confidence gate on <code>ContextAssembler</code>
+<p><strong>How this page reports category 5.</strong> It stays in the full 5-category
+aggregate, because the evidence audit shows its spans are meaningful retrieval
+targets. The 4-category parity slice is published alongside it for leaderboard
+comparability, and the caveat above travels with both. A refusal metric is not
+applicable to this dataset; refusal capability is measured separately.</p>
+<h4 id="confidence-gated-retrieval-refusal-precision">Confidence-gated retrieval: refusal precision<a class="headerlink" href="#confidence-gated-retrieval-refusal-precision" title="Permanent link">&para;</a></h4>
+<p><code>ContextAssembler</code> carries an opt-in confidence gate
 (<code>confidence_gate_threshold</code> / <code>confidence_gate_mode</code>; see
-<a href="../features/agent-memory/#contextassembler">ContextAssembler</a> for the API).
+<a href="../features/context-assembler/#confidence-gate">ContextAssembler</a> for the API).
 <code>tests/benchmarks/test_confidence_gate_refusal.py</code> measures how well the gate
 identifies genuinely-unanswerable questions on the same category-5 slice
 audited above.</p>
@@ -4139,78 +4080,174 @@ Per-item fault isolation means a transient API error records a <code>judge_error
 status and the run continues rather than aborting a paid run.</p>
 <p>Vector mode (<code>--retrieval-mode vector</code>) is <strong>not</strong> supported with <code>--judged</code> (the
 diagnostic vector path returns no memory text to answer from) and is rejected up
-front. No self-benchmarked judged numbers are committed — the harness ships the
-capability; live runs are operator-run with a key.</p>
-<h3 id="baseline-numbers-v163">Baseline Numbers (v1.6.3)<a class="headerlink" href="#baseline-numbers-v163" title="Permanent link">&para;</a></h3>
-<p><strong>LongMemEval-S (fixture sample, 3 questions):</strong></p>
+front.</p>
+<h4 id="popotos-judged-accuracy-036">Popoto's judged accuracy: 0.36<a class="headerlink" href="#popotos-judged-accuracy-036" title="Permanent link">&para;</a></h4>
+<p><strong>LoCoMo, lexical retrieval, judged answer accuracy: 0.3636.</strong> Scored items
+n=77 (100 questions sampled, 23 adversarial items excluded because the Mem0/GAM
+prompt is a factual-match judge and cannot score a refusal), 28 correct, zero
+judge errors. 95% confidence interval <strong>≈ 0.25–0.47</strong>. At n=77 a single flipped
+item moves the point estimate by 1.3 points, so read the interval, not the third
+decimal. Artifact: <code>tests/benchmarks/results/external/locomo_latest_judged.json</code>.</p>
+<p><strong>Scope of the run.</strong> The 100 questions are a stratified sample (seed 0) from a
+derived two-dialogue LoCoMo subset (conversations 26 and 30, 788 turns, 304 QA
+pairs), chosen so the five extraction arms below could be run against an
+identical corpus at a bounded API cost. This is not the full 1986-pair LoCoMo,
+and the interval above covers only sampling error within this subset, not
+dialogue-selection variance across the other eight conversations.</p>
+<p>Retrieval on that same run finds the right evidence far more often than the
+generator answers from it. That gap is the honest headline of this number: the
+retrieval layer is the part that measures well, and closing the generation gap
+is open work rather than a solved problem.</p>
+<p><strong>Chronology.</strong> <a href="https://github.com/tomcounsell/popoto/issues/456">Epic #456</a>
+set this project's benchmark doctrine (native benchmarks, retrieval parity,
+never cross-compare recall with judged accuracy) <strong>before</strong> this judged number
+existed. The doctrine was not written to accommodate the result.</p>
+<p><strong>Scoring provenance.</strong> The <a href="https://github.com/tomcounsell/popoto/issues/514">#514</a>
+gold-blind scoring correction changed how retrieved turns collapse to <em>result
+IDs for recall scoring</em>. The judged stage consumes retrieved memory <strong>text</strong> in
+rank order, so judged accuracy is untouched by that defect. The retrieval
+summary block co-reported inside the judged artifact does carry pre-correction
+scoring, and a corrected re-run is tracked in
+<a href="https://github.com/tomcounsell/popoto/issues/530">#530</a>.</p>
+<div class="admonition warning">
+<p class="admonition-title">This is not tabulated against vendor leaderboard accuracies</p>
+<p>Public LoCoMo judged-accuracy claims are not comparable to this number, and
+the reasons are specific rather than defensive:</p>
+<ul>
+<li><strong>The judge model is usually unnamed.</strong> Judged accuracy drifts several
+  points across judge models. Popoto pins <code>gpt-4o-mini</code>, temperature 0, and
+  records the prompt SHA-256 in every artifact.</li>
+<li><strong>Judge prompts vary in generosity</strong> by roughly ten points on the same
+  answers. Popoto reproduces the published Mem0/GAM <code>ACCURACY_PROMPT</code>
+  verbatim.</li>
+<li><strong>N is usually unstated</strong>, so nobody can size the interval.</li>
+<li><strong>The adversarial category is usually excluded silently.</strong> Popoto excludes
+  it too, and says so, with the count.</li>
+<li><strong>At least one widely-republished figure does not reproduce.</strong> Mem0's
+  66.88% carries an open non-reproduction issue reporting roughly 0.20 from
+  the official script, and several other published figures trace back to one
+  citation chain rather than independent runs.</li>
+</ul>
+<p>A generator-model difference is <strong>not</strong> among the reasons. Mem0's paper used
+<code>gpt-4o-mini</code> as generator, the same model this harness uses, so that
+particular objection would be wrong.</p>
+</div>
+<h4 id="extraction-measured">Extraction, measured<a class="headerlink" href="#extraction-measured" title="Permanent link">&para;</a></h4>
+<p><code>--extraction</code> runs the same judged harness with a fact-extraction step in
+front of ingestion instead of storing turns as they arrive. Every extraction arm
+lost to raw ingestion on the same 77 scored items:</p>
 <table>
 <thead>
 <tr>
-<th>Metric</th>
-<th>Score</th>
+<th>Ingestion path</th>
+<th style="text-align: right;">Judged accuracy</th>
+<th style="text-align: right;">Correct / 77</th>
+<th style="text-align: right;">Turns dropped</th>
+<th style="text-align: right;">Records per turn</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Recall@1</td>
-<td>0.0000</td>
+<td>Raw turn ingestion (default)</td>
+<td style="text-align: right;"><strong>0.3636</strong></td>
+<td style="text-align: right;">28</td>
+<td style="text-align: right;">0%</td>
+<td style="text-align: right;">1.00</td>
 </tr>
 <tr>
-<td>Recall@5</td>
-<td>0.0000</td>
+<td>Heuristic sentence splitter</td>
+<td style="text-align: right;">0.2078</td>
+<td style="text-align: right;">16</td>
+<td style="text-align: right;">0.3%</td>
+<td style="text-align: right;">3.00</td>
 </tr>
 <tr>
-<td>Recall@10</td>
-<td>0.0000</td>
+<td><code>--extraction claude</code>, Sonnet</td>
+<td style="text-align: right;">0.1948</td>
+<td style="text-align: right;">15</td>
+<td style="text-align: right;">27.3%</td>
+<td style="text-align: right;">2.32</td>
 </tr>
 <tr>
-<td>MRR</td>
-<td>0.0000</td>
+<td><code>--extraction claude</code>, Opus</td>
+<td style="text-align: right;">0.1429</td>
+<td style="text-align: right;">11</td>
+<td style="text-align: right;">36.9%</td>
+<td style="text-align: right;">1.71</td>
+</tr>
+<tr>
+<td><code>--extraction claude</code>, Haiku</td>
+<td style="text-align: right;">0.0519</td>
+<td style="text-align: right;">4</td>
+<td style="text-align: right;">63.4%</td>
+<td style="text-align: right;">0.98</td>
 </tr>
 </tbody>
 </table>
-<p><strong>LoCoMo, full dataset (1986 QA pairs, lexical) — corrected 2026-08-07:</strong></p>
+<p>Two distinct mechanisms, both measured rather than guessed. Across the three
+Claude arms, accuracy falls monotonically with the <strong>turn drop rate</strong>: the
+prompt's instruction to skip filler discards the turns holding the ground-truth
+evidence, so the answer is gone before retrieval runs. The heuristic arm drops
+almost nothing yet still loses 16 points, by the opposite failure: it shatters
+each turn into roughly three sentence fragments, and a fragment retrieved
+without its surrounding turn is not enough for the generator to answer from.</p>
+<p>Rewriting a turn before storing it costs more than it saves on this dataset, in
+both directions. Extraction therefore ships as a documented opt-in that stays
+off by default. Artifacts: <code>locomo_latest_ext-*_judged.json</code>. Full write-up:
+<a href="../features/llm-memory-extraction/">LLM Memory Extraction</a>.</p>
+<p>Every arm ran on the identical corpus, sample, judge, and generator, so the
+ordering between them is the finding and it does not depend on the scoring
+correction described above.</p>
+<h3 id="graph-traversal">Graph Traversal<a class="headerlink" href="#graph-traversal" title="Permanent link">&para;</a></h3>
+<p><code>graph_traversal_relationship_fields</code> extends the co-occurrence graph arm to
+walk named <code>Relationship</code> edges 1–2 hops. Two measurements exist, and they say
+different things.</p>
+<p><strong>Capability, on authored fixtures</strong> (<code>graph_eval_484/association_recall_*.json</code>,
+100 trials each): the graph arm retrieves a target reachable only through a
+<code>Relationship</code> edge at 1 hop and at 2 hops, where lexical retrieval and the
+co-occurrence arm alone retrieve it in zero trials. Mean target rank 2.0 at one
+hop, 3.0 at two. This measures that the traversal works, on a corpus authored
+so that nothing else could work. It is a mechanism proof, not a quality score.</p>
+<p><strong>Cost, on real data</strong> (<code>graph_eval_484/locomo_latest*.json</code>, 282-question
+multi-hop LoCoMo slice):</p>
 <table>
 <thead>
 <tr>
-<th>Metric</th>
-<th>Score</th>
+<th>Mode</th>
+<th style="text-align: right;">Recall@1</th>
+<th style="text-align: right;">Recall@5</th>
+<th style="text-align: right;">Recall@10</th>
+<th style="text-align: right;">MRR</th>
+<th style="text-align: right;">p50 (ms)</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Recall@1</td>
-<td>0.2981</td>
+<td><code>lexical</code></td>
+<td style="text-align: right;">0.1312</td>
+<td style="text-align: right;">0.3440</td>
+<td style="text-align: right;">0.4965</td>
+<td style="text-align: right;">0.2286</td>
+<td style="text-align: right;">5.91</td>
 </tr>
 <tr>
-<td>Recall@5</td>
-<td>0.5302</td>
-</tr>
-<tr>
-<td>Recall@10</td>
-<td>0.6017</td>
-</tr>
-<tr>
-<td>MRR</td>
-<td>0.4005</td>
+<td>graph traversal</td>
+<td style="text-align: right;">0.0816</td>
+<td style="text-align: right;">0.4858</td>
+<td style="text-align: right;">0.5957</td>
+<td style="text-align: right;">0.2236</td>
+<td style="text-align: right;">22.14</td>
 </tr>
 </tbody>
 </table>
-<p>See <code>tests/benchmarks/results/external/locomo_latest.json</code> for the full
-per-question and per-category report.</p>
-<p><strong>Note:</strong> The v1.6.3 baseline (LongMemEval-S row above) uses score-only
-retrieval (DecayingSortedField). <code>ContextAssembler.assemble()</code> ranks
-candidates by composite score, not by query-text similarity. Scores for
-freshly-ingested items with equal importance are indistinguishable — that
-baseline is intentionally a floor. The LoCoMo numbers above, by contrast, are
-a real BM25-lexical run over the full dataset (see
-<a href="#retrieval-modes">Retrieval Modes</a>), not a score-only floor measurement.</p>
-<p><strong>Reference:</strong> agentmemory BM25+Vector (all-MiniLM-L6-v2) achieves
-Recall@5 = 95.2%, Recall@10 = 98.6%, MRR = 88.2% on LongMemEval-S.
-Popoto's hybrid mode (<code>--retrieval-mode hybrid</code>, see
-<a href="#retrieval-modes">Retrieval Modes</a>) exceeds all three reference numbers
-(0.986 / 0.992 / 0.932); the lexical BM25 baseline alone already matches
-the reference Recall@5 (0.952).</p>
+<p>Graph traversal widens the candidate net: Recall@5 and Recall@10 rise
+substantially, Recall@1 falls, MRR is flat, and latency goes up 3.7×. That is
+the real trade-off: better coverage at rank 5–10, worse precision at rank 1,
+for roughly four times the latency. Enable it when your reader consumes a
+top-5/top-10 window; leave it off when rank 1 is what gets injected.</p>
+<p>These retrieval figures predate the #514 scoring correction. Both rows were
+scored the same way, so the comparison between them holds; the absolute values
+will move on re-measurement.</p>
 <h3 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>CLI --dataset longmemeval-s
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  → DatasetAdapter (download/cache from HuggingFace)
@@ -4256,7 +4293,7 @@ compatible with both Redis and Valkey:
 <hr />
 <h2 id="deterministic-csr-harness">Deterministic CSR Harness<a class="headerlink" href="#deterministic-csr-harness" title="Permanent link">&para;</a></h2>
 <h3 id="overview_1">Overview<a class="headerlink" href="#overview_1" title="Permanent link">&para;</a></h3>
-<p>The CSR (Constraint Satisfaction Rate) harness (issue #418) is the standing,
+<p>The CSR (Constraint Satisfaction Rate) harness is the standing,
 deterministic regression gate the external harness cannot be: the same corpus
 and query produce a <strong>bit-identical score every run</strong> — no LLM judge, no
 embedding model, no Redis-module command, identical on Redis and Valkey. It
@@ -4338,7 +4375,7 @@ lexical number) and <code>rankings_identical</code> per case.</p>
 <p>To add a test case, see "Adding a CsrTestCase" in <code>tests/benchmarks/README.md</code>.</p>
 <h2 id="subconscious-injection-quality-siq-harness">Subconscious Injection Quality (SIQ) Harness<a class="headerlink" href="#subconscious-injection-quality-siq-harness" title="Permanent link">&para;</a></h2>
 <h3 id="overview_2">Overview<a class="headerlink" href="#overview_2" title="Permanent link">&para;</a></h3>
-<p>SIQ (issue #459) is Popoto's flagship <strong>native</strong> benchmark — it measures the
+<p>SIQ is Popoto's <strong>native</strong> benchmark. It measures the
 one thing composite (query-blind) retrieval does that no public benchmark
 scores: <em>without an explicit query cueing it, did the right memory get injected
 into context at the right turn?</em> Every other harness on this page (the external
@@ -4412,32 +4449,20 @@ identical footing. Two adapters ship:</p>
 a tracked follow-up; no competitor numbers are fabricated here. An optional
 LLM-judged "usefulness" cross-check reuses the Tier-5 pinned judge
 (<code>gpt-4o-mini</code>, temperature 0) and is never in the default/CI path.</p>
-<p>Baseline over the four committed fixtures (<code>coreference_relocation</code>,
-<code>implication_deadline</code>, <code>need_to_know_allergy</code>, <code>multi_recall_preferences</code>):</p>
-<table>
-<thead>
-<tr>
-<th>adapter</th>
-<th>recall @ budget</th>
-<th>anticipation misses</th>
-<th>mean lead</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>native</code> (query-blind)</td>
-<td><strong>1.000</strong></td>
-<td>0 / 5 targets</td>
-<td>4.0 turns</td>
-</tr>
-<tr>
-<td><code>query_stub</code> (query-driven)</td>
-<td>0.000</td>
-<td>5 / 5 targets</td>
-<td>n/a</td>
-</tr>
-</tbody>
-</table>
+<div class="admonition note">
+<p class="admonition-title">No Popoto SIQ score is published</p>
+<p>The harness runs against four committed fixtures and both adapters, and the
+scores are asserted in <code>test_siq.py</code> as a validity check on the harness
+itself. They are not published as a result, because the only comparator
+that currently exists is <code>QueryOnlyStubAdapter</code>, a stand-in that scores
+near zero <em>by construction</em>, since the cue-blindness lint guarantees the
+recall turn shares no indexed token with the target. Reporting a Popoto
+number beside it would be reporting the lint, not a capability. A published
+SIQ number waits on a real competitor adapter
+(<a href="https://github.com/tomcounsell/popoto/issues/486">#486</a>,
+<a href="https://github.com/tomcounsell/popoto/issues/487">#487</a>). Run it yourself
+with the commands below if you want the current values.</p>
+</div>
 <p>Everything is Valkey-safe — core Redis commands only, no modules — and the
 whole default suite needs no network, no model download, and no API key.</p>
 <h3 id="db-hygiene">DB Hygiene<a class="headerlink" href="#db-hygiene" title="Permanent link">&para;</a></h3>
@@ -4466,7 +4491,7 @@ uses db14), e.g. <code>POPOTO_BENCH_DB=13</code>.</p>
 cue-blindness and anticipation-window authoring rules at load time.</p>
 <h2 id="rlt-retrieval-latency-throughput-harness">RLT (Retrieval Latency &amp; Throughput) Harness<a class="headerlink" href="#rlt-retrieval-latency-throughput-harness" title="Permanent link">&para;</a></h2>
 <h3 id="overview_3">Overview<a class="headerlink" href="#overview_3" title="Permanent link">&para;</a></h3>
-<p>RLT (issue #460) is the axis no other harness on this page measures: <strong>speed
+<p>RLT is the axis no other harness on this page measures: <strong>speed
 under load</strong>, not retrieval/injection quality. Popoto's substrate premise is
 RAM-speed Redis/Valkey memory with no separate vector-service round-trip — RLT
 is the harness that puts a number on that claim, jointly with recall so the
@@ -4513,8 +4538,17 @@ quiet (full artifact: <code>tests/benchmarks/results/rlt/rlt_latest_redis.json</
 Backend <strong>redis 8.x</strong>, Python 3.12, Apple-silicon (10 cores). These are native
 Popoto (<code>ContextAssembler</code>) numbers only — competitor comparators are still to
 come (see Follow-Up). Absolute latency is machine-dependent; read the <em>shape</em>
-(sub-6-ms p50 retrieval that grows gently with corpus size, and the
-read-degradation-under-write-load ratio), not the exact millisecond.</p>
+(a p50 retrieval curve that grows gently with corpus size, 3.0 ms at 1,000
+records to 6.0 ms at 20,000, and the read-degradation-under-write-load ratio),
+not the exact millisecond.</p>
+<p>The comparable published anchor is MEMTIER (arXiv:2605.03675), which reports
+hybrid-RRF retrieval at <strong>96.7 ms/query</strong> on comparable hardware. Scope the
+Popoto figures before reading them against it: the curve above is the
+<strong>in-process lexical</strong> path. Adding arms costs time. LongMemEval-S hybrid
+(BM25 + CPU embedding + RRF) runs p50 41.5 ms over 500 questions, and graph
+traversal runs p50 22.1 ms on its 282-question LoCoMo slice. None of these are
+compared against hosted-service latencies, which bundle a network round trip
+and a different substrate.</p>
 <p>All figures below are the exact values from the committed artifact
 (<code>rlt_20260721_redis.json</code>); they vary run-to-run (warmup, OS scheduling), so
 treat them as one representative snapshot, not a pinned regression target.</p>

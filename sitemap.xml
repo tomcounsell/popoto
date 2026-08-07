@@ -61,10 +61,6 @@
          <lastmod>2026-08-07</lastmod>
     </url>
     <url>
-         <loc>https://popoto.io/benchmarks/memory_lifecycle_baseline/</loc>
-         <lastmod>2026-08-07</lastmod>
-    </url>
-    <url>
          <loc>https://popoto.io/benchmarks/results/</loc>
          <lastmod>2026-08-07</lastmod>
     </url>
@@ -141,10 +137,6 @@
          <lastmod>2026-08-07</lastmod>
     </url>
     <url>
-         <loc>https://popoto.io/features/kitchen-edge-case-demo/</loc>
-         <lastmod>2026-08-07</lastmod>
-    </url>
-    <url>
          <loc>https://popoto.io/features/llm-memory-extraction/</loc>
          <lastmod>2026-08-07</lastmod>
     </url>
@@ -177,31 +169,15 @@
          <lastmod>2026-08-07</lastmod>
     </url>
     <url>
-         <loc>https://popoto.io/guides/epistemic-flow-cognitive-agent-architectures/</loc>
-         <lastmod>2026-08-07</lastmod>
-    </url>
-    <url>
-         <loc>https://popoto.io/guides/launch-announcements/</loc>
-         <lastmod>2026-08-07</lastmod>
-    </url>
-    <url>
          <loc>https://popoto.io/guides/policy-cache-recipe/</loc>
          <lastmod>2026-08-07</lastmod>
     </url>
     <url>
-         <loc>https://popoto.io/guides/popoto-memory-roadmap/</loc>
-         <lastmod>2026-08-07</lastmod>
-    </url>
-    <url>
-         <loc>https://popoto.io/guides/programmable-memory-systems-neuroscience-design-spec/</loc>
+         <loc>https://popoto.io/guides/query-blind-retrieval/</loc>
          <lastmod>2026-08-07</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/guides/rag-chatbot-recipe/</loc>
-         <lastmod>2026-08-07</lastmod>
-    </url>
-    <url>
-         <loc>https://popoto.io/guides/research-prompt-memory-systems/</loc>
          <lastmod>2026-08-07</lastmod>
     </url>
     <url>

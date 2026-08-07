@@ -6,17 +6,19 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
+        <meta name="description" content="Agent memory on Redis and Valkey, as primitives you program rather than a service you call. Records decay, confidence moves with evidence, associations form, and a context assembler packs the result into a token budget before each turn. Built on a full Redis/Valkey ORM.">
+      
       
         <meta name="author" content="Tom Counsell">
       
       
-        <link rel="canonical" href="https://popoto.io/benchmarks/memory_lifecycle_baseline/">
+        <link rel="canonical" href="https://popoto.io/guides/query-blind-retrieval/">
       
       
-        <link rel="prev" href="../">
+        <link rel="prev" href="../subconscious-memory-recipe/">
       
       
-        <link rel="next" href="../../reference/">
+        <link rel="next" href="../../features/llm-memory-extraction/">
       
       
         
@@ -27,7 +29,7 @@
     
     
       
-        <title>Memory Lifecycle Baseline - Popoto Documentation</title>
+        <title>Query-Blind Retrieval - Popoto Documentation</title>
       
     
     
@@ -80,7 +82,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#memorylifecycle-benchmark-baseline" class="md-skip">
+        <a href="#query-blind-retrieval-when-composite-mode-is-right" class="md-skip">
           Skip to content
         </a>
       
@@ -114,7 +116,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Memory Lifecycle Baseline
+              Query-Blind Retrieval
             
           </span>
         </div>
@@ -244,35 +246,17 @@
   
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
-        <a href="../../configuration/" class="md-tabs__link">
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../agent-memory-quickstart/" class="md-tabs__link">
           
   
   
-  Getting Started
-
-        </a>
-      </li>
-    
-  
-
-      
-        
-  
-  
-  
-  
-    
-    
-      <li class="md-tabs__item">
-        <a href="../../meta/" class="md-tabs__link">
-          
-  
-  
-  Core Features
+  Add Memory to Your Agent
 
         </a>
       </li>
@@ -292,7 +276,7 @@
           
   
   
-  Agent Memory
+  Understand & Tune
 
         </a>
       </li>
@@ -301,6 +285,13 @@
 
       
         
+  
+  
+  
+  
+    
+    
+      
   
   
   
@@ -308,14 +299,17 @@
     
     
       <li class="md-tabs__item">
-        <a href="../../recipes/" class="md-tabs__link">
+        <a href="../../benchmarks/results/" class="md-tabs__link">
           
   
   
-  Cookbook
+  Benchmarks & Method
 
         </a>
       </li>
+    
+  
+
     
   
 
@@ -324,8 +318,6 @@
   
   
   
-    
-  
   
     
     
@@ -333,17 +325,15 @@
   
   
   
-    
-  
   
     
     
-      <li class="md-tabs__item md-tabs__item--active">
-        <a href="../results/" class="md-tabs__link">
+      <li class="md-tabs__item">
+        <a href="../../configuration/" class="md-tabs__link">
           
   
   
-  Benchmarks
+  Redis ORM
 
         </a>
       </li>
@@ -468,33 +458,38 @@
       
   
   
+    
   
   
+  
     
     
     
     
+      
+        
+        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
         
           
-          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
             
   
   
   <span class="md-ellipsis">
     
   
-    Getting Started
+    Add Memory to Your Agent
   
 
     
@@ -505,12 +500,12 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_2">
             <span class="md-nav__icon md-icon"></span>
             
   
-    Getting Started
+    Add Memory to Your Agent
   
 
           </label>
@@ -523,14 +518,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../configuration/" class="md-nav__link">
+      <a href="../agent-memory-quickstart/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Configuration
+    Quickstart
   
 
     
@@ -551,14 +546,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../fields/" class="md-nav__link">
+      <a href="../subconscious-memory-recipe/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Models and Fields
+    SubconsciousMemory
   
 
     
@@ -576,17 +571,44 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../query/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Query-Blind Retrieval
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
   <span class="md-ellipsis">
     
   
-    Making Queries
+    Query-Blind Retrieval
   
 
     
@@ -595,6 +617,92 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#how-a-mode-gets-selected" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How a mode gets selected
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-query-blind-ranking-is-the-right-answer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When query-blind ranking is the right answer
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-query-blind-ranking-is-the-wrong-answer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When query-blind ranking is the wrong answer
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#getting-query-sensitive-retrieval" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Getting query-sensitive retrieval
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-both" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running both
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -607,14 +715,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../async/" class="md-nav__link">
+      <a href="../../features/llm-memory-extraction/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Async Operations
+    LLM Memory Extraction
   
 
     
@@ -665,7 +773,7 @@
   <span class="md-ellipsis">
     
   
-    Core Features
+    Understand & Tune
   
 
     
@@ -681,262 +789,7 @@
             <span class="md-nav__icon md-icon"></span>
             
   
-    Core Features
-  
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../meta/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Model Meta Options
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../ttl/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    TTL (Time-to-Live)
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../indexed_fields/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Indexed Fields
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../relationship/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Relationship Field
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../multi-tenancy/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Multi-Tenancy
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../pubsub/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    PubSub
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../features/content-and-embedding-fields/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Content & Embeddings
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
-    
-    
-    
-    
-      
-      
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
-        
-          
-          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Agent Memory
-  
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_4">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    Agent Memory
+    Understand & Tune
   
 
           </label>
@@ -956,35 +809,7 @@
   <span class="md-ellipsis">
     
   
-    Overview
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../guides/agent-memory-quickstart/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Quickstart
+    Agent Memory Overview
   
 
     
@@ -1018,10 +843,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_2" >
         
           
-          <label class="md-nav__link" for="__nav_4_3" id="__nav_4_3_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
             
   
   
@@ -1039,8 +864,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_3_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_4_3">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1414,10 +1239,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_4" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" >
         
           
-          <label class="md-nav__link" for="__nav_4_4" id="__nav_4_4_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
             
   
   
@@ -1435,8 +1260,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_4_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_4_4">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1453,7 +1278,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../guides/policy-cache-recipe/" class="md-nav__link">
+      <a href="../policy-cache-recipe/" class="md-nav__link">
         
   
   
@@ -1481,63 +1306,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../guides/subconscious-memory-recipe/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    SubconsciousMemory
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../features/llm-memory-extraction/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    LLM Memory Extraction
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../guides/trajectory-memory-recipe/" class="md-nav__link">
+      <a href="../trajectory-memory-recipe/" class="md-nav__link">
         
   
   
@@ -1565,7 +1334,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../guides/rag-chatbot-recipe/" class="md-nav__link">
+      <a href="../rag-chatbot-recipe/" class="md-nav__link">
         
   
   
@@ -1614,6 +1383,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MemoryLifecycle and more
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1642,10 +1439,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_5" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4" >
         
           
-          <label class="md-nav__link" for="__nav_4_5" id="__nav_4_5_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
             
   
   
@@ -1663,8 +1460,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_5_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_4_5">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1681,7 +1478,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../guides/tuning-magic-numbers/" class="md-nav__link">
+      <a href="../tuning-magic-numbers/" class="md-nav__link">
         
   
   
@@ -1738,6 +1535,65 @@
 
               
             
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmarks & Method
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Benchmarks & Method
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
               
                 
   
@@ -1758,17 +1614,17 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_6" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_1" >
         
           
-          <label class="md-nav__link" for="__nav_4_6" id="__nav_4_6_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_4_1" id="__nav_4_1_label" tabindex="0">
             
   
   
   <span class="md-ellipsis">
     
   
-    Background Reading
+    Results
   
 
     
@@ -1779,12 +1635,12 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_6_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_4_6">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_1">
             <span class="md-nav__icon md-icon"></span>
             
   
-    Background Reading
+    Results
   
 
           </label>
@@ -1797,14 +1653,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../guides/popoto-memory-roadmap/" class="md-nav__link">
+      <a href="../../benchmarks/results/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Memory Roadmap
+    Overview
   
 
     
@@ -1825,14 +1681,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../guides/programmable-memory-systems-neuroscience-design-spec/" class="md-nav__link">
+      <a href="../../benchmarks/results/longmemeval_s_lexical/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Neuroscience Design Spec
+    LongMemEval-S (lexical)
   
 
     
@@ -1853,14 +1709,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../guides/epistemic-flow-cognitive-agent-architectures/" class="md-nav__link">
+      <a href="../../benchmarks/results/longmemeval_s_hybrid/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Epistemic Flow
+    LongMemEval-S (hybrid)
   
 
     
@@ -1881,14 +1737,98 @@
   
   
     <li class="md-nav__item">
-      <a href="../../guides/research-prompt-memory-systems/" class="md-nav__link">
+      <a href="../../benchmarks/results/locomo_lexical/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Memory Systems Research
+    LoCoMo (lexical)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../benchmarks/results/locomo_hybrid/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LoCoMo (hybrid)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../benchmarks/results/rlt_redis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RLT (Redis)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../benchmarks/results/csr/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CSR Regression Gate
   
 
     
@@ -1905,6 +1845,34 @@
           </ul>
         </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../benchmarks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Method and How-To
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -1947,7 +1915,7 @@
   <span class="md-ellipsis">
     
   
-    Cookbook
+    Redis ORM
   
 
     
@@ -1963,7 +1931,59 @@
             <span class="md-nav__icon md-icon"></span>
             
   
-    Cookbook
+    Redis ORM
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_1" id="__nav_5_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
   
 
           </label>
@@ -1976,14 +1996,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../recipes/" class="md-nav__link">
+      <a href="../../configuration/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Recipes
+    Configuration
   
 
     
@@ -1992,6 +2012,354 @@
   
 
       </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../fields/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models and Fields
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../query/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Making Queries
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../async/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Async Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_2" id="__nav_5_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core Features
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Core Features
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../meta/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model Meta Options
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ttl/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TTL (Time-to-Live)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../indexed_fields/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Indexed Fields
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../relationship/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relationship Field
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../multi-tenancy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multi-Tenancy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../pubsub/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PubSub
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/content-and-embedding-fields/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Content & Embeddings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
     </li>
   
 
@@ -2020,543 +2388,6 @@
   
 
       </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../features/kitchen-edge-case-demo/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Kitchen Edge Case Demo
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../guides/launch-announcements/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Launch Announcements
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-    
-      
-      
-  
-  
-    
-  
-  
-  
-    
-    
-    
-    
-      
-        
-        
-      
-      
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
-        
-          
-          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Benchmarks
-  
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_6">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    Benchmarks
-  
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    
-    
-    
-    
-      
-      
-        
-          
-          
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_1" >
-        
-          
-          <label class="md-nav__link" for="__nav_6_1" id="__nav_6_1_label" tabindex="">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Results
-  
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_1_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_6_1">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    Results
-  
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../results/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Overview
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../results/longmemeval_s_lexical/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    LongMemEval-S (lexical)
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../results/longmemeval_s_hybrid/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    LongMemEval-S (hybrid)
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../results/locomo_lexical/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    LoCoMo (lexical)
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../results/locomo_hybrid/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    LoCoMo (hybrid)
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../results/rlt_redis/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    RLT (Redis)
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../results/csr/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    CSR Regression Gate
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Benchmarking How-To
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-    
-  
-  
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Memory Lifecycle Baseline
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Memory Lifecycle Baseline
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#overview" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Overview
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#pre-lifecycle-baseline-from-main-branch-2026-05-22" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Pre-Lifecycle Baseline (from main branch, 2026-05-22)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#sweep-grid-parameters-added-tier-5" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Sweep Grid Parameters Added (Tier 5)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#how-to-run-a-sweep" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        How to Run a Sweep
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#next-steps" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Next Steps
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -2650,10 +2481,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#overview" class="md-nav__link">
+  <a href="#how-a-mode-gets-selected" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Overview
+        How a mode gets selected
       
     </span>
   </a>
@@ -2661,10 +2492,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#pre-lifecycle-baseline-from-main-branch-2026-05-22" class="md-nav__link">
+  <a href="#when-query-blind-ranking-is-the-right-answer" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Pre-Lifecycle Baseline (from main branch, 2026-05-22)
+        When query-blind ranking is the right answer
       
     </span>
   </a>
@@ -2672,10 +2503,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#sweep-grid-parameters-added-tier-5" class="md-nav__link">
+  <a href="#when-query-blind-ranking-is-the-wrong-answer" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Sweep Grid Parameters Added (Tier 5)
+        When query-blind ranking is the wrong answer
       
     </span>
   </a>
@@ -2683,10 +2514,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#how-to-run-a-sweep" class="md-nav__link">
+  <a href="#getting-query-sensitive-retrieval" class="md-nav__link">
     <span class="md-ellipsis">
       
-        How to Run a Sweep
+        Getting query-sensitive retrieval
       
     </span>
   </a>
@@ -2694,10 +2525,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#next-steps" class="md-nav__link">
+  <a href="#running-both" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Next Steps
+        Running both
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See also
       
     </span>
   </a>
@@ -2724,147 +2566,117 @@
   
 
 
-<h1 id="memorylifecycle-benchmark-baseline">MemoryLifecycle Benchmark Baseline<a class="headerlink" href="#memorylifecycle-benchmark-baseline" title="Permanent link">&para;</a></h1>
-<p><strong>Generated:</strong> 2026-05-22
-<strong>Branch:</strong> session/memory_lifecycle
-<strong>Issue:</strong> #396</p>
-<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
-<p>This document establishes the pre-lifecycle baseline for the MemoryLifecycle feature
-(issue #396) and records the sweep grid parameters added to <code>tests/benchmarks/run_sweeps.py</code>.</p>
-<p>The external benchmark harness (LoCoMo + LongMemEval-S) was established in issue #394.
-Baseline retrieval metrics (without lifecycle) are from the existing harness runs on <code>main</code>.</p>
-<blockquote>
-<p><strong>Historical note (2026-07):</strong> the <code>*_latest</code> result files cited below have since
-been repointed at full-dataset runs and no longer contain the all-zero
-pre-lifecycle numbers recorded here. See <a href="../">benchmarks.md</a> for
-current baselines (LoCoMo: 1986 questions across both retrieval modes).</p>
-</blockquote>
-<h2 id="pre-lifecycle-baseline-from-main-branch-2026-05-22">Pre-Lifecycle Baseline (from main branch, 2026-05-22)<a class="headerlink" href="#pre-lifecycle-baseline-from-main-branch-2026-05-22" title="Permanent link">&para;</a></h2>
-<p>Source: <code>tests/benchmarks/results/external/locomo_latest.md</code></p>
+<h1 id="query-blind-retrieval-when-composite-mode-is-right">Query-Blind Retrieval: When Composite Mode Is Right<a class="headerlink" href="#query-blind-retrieval-when-composite-mode-is-right" title="Permanent link">&para;</a></h1>
+<p><code>ContextAssembler</code> has two shapes of pull path. One reads the query text and
+ranks by it. The other ignores the query text and ranks by the record's own
+state: how recent it is, how important it is, how confident the system is in
+it, what it is associated with.</p>
+<p>The second shape is <strong>composite mode</strong>, and it is query-blind on purpose. This
+page is about when that is the ranking you want and when it will quietly cost
+you the right answer.</p>
+<h2 id="how-a-mode-gets-selected">How a mode gets selected<a class="headerlink" href="#how-a-mode-gets-selected" title="Permanent link">&para;</a></h2>
+<p><code>retrieval_mode="auto"</code> (the default) reads the fields declared on your model:</p>
 <table>
 <thead>
 <tr>
-<th>Metric</th>
-<th>Baseline (no lifecycle)</th>
+<th>Fields on the model</th>
+<th>Effective mode</th>
+<th>Query text</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Recall@1</td>
-<td>0.0000</td>
+<td><code>BM25Field</code></td>
+<td><code>lexical</code></td>
+<td>ranks the results</td>
 </tr>
 <tr>
-<td>Recall@5</td>
-<td>0.0000</td>
+<td><code>BM25Field</code> + <code>EmbeddingField</code></td>
+<td><code>hybrid</code></td>
+<td>ranks the results</td>
 </tr>
 <tr>
-<td>Recall@10</td>
-<td>0.0000</td>
-</tr>
-<tr>
-<td>MRR</td>
-<td>0.0000</td>
-</tr>
-<tr>
-<td>Questions evaluated</td>
-<td>6 / 6</td>
+<td>neither</td>
+<td><code>composite</code></td>
+<td>accepted, then ignored</td>
 </tr>
 </tbody>
 </table>
-<p>Source: <code>tests/benchmarks/results/external/longmemeval_s_latest.md</code></p>
-<table>
-<thead>
-<tr>
-<th>Metric</th>
-<th>Baseline (no lifecycle)</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Recall@1</td>
-<td>0.0000</td>
-</tr>
-<tr>
-<td>Recall@5</td>
-<td>0.0000</td>
-</tr>
-<tr>
-<td>Recall@10</td>
-<td>0.0000</td>
-</tr>
-<tr>
-<td>MRR</td>
-<td>0.0000</td>
-</tr>
-<tr>
-<td>Questions evaluated</td>
-<td>10 / 10</td>
-</tr>
-</tbody>
-</table>
-<p><strong>Note:</strong> Baseline scores are 0 because the current harness uses score-only retrieval
-(no embedding/BM25). Issue #395 will add hybrid retrieval. The lifecycle layer is
-designed to improve signal quality by filtering low-value memories; its impact will
-be measurable once #395 closes the retrieval gap.</p>
-<p><strong>Reference target:</strong> agentmemory BM25+Vector achieves 95.2% R@5 on LoCoMo with lifecycle.</p>
-<h2 id="sweep-grid-parameters-added-tier-5">Sweep Grid Parameters Added (Tier 5)<a class="headerlink" href="#sweep-grid-parameters-added-tier-5" title="Permanent link">&para;</a></h2>
-<p>Added to <code>TIER5_SWEEPS</code> in <code>tests/benchmarks/run_sweeps.py</code>:</p>
-<table>
-<thead>
-<tr>
-<th>Constant</th>
-<th>Sweep Values</th>
-<th>Default</th>
-<th>Rationale</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>LIFECYCLE_PROMOTION_ACCESS_COUNT</code></td>
-<td>[1, 2, 3, 5, 10]</td>
-<td>3</td>
-<td>Access threshold for episodic→semantic</td>
-</tr>
-<tr>
-<td><code>LIFECYCLE_PROMOTION_CONFIDENCE_THRESHOLD</code></td>
-<td>[0.3, 0.5, 0.6, 0.7, 0.9]</td>
-<td>0.6</td>
-<td>Confidence floor for promotion</td>
-</tr>
-<tr>
-<td><code>LIFECYCLE_PROMOTION_MIN_AGE_SECONDS</code></td>
-<td>[0.0, 60.0, 300.0, 1800.0, 7200.0]</td>
-<td>300.0</td>
-<td>Age guard against burst promotion</td>
-</tr>
-<tr>
-<td><code>LIFECYCLE_FORGET_IMPORTANCE_FLOOR</code></td>
-<td>[0.01, 0.05, 0.1, 0.2, 0.5]</td>
-<td>0.1</td>
-<td>Importance threshold for auto-forget</td>
-</tr>
-<tr>
-<td><code>LIFECYCLE_FORGET_IDLE_SECONDS</code></td>
-<td>[3600.0, 21600.0, 86400.0, 259200.0, 604800.0]</td>
-<td>86400.0</td>
-<td>Idle time threshold for auto-forget</td>
-</tr>
-</tbody>
-</table>
-<h2 id="how-to-run-a-sweep">How to Run a Sweep<a class="headerlink" href="#how-to-run-a-sweep" title="Permanent link">&para;</a></h2>
-<p>Once issue #395 (hybrid retrieval) is merged and the LoCoMo harness produces
-non-zero retrieval scores, run the Tier 5 sweep with:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>python<span class="w"> </span>-m<span class="w"> </span>tests.benchmarks.run_sweeps<span class="w"> </span>--tier<span class="w"> </span><span class="m">5</span>
+<p>The shipped <a href="../subconscious-memory-recipe/#what-the-defaults-give-you"><code>DefaultMemory</code></a>
+declares a <code>BM25Field</code>, so the zero-configuration path is query-sensitive.
+Authoring your own model without one lands on <code>composite</code>, and the assembler
+logs a <code>WARNING</code> naming the model and the missing field. Passing
+<code>retrieval_mode="composite"</code> explicitly affirms the choice and silences the
+warning.</p>
+<h2 id="when-query-blind-ranking-is-the-right-answer">When query-blind ranking is the right answer<a class="headerlink" href="#when-query-blind-ranking-is-the-right-answer" title="Permanent link">&para;</a></h2>
+<p>Composite mode is the mode that answers "what should this agent be thinking
+about right now" rather than "what matches these words".</p>
+<ul>
+<li><strong>Proactive injection.</strong> A turn where the user never restates the memory it
+  needs. If the agent is told in turn 3 that the user is allergic to shellfish
+  and asked in turn 40 to book dinner, no keyword in turn 40 retrieves that
+  fact. Ranking by importance, recency, and confidence does.</li>
+<li><strong>Cold-open turns.</strong> The start of a session, a scheduled tick, a background
+  consolidation pass. There is no query, so there is nothing for a lexical
+  ranker to work with.</li>
+<li><strong>Preference and standing-instruction memory.</strong> Records whose value comes
+  from being persistently true rather than from matching this turn's topic.</li>
+<li><strong>Corpora with a narrow, curated keyspace.</strong> When every record in the
+  partition is relevant and the only question is which few fit the budget,
+  score ordering is the whole job.</li>
+</ul>
+<p>The <a href="../../benchmarks/#subconscious-injection-quality-siq-harness">SIQ harness</a>
+exists to measure exactly this regime, because no public retrieval benchmark
+scores it.</p>
+<h2 id="when-query-blind-ranking-is-the-wrong-answer">When query-blind ranking is the wrong answer<a class="headerlink" href="#when-query-blind-ranking-is-the-wrong-answer" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Any turn with a real question in it.</strong> A user asking "what's our deployment
+  strategy" gets whatever ranked highest by decay and confidence, which may be
+  a lunch order. This is the <a href="../../benchmarks/#deterministic-csr-harness">#409 failure
+  mode</a>: the ranked list is
+  identical for a real query and for gibberish.</li>
+<li><strong>Large or heterogeneous corpora.</strong> The more topics share one partition, the
+  less a query-blind ranking narrows anything.</li>
+<li><strong>Anything you plan to benchmark against a retrieval dataset.</strong> LongMemEval-S
+  and LoCoMo are query-driven by construction; composite mode scores near the
+  floor on them, and that number says nothing about the mode.</li>
+</ul>
+<p>Adding <code>EmbeddingField</code> alone does <strong>not</strong> fix this. A model with embeddings
+and no <code>BM25Field</code> still resolves to <code>composite</code>. Query-sensitive retrieval
+requires the <code>BM25Field</code>.</p>
+<h2 id="getting-query-sensitive-retrieval">Getting query-sensitive retrieval<a class="headerlink" href="#getting-query-sensitive-retrieval" title="Permanent link">&para;</a></h2>
+<p>Declare a <code>BM25Field</code> on the content you want searchable:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">BM25Field</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">Memory</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="o">...</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">content_bm25</span> <span class="o">=</span> <span class="n">BM25Field</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">&quot;content&quot;</span><span class="p">)</span>
 </code></pre></div>
-<p>This will produce results in <code>tests/benchmarks/results/sweep_YYYYMMDD_HHMMSS.json</code>.
-Compare pre/post lifecycle Recall@5 on LoCoMo against the agentmemory 95.2% target.</p>
-<h2 id="next-steps">Next Steps<a class="headerlink" href="#next-steps" title="Permanent link">&para;</a></h2>
-<ol>
-<li>Merge issue #395 (hybrid retrieval) to enable non-zero LoCoMo scores</li>
-<li>Run <code>python -m tests.benchmarks.run_sweeps --tier 5</code> on a corpus with lifecycle active</li>
-<li>Update this document with sweep results and calibrate the Tier 5 constants</li>
-<li>If LoCoMo Recall@5 improves, update <code>Defaults.LIFECYCLE_*</code> with optimal values</li>
-</ol>
+<p>Or import the model that already declares one:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.recipes</span><span class="w"> </span><span class="kn">import</span> <span class="n">DefaultMemory</span>
+</code></pre></div>
+<p><code>BM25Field</code> indexes on the <code>on_save()</code> hook, so records written before the
+field existed are absent from the index. Re-save each once to backfill:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">for</span> <span class="n">memory</span> <span class="ow">in</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">():</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="n">memory</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+</code></pre></div>
+<p>The operation is idempotent.</p>
+<h2 id="running-both">Running both<a class="headerlink" href="#running-both" title="Permanent link">&para;</a></h2>
+<p>The two shapes are not exclusive. <code>assemble()</code> runs the query-driven pull path
+and the proactive push path in the same call, deduplicates, and applies one
+budget across both. A model carrying <code>BM25Field</code> <strong>and</strong> <code>CyclicDecayField</code>
+gets query-relevant results and proactively surfaced ones in a single ranked
+list, with <code>AssemblyResult.proactive</code> naming which came from where.</p>
+<h2 id="see-also">See also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../../features/context-assembler/#pull-path-modes-retrieval_mode">ContextAssembler retrieval modes</a>
+  (the full mode table, fallback behavior, and construction-time validation)</li>
+<li><a href="../../benchmarks/#deterministic-csr-harness">CSR regression gate</a>: the
+  deterministic detector that distinguishes query-blindness from ordinary
+  keyword dependence</li>
+<li><a href="../subconscious-memory-recipe/">SubconsciousMemory recipe</a>: the per-turn
+  loop that consumes whichever mode your model resolves to</li>
+</ul>
 
 
 
