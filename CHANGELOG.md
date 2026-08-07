@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.2] - 2026-08-07
+
 ### Added
 
 - **`popoto.recipes.DefaultMemory`** — a shipped, batteries-included agent-memory model ([#513](https://github.com/tomcounsell/popoto/issues/513)). It declares `AutoKeyField`, `KeyField`, `StringField`, `FloatField`, `DecayingSortedField`, `ConfidenceField`, `BM25Field`, and `CoOccurrenceField` plus `AccessTrackerMixin`, so `ContextAssembler(retrieval_mode="auto")` resolves to the query-sensitive `"lexical"` mode over it. Import it instead of authoring a schema:
