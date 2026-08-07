@@ -181,6 +181,9 @@ def _parse_record(record: dict, idx: int) -> BenchmarkItem:
             "answer": record.get("answer", ""),
             "question_type": record.get("question_type", ""),
             "dataset": "longmemeval-s",
+            # Ground truth is annotated per session (answer_session_ids), so
+            # the harness ranks sessions (issue #514).
+            "ground_truth_unit": "session",
         },
     )
 

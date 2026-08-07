@@ -196,15 +196,22 @@ class TestLoCoMoParityRegression:
         return leaderboard_parity_slice(data["by_question_type"])
 
     def test_lexical_parity_slice_is_1540_qa(self):
+        """Corrected (gold-blind) lexical parity numbers, issue #514.
+
+        Re-pinned from 0.2883 / 0.5390 / 0.6260 / 0.3991 — those came from
+        ``locomo_20260708.json``, scored by the gold-aware ID selection that
+        #514 removed. ``locomo_latest`` now resolves to ``locomo_20260807``.
+        """
         out = self._slice("locomo_latest.json")
         assert out["excluded"] == ["5"]
         assert out["n"] == 1540  # 1986 full − 446 cat-5 = exact leaderboard variant
-        assert out["recall_at_1"] == pytest.approx(0.2883, abs=1e-4)
-        assert out["recall_at_5"] == pytest.approx(0.5390, abs=1e-4)
-        assert out["recall_at_10"] == pytest.approx(0.6260, abs=1e-4)
-        assert out["mrr"] == pytest.approx(0.3991, abs=1e-4)
+        assert out["recall_at_1"] == pytest.approx(0.2877, abs=1e-4)
+        assert out["recall_at_5"] == pytest.approx(0.5130, abs=1e-4)
+        assert out["recall_at_10"] == pytest.approx(0.5877, abs=1e-4)
+        assert out["mrr"] == pytest.approx(0.3875, abs=1e-4)
 
     def test_hybrid_parity_slice_is_1540_qa(self):
+        """Hybrid parity numbers — still pre-#514 scoring, re-run pending."""
         out = self._slice("locomo_latest_hybrid.json")
         assert out["excluded"] == ["5"]
         assert out["n"] == 1540

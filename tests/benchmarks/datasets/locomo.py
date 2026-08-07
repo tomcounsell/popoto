@@ -248,6 +248,9 @@ def _parse_dialogue(dialogue: dict, dialogue_idx: int) -> list[BenchmarkItem]:
                     "question_type": qa.get("category"),
                     "sample_id": sample_id,
                     "dataset": "locomo",
+                    # Ground truth is annotated per turn (dia_id), so the
+                    # harness ranks turns (issue #514).
+                    "ground_truth_unit": "turn",
                     "adversarial": is_adversarial,
                     "note": "image turns ingested via blip_caption",
                 },

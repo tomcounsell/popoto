@@ -1,1 +1,1 @@
-locomo_20260708.md
+locomo_20260807.md
