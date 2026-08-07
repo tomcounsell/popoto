@@ -22,7 +22,6 @@ import random
 
 from src.popoto.models.db_key import DB_key, COLON_ESCAPE, GLOB_CHARS
 
-
 # ---------------------------------------------------------------------------
 # Frozen reference implementations: the pre-fix clean()/unclean(), inlined
 # so the legacy-decode-compatibility test has a fixed oracle that cannot
@@ -101,7 +100,9 @@ def _sweep():
 class TestRoundTrip:
     def test_round_trip_holds_for_sweep(self):
         failures = [v for v in _sweep() if DB_key.unclean(DB_key.clean(v)) != v]
-        assert failures == [], f"{len(failures)} round-trip failures, e.g. {failures[:5]!r}"
+        assert (
+            failures == []
+        ), f"{len(failures)} round-trip failures, e.g. {failures[:5]!r}"
 
     def test_round_trip_empty_string(self):
         assert DB_key.clean("") == ""
@@ -128,7 +129,9 @@ class TestLegacyDecodeCompatibility:
             legacy_decoded = _legacy_unclean(legacy_encoded)
             if new_decoded != legacy_decoded:
                 mismatches.append((v, legacy_encoded, new_decoded, legacy_decoded))
-        assert mismatches == [], f"{len(mismatches)} legacy-decode divergences, e.g. {mismatches[:5]!r}"
+        assert (
+            mismatches == []
+        ), f"{len(mismatches)} legacy-decode divergences, e.g. {mismatches[:5]!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -148,7 +151,9 @@ class TestEncodingStability:
             legacy_encoded = _legacy_clean(v)
             if new_encoded != legacy_encoded:
                 mismatches.append((v, new_encoded, legacy_encoded))
-        assert mismatches == [], f"{len(mismatches)} unexpected encoding changes, e.g. {mismatches[:5]!r}"
+        assert (
+            mismatches == []
+        ), f"{len(mismatches)} unexpected encoding changes, e.g. {mismatches[:5]!r}"
 
     def test_clean_differs_when_literal_colon_escape_present(self):
         # This is a sanity check that the fix actually does something --
@@ -175,7 +180,9 @@ class TestEncodingStability:
 class TestDelimiterSafety:
     def test_clean_never_emits_a_literal_colon(self):
         offenders = [v for v in _sweep() if ":" in DB_key.clean(v)]
-        assert offenders == [], f"{len(offenders)} values produced a literal colon, e.g. {offenders[:5]!r}"
+        assert (
+            offenders == []
+        ), f"{len(offenders)} values produced a literal colon, e.g. {offenders[:5]!r}"
 
 
 # ---------------------------------------------------------------------------
