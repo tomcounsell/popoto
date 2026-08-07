@@ -1198,7 +1198,8 @@ class Model(metaclass=ModelBase):
             hset_mapping = {
                 k: v
                 for k, v in full_mapping.items()
-                if k in update_field_names_bytes and k not in indexed_field_names_bytes
+                if k in update_field_names_bytes
+                and k not in indexed_field_names_bytes
             }
 
             if isinstance(pipeline, redis.client.Pipeline):
@@ -1369,21 +1370,19 @@ class Model(metaclass=ModelBase):
         # Exclude IndexedFieldMixin fields — EVAL (INDEX_SWAP_LUA) owns their
         # hash writes atomically, so the plain HSET must not race with them.
         from ..redis_db import ENCODING as _ENCODING
-
         _indexed_field_names_bytes = {
             field_name.encode(_ENCODING)
             for field_name, field in self._meta.fields.items()
             if isinstance(field, IndexedFieldMixin)
         }
         hset_mapping = {
-            k: v for k, v in hset_mapping.items() if k not in _indexed_field_names_bytes
+            k: v for k, v in hset_mapping.items()
+            if k not in _indexed_field_names_bytes
         }
 
         if isinstance(pipeline, redis.client.Pipeline):
             if hset_mapping:
-                pipeline = pipeline.hset(
-                    new_db_key.redis_key, mapping=hset_mapping
-                )  # 1
+                pipeline = pipeline.hset(new_db_key.redis_key, mapping=hset_mapping)  # 1
             if self._ttl is not None:
                 pipeline = pipeline.expire(new_db_key.redis_key, self._ttl)  # 2
             elif self._expire_at is not None:
