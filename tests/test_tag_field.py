@@ -265,8 +265,10 @@ class TestTagFieldValkeySafety:
         assert POPOTO_REDIS_DB.scard(idx_key) == 1
 
     def test_pointer_side_key_is_a_set(self):
+        from popoto.fields.tag_field import TagFieldMixin
+
         m = TaggedMemory.create(tags=["a", "b"])
-        ptr = f"{m.db_key.redis_key}\x00tagptr\x00tags"
+        ptr = TagFieldMixin._tag_pointer_side_key(m.db_key.redis_key, "tags")
         assert POPOTO_REDIS_DB.type(ptr) == b"set"
         assert POPOTO_REDIS_DB.scard(ptr) == 2
 

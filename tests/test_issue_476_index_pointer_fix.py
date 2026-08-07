@@ -51,7 +51,11 @@ def _raw_redis() -> redis_lib.Redis:
 
 
 def _pointer_side_key(member_redis_key: str, field_name: str) -> str:
-    return f"{member_redis_key}\x00idxptr\x00{field_name}"
+    # Delegate to production so the derivation is asserted, never re-stated
+    # (it moved under the "$IdxPtr:" namespace in #540).
+    from popoto.fields.indexed_field_mixin import IndexedFieldMixin
+
+    return IndexedFieldMixin._pointer_side_key(member_redis_key, field_name)
 
 
 def _pre_1_8_0_decode(raw_hash: dict) -> dict:

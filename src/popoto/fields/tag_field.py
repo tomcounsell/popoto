@@ -102,7 +102,11 @@ logger = logging.getLogger("POPOTO.TagFieldMixin")
 #               index-Set keys this record currently belongs to for this field.
 #               Server-authoritative source of truth for the previous membership,
 #               so the diff never relies on a stale client snapshot (#476).
-#   KEYS[3..] = the new per-tag index-Set keys (already DB_key-built + colon-safe;
+#               Namespaced under "$TagPtr:" — see _tag_pointer_side_key (#540).
+#   KEYS[3]   = pre-#540 pointer side key ({model_hash_key}\x00tagptr\x00{field}),
+#               read-only migration fallback for records written by 1.8.1/1.8.2.
+#               DEL'd once adopted so it stops colliding with the model key glob.
+#   KEYS[4..] = the new per-tag index-Set keys (already DB_key-built + colon-safe;
 #               zero of them means the record is untagged / shared pool).
 #
 #   ARGV[1] = field name (hash field for the packed tag list)
@@ -127,15 +131,21 @@ logger = logging.getLogger("POPOTO.TagFieldMixin")
 # Declaring the value-Set keys as KEYS (not ARGV) keeps the script honest under
 # the scripting contract regardless.
 TAG_SWAP_LUA = """
-local model_key, ptr_key = KEYS[1], KEYS[2]
+local model_key, ptr_key, old_ptr_key = KEYS[1], KEYS[2], KEYS[3]
 local field, member, new_bytes = ARGV[1], ARGV[2], ARGV[3]
 
 local new_sets = {}
-for i = 3, #KEYS do
+for i = 4, #KEYS do
   new_sets[KEYS[i]] = true
 end
 
 local old_members = redis.call('SMEMBERS', ptr_key)
+if #old_members == 0 then
+  -- Migration fallback: 1.8.1/1.8.2 kept this pointer at a key derived by
+  -- suffixing the model hash key, which the model's own glob matches (#540).
+  old_members = redis.call('SMEMBERS', old_ptr_key)
+end
+redis.call('DEL', old_ptr_key)
 local old_sets = {}
 for _, s in ipairs(old_members) do
   old_sets[s] = true
@@ -149,7 +159,7 @@ for _, s in ipairs(old_members) do
 end
 
 -- add member to newly-present Sets
-for i = 3, #KEYS do
+for i = 4, #KEYS do
   local s = KEYS[i]
   if not old_sets[s] then
     redis.call('SADD', s, member)
@@ -158,7 +168,7 @@ end
 
 -- reset the pointer side key to the new membership
 redis.call('DEL', ptr_key)
-for i = 3, #KEYS do
+for i = 4, #KEYS do
   redis.call('SADD', ptr_key, KEYS[i])
 end
 
@@ -195,9 +205,20 @@ class TagFieldMixin(IndexedFieldMixin):
     def _tag_pointer_side_key(model_hash_key: str, field_name: str) -> str:
         """Standalone Redis SET key holding this record's current value-Set keys.
 
-        Not a field inside the model hash (see #476): the ``\\x00`` bytes keep it
-        out of any user glob pattern and guarantee it never collides with a real
-        model key.
+        Not a field inside the model hash (see #476), and namespaced under
+        ``$TagPtr:`` so it sits outside every model's key space (#540) — a
+        ``\\x00`` in the name does NOT keep it out of a glob, since Redis
+        ``*`` matches any byte including NUL. See
+        ``IndexedFieldMixin._pointer_side_key`` for the full rationale.
+        """
+        return f"$TagPtr:{model_hash_key}:{field_name}"
+
+    @staticmethod
+    def _pre_540_tag_pointer_side_key(model_hash_key: str, field_name: str) -> str:
+        """The 1.8.1/1.8.2 tag pointer side key. Read-only migration fallback.
+
+        Never written by current code; read once and then DEL'd so records
+        self-heal off the colliding key space.
         """
         return f"{model_hash_key}\x00tagptr\x00{field_name}"
 
@@ -279,16 +300,18 @@ class TagFieldMixin(IndexedFieldMixin):
         tags = cls._normalize(field_value)
         member_key = model_instance.db_key.redis_key
         ptr_key = cls._tag_pointer_side_key(member_key, field_name)
+        old_ptr_key = cls._pre_540_tag_pointer_side_key(member_key, field_name)
         prefix = cls.get_special_use_field_db_key(model_instance, field_name)
         new_set_keys = [DB_key(prefix, tag).redis_key for tag in tags]
         new_bytes = msgpack.packb(tags)
 
-        # numkeys = model hash key + pointer side key + N per-tag Set keys.
-        numkeys = 2 + len(new_set_keys)
+        # numkeys = model hash key + 2 pointer side keys + N per-tag Set keys.
+        numkeys = 3 + len(new_set_keys)
         args = [
             member_key,  # KEYS[1] model hash key
             ptr_key,  # KEYS[2] pointer side key
-            *new_set_keys,  # KEYS[3..] new per-tag Set keys
+            old_ptr_key,  # KEYS[3] pre-#540 pointer side key (migration)
+            *new_set_keys,  # KEYS[4..] new per-tag Set keys
             field_name,  # ARGV[1]
             member_key,  # ARGV[2] member
             new_bytes,  # ARGV[3] packed tag list
@@ -315,8 +338,12 @@ class TagFieldMixin(IndexedFieldMixin):
         """
         member_key = kwargs.get("saved_redis_key", model_instance.db_key.redis_key)
         ptr_key = cls._tag_pointer_side_key(member_key, field_name)
+        old_ptr_key = cls._pre_540_tag_pointer_side_key(member_key, field_name)
 
         raw_sets = POPOTO_REDIS_DB.smembers(ptr_key)
+        if not raw_sets:
+            # Migration fallback: pre-#540 pointer written by 1.8.1/1.8.2.
+            raw_sets = POPOTO_REDIS_DB.smembers(old_ptr_key)
         set_keys = [s.decode() if isinstance(s, bytes) else s for s in raw_sets]
 
         if not set_keys and field_value:
@@ -329,10 +356,10 @@ class TagFieldMixin(IndexedFieldMixin):
         if pipeline:
             for set_key in set_keys:
                 pipeline.srem(set_key, member_key)
-            return pipeline.delete(ptr_key)
+            return pipeline.delete(ptr_key, old_ptr_key)
         for set_key in set_keys:
             POPOTO_REDIS_DB.srem(set_key, member_key)
-        return POPOTO_REDIS_DB.delete(ptr_key)
+        return POPOTO_REDIS_DB.delete(ptr_key, old_ptr_key)
 
     def get_filter_query_params(self, field_name: str) -> set:
         """Valid tag lookups: membership / any-of / all-of.
