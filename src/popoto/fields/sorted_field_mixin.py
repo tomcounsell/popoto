@@ -351,7 +351,8 @@ class SortedFieldMixin:
             - Decimal: Cast to float (may lose precision for very large values)
             - date: Converted to ordinal (days since year 1), preserving day-level ordering
             - datetime: Converted to Unix timestamp, preserving second-level ordering
-            - time: Converted to timestamp (note: may not behave as expected without a date)
+            - time: Converted to seconds since midnight, preserving time-of-day
+              ordering. tzinfo does not affect the score (see the branch below).
 
         This method is used both when saving (to compute the score) and when
         filtering (to convert query values to comparable scores).
@@ -383,7 +384,22 @@ class SortedFieldMixin:
                 return field_value.replace(tzinfo=datetime.timezone.utc).timestamp()
             return field_value.timestamp()
         elif field.type is datetime.time:
-            return field_value.timestamp()
+            # `datetime.time` has no `.timestamp()` -- the previous call raised
+            # AttributeError on every save, so `SortedField(type=datetime.time)`
+            # never worked despite being on the allowed-type list above.
+            #
+            # Seconds since midnight is the natural score for a time of day and
+            # preserves ordering. tzinfo is deliberately not folded in: a bare
+            # time has no date, so normalizing by the offset would wrap past
+            # midnight and put 01:00+07:00 *before* 23:00+00:00 on the same
+            # clock face. Two times that differ only in tzinfo therefore score
+            # the same. Use `datetime.datetime` if the offset must order.
+            return (
+                field_value.hour * 3600
+                + field_value.minute * 60
+                + field_value.second
+                + field_value.microsecond / 1_000_000
+            )
         else:
             raise ValueError(
                 f"SortedField {field} received non-numeric value {field_value} type {type(field_value)}."
