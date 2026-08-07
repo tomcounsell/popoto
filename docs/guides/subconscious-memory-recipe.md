@@ -9,6 +9,8 @@ Automatic memory injection and extraction around every LLM turn. The agent's mem
 
     `SubconsciousMemory` uses `retrieval_mode='auto'` — the effective mode is determined by which fields are on the model at init time. Adding or removing `BM25Field`/`EmbeddingField` changes the effective mode without any change at the `SubconsciousMemory` call site. Adding `EmbeddingField` to a BM25-only model silently flips `lexical → hybrid`.
 
+    The default model declares a `BM25Field`, so the zero-argument path below is query-sensitive. Bring a model without one and `ContextAssembler` logs a `WARNING` naming the missing field.
+
 ## Architecture
 
 ```
@@ -33,41 +35,76 @@ Agent response
 ## Quick Start
 
 ```python
-from popoto import (
-    Model, AutoKeyField, KeyField, StringField, FloatField,
-    DecayingSortedField, ConfidenceField, BM25Field,
-    WriteFilterMixin, AccessTrackerMixin,
-)
-from popoto.recipes.subconscious_memory import SubconsciousMemory
+from popoto.recipes import SubconsciousMemory
 
-# Define your Memory model (any level from the quickstart guide)
-class Memory(WriteFilterMixin, AccessTrackerMixin, Model):
+sm = SubconsciousMemory(agent_id="agent-1")
+
+messages, assembly = sm.inject_context(messages)   # pre-turn
+answer = call_your_llm(messages)                   # your LLM call
+sm.extract_memories(answer, importance=0.6)        # post-turn
+sm.report_outcomes(assembly, outcome="acted")      # feedback
+```
+
+That is the whole loop. `agent_id` is the only required argument — it partitions every index, so two agents sharing one Redis never see each other's memories.
+
+### What the defaults give you
+
+Leaving `model_class` unset selects `popoto.recipes.DefaultMemory`, the shipped model:
+
+```python
+from popoto.recipes import DefaultMemory
+
+class DefaultMemory(AccessTrackerMixin, Model):
     memory_id = AutoKeyField()
     agent_id = KeyField()
     content = StringField(default="")
     importance = FloatField(default=1.0)
-    relevance = DecayingSortedField(
-        base_score_field="importance",
-        partition_by="agent_id",
-    )
-    confidence = ConfidenceField(initial_confidence=0.5)
-    content_bm25 = BM25Field(source="content")  # keyword search index
+    relevance = DecayingSortedField(base_score_field="importance", partition_by="agent_id")
+    confidence = ConfidenceField()
+    content_bm25 = BM25Field(source="content")
+    associations = CoOccurrenceField()
+```
 
-    _wf_min_threshold = 0.1  # default after sweep 2026-04-17 (was 0.2)
-    _wf_priority_threshold = 0.7
+The `BM25Field` is the load-bearing piece: it makes `retrieval_mode='auto'` resolve to the query-sensitive `lexical` mode. A model without one resolves to `composite`, which ignores the query text entirely (and now logs a warning saying so).
 
-    def compute_filter_score(self):
-        return self.importance or 0.0
+`DefaultMemory` deliberately omits `WriteFilterMixin` — it discards records below a score threshold and `save()` returns `False`, which is the wrong surprise for a first run. Add it once you want that behavior; the [quickstart](agent-memory-quickstart.md#level-2-attention-filter-noise-track-reads) covers it at Level 2. `EmbeddingField` is omitted too, since it needs an embedding provider; adding one to a subclass flips retrieval from `lexical` to `hybrid` with no change at this call site.
 
-# Create the subconscious memory layer
+Two more defaults follow from the default model: `score_weights` becomes `{"relevance": 1.0}` (the benchmarked vector), and `confidence_field` / `co_occurrence_field` are wired to the model's `confidence` and `associations` fields.
+
+### Bringing your own model
+
+Every argument is still there. Passing `model_class` explicitly keeps the pre-existing defaults for `confidence_field` and `co_occurrence_field` (both `None`), so upgrading changes nothing for existing code:
+
+```python
 sm = SubconsciousMemory(
-    model_class=Memory,
+    model_class=Memory,          # any level from the quickstart guide
     agent_id="agent-1",
     score_weights={"relevance": 0.6, "confidence": 0.3},
     max_items=10,
     max_tokens=4000,
 )
 ```
+
+Applications that want their own Redis keyspace can subclass instead of authoring a schema:
+
+```python
+class ProjectMemory(DefaultMemory):
+    pass  # keys become ProjectMemory:* instead of DefaultMemory:*
+```
+
+### Injected context format
+
+The injected block carries the memory text and nothing else:
+
+```
+Relevant context:
+- The deploy pipeline uses a blue-green strategy with automatic rollback.
+- Q4 revenue exceeded projections by 12%, driven by enterprise deals.
+```
+
+Earlier versions injected the full JSON record — `memory_id` UUIDs, the `agent_id` the caller had just supplied, and `relevance` as a raw epoch float. Measured over `DefaultMemory` with a 71-character memory, that payload ran 262 characters (3.69x the content, ~104 estimated tokens) against 73 characters for the content format (1.03x, ~16 tokens).
+
+Pass `output_format="structured"` to restore the JSON payload verbatim, or `"xml"` / `"natural"` for the other [ContextAssembler formats](../features/context-assembler.md#output-formats-output_format).
 
 ### Reindexing Existing Records
 
@@ -176,13 +213,15 @@ Modulation is on by default whenever the model carries exactly one `ConfidenceFi
 | `max_items` | 10 | Maximum memories injected per turn |
 | `max_tokens` | 4000 | Token budget for injected context (enforced; see [Token Budget Semantics](../features/context-assembler.md#token-budget-semantics)) |
 | `extraction_min_length` | 10 | Minimum chars for a sentence to become a memory |
-| `score_weights` | (required) | Weight dict for composite scoring (e.g. `{"relevance": 0.6, "confidence": 0.3}`) |
+| `model_class` | `None` (-> `DefaultMemory`) | Memory model. Leave unset for the batteries-included model |
+| `score_weights` | `{"relevance": 1.0}` | Weight dict for composite scoring. The benchmarked vector; ignored by the pull path in lexical/hybrid modes |
+| `output_format` | `"content"` | Injected payload shape. `"structured"` restores the pre-v1.9 JSON |
 | `system_preamble` | "You are a helpful assistant." | Prefix for auto-created system messages |
 | `content_field` | "content" | Name of the text content field on your model |
 | `importance_field` | "importance" | Name of the importance score field |
 | `extraction_provider` | `None` (-> `HeuristicExtractionProvider`) | `AbstractExtractionProvider` used by `extract_memories()`. See [LLM Memory Extraction](../features/llm-memory-extraction.md) |
-| `confidence_field` | `None` | Name of a `ConfidenceField` to seed from extracted facts' confidence opinions; no-op unless set |
-| `co_occurrence_field` | `None` | Name of a `CoOccurrenceField` to link co-mentioned entities in; no-op unless set |
+| `confidence_field` | `None`, or `"confidence"` with the default model | Name of a `ConfidenceField` to seed from extracted facts' confidence opinions; no-op unless set |
+| `co_occurrence_field` | `None`, or `"associations"` with the default model | Name of a `CoOccurrenceField` to link co-mentioned entities in; no-op unless set |
 
 These constants can be tuned experimentally using the Tier 4 benchmark harness. See the [Tuning Magic Numbers](tuning-magic-numbers.md) guide for the full constant catalog, optimal ranges, and how to run parameter sweeps.
 
@@ -204,9 +243,7 @@ class MyProvider(AbstractExtractionProvider):
         ]
 
 sm = SubconsciousMemory(
-    model_class=Memory,
     agent_id="agent-1",
-    score_weights={"relevance": 0.6, "confidence": 0.3},
     extraction_provider=MyProvider(),
 )
 ```

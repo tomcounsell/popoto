@@ -1069,7 +1069,41 @@ def _record_to_dict(record) -> dict:
     return result
 
 
-def _serialize_record(record, output_format) -> str:
+def _resolve_content_text(record, content_field) -> str:
+    """Return the memory text of ``record`` for the ``"content"`` format.
+
+    Resolution order:
+
+    1. ``content_field`` when given and the attribute holds a non-empty
+       string (``ContentField`` lazily materializes to ``str`` on access,
+       so filesystem-backed content works unchanged).
+    2. A field literally named ``"content"``.
+    3. The longest string value across the record's fields — a last-resort
+       guess so an unconventional schema degrades to *something readable*
+       rather than to an empty payload.
+
+    Returns ``""`` when the record carries no string value at all. The
+    caller (:func:`_compose_content`) drops empty slices, so a model with
+    no text field yields an empty context block instead of raising.
+    """
+    if content_field:
+        val = getattr(record, content_field, None)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+
+    d = _record_to_dict(record)
+    val = d.get("content")
+    if isinstance(val, str) and val.strip():
+        return val.strip()
+
+    best = ""
+    for v in d.values():
+        if isinstance(v, str) and len(v.strip()) > len(best):
+            best = v.strip()
+    return best
+
+
+def _serialize_record(record, output_format, content_field=None) -> str:
     """Serialize one record to the exact per-record slice the formatter emits.
 
     The compositional identity holds byte-for-byte per format::
@@ -1088,12 +1122,20 @@ def _serialize_record(record, output_format) -> str:
       skip-not-break budget selection, so it is composition framing (applied
       by :func:`_compose_natural`), analogous to the wrapper framing of the
       other formats.
+    * ``"content"``: the memory text alone, WITHOUT the ``"- "`` bullet
+      prefix (framing, applied by :func:`_compose_content`). Carries no
+      field names, no key values, and no scores — see
+      :func:`_resolve_content_text` for how the text field is chosen and
+      the ``"content"`` entry in the ``ContextAssembler`` ``output_format``
+      docs for why that is the injection default.
 
     Wrapper framing (array brackets, ``<records>`` envelope, enumeration
-    prefixes) is the only residual excluded from per-record token counting;
-    it is a fixed handful of tokens per assembly, independent of record count
-    or size.
+    and bullet prefixes) is the only residual excluded from per-record token
+    counting; it is a fixed handful of tokens per assembly, independent of
+    record count or size.
     """
+    if output_format == "content":
+        return _resolve_content_text(record, content_field)
     d = _record_to_dict(record)
     if output_format == "xml":
         lines = ["  <record>"]
@@ -1133,6 +1175,18 @@ def _compose_natural(serialized) -> str:
     return "\n".join(f"{i}. {s}" for i, s in enumerate(serialized, 1))
 
 
+def _compose_content(serialized) -> str:
+    """Join pre-serialized memory texts as a bullet list.
+
+    Empty slices are dropped, so a record with no resolvable text
+    contributes nothing rather than an orphan ``"- "`` bullet.
+    """
+    lines = [s for s in serialized if s]
+    if not lines:
+        return ""
+    return "\n".join(f"- {s}" for s in lines)
+
+
 def format_structured(records) -> str:
     """Format records as JSON array."""
     return _compose_structured([_serialize_record(r, "structured") for r in records])
@@ -1146,6 +1200,19 @@ def format_xml(records) -> str:
 def format_natural(records) -> str:
     """Format records as natural language summary."""
     return _compose_natural([_serialize_record(r, "natural") for r in records])
+
+
+def format_content(records, content_field=None) -> str:
+    """Format records as a content-only bullet list (no field names, no IDs).
+
+    Args:
+        records: Model instances to format.
+        content_field: Name of the text field to read. ``None`` falls back
+            to the resolution order in :func:`_resolve_content_text`.
+    """
+    return _compose_content(
+        [_serialize_record(r, "content", content_field) for r in records]
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1169,8 +1236,18 @@ class ContextAssembler:
     * ``"composite"`` — original CompositeScoreQuery weighted-sum (unchanged
       from pre-v1.7 behaviour). Requires ``score_weights``.
     * ``"auto"`` *(default)* — selects ``"hybrid"`` when both ``BM25Field``
-      and ``EmbeddingField`` are detected on the model, otherwise falls back
-      to ``"composite"``.
+      and ``EmbeddingField`` are detected on the model, ``"lexical"`` when
+      only ``BM25Field`` is, otherwise falls back to ``"composite"``.
+
+    .. warning::
+       ``"auto"`` falling through to ``"composite"`` means retrieval is
+       **query-blind**: ``query_cues`` are ignored and ranking comes from
+       ``score_weights`` alone. That resolution logs a ``WARNING`` on the
+       ``POPOTO.ContextAssembler`` logger naming the missing ``BM25Field``
+       (issue #513). Declare a ``BM25Field`` (or import
+       :class:`popoto.recipes.DefaultMemory`, which declares one) for
+       query-sensitive retrieval, or pass ``retrieval_mode="composite"``
+       explicitly to affirm the query-blind ranking and silence the warning.
 
     Args:
         model_class: Popoto Model class to query.
@@ -1191,8 +1268,22 @@ class ContextAssembler:
             handful of tokens per assembly.
         surfacing_threshold: Minimum score for push-path records. Default 0.5.
         propagation_depth: BFS depth for CoOccurrence. Default 2.
-        output_format: ``"structured"`` (JSON), ``"xml"``, or ``"natural"``.
-            Default ``"structured"``.
+        output_format: ``"structured"`` (JSON), ``"xml"``, ``"natural"``, or
+            ``"content"``. Default ``"structured"``.
+
+            ``"content"`` emits the memory text alone as a ``"- "`` bullet
+            list: no field names, no ``memory_id``, no ``agent_id``, no raw
+            epoch scores. It exists because the structured default carried
+            ~2.8x the characters of the content it wrapped when injected
+            into a system prompt (issue #513), and the identifiers it spent
+            them on are not answerable by the model.
+            :class:`~popoto.recipes.subconscious_memory.SubconsciousMemory`
+            defaults to ``"content"``; ``ContextAssembler`` keeps
+            ``"structured"`` so existing callers are unaffected.
+        content_field: Name of the text field ``output_format="content"``
+            reads. Default ``None`` — auto-detected from the model's
+            ``BM25Field`` source, else a field named ``"content"``. Ignored
+            by every other output format.
         token_counter: Optional ``callable(serialized_text: str) -> int``.
             Receives the exact serialized per-record string the formatter
             emits for the active ``output_format`` (never the record
@@ -1254,6 +1345,7 @@ class ContextAssembler:
         confidence_gate_threshold: float | None = None,
         confidence_gate_mode: str = "refuse",
         graph_traversal_relationship_fields: list | None = None,
+        content_field: str | None = None,
     ):
         self.model_class = model_class
         self.score_weights = score_weights
@@ -1332,6 +1424,20 @@ class ContextAssembler:
             if isinstance(f, TagFieldMixin) and self._tag_field_name is None:
                 self._tag_field_name = name
 
+        # Text field read by output_format="content". Explicit wins; then the
+        # BM25Field's source (the field the model already declares as its
+        # searchable text); then a field literally named "content". Left as
+        # None when nothing matches — _resolve_content_text() then falls back
+        # to the longest string value per record.
+        self._content_field_name = content_field
+        if self._content_field_name is None:
+            if self._bm25_field is not None and getattr(
+                self._bm25_field, "source", None
+            ):
+                self._content_field_name = self._bm25_field.source
+            elif "content" in model_class._meta.fields:
+                self._content_field_name = "content"
+
         # Confidence-gate construction-time validation (issue #463). The gate
         # is opt-in — no-op unless confidence_gate_threshold is set — but
         # once enabled it must be self-consistent (valid mode) and backed by
@@ -1407,6 +1513,35 @@ class ContextAssembler:
             else:
                 # No BM25 and no embedding → composite (unchanged, incl. embedding-only)
                 self._effective_mode = "composite"
+                # Issue #513: this resolution used to be silent at every log
+                # level, so a model that looked fine ranked the correct memory
+                # below unrelated ones with no signal that query text was
+                # being ignored. Warn only for the *implicit* path — an
+                # explicit retrieval_mode="composite" is an informed choice
+                # and stays quiet (it is also the documented way to silence
+                # this).
+                logger.warning(
+                    "ContextAssembler: retrieval_mode='auto' resolved to "
+                    "'composite' (QUERY-BLIND) because %s declares no "
+                    "BM25Field%s. Query cues passed to assemble() are "
+                    "IGNORED; records are ranked by score_weights alone. "
+                    "Add a BM25Field to %s for query-sensitive retrieval, "
+                    'e.g. content_bm25 = BM25Field(source="content"), or '
+                    "import the batteries-included model: "
+                    "from popoto.recipes import DefaultMemory. "
+                    "Pass retrieval_mode='composite' to silence this "
+                    "warning if query-blind ranking is intended. "
+                    "See https://popoto.io/features/context-assembler/"
+                    "#pull-path-modes-retrieval_mode",
+                    model_class.__name__,
+                    (
+                        " (an EmbeddingField alone does not enable "
+                        "query-sensitive retrieval through ContextAssembler)"
+                        if self._embedding_field is not None
+                        else ""
+                    ),
+                    model_class.__name__,
+                )
         elif retrieval_mode == "hybrid":
             if self._bm25_field is None or self._embedding_field is None:
                 from ..exceptions import QueryException
@@ -1718,6 +1853,7 @@ class ContextAssembler:
             "structured": _compose_structured,
             "xml": _compose_xml,
             "natural": _compose_natural,
+            "content": _compose_content,
         }.get(self.output_format, _compose_structured)
 
         formatted = compose(selected_serialized)
@@ -1806,7 +1942,9 @@ class ContextAssembler:
             Tuple ``(tokens, serialized)`` — the token count and the exact
             per-record string the formatter will emit for this record.
         """
-        serialized = _serialize_record(record, self.output_format)
+        serialized = _serialize_record(
+            record, self.output_format, self._content_field_name
+        )
         try:
             tokens = self._token_counter(serialized)
             if not isinstance(tokens, int) or isinstance(tokens, bool) or tokens < 0:

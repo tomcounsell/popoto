@@ -523,9 +523,11 @@ lifecycle = MemoryLifecycle(
 `SubconsciousMemory`, not as a replacement:
 
 ```python
-from popoto.recipes import MemoryLifecycle, SubconsciousMemory
+from popoto.recipes import DefaultMemory, MemoryLifecycle, SubconsciousMemory
 
-sm = SubconsciousMemory(model_class=Memory, agent_id="agent-1", ...)
+Memory = DefaultMemory  # or your own model class
+
+sm = SubconsciousMemory(model_class=Memory, agent_id="agent-1")
 lifecycle = MemoryLifecycle(model_class=Memory, importance_field="relevance")
 
 # Pre-turn: inject context from all tiers

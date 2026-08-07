@@ -153,6 +153,8 @@ No exception handlers in scope — this is documentation work. The failure paths
 **Impact:** Expectation-violation bounce; the exact failure critic-adoption measured (caesar salad above the answer).
 **Mitigation:** Sequencing — quickstart's first model includes BM25Field so the copy-paste path is query-sensitive today; the "becomes an import" note manages the boilerplate honestly; sibling issues are linked from the docs where relevant.
 
+**Status (#513 shipped):** the import now exists. `from popoto.recipes import DefaultMemory, SubconsciousMemory` gives the benchmarked configuration with no schema authoring, `score_weights` defaults to `{"relevance": 1.0}`, and `retrieval_mode='auto'` falling through to composite logs a `WARNING` naming the missing `BM25Field`. The quickstart opens with a "Level 0: Import the defaults" section (six lines to a working memory loop) and the SubconsciousMemory recipe leads with the zero-argument constructor. This plan's golden-path copy should reference the import rather than a hand-authored schema.
+
 ### Risk 3: Claims drift back in via future benchmark artifact updates
 **Impact:** Killed claims (sub-6ms, band, 1.0-vs-0.0) reappear as artifacts regenerate pages.
 **Mitigation:** Kill-list greps in the Verification table; framing text lives in `gen_benchmark_pages.py` under version control.
@@ -164,7 +166,7 @@ No race conditions identified — documentation-only change; the docs build is s
 ## No-Gos (Out of Scope)
 
 - [SEPARATE-SLUG #512] PyPI/README/metadata repositioning (tagline, keywords, dead PyPI links, empty homepage URL).
-- [SEPARATE-SLUG #513] Code fixes: query-blind resolution warning, batteries-included default `Memory` model with benchmarked `score_weights` default, injected-context format (UUIDs/epoch floats at 2.8× overhead), removal of the false PydanticAI-guide claim at `src/popoto/recipes/subconscious_memory.py:29`.
+- [SEPARATE-SLUG #513 — SHIPPED] Code fixes: query-blind resolution warning, batteries-included `DefaultMemory` model with benchmarked `score_weights` default, content-first injected-context format, removal of the false PydanticAI-guide claim in `src/popoto/recipes/subconscious_memory.py`. See the Risk 2 status note above for what the golden-path copy can now assume.
 - [SEPARATE-SLUG #514] LoCoMo gold-aware ID-selection scoring defect (`tests/benchmarks/scenarios/external_base.py:578-591`) fix + full re-run; broken `*_latest` symlinks. This plan's LoCoMo constraint depends on it.
 - [SEPARATE-SLUG #515] Harness integration: make SubconsciousMemory easily added to Claude Code, Codex, Hermes, and OpenClaw agents (MCP-server surface + per-harness wiring guides). Maintainer direction 2026-08-07: no PydanticAI dependency; target agent harnesses, not Python frameworks.
 - [EXTERNAL] Redis-partnership positioning conversation (Mirko Ortensi dialogue) — maintainer-owned relationship decision; this plan's copy avoids foreclosing it but does not manage it.
