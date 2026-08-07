@@ -1,0 +1,490 @@
+---
+status: Planning
+type: bug
+appetite: Small
+owner: valorengels
+created: 2026-08-07
+tracking: https://github.com/tomcounsell/popoto/issues/525
+last_comment_id:
+---
+
+# DB_key colon escape must be self-escaping
+
+## Problem
+
+`DB_key.clean()` escapes `:` to the literal seven-character sequence `{&#58;}`, but it
+does not escape that sequence when it already appears in the *input*. `unclean()`
+therefore cannot tell an escape that `clean()` produced from one the caller supplied,
+and the round trip silently returns a different string.
+
+**Current behavior** (verified against `main` @ `286deb8`):
+
+```
+'{&#58;}'    -> clean -> '{&#58;}'            -> unclean -> ':'      LOSSY
+'a{&#58;}b'  -> clean -> 'a{&#58;}b'          -> unclean -> 'a:b'    LOSSY
+'{&#58;}-/:' -> clean -> '{&#58;}/-//{&#58;}' -> unclean -> ':-/:'   LOSSY
+```
+
+The slash family (`/` → `//`, and `'?*^[]-` → `/<char>`) is self-escaping and round-trips
+correctly even for inputs that look like escape output. Only the colon escape is broken.
+
+`DB_key.from_redis_key()` is documented as the inverse of `__str__` and is used by
+`Query` to recover KeyField values from stored keys without fetching the object. Any
+caller relying on that inverse gets a *wrong but plausible* string when the stored value
+contained `{&#58;}` — the worst failure shape for a key.
+
+Blast radius in practice is small (a value must contain that exact seven-character
+sequence), but the failure is silent.
+
+**Desired outcome:**
+
+`DB_key.unclean(DB_key.clean(v)) == v` for every string `v`, including strings containing
+the literal `{&#58;}` sequence, with no change to the on-disk encoding of any value that
+does *not* contain that sequence, and with the new `unclean()` still correctly decoding
+every key written by the current implementation.
+
+## Freshness Check
+
+**Baseline commit:** `286deb8c0b3b378872e8eaf95933af03846cf4bf` (main)
+**Issue filed at:** 2026-08-07T07:06:43Z
+**Disposition:** Unchanged
+
+**File:line references re-verified:**
+- `src/popoto/models/db_key.py:156-160` (`clean`) — colon replace is a plain
+  `value.replace(":", "{&#58;}")` with no self-escaping — still holds.
+- `src/popoto/models/db_key.py:177-184` (`unclean`) — decodes `{&#58;}` → `:`
+  unconditionally, before the slash unescaping — still holds.
+- `src/popoto/models/db_key.py:133` (`from_redis_key`) — splits on `":"` and uncleans each
+  partial — still holds.
+
+**Reproduction re-run on current main:** confirmed, output matches the issue verbatim.
+
+**Cited sibling issues/PRs re-checked:** none cited in the issue body. Prior-art search
+(`gh issue list --state all --search "db_key clean escape"`, `gh pr list --state merged
+--search "db_key escaping"`) returned only #525 itself.
+
+**Commits on main since issue was filed touching referenced files:**
+`git log --since=2026-08-07T00:00:00Z -- src/popoto/models/db_key.py` → none.
+
+**Active plans in `docs/plans/` overlapping this area:** none. `atomic_index_maintenance_lua.md`
+mentions `DB_key.clean()`'s escaping only as a *reason not to reimplement it in Lua*; it
+does not modify `db_key.py`, and the fix here does not weaken that argument.
+
+## Prior Art
+
+No prior issues or merged PRs found related to this work. `DB_key`'s escaping has not been
+touched by a tracked fix before.
+
+## Research
+
+No relevant external findings — this is purely internal string-escaping logic with no
+external library, API, or ecosystem surface. Proceeding with codebase context.
+
+One repo-local constraint that does bear on the approach: `hypothesis` is **not** a
+dependency (`pyproject.toml` `[dev]` = pytest, pytest-asyncio, mypy, black, ruff, tiktoken).
+The "property test" the issue asks for must be written as a seeded/exhaustive loop over a
+small alphabet rather than by adding a new dependency.
+
+## Spike Results
+
+### spike-1: Is the issue's suggested fix direction actually viable?
+- **Assumption**: "The simplest route is to route the colon escape through the existing
+  slash-escape mechanism" (i.e. add `:` to the `'?*^[]-` glob list so `:` → `/:`).
+- **Method**: code-read + prototype
+- **Finding**: **Not viable.** `/:` still contains a literal colon, and `from_redis_key()`
+  splits the Redis key on `":"`. `"a:b"` would encode to `"a/:b"` and then split into
+  `["a/", "b"]` — the delimiter invariant breaks. The colon escape must produce output
+  containing **no** literal colon, so it cannot be a slash-prefix escape.
+- **Confidence**: high
+- **Impact on plan**: The fix keeps `{&#58;}` as the colon escape and instead makes it
+  self-escaping by routing the *literal sequence* through the slash mechanism.
+
+### spike-2: Does a self-escaping `{&#58;}` round-trip, stay backward-compatible, and leave ordinary encodings untouched?
+- **Assumption**: "`clean()` can pre-escape a literal `{&#58;}` as `/{&#58;}`, and a
+  single-pass `unclean()` parser will decode both old and new output correctly."
+- **Method**: prototype (throwaway script, not committed)
+- **Finding**: **Confirmed on all three axes.** Prototype:
+  - `clean()`: `/` → `//`; then `'?*^[]-` → `/<char>`; then `{&#58;}` → `/{&#58;}`; then
+    `:` → `{&#58;}`.
+  - `unclean()`: single left-to-right scan — on `/` emit the next character literally and
+    skip both; else if the string starts with `{&#58;}` at this position emit `:` and skip
+    seven; else emit the character.
+  - Over 200,000 random strings from an alphabet of `a b / : - * [ ] ^ ? '` plus the literal
+    `{&#58;}` and its constituent characters (`{ } & # 5 8 ;`), length 0–6:
+    - **0** round-trip failures for the new pair.
+    - **0** divergences between `unclean_new(clean_old(v))` and `unclean_old(clean_old(v))`
+      — the new reader decodes every legacy-written key identically to the old reader.
+    - Encoding differs between old and new `clean()` for **only** those values containing
+      the literal `{&#58;}` — i.e. exactly the values that are already broken today.
+- **Confidence**: high
+- **Impact on plan**: This is the implementation. The sequential-replace form of `unclean()`
+  cannot express the fix (the colon decode must not fire on a `/`-escaped occurrence, and
+  it runs *before* slash unescaping), so `unclean()` becomes a single-pass scanner.
+
+## Data Flow
+
+1. **Entry point**: a model instance is saved, or a query builds a key pattern. A KeyField
+   value reaches `DB_key.__str__` (`db_key.py:197-206`).
+2. **`DB_key.clean(str(partial))`**: escapes the partial. Output must contain no literal
+   `:` so the join is unambiguous.
+3. **Join**: partials joined with `":"` → the Redis key string; written to Redis, and also
+   embedded in index Set keys and relationship field values.
+4. **Read back**: `DB_key.from_redis_key(redis_key)` (`db_key.py:131-133`) decodes bytes,
+   `split(":")`, and `unclean()`s each partial.
+5. **Output**: partials handed to `Query` (`query.py:2655`, `query.py:3045`),
+   `Relationship` (`relationship.py:288, 309, 411`), and
+   `recipes/graph_traversal.py:211` as recovered field values.
+
+Step 5 is where the silent corruption surfaces today. `clean()` is also called directly for
+glob-pattern construction at `fields/indexed_field_mixin.py:528,539` and
+`fields/key_field_mixin.py:475,480`; those call sites are unaffected because the new
+encoding is byte-identical for any value without a literal `{&#58;}`.
+
+## Architectural Impact
+
+- **New dependencies**: none.
+- **Interface changes**: none. `clean()` / `unclean()` keep their signatures; `unclean()`
+  changes implementation from sequential `str.replace` to a single-pass scanner.
+- **Coupling**: unchanged; the fix is contained to `db_key.py`.
+- **Data ownership**: unchanged.
+- **Reversibility**: high — a single-file revert. Forward-compatibility is the only
+  asymmetry: keys written by the *new* `clean()` for values containing `{&#58;}` would be
+  mis-decoded by a *pre-fix* reader. Those exact values are already corrupt today, so the
+  practical exposure is nil (see Risks).
+
+## Appetite
+
+**Size:** Small
+
+**Team:** Solo dev
+
+**Interactions:**
+- PM check-ins: 0
+- Review rounds: 1
+
+## Prerequisites
+
+| Requirement | Check Command | Purpose |
+|-------------|---------------|---------|
+| Redis/Valkey on localhost:6379 | `redis-cli ping` | Test suite requires a live server (DB 15) |
+
+## Solution
+
+### Key Elements
+
+- **Self-escaping colon escape**: `clean()` pre-escapes any literal `{&#58;}` in the input
+  as `/{&#58;}` *before* encoding real colons, so the escape sequence gains the same
+  self-escaping property `/` already has.
+- **Single-pass `unclean()`**: a left-to-right scanner replaces the ordered
+  `str.replace` chain, so a `/`-escaped `{&#58;}` is never mistaken for an escape the
+  encoder produced.
+- **Round-trip property test**: exhaustive over short strings from a hostile alphabet plus
+  a seeded randomized sweep over longer ones, asserting `unclean(clean(v)) == v`.
+- **Legacy-decode regression test**: pins that the new `unclean()` still decodes the
+  encodings the current implementation produces, so no stored key becomes unreadable.
+
+### Flow
+
+Value with `{&#58;}` in it → `clean()` → escape sequence neutralized as `/{&#58;}` →
+joined into a Redis key → `from_redis_key()` → single-pass `unclean()` → **original value
+recovered exactly** (today: a corrupted string with a spurious `:`).
+
+### Technical Approach
+
+`clean()` — one new line, inserted between the glob loop and the colon encode:
+
+```python
+value = value.replace("/", "//")
+for char in "'?*^[]-":
+    value = value.replace(char, f"/{char}")
+value = value.replace("{&#58;}", "/{&#58;}")   # NEW: self-escape the escape
+value = value.replace(":", "{&#58;}")
+```
+
+Order is load-bearing: the pre-escape must run *after* `/`-doubling (so the inserted `/` is
+an escape, not data) and *before* the colon encode (so the `{&#58;}` the encoder itself
+emits is not re-escaped).
+
+`unclean()` — replace the ordered replace chain with a single left-to-right scan:
+
+- at `/` with a following character: emit that character literally, advance 2. This
+  subsumes `//` → `/`, `/<glob char>` → `<glob char>`, and the new `/{` → `{`.
+- else at a position where the string starts with `{&#58;}`: emit `:`, advance 7.
+- else: emit the character, advance 1.
+- a trailing lone `/` (only reachable from malformed input) is emitted as-is, matching the
+  current behavior.
+
+Extract the escape sequence and the glob-character set to module-level constants so the two
+methods cannot drift.
+
+The scanner is what makes the fix correct: with sequential replaces, the colon decode
+necessarily runs before slash unescaping (slashes must be undone last), so it cannot
+distinguish `/{&#58;}` from `{&#58;}` without a fragile lookbehind. Spike-2 verified the
+scanner is byte-identical to the current `unclean()` on every legacy-produced encoding.
+
+## Failure Path Test Strategy
+
+### Exception Handling Coverage
+No exception handlers in scope — `clean()`/`unclean()` are pure string functions with no
+`try`/`except` in `db_key.py`.
+
+### Empty/Invalid Input Handling
+- `clean("")` → `""`, `unclean("")` → `""` — covered by an explicit test case and by the
+  exhaustive length-0 arm of the property test.
+- `unclean()` on strings that were never produced by `clean()` (raw class-name partials, a
+  trailing lone `/`, a bare `{`) must not raise — covered by a malformed-input test.
+- `clean()` is called as `clean(str(partial))`, so `None`/int partials are stringified
+  upstream; no `None` handling changes here.
+
+### Error State Rendering
+No user-visible output surface — this is a library-internal encoding function. Corruption is
+silent by nature, which is precisely why the property test (not example tests) is the gate.
+
+## Test Impact
+
+- [ ] `tests/test_key_fields.py`, `tests/test_immutable_keys.py`,
+      `tests/test_keyfield_migration.py`, `tests/test_keyfield_stale_reads.py`,
+      `tests/test_relationship_edge_cases.py` — **no change expected**: none assert on the
+      escaped byte form, and the encoding is unchanged for every value without a literal
+      `{&#58;}`. The build must confirm this by running the full suite, and must NOT relax
+      any of these tests to accommodate the fix — a break here means the encoding changed
+      more than intended.
+- [ ] New file `tests/test_db_key_escaping.py` — CREATE: round-trip property test, legacy
+      decode-compatibility test, malformed-input test, and the three issue reproductions as
+      hard assertions.
+
+No expected-failure markers relate to this bug: `grep -rn 'xfail' tests/` hits only
+`tests/test_field_index_edge_cases.py` and `tests/benchmarks/test_overrides_reach.py`,
+neither of which concerns key escaping. Nothing to convert.
+
+## Rabbit Holes
+
+- **Redesigning the escape scheme.** Switching to percent-encoding, base64, or a
+  single-character sentinel would fix the bug *and* invalidate every key in every existing
+  database. Out of scope — keep `{&#58;}`.
+- **Following the issue's stated fix direction literally.** Routing `:` through the slash
+  escape is disproved by spike-1: it emits a literal colon and breaks the delimiter. Do not
+  re-litigate.
+- **Adding `hypothesis`.** A seeded loop gives the same coverage here for zero dependency
+  cost. A new dev dependency for one test file is not worth the CI surface.
+- **Writing a migration for already-ambiguous keys.** Keys whose values contained
+  `{&#58;}` are *already* unrecoverable — the information needed to disambiguate was never
+  written. There is nothing to migrate to; see Risks.
+- **Escaping `{` unconditionally.** Tempting for symmetry, but it changes the encoding of
+  every value containing a brace (and interacts with Redis Cluster hash tags). Escape the
+  sequence, not the character.
+
+## Risks
+
+### Risk 1: Encoding change for values containing the literal `{&#58;}`
+**Impact:** A key written before the fix for such a value decodes to the (wrong) legacy
+value; a key written after decodes to the correct value. A row stored pre-fix will not be
+found by a post-fix lookup of the same input value.
+**Mitigation:** These values are already broken — the current encoding loses information at
+write time, so no correct behavior is being regressed. The affected set requires a value
+containing that exact seven-character sequence, which no realistic domain value does. Call
+this out explicitly in the changelog/docs note rather than attempting a migration.
+
+### Risk 2: Mixed-version deployment (new writer, old reader)
+**Impact:** An old reader decoding a new writer's `/{&#58;}` runs its colon replace first,
+yielding `/:`, then unescapes slashes — producing a wrong value. Same class of corruption as
+today, for the same already-broken input set.
+**Mitigation:** The new reader is fully backward-compatible (spike-2: 0 divergences over
+200k legacy encodings), so rolling readers forward first is safe. Forward-incompatibility is
+confined to the already-corrupt value set. Note it in the release notes; no code gate needed.
+
+### Risk 3: The single-pass scanner subtly diverges from the old decoder on some legacy input
+**Impact:** Stored keys become unreadable — far worse than the bug being fixed.
+**Mitigation:** A dedicated legacy decode-compatibility test asserts
+`unclean_new(clean_old(v)) == unclean_old(clean_old(v))` over the same hostile alphabet,
+with the old implementations inlined in the test as frozen reference functions. Spike-2
+already ran this at 200k samples with zero divergences.
+
+## Race Conditions
+
+No race conditions identified — `clean()` and `unclean()` are pure, synchronous,
+side-effect-free classmethods operating on their argument only. No shared mutable state, no
+I/O, no async.
+
+## No-Gos (Out of Scope)
+
+Nothing deferred — every relevant item is in scope for this plan.
+
+## Update System
+
+No update system changes required — this is a library-internal encoding fix with no new
+dependencies, config, or deployment surface. It ships in the normal release.
+
+## Agent Integration
+
+No agent integration required — `DB_key` is internal to the ORM and is not exposed as a tool
+or MCP surface.
+
+## Documentation
+
+### Feature Documentation
+- [ ] No `docs/features/` entry — this is a bug fix to existing documented behavior, not a
+      new feature.
+
+### External Documentation Site
+- [ ] `docs/configuration.md:113` shows `HGETALL Restaurant:Burger{&#58;}Palace` as an
+      example of the colon escaping. Verify it is still accurate (it is — that value has no
+      literal `{&#58;}`), and leave it unless the docs pass finds it misleading.
+- [ ] `mkdocs build --strict` passes (`scripts/ci-local.sh docs`).
+
+### Inline Documentation
+- [ ] Update the `clean()` docstring (`db_key.py:136-155`) to document the self-escaping
+      property and the load-bearing ordering of the four steps.
+- [ ] Update the `unclean()` docstring (`db_key.py:163-176`) — the current text describes
+      the sequential replace order ("colons first, then glob characters, then slashes last"),
+      which no longer describes the implementation.
+- [ ] Update the class-level "Key Escaping" note (`db_key.py:19-22`) to state the round-trip
+      guarantee.
+- [ ] Add a release-note line about the encoding change for values containing the literal
+      `{&#58;}` sequence.
+
+## Success Criteria
+
+- [ ] `DB_key.unclean(DB_key.clean(v)) == v` holds for all `v` in the property test's
+      exhaustive + randomized sweep, including the three reproductions from issue #525.
+- [ ] The new `unclean()` decodes every legacy-produced encoding identically to the current
+      implementation (frozen-reference comparison test).
+- [ ] `DB_key.clean(v)` output is byte-identical to the current implementation for every `v`
+      that does not contain the literal `{&#58;}` sequence (asserted by test).
+- [ ] `clean()` output never contains a literal `:`, so `from_redis_key()`'s `split(":")`
+      stays unambiguous (asserted by test).
+- [ ] Full existing suite passes unmodified — no existing test relaxed to accommodate the fix.
+- [ ] Tests pass (`/do-test`)
+- [ ] Documentation updated (`/do-docs`)
+
+## Team Orchestration
+
+### Team Members
+
+- **Builder (db-key)**
+  - Name: `db-key-builder`
+  - Role: Implement the self-escaping `clean()` and single-pass `unclean()` in
+    `src/popoto/models/db_key.py`, plus docstrings.
+  - Agent Type: builder
+  - Domain: Redis/Popoto data
+  - Resume: true
+
+- **Test engineer (escaping)**
+  - Name: `escaping-test-engineer`
+  - Role: Write `tests/test_db_key_escaping.py` — round-trip property test, legacy
+    decode-compatibility test, encoding-stability test, malformed-input test.
+  - Agent Type: test-engineer
+  - Resume: true
+
+- **Validator (db-key)**
+  - Name: `db-key-validator`
+  - Role: Verify success criteria and that no existing test was modified.
+  - Agent Type: validator
+  - Resume: true
+
+### Step by Step Tasks
+
+### 1. Implement the self-escaping colon escape
+- **Task ID**: build-db-key
+- **Depends On**: none
+- **Validates**: tests/test_db_key_escaping.py (create), tests/test_key_fields.py
+- **Informed By**: spike-1 (slash-routing the colon is not viable — it emits a literal
+  colon and breaks `split(":")`), spike-2 (pre-escape `{&#58;}` → `/{&#58;}` plus a
+  single-pass scanner: 0 round-trip failures, 0 legacy-decode divergences, encoding changes
+  only for values containing the literal sequence)
+- **Assigned To**: db-key-builder
+- **Agent Type**: builder
+- **Parallel**: true
+- Add module-level constants for the colon escape sequence `{&#58;}` and the glob character
+  set `'?*^[]-` in `src/popoto/models/db_key.py`.
+- In `clean()`, insert `value = value.replace(COLON_ESCAPE, "/" + COLON_ESCAPE)` between the
+  glob-escape loop and the `:` → `{&#58;}` replace. Do not reorder the other steps.
+- Rewrite `unclean()` as a single left-to-right scanner: `/` + next char → emit next char
+  literally (advance 2); else `startswith(COLON_ESCAPE, i)` → emit `:` (advance 7); else emit
+  the char (advance 1); a trailing lone `/` is emitted as-is.
+- Update the `clean()` / `unclean()` docstrings and the module "Key Escaping" note — the
+  existing `unclean()` docstring describes the replace ordering and becomes wrong.
+- Do NOT change `__str__`, `from_redis_key`, or any call site.
+
+### 2. Write the escaping test suite
+- **Task ID**: build-escaping-tests
+- **Depends On**: none
+- **Validates**: tests/test_db_key_escaping.py (create)
+- **Informed By**: spike-2 (alphabet and sample counts that exercised the failure), Research
+  (`hypothesis` is not a dependency — use exhaustive + seeded loops)
+- **Assigned To**: escaping-test-engineer
+- **Agent Type**: test-engineer
+- **Parallel**: true
+- Create `tests/test_db_key_escaping.py`.
+- Round-trip property test: exhaustive over all strings of length 0–3 from the alphabet
+  `a`, `/`, `:`, `-`, `*`, `[`, `]`, `^`, `?`, `'`, `{`, `}`, `&`, `#`, `;`, plus the
+  multi-character token `{&#58;}`; then a seeded (`random.Random(0)`) sweep of ~50k longer
+  strings. Assert `DB_key.unclean(DB_key.clean(v)) == v`.
+- Explicit regression cases from issue #525: `'{&#58;}'`, `'a{&#58;}b'`, `'{&#58;}-/:'`.
+- Legacy decode-compatibility test: inline the pre-fix `clean`/`unclean` as frozen reference
+  functions named `_legacy_clean` / `_legacy_unclean`, and assert
+  `DB_key.unclean(_legacy_clean(v)) == _legacy_unclean(_legacy_clean(v))` over the same sweep.
+- Encoding-stability test: for every `v` in the sweep that does not contain `{&#58;}`,
+  assert `DB_key.clean(v) == _legacy_clean(v)`; and for every `v` that does, assert the two
+  differ (the fix actually engaged).
+- Delimiter-safety test: assert `":" not in DB_key.clean(v)` over the sweep.
+- Composite-key test: `DB_key.from_redis_key(str(DB_key("Model", v1, v2)))` recovers
+  `["Model", v1, v2]` for a handful of hostile `v1`/`v2` including `{&#58;}`.
+- Malformed-input test: `DB_key.unclean()` on `""`, `"/"`, `"{"`, `"{&#58"`, `"a/"` must
+  return without raising.
+- Keep the whole file pure-Python (no Redis calls) so it runs fast.
+
+### 3. Validate
+- **Task ID**: validate-db-key
+- **Depends On**: build-db-key, build-escaping-tests
+- **Assigned To**: db-key-validator
+- **Agent Type**: validator
+- **Parallel**: false
+- Run `pytest tests/test_db_key_escaping.py -q` and the full suite.
+- Confirm `git diff --stat` shows no modifications to pre-existing test files.
+- Confirm the diff to `src/` is confined to `src/popoto/models/db_key.py`.
+- Report pass/fail against Success Criteria.
+
+### 4. Documentation
+- **Task ID**: document-fix
+- **Depends On**: validate-db-key
+- **Assigned To**: db-key-builder
+- **Agent Type**: documentarian
+- **Parallel**: false
+- Verify `docs/configuration.md:113` is still accurate.
+- Add a release note about the encoding change for values containing the literal `{&#58;}`.
+- Run `scripts/ci-local.sh docs`.
+
+## Verification
+
+| Check | Command | Expected |
+|-------|---------|----------|
+| Escaping tests pass | `python -m pytest tests/test_db_key_escaping.py -q` | exit code 0 |
+| Full suite passes | `python -m pytest -q` | exit code 0 |
+| Issue #525 repro fixed | `python -c "import sys;sys.path.insert(0,'src');from popoto.models.db_key import DB_key as D;print(all(D.unclean(D.clean(v))==v for v in ['{&#58;}','a{&#58;}b','{&#58;}-/:']))"` | output contains True |
+| clean() emits no literal colon | `python -c "import sys;sys.path.insert(0,'src');from popoto.models.db_key import DB_key as D;print(any(':' in D.clean(v) for v in ['a:b','{&#58;}','x','a/b:c']))"` | output contains False |
+| Colon escape still `{&#58;}` (no scheme swap) | `python -c "import sys;sys.path.insert(0,'src');from popoto.models.db_key import DB_key as D;print(D.clean('a:b'))"` | output contains `a{&#58;}b` |
+| Fix confined to db_key.py | `git diff --name-only origin/main -- src/ \| grep -cv 'src/popoto/models/db_key.py'` | match count == 0 |
+| No pre-existing test modified | `git diff --name-only origin/main -- tests/ \| grep -cv 'tests/test_db_key_escaping.py'` | match count == 0 |
+| Format clean | `python -m black --check src/popoto/models/db_key.py tests/test_db_key_escaping.py` | exit code 0 |
+| Docs build | `mkdocs build --strict` | exit code 0 |
+
+## Critique Results
+
+<!-- Populated by /do-plan-critique (war room). Leave empty until critique is run. -->
+| Severity | Critic | Finding | Addressed By | Implementation Note |
+|----------|--------|---------|--------------|---------------------|
+
+---
+
+## Open Questions
+
+1. **Encoding-change acceptance.** The fix changes the stored encoding for values containing
+   the literal `{&#58;}` sequence. Those values are already corrupted by the current
+   implementation (the information is lost at write time, so no migration can recover them),
+   so this plan treats a release note as sufficient and writes no migration. Confirm that is
+   acceptable, or say the word and this becomes a versioned-encoding change instead.
+2. **Should the `{&#58;}` escape scheme survive at all?** Keeping it means the fix is a
+   three-line change with near-zero migration cost. Replacing it with something shorter and
+   inherently unambiguous would be cleaner but invalidates every existing key. This plan
+   keeps it; flag if the long-term direction is a versioned key format.
