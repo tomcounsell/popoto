@@ -1,5 +1,5 @@
 ---
-status: Planning
+status: Ready
 type: bug
 appetite: Small
 owner: valorengels
@@ -478,6 +478,9 @@ or MCP surface.
 ---
 
 ## Open Questions
+
+The plan takes a default position on each of the following. They are recorded for the
+critique round and for the maintainer, not as build blockers.
 
 1. **Encoding-change acceptance.** The fix changes the stored encoding for values containing
    the literal `{&#58;}` sequence. Those values are already corrupted by the current
