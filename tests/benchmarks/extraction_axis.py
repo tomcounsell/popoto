@@ -119,10 +119,7 @@ class ExtractionStats:
     def cost_usd(self, model: str) -> float:
         """Estimated USD spend for the live (non-cached) calls made."""
         price_in, price_out = MODEL_PRICING.get(model, (0.0, 0.0))
-        return (
-            self.input_tokens / 1e6 * price_in
-            + self.output_tokens / 1e6 * price_out
-        )
+        return self.input_tokens / 1e6 * price_in + self.output_tokens / 1e6 * price_out
 
     def to_dict(self, model: Optional[str] = None) -> dict:
         d = {
@@ -307,7 +304,11 @@ class TieredClaudeExtractionProvider(AbstractExtractionProvider):
             if not isinstance(ft, str) or not ft.strip():
                 continue
             ents = rf.get("entities")
-            ents = [e for e in ents if isinstance(e, str)] if isinstance(ents, list) else []
+            ents = (
+                [e for e in ents if isinstance(e, str)]
+                if isinstance(ents, list)
+                else []
+            )
             facts.append(
                 ExtractedFact(
                     text=ft.strip(),
@@ -355,18 +356,26 @@ def resolve_arm(
     prompt_sha = hashlib.sha256(EXTRACTION_PROMPT.encode("utf-8")).hexdigest()
 
     if arm == "raw":
-        return None, stats, {
-            "arm": "raw",
-            "description": "One record per turn, content verbatim (committed baseline).",
-        }
+        return (
+            None,
+            stats,
+            {
+                "arm": "raw",
+                "description": "One record per turn, content verbatim (committed baseline).",
+            },
+        )
 
     if arm == "heuristic":
-        return HeuristicExtractionProvider(), stats, {
-            "arm": "heuristic",
-            "provider": "popoto.extraction.HeuristicExtractionProvider",
-            "min_length": 10,
-            "description": "Sentence split + min-length filter; no API cost.",
-        }
+        return (
+            HeuristicExtractionProvider(),
+            stats,
+            {
+                "arm": "heuristic",
+                "provider": "popoto.extraction.HeuristicExtractionProvider",
+                "min_length": 10,
+                "description": "Sentence split + min-length filter; no API cost.",
+            },
+        )
 
     if not os.environ.get("ANTHROPIC_API_KEY"):
         raise RuntimeError(
@@ -375,17 +384,21 @@ def resolve_arm(
     provider = TieredClaudeExtractionProvider(
         model=model, stats=stats, use_cache=use_cache
     )
-    return provider, stats, {
-        "arm": "claude",
-        "provider": "tests.benchmarks.extraction_axis.TieredClaudeExtractionProvider",
-        "model": model,
-        "prompt_sha256": prompt_sha,
-        "prompt_source": "popoto.extraction.claude.EXTRACTION_PROMPT (verbatim)",
-        "max_tokens": EXTRACTION_MAX_TOKENS,
-        "structured_output": "json_schema (FACTS_SCHEMA, verbatim)",
-        "cache": "on-disk, keyed by sha256(model+prompt+text)",
-        "pricing_usd_per_mtok": MODEL_PRICING.get(model),
-    }
+    return (
+        provider,
+        stats,
+        {
+            "arm": "claude",
+            "provider": "tests.benchmarks.extraction_axis.TieredClaudeExtractionProvider",
+            "model": model,
+            "prompt_sha256": prompt_sha,
+            "prompt_source": "popoto.extraction.claude.EXTRACTION_PROMPT (verbatim)",
+            "max_tokens": EXTRACTION_MAX_TOKENS,
+            "structured_output": "json_schema (FACTS_SCHEMA, verbatim)",
+            "cache": "on-disk, keyed by sha256(model+prompt+text)",
+            "pricing_usd_per_mtok": MODEL_PRICING.get(model),
+        },
+    )
 
 
 def arm_label(arm: str, model: str = DEFAULT_EXTRACTION_MODEL) -> str:

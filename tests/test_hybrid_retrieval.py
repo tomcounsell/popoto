@@ -230,6 +230,6 @@ class TestHybridRetrieval:
 
         high_idx = result_keys.index(high_key)
         low_idx = result_keys.index(low_key)
-        assert high_idx < low_idx, (
-            f"High-tf doc (idx={high_idx}) should rank above low-tf doc (idx={low_idx})"
-        )
+        assert (
+            high_idx < low_idx
+        ), f"High-tf doc (idx={high_idx}) should rank above low-tf doc (idx={low_idx})"

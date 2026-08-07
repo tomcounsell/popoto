@@ -141,9 +141,7 @@ def capture_exception(exc: Optional[BaseException] = None) -> None:
 
             exc_info = sys.exc_info()
 
-        event, hint = event_from_exception(
-            exc_info, client_options=_client.options
-        )
+        event, hint = event_from_exception(exc_info, client_options=_client.options)
         _client.capture_event(event, hint=hint)
     except Exception:
         pass

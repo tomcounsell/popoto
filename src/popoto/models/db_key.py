@@ -332,4 +332,6 @@ class DB_key(list):
         redis_hash = POPOTO_REDIS_DB.hgetall(self.redis_key)
         from .encoding import decode_popoto_model_hashmap
 
-        return decode_popoto_model_hashmap(model_class, redis_hash)
+        return decode_popoto_model_hashmap(
+            model_class, redis_hash, source_redis_key=self.redis_key
+        )

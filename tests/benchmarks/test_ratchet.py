@@ -152,7 +152,9 @@ class TestRatchetLoop:
                 "_wf_min_threshold": [0.1, 0.2, 0.3],
             }
         )
-        total = len(summary.accepted) + len(summary.rejected) + len(summary.no_sensitivity)
+        total = (
+            len(summary.accepted) + len(summary.rejected) + len(summary.no_sensitivity)
+        )
         assert total == len(summary.decisions)
 
     def test_ratchet_report_is_string(self):

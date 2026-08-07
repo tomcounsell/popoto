@@ -333,8 +333,17 @@ def encode_popoto_model_obj(obj: "Model") -> dict:
     return encoded_hashmap
 
 
+def _as_key_str(redis_key) -> str:
+    """Normalize a Redis key to ``str``; SCAN and friends hand back bytes."""
+    return redis_key.decode(ENCODING) if isinstance(redis_key, bytes) else redis_key
+
+
 def decode_popoto_model_hashmap(
-    model_class: "Model", redis_hash: dict, fields_only=False, lazy=False
+    model_class: "Model",
+    redis_hash: dict,
+    fields_only=False,
+    lazy=False,
+    source_redis_key=None,
 ) -> "Model":
     """Decode a Redis hash into a model instance (or a raw fields dict).
 
@@ -352,6 +361,12 @@ def decode_popoto_model_hashmap(
         lazy: If ``True``, defer field deserialization until access. Fields are
               decoded on-demand when first accessed, reducing overhead for bulk
               queries where only a subset of fields are used.
+        source_redis_key: The key this hash was actually read from. When given
+              it becomes the instance's ``_redis_key``, so the instance knows
+              where it came from rather than inferring it from the decoded
+              values. Callers that have the key should always pass it; the
+              fallback recomputation is for callers that genuinely do not
+              (see the identity-provenance note below).
 
     Returns:
         A model instance, a dict (when *fields_only*), or ``None`` if the hash
@@ -374,6 +389,24 @@ def decode_popoto_model_hashmap(
         Relationship fields are stored as Redis key strings, not full objects.
         The Model's __getattribute__ handles lazy loading of related objects
         when accessed.
+
+    Identity provenance (#537/#538):
+        Without *source_redis_key* an instance's ``_redis_key`` is recomputed
+        from its decoded KeyField values, so the instance's idea of where it
+        came from follows the decode. That is the precise mechanism by which
+        row duplication was *silent*: when a decode change shifts a KeyField's
+        rendering, ``_saved_field_values`` and the attribute still agree (both
+        hold the decoded value) so ``save()``'s KeyMutationError guard sees no
+        change, and the recomputed ``_redis_key`` already matches the new
+        derivation so ``save()``'s obsolete-key branch never fires either.
+        Two independent safety nets, both blinded by the same recomputation;
+        the row is written to a second hash and the original is orphaned with
+        no exception and no log line.
+
+        Passing the real source key converts that silent duplication into
+        ``save()``'s existing *rename* path. It also makes the datetime-key
+        migration lazily self-healing: a pre-migration row that happens to be
+        re-saved before the operator runs the migration moves itself.
     """
     if len(redis_hash):
         if fields_only:
@@ -393,7 +426,9 @@ def decode_popoto_model_hashmap(
 
         if lazy:
             # Lazy loading: store raw bytes, decode on access
-            return _create_lazy_model(model_class, redis_hash)
+            return _create_lazy_model(
+                model_class, redis_hash, source_redis_key=source_redis_key
+            )
 
         model_attrs = {
             key_b.decode(ENCODING): decode_custom_types(
@@ -405,6 +440,12 @@ def decode_popoto_model_hashmap(
 
         # Create the model instance
         model_instance = model_class(**model_attrs)
+
+        # Identity provenance: prefer the key this hash was actually read from
+        # over __init__'s recomputation from the decoded values. Set before
+        # _load_capped_list_fields, which reads _redis_key to find the list keys.
+        if source_redis_key is not None:
+            model_instance._redis_key = _as_key_str(source_redis_key)
 
         # Load capped ListField data from separate Redis list keys
         _load_capped_list_fields(model_class, model_instance)
@@ -452,7 +493,9 @@ def _load_capped_list_fields(model_class, model_instance):
             setattr(model_instance, field_name, proxy)
 
 
-def _create_lazy_model(model_class: "Model", redis_hash: dict) -> "Model":
+def _create_lazy_model(
+    model_class: "Model", redis_hash: dict, source_redis_key=None
+) -> "Model":
     """Create a model instance with deferred field deserialization.
 
     Uses object.__new__() to bypass the full __init__ process, then sets up
@@ -476,6 +519,10 @@ def _create_lazy_model(model_class: "Model", redis_hash: dict) -> "Model":
     Args:
         model_class: The Model subclass to instantiate.
         redis_hash: Raw Redis hash with msgpack-encoded values.
+        source_redis_key: The key this hash was read from, used as
+            ``_redis_key`` in preference to recomputing it from the decoded
+            KeyField values. See decode_popoto_model_hashmap's docstring for
+            why the recomputation made row duplication silent (#537/#538).
 
     Returns:
         A model instance with _lazy_fields containing raw bytes.
@@ -531,10 +578,13 @@ def _create_lazy_model(model_class: "Model", redis_hash: dict) -> "Model":
         default_value = field.default() if callable(field.default) else field.default
         object.__setattr__(instance, field_name, default_value)
 
-    # Compute _redis_key from the (now-decoded) KeyField values, matching
-    # the logic in Model.__init__.  db_key reads attributes via
-    # __getattribute__ which will find them in _decoded_fields.
-    if None not in [
+    # Identity provenance (#537/#538): the key this hash was read from beats
+    # any key derived from its decoded values. Recomputing is the fallback for
+    # callers with no key to give, and is what made duplication silent -- see
+    # decode_popoto_model_hashmap's docstring.
+    if source_redis_key is not None:
+        instance._redis_key = _as_key_str(source_redis_key)
+    elif None not in [
         instance._decoded_fields.get(kf) for kf in model_class._meta.key_field_names
     ]:
         instance._redis_key = instance.db_key.redis_key

@@ -65,17 +65,13 @@ class TestSplitRunner:
         return SplitRunner(train_scenarios, val_scenarios)
 
     def test_sweep_and_validate_returns_result(self, small_split_runner):
-        result = small_split_runner.sweep_and_validate(
-            "decay_rate", [0.3, 0.5, 0.7]
-        )
+        result = small_split_runner.sweep_and_validate("decay_rate", [0.3, 0.5, 0.7])
         assert isinstance(result, ValidationResult)
         assert result.constant_name == "decay_rate"
         assert result.recommendation in ("accept", "reject")
 
     def test_sweep_and_validate_has_scores(self, small_split_runner):
-        result = small_split_runner.sweep_and_validate(
-            "decay_rate", [0.3, 0.5, 0.7]
-        )
+        result = small_split_runner.sweep_and_validate("decay_rate", [0.3, 0.5, 0.7])
         # Scores should be in valid range
         assert 0.0 <= result.train_score <= 1.0
         assert 0.0 <= result.validation_score <= 1.0
@@ -88,9 +84,7 @@ class TestSplitRunner:
 
     def test_best_value_is_from_sweep_values(self, small_split_runner):
         values = [0.3, 0.5, 0.7]
-        result = small_split_runner.sweep_and_validate(
-            "decay_rate", values
-        )
+        result = small_split_runner.sweep_and_validate("decay_rate", values)
         assert result.best_value in values
 
 

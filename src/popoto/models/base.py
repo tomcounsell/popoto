@@ -72,6 +72,47 @@ RELATED_MODEL_LOAD_SEQUENCE = set()
 INDEX_HASH_LENGTH = 16
 
 
+class RebuildIndexesResult(int):
+    """What :meth:`Model.rebuild_indexes` returns: a count that carries detail.
+
+    Subclasses ``int`` deliberately. ``rebuild_indexes()`` returned a bare
+    count for its whole history and the documented usage is
+    ``count = User.rebuild_indexes()``, so widening the return to a report
+    object would break every existing caller. As an ``int`` it still compares,
+    formats and arithmetics exactly as before, while carrying the rows the
+    rebuild refused to index.
+
+    Attributes:
+        diverged_keys: Stored keys skipped because the key derived from the
+            row's decoded values disagreed with the key it is stored under.
+            Indexing these would name a hash that does not exist (#537/#538).
+    """
+
+    def __new__(cls, count: int, diverged_keys=None):
+        instance = super().__new__(cls, count)
+        instance.diverged_keys = list(diverged_keys or [])
+        return instance
+
+    @property
+    def diverged_count(self) -> int:
+        return len(self.diverged_keys)
+
+    def __str__(self):
+        # int does not define __str__ (it inherits object's, which defers to
+        # __repr__), so defining __repr__ alone would make f"{count}" render
+        # the repr instead of the number it has always rendered.
+        return int.__repr__(self)
+
+    def __format__(self, format_spec):
+        return int.__format__(self, format_spec)
+
+    def __repr__(self):
+        return (
+            f"RebuildIndexesResult(indexed={int(self)}, "
+            f"diverged={self.diverged_count})"
+        )
+
+
 class ModelOptions:
     """Metadata container for a Model class, analogous to Django's Options.
 
@@ -2879,10 +2920,58 @@ class Model(metaclass=ModelBase):
             cls.bulk_delete, queryset_or_instances, batch_size=batch_size
         )
 
+    # datetime KeyField identity: audit and migration (#537, #538)
+
+    @classmethod
+    def audit_datetime_keys(cls):
+        """Report datetime-keyed rows that are not on their canonical key.
+
+        Read-only. Finds rows written before 1.9.0 (whose key carried the UTC
+        offset only when the value happened to decode aware) and rows duplicated
+        by the pre-1.8.2 bug (#538), where two hashes belong on one canonical
+        key and may have diverged.
+
+        Returns:
+            A ``DatetimeKeyAudit``. ``print()`` it for an operator-readable
+            report with a per-field diff of every duplicate pair.
+
+        Example:
+            print(Event.audit_datetime_keys())
+        """
+        from .datetime_key_migration import audit_datetime_keys
+
+        return audit_datetime_keys(cls)
+
+    @classmethod
+    def migrate_datetime_keys(
+        cls, dry_run: bool = True, allow_inbound_relationships: bool = False
+    ):
+        """Move datetime-keyed rows onto their canonical key. Dry run by default.
+
+        Refuses to run at all when :meth:`audit_datetime_keys` reports a
+        duplicate pair: the copies can have diverged, so which one survives is
+        the operator's call, not the library's. See migration cookbook recipes
+        19 and 20.
+
+        Returns:
+            A ``DatetimeKeyMigrationReport``.
+
+        Example:
+            print(Event.migrate_datetime_keys())              # preview
+            print(Event.migrate_datetime_keys(dry_run=False)) # apply
+        """
+        from .datetime_key_migration import migrate_datetime_keys
+
+        return migrate_datetime_keys(
+            cls,
+            dry_run=dry_run,
+            allow_inbound_relationships=allow_inbound_relationships,
+        )
+
     # Index rebuild operations
 
     @classmethod
-    def rebuild_indexes(cls, batch_size: int = 1000) -> int:
+    def rebuild_indexes(cls, batch_size: int = 1000) -> "RebuildIndexesResult":
         """Delete all secondary indexes and reconstruct them from source hash data.
 
         This method is useful for repairing corrupted indexes, after bulk data
@@ -2897,13 +2986,24 @@ class Model(metaclass=ModelBase):
                via pipeline to reconstruct all indexes
             4. Re-add each instance key to the class set
 
+        Rows whose derived key disagrees with the key they are stored under are
+        **skipped, not indexed** (#537/#538). Rebuild reconstructs indexes from
+        the *decoded* values, so for such a row it would faithfully write an
+        index entry naming a key that holds no hash -- leaving ``query.all()``
+        returning the row while ``query.filter()`` returns a dangling
+        reference. Skipping and reporting is the honest outcome; the repair is
+        ``audit_datetime_keys()`` / ``migrate_datetime_keys()``.
+
         Args:
             batch_size: Number of instances to process per pipeline batch.
                 Default is 1000. Lower values use less memory but require
                 more round-trips.
 
         Returns:
-            Number of instances processed.
+            A :class:`RebuildIndexesResult` -- an ``int`` subclass equal to the
+            number of instances indexed, so existing callers that treat the
+            result as a count keep working. Skipped rows are on
+            ``.diverged_keys`` and ``.diverged_count``.
 
         Example:
             # Rebuild all indexes for User model
@@ -2912,6 +3012,11 @@ class Model(metaclass=ModelBase):
 
             # With smaller batches for memory-constrained environments
             count = User.rebuild_indexes(batch_size=100)
+
+            # Check whether any row was skipped as diverged
+            result = Event.rebuild_indexes()
+            if result.diverged_count:
+                print(Event.audit_datetime_keys())
         """
         from .encoding import decode_popoto_model_hashmap
 
@@ -2957,6 +3062,7 @@ class Model(metaclass=ModelBase):
         # Step 2: SCAN all instance keys and rebuild indexes
         instance_pattern = cls._meta.db_class_key.redis_key + ":*"
         count = 0
+        diverged_keys = []
         pipeline = POPOTO_REDIS_DB.pipeline()
         batch_count = 0
 
@@ -2979,13 +3085,25 @@ class Model(metaclass=ModelBase):
             if not redis_hash:
                 continue
 
-            # Decode into a model instance
-            instance = decode_popoto_model_hashmap(cls, redis_hash)
+            # Decode into a model instance, telling it which key it came from
+            # so on_save hooks and the divergence check below agree on identity.
+            instance = decode_popoto_model_hashmap(
+                cls, redis_hash, source_redis_key=redis_key_str
+            )
             if instance is None:
                 continue
 
-            # Set the _redis_key so on_save hooks can use the correct key
-            instance._redis_key = redis_key_str
+            # Divergence guard (#537/#538). on_save indexes
+            # `instance.db_key.redis_key`, which is *derived* from the decoded
+            # values, not the key we scanned. When the two disagree -- a row
+            # written before the datetime keys were canonicalized, or any
+            # future decode change -- indexing it would point the index at a
+            # key with no hash behind it, which is strictly worse than leaving
+            # the row unindexed. Skip it, count it, and say so.
+            derived_key_str = instance.db_key.redis_key
+            if derived_key_str != redis_key_str:
+                diverged_keys.append(redis_key_str)
+                continue
 
             # Re-add to class set
             pipeline.sadd(cls._meta.db_class_set_key.redis_key, redis_key_str)
@@ -3019,7 +3137,21 @@ class Model(metaclass=ModelBase):
         if batch_count > 0:
             pipeline.execute()
 
-        return count
+        if diverged_keys:
+            logger.warning(
+                "%s.rebuild_indexes() skipped %d row(s) whose stored key does not "
+                "match the key derived from their decoded values; they were left "
+                "unindexed rather than indexed to a nonexistent key. Run "
+                "%s.audit_datetime_keys() to see them and "
+                "%s.migrate_datetime_keys() to repair them. First skipped: %s",
+                model_name,
+                len(diverged_keys),
+                model_name,
+                model_name,
+                diverged_keys[0],
+            )
+
+        return RebuildIndexesResult(count, diverged_keys)
 
     @classmethod
     def _get_auto_key_field_name(cls) -> "str | None":
