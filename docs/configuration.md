@@ -69,6 +69,22 @@ set_REDIS_DB_settings(host="redis.example.com", port=6379, password="secret")
 
 The function accepts the same keyword arguments as `redis.Redis()`.
 
+The replacement connection keeps the same pooling policy as the one built at import: a
+`BlockingConnectionPool` capped at `POPOTO_SYNC_MAX_CONNECTIONS` (default 128). Excess
+callers wait for a free connection instead of opening an unbounded number of sockets.
+`set_async_redis_db_settings()` behaves the same way, using `POPOTO_ASYNC_MAX_CONNECTIONS`.
+
+Two cases opt out of the managed pool and use whatever you supply:
+
+```python
+# Your own pool, used as-is
+set_REDIS_DB_settings(connection_pool=my_pool)
+
+# Positional arguments — redis.Redis() and BlockingConnectionPool()
+# do not share a positional signature, so they cannot be forwarded to a pool
+set_REDIS_DB_settings("", "localhost", 6379)
+```
+
 !!! warning
     Calling `set_REDIS_DB_settings()` replaces the global connection. Any in-flight operations on the old connection may fail.
 

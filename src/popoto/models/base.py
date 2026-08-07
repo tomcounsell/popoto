@@ -677,6 +677,39 @@ class Model(metaclass=ModelBase):
         """Return the Redis key as string representation."""
         return str(self.db_key)
 
+    def _has_unstable_db_key(self) -> bool:
+        """True if this instance's db_key does not identify a stored record.
+
+        db_key renders a missing KeyField as the literal string "None", so an
+        unsaved instance with unset keys collapses onto a placeholder key
+        (``U:None``) shared by every other such instance of its class.
+
+        Both conditions are required:
+
+        - *Every* KeyField is None, not merely one of them. A partially-set
+          key still addresses one specific record, and ``KeyField(null=True)``
+          makes None a legitimate stored key component -- typically paired
+          with an AutoKeyField, whose generated value keeps the key unique.
+          Treating any single None KeyField as transient would wrongly make
+          those persisted records equal only to themselves.
+        - ``_redis_key is None`` -- never assigned a concrete key by save().
+
+        Reads values via getattr, not ``self._meta.fields.get(name)``, which
+        returns the Field descriptor and is never None.
+
+        Known edge case: a model whose entire key is nullable and which has
+        no AutoKeyField can persist a single all-None-key record. Reloading
+        it re-runs __init__, which leaves _redis_key None (it is only set
+        when no KeyField is None), so two loaded copies of that one record
+        compare by identity rather than db_key.
+        """
+        if self._redis_key is not None:
+            return False
+        return all(
+            getattr(self, key_field_name, None) is None
+            for key_field_name in self._meta.key_field_names
+        )
+
     def __eq__(self, other):
         """Compare instances by their Redis key identity.
 
@@ -685,8 +718,9 @@ class Model(metaclass=ModelBase):
         not value equality.
 
         Special Cases:
-            - Instances with any None KeyField values are only equal to
-              themselves (identity check via repr).
+            - A never-saved instance whose KeyFields are all None is only
+              equal to itself (object-identity check), since its db_key is a
+              placeholder shared class-wide.
             - Different classes are never equal, even with same key structure.
 
         Args:
@@ -702,24 +736,46 @@ class Model(metaclass=ModelBase):
         try:
             if not isinstance(other, self.__class__):
                 return False
-            # Always False if any KeyFields are None - use repr comparison
-            if (
-                None
-                in [
-                    self._meta.fields.get(key_field_name)
-                    for key_field_name in self._meta.key_field_names
-                ]
-            ) or (
-                None
-                in [
-                    other._meta.fields.get(key_field_name)
-                    for key_field_name in other._meta.key_field_names
-                ]
-            ):
-                return repr(self) == repr(other)
+            # A never-saved instance with unset KeyFields has no stable
+            # identity: its db_key is a placeholder shared by every other such
+            # instance of its class. Compare by object identity so it is equal
+            # only to itself. See _has_unstable_db_key.
+            if self._has_unstable_db_key() or other._has_unstable_db_key():
+                return self is other
             return self.db_key == other.db_key
         except (AttributeError, TypeError):
             return False
+
+    def __hash__(self):
+        """Hash by Redis key identity, consistent with __eq__.
+
+        Defining __eq__ without __hash__ sets __hash__ to None, which made
+        every model unhashable -- ``{User(name="a")}`` raised TypeError, so
+        instances could not be used in sets or as dict keys.
+
+        Instances that __eq__ compares by db_key hash by db_key, so equal
+        instances hash equally. Instances __eq__ treats as identity-only (a
+        never-saved, all-None key) raise TypeError rather than hashing by
+        id(): their db_key is a class-wide placeholder that becomes a real
+        key on save, and an id()-based hash would silently change at that
+        point, corrupting any set or dict already holding them. This mirrors
+        Django, which raises for instances with no primary key.
+
+        KeyFields are immutable once saved (see KeyMutationError), so a
+        stored instance's hash is stable for its lifetime.
+
+        Raises:
+            TypeError: If the instance has never been saved and all of its
+                KeyFields are None.
+        """
+        if self._has_unstable_db_key():
+            raise TypeError(
+                f"{self.__class__.__name__} instance is unhashable until it has "
+                f"a key: all KeyFields "
+                f"({', '.join(sorted(self._meta.key_field_names))}) are None and "
+                f"it has never been saved. Set a KeyField value or save it first."
+            )
+        return hash(self.db_key.redis_key)
 
     def __getattribute__(self, name):
         """Get attribute with lazy field loading support.

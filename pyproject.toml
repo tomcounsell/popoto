@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=42", "wheel", "poetry-core>=1.0.0a5"]
+requires = ["setuptools>=42", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -86,25 +86,6 @@ markers = [
     "concurrent_mp: spawn-based multiprocess concurrency tests (skip with '-m \"not concurrent_mp\"')",
 ]
 addopts = "-v"
-
-[tool.poetry]
-name = "popoto"
-description = "A Python Redis ORM"
-authors = ["Tom Counsell"]
-
-[tool.poetry.dependencies]
-python = "^3.10"
-redis = "^4.4.4"
-pandas = "^1.4.3"
-numpy = "^1.23.1"
-msgpack = "^1.0.4"
-msgpack-numpy = "^0.4.8"
-
-[tool.poetry.dev-dependencies]
-pytest = "^7.1.2"
-mypy = "^0.971"
-black = "^26.3.1"
-pip-tools = "^6.8.0"
 
 [tool.isort]
 multi_line_output = 3

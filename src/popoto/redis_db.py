@@ -168,11 +168,19 @@ def set_REDIS_DB_settings(env_partition_name: str = "", *args, **kwargs) -> None
     - Multi-tenant applications: Switch connections based on request context
     - Failover scenarios: Redirect to a backup Redis instance
 
+    Like the module-level init path, the new client is backed by a
+    ``BlockingConnectionPool`` capped at ``_SYNC_MAX_CONNECTIONS`` so a
+    connection swap does not silently drop back-pressure. (A plain
+    ``redis.Redis(**kwargs)`` builds an effectively unbounded pool,
+    ``max_connections == 2**31``.)
+
     Args:
         env_partition_name: Optional namespace prefix for key isolation.
             Falls back to the ``ENV`` environment variable.
-        *args, **kwargs: Passed directly to ``redis.Redis()``.
+        *args, **kwargs: Connection parameters for ``redis.Redis()``.
             Common kwargs: host, port, db, password, socket_timeout.
+            Passing ``connection_pool`` explicitly, or using positional
+            args, bypasses the managed pool (see below).
 
     Example:
         # For testing with a dedicated test database
@@ -189,7 +197,17 @@ def set_REDIS_DB_settings(env_partition_name: str = "", *args, **kwargs) -> None
     kwargs.setdefault("socket_connect_timeout", 5)
 
     global POPOTO_REDIS_DB
-    POPOTO_REDIS_DB = redis.Redis(*args, **kwargs)
+    # ``redis.Redis`` and ``BlockingConnectionPool`` do not share a positional
+    # signature, so positional args can't be forwarded to the pool. A caller
+    # supplying its own ``connection_pool`` has already chosen its pooling
+    # policy. Both cases fall through to the direct constructor.
+    if args or "connection_pool" in kwargs:
+        POPOTO_REDIS_DB = redis.Redis(*args, **kwargs)
+    else:
+        pool = redis.BlockingConnectionPool(
+            max_connections=_SYNC_MAX_CONNECTIONS, **kwargs
+        )
+        POPOTO_REDIS_DB = redis.Redis(connection_pool=pool)
     # global REDIS_GRAPH
     # REDIS_GRAPH = Graph('social', POPOTO_REDIS_DB)
     logger.debug("Redis connection reset.")
@@ -357,9 +375,15 @@ async def set_async_redis_db_settings(
     This is the async equivalent of set_REDIS_DB_settings(). Use it to
     reconfigure the async connection for testing or multi-tenant scenarios.
 
+    As with :func:`get_async_redis_db`, the new client is backed by a
+    ``BlockingConnectionPool`` capped at ``_ASYNC_MAX_CONNECTIONS`` so a
+    connection swap does not silently drop back-pressure.
+
     Args:
         env_partition_name: Optional namespace prefix for key isolation.
-        *args, **kwargs: Passed directly to ``redis.asyncio.Redis()``.
+        *args, **kwargs: Connection parameters for ``redis.asyncio.Redis()``.
+            Passing ``connection_pool`` explicitly, or using positional args,
+            bypasses the managed pool.
 
     Example:
         await set_async_redis_db_settings(host='localhost', port=6379, db=15)
@@ -372,7 +396,15 @@ async def set_async_redis_db_settings(
     async with _async_redis_lock:
         if _POPOTO_ASYNC_REDIS_DB is not None:
             await _POPOTO_ASYNC_REDIS_DB.close()
-        _POPOTO_ASYNC_REDIS_DB = aioredis.Redis(*args, **kwargs)
+        # See set_REDIS_DB_settings for why positional args and an explicit
+        # connection_pool bypass the managed pool.
+        if args or "connection_pool" in kwargs:
+            _POPOTO_ASYNC_REDIS_DB = aioredis.Redis(*args, **kwargs)
+        else:
+            pool = aioredis.BlockingConnectionPool(
+                max_connections=_ASYNC_MAX_CONNECTIONS, **kwargs
+            )
+            _POPOTO_ASYNC_REDIS_DB = aioredis.Redis(connection_pool=pool)
     logger.debug("Async Redis connection reset.")
 
 
