@@ -1,0 +1,37 @@
+name: Lock Check
+
+# uv.lock must stay in sync with pyproject.toml. Without a gate the two drift
+# silently: the `anthropic` extra was declared in pyproject but absent from the
+# lock, and the locked project version sat at 1.7.1 while pyproject said 1.8.1
+# (#523). `uv sync` then reproduces an environment that does not match the
+# declared dependencies.
+
+on:
+  pull_request:
+    paths:
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/lock-check.yml"
+  push:
+    branches: [main]
+    paths:
+      - "pyproject.toml"
+      - "uv.lock"
+
+jobs:
+  lock-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pin the uv version rather than tracking latest. An older uv rewrites
+      # the lock in an earlier revision format (dropping upload-time metadata)
+      # and so reports an up-to-date lock as stale; a newer one can bump the
+      # format and fail a lock that is actually fine. Either way the gate would
+      # fail for a reason unrelated to the change under review.
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.12.2"
+
+      - name: Verify uv.lock matches pyproject.toml
+        run: uv lock --check
