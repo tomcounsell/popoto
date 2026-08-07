@@ -213,10 +213,6 @@
          <lastmod>2026-08-07</lastmod>
     </url>
     <url>
-         <loc>https://popoto.io/reference/popoto/pytest_plugin/</loc>
-         <lastmod>2026-08-07</lastmod>
-    </url>
-    <url>
          <loc>https://popoto.io/reference/popoto/redis_db/</loc>
          <lastmod>2026-08-07</lastmod>
     </url>
@@ -226,6 +222,14 @@
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/testing/</loc>
+         <lastmod>2026-08-07</lastmod>
+    </url>
+    <url>
+         <loc>https://popoto.io/reference/popoto/embeddings/sentence_transformers/</loc>
+         <lastmod>2026-08-07</lastmod>
+    </url>
+    <url>
+         <loc>https://popoto.io/reference/popoto/extraction/claude/</loc>
          <lastmod>2026-08-07</lastmod>
     </url>
     <url>
@@ -325,6 +329,10 @@
          <lastmod>2026-08-07</lastmod>
     </url>
     <url>
+         <loc>https://popoto.io/reference/popoto/fields/tag_field/</loc>
+         <lastmod>2026-08-07</lastmod>
+    </url>
+    <url>
          <loc>https://popoto.io/reference/popoto/fields/unique_field_mixin/</loc>
          <lastmod>2026-08-07</lastmod>
     </url>
@@ -377,7 +385,19 @@
          <lastmod>2026-08-07</lastmod>
     </url>
     <url>
+         <loc>https://popoto.io/reference/popoto/recipes/default_memory/</loc>
+         <lastmod>2026-08-07</lastmod>
+    </url>
+    <url>
+         <loc>https://popoto.io/reference/popoto/recipes/graph_traversal/</loc>
+         <lastmod>2026-08-07</lastmod>
+    </url>
+    <url>
          <loc>https://popoto.io/reference/popoto/recipes/memory_lifecycle/</loc>
+         <lastmod>2026-08-07</lastmod>
+    </url>
+    <url>
+         <loc>https://popoto.io/reference/popoto/recipes/memory_telemetry/</loc>
          <lastmod>2026-08-07</lastmod>
     </url>
     <url>
