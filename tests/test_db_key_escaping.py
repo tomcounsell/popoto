@@ -20,7 +20,7 @@ randomized sweep over longer ones, rather than a hypothesis strategy.
 import itertools
 import random
 
-from src.popoto.models.db_key import DB_key, COLON_ESCAPE, GLOB_CHARS
+from src.popoto.models.db_key import DB_key, COLON_ESCAPE
 
 # ---------------------------------------------------------------------------
 # Frozen reference implementations: the pre-fix clean()/unclean(), inlined
