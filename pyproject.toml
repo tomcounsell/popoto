@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "popoto"
 version = "1.8.1"
-description = "A Python Redis ORM"
+description = "Agent memory for LLM apps on Redis or Valkey: decay, confidence, associations, and context assembly, built on a full Python ORM"
 readme = "README.md"
 authors = [{ name = "Tom Counsell", email = "other@tomcounsell.com" }]
 license = { file = "LICENSE" }
@@ -15,9 +15,33 @@ classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
+    "Intended Audience :: Developers",
+    "Topic :: Database",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
-keywords = ["redis", "ORM", "database"]
+keywords = [
+    "agent-memory",
+    "agent memory",
+    "ai-agents",
+    "llm",
+    "llm-memory",
+    "long-term-memory",
+    "memory",
+    "context",
+    "context-engineering",
+    "retrieval",
+    "rag",
+    "bm25",
+    "embeddings",
+    "vector-search",
+    "semantic-search",
+    "redis",
+    "valkey",
+    "ORM",
+    "database",
+]
 requires-python = ">=3.10"
 dependencies = [
     "redis>=4.4.4",
@@ -72,8 +96,9 @@ docs = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/tomcounsell/popoto"
+Homepage = "https://popoto.io/"
 Documentation = "https://popoto.io/"
+Source = "https://github.com/tomcounsell/popoto"
 Bug_Tracker = "https://github.com/tomcounsell/popoto/issues"
 
 [project.entry-points.pytest11]
