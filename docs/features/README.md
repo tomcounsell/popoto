@@ -14,7 +14,6 @@ Agent-memory primitives and recipes shipped in Popoto.
 | [DecayingSortedField](decaying-sorted-field.md) | Time-decayed sorted index for relevance ranking, with confidence-modulated per-record decay rates | Stable |
 | [ExistenceFilter](existence-filter.md) | Probabilistic membership pre-check (Bloom-style) | Stable |
 | [Hybrid Retrieval (BM25 + RRF)](hybrid-retrieval.md) | BM25 keyword search fused with vector scores via RRF | Stable |
-| [Kitchen Edge Case Demo](kitchen-edge-case-demo.md) | Worked examples covering edge cases across primitives | Reference |
 | [LLM Memory Extraction](llm-memory-extraction.md) | Pluggable extraction providers (heuristic default, opt-in Claude) for `SubconsciousMemory` | Stable |
 | [Metacognitive Layer](metacognitive-layer.md) | Retrieval quality scoring, FOK, `"used"` outcome, AdaptiveAssembler | Stable |
 | [ObservationProtocol](observation-protocol.md) | Outcome-driven memory effects: acted, dismissed, deferred, contradicted, used | Stable |

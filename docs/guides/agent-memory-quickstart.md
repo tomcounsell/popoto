@@ -79,7 +79,7 @@ class Memory(WriteFilterMixin, AccessTrackerMixin, Model):
     )
     content_bm25 = BM25Field(source="content")  # keyword search index
 
-    _wf_min_threshold = 0.1       # below this: silently discarded (default; was 0.2 before sweep 2026-04-17)
+    _wf_min_threshold = 0.1       # below this: silently discarded
     _wf_priority_threshold = 0.7  # above this: tagged as priority
 
     def compute_filter_score(self):
@@ -127,7 +127,7 @@ class Memory(WriteFilterMixin, AccessTrackerMixin, Model):
     confidence = ConfidenceField(initial_confidence=0.5)
     content_bm25 = BM25Field(source="content")  # keyword search index
 
-    _wf_min_threshold = 0.1  # default after sweep 2026-04-17 (was 0.2)
+    _wf_min_threshold = 0.1
     _wf_priority_threshold = 0.7
 
     def compute_filter_score(self):
@@ -169,7 +169,7 @@ class Memory(WriteFilterMixin, AccessTrackerMixin, Model):
     content_bm25 = BM25Field(source="content")  # keyword search index
     associations = CoOccurrenceField(symmetric=True, max_edges=50)
 
-    _wf_min_threshold = 0.1  # default after sweep 2026-04-17 (was 0.2)
+    _wf_min_threshold = 0.1
     _wf_priority_threshold = 0.7
 
     def compute_filter_score(self):

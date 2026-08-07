@@ -25,7 +25,7 @@ The pull path supports four modes controlled by the `retrieval_mode` constructor
 
 **`EmbeddingField` alone does not enable query-sensitive retrieval.** A model with `EmbeddingField` but no `BM25Field` resolves to `"composite"` under `"auto"` — query-blind, ranked by score indexes. Query-sensitive retrieval (lexical or hybrid) requires a `BM25Field`.
 
-**`"auto"` warns when it lands on `"composite"`.** That resolution is the one case where the emergent-mode convenience can quietly cost you correctness: query cues are accepted and then ignored, so the right memory can rank below unrelated ones with the call site looking healthy. Since v1.9 the fall-through logs a `WARNING` on the `POPOTO.ContextAssembler` logger naming the model and the missing `BM25Field`:
+**`"auto"` warns when it lands on `"composite"`.** That resolution is the one case where the emergent-mode convenience can quietly cost you correctness: query cues are accepted and then ignored, so the right memory can rank below unrelated ones with the call site looking healthy. The fall-through logs a `WARNING` on the `POPOTO.ContextAssembler` logger naming the model and the missing `BM25Field`:
 
 ```
 WARNING POPOTO.ContextAssembler: ContextAssembler: retrieval_mode='auto' resolved
@@ -69,7 +69,7 @@ assembler = ContextAssembler(
 )
 # retrieval_mode defaults to "auto"; resolves to "hybrid"
 
-# Force composite path (pre-v1.7 behaviour, query-blind)
+# Force composite path (query-blind — ranks by score indexes only)
 assembler = ContextAssembler(
     model_class=Memory,
     score_weights={"relevance": 0.6, "confidence": 0.3},

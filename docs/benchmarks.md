@@ -12,6 +12,31 @@ Popoto ships with three benchmark harnesses:
    asserting named retrieval properties with deterministic scoring. Covered on
    this page (see [Deterministic CSR Harness](#deterministic-csr-harness)).
 
+## How to check any number on this page
+
+Every figure published here comes from a JSON artifact committed in this
+repository, and the practices below exist so you can audit one rather than
+trust it.
+
+- **The artifact is the source.** Result pages under
+  [Benchmarks results](benchmarks/results/index.md) are generated at build time
+  from `tests/benchmarks/results/`. There are no hand-typed result tables to
+  drift from the run that produced them.
+- **The judge is pinned and hashed.** Judged runs record the judge model, the
+  generator model, the temperature, and the SHA-256 of both the judge and
+  generation prompts. A silent prompt or model swap is a test failure, not a
+  quiet accuracy shift.
+- **The environment is captured.** Every report carries Python version, OS,
+  CPU count, dataset variant, sample mode, seed, and limit, so a report is
+  reproducible from itself.
+- **Negative results are published.** The measurements that went against the
+  design ship on this page beside the ones that went for it: LLM extraction
+  losing to raw ingestion, hybrid retrieval underperforming lexical on LoCoMo,
+  graph traversal trading rank-1 precision for rank-5 coverage, and a scoring
+  defect that inflated LoCoMo numbers before it was found and corrected.
+- **Metric families stay apart.** Retrieval recall and judged answer accuracy
+  are never tabulated together or combined into a ranking.
+
 ---
 
 ## External Benchmark Harness
@@ -164,9 +189,9 @@ diagnostic that **bypasses** the assembler and ranks by pure cosine directly:
 Hybrid is **Valkey-safe**: vector similarity is computed in-process with numpy
 cosine over `EmbeddingField` `.npy` files — no RediSearch, no vector-search modules,
 no `FT.*` / `BF.*` commands. The vector signal uses the local
-[`SentenceTransformersProvider`](fields.md#sentencetransformersprovider) (no API key).
+[`SentenceTransformersProvider`](fields.md#embeddingfield) (no API key).
 
-!!! info "Hybrid fusion is now weighted and query-adaptive (issue #457)"
+!!! info "Hybrid fusion is weighted and query-adaptive"
     Unweighted RRF (k=60) gave the dense (vector) arm equal say with BM25 on
     every query. That helped on paraphrastic recall (LongMemEval-S) but hurt
     on coreference-heavy, multi-session dialogue (LoCoMo), where the dense arm
@@ -197,7 +222,7 @@ no `FT.*` / `BF.*` commands. The vector signal uses the local
     constants (not user config), fully in-process and Valkey-safe. Post-fix
     full-dataset confirmation numbers are shown in the tables below.
 
-`vector` is a **harness-local diagnostic** (issue #455): it bypasses
+`vector` is a **harness-local diagnostic**: it bypasses
 `ContextAssembler` entirely — auto-mode would resolve an embedding-only model to the
 query-blind `composite` path, so the harness ranks by raw cosine over the
 `EmbeddingField` directly. It isolates **only** the dense arm; it does **not**
@@ -232,6 +257,20 @@ and every question category reaches Recall@5 ≥ 0.967. Full per-category detail
 is in the committed artifact
 (`tests/benchmarks/results/external/longmemeval_s_latest_hybrid.json` —
 500/500 questions, zero errors, every item resolved to the true hybrid path).
+
+!!! info "Read the retrieval granularity before comparing these to anything"
+    Popoto indexes **one record per conversation turn**, and a retrieved turn
+    counts as a hit for its parent session. So these are session-level recall
+    figures produced by turn-level ranking: 20 retrieved turns can cover far
+    fewer than 20 distinct sessions, which makes the top-K window effectively
+    wider in session terms than a system that ranks whole sessions directly.
+    The agentmemory reference row is the closest available like-for-like
+    comparison — same dataset, same any-hit recall metric family — and it still
+    differs on this axis. Systems that rank whole sessions are answering a
+    differently shaped question; the numbers are not interchangeable.
+
+    The same source reports MemPalace at **Recall@5 96.6%** on LongMemEval-S,
+    which is the number to beat at that rank, not the agentmemory row.
 
 !!! info "Scoring correction — LoCoMo numbers were re-measured on 2026-08-07"
     Every LoCoMo retrieval number published before 2026-08-07 was produced by a
@@ -270,8 +309,8 @@ way. A corrected hybrid run is pending.
 
 Unlike LongMemEval-S, hybrid **underperformed** lexical on LoCoMo across every
 metric under unweighted RRF — a real, measured result (no retrieval tuning was
-performed; this harness run was measurement-only per issue #447), and the
-motivating regression fixed by issue #457's weighted/query-adaptive fusion
+performed; this harness run measured the untuned path deliberately), and the
+regression that motivated the weighted/query-adaptive fusion
 (see the info box above). Full per-category detail is in the committed
 artifact (`tests/benchmarks/results/external/locomo_latest_hybrid.json` —
 1986/1986 questions, zero errors); these numbers predate the #457 fusion
@@ -303,7 +342,7 @@ LoCoMo's category 5 is historically the hardest category industry-wide (the
 original paper reports humans ≈89 F1 vs LLMs ≈2 F1), and most public
 leaderboards exclude it. Popoto scores it *comparably* to the other categories
 (n=446, Recall@1=0.3341, Recall@5=0.5897, Recall@10=0.6502, MRR=0.4453), which
-warranted an audit (issue #454) of whether that number means anything.
+warranted an audit of whether that number means anything.
 
 **Audit finding — the cat-5 spans are genuinely meaningful for retrieval in
 this snapshot.** Direct inspection of all 446 category-5 items in the cached
@@ -367,15 +406,15 @@ slice re-aggregates 4-decimal per-category means, so it can differ from a raw
 re-aggregation in the 4th place; reproducibility from the committed artifact is
 the priority.)
 
-**Recommendation (pending maintainer sign-off — scoring semantics is
-policy-level).** Keep category 5 in the full 5-category aggregate (the evidence
-audit shows its spans are meaningful), publish the 4-category parity slice
-alongside it for leaderboard comparability, and always carry the caveat above.
-A refusal metric is not applicable to this dataset and is deferred to #463.
+**How this page reports category 5.** It stays in the full 5-category
+aggregate, because the evidence audit shows its spans are meaningful retrieval
+targets. The 4-category parity slice is published alongside it for leaderboard
+comparability, and the caveat above travels with both. A refusal metric is not
+applicable to this dataset; refusal capability is measured separately.
 
-#### Confidence-gated retrieval — refusal precision (issue #463)
+#### Confidence-gated retrieval — refusal precision
 
-Issue #463 shipped an opt-in confidence gate on `ContextAssembler`
+`ContextAssembler` carries an opt-in confidence gate
 (`confidence_gate_threshold` / `confidence_gate_mode`; see
 [ContextAssembler](features/agent-memory.md#contextassembler) for the API).
 `tests/benchmarks/test_confidence_gate_refusal.py` measures how well the gate
@@ -480,46 +519,125 @@ status and the run continues rather than aborting a paid run.
 
 Vector mode (`--retrieval-mode vector`) is **not** supported with `--judged` (the
 diagnostic vector path returns no memory text to answer from) and is rejected up
-front. No self-benchmarked judged numbers are committed — the harness ships the
-capability; live runs are operator-run with a key.
+front.
 
-### Baseline Numbers (v1.6.3)
+#### Popoto's judged accuracy: 0.36
 
-**LongMemEval-S (fixture sample, 3 questions):**
+**LoCoMo, lexical retrieval, judged answer accuracy: 0.3636.** Scored items
+n=77 (100 questions sampled, 23 adversarial items excluded because the Mem0/GAM
+prompt is a factual-match judge and cannot score a refusal), 28 correct, zero
+judge errors. 95% confidence interval **≈ 0.25–0.47** — at n=77 a single flipped
+item moves the point estimate by 1.3 points, so read the interval, not the third
+decimal. Artifact: `tests/benchmarks/results/external/locomo_latest_judged.json`.
 
-| Metric | Score |
-|--------|-------|
-| Recall@1 | 0.0000 |
-| Recall@5 | 0.0000 |
-| Recall@10 | 0.0000 |
-| MRR | 0.0000 |
+**Scope of the run.** The 100 questions are a stratified sample (seed 0) from a
+derived two-dialogue LoCoMo subset — conversations 26 and 30, 788 turns, 304 QA
+pairs — chosen so the five extraction arms below could be run against an
+identical corpus at a bounded API cost. This is not the full 1986-pair LoCoMo,
+and the interval above covers only sampling error within this subset, not
+dialogue-selection variance across the other eight conversations.
 
-**LoCoMo, full dataset (1986 QA pairs, lexical) — corrected 2026-08-07:**
+Retrieval on that same run finds the right evidence far more often than the
+generator answers from it. That gap is the honest headline of this number: the
+retrieval layer is the part that measures well, and closing the generation gap
+is open work rather than a solved problem.
 
-| Metric | Score |
-|--------|-------|
-| Recall@1 | 0.2981 |
-| Recall@5 | 0.5302 |
-| Recall@10 | 0.6017 |
-| MRR | 0.4005 |
+**Chronology.** [Epic #456](https://github.com/tomcounsell/popoto/issues/456)
+set this project's benchmark doctrine — native benchmarks, retrieval parity,
+never cross-compare recall with judged accuracy — **before** this judged number
+existed. The doctrine was not written to accommodate the result.
 
-See `tests/benchmarks/results/external/locomo_latest.json` for the full
-per-question and per-category report.
+**Scoring provenance.** The [#514](https://github.com/tomcounsell/popoto/issues/514)
+gold-blind scoring correction changed how retrieved turns collapse to *result
+IDs for recall scoring*. The judged stage consumes retrieved memory **text** in
+rank order, so judged accuracy is untouched by that defect. The retrieval
+summary block co-reported inside the judged artifact does carry pre-correction
+scoring, and a corrected re-run is tracked in
+[#530](https://github.com/tomcounsell/popoto/issues/530).
 
-**Note:** The v1.6.3 baseline (LongMemEval-S row above) uses score-only
-retrieval (DecayingSortedField). `ContextAssembler.assemble()` ranks
-candidates by composite score, not by query-text similarity. Scores for
-freshly-ingested items with equal importance are indistinguishable — that
-baseline is intentionally a floor. The LoCoMo numbers above, by contrast, are
-a real BM25-lexical run over the full dataset (see
-[Retrieval Modes](#retrieval-modes)), not a score-only floor measurement.
+!!! warning "This is not tabulated against vendor leaderboard accuracies"
+    Public LoCoMo judged-accuracy claims are not comparable to this number, and
+    the reasons are specific rather than defensive:
 
-**Reference:** agentmemory BM25+Vector (all-MiniLM-L6-v2) achieves
-Recall@5 = 95.2%, Recall@10 = 98.6%, MRR = 88.2% on LongMemEval-S.
-Popoto's hybrid mode (`--retrieval-mode hybrid`, see
-[Retrieval Modes](#retrieval-modes)) exceeds all three reference numbers
-(0.986 / 0.992 / 0.932); the lexical BM25 baseline alone already matches
-the reference Recall@5 (0.952).
+    - **The judge model is usually unnamed.** Judged accuracy drifts several
+      points across judge models. Popoto pins `gpt-4o-mini`, temperature 0, and
+      records the prompt SHA-256 in every artifact.
+    - **Judge prompts vary in generosity** by roughly ten points on the same
+      answers. Popoto reproduces the published Mem0/GAM `ACCURACY_PROMPT`
+      verbatim.
+    - **N is usually unstated**, so nobody can size the interval.
+    - **The adversarial category is usually excluded silently.** Popoto excludes
+      it too, and says so, with the count.
+    - **At least one widely-republished figure does not reproduce.** Mem0's
+      66.88% carries an open non-reproduction issue reporting roughly 0.20 from
+      the official script, and several other published figures trace back to one
+      citation chain rather than independent runs.
+
+    A generator-model difference is **not** among the reasons. Mem0's paper used
+    `gpt-4o-mini` as generator, the same model this harness uses, so that
+    particular objection would be wrong.
+
+#### Extraction, measured
+
+`--extraction` runs the same judged harness with a fact-extraction step in
+front of ingestion instead of storing turns as they arrive. Every extraction arm
+lost to raw ingestion on the same 77 scored items:
+
+| Ingestion path | Judged accuracy | Correct / 77 | Turns dropped | Records per turn |
+|---|---:|---:|---:|---:|
+| Raw turn ingestion (default) | **0.3636** | 28 | 0% | 1.00 |
+| Heuristic sentence splitter | 0.2078 | 16 | 0.3% | 3.00 |
+| `--extraction claude`, Sonnet | 0.1948 | 15 | 27.3% | 2.32 |
+| `--extraction claude`, Opus | 0.1429 | 11 | 36.9% | 1.71 |
+| `--extraction claude`, Haiku | 0.0519 | 4 | 63.4% | 0.98 |
+
+Two distinct mechanisms, both measured rather than guessed. Across the three
+Claude arms, accuracy falls monotonically with the **turn drop rate**: the
+prompt's instruction to skip filler discards the turns holding the ground-truth
+evidence, so the answer is gone before retrieval runs. The heuristic arm drops
+almost nothing yet still loses 16 points, by the opposite failure: it shatters
+each turn into roughly three sentence fragments, and a fragment retrieved
+without its surrounding turn is not enough for the generator to answer from.
+
+Rewriting a turn before storing it costs more than it saves on this dataset, in
+both directions. Extraction therefore ships as a documented opt-in that stays
+off by default. Artifacts: `locomo_latest_ext-*_judged.json`. Full write-up:
+[LLM Memory Extraction](features/llm-memory-extraction.md).
+
+Every arm ran on the identical corpus, sample, judge, and generator, so the
+ordering between them is the finding and it does not depend on the scoring
+correction described above.
+
+### Graph Traversal
+
+`graph_traversal_relationship_fields` extends the co-occurrence graph arm to
+walk named `Relationship` edges 1–2 hops. Two measurements exist, and they say
+different things.
+
+**Capability, on authored fixtures** (`graph_eval_484/association_recall_*.json`,
+100 trials each): the graph arm retrieves a target reachable only through a
+`Relationship` edge at 1 hop and at 2 hops, where lexical retrieval and the
+co-occurrence arm alone retrieve it in zero trials. Mean target rank 2.0 at one
+hop, 3.0 at two. This measures that the traversal works, on a corpus authored
+so that nothing else could work. It is a mechanism proof, not a quality score.
+
+**Cost, on real data** (`graph_eval_484/locomo_latest*.json`, 282-question
+multi-hop LoCoMo slice):
+
+| Mode | Recall@1 | Recall@5 | Recall@10 | MRR | p50 (ms) |
+|------|---------:|---------:|----------:|----:|---------:|
+| `lexical` | 0.1312 | 0.3440 | 0.4965 | 0.2286 | 5.91 |
+| graph traversal | 0.0816 | 0.4858 | 0.5957 | 0.2236 | 22.14 |
+
+Graph traversal widens the candidate net: Recall@5 and Recall@10 rise
+substantially, Recall@1 falls, MRR is flat, and latency goes up 3.7×. That is
+the real trade-off — better coverage at rank 5–10, worse precision at rank 1,
+for roughly four times the latency. Enable it when your reader consumes a
+top-5/top-10 window; leave it off when rank 1 is what gets injected.
+
+These retrieval figures predate the #514 scoring correction. Both rows were
+scored the same way, so the comparison between them holds; the absolute values
+will move on re-measurement.
 
 ### Architecture
 
@@ -581,7 +699,7 @@ The `ExternalScenario` base class handles ingestion and teardown automatically.
 
 ### Overview
 
-The CSR (Constraint Satisfaction Rate) harness (issue #418) is the standing,
+The CSR (Constraint Satisfaction Rate) harness is the standing,
 deterministic regression gate the external harness cannot be: the same corpus
 and query produce a **bit-identical score every run** — no LLM judge, no
 embedding model, no Redis-module command, identical on Redis and Valkey. It
@@ -657,7 +775,7 @@ To add a test case, see "Adding a CsrTestCase" in `tests/benchmarks/README.md`.
 
 ### Overview
 
-SIQ (issue #459) is Popoto's flagship **native** benchmark — it measures the
+SIQ is Popoto's **native** benchmark — it measures the
 one thing composite (query-blind) retrieval does that no public benchmark
 scores: *without an explicit query cueing it, did the right memory get injected
 into context at the right turn?* Every other harness on this page (the external
@@ -719,13 +837,18 @@ a tracked follow-up; no competitor numbers are fabricated here. An optional
 LLM-judged "usefulness" cross-check reuses the Tier-5 pinned judge
 (`gpt-4o-mini`, temperature 0) and is never in the default/CI path.
 
-Baseline over the four committed fixtures (`coreference_relocation`,
-`implication_deadline`, `need_to_know_allergy`, `multi_recall_preferences`):
-
-| adapter | recall @ budget | anticipation misses | mean lead |
-|---|---|---|---|
-| `native` (query-blind) | **1.000** | 0 / 5 targets | 4.0 turns |
-| `query_stub` (query-driven) | 0.000 | 5 / 5 targets | n/a |
+!!! note "No Popoto SIQ score is published"
+    The harness runs against four committed fixtures and both adapters, and the
+    scores are asserted in `test_siq.py` as a validity check on the harness
+    itself. They are not published as a result, because the only comparator
+    that currently exists is `QueryOnlyStubAdapter` — a stand-in that scores
+    near zero *by construction*, since the cue-blindness lint guarantees the
+    recall turn shares no indexed token with the target. Reporting a Popoto
+    number beside it would be reporting the lint, not a capability. A published
+    SIQ number waits on a real competitor adapter
+    ([#486](https://github.com/tomcounsell/popoto/issues/486),
+    [#487](https://github.com/tomcounsell/popoto/issues/487)). Run it yourself
+    with the commands below if you want the current values.
 
 Everything is Valkey-safe — core Redis commands only, no modules — and the
 whole default suite needs no network, no model download, and no API key.
@@ -764,7 +887,7 @@ cue-blindness and anticipation-window authoring rules at load time.
 
 ### Overview
 
-RLT (issue #460) is the axis no other harness on this page measures: **speed
+RLT is the axis no other harness on this page measures: **speed
 under load**, not retrieval/injection quality. Popoto's substrate premise is
 RAM-speed Redis/Valkey memory with no separate vector-service round-trip — RLT
 is the harness that puts a number on that claim, jointly with recall so the
@@ -816,8 +939,18 @@ quiet (full artifact: `tests/benchmarks/results/rlt/rlt_latest_redis.json`).
 Backend **redis 8.x**, Python 3.12, Apple-silicon (10 cores). These are native
 Popoto (`ContextAssembler`) numbers only — competitor comparators are still to
 come (see Follow-Up). Absolute latency is machine-dependent; read the *shape*
-(sub-6-ms p50 retrieval that grows gently with corpus size, and the
-read-degradation-under-write-load ratio), not the exact millisecond.
+(a p50 retrieval curve that grows gently with corpus size, 3.0 ms at 1,000
+records to 6.0 ms at 20,000, and the read-degradation-under-write-load ratio),
+not the exact millisecond.
+
+The comparable published anchor is MEMTIER (arXiv:2605.03675), which reports
+hybrid-RRF retrieval at **96.7 ms/query** on comparable hardware. Scope the
+Popoto figures before reading them against it: the curve above is the
+**in-process lexical** path. Adding arms costs time — LongMemEval-S hybrid
+(BM25 + CPU embedding + RRF) runs p50 41.5 ms over 500 questions, and graph
+traversal runs p50 22.1 ms on its 282-question LoCoMo slice. None of these are
+compared against hosted-service latencies, which bundle a network round trip
+and a different substrate.
 
 All figures below are the exact values from the committed artifact
 (`rlt_20260721_redis.json`); they vary run-to-run (warmup, OS scheduling), so

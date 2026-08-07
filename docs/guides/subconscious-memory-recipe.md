@@ -102,7 +102,7 @@ Relevant context:
 - Q4 revenue exceeded projections by 12%, driven by enterprise deals.
 ```
 
-Earlier versions injected the full JSON record — `memory_id` UUIDs, the `agent_id` the caller had just supplied, and `relevance` as a raw epoch float. Measured over `DefaultMemory` with a 71-character memory, that payload ran 262 characters (3.69x the content, ~104 estimated tokens) against 73 characters for the content format (1.03x, ~16 tokens).
+The content-only shape is what makes the token budget go to memory rather than to bookkeeping. Measured over `DefaultMemory` with a 71-character memory, the content format runs 73 characters (1.03x the content, ~16 estimated tokens); the full JSON record — `memory_id` UUIDs, the `agent_id` the caller just supplied, `relevance` as a raw epoch float — runs 262 characters (3.69x, ~104 tokens) for the same one memory.
 
 Pass `output_format="structured"` to restore the JSON payload verbatim, or `"xml"` / `"natural"` for the other [ContextAssembler formats](../features/context-assembler.md#output-formats-output_format).
 
@@ -172,7 +172,7 @@ By default (no `extraction_provider` passed to the constructor):
 2. Filters out sentences shorter than `extraction_min_length` (default 10 chars)
 3. Saves each sentence as a new Memory record with the specified importance
 
-This is unchanged, byte-for-byte, from the original heuristic -- existing code that doesn't pass any of `extraction_provider`, `confidence_field`, or `co_occurrence_field` sees no behavior change.
+That default is the `HeuristicExtractionProvider`. It is zero-dependency and stdlib-only, and it is measurably weaker than storing turns as they arrive -- see [the extraction evaluation](../features/llm-memory-extraction.md#evaluation-extraction-lost-to-raw-ingestion) before turning any extraction path on.
 
 Extraction is now pluggable via a dedicated provider interface -- see the [LLM Memory Extraction](../features/llm-memory-extraction.md) feature doc for the full picture. In short:
 
@@ -202,7 +202,7 @@ Reported outcomes are not only a ranking nudge -- they set how fast a memory lea
 2. The next retrieval reads that confidence inside the decay Lua and raises the record's effective decay rate (`eff = decay_rate * 2 ^ (s * 2 * (c0 - c))`), so it ranks lower -- see [Confidence-Modulated Decay](../features/decaying-sorted-field.md#confidence-modulated-decay).
 3. The next [`MemoryLifecycle.tick()`](../recipes.md#memorylifecycle) tombstones it once it is idle, its confidence is below `FORGET_CONFIDENCE_CEILING`, and it has at least `FORGET_MIN_EVIDENCE` observations behind it.
 
-Modulation is on by default whenever the model carries exactly one `ConfidenceField`, and forgetting tombstones rather than deletes, so a memory pruned by an unlucky run of dismissals can be brought back with `lifecycle.restore(redis_key)`. If a post-upgrade ranking change is unwelcome, `Defaults.DECAY_CONFIDENCE_MODULATION_ENABLED = False` restores the previous behavior byte-for-byte without touching model code.
+Modulation is on by default whenever the model carries exactly one `ConfidenceField`, and forgetting tombstones rather than deletes, so a memory pruned by an unlucky run of dismissals can be brought back with `lifecycle.restore(redis_key)`. Set `Defaults.DECAY_CONFIDENCE_MODULATION_ENABLED = False` to take confidence out of the ranking entirely, without touching model code.
 
 `SubconsciousMemory` itself does not run lifecycle ticks -- compose it with a `MemoryLifecycle` instance as shown in [Composing with SubconsciousMemory](../recipes.md#composing-with-subconsciousmemory).
 
@@ -215,7 +215,7 @@ Modulation is on by default whenever the model carries exactly one `ConfidenceFi
 | `extraction_min_length` | 10 | Minimum chars for a sentence to become a memory |
 | `model_class` | `None` (-> `DefaultMemory`) | Memory model. Leave unset for the batteries-included model |
 | `score_weights` | `{"relevance": 1.0}` | Weight dict for composite scoring. The benchmarked vector; ignored by the pull path in lexical/hybrid modes |
-| `output_format` | `"content"` | Injected payload shape. `"structured"` restores the pre-v1.9 JSON |
+| `output_format` | `"content"` | Injected payload shape. `"structured"` injects the full JSON record instead |
 | `system_preamble` | "You are a helpful assistant." | Prefix for auto-created system messages |
 | `content_field` | "content" | Name of the text content field on your model |
 | `importance_field` | "importance" | Name of the importance score field |

@@ -168,11 +168,14 @@ SPECS: tuple[Spec, ...] = (
         kind="external",
         note=(
             '!!! note "Retrieval regime — read the [Overview](index.md) first"\n'
-            "    Measured as *retrieval recall*, published LoCoMo Recall@1 sits in the\n"
-            "    0.10–0.30 band (MEMTIER, arXiv:2605.03675). Popoto lexical Recall@1\n"
-            "    **0.2981** is competitive-to-strong in this regime. This variant is\n"
-            "    the 10-dialogue / 5-category (adversarial included) / 1986-QA-pair\n"
-            "    LoCoMo — not the 1,540-QA / 4-category leaderboard variant.\n"
+            "    Read this as *retrieval recall*, not answer accuracy. The nearest\n"
+            "    published reference point measured the same way is MEMTIER\n"
+            "    (arXiv:2605.03675), whose own LoCoMo retrieval baselines its authors\n"
+            "    describe as uninformative — so treat it as evidence that LoCoMo\n"
+            "    retrieval numbers run low across systems, not as a ranking to place\n"
+            "    Popoto within. This variant is the 10-dialogue / 5-category\n"
+            "    (adversarial included) / 1986-QA-pair LoCoMo — not the 1,540-QA /\n"
+            "    4-category leaderboard variant.\n"
             "\n"
             '!!! info "Corrected 2026-08-07 — these numbers replace an inflated set"\n'
             "    The pre-correction run reported Recall@1 0.2986 / Recall@5 0.5534 /\n"
@@ -203,12 +206,10 @@ SPECS: tuple[Spec, ...] = (
             "    On this LoCoMo variant, hybrid (**Recall@1 0.1667 / MRR 0.2835**)\n"
             "    measurably underperforms the lexical path (pre-correction\n"
             "    **Recall@1 0.2986 / MRR 0.4124**, the like-for-like comparison since\n"
-            "    both were scored the same way). No retrieval tuning has been\n"
-            "    attempted; an unweighted\n"
-            "    RRF giving a weak vector arm equal say is the leading hypothesis,\n"
-            "    tracked as a separate vector-only baseline follow-up. In the MEMTIER\n"
-            "    retrieval regime (LoCoMo Recall@1 0.10–0.30) 0.1667 is\n"
-            "    unremarkable-untuned, not alarming.\n"
+            "    both were scored the same way). This run was untuned: an unweighted\n"
+            "    RRF gave a weak vector arm equal say on every query. Weighted,\n"
+            "    query-adaptive fusion addresses that, and the confirmation numbers\n"
+            "    are in [Benchmarking](../../benchmarks.md#retrieval-modes).\n"
         ),
     ),
     Spec(
@@ -223,11 +224,11 @@ SPECS: tuple[Spec, ...] = (
             "    all-MiniLM-L6-v2 embedding (no BM25, no Reciprocal Rank Fusion). It\n"
             "    isolates the **dense arm only** — *not* the graph/co-occurrence arm\n"
             "    that also lives inside hybrid — so a weak number here does not by\n"
-            "    itself explain the hybrid-vs-lexical gap. Read it in the MEMTIER\n"
-            "    retrieval regime (published LoCoMo Recall@1 sits in the 0.10–0.30\n"
-            "    band, arXiv:2605.03675), and against the same 10-dialogue /\n"
-            "    5-category / 1986-QA-pair LoCoMo variant used by the lexical and\n"
-            "    hybrid pages — same retrieval-recall metric family throughout.\n"
+            "    itself explain the hybrid-vs-lexical gap. Read it against the same\n"
+            "    10-dialogue / 5-category / 1986-QA-pair LoCoMo variant used by the\n"
+            "    lexical and hybrid pages — same retrieval-recall metric family\n"
+            "    throughout, and the nearest published retrieval-measured reference\n"
+            "    is MEMTIER (arXiv:2605.03675).\n"
         ),
     ),
     Spec(
@@ -370,12 +371,16 @@ deploy, with no hand-edited tables to drift.
     Popoto reports **retrieval recall** (any-hit Recall@k / MRR): did the
     correct evidence appear in the top-k retrieved memories? The widely-cited
     "LoCoMo leaderboard" systems (Hindsight, Backboard, Dakera, Memori,
-    ByteRover, RGMem, Mem0, Zep — 52–92%) report **LLM-as-judge answer
-    accuracy**: did a language model produce a correct final answer? These are
-    **different metric families and are not convertible in either direction.**
-    We deliberately never tabulate Popoto's recall beside judge-accuracy
-    percentages. (Note: Dakera advertises "88.2% recall", but their methodology
-    is judge-scored — it is not retrieval recall despite the name.)
+    ByteRover, RGMem, Mem0, Zep) report **LLM-as-judge answer accuracy**: did a
+    language model produce a correct final answer? These are **different metric
+    families and are not convertible in either direction**, so Popoto's recall
+    is never tabulated beside a judge-accuracy percentage. (Note: Dakera
+    advertises "88.2% recall", but their methodology is judge-scored — it is
+    not retrieval recall despite the name.)
+
+    Popoto's own judged answer accuracy is published, with its N, its interval,
+    and its protocol, in
+    [Benchmarking → Judged-Answer Accuracy](../../benchmarks.md#judged-answer-accuracy-tier-5).
 
 ## LongMemEval-S is the headline
 
@@ -394,11 +399,13 @@ turns to result IDs was fixed ([#514](https://github.com/tomcounsell/popoto/issu
 the corrected figures are lower, and the hybrid/graph/judged LoCoMo arms still
 carry pre-correction scoring.
 
-!!! note "MEMTIER retrieval-regime anchor (arXiv:2605.03675)"
-    Measured *as retrieval*, published LoCoMo Recall@1 sits in the **0.10–0.30
-    band** (MEMTIER Phase 1b 0.100; OpenClaw-Default 0.105; SimpleMem F1 0.432).
-    In this frame Popoto's lexical Recall@1 **0.2981** is competitive-to-strong,
-    and hybrid **0.1667** (pre-correction) is unremarkable-untuned, not alarming.
+!!! note "MEMTIER anchor (arXiv:2605.03675)"
+    MEMTIER is the nearest published work that measures LoCoMo *as retrieval*
+    rather than as judged answers, which makes it the right anchor for latency
+    and for the shape of the regime — it reports hybrid-RRF retrieval at
+    **96.7 ms/query** on comparable hardware. Its own LoCoMo retrieval scores
+    are baselines its authors describe as uninformative, so they are not used
+    here to place Popoto on a scale.
 
     **Variant:** this is the LoCoMo variant with **10 dialogues, 5 categories
     (including adversarial), 1986 QA pairs** (as described in Omni-SimpleMem,
@@ -422,7 +429,8 @@ carry pre-correction scoring.
 ## Further reading
 
 - [Benchmarking](../../benchmarks.md) — how the harnesses work and how to run them.
-- [Memory Lifecycle Baseline](../memory_lifecycle_baseline.md) — lifecycle micro-benchmarks.
+- [Query-blind retrieval](../../guides/query-blind-retrieval.md) — when composite
+  mode is the right ranking and when it is the wrong one.
 """
 
 

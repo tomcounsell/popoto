@@ -271,9 +271,7 @@ uv run popoto-kitchen --ops
 ```
 
 See [`examples/popoto_kitchen/operations.py`](https://github.com/tomcounsell/popoto/blob/main/examples/popoto_kitchen/operations.py)
-for the full source, and the
-[kitchen demo docs](kitchen-edge-case-demo.md#v144-feature-demos-pr-346)
-for a walkthrough.
+for the full source.
 
 ## Companion Fields
 

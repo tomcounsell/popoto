@@ -16,7 +16,7 @@ PolicyCache implements learned action selection:
 
 ### PolicyEntry Model
 
-Composes all 12 shipped primitives:
+Composes the shipped memory primitives:
 
 ```python
 from popoto.recipes.policy_cache import PolicyEntry, compute_fingerprint

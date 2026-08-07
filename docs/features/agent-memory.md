@@ -1,6 +1,6 @@
 # Agent Memory
 
-> **Getting Started?** See the [Agent Memory Quickstart](../guides/agent-memory-quickstart.md) for a progressive 5-level adoption guide.
+> **Getting Started?** See the [Agent Memory Quickstart](../guides/agent-memory-quickstart.md) for a progressive 6-level adoption guide.
 
 Popoto Agent Memory gives you ORM primitives for programmable memory — records that decay over time, strengthen through use, track confidence, form associations, and surface the right context at the right moment.
 
@@ -24,25 +24,25 @@ The primitives ship incrementally. Each builds on the ones before it.
 
 | Primitive | What it does | Status |
 |-----------|-------------|--------|
-| [DecayingSortedField](#decayingsortedfield) | Time-weighted scoring — records lose relevance over time unless refreshed | Shipped ([PR #199](https://github.com/tomcounsell/popoto/pull/199)) |
-| [CyclicDecayField](#cyclicdecayfield) | Temporal rhythms + homeostatic pressure on top of decay | Shipped ([PR #201](https://github.com/tomcounsell/popoto/pull/201)) |
-| [AccessTracker](#accesstracker) | Tracks read patterns — access count, timestamps, spacing effects | Shipped ([PR #203](https://github.com/tomcounsell/popoto/pull/203)) |
-| [ObservationProtocol](#observationprotocol) | Outcome-driven memory effects — acted/dismissed/deferred/contradicted/used | Shipped ([PR #206](https://github.com/tomcounsell/popoto/pull/206)) |
-| [WriteFilter](#writefilter) | Gates persistence — low-value records silently discarded at write time | Shipped ([PR #214](https://github.com/tomcounsell/popoto/pull/214)) |
-| [ConfidenceField](#confidencefield) | Bayesian certainty — corroboration strengthens, contradiction weakens | Shipped ([PR #215](https://github.com/tomcounsell/popoto/pull/215)) |
-| [CoOccurrenceField](#cooccurrencefield) | Weighted associations — co-accessed records strengthen their link | Shipped ([PR #218](https://github.com/tomcounsell/popoto/pull/218)) |
+| [DecayingSortedField](#decayingsortedfield) | Time-weighted scoring — records lose relevance over time unless refreshed | Shipped |
+| [CyclicDecayField](#cyclicdecayfield) | Temporal rhythms + homeostatic pressure on top of decay | Shipped |
+| [AccessTracker](#accesstracker) | Tracks read patterns — access count, timestamps, spacing effects | Shipped |
+| [ObservationProtocol](#observationprotocol) | Outcome-driven memory effects — acted/dismissed/deferred/contradicted/used | Shipped |
+| [WriteFilter](#writefilter) | Gates persistence — low-value records silently discarded at write time | Shipped |
+| [ConfidenceField](#confidencefield) | Bayesian certainty — corroboration strengthens, contradiction weakens | Shipped |
+| [CoOccurrenceField](#cooccurrencefield) | Weighted associations — co-accessed records strengthen their link | Shipped |
 | [EventStreamMixin](#eventstreammixin) | Append-only mutation log via Redis Streams | Shipped |
 | [CompositeScoreQuery](#compositescorequery) | Multi-factor retrieval — combine N sorted indexes with weights | Shipped |
 | [ExistenceFilter](#existencefilter) | Bloom filter for O(1) "do I know anything about X?" checks | Shipped |
-| [BM25Field](hybrid-retrieval.md#bm25field) | Ranked keyword search with BM25 scoring in Redis sorted sets | Shipped ([PR #306](https://github.com/tomcounsell/popoto/pull/306)) |
-| [Hybrid Retrieval (RRF)](hybrid-retrieval.md) | Multi-signal fusion — combine keyword, semantic, and graph signals via Reciprocal Rank Fusion | Shipped ([PR #306](https://github.com/tomcounsell/popoto/pull/306)) |
+| [BM25Field](hybrid-retrieval.md#bm25field) | Ranked keyword search with BM25 scoring in Redis sorted sets | Shipped |
+| [Hybrid Retrieval (RRF)](hybrid-retrieval.md) | Multi-signal fusion — combine keyword, semantic, and graph signals via Reciprocal Rank Fusion | Shipped |
 | [FrequencySketch](#frequencysketch) | Count-Min Sketch for approximate frequency counting | Shipped |
 | [PredictionLedger](#predictionledger) | Outcome tracking — record predictions, observe results, compute error | Shipped |
-| [StreamConsumer](#streamconsumer) | Background processing framework for Redis Streams | Shipped ([PR #238](https://github.com/tomcounsell/popoto/pull/238)) |
-| [PolicyCache](#policycache) | Learned action selection — crystallized state-action-outcome patterns | Shipped ([PR #239](https://github.com/tomcounsell/popoto/pull/239)) |
+| [StreamConsumer](#streamconsumer) | Background processing framework for Redis Streams | Shipped |
+| [PolicyCache](#policycache) | Learned action selection — crystallized state-action-outcome patterns | Shipped |
 | [ContextAssembler](#contextassembler) | Retrieval-to-injection bridge — assemble LLM-ready context within token budgets | Shipped |
-| [MemoryLifecycle](#memorylifecycle) | Policy layer orchestrating episodic→semantic promotion, confidence-aware forgetting, and tombstones | Shipped ([PR #396](https://github.com/tomcounsell/popoto/pull/396), [#491](https://github.com/tomcounsell/popoto/issues/491)) |
-| [TagField](#tagfield) | Optional multi-value scoping — agent/project/arbitrary tags for a central shared Redis | Shipped ([#492](https://github.com/tomcounsell/popoto/issues/492)) |
+| [MemoryLifecycle](#memorylifecycle) | Policy layer orchestrating episodic→semantic promotion, confidence-aware forgetting, and tombstones | Shipped |
+| [TagField](#tagfield) | Optional multi-value scoping — agent/project/arbitrary tags for a central shared Redis | Shipped |
 
 ## DecayingSortedField
 
@@ -54,7 +54,7 @@ The sorted set score is always a timestamp. A Lua script computes decay-ranked r
 decayed_score = base_score × elapsed_days ^ (-decay_rate)
 ```
 
-With the default `decay_rate=0.1` (empirically tuned in sweep 2026-04-17; prior default was `0.5`), a record scores 1.0 after 1 day, 0.87 after 4 days, and 0.63 after 100 days.
+With the default `decay_rate=0.1`, a record scores 1.0 after 1 day, 0.87 after 4 days, and 0.63 after 100 days.
 
 ### Basic usage
 
@@ -81,7 +81,7 @@ memories = (
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `decay_rate` | `float` | `0.1` | Controls how fast scores drop. Higher = faster decay. (Empirically tuned in sweep 2026-04-17; prior default was `0.5`.) |
+| `decay_rate` | `float` | `0.1` | Controls how fast scores drop. Higher = faster decay. |
 | `base_score_field` | `str` | `None` | Name of a companion field whose value multiplies the decay curve. When `None`, base score is 1.0. |
 | `partition_by` | `str` or `tuple` | `()` | Partition the sorted set by key field values, inherited from `SortedField`. |
 
@@ -238,7 +238,7 @@ directive.resolve_pressure("relevance")
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `decay_rate` | `float` | `0.1` | Power-law decay exponent (inherited). Empirically tuned in sweep 2026-04-17; prior default was `0.5`. |
+| `decay_rate` | `float` | `0.1` | Power-law decay exponent (inherited). |
 | `base_score_field` | `str` | `None` | Companion field whose value multiplies the decay curve (inherited). |
 | `cycles` | `list` | `[]` | List of `(period, amplitude, phase)` tuples. Use `TemporalPeriod` constants for period values. |
 | `pressure_rate` | `float` | `0.0` | Rate of urgency buildup per unresolved day. |
@@ -261,8 +261,6 @@ See [CyclicDecayField feature docs](cyclic-decay-field.md) for the full referenc
 ## AccessTracker
 
 Tracks read access patterns on any model using a two-stage pipeline: reads are first staged (cheap), then atomically promoted to a confirmed access log. This prevents naive "every read strengthens" behavior — only meaningful reads count.
-
-Shipped in [PR #203](https://github.com/tomcounsell/popoto/pull/203).
 
 ### Basic usage
 
@@ -348,8 +346,6 @@ When a tracked model instance is deleted, all three AccessTracker Redis keys (st
 ## ObservationProtocol
 
 Provides lifecycle hooks for outcome-driven memory effects. The application reports how the agent used retrieved memories (acted, dismissed, deferred, contradicted, used); the ORM applies effects atomically.
-
-Shipped in [PR #206](https://github.com/tomcounsell/popoto/pull/206).
 
 ### Why observation matters
 
@@ -482,7 +478,7 @@ You provide the scoring logic; Popoto provides the gate. This keeps low-value ob
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `_wf_min_threshold` | `0.1` | Below this score, `save()` silently discards via `SkipSaveException`. (Empirically tuned in sweep 2026-04-17; prior default was `0.2`.) |
+| `_wf_min_threshold` | `0.1` | Below this score, `save()` silently discards via `SkipSaveException`. |
 | `_wf_priority_threshold` | `0.7` | At or above this score, record is added to `$WF:{ClassName}:priority` sorted set |
 
 Priority-tagged records are stored in a Redis sorted set keyed `$WF:{ClassName}:priority`, scored by the filter score. On `delete()`, cleanup removes the record from the priority set automatically.
@@ -492,8 +488,6 @@ See [fields.md](../fields.md#writefiltermixin) for the full field reference.
 ## ConfidenceField
 
 A `Field` subclass that tracks confidence metadata per member, updated atomically via Lua script using a capped-evidence Bayesian rule. Within the evidence window (default cap: 20) updates form an exact running mean — order-invariant and prior-weighted. Beyond the cap, a fixed gain produces bounded exponential forgetting.
-
-Shipped in [PR #215](https://github.com/tomcounsell/popoto/pull/215).
 
 ### Basic usage
 
@@ -556,8 +550,6 @@ When combined with `DecayingSortedField` or `CompositeScoreQuery`, confidence ac
 ## CoOccurrenceField
 
 Maintains weighted association edges between model instances using per-PK Redis sorted sets. Weights strengthen via `link()` and `strengthen()`, and decay via `weaken_all()`. Supports symmetric (bidirectional) and asymmetric (unidirectional) modes.
-
-Shipped in [PR #218](https://github.com/tomcounsell/popoto/pull/218).
 
 ```python
 from popoto import Model, UniqueKeyField, StringField
@@ -803,8 +795,6 @@ All temporary Redis keys use a `$CSQ:` prefix with a UUID suffix and a 5-second 
 
 A Bloom filter for O(1) probabilistic membership checks. Answers "have I ever stored anything about X?" without touching any sorted set or hash. False positives are possible; false negatives are impossible.
 
-Shipped in [PR #225](https://github.com/tomcounsell/popoto/pull/225).
-
 Implemented entirely with Redis strings (`SETBIT`/`GETBIT`) and Lua scripts. **No Redis modules required** -- works on both Redis and Valkey. The original roadmap specified RedisBloom module commands (`BF.ADD`/`BF.EXISTS`), but the implementation uses pure Lua with the Kirschner-Mitzenmacher double hashing optimization to maintain Valkey compatibility.
 
 ### Basic usage
@@ -867,8 +857,6 @@ Hash functions use the Kirschner-Mitzenmacher double hashing optimization (DJB2 
 ## FrequencySketch
 
 A Count-Min Sketch for approximate frequency counting. Tracks how many times a fingerprint has been saved, with possible overcounting but never undercounting.
-
-Shipped in [PR #225](https://github.com/tomcounsell/popoto/pull/225).
 
 Implemented entirely with Redis hashes (`HINCRBY`/`HGET`) and Lua scripts. **No Redis modules required** -- works on both Redis and Valkey. Like ExistenceFilter, the original roadmap specified RedisBloom module commands (`CMS.INCRBY`/`CMS.QUERY`), but the implementation uses pure Lua for Valkey compatibility.
 
@@ -1000,7 +988,7 @@ data = PredictionLedgerMixin.get_prediction_data(memory)
 # Returns: {"predicted": {...}, "resolved": True, "prediction_error": 0.6, ...}
 ```
 
-For temporal and band-grouped aggregations via `error_summary(group_by=...)`, see [Metacognitive Layer](metacognitive-layer.md#predictionledgermixin-errorsummary).
+For temporal and band-grouped aggregations via `error_summary(group_by=...)`, see [Metacognitive Layer](metacognitive-layer.md#predictionledgermixinerror_summary).
 
 ### Class attributes
 
@@ -1027,8 +1015,6 @@ For temporal and band-grouped aggregations via `error_summary(group_by=...)`, se
 ## StreamConsumer
 
 A Redis Streams consumer group framework for background processing. Manages consumer group creation, batch reading, acknowledgment, dead-letter handling, and pending entry recovery via XAUTOCLAIM.
-
-Shipped in [PR #238](https://github.com/tomcounsell/popoto/pull/238).
 
 ### Basic usage
 
@@ -1135,8 +1121,6 @@ A reference recipe (not core ORM) composing all shipped primitives into a reinfo
 
 For the full guide with architecture diagrams, tuning advice, and design rationale, see [PolicyCache Recipe](../guides/policy-cache-recipe.md).
 
-Shipped in [PR #239](https://github.com/tomcounsell/popoto/pull/239).
-
 ### Basic usage
 
 ```python
@@ -1225,8 +1209,6 @@ WriteFilterMixin is intentionally excluded — the crystallization handler IS th
 ## ContextAssembler
 
 A capstone recipe that orchestrates all shipped Popoto memory primitives into a single `assemble()` call. It combines query-driven retrieval (pull path) with proactive surfacing (push path), applies token budgets, and formats output for LLM context injection.
-
-This is Step 12 of the [Popoto Memory Roadmap](../guides/popoto-memory-roadmap.md).
 
 ### Pipeline
 
@@ -1500,7 +1482,7 @@ EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD = 0.5  # NOT a shipped default
 ```
 
 This constant exists **only** for the refusal-metric benchmark and report
-scripts (see [Confidence-gated retrieval — refusal precision](../benchmarks.md#confidence-gated-retrieval-refusal-precision-issue-463)).
+scripts (see [Confidence-gated retrieval — refusal precision](../benchmarks.md#confidence-gated-retrieval-refusal-precision)).
 It is explicitly *not* `Defaults.CONFIDENCE_GATE_THRESHOLD` — no such
 `Defaults` entry exists — and it is not used as the ctor default.  Promoting
 it to a real default is a policy-level decision requiring maintainer
@@ -1553,9 +1535,8 @@ candidate set as homogeneous.
 **Evaluation status.** This slice implements and unit-tests the traversal
 mechanism (`tests/test_graph_traversal.py`). The LoCoMo multi-hop slice and
 association-recall benchmark scenarios called for in issue #462 are tracked
-as [issue #484](https://github.com/tomcounsell/popoto/issues/484) rather
-than run here — see the note in
-[the benchmarking strategy doc](../plans/benchmarking_strategy_2026-07.md#32-structuredgraph-memory-where-zep-hindsight-byterover-lead).
+a follow-up; the graph arm's measured trade-off on real LoCoMo data is
+summarised in [Benchmarking](../benchmarks.md#graph-traversal).
 
 ### Tuning Constants
 
@@ -1583,7 +1564,7 @@ ContextAssembler adapts to whatever fields are present on the model class:
 | CyclicDecayField | Push path skipped entirely; returns pull-path results only |
 | ConfidenceField | Competitive suppression skipped for non-selected candidates |
 
-This means `ContextAssembler` works with minimal models (just a `DecayingSortedField`) all the way up to full-featured models with all 12 primitives.
+This means `ContextAssembler` works with minimal models (just a `DecayingSortedField`) all the way up to full-featured models carrying all 14 primitives.
 
 ## Design principles
 
@@ -1593,7 +1574,7 @@ These primitives follow Popoto's existing patterns:
 
 2. **Redis-native everything.** No external brokers, job queues, or Redis modules. Lua scripts, sorted sets, streams, Bloom filters (via SETBIT/GETBIT) — all within the Redis process. Works identically on Redis and Valkey.
 
-3. **Composable.** Each primitive is independently useful. Use `DecayingSortedField` alone for time-weighted ranking, add `CyclicDecayField` for temporal rhythms and urgency, or combine all twelve for a full cognitive memory system.
+3. **Composable.** Each primitive is independently useful. Use `DecayingSortedField` alone for time-weighted ranking, add `CyclicDecayField` for temporal rhythms and urgency, or combine all 14 for a full cognitive memory system.
 
 4. **Pipeline-safe.** Every operation accepts an optional `pipeline` parameter for atomic execution, consistent with all Popoto field hooks.
 
@@ -1639,8 +1620,8 @@ record's authoritative tier is re-read from Redis — if the tier is now `"seman
 
 ### Confidence-aware forgetting
 
-Confidence used to gate promotion only, so it could grant a memory permanence but
-never hasten its removal. The default forget rule now reads outcome evidence too:
+The default forget rule reads outcome evidence alongside importance, so confidence
+can both grant a memory permanence and hasten its removal:
 
 ```text
 (importance < FORGET_IMPORTANCE_FLOOR
@@ -1650,8 +1631,8 @@ AND idle > FORGET_IDLE_SECONDS
 
 The `evidence_count` conjunct is a safety floor, not a tuning knob: confidence moves
 on every reported outcome, so without a minimum track record one unlucky dismissal
-could bury a memory. Models with no `ConfidenceField` take the importance-only path,
-which is identical to the previous behavior. The confidence field is resolved through
+could bury a memory. Models with no `ConfidenceField` take the importance-only path.
+The confidence field is resolved through
 the same helper the decay path uses, so ranking and forgetting always listen to the
 same signal — including the `DECAY_CONFIDENCE_MODULATION_ENABLED` kill switch and the
 "two or more `ConfidenceField`s means off" ambiguity rule.
@@ -1848,9 +1829,6 @@ only the subconscious assembler path.
 ## Further reading
 
 - [Metacognitive Layer](metacognitive-layer.md) — quality assessment (`RetrievalQuality`, `assess()`), grouped error analysis (`error_summary`), and `AdaptiveAssembler`
-- [Popoto Memory Roadmap](../guides/popoto-memory-roadmap.md) — full implementation spec with test strategies and benchmarks
-- [Epistemic Flow in Cognitive Agent Architectures](../guides/epistemic-flow-cognitive-agent-architectures.md) — research background
-- [Programmable Memory Systems — Neuroscience Design Spec](../guides/programmable-memory-systems-neuroscience-design-spec.md) — neuroscience foundations
 - [Subconscious Memory Recipe](../guides/subconscious-memory-recipe.md) — automatic memory injection and extraction around LLM turns
 - [Trajectory Memory Recipe](../guides/trajectory-memory-recipe.md) — fingerprint-keyed procedural memory: cluster completed task trajectories and recall "what worked last time"
 - [MemoryLifecycle Recipe](../recipes.md#memorylifecycle) — episodic→semantic consolidation, auto-forget, and tier-scoped queries

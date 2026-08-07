@@ -720,8 +720,7 @@ Lua script computes decay-ranked results server-side:
 decayed_score = base_score × elapsed_days ^ (-decay_rate)
 ```
 
-With the default `decay_rate=0.1` (empirically tuned in sweep 2026-04-17; prior default
-was `0.5`), a record scores 1.0 after 1 day, 0.87 after 4 days, and 0.63 after 100 days.
+With the default `decay_rate=0.1`, a record scores 1.0 after 1 day, 0.87 after 4 days, and 0.63 after 100 days.
 
 ```python
 from popoto import Model, KeyField, Field, FloatField
@@ -757,7 +756,7 @@ memory.touch("relevance")  # Resets the decay clock
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `decay_rate` | `float` | `0.1` | Controls how fast scores drop. Higher = faster decay. Must be > 0. (Empirically tuned in sweep 2026-04-17; prior default was `0.5`.) |
+| `decay_rate` | `float` | `0.1` | Controls how fast scores drop. Higher = faster decay. Must be > 0. Empirically tuned; see [Tuning Magic Numbers](guides/tuning-magic-numbers.md). |
 | `base_score_field` | `str` | `None` | Name of a companion field whose value multiplies the decay curve. When `None`, base score is 1.0. |
 | `confidence_modulation_field` | `str`, `False`, or `None` | `None` | Which `ConfidenceField` modulates each record's effective decay rate. `None` auto-detects a single `ConfidenceField` on the model; a `str` names one; `False` disables. |
 | `partition_by` | `str` or `tuple` | `()` | Partition the sorted set by key field values (inherited from `SortedField`). |
@@ -873,7 +872,7 @@ directive.touch("relevance")
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `decay_rate` | `float` | `0.1` | Power-law decay exponent (inherited). Empirically tuned in sweep 2026-04-17; prior default was `0.5`. |
+| `decay_rate` | `float` | `0.1` | Power-law decay exponent (inherited). |
 | `base_score_field` | `str` | `None` | Companion field whose value multiplies the decay curve (inherited). |
 | `confidence_modulation_field` | `str`, `False`, or `None` | `None` | Which `ConfidenceField` modulates the per-record decay rate (inherited). |
 | `cycles` | `list` | `[]` | List of `(period, amplitude, phase)` tuples. Use `TemporalPeriod` constants for period. |
@@ -1281,8 +1280,7 @@ class Memory(WriteFilterMixin, Model):
 The mixin adds three behaviors to your model:
 
 1. **Gate on save**: Before persisting, `compute_filter_score()` is called. If the
-   score is below `_wf_min_threshold` (default `0.1` after sweep 2026-04-17; prior
-   default was `0.2`), a `SkipSaveException` is raised and caught by `Model.save()`,
+   score is below `_wf_min_threshold` (default `0.1`), a `SkipSaveException` is raised and caught by `Model.save()`,
    silently aborting the write.
 
 2. **Priority tagging**: If the score meets or exceeds `_wf_priority_threshold`
@@ -1317,7 +1315,7 @@ class StrictMemory(WriteFilterMixin, Model):
 
 | Attribute | Default | Description |
 |-----------|---------|-------------|
-| `_wf_min_threshold` | `0.1` | Minimum score to persist. (Empirically tuned in sweep 2026-04-17; prior default was `0.2`.) |
+| `_wf_min_threshold` | `0.1` | Minimum score to persist. Empirically tuned; see [Tuning Magic Numbers](guides/tuning-magic-numbers.md). |
 | `_wf_priority_threshold` | `0.7` | Minimum score for priority tagging |
 
 !!! tip

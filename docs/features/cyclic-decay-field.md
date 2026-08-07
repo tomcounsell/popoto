@@ -17,7 +17,7 @@ When `cycles=[]` and `pressure_rate=0.0`, behavior is identical to `DecayingSort
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `decay_rate` | float | 0.1 | Power-law decay exponent (inherited). Empirically tuned in sweep 2026-04-17; prior default was `0.5`. |
+| `decay_rate` | float | 0.1 | Power-law decay exponent (inherited). |
 | `base_score_field` | str | None | Companion field whose value multiplies the decay curve (inherited) |
 | `confidence_modulation_field` | str / `False` / None | None | Which `ConfidenceField` modulates the per-record decay rate (inherited). See [Confidence-Modulated Decay](#confidence-modulated-decay). |
 | `cycles` | list | `[]` | List of `(period, amplitude, phase)` tuples |
@@ -176,4 +176,4 @@ perspective; `ConfidenceField` remains its sole writer.
 
 ## Integration with ObservationProtocol
 
-When used with [ObservationProtocol](agent-memory.md#observationprotocol), cycle amplitudes are adjusted automatically based on how the agent responds to surfaced memories. See [Agent Memory — Four outcomes](agent-memory.md#four-outcomes) for the full effects table.
+When used with [ObservationProtocol](agent-memory.md#observationprotocol), cycle amplitudes are adjusted automatically based on how the agent responds to surfaced memories. See [Agent Memory — Four outcomes](agent-memory.md#five-outcomes) for the full effects table.

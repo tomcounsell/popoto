@@ -583,6 +583,6 @@ Systematic tuning is done via the Tier 5 benchmark sweep:
 python -m tests.benchmarks.run_sweeps --tier 5
 ```
 
-See `docs/benchmarks/memory_lifecycle_baseline.md` for the sweep grid and
-pre-lifecycle retrieval baselines.
+The sweep grid and the metrics it reports are described in
+[Parametric Sweep](features/parametric-sweep.md).
 
