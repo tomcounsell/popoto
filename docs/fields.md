@@ -303,6 +303,51 @@ The Redis key for this instance is `Reservation:Siam Garden:foodie42`.
     save silently overwrites the first. Add a `UniqueKeyField` or `AutoKeyField` if
     you need to allow duplicates on the composite fields.
 
+## Instance Equality and Hashing
+
+Models compare by **key identity**, not by field values. Two instances are equal when
+they are the same class with the same Redis key, so a saved instance equals a freshly
+loaded copy of itself even if other fields differ:
+
+```python
+alice = User.create(name="alice", email="alice@example.com")
+same = User.query.get(name="alice")
+
+alice == same
+# => True   (same key)
+
+User(name="alice", email="a@x.com") == User(name="alice", email="b@y.com")
+# => True   (equality ignores non-key fields)
+
+User(name="alice") == User(name="bob")
+# => False  (different keys)
+```
+
+Instances are hashable by that same key, so they work in sets and as dict keys:
+
+```python
+len({alice, same})
+# => 1   (equal instances collapse)
+```
+
+A `null=True` KeyField stores `None` as a real part of the key — usually alongside an
+`AutoKeyField` that keeps the key unique — so those instances compare and hash normally.
+
+The one exception is an instance that has **never been saved and whose KeyFields are all
+`None`**. It has no key yet, so it is equal only to itself and cannot be hashed:
+
+```python
+User() == User()
+# => False  (two distinct instances, neither has a key)
+
+hash(User())
+# => TypeError: User instance is unhashable until it has a key
+```
+
+Hashing raises rather than falling back to object identity because the instance's hash
+would change the moment you saved it, corrupting any set or dict already holding it.
+Set a KeyField value or save the instance first.
+
 ## Models Without KeyFields
 
 You can declare a model without any explicit KeyField. Popoto automatically adds a
