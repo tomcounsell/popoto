@@ -42,6 +42,7 @@ Example:
 """
 
 import datetime
+import re
 from collections import namedtuple
 from decimal import Decimal
 from typing import Any
@@ -72,6 +73,21 @@ Attributes:
 _LEGACY_DATETIME_FORMAT = "%Y%m%dT%H:%M:%S.%f"
 """Offset-free datetime format written before #521. Read-only from here on."""
 
+_LEGACY_DATETIME_RE = re.compile(r"^\d{8}T\d{2}:\d{2}:\d{2}\.\d{1,6}$")
+"""Anchored shape test for :data:`_LEGACY_DATETIME_FORMAT`.
+
+The legacy branch is selected by matching this, **not** by letting
+``fromisoformat`` raise. On 3.11+ ``fromisoformat`` parses
+``20260807T12:00:00.123456`` and on the 3.10 ``requires-python`` floor it does
+not, so the moment the two branches stop agreeing about awareness -- which is
+exactly what #537 does -- a try-order fallback turns into an interpreter-visible
+behaviour switch: the same stored bytes would decode aware on 3.10 and naive on
+3.12. Matching the shape explicitly makes the branch a property of the data.
+
+A post-#521 deliberately naive value can never match: it is written by
+``isoformat()`` as ``2026-08-07T12:00:00.123456``, with date separators.
+"""
+
 _LEGACY_TIME_FORMAT = "%H:%M:%S.%f"
 """Offset-free time format written before #521. Read-only from here on."""
 
@@ -84,22 +100,32 @@ def _decode_datetime(obj: dict[str, Any]) -> datetime.datetime:
     `%Y%m%dT%H:%M:%S.%f`, which has no offset directive, so an aware value was
     stored as its own wall clock with the offset discarded (#521).
 
-    A legacy string is decoded naive, exactly as before. That is deliberate:
-    the offset is not merely absent from the string, it was never written, so
-    there is nothing to recover and inventing one would silently move the
-    value. Naive-in/naive-out also keeps existing callers comparing legacy
-    values against `datetime.now()` working rather than raising TypeError on a
-    naive/aware comparison.
+    A legacy string is decoded as **UTC** (#537). The offset was never written,
+    so nothing is being recovered -- UTC is being *assumed*, and the assumption
+    is the same one the rest of the library already makes about an offset-free
+    datetime: `SortedFieldMixin.convert_to_numeric` has treated a naive value
+    as UTC when deriving a score since #519, and `auto_now` has stamped aware
+    UTC since #421. A legacy row therefore scored identically before and after
+    this change; what changes is that it now *compares* as the instant it was
+    always scored as.
 
-    `SortedFieldMixin.convert_to_numeric` treats a naive value as UTC when
-    deriving a score (#519), so legacy rows still score consistently.
+    This assumption was written once before (commit `0342550`) and reverted,
+    and the reason it is safe now is worth stating precisely. `datetime` is a
+    valid `KeyField` type, and `DB_key` used to build both the hash key and the
+    `$KeyF:` index key from `str(value)`. Stamping an offset shifts `str()`, so
+    it shifted the derived key away from the key the row was stored under, and
+    loading and re-saving a legacy row wrote a second hash and orphaned the
+    original -- silently, because the recomputed `_redis_key` blinded `save()`'s
+    obsolete-key branch at the same time the unchanged attribute blinded its
+    KeyMutationError guard. Keys are now derived through `canonical_key_str`
+    (#537/#538), which renders the *instant* and not the representation, so an
+    offset-free legacy value and the same value stamped UTC produce identical
+    key bytes. The assumption moves no key.
 
-    Keeping legacy rows naive also keeps their `str()` unchanged, which matters
-    more than it looks: `datetime` is a valid `KeyField` type, and `DB_key`
-    builds both the hash key and the `$KeyF:` index key from `str(value)`.
-    Stamping an offset on read would shift a legacy row's derived key away from
-    the key it is stored under, so loading and re-saving one would write a
-    second hash and orphan the original.
+    Callers that compared a legacy value against a naive `datetime.now()` will
+    now raise `TypeError` on the naive/aware comparison. That is the intended,
+    visible consequence of the value becoming honest about what it denotes, and
+    it is why this ships in a minor rather than a patch.
 
     A `ZoneInfo` tzinfo survives as the fixed offset in effect at that instant
     rather than as the zone itself. The instant is preserved and `fold` is
@@ -107,10 +133,12 @@ def _decode_datetime(obj: dict[str, Any]) -> datetime.datetime:
     reloaded value differs from the same arithmetic on the original.
     """
     as_encodable = obj["as_encodable"]
-    try:
-        return datetime.datetime.fromisoformat(as_encodable)
-    except ValueError:
-        return datetime.datetime.strptime(as_encodable, _LEGACY_DATETIME_FORMAT)
+    if _LEGACY_DATETIME_RE.match(as_encodable):
+        legacy = datetime.datetime.strptime(as_encodable, _LEGACY_DATETIME_FORMAT)
+        return legacy.replace(tzinfo=datetime.timezone.utc)
+    # Not the legacy shape: parse as isoformat and let a genuinely malformed
+    # value raise rather than be coerced into a plausible datetime.
+    return datetime.datetime.fromisoformat(as_encodable)
 
 
 def _decode_time(obj: dict[str, Any]) -> datetime.time:

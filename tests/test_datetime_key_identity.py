@@ -306,6 +306,39 @@ class Slot(popoto.Model):
         indexes = [(("at",), False)]
 
 
+def test_no_shipped_recipe_model_declares_a_datetime_keyfield():
+    """A recipe with a datetime KeyField would inherit the migration burden.
+
+    None does today, which is why the agent-memory recipes are unaffected by
+    the key-format change. Asserted rather than assumed so that a future recipe
+    edit has to acknowledge it deliberately -- an undocumented-but-supported
+    field type is exactly how this defect reached 1.8.2 uncovered.
+    """
+    import importlib
+    import pkgutil
+
+    from src.popoto import recipes
+    from src.popoto.models.base import Model
+
+    for module_info in pkgutil.iter_modules(recipes.__path__):
+        importlib.import_module(f"src.popoto.recipes.{module_info.name}")
+
+    def walk(cls):
+        for subclass in cls.__subclasses__():
+            yield subclass
+            yield from walk(subclass)
+
+    offenders = [
+        f"{model.__module__}.{model.__name__}.{field_name}"
+        for model in walk(Model)
+        if "recipes" in getattr(model, "__module__", "")
+        for field_name in getattr(model, "_meta", None).key_field_names
+        if getattr(model._meta.fields[field_name], "type", None) is datetime.datetime
+    ]
+
+    assert offenders == []
+
+
 def test_compound_index_hash_is_awareness_invariant():
     """``Meta.indexes`` hashed ``str(value)`` with the identical fragility.
 
