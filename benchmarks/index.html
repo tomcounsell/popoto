@@ -3796,6 +3796,28 @@ and every question category reaches Recall@5 ≥ 0.967. Full per-category detail
 is in the committed artifact
 (<code>tests/benchmarks/results/external/longmemeval_s_latest_hybrid.json</code> —
 500/500 questions, zero errors, every item resolved to the true hybrid path).</p>
+<div class="admonition info">
+<p class="admonition-title">Scoring correction — LoCoMo numbers were re-measured on 2026-08-07</p>
+<p>Every LoCoMo retrieval number published before 2026-08-07 was produced by a
+harness that consulted the answer key when collapsing retrieved turns to
+result IDs (<a href="https://github.com/tomcounsell/popoto/issues/514">#514</a>). Gold
+turns emitted their unique <code>turn_id</code> and held their own rank slot while
+non-gold turns collapsed into one shared <code>session_id</code> slot, so 20 retrieved
+turns became <strong>13.2 rank slots on average</strong> and gold was systematically
+lifted. Scoring now ranks one unit per dataset for every record alike —
+turn IDs for LoCoMo, session IDs for LongMemEval-S — decided from dataset
+metadata before retrieval runs.</p>
+<p><strong>LongMemEval-S is unaffected:</strong> its ground truth is session IDs, which the
+old rule emitted on both branches, so its published numbers stand. A full
+500-question lexical re-run under the corrected harness
+(<code>longmemeval_s_20260807.json</code>) reproduces Recall@1 0.8560 / Recall@5
+0.9520 / Recall@10 0.9780 / MRR 0.8987 — identical on every question
+individually, with only latency differing.</p>
+<p>The corrected LoCoMo lexical run is <code>locomo_20260807.json</code>; the superseded
+run stays committed as <code>locomo_20260708.json</code>. The LoCoMo <strong>hybrid</strong>,
+<strong>graph</strong>, and <strong>judged</strong> artifacts still carry pre-correction scoring and
+are labelled as such wherever they appear.</p>
+</div>
 <p><strong>LoCoMo, 1986 questions (any-hit Recall) — pre-fix, unweighted RRF:</strong></p>
 <table>
 <thead>
@@ -3809,14 +3831,21 @@ is in the committed artifact
 </thead>
 <tbody>
 <tr>
-<td><code>lexical</code> (BM25)</td>
+<td><code>lexical</code> (BM25), corrected scoring</td>
+<td style="text-align: right;">0.2981</td>
+<td style="text-align: right;">0.5302</td>
+<td style="text-align: right;">0.6017</td>
+<td style="text-align: right;">0.4005</td>
+</tr>
+<tr>
+<td><code>lexical</code> (BM25), pre-#514 scoring</td>
 <td style="text-align: right;">0.2986</td>
 <td style="text-align: right;">0.5534</td>
 <td style="text-align: right;">0.6400</td>
 <td style="text-align: right;">0.4124</td>
 </tr>
 <tr>
-<td><code>hybrid</code> (BM25+vector, unweighted RRF)</td>
+<td><code>hybrid</code> (BM25+vector, unweighted RRF), pre-#514 scoring</td>
 <td style="text-align: right;">0.1667</td>
 <td style="text-align: right;">0.4235</td>
 <td style="text-align: right;">0.5403</td>
@@ -3824,6 +3853,9 @@ is in the committed artifact
 </tr>
 </tbody>
 </table>
+<p>The lexical-vs-hybrid comparison below reads the two <strong>pre-#514</strong> rows against
+each other; that is the like-for-like pair, since both were scored the same
+way. A corrected hybrid run is pending.</p>
 <p>Unlike LongMemEval-S, hybrid <strong>underperformed</strong> lexical on LoCoMo across every
 metric under unweighted RRF — a real, measured result (no retrieval tuning was
 performed; this harness run was measurement-only per issue #447), and the
@@ -3833,7 +3865,7 @@ artifact (<code>tests/benchmarks/results/external/locomo_latest_hybrid.json</cod
 1986/1986 questions, zero errors); these numbers predate the #457 fusion
 change.</p>
 <p><strong>Post-fix confirmation (weighted/query-adaptive RRF, 200-question stratified
-sample, seed 0):</strong></p>
+sample, seed 0) — both rows use pre-#514 scoring:</strong></p>
 <table>
 <thead>
 <tr>
@@ -3876,7 +3908,7 @@ convergence is decisive for the mechanism.)</p>
 <p>LoCoMo's category 5 is historically the hardest category industry-wide (the
 original paper reports humans ≈89 F1 vs LLMs ≈2 F1), and most public
 leaderboards exclude it. Popoto scores it <em>comparably</em> to the other categories
-(n=446, Recall@1=0.3341, Recall@5=0.6031, Recall@10=0.6883, MRR=0.4581), which
+(n=446, Recall@1=0.3341, Recall@5=0.5897, Recall@10=0.6502, MRR=0.4453), which
 warranted an audit (issue #454) of whether that number means anything.</p>
 <p><strong>Audit finding — the cat-5 spans are genuinely meaningful for retrieval in
 this snapshot.</strong> Direct inspection of all 446 category-5 items in the cached
@@ -3936,7 +3968,23 @@ a <code>leaderboard_parity</code> block:</p>
 </thead>
 <tbody>
 <tr>
-<td><code>lexical</code>, full 5-category</td>
+<td><code>lexical</code>, full 5-category (corrected)</td>
+<td style="text-align: right;">1986</td>
+<td style="text-align: right;">0.2981</td>
+<td style="text-align: right;">0.5302</td>
+<td style="text-align: right;">0.6017</td>
+<td style="text-align: right;">0.4005</td>
+</tr>
+<tr>
+<td><code>lexical</code>, 4-category parity (corrected)</td>
+<td style="text-align: right;">1540</td>
+<td style="text-align: right;">0.2877</td>
+<td style="text-align: right;">0.5130</td>
+<td style="text-align: right;">0.5877</td>
+<td style="text-align: right;">0.3875</td>
+</tr>
+<tr>
+<td><code>lexical</code>, full 5-category (pre-#514)</td>
 <td style="text-align: right;">1986</td>
 <td style="text-align: right;">0.2986</td>
 <td style="text-align: right;">0.5534</td>
@@ -3944,7 +3992,7 @@ a <code>leaderboard_parity</code> block:</p>
 <td style="text-align: right;">0.4124</td>
 </tr>
 <tr>
-<td><code>lexical</code>, 4-category parity</td>
+<td><code>lexical</code>, 4-category parity (pre-#514)</td>
 <td style="text-align: right;">1540</td>
 <td style="text-align: right;">0.2883</td>
 <td style="text-align: right;">0.5390</td>
@@ -3952,7 +4000,7 @@ a <code>leaderboard_parity</code> block:</p>
 <td style="text-align: right;">0.3991</td>
 </tr>
 <tr>
-<td><code>hybrid</code>, full 5-category</td>
+<td><code>hybrid</code>, full 5-category (pre-#514)</td>
 <td style="text-align: right;">1986</td>
 <td style="text-align: right;">0.1667</td>
 <td style="text-align: right;">0.4235</td>
@@ -3960,7 +4008,7 @@ a <code>leaderboard_parity</code> block:</p>
 <td style="text-align: right;">0.2835</td>
 </tr>
 <tr>
-<td><code>hybrid</code>, 4-category parity</td>
+<td><code>hybrid</code>, 4-category parity (pre-#514)</td>
 <td style="text-align: right;">1540</td>
 <td style="text-align: right;">0.1552</td>
 <td style="text-align: right;">0.4065</td>
@@ -4121,7 +4169,7 @@ capability; live runs are operator-run with a key.</p>
 </tr>
 </tbody>
 </table>
-<p><strong>LoCoMo, full dataset (1986 QA pairs, lexical):</strong></p>
+<p><strong>LoCoMo, full dataset (1986 QA pairs, lexical) — corrected 2026-08-07:</strong></p>
 <table>
 <thead>
 <tr>
@@ -4132,19 +4180,19 @@ capability; live runs are operator-run with a key.</p>
 <tbody>
 <tr>
 <td>Recall@1</td>
-<td>0.2986</td>
+<td>0.2981</td>
 </tr>
 <tr>
 <td>Recall@5</td>
-<td>0.5534</td>
+<td>0.5302</td>
 </tr>
 <tr>
 <td>Recall@10</td>
-<td>0.6400</td>
+<td>0.6017</td>
 </tr>
 <tr>
 <td>MRR</td>
-<td>0.4124</td>
+<td>0.4005</td>
 </tr>
 </tbody>
 </table>

@@ -2752,12 +2752,17 @@ in the same metric family on the same dataset.</p>
 </tbody>
 </table>
 <h2 id="locomo-read-in-the-retrieval-regime">LoCoMo — read in the retrieval regime<a class="headerlink" href="#locomo-read-in-the-retrieval-regime" title="Permanent link">&para;</a></h2>
+<p><strong>Correction (2026-08-07):</strong> the LoCoMo lexical numbers below were re-measured
+after a scoring defect that consulted the answer key when collapsing retrieved
+turns to result IDs was fixed (<a href="https://github.com/tomcounsell/popoto/issues/514">#514</a>);
+the corrected figures are lower, and the hybrid/graph/judged LoCoMo arms still
+carry pre-correction scoring.</p>
 <div class="admonition note">
 <p class="admonition-title">MEMTIER retrieval-regime anchor (arXiv:2605.03675)</p>
 <p>Measured <em>as retrieval</em>, published LoCoMo Recall@1 sits in the <strong>0.10–0.30
 band</strong> (MEMTIER Phase 1b 0.100; OpenClaw-Default 0.105; SimpleMem F1 0.432).
-In this frame Popoto's lexical Recall@1 <strong>0.2986</strong> is competitive-to-strong,
-and hybrid <strong>0.1667</strong> is unremarkable-untuned, not alarming.</p>
+In this frame Popoto's lexical Recall@1 <strong>0.2981</strong> is competitive-to-strong,
+and hybrid <strong>0.1667</strong> (pre-correction) is unremarkable-untuned, not alarming.</p>
 <p><strong>Variant:</strong> this is the LoCoMo variant with <strong>10 dialogues, 5 categories
 (including adversarial), 1986 QA pairs</strong> (as described in Omni-SimpleMem,
 arXiv:2604.01007) — <em>not</em> the common leaderboard variant of 1,540 QA pairs /
@@ -2777,10 +2782,10 @@ cross-read; they are not comparable.</p>
 <tbody>
 <tr>
 <td><a href="locomo_lexical/">LoCoMo — Lexical (BM25) Retrieval</a></td>
-<td>0.2986</td>
-<td>0.5534</td>
-<td>0.6400</td>
-<td>0.4124</td>
+<td>0.2981</td>
+<td>0.5302</td>
+<td>0.6017</td>
+<td>0.4005</td>
 </tr>
 <tr>
 <td><a href="locomo_hybrid/">LoCoMo — Hybrid Retrieval</a></td>
@@ -2795,7 +2800,8 @@ cross-read; they are not comparable.</p>
 <p class="admonition-title">Category-5 (adversarial) caveat</p>
 <p>Adversarial is historically the hardest category industry-wide (the original
 LoCoMo paper reports humans ≈89 F1 vs LLMs ≈2 F1). Popoto's category-5
-scoring <em>comparably to</em> the other categories (lexical Recall@1 0.3341) is
+scoring <em>comparably to</em> the other categories (corrected lexical Recall@1
+0.3341) is
 presented here as a <strong>factual observation, not a strength</strong>: it may indicate
 the harness matches populated evidence spans rather than exercising refusal
 behavior. An evidence-matching audit is filed separately; until it resolves,

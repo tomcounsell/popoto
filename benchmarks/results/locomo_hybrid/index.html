@@ -2705,11 +2705,21 @@
 
 
 <h1 id="locomo-hybrid-retrieval">LoCoMo — Hybrid Retrieval<a class="headerlink" href="#locomo-hybrid-retrieval" title="Permanent link">&para;</a></h1>
+<div class="admonition info">
+<p class="admonition-title">Scored before the #514 correction — re-run pending</p>
+<p>This artifact predates the gold-blind scoring fix
+(<a href="https://github.com/tomcounsell/popoto/issues/514">#514</a>), so its
+numbers are inflated by the same margin the lexical page describes.
+It stays published for continuity and is not comparable to the
+corrected lexical page; a corrected hybrid run is pending.</p>
+</div>
 <div class="admonition warning">
 <p class="admonition-title">Hybrid underperforms lexical here — reported factually, untuned</p>
 <p>On this LoCoMo variant, hybrid (<strong>Recall@1 0.1667 / MRR 0.2835</strong>)
-measurably underperforms the lexical path (<strong>Recall@1 0.2986 /
-MRR 0.4124</strong>). No retrieval tuning has been attempted; an unweighted
+measurably underperforms the lexical path (pre-correction
+<strong>Recall@1 0.2986 / MRR 0.4124</strong>, the like-for-like comparison since
+both were scored the same way). No retrieval tuning has been
+attempted; an unweighted
 RRF giving a weak vector arm equal say is the leading hypothesis,
 tracked as a separate vector-only baseline follow-up. In the MEMTIER
 retrieval regime (LoCoMo Recall@1 0.10–0.30) 0.1667 is
