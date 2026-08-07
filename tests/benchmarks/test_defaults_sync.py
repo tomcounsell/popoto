@@ -94,6 +94,10 @@ class TestDefaultsSync:
             "EXTRACTION_DEFAULT_CONFIDENCE",
             "EXTRACTION_ENTITY_PAIR_LINK_WEIGHT",
             "EXTRACTION_MAX_ENTITIES_PER_FACT",
+            # TagField scoping kill switch (#492) — read directly from Defaults
+            # in the assembler tag-scoping path (context_assembler.py); no
+            # module-level alias exists, so not in MODULE_CONSTANTS.
+            "TAG_SCOPING_ENABLED",
         }
 
         expected_in_module = defaults_attrs - field_kwargs_and_class_attrs
