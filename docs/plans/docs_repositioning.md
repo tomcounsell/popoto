@@ -1,5 +1,5 @@
 ---
-status: Planning
+status: Ready
 type: chore
 appetite: Medium
 owner: Tom Counsell
@@ -303,8 +303,8 @@ recorded in the [#511 alignment comment](https://github.com/tomcounsell/popoto/i
 
 ---
 
-## Open Questions
+## Resolved Questions (maintainer, 2026-08-07)
 
-1. **Homepage evidence line copy** — the hero's one-line proof will cite R@1 0.894 (LongMemEval-S), the latency curve, and the 3-package/zero-key install. Sign off on that exact trio, or prefer a different lead stat?
-2. **Judged-accuracy placement** — Benchmarks section only (recommended), or also linked from the homepage's transparency line? Homepage linkage is braver and more on-brand for the moat, but it puts 0.36 one click from the hero.
-3. **Roadmap memo + neuroscience spec** — both leave the nav now; confirm neither needs a public stub/redirect (external links may point at them).
+1. **Homepage evidence line:** the trio as drafted — LongMemEval-S R@1 0.894, the latency curve (3.0 ms @1k → 6.0 ms @20k), and the 3-package/zero-API-key install. Matches the README hero shipped in PR #524.
+2. **Judged-accuracy placement:** Benchmarks section only, with CI, protocol, and chronology. The homepage transparency line links to Benchmarks generally, never deep-links the number. Ships only after the #514 re-run.
+3. **Removed pages:** clean removal, no stubs, no redirect plugin. All seven URLs 404; the files remain in the repo under `docs/plans/`.
