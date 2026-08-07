@@ -44,6 +44,16 @@ logger = logging.getLogger("POPOTO-PYTEST")
 
 
 def pytest_configure(config):
+    """Prepare module aliasing and switch onto the test DB before collection.
+
+    Both steps must happen before pytest imports any test module, so they live
+    in this hook rather than in a fixture.
+    """
+    _collapse_src_popoto()
+    _configure_test_db(config)
+
+
+def _collapse_src_popoto():
     """Collapse src.popoto onto the canonical popoto module objects.
 
     When pytest adds the repo root to sys.path, both ``import popoto`` and
@@ -51,13 +61,13 @@ def pytest_configure(config):
     distinct module objects.  The plugin swaps the connection pool on the
     ``popoto`` instance; the ``src.popoto`` instance keeps the DB-0 default.
 
-    This hook runs before any test-module import.  It registers
+    This runs before any test-module import.  It registers
     ``src.popoto`` (and every already-loaded ``popoto.*`` submodule) as the
     *same objects* as their ``popoto`` counterparts, so the duplicate instance
     never exists and the DB-15 swap covers everything automatically.
 
     Tolerant of environments where there is no ``src/`` layout (downstream
-    users, sdist installs): if ``src`` is not importable the hook is a no-op.
+    users, sdist installs): if ``src`` is not importable this is a no-op.
     """
     import importlib
     import sys
@@ -105,6 +115,41 @@ def pytest_configure(config):
         sys.modules[alias_name] = mod
 
 
+def _configure_test_db(config):
+    """Swap onto the test DB before pytest imports any test module.
+
+    Test modules that run model code at import time (``Model.create(...)`` at
+    module level rather than inside a test function) execute during collection.
+    A session-scoped autouse fixture does not run until the first test, which
+    is *after* that — so those writes landed in DB 0, the developer's real
+    database, and the DB-0 tripwire could not see them either. Doing the swap
+    here closes that window for every test module at once. See #522.
+
+    Failures are non-fatal: an unreachable Redis must not break collection.
+    The ``_popoto_test_db`` fixture re-asserts the swap, so a miss here is
+    recovered before the first test body runs.
+    """
+    try:
+        test_db = _resolve_test_db(config)
+    except ValueError:
+        raise  # Misconfiguration (e.g. db=0) — fail loudly and early.
+
+    try:
+        original_kwargs = dict(
+            redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs
+        )
+        config._popoto_original_db = original_kwargs.get("db", 0)
+        _swap_db(test_db)
+        logger.debug("Popoto test DB switched to DB %d (pre-collection)", test_db)
+    except Exception as e:
+        logger.warning(
+            "popoto pytest plugin: could not swap to test DB %d before "
+            "collection (%s); the session fixture will retry.",
+            test_db,
+            e,
+        )
+
+
 def _swap_db(target_db, **extra_kwargs):
     """Swap the connection pool on the existing POPOTO_REDIS_DB object.
 
@@ -135,17 +180,13 @@ def pytest_addoption(parser):
     )
 
 
-@pytest.fixture(scope="session", autouse=True)
-def _popoto_test_db(request):
-    """Switch Popoto to a dedicated test database for the entire test session.
+def _resolve_test_db(config):
+    """Resolve the test DB number.
 
-    Priority for DB number: POPOTO_TEST_DB env var > ini option > default 15.
-
-    On teardown, flushes the test DB and restores the original connection.
+    Priority: POPOTO_TEST_DB env var > ini option > default 15.
     """
-    # Determine test DB number
     env_db = os.environ.get("POPOTO_TEST_DB", "").strip()
-    raw_value = env_db if env_db else request.config.getini("popoto_test_db")
+    raw_value = env_db if env_db else config.getini("popoto_test_db")
     try:
         test_db = int(raw_value)
     except (ValueError, TypeError):
@@ -155,14 +196,28 @@ def _popoto_test_db(request):
             "popoto_test_db=0 is not allowed — DB 0 is typically production. "
             "Use a non-zero DB (default: 15) or disable the plugin with -p no:popoto."
         )
+    return test_db
 
-    # Save original connection kwargs for restoration
-    original_kwargs = dict(redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs)
-    original_db = original_kwargs.get("db", 0)
 
-    # Switch to test DB by swapping the connection pool in-place
-    _swap_db(test_db)
-    logger.debug("Popoto test DB switched to DB %d", test_db)
+@pytest.fixture(scope="session", autouse=True)
+def _popoto_test_db(request):
+    """Yield the test DB number and restore the original connection at teardown.
+
+    The swap itself happens in ``pytest_configure``, not here. A session
+    fixture first runs when the *first test executes*, which is after pytest
+    has imported every test module during collection — so any module-level
+    model code (``Model.create(...)`` at import time) would run against DB 0,
+    the developer's real database, before this fixture ever fired. Swapping in
+    ``pytest_configure`` puts the connection on the test DB before the first
+    import. See #522.
+    """
+    test_db = _resolve_test_db(request.config)
+    original_db = getattr(request.config, "_popoto_original_db", 0)
+
+    # pytest_configure already swapped; re-assert in case a plugin or an
+    # earlier import rebound the global.
+    if redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs.get("db") != test_db:
+        _swap_db(test_db)
 
     yield test_db
 
