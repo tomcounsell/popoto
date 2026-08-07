@@ -1038,6 +1038,156 @@ lighter check, use the ``clean`` parameter on ``query.keys()``.
     # This is the nuclear option that guarantees index consistency.
 
 
+19. Migrate datetime KeyField Rows to Canonical Keys
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Situation**: A model declares ``KeyField(type=datetime)`` and holds rows
+written before 1.9.0.
+
+**What happens**: Before 1.9.0 a row's Redis key came from ``str(value)``,
+which carries the UTC offset when a datetime is aware and omits it when it is
+naive. Identity therefore depended on how the value happened to decode rather
+than on the instant it denotes. From 1.9.0 the key is the *instant*: UTC
+normalized, fixed width, ``2026-08-07T05:00:00.123456Z``. The stored value
+still keeps the offset the caller supplied -- key and value are deliberately
+different projections.
+
+Two consequences to read before upgrading:
+
+- **Key bytes move.** Keys written by >= 1.9.0 for ``KeyField(type=datetime)``
+  values are not found by < 1.9.0. Roll readers forward before writers.
+- **Three representations now address one row.** An aware ``12:00+07:00``, its
+  UTC equivalent ``05:00Z``, and the naive ``05:00`` collapse onto one key. If
+  a deployment treated a naive value and an aware UTC value as two distinct
+  rows, they are now one. ``audit_datetime_keys()`` reports every such pair
+  before anything moves. (This is not new semantics so much as newly consistent
+  ones: ``SortedField`` has scored those three identically since #519.)
+
+**Action required**: Audit, resolve, migrate, re-verify. Set the kill switch
+first so the fleet keeps writing 1.8.2 key bytes while readers roll forward.
+
+::
+
+    # 1. Deploy 1.9.0 fleet-wide with the kill switch set. Key bytes are
+    #    byte-identical to 1.8.2, so nothing moves yet.
+    #
+    #    POPOTO_DATETIME_KEY_LEGACY=1
+    #
+    #    Equivalently, in code before any model is defined:
+    #    from popoto.fields.constants import Defaults
+    #    Defaults.DATETIME_KEY_LEGACY = True
+
+    # 2. Audit. Read-only -- safe against a live keyspace.
+    print(Event.audit_datetime_keys())
+
+    # Datetime KeyField audit: Event.at
+    #   scanned:     3
+    #   canonical:   0
+    #   migratable:  1
+    #   collisions:  1
+    #   unparsable:  0
+    #
+    #   COLLISION -> Event:2026-08-07T05{&#58;}00{&#58;}00.123456Z
+    #     Event:2026/-08/-07 12{&#58;}00{&#58;}00.123456+07{&#58;}00  (legacy-offset)
+    #       * note = 'original'
+    #     Event:2026/-08/-07 05{&#58;}00{&#58;}00.123456  (legacy-naive)
+    #       * note = 'the copy that drifted'
+    #     copies DIFFER on: note. Keeping either loses data; reconcile by hand.
+
+    # 3. Resolve any collision by hand -- see recipe 20. The migration
+    #    refuses to run at all while one exists.
+
+    # 4. Preview. dry_run=True is the default, so this writes nothing.
+    print(Event.migrate_datetime_keys())
+
+    # 5. Apply. Quiesce writers first, or leave the kill switch set fleet-wide
+    #    so no live writer is deriving the new form while this produces it.
+    print(Event.migrate_datetime_keys(dry_run=False))
+
+    # 6. Re-verify, then lift the kill switch fleet-wide.
+    assert Event.audit_datetime_keys().is_clean
+
+The migration is idempotent and resumable: a row already on its canonical key
+is skipped, so re-running after a crash costs one scan and changes nothing. It
+uses ``RENAMENX`` per row so an unexpected collision fails loudly rather than
+clobbering, fixes ``$Class:`` membership, moves side keys whose names embed the
+hash key, and runs one ``rebuild_indexes()`` at the end.
+
+A model with no ``KeyField(type=datetime)`` needs none of this: the audit
+reports "not applicable" and the kill switch is irrelevant.
+
+**Two things this does not do.** It does not rewrite ``Relationship`` values on
+other models that point at a renamed key -- it refuses to run when any exist,
+and ``allow_inbound_relationships=True`` acknowledges rather than repairs them,
+because a Relationship value is indistinguishable from an ordinary string
+field's content and a blind rewrite could corrupt unrelated data. And it never
+resolves a duplicate pair; that is recipe 20.
+
+Note that ``rebuild_indexes()`` alone does **not** repair any of this. It
+rebuilds indexes from the hashes that exist, and for a row whose stored key
+disagrees with its derived key it would write an index entry naming a key with
+no hash behind it. From 1.9.0 it skips such rows, counts them on
+``result.diverged_count``, and logs a warning pointing here.
+
+
+20. Repair Rows Duplicated Before 1.9.0
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Situation**: ``audit_datetime_keys()`` reports a COLLISION -- two hashes that
+belong on one canonical key.
+
+**What happens**: Before 1.8.2 an aware datetime KeyField value reloaded naive.
+So saving an aware value stored it under ``...12:00:00+07:00``, reloading gave
+back a naive value, and saving again derived ``...12:00:00`` -- a *different*
+key. A second hash was written and the first orphaned. No explicit edit of the
+key field was needed; any ``save()`` did it, so a model with a periodic re-save
+accumulated orphans for as long as it ran.
+
+1.8.2 stopped new duplicates and repaired none. Both hashes are real records
+with real field values, and because writes could land on either after they
+diverged, **neither copy is knowably the right one**.
+
+**Action required**: Decide, by hand, which copy survives. There is
+deliberately no ``strategy=`` argument: last-write-wins, newest-by-timestamp
+and field-wise merge are each convenient and each occasionally destroy the
+wrong record, and no default is right often enough to be safe when the library
+cannot see what the fields mean.
+
+::
+
+    audit = Event.audit_datetime_keys()
+
+    for collision in audit.collisions:
+        print(collision.canonical_redis_key)
+        print(collision.differing_fields)   # empty set == copies agree
+        for redis_key, fields in collision.contents.items():
+            print(redis_key, fields)
+
+Three ways to choose, in rough order of how often they are right:
+
+1. **Copies are identical** (``differing_fields == set()``). The choice is
+   free. Delete either hash and re-run the migration.
+2. **Copies differ and one is clearly authoritative** -- for example the one
+   whose ``updated_at`` is newer, or the one your application has been reading.
+   Delete the other.
+3. **Copies differ and both hold wanted data.** Merge by hand into whichever
+   hash you keep, then delete the other. Only you can say which field wins.
+
+::
+
+    # Having chosen, delete the loser and drop it from the class set.
+    loser = "Event:2026/-08/-07 05{&#58;}00{&#58;}00.123456"
+    POPOTO_REDIS_DB.delete(loser)
+    POPOTO_REDIS_DB.srem(Event._meta.db_class_set_key.redis_key, loser)
+
+    # The collision is gone, so the migration will now run.
+    print(Event.migrate_datetime_keys(dry_run=False))
+    assert Event.audit_datetime_keys().is_clean
+
+Take a ``DUMP`` of both hashes before deleting either. The audit is read-only
+and re-runnable, but a delete is not reversible.
+
+
 Performance Considerations
 ---------------------------
 
@@ -1076,7 +1226,21 @@ API Reference
 ``Model.rebuild_indexes(batch_size=1000)``
     Clear and rebuild all secondary indexes (sorted sets, unique
     indexes, class set) by re-saving every instance. Idempotent.
-    Returns number of instances processed.
+    Returns a ``RebuildIndexesResult`` -- an ``int`` equal to the number
+    of instances indexed, carrying ``.diverged_keys`` and
+    ``.diverged_count`` for rows skipped because their stored key
+    disagrees with their derived key (see recipe 19).
+
+``Model.audit_datetime_keys()``
+    Read-only. Reports ``KeyField(type=datetime)`` rows not on their
+    canonical key, and duplicate pairs from before 1.9.0, with a
+    per-field diff of both hashes. ``print()`` it. See recipe 19.
+
+``Model.migrate_datetime_keys(dry_run=True, allow_inbound_relationships=False)``
+    Move datetime-keyed rows onto their canonical key. Dry run by
+    default. Idempotent and resumable. Refuses the whole run on a
+    duplicate pair or an inbound ``Relationship`` reference. See
+    recipes 19 and 20.
 
 ``await Model.async_rebuild_indexes(batch_size=1000)``
     Async wrapper using ``asyncio.to_thread(Model.rebuild_indexes)``.

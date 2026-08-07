@@ -23,6 +23,7 @@ recipes 19 and 20 for the operator procedure.
 import datetime
 import logging
 import re
+from collections.abc import Iterator
 
 from redis.exceptions import ResponseError
 
@@ -96,7 +97,13 @@ class DatetimeKeyRow:
 
     __slots__ = ("redis_key", "rendered_value", "shape", "canonical_redis_key")
 
-    def __init__(self, redis_key, rendered_value, shape, canonical_redis_key):
+    def __init__(
+        self,
+        redis_key: str,
+        rendered_value: str,
+        shape: str,
+        canonical_redis_key: "str | None",
+    ) -> None:
         self.redis_key = redis_key
         self.rendered_value = rendered_value
         self.shape = shape
@@ -106,7 +113,7 @@ class DatetimeKeyRow:
     def is_canonical(self) -> bool:
         return self.redis_key == self.canonical_redis_key
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<DatetimeKeyRow {self.redis_key} ({self.shape})>"
 
 
@@ -122,7 +129,13 @@ class DatetimeKeyCollision:
 
     __slots__ = ("canonical_redis_key", "rows", "contents", "key_field_name")
 
-    def __init__(self, canonical_redis_key, rows, contents, key_field_name=None):
+    def __init__(
+        self,
+        canonical_redis_key: str,
+        rows: "list[DatetimeKeyRow]",
+        contents: "dict[str, dict]",
+        key_field_name: "str | None" = None,
+    ) -> None:
         self.canonical_redis_key = canonical_redis_key
         self.rows = rows
         #: ``{redis_key: {field_name: value}}`` for every colliding hash.
@@ -150,7 +163,7 @@ class DatetimeKeyCollision:
                 differing.add(field_name)
         return differing
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (
             f"<DatetimeKeyCollision {self.canonical_redis_key} "
             f"({len(self.rows)} hashes, {len(self.differing_fields)} differing)>"
@@ -169,12 +182,12 @@ class InboundRelationship:
 
     __slots__ = ("model_name", "field_name", "reference_count")
 
-    def __init__(self, model_name, field_name, reference_count):
+    def __init__(self, model_name: str, field_name: str, reference_count: int) -> None:
         self.model_name = model_name
         self.field_name = field_name
         self.reference_count = reference_count
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (
             f"<InboundRelationship {self.model_name}.{self.field_name} "
             f"({self.reference_count} refs)>"
@@ -186,13 +199,13 @@ class DatetimeKeyAudit:
 
     def __init__(
         self,
-        model_name,
-        field_name,
-        rows=None,
-        collisions=None,
-        inbound_relationships=None,
-        applicable=True,
-    ):
+        model_name: str,
+        field_name: "str | None",
+        rows: "list[DatetimeKeyRow] | None" = None,
+        collisions: "list[DatetimeKeyCollision] | None" = None,
+        inbound_relationships: "list[InboundRelationship] | None" = None,
+        applicable: bool = True,
+    ) -> None:
         self.model_name = model_name
         self.field_name = field_name
         self.rows = rows or []
@@ -203,19 +216,19 @@ class DatetimeKeyAudit:
         self.applicable = applicable
 
     @property
-    def scanned(self):
+    def scanned(self) -> int:
         return len(self.rows)
 
     @property
-    def canonical_rows(self):
+    def canonical_rows(self) -> "list[DatetimeKeyRow]":
         return [row for row in self.rows if row.shape == SHAPE_CANONICAL]
 
     @property
-    def unparsable_rows(self):
+    def unparsable_rows(self) -> "list[DatetimeKeyRow]":
         return [row for row in self.rows if row.shape == SHAPE_UNPARSABLE]
 
     @property
-    def migratable_rows(self):
+    def migratable_rows(self) -> "list[DatetimeKeyRow]":
         """Rows that can move on their own: non-canonical and uncontested."""
         colliding = {
             row.redis_key for collision in self.collisions for row in collision.rows
@@ -229,18 +242,18 @@ class DatetimeKeyAudit:
         ]
 
     @property
-    def is_clean(self):
+    def is_clean(self) -> bool:
         """True when nothing needs migrating and nothing collides."""
         return not self.migratable_rows and not self.collisions
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (
             f"<DatetimeKeyAudit {self.model_name}.{self.field_name} "
             f"scanned={self.scanned} migratable={len(self.migratable_rows)} "
             f"collisions={len(self.collisions)}>"
         )
 
-    def __str__(self):
+    def __str__(self) -> str:
         if not self.applicable:
             return (
                 f"{self.model_name}: no KeyField(type=datetime) declared. "
@@ -290,31 +303,37 @@ class DatetimeKeyAudit:
 class DatetimeKeyMigrationReport:
     """What ``migrate_datetime_keys`` did, or would have done under ``dry_run``."""
 
-    def __init__(self, model_name, field_name, dry_run, audit):
+    def __init__(
+        self,
+        model_name: str,
+        field_name: "str | None",
+        dry_run: bool,
+        audit: "DatetimeKeyAudit",
+    ) -> None:
         self.model_name = model_name
         self.field_name = field_name
         self.dry_run = dry_run
         self.audit = audit
         #: ``[(old_key, new_key), ...]`` moved, or that would move.
-        self.moved = []
+        self.moved: "list[tuple[str, str]]" = []
         #: ``[(old_key, new_key, reason), ...]`` attempted and declined.
-        self.skipped = []
+        self.skipped: "list[tuple[str, str, str]]" = []
         #: True when the run stopped before moving anything.
         self.refused = False
-        self.refusal_reason = None
+        self.refusal_reason: "str | None" = None
 
     @property
-    def moved_count(self):
+    def moved_count(self) -> int:
         return len(self.moved)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (
             f"<DatetimeKeyMigrationReport {self.model_name} "
             f"dry_run={self.dry_run} moved={self.moved_count} "
             f"skipped={len(self.skipped)} refused={self.refused}>"
         )
 
-    def __str__(self):
+    def __str__(self) -> str:
         if self.refused:
             return (
                 f"{self.model_name}.{self.field_name}: migration REFUSED, "
@@ -334,11 +353,12 @@ class DatetimeKeyMigrationReport:
         return "\n".join(lines)
 
 
-def _as_str(value):
-    return value.decode(ENCODING) if isinstance(value, bytes) else value
+def _as_str(value) -> str:
+    """Decode a Redis-returned key or field name to ``str``."""
+    return value.decode(ENCODING) if isinstance(value, bytes) else str(value)
 
 
-def _datetime_key_field_name(model_class):
+def _datetime_key_field_name(model_class) -> "str | None":
     """The model's single ``KeyField(type=datetime)`` name, or ``None``.
 
     Returns ``None`` for a model with two of them rather than guessing which
@@ -363,7 +383,7 @@ def _datetime_key_field_name(model_class):
     return None
 
 
-def _iter_instance_keys(model_class):
+def _iter_instance_keys(model_class) -> "Iterator[str]":
     """Yield every stored instance key for *model_class*, as ``str``."""
     pattern = model_class._meta.db_class_key.redis_key + ":*"
     expected_length = model_class._meta.db_key_length
@@ -376,7 +396,7 @@ def _iter_instance_keys(model_class):
         yield redis_key
 
 
-def _find_inbound_relationships(model_class):
+def _find_inbound_relationships(model_class) -> "list[InboundRelationship]":
     """Find Relationship fields on other models actually pointing at *model_class*.
 
     Counts *stored references*, not declarations. A model that declares a
@@ -390,7 +410,7 @@ def _find_inbound_relationships(model_class):
     inbound = []
     key_prefix = model_class._meta.db_class_key.redis_key + ":"
 
-    def walk(cls):
+    def walk(cls) -> "Iterator[type]":
         for subclass in cls.__subclasses__():
             yield subclass
             yield from walk(subclass)
@@ -420,8 +440,9 @@ def _find_inbound_relationships(model_class):
                 # A Relationship stores the target's redis_key as a plain
                 # string, so a live reference is one that starts with this
                 # model's class-key prefix.
-                value = _as_str(decoded.get(field_name))
-                if isinstance(value, str) and value.startswith(key_prefix):
+                raw = decoded.get(field_name)
+                value = _as_str(raw) if raw is not None else None
+                if value is not None and value.startswith(key_prefix):
                     counts[field_name] += 1
 
         for field_name, count in counts.items():
@@ -430,7 +451,7 @@ def _find_inbound_relationships(model_class):
     return inbound
 
 
-def _decode_contents(model_class, redis_key):
+def _decode_contents(model_class, redis_key: str) -> dict:
     """Decode a hash to ``{field_name: value}`` for the collision report."""
     from .encoding import decode_popoto_model_hashmap
 
@@ -455,7 +476,7 @@ def audit_datetime_keys(model_class) -> DatetimeKeyAudit:
 
     position = model_class._meta.get_db_key_index_position(field_name)
     rows = []
-    by_target = {}
+    by_target: "dict[str, list[DatetimeKeyRow]]" = {}
 
     for redis_key in _iter_instance_keys(model_class):
         partials = DB_key.from_redis_key(redis_key)
@@ -494,7 +515,7 @@ def audit_datetime_keys(model_class) -> DatetimeKeyAudit:
     return DatetimeKeyAudit(model_name, field_name, rows, collisions, inbound)
 
 
-def _side_keys(model_class, redis_key):
+def _side_keys(model_class, redis_key: str) -> "list[str]":
     """Every auxiliary key whose name embeds *redis_key*.
 
     Derived from the model's declared fields rather than found by globbing:
@@ -572,7 +593,8 @@ def migrate_datetime_keys(
 
     if dry_run:
         for row in audit.migratable_rows:
-            report.moved.append((row.redis_key, row.canonical_redis_key))
+            if row.canonical_redis_key is not None:
+                report.moved.append((row.redis_key, row.canonical_redis_key))
         return report
 
     _apply_moves(model_class, audit, report)
@@ -586,7 +608,9 @@ def migrate_datetime_keys(
     return report
 
 
-def _apply_moves(model_class, audit, report):
+def _apply_moves(
+    model_class, audit: DatetimeKeyAudit, report: DatetimeKeyMigrationReport
+) -> DatetimeKeyMigrationReport:
     """Rename each migratable row onto its canonical key. Writes.
 
     Split out from :func:`migrate_datetime_keys` so the concurrency paths can
@@ -594,6 +618,12 @@ def _apply_moves(model_class, audit, report):
     """
     for row in audit.migratable_rows:
         old_key, new_key = row.redis_key, row.canonical_redis_key
+        if new_key is None:
+            # Unreachable: migratable_rows excludes unparsable rows, which are
+            # the only ones without a target. Asserted rather than assumed so a
+            # future filter change cannot turn a missing target into a rename
+            # against the string "None".
+            raise AssertionError(f"migratable row with no canonical target: {old_key}")
 
         # RENAMENX, never RENAME: a target that already exists is a collision
         # the audit did not see (a concurrent writer), and it must fail loudly

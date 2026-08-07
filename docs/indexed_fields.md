@@ -173,6 +173,10 @@ $IndexF:User:status:inactive  -> {User:ghi789}
 
 This mirrors the `$KeyF` pattern used by KeyField.
 
+A `datetime` value in an index key follows the same canonical form as a datetime
+`KeyField`: UTC-normalized and fixed-width, `$IndexF:Event:at:2026-08-07T05:00:00.123456Z`.
+See [Datetime KeyFields](fields.md#datetime-keyfields).
+
 ### Save Behavior
 
 When a model instance is saved, an atomic server-side Lua script (`INDEX_SWAP_LUA`)
