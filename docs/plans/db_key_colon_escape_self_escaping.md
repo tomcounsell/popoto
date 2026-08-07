@@ -416,21 +416,21 @@ or MCP surface.
 
 ## Success Criteria
 
-- [ ] `DB_key.unclean(DB_key.clean(v)) == v` holds for all `v` in the property test's
+- [x] `DB_key.unclean(DB_key.clean(v)) == v` holds for all `v` in the property test's
       exhaustive + randomized sweep, including the three reproductions from issue #525.
-- [ ] The new `unclean()` decodes every legacy-produced encoding identically to the current
+- [x] The new `unclean()` decodes every legacy-produced encoding identically to the current
       implementation (frozen-reference comparison test).
-- [ ] `DB_key.clean(v)` output is byte-identical to the current implementation for every `v`
+- [x] `DB_key.clean(v)` output is byte-identical to the current implementation for every `v`
       that does not contain the literal `{&#58;}` sequence (asserted by test).
-- [ ] `clean()` output never contains a literal `:`, so `from_redis_key()`'s `split(":")`
+- [x] `clean()` output never contains a literal `:`, so `from_redis_key()`'s `split(":")`
       stays unambiguous (asserted by test).
-- [ ] The new `unclean()` does not widen the escape set on input `clean()` never produced:
+- [x] The new `unclean()` does not widen the escape set on input `clean()` never produced:
       `unclean("/a") == "/a"` and `unclean("x/y") == "x/y"`, with parity against the frozen
       legacy decoder on the fixed malformed-input list (asserted by test).
-- [ ] `tests/test_tag_field.py::test_index_key_is_a_plain_redis_set` passes unmodified and is
+- [x] `tests/test_tag_field.py::test_index_key_is_a_plain_redis_set` passes unmodified and is
       reported by name by the validator.
-- [ ] Full existing suite passes unmodified — no existing test relaxed to accommodate the fix.
-- [ ] Tests pass (`/do-test`)
+- [x] Full existing suite passes unmodified — no existing test relaxed to accommodate the fix.
+- [x] Tests pass (`/do-test`)
 - [ ] Documentation updated (`/do-docs`)
 
 ## Team Orchestration
