@@ -25,6 +25,14 @@ def _get_db():
     return redis_db.POPOTO_REDIS_DB
 
 
+# Captured at IMPORT time, i.e. during collection — before any fixture runs.
+# The plugin must already be on the test DB at this point, otherwise test
+# modules that touch models at module level write to DB 0 (#522).
+_DB_AT_IMPORT_TIME = redis_db.POPOTO_REDIS_DB.connection_pool.connection_kwargs.get(
+    "db", 0
+)
+
+
 class TestPluginModule:
     """Verify the plugin module structure and hooks."""
 
@@ -64,6 +72,21 @@ class TestDatabaseIsolation:
         pool_kwargs = _get_db().connection_pool.connection_kwargs
         current_db = pool_kwargs.get("db", 0)
         assert current_db == 15, f"Expected DB 15, got DB {current_db}"
+
+    def test_swap_happens_before_test_modules_are_imported(self):
+        """#522: the DB swap must precede collection, not the first test.
+
+        A session-scoped autouse fixture first runs when the first test
+        executes — after pytest has imported every test module. Any module
+        that runs model code at import time (``Model.create(...)`` at module
+        level) would therefore write to DB 0, the developer's real database.
+        The plugin does the swap in ``pytest_configure`` instead.
+        """
+        assert _DB_AT_IMPORT_TIME != 0, (
+            "Connection was still on DB 0 while test modules were being "
+            "imported; module-level model code would write to the real database"
+        )
+        assert _DB_AT_IMPORT_TIME == 15
 
     def test_db_is_empty_at_start(self):
         """Each test should start with an empty database (flushed by fixture)."""
