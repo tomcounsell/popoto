@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`DB_key`'s colon escape is now self-escaping** ([#525](https://github.com/tomcounsell/popoto/issues/525)) — `DB_key.clean()` escapes a literal `:` to the seven-character sequence `{&#58;}`, but did not escape that sequence when it already appeared in the input, so `unclean()` could not tell an escape it produced from data the caller supplied: `unclean(clean('{&#58;}'))` round-tripped to `:` instead of `{&#58;}`. `clean()` now pre-escapes a literal `{&#58;}` in the input as `/{&#58;}` before encoding real colons, and `unclean()` is rewritten as a single-pass left-to-right scanner (replacing the old sequential-replace chain, which could not distinguish the two cases) so that `DB_key.unclean(DB_key.clean(v)) == v` holds for every string, including ones containing the literal escape sequence.
+  - **Encoding changes only for values containing the literal `{&#58;}` sequence** — every other value's stored bytes are unchanged (verified: 0 encoding diffs over a 200k+ sample sweep). Those values were already lossy at write time under the old implementation, so no correct behavior regresses.
+  - **Version boundary — read this before a mixed-version rollout:** keys written by Popoto **≥ 1.8.3** for values containing the literal `{&#58;}` sequence are **not** decoded correctly by Popoto **< 1.8.3**. Roll readers forward before writers. No migration is provided or needed for existing data — the affected value set was already unrecoverable before this fix (the information needed to disambiguate was never stored), so there is nothing to migrate.
+
 ## [1.8.2] - 2026-08-07
 
 ### Added

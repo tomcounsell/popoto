@@ -19,7 +19,11 @@ Design Philosophy:
 Key Escaping:
     Since colons are used as delimiters, any colon appearing in field values
     must be escaped. DB_key also escapes Redis glob pattern characters to
-    prevent injection attacks or accidental pattern matching.
+    prevent injection attacks or accidental pattern matching. The colon
+    escape sequence itself is self-escaping: a literal occurrence of the
+    escape sequence in the input is neutralized before colons are encoded,
+    so ``DB_key.unclean(DB_key.clean(v)) == v`` holds for every string
+    ``v``, including strings that already contain the escape sequence.
 
 Integration:
     DB_key is used throughout Popoto:
@@ -32,6 +36,20 @@ Integration:
 from collections.abc import Iterable
 
 from ..redis_db import POPOTO_REDIS_DB, ENCODING
+
+#: What a literal ":" encodes to. Kept as a module-level constant so
+#: clean(), unclean(), and their docstrings cannot drift out of sync.
+COLON_ESCAPE = "{&#58;}"
+
+#: Redis glob-pattern characters that clean() slash-prefixes.
+GLOB_CHARS = "'?*^[]-"
+
+#: Every character that can legitimately follow a "/" in clean()'s output:
+#: a doubled slash, a slash-prefixed glob char, or the "{" that fronts a
+#: slash-escaped COLON_ESCAPE token. unclean()'s scanner only treats "/"
+#: as an escape when the next character is one of these -- this keeps the
+#: scanner from widening the escape set on input clean() never produced.
+ESCAPABLE = "/" + GLOB_CHARS + "{"
 
 
 class DB_key(list):
@@ -138,25 +156,38 @@ class DB_key(list):
 
         Redis keys can contain any bytes, but Popoto uses colons as delimiters
         and must also prevent accidental glob pattern interpretation. This
-        method escapes:
-            - Forward slashes (/) -> doubled (//) as the escape character
-            - Glob pattern chars ('?*^[]-) -> prefixed with /
-            - Colons (:) -> HTML entity style ({&#58;})
+        method escapes, in order:
+            1. Forward slashes (/) -> doubled (//) as the escape character
+            2. Glob pattern chars ('?*^[]-) -> prefixed with /
+            3. Literal occurrences of COLON_ESCAPE ({&#58;}) -> prefixed
+               with / (self-escaping, so clean()'s own output is never
+               mistaken for data by unclean())
+            4. Colons (:) -> COLON_ESCAPE ({&#58;})
 
         The colon escaping uses an HTML-entity-inspired format rather than
         the slash prefix to make colons visually distinct, since they are
         the most structurally important character to escape.
 
+        The order is load-bearing: step 3 must run after step 1 (so the
+        "/" it inserts is itself an escape character, not raw data) and
+        before step 4 (so it only catches COLON_ESCAPE sequences that were
+        already present in the input, never the one this call produces).
+        This makes COLON_ESCAPE self-escaping, the same round-trip
+        guarantee "/" already has.
+
         Args:
             value: A raw string value to be used as a key segment.
 
         Returns:
-            The escaped string safe for use in Redis keys.
+            The escaped string safe for use in Redis keys. Never contains
+            a literal ":", so from_redis_key()'s split(":") stays
+            unambiguous.
         """
         value = value.replace("/", "//")
-        for char in "'?*^[]-":
+        for char in GLOB_CHARS:
             value = value.replace(char, f"/{char}")
-        value = value.replace(":", "{&#58;}")
+        value = value.replace(COLON_ESCAPE, "/" + COLON_ESCAPE)
+        value = value.replace(":", COLON_ESCAPE)
         return value
 
     @classmethod
@@ -164,9 +195,39 @@ class DB_key(list):
         """Reverse the escaping applied by :meth:`clean`.
 
         This is the inverse of clean(), used when parsing stored Redis keys
-        back into their original field values. The unescaping order matters:
-        colons first, then glob characters, then slashes last (since slashes
-        are the escape character).
+        back into their original field values.
+
+        Unlike clean(), this is a single left-to-right scan rather than a
+        sequential replace chain -- a sequential chain cannot distinguish a
+        "/"-escaped COLON_ESCAPE token (data) from a COLON_ESCAPE token
+        clean() itself produced (an escape), because the colon decode would
+        have to run before slash unescaping either way.
+
+        The overwhelmingly common case -- a key part with no escapes at
+        all -- takes a fast path first: if neither "/" nor COLON_ESCAPE
+        appears anywhere in value, every scanner branch below would fall
+        through to "emit the character as-is" for the whole string, so
+        the scan is provably equivalent to returning value unchanged. This
+        reduces that case to two C-level substring scans instead of a
+        Python character loop, which matters because from_redis_key()
+        calls unclean() once per key part on every query result.
+
+        When the fast path does not apply, the scan walks the string once:
+            - At a "/" whose following character is in ESCAPABLE: emit that
+              character literally and advance 2. This covers "//" -> "/",
+              "/<glob char>" -> "<glob char>", and "/{" (which fronts a
+              "/{&#58;}" self-escape).
+            - Else, if the string starts with COLON_ESCAPE at this
+              position: emit ":" and advance len(COLON_ESCAPE).
+            - Else: emit the character as-is and advance 1.
+
+        The ESCAPABLE guard on the "/" branch is deliberate, not
+        incidental: a greedy branch that consumes *any* following
+        character would widen the escape set on input clean() never
+        produced (e.g. "/a" would decode to "a" instead of staying "/a").
+        Restricting to ESCAPABLE keeps this method byte-identical to the
+        pre-fix implementation on every input clean() can produce, while
+        also fixing the self-escaping bug on the inputs that exposed it.
 
         Args:
             value: An escaped key segment from a Redis key.
@@ -174,14 +235,24 @@ class DB_key(list):
         Returns:
             The original unescaped string value.
         """
-        value = value.replace("{&#58;}", ":")
-        for char in "'?*^[]-":
-            value = value.replace(f"/{char}", char)
-        value = value.replace(
-            "//",
-            "/",
-        )
-        return value
+        if "/" not in value and COLON_ESCAPE not in value:
+            return value
+        result = []
+        i = 0
+        n = len(value)
+        escape_len = len(COLON_ESCAPE)
+        while i < n:
+            char = value[i]
+            if char == "/" and i + 1 < n and value[i + 1] in ESCAPABLE:
+                result.append(value[i + 1])
+                i += 2
+            elif value.startswith(COLON_ESCAPE, i):
+                result.append(":")
+                i += escape_len
+            else:
+                result.append(char)
+                i += 1
+        return "".join(result)
 
     def __str__(self):
         """

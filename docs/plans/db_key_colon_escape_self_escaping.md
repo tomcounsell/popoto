@@ -416,22 +416,22 @@ or MCP surface.
 
 ## Success Criteria
 
-- [ ] `DB_key.unclean(DB_key.clean(v)) == v` holds for all `v` in the property test's
+- [x] `DB_key.unclean(DB_key.clean(v)) == v` holds for all `v` in the property test's
       exhaustive + randomized sweep, including the three reproductions from issue #525.
-- [ ] The new `unclean()` decodes every legacy-produced encoding identically to the current
+- [x] The new `unclean()` decodes every legacy-produced encoding identically to the current
       implementation (frozen-reference comparison test).
-- [ ] `DB_key.clean(v)` output is byte-identical to the current implementation for every `v`
+- [x] `DB_key.clean(v)` output is byte-identical to the current implementation for every `v`
       that does not contain the literal `{&#58;}` sequence (asserted by test).
-- [ ] `clean()` output never contains a literal `:`, so `from_redis_key()`'s `split(":")`
+- [x] `clean()` output never contains a literal `:`, so `from_redis_key()`'s `split(":")`
       stays unambiguous (asserted by test).
-- [ ] The new `unclean()` does not widen the escape set on input `clean()` never produced:
+- [x] The new `unclean()` does not widen the escape set on input `clean()` never produced:
       `unclean("/a") == "/a"` and `unclean("x/y") == "x/y"`, with parity against the frozen
       legacy decoder on the fixed malformed-input list (asserted by test).
-- [ ] `tests/test_tag_field.py::test_index_key_is_a_plain_redis_set` passes unmodified and is
+- [x] `tests/test_tag_field.py::test_index_key_is_a_plain_redis_set` passes unmodified and is
       reported by name by the validator.
-- [ ] Full existing suite passes unmodified — no existing test relaxed to accommodate the fix.
-- [ ] Tests pass (`/do-test`)
-- [ ] Documentation updated (`/do-docs`)
+- [x] Full existing suite passes unmodified — no existing test relaxed to accommodate the fix.
+- [x] Tests pass (`/do-test`)
+- [x] Documentation updated (`/do-docs`)
 
 ## Team Orchestration
 
@@ -571,14 +571,20 @@ or MCP surface.
 | Colon escape still `{&#58;}` (no scheme swap) | `python -c "import sys;sys.path.insert(0,'src');from popoto.models.db_key import DB_key as D;print(D.clean('a:b'))"` | output contains `a{&#58;}b` |
 | Non-widening scanner pinned | `python -m pytest tests/test_db_key_escaping.py -q -k "malformed or widen or legacy"` | exit code 0 |
 | Encoding canary (`test_tag_field`) | `python -m pytest tests/test_tag_field.py -q` | exit code 0 |
-| Fix confined to db_key.py | `git fetch -q origin main && [ -z "$(git diff --name-only origin/main -- src/ \| grep -v '^src/popoto/models/db_key\.py$')" ]` | exit code 0 |
-| No pre-existing test modified | `git fetch -q origin main && [ -z "$(git diff --name-only origin/main -- tests/ \| grep -v '^tests/test_db_key_escaping\.py$')" ]` | exit code 0 |
+| Fix confined to db_key.py | `git fetch -q origin main && [ -z "$(git diff --name-only origin/main...HEAD -- src/ \| grep -v '^src/popoto/models/db_key\.py$')" ]` | exit code 0 |
+| No pre-existing test modified | `git fetch -q origin main && [ -z "$(git diff --name-only origin/main...HEAD -- tests/ \| grep -v '^tests/test_db_key_escaping\.py$')" ]` | exit code 0 |
 
 > Both `git diff` rows use `[ -z "$(…)" ]` rather than `grep -c`: `grep -c` exits **1** when
 > nothing fails to match, so the old `grep -cv` form printed `0` while exiting non-zero — the
 > success path looked like a failure to any `set -e` or exit-code-checking runner (verified
 > in-repo). The `git fetch -q origin main` prefix also guards against a stale `origin/main`
-> ref in a fresh worktree.
+> ref in a fresh worktree. Both rows use the three-dot `origin/main...HEAD` form (diff from
+> the merge-base) rather than two-dot `origin/main` (a direct tree diff): once a branch has
+> merged `origin/main` in, an unrelated concurrent change on main (e.g. #521's datetime fix)
+> is fully absorbed and shows no diff either way, but two-dot form is spuriously red on a
+> branch that has *not yet* merged main's newer tip, since it diffs file content rather than
+> commit ancestry. Three-dot expresses the intended property — "did this branch's own history
+> touch anything outside db_key.py / the escaping test file" — regardless of main's pace.
 | Format clean | `python -m black --check src/popoto/models/db_key.py tests/test_db_key_escaping.py` | exit code 0 |
 | Docs build | `mkdocs build --strict` | exit code 0 |
 
