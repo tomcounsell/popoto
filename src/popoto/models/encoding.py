@@ -68,6 +68,51 @@ Attributes:
              encoded dict.
 """
 
+_LEGACY_DATETIME_FORMAT = "%Y%m%dT%H:%M:%S.%f"
+"""Offset-free datetime format written before #521. Read-only from here on."""
+
+_LEGACY_TIME_FORMAT = "%H:%M:%S.%f"
+"""Offset-free time format written before #521. Read-only from here on."""
+
+
+def _decode_datetime(obj) -> datetime.datetime:
+    """Decode a stored datetime, tolerating the pre-#521 offset-free form.
+
+    Values written from #521 onward are `isoformat()`, which carries the UTC
+    offset when there is one. Values written before it used
+    `%Y%m%dT%H:%M:%S.%f`, which has no offset directive, so an aware value was
+    stored as its own wall clock with the offset discarded (#521).
+
+    A legacy string is decoded naive, exactly as before. That is deliberate:
+    the offset is not merely absent from the string, it was never written, so
+    there is nothing to recover and inventing one would silently move the
+    value. Naive-in/naive-out also keeps existing callers comparing legacy
+    values against `datetime.now()` working rather than raising TypeError on a
+    naive/aware comparison.
+
+    `SortedFieldMixin.convert_to_numeric` treats a naive value as UTC when
+    deriving a score (#519), so legacy rows still score consistently.
+    """
+    as_encodable = obj["as_encodable"]
+    try:
+        return datetime.datetime.fromisoformat(as_encodable)
+    except ValueError:
+        return datetime.datetime.strptime(as_encodable, _LEGACY_DATETIME_FORMAT)
+
+
+def _decode_time(obj) -> datetime.time:
+    """Decode a stored time, tolerating the pre-#521 offset-free form.
+
+    Same split as :func:`_decode_datetime`: `isoformat()` going forward,
+    `%H:%M:%S.%f` accepted for anything already on disk.
+    """
+    as_encodable = obj["as_encodable"]
+    try:
+        return datetime.time.fromisoformat(as_encodable)
+    except ValueError:
+        return datetime.datetime.strptime(as_encodable, _LEGACY_TIME_FORMAT).time()
+
+
 TYPE_ENCODER_DECODERS = {
     Decimal: EncoderDecoder(
         key="__Decimal__",
@@ -88,11 +133,12 @@ TYPE_ENCODER_DECODERS = {
         key="__datetime__",
         encoder=lambda obj: {
             "__datetime__": True,
-            "as_encodable": obj.strftime("%Y%m%dT%H:%M:%S.%f"),
+            # isoformat() carries the UTC offset when the value is aware and
+            # omits it when the value is naive, so awareness survives the round
+            # trip in both directions (#521).
+            "as_encodable": obj.isoformat(),
         },
-        decoder=lambda obj: datetime.datetime.strptime(
-            obj["as_encodable"], "%Y%m%dT%H:%M:%S.%f"
-        ),
+        decoder=_decode_datetime,
     ),
     datetime.date: EncoderDecoder(
         key="__date__",
@@ -105,11 +151,11 @@ TYPE_ENCODER_DECODERS = {
         key="__time__",
         encoder=lambda obj: {
             "__time__": True,
-            "as_encodable": obj.strftime("%H:%M:%S.%f"),
+            # A time may carry tzinfo too, and strftime("%H:%M:%S.%f") dropped
+            # it for the same reason the datetime format did (#521).
+            "as_encodable": obj.isoformat(),
         },
-        decoder=lambda obj: datetime.datetime.strptime(
-            obj["as_encodable"], "%H:%M:%S.%f"
-        ).time(),
+        decoder=_decode_time,
     ),
 }
 
@@ -463,17 +509,14 @@ def _create_lazy_model(model_class: "Model", redis_hash: dict) -> "Model":
             continue
         if field_name in instance._decoded_fields:
             continue
-        default_value = (
-            field.default() if callable(field.default) else field.default
-        )
+        default_value = field.default() if callable(field.default) else field.default
         object.__setattr__(instance, field_name, default_value)
 
     # Compute _redis_key from the (now-decoded) KeyField values, matching
     # the logic in Model.__init__.  db_key reads attributes via
     # __getattribute__ which will find them in _decoded_fields.
     if None not in [
-        instance._decoded_fields.get(kf)
-        for kf in model_class._meta.key_field_names
+        instance._decoded_fields.get(kf) for kf in model_class._meta.key_field_names
     ]:
         instance._redis_key = instance.db_key.redis_key
 

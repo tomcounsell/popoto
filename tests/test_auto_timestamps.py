@@ -1,7 +1,7 @@
 """Tests for auto_now_add and auto_now on SortedField."""
 
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -284,9 +284,10 @@ class UTCAutoNowModel(Model):
 def _as_naive(dt):
     """Drop tzinfo for naive-to-naive comparison.
 
-    The encoder stores wall-clock without tzinfo, so a round-tripped value is
-    naive. A freshly-stamped in-memory value is tz-aware UTC. Comparing the two
-    directly raises TypeError, so we normalize both to naive before asserting.
+    Retained for the legacy-value assertions. Since #521 a round-tripped value
+    keeps the tzinfo it was saved with, so fresh and reloaded stamps are both
+    aware UTC and compare directly; this only normalizes values that were
+    already naive going in.
     """
     return dt.replace(tzinfo=None) if dt.tzinfo is not None else dt
 
@@ -317,11 +318,13 @@ class TestDatetimeFieldUTC:
         # in-memory fresh stamp (tz-aware UTC) normalized to naive UTC wall-clock
         assert before <= _as_naive(instance.created_at) <= after
 
-        # round-trip from Redis: decoder returns a naive datetime carrying the
-        # stored UTC wall-clock, which must still fall within the UTC bounds.
+        # round-trip from Redis: since #521 the decoder preserves the tzinfo
+        # the value was stamped with, so this comes back aware UTC rather than
+        # naive. Consumers no longer have to re-attach UTC on read.
         reloaded = UTCAutoNowAddModel.query.get(key="dt-add-1")
-        assert reloaded.created_at.tzinfo is None
-        assert before <= reloaded.created_at <= after
+        assert reloaded.created_at.tzinfo is not None
+        assert reloaded.created_at.utcoffset() == timedelta(0)
+        assert before <= _as_naive(reloaded.created_at) <= after
 
     def test_auto_now_stamps_utc_wallclock(self):
         """auto_now stamps the current UTC wall-clock on every save."""
@@ -332,8 +335,9 @@ class TestDatetimeFieldUTC:
         assert before <= _as_naive(instance.updated_at) <= after
 
         reloaded = UTCAutoNowModel.query.get(key="dt-now-1")
-        assert reloaded.updated_at.tzinfo is None
-        assert before <= reloaded.updated_at <= after
+        assert reloaded.updated_at.tzinfo is not None
+        assert reloaded.updated_at.utcoffset() == timedelta(0)
+        assert before <= _as_naive(reloaded.updated_at) <= after
 
     def test_skip_auto_now_preserves_value(self):
         """skip_auto_now=True must not re-stamp an existing auto_now value."""

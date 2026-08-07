@@ -111,8 +111,10 @@ class DatetimeField(Field):
         Implementation note:
             Timestamps are stamped in UTC via ``datetime.now(timezone.utc)`` so
             that auto_now/auto_now_add fields record correct instants regardless
-            of host timezone. (The encoder stores wall-clock without tzinfo, so
-            consumers re-attach UTC on read.) ``timezone.utc`` is used rather than
+            of host timezone. Since #521 the encoder preserves the offset, so
+            these values read back as aware UTC and consumers no longer need to
+            re-attach it. (Rows written before #521 still read back naive; their
+            offset was never stored.) ``timezone.utc`` is used rather than
             ``datetime.UTC`` to stay valid on Python 3.10 (the ``requires-python``
             floor); ``datetime.UTC`` is 3.11+.
 
