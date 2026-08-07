@@ -6,6 +6,8 @@ owner: Tom Counsell
 created: 2026-08-07
 tracking: https://github.com/tomcounsell/popoto/issues/511
 last_comment_id: 5213135395
+revision_applied: true
+revision_applied_at: 2026-08-07T07:05:00Z
 ---
 
 # Docs Repositioning: Agent Memory First, Radical Transparency
@@ -28,7 +30,8 @@ Full evidence inventory: [issue #511](https://github.com/tomcounsell/popoto/issu
 
 - Issue #511 was filed hours ago from live recon; one commit (`c02796e`, SortedField range-read limit pushdown) landed since — no overlap with any file this plan touches.
 - All file:line references in #511 were produced by direct inspection this session; the three critique reports (recorded in the issue comment) additionally verified claims empirically (clean-venv install, verbatim quickstart run, committed-JSON inspection).
-- Active plans overlap check: `docs/plans/` contains benchmark-strategy plans (`benchmarking_strategy_2026-07.md`, `benchmark_results_docs_publishing.md`) that this plan treats as constraints, not conflicts — the benchmark-framing doctrine in `docs/scripts/gen_benchmark_pages.py` is preserved.
+- Active plans overlap check: `docs/plans/` contains benchmark-strategy plans (`benchmarking_strategy_2026-07.md`, `benchmark_results_docs_publishing.md`, `benchmark_docs_gen_vector_mode.md`) that this plan treats as constraints, not conflicts. Note (critique finding 8): `benchmark_docs_gen_vector_mode.md:171,198,286` mandates the MEMTIER *anchor*; this plan keeps the anchor (96.7 ms/query latency reference, regime context) and kills only the "top of the 0.10–0.30 R@1 band" claim, which MEMTIER's own authors contradict. This is a deliberate, recorded narrowing of #453-era framing, not an accidental reversal.
+- Revision-time drift (2026-08-07): `8ea5416` (PR #516) landed on main — equality/hashing, connection pool, single build system (deleted `poetry.lock`, edited `pyproject.toml`). No overlap with this plan's files; it does conflict with sibling PR #524's `pyproject.toml` edits, flagged for merge-time rebase.
 
 ## Prior Art
 
@@ -89,12 +92,15 @@ Homepage (SubconsciousMemory hero + one evidence line + "built on a full Redis O
 ### Technical Approach
 
 **Phase A — Integrity fixes (no repositioning dependency; ship immediately):**
-- `docs/benchmarks.md`: delete the false "No self-benchmarked judged numbers are committed" line; fix "sub-6-ms p50" → the actual 6.021 ms (or the curve phrasing); remove the stale all-zeros "Baseline Numbers (v1.6.3)" section; kill the MEMTIER "band" claim (keep MEMTIER's 96.7 ms/query as the latency anchor); replace bare issue-number explanations with self-contained prose.
+- `docs/benchmarks.md`: delete the false "No self-benchmarked judged numbers are committed" line; fix "sub-6-ms p50" → the actual 6.021 ms (or the curve phrasing); remove the stale all-zeros "Baseline Numbers (v1.6.3)" section; replace bare issue-number explanations with self-contained prose.
+- **MEMTIER band claim lives in `docs/scripts/gen_benchmark_pages.py` (lines ~172, 190, 207, 363, 372-378), not in any `docs/*.md` file** (critique blocker 3). Kill the "band" framing there; keep the MEMTIER anchor (96.7 ms/query, regime context) per the `benchmark_docs_gen_vector_mode.md` doctrine. Update `tests/benchmarks/test_gen_benchmark_pages.py` in the same change — it currently asserts `"MEMTIER" in note` for framing notes containing bare decimals, so the test must be updated to the new framing, not deleted.
 - `docs/features/llm-memory-extraction.md`: replace "not yet measured" with the #489 result and the do-not-enable-by-default warning the eval recommended.
-- Remove from nav (stay in repo or `docs/plans/`): `guides/launch-announcements.md`, `features/kitchen-edge-case-demo.md`, `guides/research-prompt-memory-systems.md`, `guides/epistemic-flow-cognitive-agent-architectures.md`, `benchmarks/memory_lifecycle_baseline.md`, `guides/popoto-memory-roadmap.md`, `guides/programmable-memory-systems-neuroscience-design-spec.md` (spec may return later reframed as an essay).
-- Strip PR/issue numbers, sweep dates, and maintainer notes from user-facing pages and copy-paste snippets (`agent-memory.md` status table, quickstart/recipe `_wf_min_threshold` comments, `fields.md`, per-primitive pages). Keep the invisible maintainer HTML comment in the quickstart only if `test_default_recipe_wiring.py` requires it, and strip it from `llms.txt` generation if feasible.
-- Fix the two links into the excluded `plans/` tree; reconcile primitive count to one number site-wide; fix "5 levels" → 6.
+- **Unpublish the 7 internal pages by moving them out of the rendered tree** (critique blocker 1: MkDocs renders every `.md` under `docs/` whether or not it is in `nav`; nav removal alone leaves pages live and search-indexed). Move to `docs/plans/` (build-excluded via `exclude_docs`): `guides/launch-announcements.md`, `features/kitchen-edge-case-demo.md`, `guides/research-prompt-memory-systems.md`, `guides/epistemic-flow-cognitive-agent-architectures.md`, `benchmarks/memory_lifecycle_baseline.md`, `guides/popoto-memory-roadmap.md`, `guides/programmable-memory-systems-neuroscience-design-spec.md` (spec may return later reframed as an essay). Remove their nav entries in the same change.
+- **Fix all inbound links to the moved pages** (critique blocker 2 — these break `mkdocs build --strict` the moment the pages move): `recipes.md:584`, `features/README.md:17`, `features/confidence-field.md:275`, `features/agent-memory.md:1229,1851,1852,1853`, plus any others surfaced by the strict build. Replace each with a link to the surviving equivalent (per-primitive page, quickstart, or benchmarks) or drop the reference.
+- Strip PR/issue numbers, sweep dates, and maintainer notes from user-facing pages and copy-paste snippets (`agent-memory.md` status table, quickstart/recipe `_wf_min_threshold` comments, `fields.md`, per-primitive pages). Exception: `guides/tuning-magic-numbers.md` keeps its sweep provenance — documenting tuning provenance is that page's purpose (critique finding 4). Strip the maintainer HTML comment from the quickstart — `test_default_recipe_wiring.py` does not reference it (critique nit 10a).
+- Fix the two links into the excluded `plans/` tree; reconcile primitive count site-wide to the canonical **14 primitives** (recipes and composed layers listed separately, never summed into the primitive count); fix the two "5 levels" occurrences → 6.
 - `mkdocs.yml`: add `site_description`.
+- Rewrite `docs/llms.txt` memory-first (critique finding 7: it is hand-maintained, opens ORM-first, and hardcodes a nav-shaped index — no generator owns it; `llms-full.txt` regenerates via `gen_llms_full.py` and needs no hand edits).
 
 **Phase B — Claims layer (uses the evidence critique's exact reworded formulations):**
 - LongMemEval-S vs agentmemory: keep, with the granularity disclosure in the same paragraph; R@1 0.894 is the headline figure; cite MemPalace 96.6% R@5 from the same source.
@@ -125,8 +131,8 @@ No exception handlers in scope — this is documentation work. The failure paths
 
 ## Test Impact
 
-- [ ] `tests/test_default_recipe_wiring.py` — UPDATE if quickstart level structure changes (the test parses heading structure and `content_bm25` presence by design).
-- No other tests parse docs content.
+- [ ] `tests/test_default_recipe_wiring.py` — UPDATE if quickstart level structure changes (the test hard-anchors on `^## Level 5`, requires `ContextAssembler` in the Level 5 body, and ≥2 `class Memory` definitions before it).
+- [ ] `tests/benchmarks/test_gen_benchmark_pages.py` — UPDATE: asserts `"MEMTIER" in note` for framing notes with bare decimals; must be updated alongside the Phase B framing change (critique blocker 3 corrected the earlier claim that no other tests parse docs content).
 
 ## Rabbit Holes
 
@@ -208,10 +214,11 @@ This plan IS documentation work. Meta-docs:
 ### 2. Claims layer (Phase B)
 - **Task ID**: build-claims
 - **Depends On**: build-integrity
+- **Validates**: `mkdocs build --strict`; `pytest tests/benchmarks/test_gen_benchmark_pages.py -q`; kill-list greps
 - **Assigned To**: docs-integrity-builder
 - **Agent Type**: builder
 - **Parallel**: false
-- Write the claims formulations into benchmarks.md, overview, and the new query-blind explainer; edit `gen_benchmark_pages.py` framing text only
+- Write the claims formulations into `benchmarks.md` and the new query-blind explainer; edit `gen_benchmark_pages.py` framing text + its test. Does NOT touch `features/agent-memory.md` — that file is owned exclusively by Task 4 (critique finding 5).
 
 ### 3. Validate claims against artifacts
 - **Task ID**: validate-claims
@@ -223,19 +230,21 @@ This plan IS documentation work. Meta-docs:
 
 ### 4. Homepage, nav, overview restructure (Phase C)
 - **Task ID**: build-structure
-- **Depends On**: build-integrity
+- **Depends On**: build-integrity, build-claims
+- **Validates**: `mkdocs build --strict`; internal-pages-unpublished check; primitive-count and level-count greps
 - **Assigned To**: docs-structure-builder
 - **Agent Type**: builder
-- **Parallel**: true (with build-claims)
-- Rewrite index.md, restructure mkdocs.yml nav, cut agent-memory.md to orientation page
+- **Parallel**: false
+- Rewrite index.md, restructure mkdocs.yml nav, cut agent-memory.md to orientation page (sole owner of that file — sequenced after build-claims to avoid the two-writers conflict, critique finding 5); rewrite `docs/llms.txt` memory-first
 
 ### 5. Golden path alignment (Phase D)
 - **Task ID**: build-golden-path
 - **Depends On**: build-structure, build-claims
+- **Validates**: `pytest tests/test_default_recipe_wiring.py -q`; `mkdocs build --strict`
 - **Assigned To**: docs-structure-builder
 - **Agent Type**: builder
 - **Parallel**: false
-- Restructure quickstart and recipe per Phase D; keep/update `test_default_recipe_wiring.py`
+- Restructure quickstart and recipe per Phase D; update `test_default_recipe_wiring.py` deliberately in the same change (it anchors on `^## Level 5`, `ContextAssembler` in the L5 body, and ≥2 `class Memory` definitions)
 
 ### 6. Final validation
 - **Task ID**: validate-all
@@ -251,13 +260,21 @@ This plan IS documentation work. Meta-docs:
 |-------|---------|----------|
 | Strict build | `mkdocs build --strict` | exit code 0 |
 | Recipe wiring test | `pytest -k default_recipe_wiring -q` | exit code 0 |
+| Gen-pages test | `pytest tests/benchmarks/test_gen_benchmark_pages.py -q` | exit code 0 |
 | No sub-6ms claim | `grep -ri "sub-6" docs/ --include="*.md" \| grep -v plans/ \| wc -l` | match count == 0 |
-| No sweep dates in user docs | `grep -rn "sweep 2026" docs/ --include="*.md" \| grep -v "plans/" \| wc -l` | match count == 0 |
+| No sweep dates in user docs | `grep -rn "sweep 2026" docs/ --include="*.md" \| grep -v -e plans/ -e tuning-magic-numbers.md \| wc -l` | match count == 0 |
 | No PR links in overview | `grep -c "pull/" docs/features/agent-memory.md` | match count == 0 |
 | Judged number published | `grep -r "0.3636\|0.36 " docs/benchmarks.md \| wc -l` | output > 0 |
+| Granularity disclosure present | `grep -c "granularity" docs/benchmarks.md` | output > 0 |
 | False claim gone | `grep -c "No self-benchmarked judged numbers" docs/benchmarks.md` | match count == 0 |
 | Extraction result published | `grep -c "not yet measured" docs/features/llm-memory-extraction.md` | match count == 0 |
 | Internal pages out of nav | `grep -c "launch-announcements\|kitchen-edge-case\|research-prompt\|epistemic-flow\|memory_lifecycle_baseline" mkdocs.yml` | match count == 0 |
+| Internal pages unpublished | `ls docs/guides/launch-announcements.md docs/features/kitchen-edge-case-demo.md docs/guides/research-prompt-memory-systems.md docs/guides/epistemic-flow-cognitive-agent-architectures.md docs/benchmarks/memory_lifecycle_baseline.md docs/guides/popoto-memory-roadmap.md docs/guides/programmable-memory-systems-neuroscience-design-spec.md 2>/dev/null \| wc -l` | match count == 0 |
+| MEMTIER band killed | `grep -c "0.10–0.30\|0.10-0.30" docs/scripts/gen_benchmark_pages.py` | match count == 0 |
+| No SIQ/graph score theater | `grep -rin "1.0 vs 0.0\|1.0-vs-0.0" docs/ --include="*.md" \| grep -v plans/ \| wc -l` | match count == 0 |
+| No vendor-band tabulation | `grep -rn "52–92\|52-92" docs/ --include="*.md" \| grep -v plans/ \| wc -l` | match count == 0 |
+| Canonical primitive count (14) | `grep -rn "12 primitives\|21 primitives" docs/ --include="*.md" \| grep -v plans/ \| wc -l` | match count == 0 |
+| Level count fixed | `grep -rn "5 levels\|five levels\|5-level" docs/ --include="*.md" \| grep -v plans/ \| wc -l` | match count == 0 |
 | Site description set | `grep -c "site_description" mkdocs.yml` | output > 0 |
 
 ## Critique Results
