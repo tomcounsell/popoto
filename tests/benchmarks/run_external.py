@@ -424,6 +424,22 @@ def compute_aggregate(
             "Hybrid fuses BM25 (lexical) + vector (all-MiniLM-L6-v2, 384-dim, "
             "in-process numpy cosine) via Reciprocal Rank Fusion (k=60).",
         ]
+    elif retrieval_mode == "graph":
+        mode_notes = [
+            "Retrieval mode: graph — ContextAssembler.assemble() with the "
+            "#462/#483 graph-traversal arm enabled "
+            "(graph_traversal_relationship_fields=['prev_turn']).",
+            "Same BM25 lexical arm as the 'lexical' baseline, plus a graph arm "
+            "fused via RRF: CoOccurrenceField.propagate() + "
+            "graph_traversal.expand_relationships() over a self-referential "
+            "Relationship, seeded from the BM25 top-5, confidence/decay-"
+            "modulated hop admission.",
+            "EDGE CAVEAT: LoCoMo/LongMemEval ship no annotated entity graph, "
+            "so the harness builds CONVERSATIONAL-ADJACENCY edges at ingest "
+            "(turn i <-> turn i-1 within a session). This measures the "
+            "traversal mechanism over adjacency edges, NOT a semantic "
+            "association graph.",
+        ]
     elif retrieval_mode == "vector":
         mode_notes = [
             "Retrieval mode: vector — pure cosine over the EmbeddingField "
@@ -926,7 +942,7 @@ def main():
     )
     parser.add_argument(
         "--retrieval-mode",
-        choices=("lexical", "hybrid", "vector"),
+        choices=("lexical", "hybrid", "graph", "vector"),
         default="lexical",
         help=(
             "Retrieval mode (default: lexical). 'lexical' uses BM25 only and "
@@ -935,7 +951,22 @@ def main():
             "[benchmark] extra plus a one-time ~90MB model download; 'vector' "
             "uses the EmbeddingField only (same ~90MB all-MiniLM-L6-v2 download "
             "as hybrid) and ranks by pure cosine with no BM25/RRF — a "
-            "harness-local diagnostic that bypasses ContextAssembler."
+            "harness-local diagnostic that bypasses ContextAssembler. "
+            "'graph' is lexical plus the #462/#483 graph-traversal arm "
+            "(CoOccurrenceField + self-referential Relationship over "
+            "conversational-adjacency edges built at ingest)."
+        ),
+    )
+    parser.add_argument(
+        "--question-type",
+        default=None,
+        help=(
+            "Restrict the run to questions whose metadata question_type "
+            "matches this value (comma-separated for several). LoCoMo "
+            "categories: 1=multi-hop, 2=temporal, 3=open-domain, "
+            "4=single-hop, 5=adversarial. Filtering is applied to the full "
+            "parsed item list BEFORE --limit sampling, so --limit N yields N "
+            "questions of the requested type."
         ),
     )
     parser.add_argument(
@@ -1028,12 +1059,22 @@ def _run_benchmark(args, bench_db):
             "use --sample stride (default) or stratified for a real estimate."
         )
 
+    # --question-type restricts to a category slice (e.g. LoCoMo cat-1
+    # multi-hop, #484). The filter must run over the FULL parsed item list
+    # before sampling, otherwise --limit would sample the whole dataset first
+    # and leave only the handful of matching questions that survived.
+    wanted_types = None
+    if args.question_type:
+        wanted_types = {t.strip() for t in str(args.question_type).split(",")}
+
+    load_limit = None if wanted_types else args.limit
+
     # Select dataset adapter
     if args.dataset == "longmemeval-s":
         dataset_slug = "longmemeval_s"
         items = iter_longmemeval(
             fixture_path=args.fixture,
-            limit=args.limit,
+            limit=load_limit,
             sample=args.sample,
             seed=args.seed,
         )
@@ -1041,13 +1082,34 @@ def _run_benchmark(args, bench_db):
         dataset_slug = "locomo"
         items = iter_locomo(
             fixture_path=args.fixture,
-            limit=args.limit,
+            limit=load_limit,
             sample=args.sample,
             seed=args.seed,
         )
     else:
         logger.error("Unknown dataset: %s", args.dataset)
         return 1
+
+    if wanted_types:
+        from tests.benchmarks.datasets.sampling import sample_items
+
+        n_before = len(items)
+        items = [
+            it
+            for it in items
+            if str(it.metadata.get("question_type", "")) in wanted_types
+        ]
+        items = sample_items(items, args.limit, mode=args.sample, seed=args.seed)
+        logger.info(
+            "question_type filter %s: %d of %d items retained (limit=%s)",
+            sorted(wanted_types),
+            len(items),
+            n_before,
+            args.limit or "all",
+        )
+        if not items:
+            logger.error("No items matched --question-type %s", args.question_type)
+            return 1
 
     logger.info(
         "Starting benchmark: dataset=%s limit=%s sample=%s seed=%s "
