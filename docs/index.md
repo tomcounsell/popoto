@@ -1,19 +1,69 @@
-# Introduction
+# Popoto: Agent Memory on Redis and Valkey
 
-Popoto is an ORM for [Redis](https://redis.io) and [Valkey](https://valkey.io) databases.
-The familiar syntax makes it easy to use for [Django](https://www.djangoproject.com/) and [Flask](https://flask.palletsprojects.com/) developers.
+Memory for LLM agents, as primitives you program rather than a service you call.
+Records decay over time, confidence moves with evidence, associations form
+between things mentioned together, and a context assembler packs the result into
+a token budget before each turn.
 
-Redis and Valkey are storage systems that operate in RAM memory.
-Since they work at RAM memory level, reading/writing is typically 10-20x faster
-compared to PostgreSQL and other traditional relational databases.
+It runs in your process against a Redis or Valkey server you already operate.
+Your memory data stays in your database.
 
-!!! tip "Valkey Support"
-    Popoto fully supports Valkey, the open-source Redis fork. Simply point your `REDIS_URL` at a Valkey server - no code changes needed.
+```bash
+pip install popoto
+```
 
+Three packages, 8.7 MB of site-packages in a clean Python 3.12 venv, no API key.
+Point it at Redis or Valkey on `localhost:6379` and you are running.
 
-## Simple Example
+## Memory around an LLM turn
 
-Here's a complete example showing how to define a model, create an instance, and retrieve it.
+```python
+from popoto.recipes import SubconsciousMemory
+
+sm = SubconsciousMemory(agent_id="agent-1")
+
+messages, assembly = sm.inject_context(messages)   # pre-turn: retrieve + inject
+answer = call_your_llm(messages)                   # your LLM call
+sm.extract_memories(answer, importance=0.6)        # post-turn: save what was learned
+sm.report_outcomes(assembly, outcome="acted")      # feedback: reinforce what was used
+```
+
+`agent_id` is the only required argument. It partitions every index, so two
+agents sharing one Redis never see each other's memories. Leaving `model_class`
+unset selects `DefaultMemory`, which ships the benchmarked configuration: decay,
+confidence, a keyword index that makes retrieval respond to the query text, and
+an association graph.
+
+[Add memory to your agent](guides/agent-memory-quickstart.md) walks the same
+loop up level by level, from a single decaying field to the full assembly.
+
+## What is measured
+
+Every number here comes from a harness in this repository, with its result JSON
+committed alongside. Method, per-category tables, and the runs that came out
+badly are in [Benchmarks](benchmarks.md).
+
+- **Retrieval quality.** LongMemEval-S, 500 questions, hybrid BM25 + vector:
+  Recall@1 **0.894**, Recall@5 0.986, MRR 0.932. Read the
+  [granularity disclosure](benchmarks.md#retrieval-modes) before comparing this
+  to another system: Popoto ranks turns and scores hits at the session level.
+- **Retrieval latency.** p50 **3.0 ms at 1,000 records, 6.0 ms at 20,000**,
+  in-process on the lexical path, on one Apple-silicon machine. Absolute
+  milliseconds are machine-dependent; the shape of the curve is the durable
+  part.
+- **Install weight.** Three packages and no API key, verified in a clean venv.
+  Nothing here calls out to a hosted service.
+
+End-to-end judged answer accuracy trails retrieval quality by a wide margin.
+Finding the right evidence is far more reliable than answering from it, and the
+number, its interval, and its protocol are published in
+[Benchmarks](benchmarks.md).
+
+## Built on a full Redis and Valkey ORM
+
+Every memory primitive is a field on an ordinary model, so the same Django-like
+query syntax, indexes, TTLs, relationships, and pub/sub apply to memory records
+and to everything else in your keyspace.
 
 ```python
 from popoto import Model, KeyField, Field, SortedField, GeoField
@@ -28,66 +78,43 @@ Restaurant.create(
     name="Burger Palace",
     cuisine="American",
     rating=4.5,
-    location=(40.7128, -74.0060)
+    location=(40.7128, -74.0060),
 )
 
 restaurant = Restaurant.query.get(name="Burger Palace")
-
 print(f"{restaurant.name} serves {restaurant.cuisine} food.")
 # => 'Burger Palace serves American food.'
 ```
 
+Reading and writing happen at RAM speed. Popoto adds
+[async operations](async.md), [multi-tenancy](multi-tenancy.md) via KeyField
+namespacing, geometric distance search, timeseries for streaming data, Pandas
+and Xarray interoperation, [pub/sub](pubsub.md) for message queues, and
+[content and embedding fields](features/content-and-embedding-fields.md) for
+large content storage and semantic search.
 
-## Features
+Start at [Configuration](configuration.md) and
+[Models and Fields](fields.md) for the ORM half of the library.
 
-Popoto provides a fast, familiar interface for working with Redis and Valkey.
+## Valkey is a first-class target
 
- - **Full Redis and Valkey support** - works with both out of the box
- - very fast stores and queries
- - familiar syntax, similar to Django models
- - [Async operations](async.md) for asyncio-based applications
- - [Multi-tenancy](multi-tenancy.md) support via KeyField namespacing
- - Geometric distance search
- - Timeseries for streaming data
- - compatible with Pandas, Xarray for N-dimensional matrix search
- - [PubSub](pubsub.md) for message queues, streaming data processing
- - [Agent Memory](features/agent-memory.md) — programmable memory primitives for AI agents (decay, confidence, associations)
- - [Content and Embedding Fields](features/content-and-embedding-fields.md) — large content storage, vector embeddings, and semantic search
- - [PolicyCache Recipe](guides/policy-cache-recipe.md) — reference recipe composing all memory primitives into an RL-style action selection cache
- - [SubconsciousMemory Recipe](guides/subconscious-memory-recipe.md) — automatic memory injection and extraction around LLM turns
- - [TrajectoryMemory Recipe](guides/trajectory-memory-recipe.md) — fingerprint-keyed procedural memory: cluster completed task trajectories and recall "what worked last time"
- - [RAG Chatbot Recipe](guides/rag-chatbot-recipe.md) — build a retrieval-augmented chatbot using ContentField, EmbeddingField, and semantic_search
-
-**Popoto** is ideal for streaming data. The pub/sub module allows you to trigger state updates in real time.
-Currently being used in production for:
-
- - trigger buy/sell actions from streaming price data
- - robots sending each other messages for teamwork
- - compressing sensor data and training neural networks
-
-## Getting Started
-
-### Install
-
-Install Popoto using pip.
-
-```bash
-pip install popoto
-```
-
-[see Popoto on PyPi](https://pypi.org/project/popoto/)
-
-Set `REDIS_URL` in your deployed environment. This is optional on local development.
+Popoto uses core Redis data types and commands only, with no Redis-module
+dependency, and the suite carries explicit Valkey-safety tests asserting that
+indexes stay on plain types. Point `REDIS_URL` at a
+[Valkey](https://valkey.io) server and the same code runs.
 
 ```python
 REDIS_URL = "redis://HOST[:PORT]/DATABASE[?password=PASSWORD]"
 ```
 
-See [Configuration](configuration.md) for full connection options.
+`REDIS_URL` is optional in local development. See
+[Configuration](configuration.md) for the full connection options.
 
-### Enable Error Reporting (Optional)
+## Error reporting is opt-in
 
-Help improve Popoto by opting in to anonymous error reporting. When enabled, library-specific exceptions are sent to the Popoto maintainers via Sentry. This uses an isolated client that never interferes with your own Sentry setup.
+Library-specific exceptions can be reported to the maintainers through an
+isolated Sentry client that never touches your own Sentry setup. It is off
+until you turn it on.
 
 ```python
 import popoto
@@ -95,130 +122,17 @@ import popoto
 popoto.enable_error_reporting()
 ```
 
-Install with `pip install popoto[monitoring]` to include the `sentry-sdk` dependency, or skip this step entirely — Popoto works the same either way.
+Install `popoto[monitoring]` for the `sentry-sdk` dependency, or skip this
+entirely — Popoto works the same either way.
 
-### Define a Model
-
-Start by defining a model class. Models inherit from `popoto.Model` and define fields for the data you want to store.
-
-```python
-from popoto import Model, KeyField, Field, SortedField
-
-class Restaurant(Model):
-    name = KeyField()
-    cuisine = Field(type=str)
-    rating = SortedField(type=float)
-```
-
-See [Models and Fields](fields.md) for all Model and Field options, including
-[ContentField](fields.md#contentfield) for large content storage and
-[EmbeddingField](fields.md#embeddingfield) for vector embeddings and semantic search.
-
-See [Model Meta Options](meta.md) for configuration like default ordering and TTL.
-
-### Create Instances
-
-You can create instances by constructing the model and calling `save()`, or use the `create()` shortcut.
-
-```python
-restaurant = Restaurant(name="Burger Palace")
-restaurant.cuisine = "American"
-restaurant.rating = 4.5
-restaurant.save()
-
-# single line command
-restaurant = Restaurant.create(name="Burger Palace", cuisine="American", rating=4.5)
-```
-
-### Retrieve Instances
-
-Use the query interface to retrieve instances by their key fields.
-
-```python
-restaurant = Restaurant.query.get(name="Burger Palace")
-print(f"{restaurant.name} serves {restaurant.cuisine} food.")
-# => 'Burger Palace serves American food.'
-```
-
-See [Making Queries](query.md) for all Query and Filter options.
-
-### Delete Instances
-
-Delete an instance by calling its `delete()` method.
-
-```python
-restaurant.delete()
-```
-
-To delete all instances of a model, use `delete_all()`:
-
-```python
-# Delete all restaurants and clean up all indexes
-Restaurant.delete_all()
-
-# Delete multiple models (delete referencing models first)
-for model in [Order, MenuItem, Restaurant]:
-    model.delete_all()
-```
-
-!!! warning
-    Always use Popoto's delete methods instead of Redis `DEL` or `FLUSHDB`. Popoto maintains
-    secondary indexes (sorted sets, geo sets, unique constraints) that must be cleaned up
-    properly. See [Bulk Operations](recipes.md#bulk-operations) for details.
-
-### Async Operations
-
-All operations have async counterparts for use in asyncio applications.
-
-```python
-import asyncio
-
-async def main():
-    restaurant = await Restaurant.async_create(
-        name="Burger Palace", cuisine="American", rating=4.5
-    )
-    loaded = await Restaurant.query.async_get(name="Burger Palace")
-    await loaded.async_delete()
-
-asyncio.run(main())
-```
-
-See [Async Operations](async.md) for complete async API documentation and examples.
-
-### Semantic Search
-
-Popoto supports vector embeddings and semantic search for AI-powered retrieval.
-Store large content on the filesystem with `ContentField`, generate embeddings
-automatically with `EmbeddingField`, and search by meaning with `semantic_search()`.
-
-```python
-import popoto
-from popoto import Model, KeyField, ContentField, EmbeddingField
-from popoto.embeddings.voyage import VoyageProvider
-
-# Configure once at startup
-popoto.configure(
-    embedding_provider=VoyageProvider(api_key="your-key"),
-)
-
-class Document(Model):
-    title = KeyField()
-    body = ContentField()
-    embedding = EmbeddingField(source="body")
-
-Document.create(title="Q4 Report", body="Revenue exceeded projections by 12%...")
-
-# Search by meaning — returns documents ranked by cosine similarity
-results = Document.query.semantic_search("financial performance", limit=5)
-```
-
-Install an embedding provider extra: `pip install popoto[voyage]` or `pip install popoto[openai]`.
-
-See [Content and Embedding Fields](features/content-and-embedding-fields.md) for the full guide, and [Configuration](configuration.md#content-and-embedding-configuration) for setup options.
+---
 
 ![](/static/popoto.png)
 
-Popoto gets its name from the [Maui dolphin](https://en.wikipedia.org/wiki/M%C4%81ui_dolphin) subspecies - the world's smallest dolphin subspecies.
-Because dolphins are fast moving, agile, and work together in social groups. In the same way, Popoto wraps Redis and Valkey to make it easy to manage streaming timeseries data.
+Popoto is named after the [Māui dolphin](https://en.wikipedia.org/wiki/M%C4%81ui_dolphin),
+the world's smallest dolphin subspecies. Dolphins are fast, agile, and work in
+social groups. Popoto wraps Redis and Valkey in the same spirit.
 
-For help building applications with Python/Redis, contact [Tom Counsell](https://tomcounsell.com) on [LinkedIn.com/in/tomcounsell](https://linkedin.com/in/tomcounsell)
+For help building applications with Python and Redis, contact
+[Tom Counsell](https://tomcounsell.com) on
+[LinkedIn](https://linkedin.com/in/tomcounsell).

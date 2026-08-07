@@ -172,9 +172,21 @@ By default (no `extraction_provider` passed to the constructor):
 2. Filters out sentences shorter than `extraction_min_length` (default 10 chars)
 3. Saves each sentence as a new Memory record with the specified importance
 
-That default is the `HeuristicExtractionProvider`. It is zero-dependency and stdlib-only, and it is measurably weaker than storing turns as they arrive -- see [the extraction evaluation](../features/llm-memory-extraction.md#evaluation-extraction-lost-to-raw-ingestion) before turning any extraction path on.
+!!! warning "The measured-best write path is the raw turn"
+    Every rewrite-before-store path that has been measured lost to storing the
+    turn as it arrived. On the judged-answer harness, raw turn ingestion scores
+    **0.3636** over 77 items; the `HeuristicExtractionProvider` default scores
+    **0.2078**, and the Claude extraction arms score lower still, in proportion
+    to how many turns they discard. Full table, both failure mechanisms, and the
+    scope of the measurement:
+    [LLM Memory Extraction](../features/llm-memory-extraction.md#evaluation-extraction-lost-to-raw-ingestion).
 
-Extraction is now pluggable via a dedicated provider interface -- see the [LLM Memory Extraction](../features/llm-memory-extraction.md) feature doc for the full picture. In short:
+    Passing a longer `response_text` straight through — one record per turn,
+    no splitting — is the configuration those benchmarks ran. Reach for an
+    extraction provider when your own corpus gives you a reason to, and measure
+    it there.
+
+Extraction is pluggable via a dedicated provider interface -- see the [LLM Memory Extraction](../features/llm-memory-extraction.md) feature doc for the full picture. In short:
 
 - **`extraction_provider`** (default `None` -> `HeuristicExtractionProvider`): pass an `AbstractExtractionProvider` instance (e.g. `ClaudeExtractionProvider` from `popoto.extraction.claude`, requires `pip install popoto[anthropic]`) for LLM-based extraction that also returns entities, an importance opinion, and a confidence opinion per fact.
 - **`confidence_field`** (default `None`, no-op unless set): name of a `ConfidenceField` on `model_class`. When set and a fact carries a confidence opinion, `extract_memories()` seeds that field via `ConfidenceField.update_confidence()`. Because `ConfidenceField` has no per-instance "set initial value" API, this is a *blend* with the field's `initial_confidence` prior, not a hard override -- see [the confidence blend nuance](../features/llm-memory-extraction.md#the-confidence-blend-nuance) before assuming the stored value equals the extracted confidence.
@@ -274,6 +286,7 @@ The default implementation uses the last user message as the query cue. For more
 ## See Also
 
 - [Agent Memory Quickstart](agent-memory-quickstart.md) -- progressive adoption guide
+- [Query-Blind Retrieval](query-blind-retrieval.md) -- when composite ranking is right, and when it costs you the answer
 - [LLM Memory Extraction](../features/llm-memory-extraction.md) -- pluggable extraction providers, entities, importance/confidence opinions
 - [ContextAssembler](../features/context-assembler.md) -- retrieval-to-injection bridge
 - [PolicyCache Recipe](policy-cache-recipe.md) -- RL-style learned action selection

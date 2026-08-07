@@ -1,10 +1,12 @@
 # Features Index
 
-Agent-memory primitives and recipes shipped in Popoto.
+Agent-memory primitives and composed layers shipped in Popoto. Start at
+[Agent Memory](agent-memory.md) for the map of how they fit together, or at the
+[Quickstart](../guides/agent-memory-quickstart.md) to build one.
 
 | Feature | Description | Status |
 |---------|-------------|--------|
-| [Agent Memory](agent-memory.md) | Overview of the 14-primitive agent-memory system | Stable |
+| [Agent Memory](agent-memory.md) | The map: 14 primitives, the layers composed on them, and where each reference lives | Stable |
 | [CoOccurrenceField](co-occurrence-field.md) | Associative co-occurrence graph for candidate expansion | Stable |
 | [CompositeScoreQuery](composite-score-query.md) | Multi-factor ranked retrieval across sorted indexes | Stable |
 | [ConfidenceField](confidence-field.md) | Capped-evidence certainty tracking with corroborate/contradict updates | Stable |

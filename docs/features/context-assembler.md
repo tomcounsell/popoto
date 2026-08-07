@@ -387,7 +387,7 @@ annotates the decision. Enabling the gate on a model without a
 `ConfidenceField`, or with an invalid `confidence_gate_mode`, raises
 `QueryException` at construction.
 
-See [Agent Memory overview → Confidence Gate](agent-memory.md#confidence-gate)
+See [Confidence Gate](#confidence-gate)
 for the full `metadata["gate"]` shape, the fault-tolerant `get_confidence()`
 failure path, and the no-default policy on `EXPERIMENTAL_CONFIDENCE_GATE_THRESHOLD`.
 

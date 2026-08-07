@@ -416,7 +416,7 @@ applicable to this dataset; refusal capability is measured separately.
 
 `ContextAssembler` carries an opt-in confidence gate
 (`confidence_gate_threshold` / `confidence_gate_mode`; see
-[ContextAssembler](features/agent-memory.md#contextassembler) for the API).
+[ContextAssembler](features/context-assembler.md#confidence-gate) for the API).
 `tests/benchmarks/test_confidence_gate_refusal.py` measures how well the gate
 identifies genuinely-unanswerable questions on the same category-5 slice
 audited above.

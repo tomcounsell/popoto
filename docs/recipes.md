@@ -586,3 +586,105 @@ python -m tests.benchmarks.run_sweeps --tier 5
 The sweep grid and the metrics it reports are described in
 [Parametric Sweep](features/parametric-sweep.md).
 
+## StreamConsumer
+
+A Redis Streams consumer group framework for background processing. Manages consumer group creation, batch reading, acknowledgment, dead-letter handling, and pending entry recovery via XAUTOCLAIM.
+
+### Basic usage
+
+```python
+from popoto.streams import StreamConsumer
+
+async def my_handler(entries):
+    """Process a batch of stream entries."""
+    for entry_id, fields in entries:
+        print(f"Processing {entry_id}: {fields}")
+
+consumer = StreamConsumer(
+    stream_key="stream:memory_mutations:agent_1",
+    group_name="compaction",
+    consumer_name="worker-1",
+    handler=my_handler,
+)
+
+# Blocking loop — runs until stopped
+await consumer.run()
+
+# Or process one batch (useful for testing)
+count = await consumer.process_batch()
+```
+
+Sync wrappers are available for scripts without an event loop:
+
+```python
+consumer.run_sync()              # blocking loop
+count = consumer.process_batch_sync()  # single batch
+```
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `stream_key` | `str` | *required* | Redis stream key (e.g., `"stream:memory_mutations"`). |
+| `group_name` | `str` | *required* | Consumer group name for XREADGROUP. |
+| `consumer_name` | `str` | *required* | This consumer's name within the group. |
+| `handler` | `Callable` | *required* | Async function receiving `list[(entry_id, fields_dict)]`. All values decoded to str. |
+| `batch_size` | `int` | `50` | XREADGROUP COUNT — entries per batch. |
+| `block_ms` | `int` | `5000` | XREADGROUP BLOCK timeout in milliseconds. |
+| `max_retries` | `int` | `3` | Handler invocation threshold before dead-lettering. |
+| `claim_timeout_ms` | `int` | `180_000` | XAUTOCLAIM idle timeout (3 minutes). Entries idle longer are reclaimed. |
+| `dead_letter_max_length` | `int` | `None` | Optional MAXLEN for the dead-letter stream. |
+
+### Dead-letter handling
+
+Entries that fail processing more than `max_retries` times (tracked via handler invocation counter) are moved to `dead:{stream_key}` with metadata:
+
+| Field | Description |
+|-------|-------------|
+| `original_stream` | Source stream key |
+| `original_id` | Original entry ID |
+| `failure_count` | Number of delivery attempts |
+| `last_error` | Error description |
+| `dead_letter_ts` | Timestamp when dead-lettered |
+
+### XAUTOCLAIM recovery
+
+On each `process_batch()` call, the consumer checks for pending entries from crashed consumers. Entries idle longer than `claim_timeout_ms` are reclaimed via `XAUTOCLAIM` and re-delivered through the full decode → handler → XACK pipeline, restoring at-least-once delivery semantics. Handlers must be idempotent because a reclaimed entry may have been partially processed by the crashed consumer. Entries exceeding `max_retries` handler invocations are dead-lettered instead.
+
+`process_batch()` returns the total number of entries handled in the cycle — both new entries and reclaimed entries are counted (new + reclaimed).
+
+The `failure_count` field in dead-letter entries records the server-side delivery count (XPENDING `times_delivered`) at the time the entry was dead-lettered. This value may exceed the number of handler invocations because XAUTOCLAIM claim cycles increment `times_delivered` independently of handler execution.
+
+### Graceful shutdown
+
+```python
+consumer.stop()  # exits run() after current batch completes
+```
+
+### EventStreamMixin synergy
+
+StreamConsumer reads the streams that `EventStreamMixin` writes. No import dependency — it operates on raw stream keys:
+
+```python
+from popoto import Model, EventStreamMixin, UniqueKeyField, StringField
+from popoto.streams import StreamConsumer
+
+class Memory(EventStreamMixin, Model):
+    _stream_name = "memory_mutations"
+    key = UniqueKeyField()
+    content = StringField()
+
+# Producer: saves write to stream:memory_mutations
+Memory(key="fact1", content="hello").save()
+
+# Consumer: reads from the same stream
+consumer = StreamConsumer(
+    stream_key="stream:memory_mutations",
+    group_name="compaction",
+    consumer_name="worker-1",
+    handler=my_handler,
+)
+count = consumer.process_batch_sync()
+```
+
+This is generic infrastructure — the processing logic is application code. One use case: pattern crystallization from raw events into `PolicyCache` entries.

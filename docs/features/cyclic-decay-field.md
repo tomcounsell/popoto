@@ -90,7 +90,7 @@ directive.strengthen_cycle("relevance", factor=1.5)
 directive.weaken_cycle("relevance", factor=0.6)
 ```
 
-These methods are used internally by [ObservationProtocol](agent-memory.md#observationprotocol) to adjust cycles based on agent behavior outcomes:
+These methods are used internally by [ObservationProtocol](observation-protocol.md) to adjust cycles based on agent behavior outcomes:
 
 - **acted** outcome calls `strengthen_cycle(factor=1.2)` — reinforcing cycles that led to useful memories
 - **dismissed** outcome calls `weaken_cycle(factor=0.8)` — dampening cycles for rejected memories
@@ -176,4 +176,4 @@ perspective; `ConfidenceField` remains its sole writer.
 
 ## Integration with ObservationProtocol
 
-When used with [ObservationProtocol](agent-memory.md#observationprotocol), cycle amplitudes are adjusted automatically based on how the agent responds to surfaced memories. See [Agent Memory — Four outcomes](agent-memory.md#five-outcomes) for the full effects table.
+When used with [ObservationProtocol](observation-protocol.md), cycle amplitudes are adjusted automatically based on how the agent responds to surfaced memories. See [ObservationProtocol — Effects matrix](observation-protocol.md#effects-matrix) for the full effects table.

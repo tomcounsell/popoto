@@ -1,51 +1,64 @@
 # Popoto
 
-> Python Redis/Valkey ORM with Django-like syntax. Provides agent-memory
-> primitives (decay, confidence, co-occurrence, prediction ledger) plus
-> standard model/query/pubsub features. Works with both Redis and Valkey
-> servers.
+> Agent memory on Redis and Valkey, as primitives you program rather than a
+> service you call. Records decay over time, confidence moves with evidence,
+> associations form between co-mentioned things, and a context assembler packs
+> the result into a token budget before each LLM turn. It runs in your process
+> against a Redis or Valkey server you already operate: three packages, no API
+> key, no hosted service. Underneath it is a full Redis/Valkey ORM with
+> Django-like model syntax, so every memory primitive is a field on an ordinary
+> model.
 
-## Documentation
+## Start here
 
-- [Home](https://popoto.io/): Overview and quickstart
+- [Home](https://popoto.io/): the memory loop in six lines, and what is measured
+- [Agent Memory Quickstart](https://popoto.io/guides/agent-memory-quickstart/): six progressive levels, from one decaying field to full assembly
+- [SubconsciousMemory Recipe](https://popoto.io/guides/subconscious-memory-recipe/): inject before the LLM call, extract after, report outcomes
+- [Query-Blind Retrieval](https://popoto.io/guides/query-blind-retrieval/): when composite ranking is right and when it silently costs you the answer
+- [LLM Memory Extraction](https://popoto.io/features/llm-memory-extraction/): pluggable extraction providers, and the measurement showing extraction lost to raw ingestion
+
+## Understand and tune
+
+- [Agent Memory Overview](https://popoto.io/features/agent-memory/): the 14 primitives, the layers composed on them, and how they fit together
+- [DecayingSortedField](https://popoto.io/features/decaying-sorted-field/): time-decayed scoring, confidence-modulated decay
+- [CyclicDecayField](https://popoto.io/features/cyclic-decay-field/): temporal rhythms and homeostatic pressure
+- [ConfidenceField](https://popoto.io/features/confidence-field/): capped-evidence Bayesian certainty
+- [CoOccurrenceField](https://popoto.io/features/co-occurrence-field/): weighted association edges and BFS propagation
+- [Hybrid Retrieval (BM25 + RRF)](https://popoto.io/features/hybrid-retrieval/): keyword, vector, and graph signals fused by weighted Reciprocal Rank Fusion
+- [ContextAssembler](https://popoto.io/features/context-assembler/): retrieval modes, token budgets, confidence gate, graph traversal
+- [Composite Score Query](https://popoto.io/features/composite-score-query/): multi-signal server-side ranking
+- [ExistenceFilter](https://popoto.io/features/existence-filter/): Bloom-style membership pre-check
+- [ObservationProtocol](https://popoto.io/features/observation-protocol/): acted, dismissed, deferred, contradicted, used
+- [PredictionLedger](https://popoto.io/features/prediction-ledger/): predictions, outcomes, and error feedback into confidence
+- [PolicyCache](https://popoto.io/features/policy-cache/): reinforcement-learning-style action selection
+- [Metacognitive Layer](https://popoto.io/features/metacognitive-layer/): retrieval-quality scoring and the adaptive assembler
+- [Tuning Magic Numbers](https://popoto.io/guides/tuning-magic-numbers/): every behavioral constant and its empirical basis
+- [Parametric Sweep](https://popoto.io/features/parametric-sweep/): the harness that tunes those constants
+
+## Benchmarks and method
+
+- [Benchmarks Overview](https://popoto.io/benchmarks/results/): result pages generated at build time from committed artifacts
+- [Method and How-To](https://popoto.io/benchmarks/): every harness, the pinned judge protocol, the granularity disclosures, and the results that came out badly
+
+## Redis and Valkey ORM
+
 - [Configuration](https://popoto.io/configuration/): REDIS_URL, defaults, runtime knobs
-- [Models and Fields](https://popoto.io/fields/): Defining models, available field types
+- [Models and Fields](https://popoto.io/fields/): every field type, mixin, and model method
+- [Making Queries](https://popoto.io/query/): filtering, get, get_many, semantic_search
 - [Model Meta Options](https://popoto.io/meta/): `class Meta` configuration
-- [TTL (Time-to-Live)](https://popoto.io/ttl/): Key expiration
-- [Indexed Fields](https://popoto.io/indexed_fields/): Sorted, unique, geo indexes
-- [Making Queries](https://popoto.io/query/): Filtering, get, get_many
-- [Relationship Field](https://popoto.io/relationship/): Linking models
-- [Multi-Tenancy](https://popoto.io/multi-tenancy/): Tenant isolation patterns
-- [Async Operations](https://popoto.io/async/): async/await support
-- [PubSub](https://popoto.io/pubsub/): Publisher/Subscriber
-
-## Agent Memory
-
-- [Overview](https://popoto.io/features/agent-memory/): Memory primitives at a glance
-- [DecayingSortedField](https://popoto.io/features/decaying-sorted-field/): Time-decayed scoring
-- [CyclicDecayField](https://popoto.io/features/cyclic-decay-field/): Periodic re-weighting
-- [ConfidenceField](https://popoto.io/features/confidence-field/): Bayesian confidence accumulator
-- [CoOccurrenceField](https://popoto.io/features/co-occurrence-field/): Pairwise co-occurrence counts
-- [ExistenceFilter](https://popoto.io/features/existence-filter/): Probabilistic membership
-- [ObservationProtocol](https://popoto.io/features/observation-protocol/): Standardized observation ingestion
-- [PredictionLedger](https://popoto.io/features/prediction-ledger/): Prediction tracking and feedback
-- [Composite Score Query](https://popoto.io/features/composite-score-query/): Multi-signal recall
-- [PolicyCache](https://popoto.io/features/policy-cache/): Cached policy decisions
-- [ContextAssembler](https://popoto.io/features/context-assembler/): Token-budgeted context packing
-- [Hybrid Retrieval (BM25 + RRF)](https://popoto.io/features/hybrid-retrieval/): Lexical + dense fusion
-- [Metacognitive Layer](https://popoto.io/features/metacognitive-layer/): Self-monitoring primitives
-
-## Guides
-
-- [Agent Memory Quickstart](https://popoto.io/guides/agent-memory-quickstart/): First memory model in 10 minutes
-- [Tuning Magic Numbers](https://popoto.io/guides/tuning-magic-numbers/): When and how to override defaults
-- [Policy Cache Recipe](https://popoto.io/guides/policy-cache-recipe/): End-to-end PolicyCache walkthrough
-- [Subconscious Memory Recipe](https://popoto.io/guides/subconscious-memory-recipe/): Background memory consolidation
+- [TTL (Time-to-Live)](https://popoto.io/ttl/): key expiration
+- [Indexed Fields](https://popoto.io/indexed_fields/): sorted, unique, and geo indexes
+- [Relationship Field](https://popoto.io/relationship/): linking models
+- [Multi-Tenancy](https://popoto.io/multi-tenancy/): tenant isolation via KeyField namespacing
+- [Async Operations](https://popoto.io/async/): async/await support across the API
+- [PubSub](https://popoto.io/pubsub/): publisher/subscriber for streaming updates
+- [Content & Embeddings](https://popoto.io/features/content-and-embedding-fields/): filesystem content storage and vector embeddings
+- [Recipes](https://popoto.io/recipes/): bulk operations, index maintenance, MemoryLifecycle, StreamConsumer
 
 ## API Reference
 
-- [Full API reference](https://popoto.io/reference/): Auto-generated from docstrings
-- [llms-full.txt](https://popoto.io/llms-full.txt): Single-file ingest of hand-written docs
+- [Full API reference](https://popoto.io/reference/): auto-generated from docstrings
+- [llms-full.txt](https://popoto.io/llms-full.txt): single-file ingest of the hand-written docs
 
 ## External
 
