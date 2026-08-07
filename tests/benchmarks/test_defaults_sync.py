@@ -98,6 +98,10 @@ class TestDefaultsSync:
             # in the assembler tag-scoping path (context_assembler.py); no
             # module-level alias exists, so not in MODULE_CONSTANTS.
             "TAG_SCOPING_ENABLED",
+            # Sorted-range bound over-fetch margin — read directly from
+            # Defaults in the query path (models/query.py); no module-level
+            # alias exists, so not in MODULE_CONSTANTS.
+            "SORTED_PUSHDOWN_OVERFETCH_MARGIN",
         }
 
         expected_in_module = defaults_attrs - field_kwargs_and_class_attrs

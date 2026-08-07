@@ -52,14 +52,16 @@ See Also:
 
 import logging
 from asyncio import to_thread
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from .db_key import DB_key
 
 if TYPE_CHECKING:
     from .base import Model, ModelOptions
+    from ..fields.sorted_field_mixin import SortedFieldMixin
 
 from ..redis_db import POPOTO_REDIS_DB, get_async_redis_db
+from ..fields.constants import Defaults
 
 logger = logging.getLogger("POPOTO.Query")
 
@@ -1602,6 +1604,12 @@ class Query:
     model_class: "Model"
     options: "ModelOptions"
 
+    # Sorted-range bound bookkeeping, reset per query by filter_for_keys_set.
+    _pushdown_limit: Optional[int]
+    _pushdown_requested: int
+    _pushdown_fetched: int
+    _pushdown_partition: "dict[str, Any]"
+
     def __init__(self, model_class: "Model"):
         """
         Initialize a Query instance bound to a specific Model class.
@@ -1883,6 +1891,115 @@ class Query:
             **kwargs,
         )
 
+    def _bound_keys_before_hydration(
+        self,
+        db_keys: Any,
+        q_objects: "Optional[list[Any]]",
+        allow_pushdown: bool,
+        kwargs: "dict[str, Any]",
+    ) -> Any:
+        """Slice the sorted key list to ``limit`` before anything is loaded.
+
+        Returns ``db_keys`` untouched unless the query qualifies. The guard
+        mirrors ``_sorted_pushdown_args``: no Q objects, no pending client-side
+        filter, ordering supplied by the sorted field, and a positive int limit.
+
+        Kept separate from the range-read bound because it applies in a strictly
+        wider set of cases. A second indexed predicate blocks the Redis-side
+        bound, since the sorted set alone cannot honor the other index, but not
+        this one: the intersection is already reflected in _sorted_field_order.
+        """
+        if q_objects or not allow_pushdown:
+            return db_keys
+        if getattr(self, "_pending_client_filters", None):
+            return db_keys
+        if getattr(self, "_pushdown_limit", None):
+            return db_keys  # the range read was already bounded, and in order
+        ordered = getattr(self, "_sorted_field_order", None)
+        if not ordered:
+            return db_keys
+
+        limit = kwargs.get("limit", None)
+        if not isinstance(limit, int) or isinstance(limit, bool) or limit <= 0:
+            return db_keys
+
+        order_by = kwargs.get("order_by", None) or self.model_class._meta.order_by
+        desc = False
+        if order_by:
+            if not isinstance(order_by, str):
+                return db_keys
+            desc = order_by.startswith("-")
+            if (order_by[1:] if desc else order_by) != self._sorted_field_name:
+                return db_keys
+
+        # _sorted_field_order is ascending by score; a descending query wants
+        # the tail, so reverse before slicing rather than after.
+        fetch = limit + Defaults.SORTED_PUSHDOWN_OVERFETCH_MARGIN
+        bounded = list(reversed(ordered))[:fetch] if desc else list(ordered)[:fetch]
+        self._pushdown_limit = limit
+        self._pushdown_requested = fetch
+        self._pushdown_fetched = len(bounded)
+        return bounded
+
+    def _sorted_pushdown_args(
+        self,
+        field_name: str,
+        field: "SortedFieldMixin",
+        unemployed_params: "set[str]",
+        kwargs: "dict[str, Any]",
+    ) -> "tuple[Optional[int], bool]":
+        """Decide whether ``limit`` may be pushed into this field's range read.
+
+        Returns ``(limit, desc)``, with ``limit`` None when the query does not
+        qualify and the caller must read the full range as before.
+
+        A bound applied inside the sorted-set read lands before hydration and
+        before every later stage of the pipeline, so it is only sound when
+        nothing downstream can drop a row. Each condition below removes one way
+        that could happen:
+
+        1. ``_pushdown_allowed`` — the caller is ``_execute_filter``'s plain
+           path. Q objects union results from several ``filter_for_keys_set``
+           calls, which is why they already null ``_sorted_field_order``.
+        2. This field supplies the ordering (it is the first sorted field).
+        3. ``limit`` is a positive int.
+        4. ``order_by`` is absent or names this same field. Ordering by anything
+           else means score order is not result order, so the top N by score is
+           not the answer.
+        5. No filter param survives this field and its partitions. A leftover
+           param becomes either another index intersection or a client-side
+           filter on an unindexed field, and both can eliminate rows after the
+           bound has already been spent. This is the condition that would
+           silently return short results if it were dropped.
+        """
+        if not getattr(self, "_pushdown_allowed", False):
+            return None, False
+        if self._sorted_field_order is not None:
+            return None, False
+
+        limit = kwargs.get("limit", None)
+        if not isinstance(limit, int) or isinstance(limit, bool) or limit <= 0:
+            return None, False
+
+        order_by = kwargs.get("order_by", None) or self.model_class._meta.order_by
+        desc = False
+        if order_by:
+            if not isinstance(order_by, str):
+                return None, False
+            desc = order_by.startswith("-")
+            if (order_by[1:] if desc else order_by) != field_name:
+                return None, False
+
+        remaining = (
+            set(unemployed_params)
+            - set(self.options.filter_query_params_by_field[field_name])
+            - set(field.partition_by)
+        )
+        if remaining:
+            return None, False
+
+        return limit, desc
+
     def filter_for_keys_set(self, **kwargs) -> set:
         """
         Execute filter logic and return matching Redis keys (without loading objects).
@@ -1926,6 +2043,10 @@ class Query:
         self._sorted_field_order = None
         self._sorted_field_name = None
         self._pending_client_filters = {}
+        self._pushdown_limit = None
+        self._pushdown_requested = 0
+        self._pushdown_fetched = 0
+        self._pushdown_partition = {}
         yet_employed_kwargs_set = set(kwargs.keys()).difference(
             {"limit", "order_by", "values"}
         )
@@ -1953,8 +2074,24 @@ class Query:
                     if k in kwargs
                 }
             )
+            push_limit, push_desc = self._sorted_pushdown_args(
+                field_name, field, yet_employed_kwargs_set, kwargs
+            )
+            # Ask for a margin beyond `limit`: orphaned index members hydrate to
+            # nothing and would otherwise come off the result count, costing a
+            # second round trip to discover. Only sorted-set fields accept the
+            # bound; GeoField and friends share this loop and take plain query
+            # params only.
+            push_fetch = (
+                push_limit + Defaults.SORTED_PUSHDOWN_OVERFETCH_MARGIN
+                if push_limit
+                else None
+            )
+            push_kwargs = (
+                {"_limit": push_fetch, "_desc": push_desc} if push_limit else {}
+            )
             result = field.__class__.filter_query(
-                self.model_class, field_name, **kwargs
+                self.model_class, field_name, **push_kwargs, **kwargs
             )
             # Handle tuple return from GeoField with distances
             if isinstance(result, tuple) and len(result) == 3:
@@ -1967,6 +2104,13 @@ class Query:
                 if self._sorted_field_order is None:
                     self._sorted_field_order = result
                     self._sorted_field_name = field_name
+                if push_limit:
+                    self._pushdown_limit = push_limit
+                    self._pushdown_requested = int(push_fetch or 0)
+                    self._pushdown_fetched = len(result)
+                    self._pushdown_partition = {
+                        name: kwargs.get(name) for name in field.partition_by
+                    }
                 db_keys_sets.append(set(result))  # convert to set for intersection
             yet_employed_kwargs_set = yet_employed_kwargs_set.difference(
                 self.options.filter_query_params_by_field[field_name]
@@ -2373,7 +2517,11 @@ class Query:
         )
 
     def _execute_filter(
-        self, q_objects: list = None, _no_track: bool = False, **kwargs
+        self,
+        q_objects: list = None,
+        _no_track: bool = False,
+        _allow_pushdown: bool = True,
+        **kwargs,
     ) -> list:
         """Internal method to execute filter logic and return results.
 
@@ -2383,6 +2531,9 @@ class Query:
         Args:
             q_objects: List of Q objects for complex query expressions
             _no_track: If True, suppress on_read() for AccessTrackerMixin models
+            _allow_pushdown: If False, read the full sorted range even when the
+                query qualifies for a bounded read. Set on the one retry that
+                stale index members can force.
             **kwargs: Filter parameters and result modifiers
 
         Returns:
@@ -2394,13 +2545,18 @@ class Query:
 
         # Use _evaluate_filter_args if Q objects present, otherwise filter_for_keys_set
         if q_objects:
+            self._pushdown_allowed = False
             db_keys_set = self._evaluate_filter_args(q_objects, kwargs)
             # Q objects combine results from multiple filter_for_keys_set calls,
             # so _sorted_field_order is unreliable — clear it
             self._sorted_field_order = None
             self._sorted_field_name = None
         else:
-            db_keys_set = self.filter_for_keys_set(**kwargs)
+            self._pushdown_allowed = _allow_pushdown
+            try:
+                db_keys_set = self.filter_for_keys_set(**kwargs)
+            finally:
+                self._pushdown_allowed = False
         if not len(db_keys_set):
             return []
 
@@ -2420,6 +2576,17 @@ class Query:
         if sorted_field_order and not explicit_order_by:
             db_keys_set = sorted_field_order  # Use ordered list instead of set
 
+        # Bound the key list before hydration when the range read could not be
+        # bounded itself. filter_for_keys_set has already intersected
+        # _sorted_field_order down to the keys every other index agreed on, so
+        # the AND happened without loading anything and slicing here is sound
+        # even with other indexed filters in play. This is the cut that matters:
+        # it takes hydration from every key in the partition to `limit` HGETALLs.
+        # The Redis-side bound saves transferring the key list, a smaller win.
+        db_keys_set = self._bound_keys_before_hydration(
+            db_keys_set, q_objects, _allow_pushdown, kwargs
+        )
+
         objects = Query.get_many_objects(
             self.model_class,
             db_keys_set,
@@ -2427,6 +2594,52 @@ class Query:
             limit=kwargs.get("limit", None),
             values=kwargs.get("values", None),
         )
+
+        # get_many_objects silently drops keys whose hash is gone, so a bounded
+        # read can spend its budget on members that hydrate to nothing. The
+        # over-fetch margin absorbs the ordinary case in the same round trip.
+        # Coming up short despite a full page is the signal that it did not; a
+        # partial page means the range was exhausted and the count is honest.
+        # A short bounded result is a wrong answer rather than a slow one, so
+        # neither branch below is allowed to pass silently.
+        pushdown_limit: int = getattr(self, "_pushdown_limit", None) or 0
+        short = pushdown_limit > 0 and len(objects) < pushdown_limit
+        exhausted = self._pushdown_fetched < self._pushdown_requested
+        orphans = self._pushdown_fetched - len(objects)
+        partition = (
+            f", partition {self._pushdown_partition}"
+            if self._pushdown_partition
+            else ""
+        )
+        if _allow_pushdown and short and not exhausted:
+            logger.warning(
+                f"{self.model_class.__name__}: bounded sorted read on "
+                f"{self._sorted_field_name} returned {len(objects)} of "
+                f"{pushdown_limit} requested ({self._pushdown_fetched} index "
+                f"members read, {orphans} hydrated to nothing{partition}). "
+                f"Re-reading the full range so the answer is correct. Orphaned "
+                f"index members are the cause, and re-reading only tolerates "
+                f"them: clear them with "
+                f"{self.model_class.__name__}.repair_indexes(), or inspect "
+                f"with {self.model_class.__name__}.query.keys(clean=True)."
+            )
+            return self._execute_filter(
+                q_objects=q_objects,
+                _no_track=_no_track,
+                _allow_pushdown=False,
+                **kwargs,
+            )
+        if short and orphans > 0:
+            # The range ran out, so this is as complete as the index allows.
+            # Still short, and still worth saying out loud.
+            logger.warning(
+                f"{self.model_class.__name__}: sorted read on "
+                f"{self._sorted_field_name} returned {len(objects)} rows of "
+                f"{pushdown_limit} requested; {orphans} index members hydrated "
+                f"to nothing{partition}. The range is exhausted, so the result "
+                f"is short rather than wrong. Clear the orphans with "
+                f"{self.model_class.__name__}.repair_indexes()."
+            )
 
         # Apply client-side filters for plain (unindexed) fields
         client_filters = getattr(self, "_pending_client_filters", {})
