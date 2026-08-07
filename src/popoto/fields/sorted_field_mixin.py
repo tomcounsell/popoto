@@ -373,6 +373,14 @@ class SortedFieldMixin:
         elif field.type is datetime.date:
             return field_value.toordinal()
         elif field.type is datetime.datetime:
+            # A score has to be a pure function of the stored value. The hash
+            # encoding carries no offset (see #521), so a value that arrives
+            # fresh is aware while the same value read back is naive, and
+            # `.timestamp()` reads a naive datetime as LOCAL time. Left alone,
+            # saving a reloaded row re-scores it by the machine's UTC offset
+            # and the index disagrees with the data it indexes (#519).
+            if field_value.tzinfo is None:
+                return field_value.replace(tzinfo=datetime.timezone.utc).timestamp()
             return field_value.timestamp()
         elif field.type is datetime.time:
             return field_value.timestamp()
