@@ -4842,6 +4842,18 @@ items and query by price range:</p>
 <a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a><span class="n">top_restaurants</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">rating__gte</span><span class="o">=</span><span class="mf">4.0</span><span class="p">)</span>
 </code></pre></div>
 <p>Range queries work with <code>int</code>, <code>float</code>, <code>Decimal</code>, <code>datetime</code>, <code>date</code>, and <code>time</code>.</p>
+<div class="admonition note">
+<p class="admonition-title">How <code>datetime</code> and <code>time</code> are scored</p>
+<p>A <code>SortedField(type=datetime.datetime)</code> scores by the instant. Aware and naive
+values sort consistently, because a naive value is treated as UTC when the score
+is derived.</p>
+<p>A <code>SortedField(type=datetime.time)</code> scores by seconds since midnight and
+deliberately ignores <code>tzinfo</code> — a bare <code>time</code> carries no date, so normalizing by
+the offset would wrap past midnight and sort <code>01:00+07:00</code> ahead of
+<code>23:00+00:00</code> on the same clock face. Use <code>datetime.datetime</code> when the UTC
+offset must participate in ordering. (<code>SortedField(type=datetime.time)</code> raised
+<code>AttributeError</code> on every save before Popoto 1.8.2.)</p>
+</div>
 <h2 id="sortedkeyfield">SortedKeyField<a class="headerlink" href="#sortedkeyfield" title="Permanent link">&para;</a></h2>
 <p><code>SortedKeyField</code> combines the direct-lookup speed of <code>KeyField</code> with the range query
 capabilities of <code>SortedField</code>. Use it when a field serves as both a primary identifier
@@ -5582,21 +5594,38 @@ It supports two special parameters: <code>auto_now_add</code> and <code>auto_now
 <a id="__codelineno-54-5" name="__codelineno-54-5" href="#__codelineno-54-5"></a><span class="p">)</span>
 <a id="__codelineno-54-6" name="__codelineno-54-6" href="#__codelineno-54-6"></a>
 <a id="__codelineno-54-7" name="__codelineno-54-7" href="#__codelineno-54-7"></a><span class="nb">print</span><span class="p">(</span><span class="n">order</span><span class="o">.</span><span class="n">created_at</span><span class="p">)</span>
-<a id="__codelineno-54-8" name="__codelineno-54-8" href="#__codelineno-54-8"></a><span class="c1"># =&gt; 2025-06-15 14:30:00.123456</span>
+<a id="__codelineno-54-8" name="__codelineno-54-8" href="#__codelineno-54-8"></a><span class="c1"># =&gt; 2025-06-15 14:30:00.123456+00:00</span>
 <a id="__codelineno-54-9" name="__codelineno-54-9" href="#__codelineno-54-9"></a>
 <a id="__codelineno-54-10" name="__codelineno-54-10" href="#__codelineno-54-10"></a><span class="nb">print</span><span class="p">(</span><span class="n">order</span><span class="o">.</span><span class="n">updated_at</span><span class="p">)</span>
-<a id="__codelineno-54-11" name="__codelineno-54-11" href="#__codelineno-54-11"></a><span class="c1"># =&gt; 2025-06-15 14:30:00.123456</span>
+<a id="__codelineno-54-11" name="__codelineno-54-11" href="#__codelineno-54-11"></a><span class="c1"># =&gt; 2025-06-15 14:30:00.123456+00:00</span>
 <a id="__codelineno-54-12" name="__codelineno-54-12" href="#__codelineno-54-12"></a>
 <a id="__codelineno-54-13" name="__codelineno-54-13" href="#__codelineno-54-13"></a><span class="c1"># Update the order status</span>
 <a id="__codelineno-54-14" name="__codelineno-54-14" href="#__codelineno-54-14"></a><span class="n">order</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="s2">&quot;confirmed&quot;</span>
 <a id="__codelineno-54-15" name="__codelineno-54-15" href="#__codelineno-54-15"></a><span class="n">order</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
 <a id="__codelineno-54-16" name="__codelineno-54-16" href="#__codelineno-54-16"></a>
 <a id="__codelineno-54-17" name="__codelineno-54-17" href="#__codelineno-54-17"></a><span class="nb">print</span><span class="p">(</span><span class="n">order</span><span class="o">.</span><span class="n">created_at</span><span class="p">)</span>
-<a id="__codelineno-54-18" name="__codelineno-54-18" href="#__codelineno-54-18"></a><span class="c1"># =&gt; 2025-06-15 14:30:00.123456  (unchanged)</span>
+<a id="__codelineno-54-18" name="__codelineno-54-18" href="#__codelineno-54-18"></a><span class="c1"># =&gt; 2025-06-15 14:30:00.123456+00:00  (unchanged)</span>
 <a id="__codelineno-54-19" name="__codelineno-54-19" href="#__codelineno-54-19"></a>
 <a id="__codelineno-54-20" name="__codelineno-54-20" href="#__codelineno-54-20"></a><span class="nb">print</span><span class="p">(</span><span class="n">order</span><span class="o">.</span><span class="n">updated_at</span><span class="p">)</span>
-<a id="__codelineno-54-21" name="__codelineno-54-21" href="#__codelineno-54-21"></a><span class="c1"># =&gt; 2025-06-15 14:32:10.654321  (refreshed)</span>
+<a id="__codelineno-54-21" name="__codelineno-54-21" href="#__codelineno-54-21"></a><span class="c1"># =&gt; 2025-06-15 14:32:10.654321+00:00  (refreshed)</span>
 </code></pre></div>
+<div class="admonition note">
+<p class="admonition-title">Timezone awareness</p>
+<p><code>auto_now</code> / <code>auto_now_add</code> stamp <code>datetime.now(timezone.utc)</code>, and the value
+round-trips <strong>aware</strong> — <code>order.created_at</code> is still an aware <code>datetime</code> after a
+reload rather than silently becoming naive. Compare it against
+<code>datetime.now(timezone.utc)</code>, not <code>datetime.now()</code>; comparing an aware value to
+a naive one raises <code>TypeError</code>.</p>
+<p>This holds for any <code>datetime.datetime</code> or <code>datetime.time</code> field, not just
+<code>auto_now</code>: save an aware value and it comes back aware, save a naive one and it
+comes back naive. <code>datetime.date</code> has no time-of-day component and is
+unaffected. A <code>ZoneInfo</code> tzinfo comes back as the fixed UTC offset in effect at
+that instant rather than as the zone itself.</p>
+<p>Rows written before Popoto 1.8.2 still decode naive, because their offset was
+never stored — so a dataset spanning that upgrade can hold both shapes. If you
+rely on <code>SortedField</code> ordering over <code>datetime</code> values, run
+<code>Model.rebuild_indexes()</code> after upgrading.</p>
+</div>
 <p>See <a href="../meta/">Model Meta Options</a> for configuring <code>order_by</code> and <code>ttl</code> on the <code>Meta</code>
 class.</p>
 <h2 id="timestampable-mixin">Timestampable Mixin<a class="headerlink" href="#timestampable-mixin" title="Permanent link">&para;</a></h2>

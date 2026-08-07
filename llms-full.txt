@@ -8337,6 +8337,18 @@ top_restaurants = Restaurant.query.filter(rating__gte=4.0)
 
 Range queries work with `int`, `float`, `Decimal`, `datetime`, `date`, and `time`.
 
+!!! note "How `datetime` and `time` are scored"
+    A `SortedField(type=datetime.datetime)` scores by the instant. Aware and naive
+    values sort consistently, because a naive value is treated as UTC when the score
+    is derived.
+
+    A `SortedField(type=datetime.time)` scores by seconds since midnight and
+    deliberately ignores `tzinfo` — a bare `time` carries no date, so normalizing by
+    the offset would wrap past midnight and sort `01:00+07:00` ahead of
+    `23:00+00:00` on the same clock face. Use `datetime.datetime` when the UTC
+    offset must participate in ordering. (`SortedField(type=datetime.time)` raised
+    `AttributeError` on every save before Popoto 1.8.2.)
+
 ## SortedKeyField
 
 `SortedKeyField` combines the direct-lookup speed of `KeyField` with the range query
@@ -8949,21 +8961,39 @@ order = Order.create(
 )
 
 print(order.created_at)
-# => 2025-06-15 14:30:00.123456
+# => 2025-06-15 14:30:00.123456+00:00
 
 print(order.updated_at)
-# => 2025-06-15 14:30:00.123456
+# => 2025-06-15 14:30:00.123456+00:00
 
 # Update the order status
 order.status = "confirmed"
 order.save()
 
 print(order.created_at)
-# => 2025-06-15 14:30:00.123456  (unchanged)
+# => 2025-06-15 14:30:00.123456+00:00  (unchanged)
 
 print(order.updated_at)
-# => 2025-06-15 14:32:10.654321  (refreshed)
+# => 2025-06-15 14:32:10.654321+00:00  (refreshed)
 ```
+
+!!! note "Timezone awareness"
+    `auto_now` / `auto_now_add` stamp `datetime.now(timezone.utc)`, and the value
+    round-trips **aware** — `order.created_at` is still an aware `datetime` after a
+    reload rather than silently becoming naive. Compare it against
+    `datetime.now(timezone.utc)`, not `datetime.now()`; comparing an aware value to
+    a naive one raises `TypeError`.
+
+    This holds for any `datetime.datetime` or `datetime.time` field, not just
+    `auto_now`: save an aware value and it comes back aware, save a naive one and it
+    comes back naive. `datetime.date` has no time-of-day component and is
+    unaffected. A `ZoneInfo` tzinfo comes back as the fixed UTC offset in effect at
+    that instant rather than as the zone itself.
+
+    Rows written before Popoto 1.8.2 still decode naive, because their offset was
+    never stored — so a dataset spanning that upgrade can hold both shapes. If you
+    rely on `SortedField` ordering over `datetime` values, run
+    `Model.rebuild_indexes()` after upgrading.
 
 See [Model Meta Options](meta.md) for configuring `order_by` and `ttl` on the `Meta`
 class.
