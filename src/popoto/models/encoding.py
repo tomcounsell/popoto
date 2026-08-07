@@ -44,6 +44,7 @@ Example:
 import datetime
 from collections import namedtuple
 from decimal import Decimal
+from typing import Any
 import msgpack
 from ..exceptions import ModelException
 from ..redis_db import ENCODING
@@ -75,7 +76,7 @@ _LEGACY_TIME_FORMAT = "%H:%M:%S.%f"
 """Offset-free time format written before #521. Read-only from here on."""
 
 
-def _decode_datetime(obj) -> datetime.datetime:
+def _decode_datetime(obj: dict[str, Any]) -> datetime.datetime:
     """Decode a stored datetime, tolerating the pre-#521 offset-free form.
 
     Values written from #521 onward are `isoformat()`, which carries the UTC
@@ -112,7 +113,7 @@ def _decode_datetime(obj) -> datetime.datetime:
         return datetime.datetime.strptime(as_encodable, _LEGACY_DATETIME_FORMAT)
 
 
-def _decode_time(obj) -> datetime.time:
+def _decode_time(obj: dict[str, Any]) -> datetime.time:
     """Decode a stored time, tolerating the pre-#521 offset-free form.
 
     Same split as :func:`_decode_datetime`: `isoformat()` going forward,
