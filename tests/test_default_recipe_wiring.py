@@ -41,7 +41,7 @@ QUICKSTART_PATH = (
 # The quickstart's own Level 5 score_weights, used unchanged so the assembler
 # is constructed exactly as the doc constructs it (harmless for lexical/hybrid
 # paths, which ignore score_weights for the pull path).
-LEVEL5_SCORE_WEIGHTS = {"relevance": 0.6, "confidence": 0.3}
+LEVEL5_SCORE_WEIGHTS = {"relevance": 1.0}
 
 
 def _extract_pre_level5_memory_classes():

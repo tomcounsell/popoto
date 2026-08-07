@@ -25,6 +25,20 @@ The pull path supports four modes controlled by the `retrieval_mode` constructor
 
 **`EmbeddingField` alone does not enable query-sensitive retrieval.** A model with `EmbeddingField` but no `BM25Field` resolves to `"composite"` under `"auto"` — query-blind, ranked by score indexes. Query-sensitive retrieval (lexical or hybrid) requires a `BM25Field`.
 
+**`"auto"` warns when it lands on `"composite"`.** That resolution is the one case where the emergent-mode convenience can quietly cost you correctness: query cues are accepted and then ignored, so the right memory can rank below unrelated ones with the call site looking healthy. Since v1.9 the fall-through logs a `WARNING` on the `POPOTO.ContextAssembler` logger naming the model and the missing `BM25Field`:
+
+```
+WARNING POPOTO.ContextAssembler: ContextAssembler: retrieval_mode='auto' resolved
+to 'composite' (QUERY-BLIND) because Memory declares no BM25Field. Query cues
+passed to assemble() are IGNORED; records are ranked by score_weights alone.
+Add a BM25Field to Memory for query-sensitive retrieval, e.g.
+content_bm25 = BM25Field(source="content"), or import the batteries-included
+model: from popoto.recipes import DefaultMemory. Pass retrieval_mode='composite'
+to silence this warning if query-blind ranking is intended.
+```
+
+Three ways to resolve it: declare a `BM25Field`, import [`DefaultMemory`](../guides/subconscious-memory-recipe.md#quick-start) which declares one, or pass `retrieval_mode="composite"` explicitly to affirm that query-blind ranking is what you want. The explicit mode never warns.
+
 **Reindex caveat:** `BM25Field` populates its keyword index via the `on_save()` hook. New records are indexed automatically on save. Records that existed before `BM25Field` was added are not in the index and will not appear in BM25-driven retrieval. To backfill an existing corpus after adding `BM25Field`:
 
 ```python
@@ -130,6 +144,32 @@ The `assemble()` call returns an `AssemblyResult` dataclass:
 | `formatted` | `str` | LLM-ready formatted string |
 | `metadata` | `dict` | Scores, timing, token counts |
 
+### Output formats (`output_format`)
+
+| Format | Per-record slice | Carries |
+|--------|------------------|---------|
+| `"structured"` *(default)* | JSON object, indented inside a JSON array | Every non-null field, including keys and score indexes |
+| `"xml"` | `<record><field>value</field></record>` | Every non-null field |
+| `"natural"` | `key: value, key: value` on one enumerated line | Every non-null field |
+| `"content"` | The memory text alone, as a `- ` bullet | Content only |
+
+`"content"` exists because the identifiers the other formats spend characters on — `memory_id` UUIDs, the `agent_id` the caller already supplied, `relevance` as a bare epoch float — are not something a model can act on. Measured over the [`DefaultMemory`](../guides/subconscious-memory-recipe.md#quick-start) schema with a 71-character memory: `"structured"` emitted 262 characters (3.69x the content, ~104 estimated tokens), `"content"` emitted 73 (1.03x, ~16 tokens).
+
+Pick the format for the job: `"content"` when you are injecting memories as prose context for the model to read, `"structured"` when downstream code parses the payload or the model needs to cite record IDs.
+
+```python
+assembler = ContextAssembler(
+    model_class=Memory,
+    score_weights={"relevance": 1.0},
+    output_format="content",
+    content_field="content",  # optional; auto-detected from the BM25Field source
+)
+```
+
+`content_field` names the text field `"content"` reads. Left at `None` it resolves from the model's `BM25Field` source, then a field literally named `content`, then (per record) the longest string value. A model with no string field at all yields an empty context block rather than an error.
+
+[`SubconsciousMemory`](../guides/subconscious-memory-recipe.md) defaults to `"content"`; `ContextAssembler` keeps `"structured"` so existing call sites are untouched.
+
 ### Telemetry hook: `emit_trace`
 
 `assemble(..., emit_trace=True)` attaches `metadata["trace"]` — a list of
@@ -205,7 +245,7 @@ If both BM25 and vector signals return empty results, the path falls back to the
 
 ### Counter contract
 
-`token_counter` receives one argument: the serialized per-record string for the active `output_format` (the exact slice the formatter emits — JSON object indented inside the array, `<record>...</record>` block, or `key: value` line). It must return a non-negative `int`.
+`token_counter` receives one argument: the serialized per-record string for the active `output_format` (the exact slice the formatter emits — JSON object indented inside the array, `<record>...</record>` block, `key: value` line, or bare content text). It must return a non-negative `int`.
 
 ```python
 # Correct contract — text is the serialized record string
@@ -243,7 +283,7 @@ Budget selection is greedy first-fit in rank order with **skip-not-break** behav
 
 ### Wrapper framing exclusion
 
-Wrapper framing (JSON array brackets `[...]`, `<records>...</records>` envelope, enumeration prefixes in natural format) is excluded from per-record token counting. This residual is a fixed handful of tokens per assembly — less than 20 tokens per format, independent of record count or size — and is asserted by golden composition tests.
+Wrapper framing (JSON array brackets `[...]`, `<records>...</records>` envelope, enumeration prefixes in natural format, `- ` bullets in content format) is excluded from per-record token counting. This residual is a fixed handful of tokens per assembly — less than 20 tokens per format, independent of record count or size — and is asserted by golden composition tests.
 
 `metadata["token_count"]` reflects the serialized per-record content actually emitted. It does not include the wrapper framing residual.
 

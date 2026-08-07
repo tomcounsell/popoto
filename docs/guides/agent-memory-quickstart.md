@@ -13,6 +13,23 @@ Add programmable memory to your AI agent in 5 progressive levels. Each level is 
 >
 > **Full reference:** [Agent Memory Feature Overview](../features/agent-memory.md) covers all 14 primitives in depth.
 
+## Level 0: Import the defaults
+
+Before building a schema, know that you can skip one. `DefaultMemory` ships the benchmarked configuration — decay, confidence, keyword search, and an association graph — and `SubconsciousMemory` wraps it into a per-turn loop:
+
+```python
+from popoto.recipes import SubconsciousMemory
+
+sm = SubconsciousMemory(agent_id="agent-1")
+
+messages, assembly = sm.inject_context(messages)   # pre-turn: retrieve + inject
+answer = call_your_llm(messages)                   # your LLM call
+sm.extract_memories(answer, importance=0.6)        # post-turn: save what was learned
+sm.report_outcomes(assembly, outcome="acted")      # feedback: reinforce what was used
+```
+
+That is a working memory loop in six lines, with query-sensitive retrieval on by default. The levels below exist for when you want to shape the schema yourself — read them to understand what each field buys, then keep whichever ones you need. See the [Subconscious Memory Recipe](subconscious-memory-recipe.md) for the default model's exact fields and every knob on the loop.
+
 ## Level 1: Recall — Time-Weighted Retrieval
 
 The simplest useful memory. Records decay over time so recent, important memories surface first.
@@ -186,7 +203,7 @@ from popoto import ContextAssembler
 # Use any Memory model from Levels 1-4
 assembler = ContextAssembler(
     model_class=Memory,
-    score_weights={"relevance": 0.6, "confidence": 0.3},
+    score_weights={"relevance": 1.0},  # benchmarked default; see the sweep note below
     max_items=10,
     max_tokens=4000,
 )
@@ -237,6 +254,8 @@ ObservationProtocol.on_context_used(result.records, outcome_map)
 ```
 
 **What you get:** One call assembles the right memories, respects token budgets, and formats output for your LLM. Pull-path (query-driven) and push-path (proactive surfacing) retrieval in a single pipeline.
+
+**On `score_weights={"relevance": 1.0}`:** this is the `best_value` from the Tier 4 sweep (`tests/benchmarks/results/sweep_20260326_125145.json`, coding_assistant / research_agent / support_agent scenarios, 18/18 points OK). Transparency about how strong that evidence is: all six swept weight vectors tied at nDCG@5 = 1.0 on those scenarios, so this is the selected best_value and the simplest single-index vector, not a configuration measured to beat the others. In lexical and hybrid modes `score_weights` is ignored by the pull path entirely.
 
 ## Level 6: Semantic Search — Find Memories by Meaning
 
@@ -335,6 +354,12 @@ from popoto import ObservationProtocol, ContextAssembler
 
 # Constants for tuning
 from popoto import InteractionWeight, TemporalPeriod, Defaults
+```
+
+Recipes — including the batteries-included model — live one level down:
+
+```python
+from popoto.recipes import DefaultMemory, SubconsciousMemory
 ```
 
 **Never** use `from popoto.fields import ...` — the `popoto.fields` subpackage does not re-export field types. Always import from `popoto` directly.

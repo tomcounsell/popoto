@@ -25,22 +25,19 @@ Architecture::
     Agent response
 
 The recipe is framework-agnostic -- it works with plain ``list[dict]``
-messages. The guide shows how to wire it into PydanticAI or the OpenAI SDK,
-but the recipe itself has no framework dependencies.
+messages, so it drops into the OpenAI SDK, an agent harness, or a
+hand-rolled loop without any framework dependency.
 
 Dependencies:
     ContextAssembler (from popoto.recipes)
     ObservationProtocol (from popoto.fields.observation)
-    A Popoto Model class with at least Level 1 fields (DecayingSortedField)
+    A Popoto Model class with at least Level 1 fields (DecayingSortedField).
+    Omit ``model_class`` to use ``popoto.recipes.DefaultMemory``.
 
 Example:
-    from popoto.recipes.subconscious_memory import SubconsciousMemory
+    from popoto.recipes import SubconsciousMemory
 
-    sm = SubconsciousMemory(
-        model_class=Memory,
-        agent_id="agent-1",
-        score_weights={"relevance": 0.6, "confidence": 0.3},
-    )
+    sm = SubconsciousMemory(agent_id="agent-1")
 
     # Pre-turn: inject context
     messages, assembly_result = sm.inject_context(messages)
@@ -58,6 +55,7 @@ import itertools
 import logging
 
 from .context_assembler import AssemblyResult, ContextAssembler
+from .default_memory import DefaultMemory
 from ..extraction import HeuristicExtractionProvider
 from ..fields.confidence_field import ConfidenceField
 from ..fields.constants import Defaults
@@ -75,6 +73,34 @@ DEFAULT_EXTRACTION_MIN_LENGTH = 10
 DEFAULT_SYSTEM_PREAMBLE = "You are a helpful assistant."
 """Default system message preamble when no system message exists."""
 
+DEFAULT_SCORE_WEIGHTS = {"relevance": 1.0}
+"""Composite-path score weights used when the caller passes none.
+
+The benchmarked configuration, not the ``{"relevance": 0.6,
+"confidence": 0.3}`` pair the guides used to show. Source:
+``tests/benchmarks/results/sweep_20260326_125145.json`` →
+``constants.score_weights.best_value``, over the coding_assistant /
+research_agent / support_agent scenarios (18/18 points OK). Full
+transparency on the strength of that evidence: all six swept
+configurations tied at nDCG@5 = 1.0 on those scenarios, so this is the
+*selected* best_value and the simplest single-index vector, not a
+configuration measured to beat the alternatives. It also matches what
+the hybrid/lexical suites use throughout, and in those modes
+``score_weights`` is ignored for the pull path anyway.
+
+Copied per instance -- never share this dict across constructions.
+"""
+
+DEFAULT_OUTPUT_FORMAT = "content"
+"""Injected-context format: memory text only, as a ``"- "`` bullet list.
+
+Issue #513 measured the previous ``"structured"`` JSON default at ~2.8x
+the character count of the content it wrapped, spending the difference on
+``memory_id`` UUIDs, the ``agent_id`` the caller already knows, and
+``relevance`` as a bare epoch float that no model can interpret. Pass
+``output_format="structured"`` to restore the pre-#513 payload verbatim.
+"""
+
 
 # ---------------------------------------------------------------------------
 # SubconsciousMemory
@@ -89,11 +115,36 @@ class SubconsciousMemory:
     - Post-turn: extract facts/observations from LLM response, save as Memory
     - Outcome: report how injected memories were used
 
+    The only required argument is ``agent_id``::
+
+        sm = SubconsciousMemory(agent_id="agent-1")
+
+    That uses :class:`popoto.recipes.DefaultMemory`, which declares a
+    ``BM25Field`` -- so ``retrieval_mode='auto'`` resolves to the
+    query-sensitive ``lexical`` mode rather than the query-blind
+    ``composite`` path a hand-rolled Level 1 model falls into.
+
     Args:
-        model_class: Popoto Model class (any level from the quickstart guide).
+        model_class: Popoto Model class (any level from the quickstart
+            guide). Default ``None`` → :class:`popoto.recipes.DefaultMemory`,
+            the batteries-included model. When left at ``None``, that
+            model's ``confidence`` and ``associations`` fields are also
+            wired up automatically (see ``confidence_field`` and
+            ``co_occurrence_field`` below); passing an explicit
+            ``model_class`` keeps those at ``None`` exactly as before.
         agent_id: Identifier for the agent whose memories to query/save.
-        score_weights: Dict mapping field names to weights for ContextAssembler
-            (e.g., {"relevance": 0.6, "confidence": 0.3}).
+            Required -- it is the partition key, so omitting it would mix
+            every agent's memories into one pool.
+        score_weights: Dict mapping field names to weights for
+            ContextAssembler. Default ``None`` → ``DEFAULT_SCORE_WEIGHTS``
+            (``{"relevance": 1.0}``, the benchmarked vector; see that
+            constant for the sweep provenance). Ignored by the pull path in
+            lexical/hybrid modes.
+        output_format: Format of the injected context block.
+            ``"content"`` (default) emits memory text only.
+            ``"structured"`` restores the pre-#513 JSON payload;
+            ``"xml"`` and ``"natural"`` are also accepted. See
+            ``DEFAULT_OUTPUT_FORMAT``.
         max_items: Maximum memory records to inject per turn. Default 10.
         max_tokens: Soft token budget for injected context. Default 4000.
         extraction_min_length: Minimum characters for a sentence to be
@@ -117,17 +168,24 @@ class SubconsciousMemory:
             for LLM-based extraction with entities/importance/confidence.
         confidence_field: Name of a ``ConfidenceField`` on model_class to
             seed from each extracted fact's ``confidence`` opinion, or
-            ``None`` (default) to skip confidence seeding entirely.
+            ``None`` to skip confidence seeding entirely. Default ``None``,
+            except when ``model_class`` is left unset — the default model
+            then wires its own ``"confidence"`` field.
         co_occurrence_field: Name of a ``CoOccurrenceField`` on
-            model_class to link co-mentioned entities in, or ``None``
-            (default) to skip association seeding entirely.
+            model_class to link co-mentioned entities in, or ``None`` to
+            skip association seeding entirely. Default ``None``, except
+            when ``model_class`` is left unset — the default model then
+            wires its own ``"associations"`` field.
+
+    Raises:
+        ValueError: If ``agent_id`` is not given.
     """
 
     def __init__(
         self,
-        model_class,
-        agent_id,
-        score_weights,
+        model_class=None,
+        agent_id=None,
+        score_weights=None,
         max_items=10,
         max_tokens=4000,
         extraction_min_length=DEFAULT_EXTRACTION_MIN_LENGTH,
@@ -138,10 +196,36 @@ class SubconsciousMemory:
         extraction_provider=None,
         confidence_field=None,
         co_occurrence_field=None,
+        output_format=DEFAULT_OUTPUT_FORMAT,
     ):
+        if agent_id is None:
+            raise ValueError(
+                "SubconsciousMemory requires agent_id — it partitions every "
+                "index on the model, so without it all agents share one "
+                "memory pool. Example: SubconsciousMemory(agent_id='agent-1')"
+            )
+
+        # Batteries-included path: no model_class means DefaultMemory, whose
+        # optional fields are wired for the caller. Only applied when the
+        # caller supplied neither the model nor the field name, so an
+        # explicit model_class keeps the historical None defaults.
+        if model_class is None:
+            model_class = DefaultMemory
+            if confidence_field is None:
+                confidence_field = "confidence"
+            if co_occurrence_field is None:
+                co_occurrence_field = "associations"
+
         self.model_class = model_class
         self.agent_id = agent_id
-        self.score_weights = score_weights
+        # dict(...) so the module-level default is never handed out by
+        # reference — one instance mutating score_weights must not reach
+        # another.
+        self.score_weights = (
+            dict(score_weights)
+            if score_weights is not None
+            else dict(DEFAULT_SCORE_WEIGHTS)
+        )
         self.max_items = max_items
         self.max_tokens = max_tokens
         self.extraction_min_length = extraction_min_length
@@ -149,6 +233,7 @@ class SubconsciousMemory:
         self.content_field = content_field
         self.importance_field = importance_field
         self.agent_id_field = agent_id_field
+        self.output_format = output_format
 
         self._extractor = extraction_provider or HeuristicExtractionProvider(
             min_length=extraction_min_length
@@ -158,9 +243,11 @@ class SubconsciousMemory:
 
         self._assembler = ContextAssembler(
             model_class=model_class,
-            score_weights=score_weights,
+            score_weights=self.score_weights,
             max_items=max_items,
             max_tokens=max_tokens,
+            output_format=output_format,
+            content_field=content_field,
         )
 
     def inject_context(self, messages):
