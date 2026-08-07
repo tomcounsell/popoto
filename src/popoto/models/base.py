@@ -47,6 +47,7 @@ if TYPE_CHECKING:
     from redis.client import Pipeline
 
 from .encoding import encode_popoto_model_obj, decode_lazy_field
+from .canonical_key import canonical_key_str
 from .db_key import DB_key
 from .query import Query
 from ..fields.auto_field_mixin import AutoFieldMixin
@@ -262,6 +263,11 @@ class ModelOptions:
         """Compute hash of field values for index uniqueness check.
 
         Returns None if any field value is None (NULL handling: multiple NULLs allowed).
+
+        Values render through ``canonical_key_str`` for the same reason
+        ``DB_key`` does: a ``datetime`` inside a ``Meta.indexes`` tuple would
+        otherwise hash differently depending on how it decoded (#537/#538).
+        Non-datetime values hash exactly as before.
         """
         import hashlib
 
@@ -270,7 +276,7 @@ class ModelOptions:
             value = getattr(model_instance, field_name, None)
             if value is None:
                 return None  # Don't index NULL values (allows multiple NULLs)
-            values.append(str(value))
+            values.append(canonical_key_str(value))
         combined = ":".join(values)
         return hashlib.sha256(combined.encode()).hexdigest()[:INDEX_HASH_LENGTH]
 
@@ -280,6 +286,10 @@ class ModelOptions:
         """Compute hash from a dict of field values (for cleanup of old values).
 
         Returns None if any field value is None.
+
+        Must stay byte-identical to :meth:`compute_index_hash`, which is why it
+        renders through the same helper -- this is the cleanup side, and a
+        rendering mismatch would leave the old index entry undeleted.
         """
         import hashlib
 
@@ -288,7 +298,7 @@ class ModelOptions:
             value = field_values.get(field_name)
             if value is None:
                 return None
-            values.append(str(value))
+            values.append(canonical_key_str(value))
         combined = ":".join(values)
         return hashlib.sha256(combined.encode()).hexdigest()[:INDEX_HASH_LENGTH]
 
@@ -652,6 +662,17 @@ class Model(metaclass=ModelBase):
             from _redis_key (the original storage location). The save()
             method handles this by deleting the obsolete key.
 
+            Partials are passed to DB_key as *raw values*, not pre-stringified.
+            DB_key renders them through ``canonical_key_str``, which is what
+            makes a ``datetime`` KeyField's identity the instant rather than
+            its decoded representation (#537/#538). Pre-stringifying here would
+            canonicalize the ``$KeyF:`` index key while leaving the primary hash
+            key raw, and a half-canonicalized keyspace is worse than an
+            uncanonicalized one. The ``"None"`` placeholder that
+            ``_has_unstable_db_key`` depends on is preserved: a missing
+            attribute falls back to the literal string, and a None value
+            renders "None" through ``str()``.
+
         Example:
             class User(Model):
                 org = KeyField()
@@ -664,7 +685,7 @@ class Model(metaclass=ModelBase):
         return DB_key(
             self._meta.db_class_key,
             [
-                str(getattr(self, key_field_name, "None"))
+                getattr(self, key_field_name, "None")
                 for key_field_name in sorted(self._meta.key_field_names)
             ],
         )
@@ -1198,8 +1219,7 @@ class Model(metaclass=ModelBase):
             hset_mapping = {
                 k: v
                 for k, v in full_mapping.items()
-                if k in update_field_names_bytes
-                and k not in indexed_field_names_bytes
+                if k in update_field_names_bytes and k not in indexed_field_names_bytes
             }
 
             if isinstance(pipeline, redis.client.Pipeline):
@@ -1370,19 +1390,21 @@ class Model(metaclass=ModelBase):
         # Exclude IndexedFieldMixin fields — EVAL (INDEX_SWAP_LUA) owns their
         # hash writes atomically, so the plain HSET must not race with them.
         from ..redis_db import ENCODING as _ENCODING
+
         _indexed_field_names_bytes = {
             field_name.encode(_ENCODING)
             for field_name, field in self._meta.fields.items()
             if isinstance(field, IndexedFieldMixin)
         }
         hset_mapping = {
-            k: v for k, v in hset_mapping.items()
-            if k not in _indexed_field_names_bytes
+            k: v for k, v in hset_mapping.items() if k not in _indexed_field_names_bytes
         }
 
         if isinstance(pipeline, redis.client.Pipeline):
             if hset_mapping:
-                pipeline = pipeline.hset(new_db_key.redis_key, mapping=hset_mapping)  # 1
+                pipeline = pipeline.hset(
+                    new_db_key.redis_key, mapping=hset_mapping
+                )  # 1
             if self._ttl is not None:
                 pipeline = pipeline.expire(new_db_key.redis_key, self._ttl)  # 2
             elif self._expire_at is not None:

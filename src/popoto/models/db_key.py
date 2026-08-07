@@ -36,6 +36,7 @@ Integration:
 from collections.abc import Iterable
 
 from ..redis_db import POPOTO_REDIS_DB, ENCODING
+from .canonical_key import canonical_key_str
 
 #: What a literal ":" encodes to. Kept as a module-level constant so
 #: clean(), unclean(), and their docstrings cannot drift out of sync.
@@ -262,6 +263,13 @@ class DB_key(list):
         is already a DB_key, which is assumed to be pre-escaped). This
         produces the final string used as a Redis key.
 
+        Each non-DB_key partial is rendered by :func:`canonical_key_str`
+        rather than by ``str()`` directly, so a ``datetime`` partial becomes
+        the instant it denotes rather than whatever representation it happened
+        to decode as (#537/#538). Every other type renders byte-identically to
+        ``str()``. Canonicalization runs *before* :meth:`clean`, which is
+        unchanged (#525) and still owns all escaping.
+
         Returns:
             The complete Redis key string (e.g., "User:john_doe").
         """
@@ -270,7 +278,7 @@ class DB_key(list):
                 (
                     str(partial)
                     if isinstance(partial, DB_key)
-                    else self.clean(str(partial))
+                    else self.clean(canonical_key_str(partial))
                 )
                 for partial in self
             ]
