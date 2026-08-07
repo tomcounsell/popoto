@@ -35,6 +35,11 @@ def replay(trace: SiqTrace, adapter) -> List[TurnResult]:
     token_counts = {
         mem_id: siq_token_count(mem.content) for mem_id, mem in memories.items()
     }
+    # An adapter that writes records the fixture didn't author (e.g. the #489
+    # ExtractionAdapter, whose extracted facts have their own text) publishes
+    # their token counts here. Without this the budget-efficiency denominator
+    # would score those records as 0 tokens and silently overstate efficiency.
+    extra = getattr(adapter, "extra_token_counts", None)
 
     results: List[TurnResult] = []
     for turn in trace.turns:
@@ -45,7 +50,12 @@ def replay(trace: SiqTrace, adapter) -> List[TurnResult]:
                 index=turn.index,
                 should_recall=turn.should_recall,
                 injected_ids=tuple(injected),
-                injected_tokens={i: token_counts.get(i, 0) for i in injected},
+                injected_tokens={
+                    i: token_counts.get(
+                        i, extra.get(i, 0) if extra is not None else 0
+                    )
+                    for i in injected
+                },
             )
         )
     return results

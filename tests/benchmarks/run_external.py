@@ -55,6 +55,7 @@ from tests.benchmarks.metrics.retrieval import (
 )
 from tests.benchmarks.scenarios.external_base import ExternalScenario
 from tests.benchmarks import judge as judge_mod
+from tests.benchmarks import extraction_axis
 
 logging.basicConfig(
     level=logging.INFO,
@@ -288,7 +289,12 @@ class QuestionResult:
 # ---------------------------------------------------------------------------
 
 
-def run_item(item: BenchmarkItem, retrieval_mode: str = "lexical") -> QuestionResult:
+def run_item(
+    item: BenchmarkItem,
+    retrieval_mode: str = "lexical",
+    extraction_provider=None,
+    extraction_stats=None,
+) -> QuestionResult:
     """Run a single benchmark item through ExternalScenario.
 
     Args:
@@ -300,7 +306,12 @@ def run_item(item: BenchmarkItem, retrieval_mode: str = "lexical") -> QuestionRe
     Returns:
         QuestionResult with recall metrics and latency.
     """
-    scenario = ExternalScenario(item=item, retrieval_mode=retrieval_mode)
+    scenario = ExternalScenario(
+        item=item,
+        retrieval_mode=retrieval_mode,
+        extraction_provider=extraction_provider,
+        extraction_stats=extraction_stats,
+    )
     scenario_result = scenario.execute()
 
     if scenario_result.status != "ok":
@@ -373,6 +384,8 @@ def compute_aggregate(
     seed: int = 0,
     limit=None,
     retrieval_mode: str = "lexical",
+    extraction: dict = None,
+    fixture: str = None,
 ) -> dict:
     """Compute aggregate metrics over all question results.
 
@@ -473,12 +486,23 @@ def compute_aggregate(
     aggregate = {
         "dataset": dataset,
         "retrieval_mode": retrieval_mode,
+        # Ingest arm (#489): which extraction path produced the records this
+        # run retrieved over. Always present so a number can never be read
+        # without knowing whether it came from raw turns or extracted facts.
+        "extraction": extraction
+        or {"arm": "raw", "description": "One record per turn, verbatim."},
         "run_date": now.strftime("%Y-%m-%d"),
         "run_timestamp": now.isoformat(),
         "sampling": {
             "sample_mode": sample_mode,
             "seed": seed,
             "limit": limit,
+            # Provenance: --fixture scopes the corpus BEFORE sampling, so a
+            # limit of 100 against a 2-dialogue subset is not the same run as
+            # a limit of 100 against the full corpus. Recorded so a bounded
+            # run can never be mistaken for a full-corpus baseline.
+            "fixture": str(fixture) if fixture else None,
+            "corpus_full_size": DATASET_FULL_SIZE.get(dataset),
         },
         "machine": {
             "python_version": platform.python_version(),
@@ -835,6 +859,7 @@ def save_reports(
     retrieval_mode: str = "lexical",
     dry_run: bool = False,
     judged: bool = False,
+    extraction_label: str = "",
 ) -> tuple[Path, Path]:
     """Save JSON and Markdown report files.
 
@@ -864,9 +889,13 @@ def save_reports(
     # another (issue #458): retrieval mode (lexical keeps the unsuffixed baseline
     # name; hybrid/vector add ``_{mode}``) AND the judged stage (adds ``_judged``).
     # e.g. hybrid+judged -> ``{slug}_{date}_hybrid_judged.*``.
+    # A third dimension (#489) composes the same way: the ``raw`` ingest arm
+    # keeps the unsuffixed committed-baseline name, every extraction arm adds
+    # ``_ext-{label}``, so an extraction run can never clobber the baseline.
     mode_suffix = "" if retrieval_mode == "lexical" else f"_{retrieval_mode}"
     judged_suffix = "_judged" if judged else ""
-    suffix = f"{mode_suffix}{judged_suffix}"
+    ext_suffix = f"_{extraction_label}" if extraction_label else ""
+    suffix = f"{mode_suffix}{ext_suffix}{judged_suffix}"
 
     date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
     json_name = f"{dataset_slug}_{date_str}{suffix}.json"
@@ -1013,6 +1042,34 @@ def main():
             "--error-threshold, which governs retrieval errors."
         ),
     )
+    parser.add_argument(
+        "--extraction",
+        choices=extraction_axis.ARM_CHOICES,
+        default="raw",
+        help=(
+            "Ingest arm (#489). 'raw' (default) writes one record per turn "
+            "verbatim — the arm every committed artifact was produced under. "
+            "'heuristic' routes turns through HeuristicExtractionProvider. "
+            "'claude' routes them through the shipped LLM extraction prompt/"
+            "schema (needs ANTHROPIC_API_KEY; costs money — results are cached "
+            "on disk by content hash so re-runs are free). Non-raw arms write "
+            "{slug}_{date}[_mode]_ext-{label}[_judged].{json,md}."
+        ),
+    )
+    parser.add_argument(
+        "--extraction-model",
+        default=extraction_axis.DEFAULT_EXTRACTION_MODEL,
+        help=(
+            "Model for --extraction claude (default: %(default)s, mirroring the "
+            "pinned popoto.extraction.claude.EXTRACTION_MODEL). Varied here for "
+            "the #489 tier comparison only; this does not change any default."
+        ),
+    )
+    parser.add_argument(
+        "--no-extraction-cache",
+        action="store_true",
+        help="Disable the on-disk extraction cache (forces fresh API calls).",
+    )
     args = parser.parse_args()
 
     # Judged mode is a factual-match judge over retrieved *content*; the vector
@@ -1111,6 +1168,22 @@ def _run_benchmark(args, bench_db):
             logger.error("No items matched --question-type %s", args.question_type)
             return 1
 
+    # Resolve the ingest arm (#489) before any item runs, so a missing API key
+    # fails fast instead of halfway through a paid run.
+    try:
+        (
+            extraction_provider,
+            extraction_stats,
+            extraction_identity,
+        ) = extraction_axis.resolve_arm(
+            args.extraction,
+            model=args.extraction_model,
+            use_cache=not args.no_extraction_cache,
+        )
+    except (ValueError, RuntimeError) as e:
+        logger.error("Extraction arm unavailable: %s", e)
+        return 1
+
     logger.info(
         "Starting benchmark: dataset=%s limit=%s sample=%s seed=%s "
         "retrieval_mode=%s dry_run=%s bench_db=%d",
@@ -1172,7 +1245,12 @@ def _run_benchmark(args, bench_db):
                 elapsed,
             )
 
-        q_result = run_item(item, retrieval_mode=args.retrieval_mode)
+        q_result = run_item(
+            item,
+            retrieval_mode=args.retrieval_mode,
+            extraction_provider=extraction_provider,
+            extraction_stats=extraction_stats,
+        )
         results.append(q_result)
 
         # Judged stage — only for ok retrievals (non-ok / skipped-empty items
@@ -1202,6 +1280,15 @@ def _run_benchmark(args, bench_db):
     total_elapsed = time.monotonic() - total_start
     logger.info("Benchmark complete: %d questions in %.1fs", n_processed, total_elapsed)
 
+    # Persist the extraction cache so re-runs and sibling tiers pay nothing.
+    if extraction_provider is not None and hasattr(extraction_provider, "flush"):
+        extraction_provider.flush()
+
+    extraction_block = dict(extraction_identity)
+    extraction_block["stats"] = extraction_stats.to_dict(
+        model=extraction_identity.get("model")
+    )
+
     # Aggregate metrics
     aggregate = compute_aggregate(
         results,
@@ -1210,6 +1297,8 @@ def _run_benchmark(args, bench_db):
         seed=args.seed,
         limit=args.limit,
         retrieval_mode=args.retrieval_mode,
+        extraction=extraction_block,
+        fixture=args.fixture,
     )
     s = aggregate["summary"]
 
@@ -1237,6 +1326,26 @@ def _run_benchmark(args, bench_db):
     print(f"BENCHMARK RESULTS: {args.dataset.upper()}")
     print("=" * 60)
     print(f"  Retrieval mode      : {args.retrieval_mode}")
+    _es = extraction_block["stats"]
+    print(
+        f"  Ingest arm          : {extraction_identity['arm']}"
+        + (
+            f" ({extraction_identity['model']})"
+            if extraction_identity.get("model")
+            else ""
+        )
+    )
+    print(
+        f"    facts/turn        : {_es['facts_per_turn']} "
+        f"(turns={_es['turns_seen']} records={_es['facts_written']} "
+        f"dropped={_es['turns_dropped_no_facts']})"
+    )
+    if extraction_identity["arm"] == "claude":
+        print(
+            f"    API calls / cached: {_es['api_calls']} / {_es['cache_hits']}"
+            f"  failures={_es['extraction_failures']}"
+        )
+        print(f"    Est. cost (USD)   : ${_es.get('estimated_cost_usd', 0.0):.4f}")
     print(f"  Questions evaluated : {s['n_ok']} / {s['n_total']}")
     print(f"  Errors              : {s['n_errors']}")
     print(f"  Recall@1            : {s['recall_at_1']:.4f}")
@@ -1266,6 +1375,9 @@ def _run_benchmark(args, bench_db):
             retrieval_mode=args.retrieval_mode,
             dry_run=False,
             judged=args.judged,
+            extraction_label=extraction_axis.arm_label(
+                args.extraction, args.extraction_model
+            ),
         )
         print(f"\nReports saved:")
         print(f"  JSON: {json_path}")

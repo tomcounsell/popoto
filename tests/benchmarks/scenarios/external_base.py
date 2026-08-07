@@ -282,10 +282,15 @@ class ExternalScenario(Scenario):
         item: BenchmarkItem,
         overrides: Optional[Dict[str, Any]] = None,
         retrieval_mode: str = "lexical",
+        extraction_provider: Optional[Any] = None,
+        extraction_stats: Optional[Any] = None,
     ):
         super().__init__(overrides)
         self.item = item
         self.retrieval_mode = retrieval_mode
+        # Ingest arm (#489). None => write turns verbatim (committed baseline).
+        self._extractor = extraction_provider
+        self._extraction_stats = extraction_stats
         self._agent_id = f"extbench:{uuid.uuid4().hex[:12]}"
         self._model_class = None
         self._assembler = None
@@ -352,61 +357,116 @@ class ExternalScenario(Scenario):
 
             session_id = turn.get("session_id", "")
             turn_id = turn.get("turn_id", "")
-            try:
-                instance = self._model_class(
-                    agent_id=self._agent_id,
-                    content=content.strip(),
-                    importance=0.5,
-                )
-                result = instance.save()
-                if result is False:
-                    logger.warning(
-                        "Failed to save turn for item %s (save() returned False)",
-                        self.item.item_id,
-                    )
-                    continue
-                self._saved_records.append(instance)
+            # Ingest arm (#489). Without an extractor the turn is written
+            # verbatim (the committed baseline). With one, the turn may yield
+            # zero, one, or many fact records — every record produced from
+            # this turn is attributed back to the SAME session_id/turn_id, so
+            # ground-truth scoring stays valid under a 1:N turn->record
+            # mapping. A turn that extracts to nothing is written as nothing
+            # and becomes unretrievable; that is a real property of the
+            # extraction path, so it is counted rather than papered over.
+            units = self._extract_units(content.strip())
+            if self._extraction_stats is not None:
+                self._extraction_stats.turns_seen += 1
+                if not units:
+                    self._extraction_stats.turns_dropped += 1
 
-                # Graph mode: build conversational-adjacency edges. Each turn
-                # points at the previous turn of the same session via the
-                # self-referential Relationship (walked forward AND reverse by
-                # expand_relationships), and the same pair is linked as a
-                # symmetric CoOccurrence edge so both association primitives
-                # carry signal. The datasets ship no annotated entity graph, so
-                # adjacency is the only edge derivable without inventing an
-                # extraction model — see the report caveat.
-                if self.retrieval_mode == "graph":
-                    prev = prev_by_session.get(session_id)
-                    if prev is not None:
-                        try:
-                            instance.prev_turn = prev
-                            instance.save()
-                            self._model_class._meta.fields["associations"].link(
-                                self._model_class,
-                                instance.db_key.redis_key,
-                                prev.db_key.redis_key,
-                                initial_weight=0.5,
-                            )
-                        except Exception as e:
-                            logger.warning("graph edge build failed: %s", e)
-                    prev_by_session[session_id] = instance
+            # Representative record for this turn, used to build graph-mode
+            # conversational-adjacency edges (turn i <-> turn i-1). With the
+            # raw arm (1 unit/turn) this is simply the turn's single record, so
+            # graph behavior is byte-identical to the pre-#489 path.
+            turn_first_instance = None
 
-                # Track session_id -> redis_key AND turn_id -> redis_key mappings.
-                # LongMemEval-S uses session_id as relevant_id; LoCoMo uses turn_id.
+            for unit_text, unit_importance in units:
                 try:
-                    redis_key = instance.db_key.redis_key
-                    if session_id:
-                        self._session_key_map.setdefault(session_id, []).append(
-                            redis_key
+                    instance = self._model_class(
+                        agent_id=self._agent_id,
+                        content=unit_text,
+                        importance=unit_importance,
+                    )
+                    result = instance.save()
+                    if result is False:
+                        logger.warning(
+                            "Failed to save unit for item %s (save() returned False)",
+                            self.item.item_id,
                         )
-                    if turn_id:
-                        self._session_key_map.setdefault(turn_id, []).append(redis_key)
+                        continue
+                    self._saved_records.append(instance)
+                    if self._extraction_stats is not None:
+                        self._extraction_stats.facts_written += 1
+                    if turn_first_instance is None:
+                        turn_first_instance = instance
+                    # Track session_id -> redis_key AND turn_id -> redis_key
+                    # mappings. LongMemEval-S uses session_id as relevant_id;
+                    # LoCoMo uses turn_id.
+                    try:
+                        redis_key = instance.db_key.redis_key
+                        if session_id:
+                            self._session_key_map.setdefault(session_id, []).append(
+                                redis_key
+                            )
+                        if turn_id:
+                            self._session_key_map.setdefault(turn_id, []).append(
+                                redis_key
+                            )
+                    except Exception as e:
+                        logger.debug("Could not get redis_key: %s", e)
                 except Exception as e:
-                    logger.debug("Could not get redis_key: %s", e)
-            except Exception as e:
-                logger.warning(
-                    "Error saving turn for item %s: %s", self.item.item_id, e
-                )
+                    logger.warning(
+                        "Error saving unit for item %s: %s", self.item.item_id, e
+                    )
+
+            # Graph mode (#484): build conversational-adjacency edges between
+            # this turn's representative record and the previous turn's, via
+            # the self-referential Relationship (walked forward AND reverse by
+            # expand_relationships) plus a symmetric CoOccurrence edge. The
+            # datasets ship no annotated entity graph, so adjacency is the only
+            # edge derivable without an extraction model — see the report caveat.
+            if self.retrieval_mode == "graph" and turn_first_instance is not None:
+                prev = prev_by_session.get(session_id)
+                if prev is not None:
+                    try:
+                        turn_first_instance.prev_turn = prev
+                        turn_first_instance.save()
+                        self._model_class._meta.fields["associations"].link(
+                            self._model_class,
+                            turn_first_instance.db_key.redis_key,
+                            prev.db_key.redis_key,
+                            initial_weight=0.5,
+                        )
+                    except Exception as e:
+                        logger.warning("graph edge build failed: %s", e)
+                prev_by_session[session_id] = turn_first_instance
+
+    def _extract_units(self, content: str) -> List[tuple]:
+        """Turn one turn's text into the record units to write.
+
+        Mirrors ``SubconsciousMemory.extract_memories()``'s wiring: a
+        provider's per-fact ``importance`` wins verbatim, and the flat 0.5 is
+        only the fallback when the provider has no opinion. Confidence is
+        intentionally not seeded — the recipe only seeds it when a
+        ``confidence_field`` is configured, and this harness does not
+        configure one, so leaving it at the field default keeps this arm
+        faithful to the shipped path.
+
+        Args:
+            content: Stripped turn text.
+
+        Returns:
+            List of ``(text, importance)`` pairs. ``[(content, 0.5)]`` for the
+            raw arm; zero or more extracted facts otherwise.
+        """
+        if self._extractor is None:
+            return [(content, 0.5)]
+        facts = self._extractor.extract(content)
+        return [
+            (
+                f.text,
+                f.importance if f.importance is not None else 0.5,
+            )
+            for f in facts
+            if f.text and f.text.strip()
+        ]
 
     def run(self) -> ScenarioResult:
         """Run retrieval and return ScenarioResult.
