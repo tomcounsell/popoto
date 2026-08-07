@@ -201,8 +201,18 @@ class DB_key(list):
         sequential replace chain -- a sequential chain cannot distinguish a
         "/"-escaped COLON_ESCAPE token (data) from a COLON_ESCAPE token
         clean() itself produced (an escape), because the colon decode would
-        have to run before slash unescaping either way. The scan instead
-        walks the string once:
+        have to run before slash unescaping either way.
+
+        The overwhelmingly common case -- a key part with no escapes at
+        all -- takes a fast path first: if neither "/" nor COLON_ESCAPE
+        appears anywhere in value, every scanner branch below would fall
+        through to "emit the character as-is" for the whole string, so
+        the scan is provably equivalent to returning value unchanged. This
+        reduces that case to two C-level substring scans instead of a
+        Python character loop, which matters because from_redis_key()
+        calls unclean() once per key part on every query result.
+
+        When the fast path does not apply, the scan walks the string once:
             - At a "/" whose following character is in ESCAPABLE: emit that
               character literally and advance 2. This covers "//" -> "/",
               "/<glob char>" -> "<glob char>", and "/{" (which fronts a
@@ -225,6 +235,8 @@ class DB_key(list):
         Returns:
             The original unescaped string value.
         """
+        if "/" not in value and COLON_ESCAPE not in value:
+            return value
         result = []
         i = 0
         n = len(value)
