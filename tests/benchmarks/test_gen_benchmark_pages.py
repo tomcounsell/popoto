@@ -191,3 +191,21 @@ def test_orphan_scan_ignores_lone_json(gen, tmp_path, capsys):
 
     assert orphans == []
     assert "WARNING" not in capsys.readouterr().err
+
+
+def test_no_broken_symlinks_under_results():
+    """Every committed ``results/`` symlink resolves (issues #511, #514).
+
+    A dangling ``*_latest*`` symlink is invisible in a normal ``ls`` and makes
+    the generator silently skip a page while ``_warn_orphan_artifacts`` still
+    flags it as unmapped — two confusing signals for one missing file. Two of
+    these (``locomo_latest_graph``, ``locomo_latest_ext-heuristic``) shipped
+    pointing at artifacts that were never committed.
+    """
+    results_root = _REPO_ROOT / "tests" / "benchmarks" / "results"
+    dangling = [
+        str(p.relative_to(_REPO_ROOT))
+        for p in results_root.rglob("*")
+        if p.is_symlink() and not p.exists()
+    ]
+    assert dangling == []

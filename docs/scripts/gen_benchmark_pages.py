@@ -170,9 +170,19 @@ SPECS: tuple[Spec, ...] = (
             '!!! note "Retrieval regime — read the [Overview](index.md) first"\n'
             "    Measured as *retrieval recall*, published LoCoMo Recall@1 sits in the\n"
             "    0.10–0.30 band (MEMTIER, arXiv:2605.03675). Popoto lexical Recall@1\n"
-            "    **0.2986** is competitive-to-strong in this regime. This variant is\n"
+            "    **0.2981** is competitive-to-strong in this regime. This variant is\n"
             "    the 10-dialogue / 5-category (adversarial included) / 1986-QA-pair\n"
             "    LoCoMo — not the 1,540-QA / 4-category leaderboard variant.\n"
+            "\n"
+            '!!! info "Corrected 2026-08-07 — these numbers replace an inflated set"\n'
+            "    The pre-correction run reported Recall@1 0.2986 / Recall@5 0.5534 /\n"
+            "    Recall@10 0.6400 / MRR 0.4124. Its scoring consulted the answer key\n"
+            "    when collapsing retrieved turns to result IDs, so gold turns kept\n"
+            "    their own rank slot while non-gold turns shared one — 20 retrieved\n"
+            "    turns became 13.2 rank slots on average, lifting gold. Scoring now\n"
+            "    ranks turn IDs for every record alike\n"
+            "    ([#514](https://github.com/tomcounsell/popoto/issues/514)); the\n"
+            "    superseded artifact stays committed as `locomo_20260708.json`.\n"
         ),
     ),
     Spec(
@@ -182,10 +192,19 @@ SPECS: tuple[Spec, ...] = (
         stem="external/locomo_latest_hybrid",
         kind="external",
         note=(
+            '!!! info "Scored before the #514 correction — re-run pending"\n'
+            "    This artifact predates the gold-blind scoring fix\n"
+            "    ([#514](https://github.com/tomcounsell/popoto/issues/514)), so its\n"
+            "    numbers are inflated by the same margin the lexical page describes.\n"
+            "    It stays published for continuity and is not comparable to the\n"
+            "    corrected lexical page; a corrected hybrid run is pending.\n"
+            "\n"
             '!!! warning "Hybrid underperforms lexical here — reported factually, untuned"\n'
             "    On this LoCoMo variant, hybrid (**Recall@1 0.1667 / MRR 0.2835**)\n"
-            "    measurably underperforms the lexical path (**Recall@1 0.2986 /\n"
-            "    MRR 0.4124**). No retrieval tuning has been attempted; an unweighted\n"
+            "    measurably underperforms the lexical path (pre-correction\n"
+            "    **Recall@1 0.2986 / MRR 0.4124**, the like-for-like comparison since\n"
+            "    both were scored the same way). No retrieval tuning has been\n"
+            "    attempted; an unweighted\n"
             "    RRF giving a weak vector arm equal say is the leading hypothesis,\n"
             "    tracked as a separate vector-only baseline follow-up. In the MEMTIER\n"
             "    retrieval regime (LoCoMo Recall@1 0.10–0.30) 0.1667 is\n"
@@ -369,11 +388,17 @@ in the same metric family on the same dataset.
 
 ## LoCoMo — read in the retrieval regime
 
+**Correction (2026-08-07):** the LoCoMo lexical numbers below were re-measured
+after a scoring defect that consulted the answer key when collapsing retrieved
+turns to result IDs was fixed ([#514](https://github.com/tomcounsell/popoto/issues/514));
+the corrected figures are lower, and the hybrid/graph/judged LoCoMo arms still
+carry pre-correction scoring.
+
 !!! note "MEMTIER retrieval-regime anchor (arXiv:2605.03675)"
     Measured *as retrieval*, published LoCoMo Recall@1 sits in the **0.10–0.30
     band** (MEMTIER Phase 1b 0.100; OpenClaw-Default 0.105; SimpleMem F1 0.432).
-    In this frame Popoto's lexical Recall@1 **0.2986** is competitive-to-strong,
-    and hybrid **0.1667** is unremarkable-untuned, not alarming.
+    In this frame Popoto's lexical Recall@1 **0.2981** is competitive-to-strong,
+    and hybrid **0.1667** (pre-correction) is unremarkable-untuned, not alarming.
 
     **Variant:** this is the LoCoMo variant with **10 dialogues, 5 categories
     (including adversarial), 1986 QA pairs** (as described in Omni-SimpleMem,
@@ -386,7 +411,8 @@ in the same metric family on the same dataset.
 !!! warning "Category-5 (adversarial) caveat"
     Adversarial is historically the hardest category industry-wide (the original
     LoCoMo paper reports humans ≈89 F1 vs LLMs ≈2 F1). Popoto's category-5
-    scoring *comparably to* the other categories (lexical Recall@1 0.3341) is
+    scoring *comparably to* the other categories (corrected lexical Recall@1
+    0.3341) is
     presented here as a **factual observation, not a strength**: it may indicate
     the harness matches populated evidence spans rather than exercising refusal
     behavior. An evidence-matching audit is filed separately; until it resolves,

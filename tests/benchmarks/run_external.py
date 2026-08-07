@@ -45,7 +45,7 @@ import redis
 # Ensure project root is on path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from tests.benchmarks.datasets import BenchmarkItem
+from tests.benchmarks.datasets import BenchmarkItem, ground_truth_unit
 from tests.benchmarks.datasets.longmemeval_s import iter_items as iter_longmemeval
 from tests.benchmarks.datasets.locomo import iter_items as iter_locomo
 from tests.benchmarks.metrics.retrieval import (
@@ -482,10 +482,27 @@ def compute_aggregate(
     parity = leaderboard_parity_slice(by_qt, exclude_categories=("5",))
     include_parity = bool(parity["excluded"])
 
+    # Ranking unit (#514): the single granularity every retrieved record was
+    # collapsed to. Recorded so a number can never be read without knowing what
+    # was ranked, and so a future granularity change is visible in the diff.
+    unit = ground_truth_unit(dataset)
+    ranking_unit = {
+        "unit": unit,
+        "dedup": "gold-blind, first occurrence wins",
+        "description": (
+            f"Every retrieved record is collapsed to its {unit} ID before "
+            f"scoring — gold and non-gold alike. The unit is fixed by the "
+            f"dataset's ground-truth granularity and resolved before "
+            f"retrieval, so the answer key affects only the final metric "
+            f"(issue #514)."
+        ),
+    }
+
     now = datetime.now(timezone.utc)
     aggregate = {
         "dataset": dataset,
         "retrieval_mode": retrieval_mode,
+        "ranking_unit": ranking_unit,
         # Ingest arm (#489): which extraction path produced the records this
         # run retrieved over. Always present so a number can never be read
         # without knowing whether it came from raw turns or extracted facts.
@@ -524,6 +541,7 @@ def compute_aggregate(
         },
         "notes": mode_notes
         + [
+            f"Ranking unit: {unit} — {ranking_unit['description']}",
             "LoCoMo: image-only turns skipped (text-only evaluation).",
         ],
         "questions": [r.to_dict() for r in results],
@@ -695,12 +713,20 @@ def build_markdown_report(aggregate: dict) -> str:
     seed = sampling.get("seed", 0)
     limit = sampling.get("limit")
     limit_str = "all" if limit is None else str(limit)
+    # Ranking unit (#514). Older artifacts predate the field; label them so a
+    # regenerated page never implies a unit the run did not use.
+    ranking_unit = aggregate.get("ranking_unit") or {}
+    unit_label = ranking_unit.get("unit", "unrecorded (pre-#514 artifact)")
+    unit_dedup = ranking_unit.get("dedup", "")
 
     lines = [
         f"# Popoto External Benchmark: {ds}",
         "",
         f"**Run date:** {run_date}  ",
         f"**Retrieval mode:** {retrieval_mode}  ",
+        f"**Ranking unit:** {unit_label}"
+        + (f" ({unit_dedup})" if unit_dedup else "")
+        + "  ",
         f"**Python:** {machine['python_version']}  ",
         f"**Platform:** {machine['platform']}  ",
         f"**Sample mode:** {sample_mode}  ",

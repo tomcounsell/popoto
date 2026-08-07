@@ -44,6 +44,18 @@ Retrieval mode (issue #437, #455):
     query-blind ``"composite"`` path, not vector search). No BM25, no RRF, no
     graph — it isolates only the dense arm.
 
+Ranking unit (issue #514):
+    Retrieved records are collapsed to result IDs at exactly ONE granularity
+    per dataset — the granularity that dataset annotates its ground truth at:
+
+    - LongMemEval-S → ``session`` (ground truth is ``answer_session_ids``)
+    - LoCoMo        → ``turn`` (ground truth is ``qa[].evidence`` dia_ids)
+
+    The unit is resolved from dataset metadata before retrieval runs, so the
+    answer key influences only the final scoring, never which candidate ID a
+    retrieved record emits or how results are deduplicated. Every retrieved
+    record is treated identically regardless of whether it is gold.
+
 This module is text-only: turns without content are silently skipped.
 """
 
@@ -68,7 +80,7 @@ from src.popoto.fields.embedding_field import (
 from src.popoto.recipes.context_assembler import ContextAssembler
 from src.popoto.redis_db import POPOTO_REDIS_DB
 
-from ..datasets import BenchmarkItem
+from ..datasets import GROUND_TRUTH_UNITS, BenchmarkItem, ground_truth_unit
 from .base import Scenario, ScenarioResult
 
 logger = logging.getLogger("POPOTO.Benchmark.ExternalScenario")
@@ -255,6 +267,75 @@ def _build_external_model_class(
     return ExternalBenchmarkMemory
 
 
+def collapse_to_ranking_unit(
+    retrieved_keys: List[str], unit_map: Dict[str, List[str]]
+) -> List[str]:
+    """Collapse ranked Redis keys to ranked ground-truth IDs, gold-blind.
+
+    Every retrieved record is mapped through ``unit_map`` — one map, one
+    granularity — and deduplicated by first occurrence. There is deliberately
+    no ``relevant_ids`` parameter: the answer key cannot reach this function,
+    so it cannot influence which ID a record emits or how many rank slots the
+    result consumes (issue #514).
+
+    The defect this replaces merged the session-ID and turn-ID spaces into one
+    candidate list per record and emitted whichever candidate appeared in the
+    answer key, falling back to the first candidate (always the session ID)
+    otherwise. On LoCoMo (turn-ID ground truth) that gave every gold turn its
+    own unique rank slot while non-gold turns collapsed into one shared
+    session slot, lifting gold ranks and inflating Recall@K/MRR. Measured
+    compression over the full 1986-question LoCoMo corpus: 20 retrieved turns
+    became 13.2 rank slots on average (``locomo_20260708.json``), against
+    19.9 under this function (``locomo_20260807.json``).
+
+    Args:
+        retrieved_keys: Redis keys of the retrieved records, in rank order.
+        unit_map: ``ground_truth_id -> [redis_key, ...]`` at a single
+            granularity (``_turn_key_map`` or ``_session_key_map``).
+
+    Returns:
+        Ground-truth IDs in rank order, first occurrence wins. A key with no
+        entry in ``unit_map`` emits the raw Redis key, which can never match
+        ground truth — an honest miss rather than a silent drop.
+    """
+    redis_key_to_unit_id: Dict[str, str] = {}
+    for id_value, keys in unit_map.items():
+        for key in keys:
+            # First writer wins: a record belongs to exactly one turn and one
+            # session, so collisions only arise for degenerate inputs.
+            redis_key_to_unit_id.setdefault(key, id_value)
+
+    ranked: List[str] = []
+    seen: set = set()
+    for redis_key in retrieved_keys:
+        unit_id = redis_key_to_unit_id.get(redis_key, redis_key)
+        if unit_id not in seen:
+            seen.add(unit_id)
+            ranked.append(unit_id)
+    return ranked
+
+
+def _resolve_ranking_unit(item: BenchmarkItem) -> str:
+    """Resolve the ranking unit for ``item`` without reading its answer key.
+
+    Precedence: explicit ``metadata["ground_truth_unit"]`` (set by the dataset
+    adapters) > the dataset-name mapping > the package default. Every input is
+    a property of the *dataset*, fixed before any question is asked;
+    ``item.relevant_ids`` is deliberately not consulted (issue #514).
+
+    Args:
+        item: The benchmark item being run.
+
+    Returns:
+        ``"session"`` or ``"turn"``.
+    """
+    metadata = item.metadata or {}
+    declared = str(metadata.get("ground_truth_unit", "") or "").strip().lower()
+    if declared in GROUND_TRUTH_UNITS:
+        return declared
+    return ground_truth_unit(str(metadata.get("dataset", "") or ""))
+
+
 class ExternalScenario(Scenario):
     """Scenario wrapping a single external BenchmarkItem.
 
@@ -297,6 +378,17 @@ class ExternalScenario(Scenario):
         self._saved_records: List[Any] = []
         # Map from session_id -> list of Redis keys saved for that session
         self._session_key_map: Dict[str, List[str]] = {}
+        # Map from turn_id -> list of Redis keys saved for that turn. Kept
+        # SEPARATE from the session map (issue #514): merging both id spaces
+        # into one map forced run() to pick between two granularities per
+        # record, and the old picker made that choice by consulting the answer
+        # key. Two maps + one dataset-level unit removes the choice entirely.
+        self._turn_key_map: Dict[str, List[str]] = {}
+        # Ranking unit for this item, fixed by the dataset (session for
+        # LongMemEval-S, turn for LoCoMo). Resolved at construction time from
+        # dataset metadata — never from ``item.relevant_ids`` — so the answer
+        # key cannot influence ranking or dedup, only final scoring.
+        self._ranking_unit = _resolve_ranking_unit(item)
 
     def setup(self) -> None:
         """Ingest the benchmark item's conversation history into Redis.
@@ -396,9 +488,11 @@ class ExternalScenario(Scenario):
                         self._extraction_stats.facts_written += 1
                     if turn_first_instance is None:
                         turn_first_instance = instance
-                    # Track session_id -> redis_key AND turn_id -> redis_key
-                    # mappings. LongMemEval-S uses session_id as relevant_id;
-                    # LoCoMo uses turn_id.
+                    # Track session_id -> redis_key AND turn_id -> redis_key in
+                    # two separate maps. LongMemEval-S scores at session
+                    # granularity, LoCoMo at turn granularity; run() collapses
+                    # retrieved keys through exactly one of these maps, chosen
+                    # by the dataset (issue #514).
                     try:
                         redis_key = instance.db_key.redis_key
                         if session_id:
@@ -406,9 +500,7 @@ class ExternalScenario(Scenario):
                                 redis_key
                             )
                         if turn_id:
-                            self._session_key_map.setdefault(turn_id, []).append(
-                                redis_key
-                            )
+                            self._turn_key_map.setdefault(turn_id, []).append(redis_key)
                     except Exception as e:
                         logger.debug("Could not get redis_key: %s", e)
                 except Exception as e:
@@ -485,14 +577,16 @@ class ExternalScenario(Scenario):
         directly. No BM25, no RRF, no graph.
 
         In every mode the selected records' Redis keys are mapped back to
-        ground-truth session/turn IDs via ``_session_key_map``.
+        ground-truth IDs at a single granularity — ``self._ranking_unit``,
+        fixed by the dataset — via ``_turn_key_map`` or ``_session_key_map``.
+        The answer key is never consulted here (issue #514).
 
         Measures latency of the retrieval call only (not ingestion).
 
         Returns:
-            ScenarioResult with retrieved_ids as session/turn IDs and
-            relevant_ids from ground truth (same key space, via the
-            session_id/turn_id -> redis_keys mapping built during setup).
+            ScenarioResult with retrieved_ids as ranking-unit IDs (turn IDs for
+            LoCoMo, session IDs for LongMemEval-S) and relevant_ids from ground
+            truth (same key space, via the mapping built during setup).
         """
         if self._model_class is None:
             return ScenarioResult(
@@ -565,39 +659,28 @@ class ExternalScenario(Scenario):
 
         retrieval_ms = (time.monotonic() - t0) * 1000
 
-        # Build reverse-map: redis_key -> list of IDs (session_id or turn_id).
-        # We need to match retrieved redis keys back to whatever ID type the
-        # ground truth uses (session_id for LongMemEval-S, turn_id for LoCoMo).
-        # _session_key_map tracks both; we prefer IDs that appear in relevant_ids.
-        redis_key_to_ids: Dict[str, List[str]] = {}
-        for id_value, keys in self._session_key_map.items():
-            for key in keys:
-                redis_key_to_ids.setdefault(key, []).append(id_value)
-
-        relevant_ids = set(self.item.relevant_ids)
-        retrieved_session_ids = []
-        seen: set = set()
-
-        for rk in retrieved_keys:
-            candidate_ids = redis_key_to_ids.get(rk, [rk])
-            # Prefer IDs that appear in relevant_ids (match ground truth key space)
-            matching = [cid for cid in candidate_ids if cid in relevant_ids]
-            chosen_ids = matching if matching else candidate_ids[:1]
-            for chosen_id in chosen_ids:
-                if chosen_id not in seen:
-                    seen.add(chosen_id)
-                    retrieved_session_ids.append(chosen_id)
+        # Collapse retrieved Redis keys to ranked IDs at ONE granularity — the
+        # dataset's ground-truth unit (session for LongMemEval-S, turn for
+        # LoCoMo), resolved in __init__ from dataset metadata. The answer key is
+        # not in scope here; see ``collapse_to_ranking_unit`` (issue #514).
+        unit_map = (
+            self._turn_key_map
+            if self._ranking_unit == "turn"
+            else self._session_key_map
+        )
+        retrieved_unit_ids = collapse_to_ranking_unit(retrieved_keys, unit_map)
 
         return ScenarioResult(
             scenario_name=self.name,
-            retrieved_ids=retrieved_session_ids,
+            retrieved_ids=retrieved_unit_ids,
             relevant_ids=set(self.item.relevant_ids),
             metadata={
+                "ranking_unit": self._ranking_unit,
                 "item_id": self.item.item_id,
                 "query": self.item.query,
                 "n_history_turns": len(self.item.history),
                 "n_saved_records": len(self._saved_records),
-                "n_retrieved": len(retrieved_session_ids),
+                "n_retrieved": len(retrieved_unit_ids),
                 "retrieval_ms": round(retrieval_ms, 2),
                 "dataset": self.item.metadata.get("dataset", "unknown"),
                 "question_type": self.item.metadata.get("question_type", ""),
