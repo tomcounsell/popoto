@@ -1,0 +1,11 @@
+{
+  "_provenance": "captured-from: the Hermes hook contract as documented by Nous Research (docs.nousresearch.com Hermes hooks reference, read 2026-08-07), not from a live turn. Hermes is not installed on any machine this repo is developed on. Recapture: install Hermes, create ~/.hermes/hooks/capture/ with a HOOK.yaml listing `events: [pre_llm_call, post_llm_call]` and a handler.py whose `handle` writes `context` to a file, then run one turn. Confidence in the field names is medium; the maintainer's acceptance pass replaces this file with a live capture.",
+  "event_type": "pre_llm_call",
+  "session_id": "hermes-6c1c1f0a",
+  "cwd": "/Users/dev/src/demo",
+  "extra": {
+    "user_message": "how does the deploy roll back when health checks fail?",
+    "is_first_turn": false,
+    "conversation_history": []
+  }
+}

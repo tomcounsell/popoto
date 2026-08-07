@@ -1,0 +1,13 @@
+{
+  "_provenance": "captured-from: live claude-code 2.1.220 headless run on 2026-08-07, same session as claude_code_user_prompt_submit.json. Recapture: see that file. Note `last_assistant_message` is present, which is why no transcript parsing is needed on the write path.",
+  "session_id": "9126bdcd-0385-4411-b61d-2373fd346a80",
+  "transcript_path": "/Users/dev/.claude/projects/-Users-dev-src-demo/9126bdcd-0385-4411-b61d-2373fd346a80.jsonl",
+  "cwd": "/Users/dev/src/demo",
+  "prompt_id": "ebc66c1d-1aff-4008-a78c-5d8c443fde5f",
+  "permission_mode": "default",
+  "hook_event_name": "Stop",
+  "stop_hook_active": false,
+  "last_assistant_message": "A failed health check triggers an automatic rollback to the previous green environment, and the deploy is marked failed in the pipeline.",
+  "background_tasks": [],
+  "session_crons": []
+}

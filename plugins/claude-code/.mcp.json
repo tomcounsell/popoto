@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "popoto-memory": {
+      "command": "popoto-memory",
+      "args": ["mcp"]
+    }
+  }
+}

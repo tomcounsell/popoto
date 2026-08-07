@@ -31,6 +31,12 @@ nav:
           - SubconsciousMemory: 'guides/subconscious-memory-recipe.md'
           - Query-Blind Retrieval: 'guides/query-blind-retrieval.md'
           - LLM Memory Extraction: 'features/llm-memory-extraction.md'
+    - Add Memory to Your Harness:
+          - Overview: 'features/harness-integration.md'
+          - Claude Code: 'guides/harness-claude-code.md'
+          - Codex: 'guides/harness-codex.md'
+          - Hermes: 'guides/harness-hermes.md'
+          - OpenClaw: 'guides/harness-openclaw.md'
     - Understand & Tune:
           - Agent Memory Overview: 'features/agent-memory.md'
           - Primitives:

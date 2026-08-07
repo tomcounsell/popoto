@@ -1,0 +1,7 @@
+{
+  "_provenance": "captured-from: the OpenClaw plugin hook reference (docs.openclaw.ai/plugins/hooks, read 2026-08-07), not from a live turn. OpenClaw is not installed on any machine this repo is developed on, and its automatic path needs a TypeScript plugin that this cycle does not ship (see spike-6 in docs/plans/harness_integration.md). Recapture: install OpenClaw, register a plugin whose before_prompt_build handler writes its argument to a file, run one turn.",
+  "event": "before_prompt_build",
+  "session_id": "openclaw-7f2b",
+  "cwd": "/Users/dev/src/demo",
+  "message": "how does the deploy roll back when health checks fail?"
+}

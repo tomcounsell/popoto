@@ -1,0 +1,14 @@
+{
+  "name": "popoto-memory",
+  "version": "1.8.2",
+  "description": "Subconscious memory for Claude Code, backed by your own Redis or Valkey. Injects relevant memories before every turn and captures every turn after it. No API keys.",
+  "author": {
+    "name": "Tom Counsell",
+    "email": "other@tomcounsell.com",
+    "url": "https://popoto.io/"
+  },
+  "homepage": "https://popoto.io/guides/harness-claude-code/",
+  "repository": "https://github.com/tomcounsell/popoto",
+  "license": "MIT",
+  "keywords": ["memory", "redis", "valkey", "context", "recall"]
+}

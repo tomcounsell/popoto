@@ -1,0 +1,11 @@
+{
+  "_provenance": "captured-from: the codex-cli 0.144.4 binary's own hook-input field list, extracted 2026-08-07, not from a live turn. Recapture: see codex_user_prompt_submit.json. `last_assistant_message` and `stop_hook_active` both appear in the binary's Stop input struct, matching Claude Code field for field.",
+  "session_id": "019fdbed-9e5b-79c1-8234-e45a63fc5807",
+  "transcript_path": "/Users/dev/.codex/sessions/019fdbed-9e5b-79c1-8234-e45a63fc5807.jsonl",
+  "cwd": "/Users/dev/src/demo",
+  "turn_id": "2f0f0f1b-1f2c-4a1e-9c1a-4b0d3d9e5f21",
+  "permission_mode": "default",
+  "hook_event_name": "Stop",
+  "stop_hook_active": false,
+  "last_assistant_message": "A failed health check triggers an automatic rollback to the previous green environment, and the deploy is marked failed in the pipeline."
+}

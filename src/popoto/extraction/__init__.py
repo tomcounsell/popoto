@@ -12,7 +12,11 @@ behavior exactly and requires no external dependencies.
 
 Available providers:
     - HeuristicExtractionProvider: zero-dependency sentence-split heuristic
-      (the default; stdlib-only, eagerly imported here)
+      (the recipe default; stdlib-only, eagerly imported here)
+    - RawTurnExtractionProvider: zero-dependency verbatim pass-through, one
+      fact per turn. The default on the harness path
+      (``popoto.integrations``) because issue #489 measured it ahead of the
+      heuristic on judged accuracy.
     - ClaudeExtractionProvider (popoto.extraction.claude): opt-in LLM-based
       extraction via the Anthropic API (requires the ``anthropic`` package;
       imported lazily -- see popoto.extraction.claude, not re-exported here)
@@ -145,8 +149,64 @@ class HeuristicExtractionProvider(AbstractExtractionProvider):
         return [p for p in parts if p]
 
 
+class RawTurnExtractionProvider(AbstractExtractionProvider):
+    """Verbatim pass-through: one turn in, one ``ExtractedFact`` out.
+
+    No sentence splitting, no length filter, no rewriting. The turn text is
+    stripped of surrounding whitespace and returned as a single fact, so the
+    saved record is the turn itself.
+
+    Why this exists, and why it is the harness default (issue #489):
+    PR #510 evaluated LLM extraction, heuristic sentence-splitting, and raw
+    turn ingestion against the same slice. Every extraction arm lost to raw
+    ingestion on judged accuracy -- heuristic scored **0.2078** against raw's
+    **0.3636**. Sentence-splitting an assistant turn discards the context
+    that makes each sentence answerable, and it multiplies one turn into
+    many low-value records.
+
+    ``popoto.integrations`` (the agent-harness hook and MCP path) writes
+    through this provider by default, because a hook fires on every turn and
+    would otherwise generate more memories through the measured-worst path
+    than every other Popoto usage combined. Set
+    ``POPOTO_MEMORY_INGEST=heuristic`` to opt into the split behavior.
+
+    This provider states no importance or confidence opinion (both ``None``),
+    so ``SubconsciousMemory.extract_memories()`` falls back to the
+    caller-supplied importance and leaves ``ConfidenceField`` at its prior.
+
+    Args:
+        max_chars: Optional cap on the fact's length. ``None`` (default)
+            stores the turn in full. When set, the text is truncated to
+            ``max_chars`` characters -- use it only when turns are large
+            enough to threaten Redis value limits, since truncation is the
+            same information loss this provider exists to avoid.
+    """
+
+    def __init__(self, max_chars: Optional[int] = None):
+        self._max_chars = max_chars
+
+    def extract(self, text: str) -> List[ExtractedFact]:
+        """Return the turn verbatim as a single fact.
+
+        Args:
+            text: Raw turn text.
+
+        Returns:
+            A one-element list holding the stripped text, or an empty list
+            when the text is empty or whitespace-only.
+        """
+        if not text or not text.strip():
+            return []
+
+        content = text.strip()
+        if self._max_chars is not None and len(content) > self._max_chars:
+            content = content[: self._max_chars]
+        return [ExtractedFact(text=content)]
+
+
 __all__ = [
     "ExtractedFact",
     "AbstractExtractionProvider",
     "HeuristicExtractionProvider",
+    "RawTurnExtractionProvider",
 ]

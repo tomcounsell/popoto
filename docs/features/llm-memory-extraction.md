@@ -36,7 +36,52 @@ class AbstractExtractionProvider(ABC):
 
 Implementations turn raw text into `ExtractedFact` records. Provider implementations should not raise for ordinary extraction failures -- return an empty list instead (see `ClaudeExtractionProvider`'s fail-open contract below). Write your own provider by subclassing this ABC and implementing `extract()`.
 
-## The Default: `HeuristicExtractionProvider`
+### Shipped providers
+
+| Provider | Records per turn | Dependencies | Default for |
+|---|---|---|---|
+| `RawTurnExtractionProvider` | 1, verbatim | none | the harness path (`popoto.integrations`) |
+| `HeuristicExtractionProvider` | one per sentence | none | `SubconsciousMemory` |
+| `ClaudeExtractionProvider` | model's choice | `popoto[anthropic]`, API key | opt-in only |
+
+The two defaults differ deliberately. `SubconsciousMemory` keeps the
+heuristic for backward compatibility -- changing it would silently alter the
+write behavior of existing code. The harness path is new surface with no
+compatibility obligation, so it takes the arm that
+[measured best](#evaluation-extraction-lost-to-raw-ingestion).
+
+## `RawTurnExtractionProvider`
+
+Verbatim pass-through: one turn in, one `ExtractedFact` out. No sentence
+splitting, no length filter, no rewriting -- only surrounding whitespace is
+stripped.
+
+```python
+from popoto.extraction import RawTurnExtractionProvider
+from popoto.recipes import SubconsciousMemory
+
+sm = SubconsciousMemory(
+    agent_id="agent-1",
+    extraction_provider=RawTurnExtractionProvider(),
+)
+```
+
+**This is the harness default**, because a hook fires on every turn and the
+[evaluation below](#evaluation-extraction-lost-to-raw-ingestion) put raw
+ingestion at 0.3636 judged accuracy against the heuristic's 0.2078 on the
+same slice. Defaulting the highest-volume write path in the product to the
+measured-worst arm would fill a new user's corpus with the weakest records
+Popoto knows how to make. `POPOTO_MEMORY_INGEST=heuristic` opts back into
+splitting and logs that cost on first use. See
+[Harness Integration](harness-integration.md).
+
+It states no importance or confidence opinion, so the caller-supplied
+`importance` is used and `ConfidenceField` stays at its prior. An optional
+`max_chars` truncates very long turns; leave it unset unless turns are large
+enough to threaten Redis value limits, since truncating is the same
+information loss the provider exists to avoid.
+
+## The `SubconsciousMemory` Default: `HeuristicExtractionProvider`
 
 Zero-dependency, stdlib-only, and used automatically when no `extraction_provider` is passed to `SubconsciousMemory`. It splits text on sentence-ending punctuation (`.!?`) followed by whitespace or end-of-string, strips each sentence, and drops any shorter than `min_length` (default 10 chars). Every surviving sentence becomes an `ExtractedFact` with no entities and `importance=None`, `confidence=None` -- so downstream wiring always falls back to the caller-supplied `importance` and never touches `confidence_field`.
 
@@ -211,3 +256,4 @@ testing on your own data before ruling extraction out.
 - [SubconsciousMemory Recipe](../guides/subconscious-memory-recipe.md) -- the recipe that consumes extraction providers
 - [ConfidenceField](confidence-field.md) -- update formula and blending behavior
 - [CoOccurrenceField](co-occurrence-field.md) -- association graph seeded from co-mentioned entities
+- [Harness Integration](harness-integration.md) -- where `RawTurnExtractionProvider` is the default write path

@@ -73,6 +73,12 @@ anthropic = [
 monitoring = [
     "sentry-sdk>=2.0.0",
 ]
+# Agent-harness integration. Only the MCP server needs this; the hook path
+# (popoto-memory hook) works on a bare `pip install popoto`, which is what
+# keeps the core install at three packages with no API keys.
+mcp = [
+    "mcp>=1.2",
+]
 benchmark = [
     "huggingface_hub>=0.23",
     "sentence-transformers>=2.7",
@@ -100,6 +106,9 @@ Homepage = "https://popoto.io/"
 Documentation = "https://popoto.io/"
 Source = "https://github.com/tomcounsell/popoto"
 Bug_Tracker = "https://github.com/tomcounsell/popoto/issues"
+
+[project.scripts]
+popoto-memory = "popoto.integrations.cli:main"
 
 [project.entry-points.pytest11]
 popoto = "popoto.pytest_plugin"

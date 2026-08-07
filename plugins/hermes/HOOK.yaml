@@ -1,0 +1,8 @@
+name: popoto-memory
+description: >-
+  Subconscious memory on your own Redis or Valkey. Recalls relevant memories
+  before each model call and captures the response after it. No API keys.
+version: 1.8.2
+events:
+  - pre_llm_call
+  - post_llm_call
