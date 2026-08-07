@@ -6,6 +6,8 @@ owner: valorengels
 created: 2026-08-07
 tracking: https://github.com/tomcounsell/popoto/issues/525
 last_comment_id:
+revision_applied: true
+revision_applied_at: 2026-08-07T08:41:29Z
 ---
 
 # DB_key colon escape must be self-escaping
@@ -72,8 +74,35 @@ does not modify `db_key.py`, and the fix here does not weaken that argument.
 
 ## Prior Art
 
-No prior issues or merged PRs found related to this work. `DB_key`'s escaping has not been
-touched by a tracked fix before.
+No prior issue or merged PR has touched `DB_key`'s escaping — the escape scheme has never
+been changed by a tracked fix.
+
+**Closest precedent: issue #476 (closed) — "1.8.0 atomic-index `\x00idxset` pointer field
+pollutes the model hash."** That change altered the on-disk shape and was
+forward-incompatible for pre-fix readers, which became a live mixed-deploy hazard (a
+pre-1.8.0 reader hit an `ExtraData` crash and an apparently-empty index). This plan makes a
+change in the same *class* — a write-format change with no migration gate — so the
+dismissal in Risk 2 has to be argued against #476, not asserted.
+
+**Why the no-migration-gate decision is safe here and was not there:**
+
+| | #476 (1.8.0 atomic index) | This fix (#525) |
+|---|---|---|
+| Values whose stored bytes change | **Every model hash** — the pointer field was written unconditionally | Only values containing the literal seven-character `{&#58;}` sequence |
+| State of those values before the change | Correct and readable | **Already lossy at write time** — the information needed to decode them was never stored |
+| Old reader on new bytes | Crashed / silently empty on ordinary data | Wrong string, for inputs that are already decoded wrong today |
+| New reader on old bytes | n/a | Byte-identical to the old reader (spike-2: 0 divergences / 200k encodings) |
+
+The exposure #476 created — ordinary data becoming unreadable — has no analogue here,
+because no value that decodes correctly today changes its encoding. The residual
+forward-incompatibility is confined to a value set that is already corrupt.
+
+**The lesson taken from #476:** its release note did not name a version boundary, which is
+what made the mixed deploy hard to diagnose in the field. This plan's release note must name
+one explicitly (see Documentation / Task 4): *keys written by Popoto ≥ 1.8.2 for values
+containing the literal `{&#58;}` sequence are not decoded correctly by Popoto < 1.8.2; roll
+readers forward before writers.* (Substitute the actual release version if the version bump
+differs at ship time.)
 
 ## Research
 
@@ -131,9 +160,10 @@ small alphabet rather than by adding a new dependency.
    embedded in index Set keys and relationship field values.
 4. **Read back**: `DB_key.from_redis_key(redis_key)` (`db_key.py:131-133`) decodes bytes,
    `split(":")`, and `unclean()`s each partial.
-5. **Output**: partials handed to `Query` (`query.py:2655`, `query.py:3045`),
-   `Relationship` (`relationship.py:288, 309, 411`), and
-   `recipes/graph_traversal.py:211` as recovered field values.
+5. **Output**: partials handed to `Query` (`src/popoto/models/query.py:2915`,
+   `src/popoto/models/query.py:3305`), `Relationship`
+   (`src/popoto/fields/relationship.py:288, 309, 411`), and
+   `src/popoto/recipes/graph_traversal.py:211` as recovered field values.
 
 Step 5 is where the silent corruption surfaces today. `clean()` is also called directly for
 glob-pattern construction at `fields/indexed_field_mixin.py:528,539` and
@@ -191,14 +221,23 @@ recovered exactly** (today: a corrupted string with a spurious `:`).
 
 ### Technical Approach
 
+Three module-level constants in `src/popoto/models/db_key.py`, so the two methods, the
+docstrings and the tests all reference one source of truth:
+
+```python
+COLON_ESCAPE = "{&#58;}"          # what a literal ":" encodes to
+GLOB_CHARS = "'?*^[]-"           # slash-prefixed by clean()
+ESCAPABLE = "/" + GLOB_CHARS + "{"   # every char clean() can emit after a "/"
+```
+
 `clean()` — one new line, inserted between the glob loop and the colon encode:
 
 ```python
 value = value.replace("/", "//")
-for char in "'?*^[]-":
+for char in GLOB_CHARS:
     value = value.replace(char, f"/{char}")
-value = value.replace("{&#58;}", "/{&#58;}")   # NEW: self-escape the escape
-value = value.replace(":", "{&#58;}")
+value = value.replace(COLON_ESCAPE, "/" + COLON_ESCAPE)   # NEW: self-escape the escape
+value = value.replace(":", COLON_ESCAPE)
 ```
 
 Order is load-bearing: the pre-escape must run *after* `/`-doubling (so the inserted `/` is
@@ -207,15 +246,24 @@ emits is not re-escaped).
 
 `unclean()` — replace the ordered replace chain with a single left-to-right scan:
 
-- at `/` with a following character: emit that character literally, advance 2. This
-  subsumes `//` → `/`, `/<glob char>` → `<glob char>`, and the new `/{` → `{`.
-- else at a position where the string starts with `{&#58;}`: emit `:`, advance 7.
+- at `/` **whose following character is in `ESCAPABLE`**: emit that character literally,
+  advance 2. This subsumes `//` → `/`, `/<glob char>` → `<glob char>`, and the new `/{` →
+  `{` (which fronts a `/{&#58;}` pre-escape).
+- else at a position where the string starts with `COLON_ESCAPE`: emit `:`, advance
+  `len(COLON_ESCAPE)`.
 - else: emit the character, advance 1.
-- a trailing lone `/` (only reachable from malformed input) is emitted as-is, matching the
-  current behavior.
+- a trailing lone `/`, or a `/` followed by a character outside `ESCAPABLE`, is emitted
+  as-is — matching the current decoder exactly.
 
-Extract the escape sequence and the glob-character set to module-level constants so the two
-methods cannot drift.
+**Why the `/` branch is narrowed rather than greedy** (critique concern, Risk & Robustness):
+a greedy `if ch == "/" and i + 1 < n` branch consumes *any* following character, which
+silently widens the escape set relative to today's decoder on input `clean()` never
+produced — `unclean("/a")` is `"/a"` today but would become `"a"`, and `"x/y"` → `"xy"`.
+Spike-2's parity sweep could not surface this because it only fed `clean_old()`-produced
+encodings, where a `/` is always followed by `/` or a glob char. Restricting the branch to
+`ESCAPABLE` keeps parity on *arbitrary* input, not just well-formed input, and costs one
+membership test. The property test's malformed-input arm pins this explicitly rather than
+only asserting "does not raise" (which passes under either behavior).
 
 The scanner is what makes the fix correct: with sequential replaces, the colon decode
 necessarily runs before slash unescaping (slashes must be undone last), so it cannot
@@ -242,6 +290,14 @@ silent by nature, which is precisely why the property test (not example tests) i
 
 ## Test Impact
 
+- [ ] `tests/test_tag_field.py` — **no change expected, and it is the repo's encoding-stability
+      canary.** `tests/test_tag_field.py:263` (`test_index_key_is_a_plain_redis_set`) is the
+      only test in the repo that hard-codes escaped bytes:
+      `idx_key = "$TagF:TaggedMemory:tags:agent{&#58;}valor"`, produced from the source value
+      `agent:valor`. It passes unchanged because that source value contains no literal
+      `{&#58;}`, so the new pre-escape never fires and the encoding is byte-identical. If this
+      test breaks, the encoding changed more than intended — the validator must report it by
+      name (see Task 3), not just as part of a whole-suite pass.
 - [ ] `tests/test_key_fields.py`, `tests/test_immutable_keys.py`,
       `tests/test_keyfield_migration.py`, `tests/test_keyfield_stale_reads.py`,
       `tests/test_relationship_edge_cases.py` — **no change expected**: none assert on the
@@ -290,8 +346,18 @@ this out explicitly in the changelog/docs note rather than attempting a migratio
 yielding `/:`, then unescapes slashes — producing a wrong value. Same class of corruption as
 today, for the same already-broken input set.
 **Mitigation:** The new reader is fully backward-compatible (spike-2: 0 divergences over
-200k legacy encodings), so rolling readers forward first is safe. Forward-incompatibility is
-confined to the already-corrupt value set. Note it in the release notes; no code gate needed.
+200k legacy encodings; independently re-verified by the critique at 207,240 cases), so
+rolling readers forward first is safe. Forward-incompatibility is confined to the
+already-corrupt value set — see the Prior Art comparison against **#476**, which is the same
+class of change but changed *every* model hash and so broke ordinary data. That difference,
+not the change class, is what makes a release note sufficient here and a code gate
+unnecessary.
+
+The one thing #476 got wrong that this must not repeat: its note did not state a version
+boundary, which is what made the mixed deploy hard to diagnose. The release note here must
+name it explicitly — *keys written by Popoto ≥ 1.8.2 for values containing the literal
+`{&#58;}` sequence are not decoded correctly by Popoto < 1.8.2; upgrade readers before
+writers* — using whatever version the fix actually ships in.
 
 ### Risk 3: The single-pass scanner subtly diverges from the old decoder on some legacy input
 **Impact:** Stored keys become unreadable — far worse than the bug being fixed.
@@ -327,9 +393,11 @@ or MCP surface.
       new feature.
 
 ### External Documentation Site
-- [ ] `docs/configuration.md:113` shows `HGETALL Restaurant:Burger{&#58;}Palace` as an
-      example of the colon escaping. Verify it is still accurate (it is — that value has no
-      literal `{&#58;}`), and leave it unless the docs pass finds it misleading.
+- [ ] `docs/configuration.md:129` shows `HGETALL Restaurant:Burger{&#58;}Palace` as an
+      example of the colon escaping (inside the "Debugging with redis-cli" command block —
+      **not** line 113, which is a blank line in a different section). Verify it is still
+      accurate (it is — that value has no literal `{&#58;}`), and leave it unless the docs
+      pass finds it misleading.
 - [ ] `mkdocs build --strict` passes (`scripts/ci-local.sh docs`).
 
 ### Inline Documentation
@@ -341,7 +409,10 @@ or MCP surface.
 - [ ] Update the class-level "Key Escaping" note (`db_key.py:19-22`) to state the round-trip
       guarantee.
 - [ ] Add a release-note line about the encoding change for values containing the literal
-      `{&#58;}` sequence.
+      `{&#58;}` sequence. It **must name the version boundary** ("keys written by ≥ X.Y.Z for
+      values containing the literal `{&#58;}` are not decoded correctly by < X.Y.Z; upgrade
+      readers before writers") — the omission of exactly this in #476's note is what made
+      that mixed deploy hard to diagnose.
 
 ## Success Criteria
 
@@ -353,6 +424,11 @@ or MCP surface.
       that does not contain the literal `{&#58;}` sequence (asserted by test).
 - [ ] `clean()` output never contains a literal `:`, so `from_redis_key()`'s `split(":")`
       stays unambiguous (asserted by test).
+- [ ] The new `unclean()` does not widen the escape set on input `clean()` never produced:
+      `unclean("/a") == "/a"` and `unclean("x/y") == "x/y"`, with parity against the frozen
+      legacy decoder on the fixed malformed-input list (asserted by test).
+- [ ] `tests/test_tag_field.py::test_index_key_is_a_plain_redis_set` passes unmodified and is
+      reported by name by the validator.
 - [ ] Full existing suite passes unmodified — no existing test relaxed to accommodate the fix.
 - [ ] Tests pass (`/do-test`)
 - [ ] Documentation updated (`/do-docs`)
@@ -395,13 +471,20 @@ or MCP surface.
 - **Assigned To**: db-key-builder
 - **Agent Type**: builder
 - **Parallel**: true
-- Add module-level constants for the colon escape sequence `{&#58;}` and the glob character
-  set `'?*^[]-` in `src/popoto/models/db_key.py`.
+- Add module-level constants in `src/popoto/models/db_key.py`:
+  `COLON_ESCAPE = "{&#58;}"`, `GLOB_CHARS = "'?*^[]-"`, `ESCAPABLE = "/" + GLOB_CHARS + "{"`.
+  Use them in both methods and in the docstrings so the two cannot drift.
 - In `clean()`, insert `value = value.replace(COLON_ESCAPE, "/" + COLON_ESCAPE)` between the
-  glob-escape loop and the `:` → `{&#58;}` replace. Do not reorder the other steps.
-- Rewrite `unclean()` as a single left-to-right scanner: `/` + next char → emit next char
-  literally (advance 2); else `startswith(COLON_ESCAPE, i)` → emit `:` (advance 7); else emit
-  the char (advance 1); a trailing lone `/` is emitted as-is.
+  glob-escape loop and the `:` → `COLON_ESCAPE` replace. Do not reorder the other steps.
+- Rewrite `unclean()` as a single left-to-right scanner: `/` **whose next char is in
+  `ESCAPABLE`** → emit that char literally (advance 2); else `value.startswith(COLON_ESCAPE,
+  i)` → emit `:` (advance `len(COLON_ESCAPE)`, never a literal `7`); else emit the char
+  (advance 1). A trailing lone `/`, or a `/` followed by a char outside `ESCAPABLE`, is
+  emitted as-is.
+- **The `ESCAPABLE` guard is required, not optional.** A greedy `/`-branch changes
+  `unclean("/a")` from `"/a"` to `"a"` and `unclean("x/y")` from `"x/y"` to `"xy"`, silently
+  widening the escape set on input `clean()` never produced. Spike-2's parity sweep only fed
+  well-formed encodings and could not have caught it.
 - Update the `clean()` / `unclean()` docstrings and the module "Key Escaping" note — the
   existing `unclean()` docstring describes the replace ordering and becomes wrong.
 - Do NOT change `__str__`, `from_redis_key`, or any call site.
@@ -417,9 +500,12 @@ or MCP surface.
 - **Parallel**: true
 - Create `tests/test_db_key_escaping.py`.
 - Round-trip property test: exhaustive over all strings of length 0–3 from the alphabet
-  `a`, `/`, `:`, `-`, `*`, `[`, `]`, `^`, `?`, `'`, `{`, `}`, `&`, `#`, `;`, plus the
-  multi-character token `{&#58;}`; then a seeded (`random.Random(0)`) sweep of ~50k longer
-  strings. Assert `DB_key.unclean(DB_key.clean(v)) == v`.
+  `a`, `/`, `:`, `-`, `*`, `[`, `]`, `^`, `?`, `'`, `{`, `}`, `&`, `#`, `5`, `8`, `;`, plus
+  the multi-character token `{&#58;}`; then a seeded (`random.Random(0)`) sweep of ~50k
+  longer strings. Assert `DB_key.unclean(DB_key.clean(v)) == v`. (`5` and `8` are in the
+  alphabet deliberately: without them the exhaustive arm cannot build near-miss sequences
+  like `{&#5` adjacent to `8;}`, and it would not match the spike-2 alphabet that produced
+  the confidence claim.)
 - Explicit regression cases from issue #525: `'{&#58;}'`, `'a{&#58;}b'`, `'{&#58;}-/:'`.
 - Legacy decode-compatibility test: inline the pre-fix `clean`/`unclean` as frozen reference
   functions named `_legacy_clean` / `_legacy_unclean`, and assert
@@ -432,6 +518,16 @@ or MCP surface.
   `["Model", v1, v2]` for a handful of hostile `v1`/`v2` including `{&#58;}`.
 - Malformed-input test: `DB_key.unclean()` on `""`, `"/"`, `"{"`, `"{&#58"`, `"a/"` must
   return without raising.
+- **Non-widening test (pins the `ESCAPABLE` guard).** "Does not raise" passes under both the
+  greedy and the narrowed scanner, so assert the values directly, against the *frozen legacy
+  decoder* as the oracle: `DB_key.unclean("/a") == "/a"` and `DB_key.unclean("x/y") == "x/y"`
+  (a greedy scanner returns `"a"` and `"xy"` here — that is the regression being pinned
+  against), and more generally
+  `DB_key.unclean(s) == _legacy_unclean(s)` for a fixed list of never-produced-by-`clean()`
+  strings: `"/a"`, `"x/y"`, `"/"`, `"a/"`, `"/{"`, `"//"`, `"/-"`, `"{&#58;}"`, `"/{&#58;}"`.
+  (`"/{"` and `"/{&#58;}"` are the two the new encoder *can* produce, and are the intended
+  points of divergence from `_legacy_unclean`; list them as expected-divergence cases with
+  their new values rather than as parity cases.)
 - Keep the whole file pure-Python (no Redis calls) so it runs fast.
 
 ### 3. Validate
@@ -441,17 +537,26 @@ or MCP surface.
 - **Agent Type**: validator
 - **Parallel**: false
 - Run `pytest tests/test_db_key_escaping.py -q` and the full suite.
+- **Report `tests/test_tag_field.py::TestTagFieldIndex::test_index_key_is_a_plain_redis_set`
+  by name** (the `tests/test_tag_field.py:263` hard-coded `"$TagF:TaggedMemory:tags:agent{&#58;}valor"`
+  assertion). It is the repo's only escaped-bytes assertion and therefore the encoding-stability
+  canary; a whole-suite green is not a sufficient report for it.
 - Confirm `git diff --stat` shows no modifications to pre-existing test files.
 - Confirm the diff to `src/` is confined to `src/popoto/models/db_key.py`.
+- Use the exact Verification-table commands as written — they are exit-code-correct.
+  Do **not** substitute a bare `git diff --name-only ... | grep -cv ...`: `grep -c` exits 1
+  when nothing fails to match, so the success path reads as a failure to any exit-code-checking
+  runner.
 - Report pass/fail against Success Criteria.
 
 ### 4. Documentation
 - **Task ID**: document-fix
 - **Depends On**: validate-db-key
 - **Assigned To**: db-key-builder
-- **Agent Type**: documentarian
+- **Agent Type**: builder
 - **Parallel**: false
-- Verify `docs/configuration.md:113` is still accurate.
+- Verify `docs/configuration.md:129` is still accurate (the `HGETALL
+  Restaurant:Burger{&#58;}Palace` line — line 113 is a blank line in a different section).
 - Add a release note about the encoding change for values containing the literal `{&#58;}`.
 - Run `scripts/ci-local.sh docs`.
 
@@ -464,8 +569,16 @@ or MCP surface.
 | Issue #525 repro fixed | `python -c "import sys;sys.path.insert(0,'src');from popoto.models.db_key import DB_key as D;print(all(D.unclean(D.clean(v))==v for v in ['{&#58;}','a{&#58;}b','{&#58;}-/:']))"` | output contains True |
 | clean() emits no literal colon | `python -c "import sys;sys.path.insert(0,'src');from popoto.models.db_key import DB_key as D;print(any(':' in D.clean(v) for v in ['a:b','{&#58;}','x','a/b:c']))"` | output contains False |
 | Colon escape still `{&#58;}` (no scheme swap) | `python -c "import sys;sys.path.insert(0,'src');from popoto.models.db_key import DB_key as D;print(D.clean('a:b'))"` | output contains `a{&#58;}b` |
-| Fix confined to db_key.py | `git diff --name-only origin/main -- src/ \| grep -cv 'src/popoto/models/db_key.py'` | match count == 0 |
-| No pre-existing test modified | `git diff --name-only origin/main -- tests/ \| grep -cv 'tests/test_db_key_escaping.py'` | match count == 0 |
+| Non-widening scanner pinned | `python -m pytest tests/test_db_key_escaping.py -q -k "malformed or widen or legacy"` | exit code 0 |
+| Encoding canary (`test_tag_field`) | `python -m pytest tests/test_tag_field.py -q` | exit code 0 |
+| Fix confined to db_key.py | `git fetch -q origin main && [ -z "$(git diff --name-only origin/main -- src/ \| grep -v '^src/popoto/models/db_key\.py$')" ]` | exit code 0 |
+| No pre-existing test modified | `git fetch -q origin main && [ -z "$(git diff --name-only origin/main -- tests/ \| grep -v '^tests/test_db_key_escaping\.py$')" ]` | exit code 0 |
+
+> Both `git diff` rows use `[ -z "$(…)" ]` rather than `grep -c`: `grep -c` exits **1** when
+> nothing fails to match, so the old `grep -cv` form printed `0` while exiting non-zero — the
+> success path looked like a failure to any `set -e` or exit-code-checking runner (verified
+> in-repo). The `git fetch -q origin main` prefix also guards against a stale `origin/main`
+> ref in a fresh worktree.
 | Format clean | `python -m black --check src/popoto/models/db_key.py tests/test_db_key_escaping.py` | exit code 0 |
 | Docs build | `mkdocs build --strict` | exit code 0 |
 
@@ -487,19 +600,37 @@ divergences, 0 encoding changes for values without the literal sequence).
 | NIT | Scope & Value (Simplifier) | Task 4 sets **Agent Type: documentarian** but assigns it to `db-key-builder`, whose roster entry declares **Agent Type: builder**. | Team Orchestration | Either add a documentarian to the roster or change Task 4's Agent Type to `builder`; a strict orchestrator may refuse the mismatched assignment. |
 | NIT | Risk & Robustness (Skeptic) | The plan states "Extract the escape sequence and the glob-character set to module-level constants so the two methods cannot drift" but does not name them, while Task 1 later writes `COLON_ESCAPE` in a code fragment. | Technical Approach, Task 1 | Name both constants in the Technical Approach (`COLON_ESCAPE = "{&#58;}"`, `GLOB_CHARS = "'?*^[]-"`) so the docstrings, the scanner's advance-by-7, and the tests reference one source of truth. Prefer `len(COLON_ESCAPE)` over a literal `7` in the scanner. |
 
+## Revision Notes (post-critique, 2026-08-07)
+
+All 5 concerns and 3 nits are absorbed. No blockers were raised. Nothing was rejected.
+
+| # | Finding | Resolution | Where |
+|---|---------|-----------|-------|
+| C1 | Greedy `/` branch widens the escape set (`"x/y"` → `"xy"`) | **Adopted the narrowing option** (not the pin-the-greedy-behavior option): new `ESCAPABLE = "/" + GLOB_CHARS + "{"` constant guards the `/` branch, restoring parity with the legacy decoder on *arbitrary* input, not just well-formed input. Verified by hand against the legacy decoder for `"/a"`, `"x/y"`, `"//"`, `"/-"`, `"a/"`, `"{&#58;}"` (parity) and `"/{"`, `"/{&#58;}"` (intended divergence, the new encoder's own output). A dedicated non-widening test replaces the "does not raise" assertion, which passed under both behaviors. | Technical Approach, Task 1, Task 2, Success Criteria |
+| C2 | Two Verification rows exit 1 on their success path | Both `grep -cv` rows replaced with `git fetch -q origin main && [ -z "$(… \| grep -v '^…$')" ]`, whose exit code carries the meaning. The `git fetch` prefix also removes the stale-`origin/main`-in-a-worktree hazard. Task 3 now forbids substituting the `grep -c` form. | Verification table, Task 3 |
+| C3 | Prior Art missed #476, an analogous forward-incompatible format change | Prior Art now cites #476 and argues the no-migration-gate decision against it with a four-row comparison: #476 changed **every** model hash (breaking ordinary data), this changes only values already lossy at write time. The distinguishing fact is carried into Risk 2, and #476's actual failure mode — a release note with no version boundary — is turned into a hard requirement on Task 4's release note (`≥ 1.8.2` / `< 1.8.2`, substituting the real ship version). | Prior Art, Risk 2, Documentation, Task 4 |
+| C4 | Test Impact missed `tests/test_tag_field.py:263` | Added as the first Test Impact entry and framed as the repo's encoding-stability canary (source value `agent:valor` has no literal `{&#58;}`, so the pre-escape never fires). Task 3 must report it by name; added to Success Criteria and the Verification table. | Test Impact, Task 3, Verification, Success Criteria |
+| C5 | Three stale file:line refs | Corrected and re-verified in-repo: `query.py` → `src/popoto/models/query.py:2915` and `:3305`; `relationship.py` → `src/popoto/fields/relationship.py:288, 309, 411` (lines were right, path prefix missing); `docs/configuration.md:113` → `:129`. Task 4's instruction was the actionable one — it now names 129 and says explicitly that 113 is a blank line elsewhere. | Data Flow, Documentation, Task 4 |
+| N1 | Property-test alphabet omits `5` and `8` | Added to Task 2's alphabet with a note on why (near-miss sequences like `{&#5` + `8;}`), matching spike-2. | Task 2 |
+| N2 | Task 4 Agent Type/roster mismatch | Task 4's Agent Type changed `documentarian` → `builder` to match `db-key-builder`'s roster entry (no new roster member needed for a two-bullet docs task). | Task 4 |
+| N3 | Constants referenced but never named | `COLON_ESCAPE`, `GLOB_CHARS` and the new `ESCAPABLE` are now defined in the Technical Approach; the scanner advances by `len(COLON_ESCAPE)`, never a literal `7`. | Technical Approach, Task 1 |
+
 ---
 
-## Open Questions
+## Decisions Taken
 
-The plan takes a default position on each of the following. They are recorded for the
-critique round and for the maintainer, not as build blockers.
+The critique raised no blocker against either default below, so both stand as decided. They
+remain recorded (rather than deleted) because they are the two places a maintainer could
+still redirect the work cheaply, and because #476 shows the cost of an undocumented format
+decision.
 
-1. **Encoding-change acceptance.** The fix changes the stored encoding for values containing
+1. **Encoding-change acceptance — DECIDED: release note, no migration.** The fix changes the stored encoding for values containing
    the literal `{&#58;}` sequence. Those values are already corrupted by the current
    implementation (the information is lost at write time, so no migration can recover them),
-   so this plan treats a release note as sufficient and writes no migration. Confirm that is
-   acceptable, or say the word and this becomes a versioned-encoding change instead.
-2. **Should the `{&#58;}` escape scheme survive at all?** Keeping it means the fix is a
+   so this plan treats a release note as sufficient and writes no migration. See the Prior
+   Art comparison against #476 for why this is safe here and was not there. Say the word if
+   this should instead become a versioned-encoding change.
+2. **Escape scheme retained — DECIDED: keep `{&#58;}`.** Keeping it means the fix is a
    three-line change with near-zero migration cost. Replacing it with something shorter and
    inherently unambiguous would be cleaner but invalidates every existing key. This plan
    keeps it; flag if the long-term direction is a versioned key format.
