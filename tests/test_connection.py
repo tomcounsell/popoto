@@ -9,6 +9,7 @@ import asyncio
 import pytest
 from unittest.mock import patch
 import redis
+import redis.asyncio as aioredis
 
 import src.popoto.redis_db as redis_db_module
 from src.popoto.redis_db import (
@@ -122,6 +123,52 @@ class TestConnectionReconfiguration:
         finally:
             # Test cleanup handled by fixture if needed
             pass
+
+
+class TestConnectionPoolBackPressure:
+    """#504: a connection swap must not drop the bounded pool.
+
+    ``redis.Redis(**kwargs)`` builds an effectively unbounded pool
+    (max_connections == 2**31), so before the fix any call to
+    set_REDIS_DB_settings silently removed the back-pressure that the
+    module-level init path establishes.
+    """
+
+    @pytest.fixture
+    def restore_sync_db(self):
+        """Restore the global sync client after a test rebinds it."""
+        original = redis_db_module.POPOTO_REDIS_DB
+        yield
+        redis_db_module.POPOTO_REDIS_DB = original
+
+    def test_set_redis_db_settings_keeps_blocking_pool(self, restore_sync_db):
+        """Swapping the connection preserves a capped BlockingConnectionPool."""
+        set_REDIS_DB_settings(host="localhost", port=6379, db=15)
+
+        pool = redis_db_module.POPOTO_REDIS_DB.connection_pool
+        assert isinstance(pool, redis.BlockingConnectionPool)
+        assert pool.max_connections == redis_db_module._SYNC_MAX_CONNECTIONS
+        assert pool.connection_kwargs["db"] == 15
+        assert redis_db_module.POPOTO_REDIS_DB.ping()
+
+    def test_explicit_connection_pool_is_respected(self, restore_sync_db):
+        """An explicitly supplied pool bypasses the managed pool."""
+        custom = redis.ConnectionPool(host="localhost", port=6379, db=15)
+
+        set_REDIS_DB_settings(connection_pool=custom)
+
+        assert redis_db_module.POPOTO_REDIS_DB.connection_pool is custom
+
+    @pytest.mark.asyncio
+    async def test_set_async_redis_db_settings_keeps_blocking_pool(self):
+        """#504: the async setter has the same contract as the sync one."""
+        await set_async_redis_db_settings(host="localhost", port=6379, db=15)
+
+        client = redis_db_module._POPOTO_ASYNC_REDIS_DB
+        pool = client.connection_pool
+        assert isinstance(pool, aioredis.BlockingConnectionPool)
+        assert pool.max_connections == redis_db_module._ASYNC_MAX_CONNECTIONS
+        assert await client.ping() is True
 
 
 class TestTimeoutBehavior:
