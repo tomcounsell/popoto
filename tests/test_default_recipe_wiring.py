@@ -4,7 +4,9 @@ Guards issue #445: the *shipped* default agent-memory recipe — the model
 users are steered toward by `docs/guides/agent-memory-quickstart.md` — must
 declare a `BM25Field` so `ContextAssembler(retrieval_mode="auto")` resolves
 to a query-sensitive mode (`lexical` or `hybrid`), never the query-blind
-`composite` path.
+`composite` path. The quickstart declares one from its first schema level
+onward, so this test asserts it on every `Memory` the doc defines, not only
+on the last one.
 
 The CSR harness (#418, `tests/benchmarks/csr/`) validates the mode-resolution
 *mechanism* with per-case model classes that hardcode `BM25Field` — lexical
@@ -177,18 +179,21 @@ class TestDefaultRecipeWiring:
             f"(#409-class regression: P@10 ~= random)."
         )
 
-    def test_recipe_levels_after_attention_keep_bm25(self, pre_level5_memory_classes):
-        """Every Memory definition from the second one onward (Levels 2-4,
-        i.e. everything after Level 1's pure recall recipe) declares
-        BM25Field. Pins the doc's 'query-sensitive from Level 2 on'
-        narrative; deliberately redundant with the default-recipe check
-        above since the default recipe IS one of these classes."""
-        for idx, model_class in enumerate(pre_level5_memory_classes[1:], start=2):
+    def test_every_quickstart_level_declares_bm25(self, pre_level5_memory_classes):
+        """**Every** Memory definition before Level 5 declares BM25Field.
+
+        The quickstart's first schema-authoring level is documented as
+        query-sensitive, so the guarantee starts at Level 1 rather than at
+        Level 2 — a reader who stops after the first model still gets a model
+        `ContextAssembler` resolves to `lexical`, not to the query-blind
+        `composite` path. Deliberately redundant with the default-recipe check
+        above, since the default recipe IS one of these classes."""
+        for idx, model_class in enumerate(pre_level5_memory_classes, start=1):
             assert _has_bm25_field(model_class), (
                 f"Memory definition #{idx} (document order) in "
-                f"{QUICKSTART_PATH} does not declare a BM25Field. Levels "
-                f"2-4 of the quickstart are documented as query-sensitive; "
-                f"this recipe regressed that guarantee."
+                f"{QUICKSTART_PATH} does not declare a BM25Field. Every "
+                f"quickstart level is documented as query-sensitive; this "
+                f"recipe regressed that guarantee."
             )
 
 

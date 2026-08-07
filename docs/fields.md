@@ -720,8 +720,7 @@ Lua script computes decay-ranked results server-side:
 decayed_score = base_score × elapsed_days ^ (-decay_rate)
 ```
 
-With the default `decay_rate=0.1` (empirically tuned in sweep 2026-04-17; prior default
-was `0.5`), a record scores 1.0 after 1 day, 0.87 after 4 days, and 0.63 after 100 days.
+With the default `decay_rate=0.1`, a record scores 1.0 after 1 day, 0.87 after 4 days, and 0.63 after 100 days.
 
 ```python
 from popoto import Model, KeyField, Field, FloatField
@@ -757,13 +756,13 @@ memory.touch("relevance")  # Resets the decay clock
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `decay_rate` | `float` | `0.1` | Controls how fast scores drop. Higher = faster decay. Must be > 0. (Empirically tuned in sweep 2026-04-17; prior default was `0.5`.) |
+| `decay_rate` | `float` | `0.1` | Controls how fast scores drop. Higher = faster decay. Must be > 0. Empirically tuned; see [Tuning Magic Numbers](guides/tuning-magic-numbers.md). |
 | `base_score_field` | `str` | `None` | Name of a companion field whose value multiplies the decay curve. When `None`, base score is 1.0. |
 | `confidence_modulation_field` | `str`, `False`, or `None` | `None` | Which `ConfidenceField` modulates each record's effective decay rate. `None` auto-detects a single `ConfidenceField` on the model; a `str` names one; `False` disables. |
 | `partition_by` | `str` or `tuple` | `()` | Partition the sorted set by key field values (inherited from `SortedField`). |
 
 Use `InteractionWeight` constants with `base_score_field` for source/role-based importance
-weighting in multi-agent teams. See [Agent Memory — Source weighting](features/agent-memory.md#source-weighting-for-teamwork)
+weighting in multi-agent teams. See [DecayingSortedField — Source weighting](features/decaying-sorted-field.md#source-weighting-with-interactionweight)
 for the full pattern.
 
 **Confidence-modulated decay.** `base_score_field` scales the curve's magnitude, which
@@ -873,7 +872,7 @@ directive.touch("relevance")
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `decay_rate` | `float` | `0.1` | Power-law decay exponent (inherited). Empirically tuned in sweep 2026-04-17; prior default was `0.5`. |
+| `decay_rate` | `float` | `0.1` | Power-law decay exponent (inherited). |
 | `base_score_field` | `str` | `None` | Companion field whose value multiplies the decay curve (inherited). |
 | `confidence_modulation_field` | `str`, `False`, or `None` | `None` | Which `ConfidenceField` modulates the per-record decay rate (inherited). |
 | `cycles` | `list` | `[]` | List of `(period, amplitude, phase)` tuples. Use `TemporalPeriod` constants for period. |
@@ -991,7 +990,7 @@ See [ExistenceFilter feature docs](features/existence-filter.md#tokenization) fo
 `on_delete()` is a no-op -- Bloom filters do not support removal. Stale positives are
 harmless for a pre-filter use case.
 
-See [Agent Memory -- ExistenceFilter](features/agent-memory.md#existencefilter) for the
+See [ExistenceFilter](features/existence-filter.md) for the
 full agent memory context.
 
 ## BM25Field
@@ -1088,7 +1087,7 @@ count = Memory.freq.get_frequency(Memory, "kubernetes")
 `on_delete()` is a no-op -- CMS counters are monotonically increasing.
 
 Both `ExistenceFilter` and `FrequencySketch` can be used together on the same model.
-See [Agent Memory -- FrequencySketch](features/agent-memory.md#frequencysketch) for
+See [Agent Memory](features/agent-memory.md) for
 the full agent memory context.
 
 ## PredictionLedgerMixin
@@ -1138,7 +1137,7 @@ Redis keys: `$PL:{ClassName}:meta:{pk}` (hash), `$PL:{ClassName}:errors:{partiti
 Implemented entirely with Redis hashes, sorted sets, and Lua scripts. No Redis modules
 required -- works on both Redis and Valkey.
 
-See [Agent Memory -- PredictionLedger](features/agent-memory.md#predictionledger) for
+See [PredictionLedger](features/prediction-ledger.md) for
 the full agent memory context.
 
 ## partition_by
@@ -1281,8 +1280,7 @@ class Memory(WriteFilterMixin, Model):
 The mixin adds three behaviors to your model:
 
 1. **Gate on save**: Before persisting, `compute_filter_score()` is called. If the
-   score is below `_wf_min_threshold` (default `0.1` after sweep 2026-04-17; prior
-   default was `0.2`), a `SkipSaveException` is raised and caught by `Model.save()`,
+   score is below `_wf_min_threshold` (default `0.1`), a `SkipSaveException` is raised and caught by `Model.save()`,
    silently aborting the write.
 
 2. **Priority tagging**: If the score meets or exceeds `_wf_priority_threshold`
@@ -1317,7 +1315,7 @@ class StrictMemory(WriteFilterMixin, Model):
 
 | Attribute | Default | Description |
 |-----------|---------|-------------|
-| `_wf_min_threshold` | `0.1` | Minimum score to persist. (Empirically tuned in sweep 2026-04-17; prior default was `0.2`.) |
+| `_wf_min_threshold` | `0.1` | Minimum score to persist. Empirically tuned; see [Tuning Magic Numbers](guides/tuning-magic-numbers.md). |
 | `_wf_priority_threshold` | `0.7` | Minimum score for priority tagging |
 
 !!! tip
@@ -1325,7 +1323,7 @@ class StrictMemory(WriteFilterMixin, Model):
     its `on_save()` hook is called. The scoring function is application logic — Popoto
     provides the gating mechanism, not the scoring logic.
 
-See [Agent Memory — WriteFilter](features/agent-memory.md#writefilter) for the broader
+See [Agent Memory](features/agent-memory.md) for the broader
 agent memory context and how WriteFilter fits with DecayingSortedField and AccessTracker.
 
 ## ContentField
@@ -1707,6 +1705,294 @@ report.delete()
 !!! note
     `DataFrameField` requires the `pandas` package. Install it separately if it is
     not already in your environment.
+
+## AccessTrackerMixin
+
+Tracks read access patterns on any model using a two-stage pipeline: reads are first staged (cheap), then atomically promoted to a confirmed access log. This prevents naive "every read strengthens" behavior — only meaningful reads count.
+
+### Basic usage
+
+```python
+from popoto import Model, KeyField, Field, AccessTrackerMixin, DecayingSortedField
+
+class Memory(Model, AccessTrackerMixin):
+    agent_id = KeyField()
+    content = Field(type=str)
+    relevance = DecayingSortedField()
+
+# Reading triggers on_read() automatically via query hooks
+memories = Memory.query.filter(agent_id="agent-1").top_by_decay(5)
+
+# After the agent acts on a memory, confirm the read
+memories[0].confirm_access()       # promotes staged → confirmed
+memories[1].discard_staged_access() # clears staging without promoting
+
+# Inspect access patterns
+print(memories[0].access_count)    # 42
+print(memories[0].last_accessed)   # 1741872000.0
+```
+
+### How staging works
+
+`on_read()` fires automatically when instances are hydrated via `Query.get()`, `Query.filter()`, `top_by_decay()`, and their async variants. Each call appends a timestamp to a per-instance staging list (`RPUSH` — single Redis command, batched via pipeline).
+
+Staged reads are not yet "real" — they represent candidate accesses. Your application decides which reads were meaningful:
+
+- `confirm_access()` — atomically promotes all staged timestamps to the confirmed access log using a Lua script. Updates `access_count` and `last_accessed`.
+- `discard_staged_access()` — clears staging without affecting confirmed data.
+
+### Configuration
+
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `_max_access_log` | `int` | `100` | Maximum timestamps kept in the confirmed access log. Older entries trimmed on confirm. |
+| `_track_reads` | `bool` | `True` | Set to `False` to disable automatic `on_read()` from queries. |
+| `_staged_ttl_seconds` | `int` | `86400` | TTL applied to the staged list on every `on_read()` call (24h default). Magic-number tuning knob — increase if your stage→confirm cadence exceeds 24h. |
+
+### Staged-read TTL contract
+
+Staged reads self-expire after `_staged_ttl_seconds` (default 24h). This bounds
+Redis memory for records that are read but **never confirmed** without truncating
+the count for records that confirm within the window.
+
+**Contract:** Call `confirm_access()` within `_staged_ttl_seconds` of staging reads
+via `on_read()`. Reads left unconfirmed past the TTL window are **permanently dropped**
+from `access_count` / `last_accessed` by design — the `CONFIRM_ACCESS_LUA` script
+finds an empty staged key and returns 0. Set `_staged_ttl_seconds` higher if your
+agent's stage→confirm cadence exceeds 24h.
+
+### Suppressing tracking for bulk operations
+
+Use `no_track()` on the query builder to prevent `on_read()` from firing during
+internal operations like reindexing, migration, or lifecycle ticks:
+
+```python
+# These reads won't be tracked
+Memory.query.filter(agent_id="agent-1").no_track().all()
+```
+
+`MemoryLifecycle.tick()` uses `.no_track()` automatically — a periodic tick
+produces **zero** new staged entries and does not inflate access-frequency signals.
+
+Note: `Model.query.all()` (without `.filter()`) is non-tracking by design and
+does not call `on_read()`. The tracking path is the `QueryBuilder`
+(`.filter().all()`); chain `.no_track()` there for any internal sweep that
+should not count as a user-originated read.
+
+### Delete cleanup
+
+When a tracked model instance is deleted, all three AccessTracker Redis keys (staged, access_log, meta) are automatically removed.
+
+### Redis key patterns
+
+| Key | Type | Purpose |
+|-----|------|---------|
+| `$AT:{ClassName}:staged:{pk}` | List | Pending read timestamps |
+| `$AT:{ClassName}:access_log:{pk}` | List | Confirmed access timestamps (capped) |
+| `$AT:{ClassName}:meta:{pk}` | Hash | `access_count` (int) and `last_accessed` (float) |
+
+## EventStreamMixin
+
+Automatically appends to a Redis Stream on every `save()`, `update()`, or `delete()`. This is infrastructure for background processing — the mixin writes events, your application consumes them via Redis Streams' consumer group API.
+
+### Quick Start
+
+```python
+from popoto import Model, EventStreamMixin, UniqueKeyField, StringField
+
+class Memory(EventStreamMixin, Model):
+    _stream_name = "memory_mutations"       # Stream key: stream:memory_mutations
+    _stream_max_length = 10000              # Approximate MAXLEN trimming
+    _stream_metadata_fields = ("source",)   # Extra fields in each entry
+
+    key = UniqueKeyField()
+    content = StringField()
+    source = StringField(default="")
+
+memory = Memory(key="fact1", content="hello", source="user")
+memory.save()    # XADD with op="create"
+memory.content = "updated"
+memory.save()    # XADD with op="update"
+memory.delete()  # XADD with op="delete"
+```
+
+### Configuration
+
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `_stream_name` | `str` | `"mutations"` | Name for the Redis Stream (key: `stream:{name}`) |
+| `_stream_partition_field` | `str` | `None` | Field name to partition streams by (key becomes `stream:{name}:{value}`) |
+| `_stream_max_length` | `int` | `10000` | Approximate max entries via `MAXLEN ~` trimming |
+| `_stream_metadata_fields` | `tuple` | `()` | Field names whose values are included in stream entries |
+
+### Stream Entry Fields
+
+Every stream entry contains these string fields:
+
+| Field | Description |
+|-------|-------------|
+| `model` | Model class name |
+| `pk` | Redis key of the instance |
+| `op` | Operation: `"create"`, `"update"`, `"delete"`, or custom |
+| `ts` | Unix timestamp |
+| `changed_fields` | Comma-separated list of updated fields (from `update_fields`) |
+
+Plus any fields listed in `_stream_metadata_fields`.
+
+### Partitioned Streams
+
+Route events to different streams based on a field value:
+
+```python
+class TenantMemory(EventStreamMixin, Model):
+    _stream_name = "mutations"
+    _stream_partition_field = "tenant"
+
+    key = UniqueKeyField()
+    tenant = StringField()
+
+# Writes to stream:mutations:acme
+TenantMemory(key="x", tenant="acme").save()
+
+# Writes to stream:mutations:beta
+TenantMemory(key="y", tenant="beta").save()
+```
+
+### Custom Events (Non-Save Operations)
+
+Operations that bypass `Model.save()` (like `ConfidenceField.update_confidence()` and `CoOccurrenceField.strengthen()`) can log events via the public `_xadd_event()` method:
+
+```python
+# Called automatically by ConfidenceField.update_confidence()
+instance._xadd_event(
+    op="confidence_update",
+    extra_fields={"field": "trust", "signal": "0.8"},
+)
+```
+
+### Error Handling
+
+- **Non-pipeline mode**: XADD failures are caught and logged — `save()` always succeeds if the data write succeeded.
+- **Pipeline mode**: XADD is queued atomically with the save. If the pipeline fails, both data and stream entry fail together.
+
+### WriteFilter Interaction
+
+When `WriteFilterMixin` discards a record (score below threshold), the `save()` returns before reaching the EventStreamMixin hook. No stream entry is produced for filtered records.
+
+### Redis Key Patterns
+
+- `stream:{stream_name}` — default stream key
+- `stream:{stream_name}:{partition_value}` — partitioned stream key
+
+## TagField
+
+`TagField` adds **optional, indexed, multi-value scoping** to a model. It is the
+scoping primitive for a **centrally hosted Redis/Valkey serving many agents**: a
+memory can be scoped by the agent it belongs to, a relevant project, or arbitrary
+tags — and **every scoping dimension is optional**. A record with zero tags
+transparently lives in the shared pool and is returned by unscoped queries.
+
+Unlike KeyField partitioning (where the partition value becomes part of the
+record's Redis key and is *required* at query time), tags are **metadata, not
+identity**: a record can carry several tags at once, or none, and scoping is
+opt-in per query.
+
+### Basic usage
+
+```python
+from popoto import Model, AutoKeyField, Field, TagField
+
+class Memory(Model):
+    key = AutoKeyField()
+    content = Field(type=str)
+    tags = TagField()          # optional; zero tags == shared pool
+
+Memory.create(content="deploy runbook", tags=["agent:valor", "project:popoto"])
+Memory.create(content="general note")          # untagged — shared pool
+
+# Membership / any-of (OR) / all-of (AND)
+Memory.query.filter(tags__contains="agent:valor")
+Memory.query.filter(tags__any=["agent:a", "agent:b"])       # SUNION
+Memory.query.filter(tags__all=["agent:valor", "project:popoto"])  # SINTER
+
+# Tag filters compose with any other filter through the same pipeline.
+Memory.query.filter(project="popoto", tags__contains="agent:valor")
+```
+
+Accepts a `list`, `set`, or `tuple` of scalar tags; values are normalized to a
+sorted, de-duplicated list. A bare exact-match `filter(tags=[...])` raises a
+`QueryException` (use `__contains`/`__any`/`__all`) — a multi-value field has no
+meaningful exact-match semantics.
+
+### Convention over schema
+
+popoto stays agnostic about which scoping dimensions exist. Agents cooperate on
+prefixes — `agent:`, `project:` — or use bare tags; nothing is declared in the
+schema. Colons in tag values are escaped in the index key, so `agent:valor` never
+collides with popoto's key structure.
+
+### Not a security boundary
+
+Tags are a **cooperative** scoping mechanism between trusted agents, **not** access
+control. A query with the right tag filter can read any tagged record; there is no
+enforcement or isolation. Do not use tags to gate access to sensitive data.
+
+### How it is indexed (Valkey-safe)
+
+Per tag value, a plain Redis Set of instance keys:
+
+```
+$TagF:ModelName:field_name:tag_value -> Set of redis_keys
+```
+
+Index maintenance rides a single atomic Lua script (`TAG_SWAP_LUA`) that **diffs**
+the record's previous tag membership against the new one and issues only the
+necessary `SREM`/`SADD` calls — so re-saving with changed tags never leaves
+orphaned Set members. The previous membership is read from a server-authoritative
+pointer side key (a standalone Redis Set), never a client snapshot. All commands
+are core Redis Set operations (`SADD`/`SREM`/`SMEMBERS`/`SUNION`/`SINTER`/`DEL`) —
+**no Redis modules**, so it runs identically on Redis and Valkey.
+
+### ContextAssembler integration
+
+`ContextAssembler.assemble()` auto-detects a `TagField` on the model and accepts
+optional tag constraints applied across **all** retrieval modes (composite,
+hybrid, lexical, push):
+
+```python
+assembler = ContextAssembler(Memory, score_weights={"relevance": 1.0})
+
+# Scope retrieval to one agent's memories
+assembler.assemble(query_cues={"topic": "deploy"}, tags=["agent:valor"])
+
+# Multiple tags: any-of (OR) by default — surfaces memories in either scope
+assembler.assemble(
+    query_cues={"topic": "deploy"},
+    tags=["agent:valor", "project:popoto"],
+)
+
+# all-of semantics (intersection)
+assembler.assemble(
+    query_cues={"topic": "deploy"},
+    tags=["agent:valor", "project:popoto"],
+    tag_match="all",
+)
+
+# Omitting tags is byte-identical to a model with no TagField.
+assembler.assemble(query_cues={"topic": "deploy"})
+```
+
+`tag_match` defaults to `"any"` (OR / `SUNION`) — in a shared central pool you'd rather over-surface scoped memories and let ranking sort them than silently miss a memory tagged on only one dimension; pass `"all"` for AND (`SINTER`) when you need the precise intersection. (The `Query.filter` arms — `tags__any` / `tags__all` / `tags__contains` — are always explicit.)
+
+### Deploy-level kill switch
+
+Tag scoping in the assembler is default-on via auto-detection. Because a PyPI
+adopter cannot always edit model definitions, `Defaults.TAG_SCOPING_ENABLED`
+(default `True`) is a deploy-level escape hatch: set it `False` to make the
+assembler ignore tag constraints entirely (retrieval becomes identical to a model
+without a TagField). Index maintenance and explicit
+`Model.query.filter(tags__all=...)` queries are unaffected — the switch governs
+only the subconscious assembler path.
 
 ## Reserved Field Names
 

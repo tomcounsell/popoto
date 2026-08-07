@@ -163,9 +163,48 @@ sm = SubconsciousMemory(model_class=Memory, agent_id="agent-1",
                          score_weights={"relevance": 1.0}, extraction_provider=MyProvider())
 ```
 
-## Evaluation Status
+## Evaluation: extraction lost to raw ingestion
 
-Judged-accuracy and recall comparison of `ClaudeExtractionProvider` against the `HeuristicExtractionProvider` default is **not yet measured**. It's tracked as follow-up work under epic #456 Track B: the existing benchmark harness (`tests/benchmarks/`) doesn't currently have a pluggable extraction seam in its ingestion path, and a real comparison requires a live Anthropic API key, which is out of scope for the default test suite. No evaluation numbers exist for this feature yet -- treat any claim otherwise as incorrect.
+Extraction has been measured against plain turn ingestion on the judged-answer
+harness, and it lost on every arm. Keep it off unless you have a reason from
+your own data.
+
+LoCoMo, lexical retrieval, `gpt-4o-mini` as both generator and judge at
+temperature 0, 77 scored items, identical corpus and sample across all five
+arms:
+
+| Ingestion path | Judged accuracy | Correct / 77 | Turns dropped | Records per turn |
+|---|---:|---:|---:|---:|
+| Raw turn ingestion | **0.3636** | 28 | 0% | 1.00 |
+| `HeuristicExtractionProvider` | 0.2078 | 16 | 0.3% | 3.00 |
+| `ClaudeExtractionProvider`, Sonnet | 0.1948 | 15 | 27.3% | 2.32 |
+| `ClaudeExtractionProvider`, Opus | 0.1429 | 11 | 36.9% | 1.71 |
+| `ClaudeExtractionProvider`, Haiku | 0.0519 | 4 | 63.4% | 0.98 |
+
+Two mechanisms, pulling the same direction.
+
+**The Claude arms discard evidence.** Accuracy falls monotonically with the
+turn drop rate. `EXTRACTION_PROMPT` instructs the model to skip filler, and a
+large share of the turns it judges to be filler are the ones carrying the
+ground-truth evidence. Haiku drops 63% of turns and takes the accuracy with
+them. The answer is gone before retrieval ever runs.
+
+**The heuristic arm fragments context.** It drops almost nothing but splits
+each turn into roughly three sentences. A sentence retrieved without the turn
+around it does not give the generator enough to answer from, and that costs 16
+points on its own.
+
+Artifacts: `tests/benchmarks/results/external/locomo_latest_ext-*_judged.json`
+and `locomo_latest_judged.json` for the raw-ingestion baseline. Method,
+sampling scope, and the confidence interval on the baseline are in
+[Benchmarking](../benchmarks.md#extraction-measured).
+
+**What this does not say.** It measures extraction as a *replacement* for
+storing the turn, on one dataset of multi-session personal dialogue where the
+ground truth is a specific turn. It does not measure extraction as an addition
+alongside raw turns, and it does not generalise to corpora where the raw unit
+is too long or too noisy to retrieve directly. Those are the cases worth
+testing on your own data before ruling extraction out.
 
 ## See Also
 

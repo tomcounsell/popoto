@@ -1,10 +1,12 @@
 # Features Index
 
-Agent-memory primitives and recipes shipped in Popoto.
+Agent-memory primitives and composed layers shipped in Popoto. Start at
+[Agent Memory](agent-memory.md) for the map of how they fit together, or at the
+[Quickstart](../guides/agent-memory-quickstart.md) to build one.
 
 | Feature | Description | Status |
 |---------|-------------|--------|
-| [Agent Memory](agent-memory.md) | Overview of the 14-primitive agent-memory system | Stable |
+| [Agent Memory](agent-memory.md) | The map: 14 primitives, the layers composed on them, and where each reference lives | Stable |
 | [CoOccurrenceField](co-occurrence-field.md) | Associative co-occurrence graph for candidate expansion | Stable |
 | [CompositeScoreQuery](composite-score-query.md) | Multi-factor ranked retrieval across sorted indexes | Stable |
 | [ConfidenceField](confidence-field.md) | Capped-evidence certainty tracking with corroborate/contradict updates | Stable |
@@ -14,7 +16,6 @@ Agent-memory primitives and recipes shipped in Popoto.
 | [DecayingSortedField](decaying-sorted-field.md) | Time-decayed sorted index for relevance ranking, with confidence-modulated per-record decay rates | Stable |
 | [ExistenceFilter](existence-filter.md) | Probabilistic membership pre-check (Bloom-style) | Stable |
 | [Hybrid Retrieval (BM25 + RRF)](hybrid-retrieval.md) | BM25 keyword search fused with vector scores via RRF | Stable |
-| [Kitchen Edge Case Demo](kitchen-edge-case-demo.md) | Worked examples covering edge cases across primitives | Reference |
 | [LLM Memory Extraction](llm-memory-extraction.md) | Pluggable extraction providers (heuristic default, opt-in Claude) for `SubconsciousMemory` | Stable |
 | [Metacognitive Layer](metacognitive-layer.md) | Retrieval quality scoring, FOK, `"used"` outcome, AdaptiveAssembler | Stable |
 | [ObservationProtocol](observation-protocol.md) | Outcome-driven memory effects: acted, dismissed, deferred, contradicted, used | Stable |

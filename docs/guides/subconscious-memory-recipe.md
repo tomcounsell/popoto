@@ -67,7 +67,7 @@ class DefaultMemory(AccessTrackerMixin, Model):
 
 The `BM25Field` is the load-bearing piece: it makes `retrieval_mode='auto'` resolve to the query-sensitive `lexical` mode. A model without one resolves to `composite`, which ignores the query text entirely (and now logs a warning saying so).
 
-`DefaultMemory` deliberately omits `WriteFilterMixin` — it discards records below a score threshold and `save()` returns `False`, which is the wrong surprise for a first run. Add it once you want that behavior; the [quickstart](agent-memory-quickstart.md#level-2-attention-filter-noise-track-reads) covers it at Level 2. `EmbeddingField` is omitted too, since it needs an embedding provider; adding one to a subclass flips retrieval from `lexical` to `hybrid` with no change at this call site.
+`DefaultMemory` deliberately omits `WriteFilterMixin` — it discards records below a score threshold and `save()` returns `False`, which is the wrong surprise for a first run. Add it once you want that behavior; the [quickstart](agent-memory-quickstart.md#level-2-attention-filtering-noise-and-tracking-reads) covers it at Level 2. `EmbeddingField` is omitted too, since it needs an embedding provider; adding one to a subclass flips retrieval from `lexical` to `hybrid` with no change at this call site.
 
 Two more defaults follow from the default model: `score_weights` becomes `{"relevance": 1.0}` (the benchmarked vector), and `confidence_field` / `co_occurrence_field` are wired to the model's `confidence` and `associations` fields.
 
@@ -102,7 +102,7 @@ Relevant context:
 - Q4 revenue exceeded projections by 12%, driven by enterprise deals.
 ```
 
-Earlier versions injected the full JSON record — `memory_id` UUIDs, the `agent_id` the caller had just supplied, and `relevance` as a raw epoch float. Measured over `DefaultMemory` with a 71-character memory, that payload ran 262 characters (3.69x the content, ~104 estimated tokens) against 73 characters for the content format (1.03x, ~16 tokens).
+The content-only shape is what makes the token budget go to memory rather than to bookkeeping. Measured over `DefaultMemory` with a 71-character memory, the content format runs 73 characters (1.03x the content, ~16 estimated tokens); the full JSON record — `memory_id` UUIDs, the `agent_id` the caller just supplied, `relevance` as a raw epoch float — runs 262 characters (3.69x, ~104 tokens) for the same one memory.
 
 Pass `output_format="structured"` to restore the JSON payload verbatim, or `"xml"` / `"natural"` for the other [ContextAssembler formats](../features/context-assembler.md#output-formats-output_format).
 
@@ -172,9 +172,21 @@ By default (no `extraction_provider` passed to the constructor):
 2. Filters out sentences shorter than `extraction_min_length` (default 10 chars)
 3. Saves each sentence as a new Memory record with the specified importance
 
-This is unchanged, byte-for-byte, from the original heuristic -- existing code that doesn't pass any of `extraction_provider`, `confidence_field`, or `co_occurrence_field` sees no behavior change.
+!!! warning "The measured-best write path is the raw turn"
+    Every rewrite-before-store path that has been measured lost to storing the
+    turn as it arrived. On the judged-answer harness, raw turn ingestion scores
+    **0.3636** over 77 items; the `HeuristicExtractionProvider` default scores
+    **0.2078**, and the Claude extraction arms score lower still, in proportion
+    to how many turns they discard. Full table, both failure mechanisms, and the
+    scope of the measurement:
+    [LLM Memory Extraction](../features/llm-memory-extraction.md#evaluation-extraction-lost-to-raw-ingestion).
 
-Extraction is now pluggable via a dedicated provider interface -- see the [LLM Memory Extraction](../features/llm-memory-extraction.md) feature doc for the full picture. In short:
+    Passing a longer `response_text` straight through — one record per turn,
+    no splitting — is the configuration those benchmarks ran. Reach for an
+    extraction provider when your own corpus gives you a reason to, and measure
+    it there.
+
+Extraction is pluggable via a dedicated provider interface -- see the [LLM Memory Extraction](../features/llm-memory-extraction.md) feature doc for the full picture. In short:
 
 - **`extraction_provider`** (default `None` -> `HeuristicExtractionProvider`): pass an `AbstractExtractionProvider` instance (e.g. `ClaudeExtractionProvider` from `popoto.extraction.claude`, requires `pip install popoto[anthropic]`) for LLM-based extraction that also returns entities, an importance opinion, and a confidence opinion per fact.
 - **`confidence_field`** (default `None`, no-op unless set): name of a `ConfidenceField` on `model_class`. When set and a fact carries a confidence opinion, `extract_memories()` seeds that field via `ConfidenceField.update_confidence()`. Because `ConfidenceField` has no per-instance "set initial value" API, this is a *blend* with the field's `initial_confidence` prior, not a hard override -- see [the confidence blend nuance](../features/llm-memory-extraction.md#the-confidence-blend-nuance) before assuming the stored value equals the extracted confidence.
@@ -202,7 +214,7 @@ Reported outcomes are not only a ranking nudge -- they set how fast a memory lea
 2. The next retrieval reads that confidence inside the decay Lua and raises the record's effective decay rate (`eff = decay_rate * 2 ^ (s * 2 * (c0 - c))`), so it ranks lower -- see [Confidence-Modulated Decay](../features/decaying-sorted-field.md#confidence-modulated-decay).
 3. The next [`MemoryLifecycle.tick()`](../recipes.md#memorylifecycle) tombstones it once it is idle, its confidence is below `FORGET_CONFIDENCE_CEILING`, and it has at least `FORGET_MIN_EVIDENCE` observations behind it.
 
-Modulation is on by default whenever the model carries exactly one `ConfidenceField`, and forgetting tombstones rather than deletes, so a memory pruned by an unlucky run of dismissals can be brought back with `lifecycle.restore(redis_key)`. If a post-upgrade ranking change is unwelcome, `Defaults.DECAY_CONFIDENCE_MODULATION_ENABLED = False` restores the previous behavior byte-for-byte without touching model code.
+Modulation is on by default whenever the model carries exactly one `ConfidenceField`, and forgetting tombstones rather than deletes, so a memory pruned by an unlucky run of dismissals can be brought back with `lifecycle.restore(redis_key)`. Set `Defaults.DECAY_CONFIDENCE_MODULATION_ENABLED = False` to take confidence out of the ranking entirely, without touching model code.
 
 `SubconsciousMemory` itself does not run lifecycle ticks -- compose it with a `MemoryLifecycle` instance as shown in [Composing with SubconsciousMemory](../recipes.md#composing-with-subconsciousmemory).
 
@@ -215,7 +227,7 @@ Modulation is on by default whenever the model carries exactly one `ConfidenceFi
 | `extraction_min_length` | 10 | Minimum chars for a sentence to become a memory |
 | `model_class` | `None` (-> `DefaultMemory`) | Memory model. Leave unset for the batteries-included model |
 | `score_weights` | `{"relevance": 1.0}` | Weight dict for composite scoring. The benchmarked vector; ignored by the pull path in lexical/hybrid modes |
-| `output_format` | `"content"` | Injected payload shape. `"structured"` restores the pre-v1.9 JSON |
+| `output_format` | `"content"` | Injected payload shape. `"structured"` injects the full JSON record instead |
 | `system_preamble` | "You are a helpful assistant." | Prefix for auto-created system messages |
 | `content_field` | "content" | Name of the text content field on your model |
 | `importance_field` | "importance" | Name of the importance score field |
@@ -274,6 +286,7 @@ The default implementation uses the last user message as the query cue. For more
 ## See Also
 
 - [Agent Memory Quickstart](agent-memory-quickstart.md) -- progressive adoption guide
+- [Query-Blind Retrieval](query-blind-retrieval.md) -- when composite ranking is right, and when it costs you the answer
 - [LLM Memory Extraction](../features/llm-memory-extraction.md) -- pluggable extraction providers, entities, importance/confidence opinions
 - [ContextAssembler](../features/context-assembler.md) -- retrieval-to-injection bridge
 - [PolicyCache Recipe](policy-cache-recipe.md) -- RL-style learned action selection

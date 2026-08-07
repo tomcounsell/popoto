@@ -1,21 +1,19 @@
-<!-- Maintainer note: tests/test_default_recipe_wiring.py parses this file.
-     It executes the `class Memory` definitions from the ```python blocks
-     before the `## Level 5` heading and asserts the recipe in effect at the
-     ContextAssembler step declares a BM25Field (query-sensitive retrieval,
-     issue #445). If you restructure the level headings or remove
-     `content_bm25` from the Level 2-4 models, that test will fail by design. -->
-
 # Agent Memory Quickstart
 
-Add programmable memory to your AI agent in 5 progressive levels. Each level is independently useful — adopt only what you need.
+Add programmable memory to your AI agent. Level 0 is the whole loop in six
+lines. Levels 1 through 6 build the same thing up one field at a time, so you
+understand what each piece buys before you keep or drop it.
 
 > **Prerequisites:** `pip install popoto` and Redis running on `localhost:6379`.
 >
-> **Full reference:** [Agent Memory Feature Overview](../features/agent-memory.md) covers all 14 primitives in depth.
+> **Full reference:** [Agent Memory](../features/agent-memory.md) maps all 14
+> primitives and the layers composed on them.
 
 ## Level 0: Import the defaults
 
-Before building a schema, know that you can skip one. `DefaultMemory` ships the benchmarked configuration — decay, confidence, keyword search, and an association graph — and `SubconsciousMemory` wraps it into a per-turn loop:
+Skip the schema. `DefaultMemory` ships the benchmarked configuration (decay,
+confidence, keyword search, and an association graph) and `SubconsciousMemory`
+wraps it into a per-turn loop:
 
 ```python
 from popoto.recipes import SubconsciousMemory
@@ -28,15 +26,26 @@ sm.extract_memories(answer, importance=0.6)        # post-turn: save what was le
 sm.report_outcomes(assembly, outcome="acted")      # feedback: reinforce what was used
 ```
 
-That is a working memory loop in six lines, with query-sensitive retrieval on by default. The levels below exist for when you want to shape the schema yourself — read them to understand what each field buys, then keep whichever ones you need. See the [Subconscious Memory Recipe](subconscious-memory-recipe.md) for the default model's exact fields and every knob on the loop.
+That is a working memory loop with query-sensitive retrieval on by default.
+`agent_id` is the only required argument; it partitions every index, so two
+agents sharing one Redis never see each other's memories.
 
-## Level 1: Recall — Time-Weighted Retrieval
+This is also the configuration the published benchmarks run. If you take
+nothing else from this page, take this.
 
-The simplest useful memory. Records decay over time so recent, important memories surface first.
+The levels below exist for when you want to shape the schema yourself. See the
+[SubconsciousMemory recipe](subconscious-memory-recipe.md) for the default
+model's exact fields and every knob on the loop.
+
+## Level 1: Recall, time-weighted and query-sensitive
+
+The smallest useful memory. Records decay over time so recent, important ones
+surface first, and a `BM25Field` makes retrieval respond to the query text
+rather than only to the clock.
 
 ```python
 from popoto import Model, AutoKeyField, KeyField, StringField, FloatField
-from popoto import DecayingSortedField
+from popoto import DecayingSortedField, BM25Field
 
 class Memory(Model):
     memory_id = AutoKeyField()
@@ -47,6 +56,7 @@ class Memory(Model):
         base_score_field="importance",
         partition_by="agent_id",
     )
+    content_bm25 = BM25Field(source="content")  # keyword search index
 
 # Save
 Memory(agent_id="agent-1", content="Deploy uses blue-green strategy", importance=2.0).save()
@@ -58,15 +68,33 @@ for m in results:
     print(m.content)
 ```
 
-**What you get:** Records that matter surface first. Old, low-importance records fade away naturally.
+**What you get:** records that matter surface first, old low-importance ones
+fade, and a later `ContextAssembler` over this model reads the query text.
 
-## Level 2: Attention — Filter Noise, Track Reads
+**Why `BM25Field` is here at Level 1.** Without it, `ContextAssembler`'s
+`retrieval_mode="auto"` resolves to the query-blind `composite` path: query
+cues are accepted and then ignored. That is a legitimate mode for some
+workloads and the wrong default for most. See
+[Query-Blind Retrieval](query-blind-retrieval.md) for which side you are on.
 
-Add `WriteFilterMixin` to discard low-value records before they hit Redis. Add `AccessTrackerMixin` to know which memories the agent actually uses. Add `BM25Field` so retrieval is query-sensitive rather than purely time-weighted.
+**Adding `BM25Field` to an existing model:** it indexes via the `on_save()`
+hook, so new records are indexed automatically and existing ones need one
+re-save:
+
+```python
+for memory in Memory.query.filter():
+    memory.save()
+```
+
+This is idempotent, so it is safe to run more than once.
+
+## Level 2: Attention, filtering noise and tracking reads
+
+Add `WriteFilterMixin` to discard low-value records before they hit Redis, and
+`AccessTrackerMixin` to know which memories the agent actually uses.
 
 ```python
 from popoto import WriteFilterMixin, AccessTrackerMixin
-from popoto import BM25Field
 
 class Memory(WriteFilterMixin, AccessTrackerMixin, Model):
     memory_id = AutoKeyField()
@@ -77,9 +105,9 @@ class Memory(WriteFilterMixin, AccessTrackerMixin, Model):
         base_score_field="importance",
         partition_by="agent_id",
     )
-    content_bm25 = BM25Field(source="content")  # keyword search index
+    content_bm25 = BM25Field(source="content")
 
-    _wf_min_threshold = 0.1       # below this: silently discarded (default; was 0.2 before sweep 2026-04-17)
+    _wf_min_threshold = 0.1       # below this: silently discarded
     _wf_priority_threshold = 0.7  # above this: tagged as priority
 
     def compute_filter_score(self):
@@ -97,20 +125,13 @@ results = Memory.query.filter(agent_id="agent-1").top_by_decay(n=5)
 results[0].confirm_access()  # marks as actually used
 ```
 
-**What you get:** Cleaner memory — noise never persists. Read tracking shows which memories drive agent behavior. BM25 ensures retrieval favors query-relevant records rather than just the most recent ones.
+**What you get:** cleaner memory, since noise never persists. Read tracking
+shows which memories drive agent behavior.
 
-**Adding BM25Field to an existing model:** `BM25Field` indexes content via the `on_save()` hook, so new records are indexed automatically. Existing records must be re-saved once to populate the index:
+## Level 3: Learning, where outcomes strengthen or weaken beliefs
 
-```python
-for memory in Memory.query.filter():
-    memory.save()
-```
-
-This is idempotent — safe to run more than once.
-
-## Level 3: Learning — Outcomes Strengthen or Weaken Beliefs
-
-Add `ConfidenceField` for certainty tracking. Use `ObservationProtocol` to report how the agent used each memory — acted on, dismissed, or contradicted.
+Add `ConfidenceField` for certainty tracking. Use `ObservationProtocol` to
+report how the agent used each memory: acted on, dismissed, or contradicted.
 
 ```python
 from popoto import ConfidenceField, ObservationProtocol
@@ -125,9 +146,9 @@ class Memory(WriteFilterMixin, AccessTrackerMixin, Model):
         partition_by="agent_id",
     )
     confidence = ConfidenceField(initial_confidence=0.5)
-    content_bm25 = BM25Field(source="content")  # keyword search index
+    content_bm25 = BM25Field(source="content")
 
-    _wf_min_threshold = 0.1  # default after sweep 2026-04-17 (was 0.2)
+    _wf_min_threshold = 0.1
     _wf_priority_threshold = 0.7
 
     def compute_filter_score(self):
@@ -147,11 +168,13 @@ outcome_map = {m.db_key.redis_key: "acted"}  # or "dismissed", "contradicted", "
 ObservationProtocol.on_context_used([m], outcome_map)
 ```
 
-**What you get:** Memories that the agent acts on grow stronger. Contradicted memories fade. The system learns from outcomes.
+**What you get:** memories the agent acts on grow stronger. Contradicted
+memories fade. The system learns from outcomes.
 
-## Level 4: Association — Multi-Factor Ranking
+## Level 4: Association and multi-factor ranking
 
-Add `CoOccurrenceField` for weighted associations between memories. Use `composite_score()` to rank by multiple factors at once.
+Add `CoOccurrenceField` for weighted associations between memories. Use
+`composite_score()` to rank by several factors at once.
 
 ```python
 from popoto import CoOccurrenceField
@@ -166,10 +189,10 @@ class Memory(WriteFilterMixin, AccessTrackerMixin, Model):
         partition_by="agent_id",
     )
     confidence = ConfidenceField(initial_confidence=0.5)
-    content_bm25 = BM25Field(source="content")  # keyword search index
+    content_bm25 = BM25Field(source="content")
     associations = CoOccurrenceField(symmetric=True, max_edges=50)
 
-    _wf_min_threshold = 0.1  # default after sweep 2026-04-17 (was 0.2)
+    _wf_min_threshold = 0.1
     _wf_priority_threshold = 0.7
 
     def compute_filter_score(self):
@@ -191,11 +214,16 @@ results = Memory.query.filter(agent_id="agent-1").composite_score(
 )
 ```
 
-**What you get:** Memories form a graph. Retrieving one can surface related memories. Multiple ranking factors combine into a single query.
+**What you get:** memories form a graph. Retrieving one can surface related
+ones, and multiple ranking factors combine into a single query.
 
-## Level 5: Cognition — LLM-Ready Context Assembly
+This model now carries the same fields as the shipped `DefaultMemory` from
+Level 0.
 
-Use `ContextAssembler` to orchestrate all primitives into a single `assemble()` call that returns formatted, token-budgeted context ready for your LLM prompt.
+## Level 5: Cognition, assembling LLM-ready context
+
+Use `ContextAssembler` to orchestrate the primitives into a single `assemble()`
+call returning formatted, token-budgeted context.
 
 ```python
 from popoto import ContextAssembler
@@ -203,7 +231,7 @@ from popoto import ContextAssembler
 # Use any Memory model from Levels 1-4
 assembler = ContextAssembler(
     model_class=Memory,
-    score_weights={"relevance": 1.0},  # benchmarked default; see the sweep note below
+    score_weights={"relevance": 1.0},  # benchmarked default; see the note below
     max_items=10,
     max_tokens=4000,
 )
@@ -214,14 +242,14 @@ result = assembler.assemble(
 )
 
 # result.records   — selected model instances
-# result.formatted — LLM-ready string (JSON by default)
+# result.formatted : LLM-ready string
 # result.metadata  — scores, timing, token counts
 
 # Inject into your LLM prompt
 system_prompt = f"You are a helpful assistant.\n\nRelevant context:\n{result.formatted}"
 ```
 
-### Complete LLM Integration Example
+### Complete LLM integration example
 
 Wire assembled context into an OpenAI SDK v1+ call and report outcomes:
 
@@ -253,19 +281,38 @@ outcome_map = {r.db_key.redis_key: "acted" for r in result.records}
 ObservationProtocol.on_context_used(result.records, outcome_map)
 ```
 
-**What you get:** One call assembles the right memories, respects token budgets, and formats output for your LLM. Pull-path (query-driven) and push-path (proactive surfacing) retrieval in a single pipeline.
+**What you get:** one call assembles the right memories, respects token
+budgets, and formats output for your LLM. Query-driven and proactive retrieval
+in a single pipeline.
 
-**On `score_weights={"relevance": 1.0}`:** this is the `best_value` from the Tier 4 sweep (`tests/benchmarks/results/sweep_20260326_125145.json`, coding_assistant / research_agent / support_agent scenarios, 18/18 points OK). Transparency about how strong that evidence is: all six swept weight vectors tied at nDCG@5 = 1.0 on those scenarios, so this is the selected best_value and the simplest single-index vector, not a configuration measured to beat the others. In lexical and hybrid modes `score_weights` is ignored by the pull path entirely.
+**On `score_weights={"relevance": 1.0}`:** this is the `best_value` from the
+Tier 4 sweep (`tests/benchmarks/results/sweep_20260326_125145.json`, coding
+assistant / research agent / support agent scenarios, 18/18 points OK). How
+strong that evidence is: all six swept weight vectors tied at nDCG@5 = 1.0 on
+those scenarios, so this is the selected best value and the simplest
+single-index vector, not a configuration measured to beat the others. In
+lexical and hybrid modes the pull path ignores `score_weights` entirely.
 
-## Level 6: Semantic Search — Find Memories by Meaning
+Wrapping this in a per-turn loop is what
+[`SubconsciousMemory`](subconscious-memory-recipe.md) does, which brings you
+back to Level 0.
 
-Add `ContentField` and `EmbeddingField` to store large content on the filesystem and search it by semantic similarity. Redis stays lean (only references and dimension counts), while content and vectors live on disk.
+## Level 6: Semantic search, finding memories by meaning
+
+Add `ContentField` and `EmbeddingField` to store large content on the
+filesystem and search it by semantic similarity. Redis stays lean; content and
+vectors live on disk.
+
+Keep `BM25Field` when you add `EmbeddingField`. The two together resolve to
+**hybrid** retrieval, BM25 and vector fused by weighted Reciprocal Rank
+Fusion. `EmbeddingField` alone, without `BM25Field`, resolves to the
+query-blind composite path and is a regression, not an upgrade.
 
 ```python
 import popoto
 from popoto import (
     Model, AutoKeyField, KeyField, FloatField,
-    ContentField, EmbeddingField, DecayingSortedField, ConfidenceField,
+    ContentField, EmbeddingField, DecayingSortedField, ConfidenceField, BM25Field,
 )
 from popoto.embeddings.voyage import VoyageProvider
 
@@ -287,55 +334,82 @@ popoto.configure(
 # )
 # ----
 
-class Memory(Model):
+class SemanticMemory(Model):
     memory_id = AutoKeyField()
     agent_id = KeyField()
-    content = ContentField()                    # large text stored on filesystem
+    content = ContentField()                      # large text stored on filesystem
     importance = FloatField(default=1.0)
     relevance = DecayingSortedField(
         base_score_field="importance",
         partition_by="agent_id",
     )
     confidence = ConfidenceField(initial_confidence=0.5)
+    content_bm25 = BM25Field(source="content")    # keep this: hybrid needs both arms
     embedding = EmbeddingField(source="content")  # auto-generates vector on save
 
 # Save memories — embeddings are generated automatically
-Memory.create(
+SemanticMemory.create(
     agent_id="agent-1",
     content="Q4 revenue exceeded projections by 12%, driven by enterprise deals.",
     importance=0.9,
 )
-Memory.create(
+SemanticMemory.create(
     agent_id="agent-1",
     content="Engineering headcount target is 50 by end of year.",
     importance=0.7,
 )
-Memory.create(
-    agent_id="agent-1",
-    content="The deploy pipeline uses blue-green strategy with automatic rollback.",
-    importance=0.8,
-)
 
 # Similarity-only search — ranked by cosine similarity to the query
-results = Memory.query.semantic_search("revenue performance", limit=5)
+results = SemanticMemory.query.semantic_search("revenue performance", limit=5)
 for m in results:
     print(m.content[:80])
 
 # Combined search — blends similarity with decay and confidence signals
-results = Memory.query.semantic_search(
+results = SemanticMemory.query.semantic_search(
     "revenue performance",
     indexes={"relevance": 0.4, "confidence": 0.3},
     limit=5,
 )
 ```
 
-**What you get:** Memories are searchable by meaning via `semantic_search()`. Combined with decay and confidence indexes, the most semantically similar, recent, and trusted memories surface first in direct vector queries.
+**What you get:** memories searchable by meaning through `semantic_search()`,
+and hybrid retrieval through `ContextAssembler`. On LongMemEval-S, hybrid beats
+the lexical baseline on every metric; on LoCoMo's name-anchored questions the
+fusion weighting routes the vector arm out of the way so hybrid does not fall
+below lexical. Both runs are in [Benchmarks](../benchmarks.md).
 
-> **Note for `ContextAssembler` users:** a model with `EmbeddingField` but no `BM25Field` resolves to `"composite"` (query-blind) under `retrieval_mode='auto'`. To get query-sensitive retrieval through `ContextAssembler`, add `BM25Field` alongside `EmbeddingField` — this enables hybrid mode (BM25 + vector + graph). See [ContextAssembler retrieval modes](../features/context-assembler.md#pull-path-modes-retrieval_mode).
+> **Install extras:** `pip install popoto[voyage]` for Voyage AI embeddings, or
+> `pip install popoto[openai]` for OpenAI. For a no-API-key setup, run
+> [Ollama](https://ollama.com) locally and use `OllamaProvider` (stdlib only,
+> no extras needed). See
+> [Content and Embedding Fields](../features/content-and-embedding-fields.md)
+> for all provider options.
 
-> **Install extras:** `pip install popoto[voyage]` for Voyage AI embeddings, or `pip install popoto[openai]` for OpenAI. For a no-API-key setup, run [Ollama](https://ollama.com) locally and use `OllamaProvider` (no extras needed -- stdlib only). See [Content and Embedding Fields](../features/content-and-embedding-fields.md) for all provider options.
+## Writing memories: store the turn, do not rewrite it
 
-## Import Cheat Sheet
+`extract_memories()` decides what a turn leaves behind. The measured-best write
+path is the default: save the raw turn.
+
+LLM fact extraction was measured against raw turn ingestion on the judged-answer
+harness across four models plus a heuristic sentence splitter, and every
+extraction arm lost. The heuristic splitter scores 0.21 against raw ingestion's
+0.36 on the same 77 scored items; the Claude arms cost more, in proportion to
+how many turns they discard. Both failure modes are documented in
+[LLM Memory Extraction](../features/llm-memory-extraction.md#evaluation-extraction-lost-to-raw-ingestion).
+
+Treat extraction as an opt-in to test against your own corpus, not a default to
+turn on:
+
+```python
+from popoto.extraction.claude import ClaudeExtractionProvider
+
+sm = SubconsciousMemory(
+    agent_id="agent-1",
+    extraction_provider=ClaudeExtractionProvider(),  # requires popoto[anthropic]
+)
+```
+
+## Import cheat sheet
 
 All imports come from the top-level `popoto` package:
 
@@ -362,14 +436,16 @@ Recipes — including the batteries-included model — live one level down:
 from popoto.recipes import DefaultMemory, SubconsciousMemory
 ```
 
-**Never** use `from popoto.fields import ...` — the `popoto.fields` subpackage does not re-export field types. Always import from `popoto` directly.
+**Never** use `from popoto.fields import ...`. The `popoto.fields` subpackage
+does not re-export field types. Always import from `popoto` directly.
 
-## What's Next
+## What's next
 
-- **[Agent Memory Feature Overview](../features/agent-memory.md)** — all 14 primitives with full API documentation
-- **[Content and Embedding Fields](../features/content-and-embedding-fields.md)** — deep dive into ContentField, EmbeddingField, and semantic_search
-- **[RAG Chatbot Recipe](rag-chatbot-recipe.md)** — build a retrieval-augmented chatbot with Popoto
-- **[Tuning Magic Numbers](tuning-magic-numbers.md)** — adjust decay rates, confidence signals, and thresholds
-- **[PolicyCache Recipe](policy-cache-recipe.md)** — RL-style learned action selection built on these primitives
-- **[Subconscious Memory Recipe](subconscious-memory-recipe.md)** — automatic memory injection and extraction around LLM turns
-- **[Trajectory Memory Recipe](trajectory-memory-recipe.md)** — fingerprint-keyed procedural patterns ("what worked last time")
+- **[SubconsciousMemory Recipe](subconscious-memory-recipe.md):** the per-turn loop from Level 0, with every knob
+- **[Query-Blind Retrieval](query-blind-retrieval.md):** when composite ranking is right, and when it costs you the answer
+- **[Agent Memory](../features/agent-memory.md):** all 14 primitives and the layers composed on them
+- **[Benchmarks](../benchmarks.md):** the numbers behind the defaults, including the runs that came out badly
+- **[Tuning Magic Numbers](tuning-magic-numbers.md):** decay rates, confidence signals, and thresholds
+- **[PolicyCache Recipe](policy-cache-recipe.md):** RL-style learned action selection on these primitives
+- **[Trajectory Memory Recipe](trajectory-memory-recipe.md):** fingerprint-keyed procedural patterns
+- **[RAG Chatbot Recipe](rag-chatbot-recipe.md):** retrieval-augmented chatbot with Popoto

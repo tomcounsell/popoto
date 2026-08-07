@@ -100,10 +100,10 @@ def test_vector_notes_have_no_fabricated_numbers(gen):
 
     No vector artifact is committed yet, so the framing notes must not assert any
     concrete **Popoto** recall/MRR figures — those come from the committed
-    artifact at build time. Citing an external published anchor (the MEMTIER
-    LoCoMo retrieval-regime band) is explicitly allowed and mirrors the existing
-    lexical/hybrid notes, so we forbid attributed ``Recall@``/``MRR`` metric
-    literals but permit a bare decimal only when the note cites MEMTIER.
+    artifact at build time. Citing an external published anchor (MEMTIER) is
+    explicitly allowed and mirrors the existing lexical/hybrid notes, so we
+    forbid attributed ``Recall@``/``MRR`` metric literals but permit a bare
+    decimal only when the note cites MEMTIER.
     """
     import re
 
@@ -137,6 +137,46 @@ def test_metric_family_not_cross_compared_in_vector_notes(gen):
         note = _specs_by_slug(gen)[slug].note.lower()
         assert "judge" not in note
         assert "answer accuracy" not in note
+
+
+def _all_framing_text(gen) -> str:
+    """Every string of framing prose this generator can publish."""
+    return "\n".join([spec.note for spec in gen.SPECS] + [gen.INDEX_FRAMING])
+
+
+def test_memtier_band_claim_is_not_reintroduced(gen):
+    """The "LoCoMo Recall@1 sits in the 0.10-0.30 band" claim stays dead.
+
+    MEMTIER's own authors describe those LoCoMo retrieval baselines as
+    uninformative, so quoting them as a band Popoto sits at the top of
+    overstates the result. The MEMTIER *anchor* (96.7 ms/query latency, regime
+    context) is retained deliberately; only the band framing is forbidden.
+    """
+    text = _all_framing_text(gen)
+    for band in ("0.10–0.30", "0.10-0.30"):
+        assert band not in text, (
+            f"The MEMTIER retrieval band {band!r} reappeared in generated "
+            f"framing text. Cite the MEMTIER anchor without the band."
+        )
+    assert "MEMTIER" in text, (
+        "The MEMTIER anchor was removed entirely. The band claim is what was "
+        "killed; the anchor is doctrine and must stay."
+    )
+
+
+def test_no_vendor_judged_accuracy_band_tabulated(gen):
+    """Vendor judge-accuracy percentages are never quoted as a band.
+
+    The metric-family warning names the vendors so a reader can recognise the
+    boards it is warning about, but quoting their spread as a range invites the
+    exact recall-vs-judged cross-read the warning exists to prevent.
+    """
+    text = _all_framing_text(gen)
+    for band in ("52–92", "52-92"):
+        assert band not in text, (
+            f"Vendor judged-accuracy band {band!r} reappeared in generated "
+            f"framing text."
+        )
 
 
 def _write_artifact(root: Path, name: str) -> None:

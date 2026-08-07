@@ -171,5 +171,4 @@ Type[Scenario] x 50          SweepPoint results       SweepPoint results
 ## Related
 
 - [Tuning Magic Numbers](../guides/tuning-magic-numbers.md) -- constant catalog and benchmark methodology
-- [Plan: Parametric Sweep Redesign](../plans/parametric_sweep_redesign.md) -- design document
 - [Issue #293](https://github.com/tomcounsell/popoto/issues/293) -- tracking issue

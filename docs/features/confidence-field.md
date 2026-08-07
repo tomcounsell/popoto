@@ -81,7 +81,7 @@ Crossing 0.5 requires:  0.8 × (20/21)^k < 0.4
                         k > ln(0.4/0.8) / ln(20/21) ≈ 14.2 → 15 contradictions
 ```
 
-This is bounded exponential forgetting — well-established beliefs take ~15 systematic contradictions to cross the midpoint at the default cap, compared to ~5 under the previous decaying-step rule.
+This is bounded exponential forgetting: well-established beliefs take roughly 15 systematic contradictions to cross the midpoint at the default cap.
 
 ### Update Behavior Summary
 
@@ -232,9 +232,9 @@ inside their ranking Lua and derive a per-record effective decay rate,
 `initial_confidence`, so a record with no evidence is bit-exactly neutral for any configured `c0`.
 When a model has exactly one `ConfidenceField`, this is on with no configuration.
 
-**Eligibility for forgetting.** [`MemoryLifecycle`](agent-memory.md#memorylifecycle) previously used
-confidence only to *promote* records to the protected semantic tier — it could grant permanence but
-never hasten removal. Its forget rule is now:
+**Eligibility for forgetting.** [`MemoryLifecycle`](../recipes.md#memorylifecycle) reads confidence
+on both sides of the ledger: it promotes records to the protected semantic tier, and it also makes
+weakly-evidenced records eligible for removal. Its forget rule:
 
 ```text
 (importance < FORGET_IMPORTANCE_FLOOR
@@ -271,9 +271,7 @@ uv run popoto-kitchen --ops
 ```
 
 See [`examples/popoto_kitchen/operations.py`](https://github.com/tomcounsell/popoto/blob/main/examples/popoto_kitchen/operations.py)
-for the full source, and the
-[kitchen demo docs](kitchen-edge-case-demo.md#v144-feature-demos-pr-346)
-for a walkthrough.
+for the full source.
 
 ## Companion Fields
 

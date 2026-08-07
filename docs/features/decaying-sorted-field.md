@@ -10,13 +10,13 @@ The sorted set score is always a timestamp. A Lua script computes decay-ranked r
 decayed_score = base_score * elapsed_days ^ (-decay_rate)
 ```
 
-With the default `decay_rate=0.1` (empirically tuned in sweep 2026-04-17; prior default was `0.5`), a record scores 1.0 after 1 day, 0.87 after 4 days, and 0.63 after 100 days. All computation happens server-side in Lua — no round trips for ranking.
+With the default `decay_rate=0.1`, a record scores 1.0 after 1 day, 0.87 after 4 days, and 0.63 after 100 days. All computation happens server-side in Lua — no round trips for ranking.
 
 ## Parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `decay_rate` | `float` | `0.1` | Controls how fast scores drop. Higher = faster decay. Configurable via `Defaults.DECAY_RATE`. (Empirically tuned in sweep 2026-04-17; prior default was `0.5`.) |
+| `decay_rate` | `float` | `0.1` | Controls how fast scores drop. Higher = faster decay. Configurable via `Defaults.DECAY_RATE`. Empirically tuned; see [Tuning Magic Numbers](../guides/tuning-magic-numbers.md). |
 | `base_score_field` | `str` | `None` | Name of a companion field whose value multiplies the decay curve. When `None`, base score is 1.0. |
 | `confidence_modulation_field` | `str`, `False`, or `None` | `None` | Which `ConfidenceField` modulates each record's effective decay rate. `None` auto-detects a single `ConfidenceField` on the model; a `str` names one explicitly; `False` disables modulation for this field. See [Confidence-Modulated Decay](#confidence-modulated-decay). |
 | `partition_by` | `str` or `tuple` | `()` | Partition the sorted set by key field values, inherited from `SortedField`. |
@@ -75,6 +75,47 @@ TeamMemory(
     content="We're pivoting to enterprise",
 ).save()
 ```
+
+Human interactions are rare but high-signal; agent-to-agent interactions are
+frequent but lower-signal. The constants split across two axes — **source**
+(what kind of entity) and **role** (authority level) — combined by addition:
+
+```python
+class InteractionWeight:
+    # Source axis
+    HUMAN = 6.0
+    AGENT = 1.0
+    SYSTEM = 0.2
+
+    # Role axis
+    EXECUTIVE = 44.0
+    MANAGER = 16.0
+    PEER = 6.0
+    SUBORDINATE = 1.0
+
+    @staticmethod
+    def combine(source, role):
+        return source + role
+```
+
+At `decay_rate=0.5`, effective lifetime is roughly score² days (at the default
+`decay_rate=0.1` lifetime grows much more slowly with score — see
+[Tuning Magic Numbers](../guides/tuning-magic-numbers.md)):
+
+| Combination | Score | Effective lifetime |
+|-------------|-------|--------------------|
+| Human executive | 50.0 | ~7 years |
+| Human manager | 22.0 | ~1.3 years |
+| Human peer | 12.0 | ~5 months |
+| Agent executive | 45.0 | ~5.5 years |
+| Agent manager | 17.0 | ~9 months |
+| Agent peer | 7.0 | ~7 weeks |
+| Agent subordinate | 2.0 | ~4 days |
+| System | 0.2 | ~1 hour |
+
+These are plain floats — override them freely for your domain. The values
+encode two principles: human interactions are stickier than agent
+interactions, and authority level determines how long directives persist.
 
 ### Refreshing Timestamps
 
@@ -194,7 +235,7 @@ Resolution order:
 ### Kill switch
 
 Modulation is **default-on** via auto-detection, so an upgrade can change ranking without any model
-change. The deploy-level kill switch restores the previous behavior byte-for-byte without editing
+change. The deploy-level kill switch turns modulation off without editing
 model definitions:
 
 ```python
