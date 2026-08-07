@@ -746,6 +746,37 @@ class Model(metaclass=ModelBase):
         except (AttributeError, TypeError):
             return False
 
+    def __hash__(self):
+        """Hash by Redis key identity, consistent with __eq__.
+
+        Defining __eq__ without __hash__ sets __hash__ to None, which made
+        every model unhashable -- ``{User(name="a")}`` raised TypeError, so
+        instances could not be used in sets or as dict keys.
+
+        Instances that __eq__ compares by db_key hash by db_key, so equal
+        instances hash equally. Instances __eq__ treats as identity-only (a
+        never-saved, all-None key) raise TypeError rather than hashing by
+        id(): their db_key is a class-wide placeholder that becomes a real
+        key on save, and an id()-based hash would silently change at that
+        point, corrupting any set or dict already holding them. This mirrors
+        Django, which raises for instances with no primary key.
+
+        KeyFields are immutable once saved (see KeyMutationError), so a
+        stored instance's hash is stable for its lifetime.
+
+        Raises:
+            TypeError: If the instance has never been saved and all of its
+                KeyFields are None.
+        """
+        if self._has_unstable_db_key():
+            raise TypeError(
+                f"{self.__class__.__name__} instance is unhashable until it has "
+                f"a key: all KeyFields "
+                f"({', '.join(sorted(self._meta.key_field_names))}) are None and "
+                f"it has never been saved. Set a KeyField value or save it first."
+            )
+        return hash(self.db_key.redis_key)
+
     def __getattribute__(self, name):
         """Get attribute with lazy field loading support.
 
@@ -1167,8 +1198,7 @@ class Model(metaclass=ModelBase):
             hset_mapping = {
                 k: v
                 for k, v in full_mapping.items()
-                if k in update_field_names_bytes
-                and k not in indexed_field_names_bytes
+                if k in update_field_names_bytes and k not in indexed_field_names_bytes
             }
 
             if isinstance(pipeline, redis.client.Pipeline):
@@ -1339,19 +1369,21 @@ class Model(metaclass=ModelBase):
         # Exclude IndexedFieldMixin fields — EVAL (INDEX_SWAP_LUA) owns their
         # hash writes atomically, so the plain HSET must not race with them.
         from ..redis_db import ENCODING as _ENCODING
+
         _indexed_field_names_bytes = {
             field_name.encode(_ENCODING)
             for field_name, field in self._meta.fields.items()
             if isinstance(field, IndexedFieldMixin)
         }
         hset_mapping = {
-            k: v for k, v in hset_mapping.items()
-            if k not in _indexed_field_names_bytes
+            k: v for k, v in hset_mapping.items() if k not in _indexed_field_names_bytes
         }
 
         if isinstance(pipeline, redis.client.Pipeline):
             if hset_mapping:
-                pipeline = pipeline.hset(new_db_key.redis_key, mapping=hset_mapping)  # 1
+                pipeline = pipeline.hset(
+                    new_db_key.redis_key, mapping=hset_mapping
+                )  # 1
             if self._ttl is not None:
                 pipeline = pipeline.expire(new_db_key.redis_key, self._ttl)  # 2
             elif self._expire_at is not None:

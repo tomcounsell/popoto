@@ -143,6 +143,58 @@ class TestNullableKeyFieldEquality:
         assert results == [anon]
 
 
+class TestModelHash:
+    """#503: __hash__ must stay consistent with __eq__.
+
+    Defining __eq__ without __hash__ set __hash__ to None, making every model
+    unhashable -- instances could not go in a set or be used as a dict key.
+    """
+
+    def test_models_are_hashable(self):
+        assert len({EqUser(name="alice")}) == 1
+
+    def test_equal_instances_hash_equally(self):
+        a = EqUser(name="alice")
+        a.save()
+        b = EqUser.query.get(name="alice")
+        assert a == b
+        assert hash(a) == hash(b)
+        assert len({a, b}) == 1, "equal instances must collapse in a set"
+
+    def test_unequal_instances_are_distinct_in_a_set(self):
+        assert len({EqUser(name="alice"), EqUser(name="bob")}) == 2
+
+    def test_usable_as_dict_key(self):
+        mapping = {EqUser(name="alice"): "first"}
+        mapping[EqUser(name="alice")] = "second"
+        assert mapping == {EqUser(name="alice"): "second"}
+
+    def test_persisted_null_key_instance_is_hashable(self):
+        """A null KeyField is a real key component, so it stays hashable."""
+        anon = EqNullableKey.create(name="anonymous")
+        reloaded = EqNullableKey.query.get(uuid=anon.uuid)
+        assert hash(anon) == hash(reloaded)
+        assert len({anon, reloaded}) == 1
+
+    def test_transient_instance_raises_rather_than_hashing_by_id(self):
+        """An id()-based hash would change on save and corrupt live sets."""
+        with pytest.raises(TypeError, match="unhashable until it has a key"):
+            hash(EqUser())
+        with pytest.raises(TypeError):
+            {EqCompositeKey()}
+
+    def test_hash_error_names_the_key_fields(self):
+        with pytest.raises(TypeError, match="org, email|email, org"):
+            hash(EqCompositeKey())
+
+    def test_hash_survives_save(self):
+        """KeyFields are immutable once saved, so the hash is stable."""
+        user = EqUser(name="alice")
+        before = hash(user)
+        user.save()
+        assert hash(user) == before
+
+
 @pytest.fixture(autouse=True)
 def cleanup():
     yield
