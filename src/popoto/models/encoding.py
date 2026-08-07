@@ -44,10 +44,13 @@ Example:
 import datetime
 from collections import namedtuple
 from decimal import Decimal
-from typing import Any
+from typing import TYPE_CHECKING, Any
 import msgpack
 from ..exceptions import ModelException
 from ..redis_db import ENCODING
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle guard
+    from .base import Model
 
 try:
     import pandas as pd

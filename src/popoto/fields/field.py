@@ -48,6 +48,7 @@ See Also:
 
 from datetime import date, datetime, time
 from decimal import Decimal
+from typing import TYPE_CHECKING
 import redis
 
 from ..exceptions import ModelException
@@ -55,6 +56,9 @@ from ..exceptions import ModelException
 import logging
 
 from ..models.db_key import DB_key
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle guard
+    from ..models.base import Model
 
 logger = logging.getLogger("POPOTO.field")
 
@@ -405,7 +409,7 @@ class Field(metaclass=FieldBase):
             return False
         if (
             field.max_length is not None
-            and field.type == str
+            and field.type is str
             and len(str(value)) > field.max_length
         ):
             logger.error(f"{field} value is greater than max_length={field.max_length}")
