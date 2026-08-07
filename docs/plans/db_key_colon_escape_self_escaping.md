@@ -431,7 +431,7 @@ or MCP surface.
       reported by name by the validator.
 - [x] Full existing suite passes unmodified — no existing test relaxed to accommodate the fix.
 - [x] Tests pass (`/do-test`)
-- [ ] Documentation updated (`/do-docs`)
+- [x] Documentation updated (`/do-docs`)
 
 ## Team Orchestration
 
