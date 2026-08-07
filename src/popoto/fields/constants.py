@@ -219,6 +219,16 @@ class Defaults:
     # than assumed cheap.
     LIFECYCLE_TOMBSTONE_RETENTION_LIMIT = 1000
 
+    # -- Sorted-range limit pushdown (models/query.py) -------------------------
+    # Extra members requested beyond `limit` when a bound is pushed into a
+    # sorted-set read. Index members whose backing hash is gone hydrate to
+    # nothing, and under a bounded read those come straight off the result
+    # count. The margin absorbs ordinary orphan density in the same round trip;
+    # the unbounded re-read behind it is the correctness backstop, not the
+    # common path. 8 covers the small top-N reads this path is built for
+    # without meaningfully enlarging a 5-row query.
+    SORTED_PUSHDOWN_OVERFETCH_MARGIN = 8
+
     # -- Extraction (extraction/) ---------------------------------------------
     # Experimental tuning constants for the pluggable LLM-extraction path
     # (popoto.extraction). Not yet swept -- initial values set by design,
