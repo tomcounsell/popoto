@@ -8,17 +8,20 @@
 #   Gate      Mirrors workflow        What it runs
 #   ----      ----------------        ------------
 #   lint      lint.yml                ruff check src/
-#   tests     test-valkey.yml         full pytest suite against local Redis
-#   stress    stress-tests.yml        pytest tests/test_stress.py (+durations)
+#   tests     tests.yml               full pytest suite against local Redis
+#   stress    (local only)            pytest tests/test_stress.py (+durations)
 #   docs      deploy-docs.yml         mkdocs build --strict (the deploy gate)
 #   build     release.yml             python -m build (sdist + wheel sanity)
 #   lock      lock-check.yml          uv lock --check (lock matches pyproject)
 #   guard     guard-main-push.yml     warns if a main push isn't docs-only
 #
-# Valkey is intentionally skipped: redis-py talks to Redis and Valkey
-# identically, and the project rule is "never use Redis modules", so the
-# suite against local Redis covers the same ground. GitHub still runs the
-# real Valkey job on PR/merge as the final word.
+# Valkey is skipped locally: redis-py talks to Redis and Valkey identically,
+# and the project rule is "never use Redis modules", so the suite against
+# local Redis covers the same ground. tests.yml runs a real Valkey job on
+# every PR as the final word (#544).
+#
+# The stress suite has no workflow: tests.yml runs `-m "not slow"`, so stress
+# is a local-only gate.
 #
 # Usage:
 #   scripts/ci-local.sh              # default gates: lint + tests + stress + docs

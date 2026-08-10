@@ -27,11 +27,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       # Pin the ruff version. Ruff's default rule selection and the rules
       # themselves change between minor releases, so an unpinned `latest` turns
       # an unrelated PR red. Bump this deliberately, alongside the fixes the
       # new version wants.
-      - uses: astral-sh/ruff-action@v3
-        with:
-          version: "0.16.1"
-          args: "check src/"
+      - name: Install ruff
+        run: python -m pip install "ruff==0.16.2"
+
+      # Invoke the binary directly rather than via astral-sh/ruff-action. That
+      # action appends its own `src` input (default: the repository root) after
+      # the `args` string, so `args: "check src/"` ran
+      # `ruff check src/ $GITHUB_WORKSPACE` and linted the whole tree,
+      # including the deliberately ungated tests/. A plain `run:` step is the
+      # only way to control the argument list exactly.
+      - name: Lint
+        run: |
+          ruff --version
+          ruff check src/
