@@ -31,9 +31,10 @@ trust it.
   reproducible from itself.
 - **Negative results are published.** The measurements that went against the
   design ship on this page beside the ones that went for it: LLM extraction
-  losing to raw ingestion, hybrid retrieval underperforming lexical on LoCoMo,
-  graph traversal trading rank-1 precision for rank-5 coverage, and a scoring
-  defect that inflated LoCoMo numbers before it was found and corrected.
+  losing to raw ingestion, graph traversal buying one question at Recall@10 for
+  4.2× the latency once the scoring defect was corrected, and that scoring
+  defect itself, which inflated every LoCoMo number until it was found and
+  fixed.
 - **Metric families stay apart.** Retrieval recall and judged answer accuracy
   are never tabulated together or combined into a ranking.
 
@@ -220,7 +221,9 @@ no `FT.*` / `BF.*` commands. The vector signal uses the local
     any caller outside `ContextAssembler`) is byte-for-byte identical to the
     original unweighted RRF. The weights are experimental in-code tuning
     constants (not user config), fully in-process and Valkey-safe. Post-fix
-    full-dataset confirmation numbers are shown in the tables below.
+    confirmation numbers are in the tables below: full-500 on LongMemEval-S,
+    and a labelled 250-question stratified sample on LoCoMo, where a full hybrid
+    pass costs ~5.2 hours of CPU embedding.
 
 `vector` is a **harness-local diagnostic**: it bypasses
 `ContextAssembler` entirely — auto-mode would resolve an embedding-only model to the
@@ -241,22 +244,36 @@ python -m tests.benchmarks.run_external --dataset longmemeval-s --retrieval-mode
 python -m tests.benchmarks.run_external --dataset longmemeval-s --retrieval-mode vector
 ```
 
-**LongMemEval-S, 500 questions (any-hit Recall) — pre-fix, unweighted RRF:**
+**LongMemEval-S, the full 500 questions (any-hit Recall), no sampling:**
 
-| Mode | Recall@1 | Recall@5 | Recall@10 | MRR |
-|------|---------:|---------:|----------:|----:|
-| `lexical` (BM25) | 0.856 | 0.952 | 0.978 | 0.899 |
-| `hybrid` (BM25+vector, unweighted RRF) | **0.894** | **0.986** | **0.992** | **0.932** |
-| agentmemory reference (BM25+vector) | — | 0.952 | 0.986 | 0.882 |
+| Mode | n | Recall@1 | Recall@5 | Recall@10 | MRR |
+|------|--:|---------:|---------:|----------:|----:|
+| `lexical` (BM25) | 500 | 0.856 | 0.952 | 0.978 | 0.899 |
+| `hybrid` (BM25+vector, weighted RRF) | 500 | **0.892** | **0.986** | **0.992** | **0.931** |
+| agentmemory reference (BM25+vector) | 500 | — | 0.952 | 0.986 | 0.882 |
 
 Hybrid outperforms the lexical baseline on every metric and exceeds the
 agentmemory reference at Recall@5 (0.986 vs 0.952), Recall@10 (0.992 vs 0.986),
-and MRR (0.932 vs 0.882). The vector signal helps most where keyword overlap is
+and MRR (0.931 vs 0.882). The vector signal helps most where keyword overlap is
 weakest: `single-session-preference` Recall@1 rises from 0.40 (lexical) to 0.70,
 and every question category reaches Recall@5 ≥ 0.967. Full per-category detail
 is in the committed artifact
 (`tests/benchmarks/results/external/longmemeval_s_latest_hybrid.json` —
 500/500 questions, zero errors, every item resolved to the true hybrid path).
+
+!!! info "Re-confirmed at full scale on 2026-08-07 after the #457 fusion change"
+    The previously published hybrid row (0.894 / 0.986 / 0.992 / 0.932,
+    `longmemeval_s_20260703_hybrid.json`) predated the
+    [#457](https://github.com/tomcounsell/popoto/issues/457) weighted fusion
+    change, and the only post-#457 evidence was a 100-question sample. The full
+    500 were re-run under the current fusion
+    ([#530](https://github.com/tomcounsell/popoto/issues/530)): **Recall@1 moves
+    0.894 → 0.892 (one question of 500), Recall@5 and Recall@10 are unchanged,
+    MRR moves 0.9317 → 0.9307.** First-person queries route to the neutral
+    (unweighted-RRF) regime, so the weighted path is expected to be a near
+    no-op here, and it is. Latency rose (p50 41.5 → 57.0 ms) because this run
+    shared a machine with a concurrent benchmark; read the recall, not the
+    milliseconds, from this particular run.
 
 !!! info "Read the retrieval granularity before comparing these to anything"
     Popoto indexes **one record per conversation turn**, and a retrieved turn
@@ -291,50 +308,91 @@ is in the committed artifact
     individually, with only latency differing.
 
     The corrected LoCoMo lexical run is `locomo_20260807.json`; the superseded
-    run stays committed as `locomo_20260708.json`. The LoCoMo **hybrid**,
-    **graph**, and **judged** artifacts still carry pre-correction scoring and
-    are labelled as such wherever they appear.
+    run stays committed as `locomo_20260708.json`. As of the
+    [#530](https://github.com/tomcounsell/popoto/issues/530) refresh the
+    **hybrid**, **graph**, and **judged** arms have also been re-measured under
+    gold-blind scoring. Their coverage is not uniform and every table below
+    states it: hybrid is a **250-question stratified sample**, graph is the
+    **full 282-question multi-hop slice**, judged is **100 questions from a
+    2-dialogue subset**, and only lexical is the full 1986.
 
-**LoCoMo, 1986 questions (any-hit Recall) — pre-fix, unweighted RRF:**
+!!! warning "The corrected hybrid run is a 250-question sample, not a full run"
+    A full LoCoMo hybrid pass re-embeds ~1.19M records and measured **~5.2
+    hours** on the reference machine (10-core Apple silicon, all-MiniLM-L6-v2 on
+    CPU). Rather than leave the superseded full run standing as the published
+    hybrid number, #530 re-ran it as a **250-question stratified sample, seed
+    0** (every category represented) under gold-blind scoring. That number
+    carries sampling error a full run does not. A full-1986 hybrid refresh
+    remains outstanding.
 
-| Mode | Recall@1 | Recall@5 | Recall@10 | MRR |
-|------|---------:|---------:|----------:|----:|
-| `lexical` (BM25), corrected scoring | 0.2981 | 0.5302 | 0.6017 | 0.4005 |
-| `lexical` (BM25), pre-#514 scoring | 0.2986 | 0.5534 | 0.6400 | 0.4124 |
-| `hybrid` (BM25+vector, unweighted RRF), pre-#514 scoring | 0.1667 | 0.4235 | 0.5403 | 0.2835 |
+#### Coverage of the 2026-08-07 runs
 
-The lexical-vs-hybrid comparison below reads the two **pre-#514** rows against
-each other; that is the like-for-like pair, since both were scored the same
-way. A corrected hybrid run is pending.
+Coverage is deliberately uneven, because a full hybrid pass costs hours of CPU
+embedding. Read this table before reading any two rows of this page against each
+other.
 
-Unlike LongMemEval-S, hybrid **underperformed** lexical on LoCoMo across every
-metric under unweighted RRF — a real, measured result (no retrieval tuning was
-performed; this harness run measured the untuned path deliberately), and the
-regression that motivated the weighted/query-adaptive fusion
-(see the info box above). Full per-category detail is in the committed
-artifact (`tests/benchmarks/results/external/locomo_latest_hybrid.json` —
-1986/1986 questions, zero errors); these numbers predate the #457 fusion
-change.
+| Arm | Coverage | Full or sampled |
+|---|---|---|
+| LongMemEval-S `hybrid` | 500 of 500 questions | **Full** |
+| LongMemEval-S `lexical` | 500 of 500 questions | **Full** |
+| LoCoMo `lexical` | 1986 of 1986 questions | **Full** |
+| LoCoMo `hybrid` | 250 of 1986, stratified, seed 0 | **Sampled** |
+| LoCoMo `graph` (cat-1 slice) | 282 of 282 cat-1 questions | **Full slice** |
+| LoCoMo `lexical`/`hybrid` (cat-1 slice) | 282 of 282 cat-1 questions | **Full slice** |
+| LoCoMo judged | 100 of 304 QA from a 2-dialogue subset | **Sampled** |
+| LoCoMo `--extraction` arms | not re-run | **Pre-#514 retrieval block** |
 
-**Post-fix confirmation (weighted/query-adaptive RRF, 200-question stratified
-sample, seed 0) — both rows use pre-#514 scoring:**
+**Environment for every 2026-08-07 run on this page.** Python 3.12.13,
+macOS-26.5.2-arm64 (10-core Apple silicon), Redis 8.6.2 on localhost, redis-py
+8.1.0, sentence-transformers 5.7.0 with all-MiniLM-L6-v2 on CPU, numpy 2.5.1.
+Datasets are the cached HuggingFace releases (`locomo10.json`,
+`longmemeval_s_cleaned.json`). Each artifact restates its own Python, platform,
+sample mode, seed, and limit, so any single report is reproducible from itself.
 
-| Mode | Recall@1 | Recall@5 | Recall@10 | MRR |
-|------|---------:|---------:|----------:|----:|
-| `lexical` (BM25) | 0.3050 | 0.5650 | 0.6500 | 0.4155 |
-| `hybrid` (weighted RRF) | 0.3050 | 0.5650 | 0.6500 | 0.4158 |
+**LoCoMo lexical, full 1986 questions (any-hit Recall):**
 
-On the same representative sample, post-fix `hybrid` matches `lexical`
-metric-for-metric — the query-shape discriminator routes LoCoMo's
+| Mode | n | Recall@1 | Recall@5 | Recall@10 | MRR |
+|------|--:|---------:|---------:|----------:|----:|
+| `lexical` (BM25), corrected scoring | 1986 | 0.2981 | 0.5302 | 0.6017 | 0.4005 |
+| `lexical` (BM25), pre-#514 scoring (superseded) | 1986 | 0.2986 | 0.5534 | 0.6400 | 0.4124 |
+
+**LoCoMo hybrid vs lexical, corrected scoring, on the identical 250-question
+stratified sample (seed 0). SAMPLE, not a full run:**
+
+| Mode | n | Recall@1 | Recall@5 | Recall@10 | MRR | p50 (ms) |
+|------|--:|---------:|---------:|----------:|----:|---------:|
+| `lexical` (BM25) | 250 | 0.3400 | 0.5120 | 0.5840 | 0.4178 | 6.92 |
+| `hybrid` (weighted RRF) | 250 | 0.3400 | 0.5120 | 0.5880 | 0.4172 | 61.78 |
+
+The hybrid row is the committed
+`tests/benchmarks/results/external/locomo_latest_hybrid.json` (250/250
+questions, zero errors). The lexical row is the same 250 item IDs re-aggregated
+out of the committed full-1986 `locomo_latest.json`, so the two rows are exactly
+the same questions scored exactly the same way: a like-for-like pair with no
+sampling difference between them.
+
+The two are indistinguishable except for one question at rank 10 and a rounding
+difference in MRR. The query-shape discriminator routes LoCoMo's
 name/date-anchored queries to the keyword-lean regime (vector weight 0), so the
-fused ranking converges to the lexical result and hybrid no longer underperforms
-(Recall@1 0.167 → 0.305). The equal-across-all-metrics match is expected: with
-the dense arm zeroed, the fused order *is* the lexical order. The paraphrastic
-side is preserved — LongMemEval-S `hybrid` (100-question stratified sample)
-holds Recall@1 0.910 / MRR 0.938, since first-person queries map to the neutral
-(unweighted-RRF) regime unchanged. (Sample-based confirmation; a full-1986 /
-full-500 refresh of the canonical tables can follow, but the exact-match
-convergence is decisive for the mechanism.)
+fused ranking converges on the lexical ranking; with the dense arm zeroed, the
+fused order *is* the lexical order, and the near-exact match is the expected
+signature of that mechanism rather than a coincidence.
+
+That resolves the earlier finding that hybrid **underperformed** lexical on
+LoCoMo. Under unweighted RRF and pre-#514 scoring, hybrid scored Recall@1 0.1667
+/ Recall@5 0.4235 / Recall@10 0.5403 / MRR 0.2835 across the full 1986
+(`locomo_20260708_hybrid.json`, still committed): a weak vector arm was given
+equal say on every query. Two things changed between that artifact and the table
+above (gold-blind scoring **and** the [#457](https://github.com/tomcounsell/popoto/issues/457)
+weighted/query-adaptive fusion), so the movement cannot be attributed to either
+one alone, and the two runs also differ in coverage (1986 vs 250). What the
+250-question pair does establish, because both of its rows are the same
+questions under the same scoring, is that hybrid no longer costs anything
+relative to lexical on this dataset.
+
+The paraphrastic side is preserved: LongMemEval-S `hybrid` is unaffected by the
+#514 correction (its ground truth is session IDs) and its full-500 confirmation
+is in the table at the top of this section.
 
 #### Category 5 ("adversarial") — evidence audit and leaderboard-parity slice
 
@@ -395,10 +453,17 @@ a `leaderboard_parity` block:
 |------|--:|---------:|---------:|----------:|----:|
 | `lexical`, full 5-category (corrected) | 1986 | 0.2981 | 0.5302 | 0.6017 | 0.4005 |
 | `lexical`, 4-category parity (corrected) | 1540 | 0.2877 | 0.5130 | 0.5877 | 0.3875 |
-| `lexical`, full 5-category (pre-#514) | 1986 | 0.2986 | 0.5534 | 0.6400 | 0.4124 |
-| `lexical`, 4-category parity (pre-#514) | 1540 | 0.2883 | 0.5390 | 0.6260 | 0.3991 |
-| `hybrid`, full 5-category (pre-#514) | 1986 | 0.1667 | 0.4235 | 0.5403 | 0.2835 |
-| `hybrid`, 4-category parity (pre-#514) | 1540 | 0.1552 | 0.4065 | 0.5181 | 0.2686 |
+| `hybrid`, full 5-category (corrected, **250-question SAMPLE**) | 250 | 0.3400 | 0.5120 | 0.5880 | 0.4172 |
+| `hybrid`, 4-category parity (corrected, **SAMPLE**) | 194 | 0.3041 | 0.4846 | 0.5619 | 0.3836 |
+| `lexical`, full 5-category (pre-#514, superseded) | 1986 | 0.2986 | 0.5534 | 0.6400 | 0.4124 |
+| `lexical`, 4-category parity (pre-#514, superseded) | 1540 | 0.2883 | 0.5390 | 0.6260 | 0.3991 |
+| `hybrid`, full 5-category (pre-#514, superseded) | 1986 | 0.1667 | 0.4235 | 0.5403 | 0.2835 |
+| `hybrid`, 4-category parity (pre-#514, superseded) | 1540 | 0.1552 | 0.4065 | 0.5181 | 0.2686 |
+
+Only the `lexical` corrected rows are the exact 1540-question leaderboard
+variant. The corrected `hybrid` rows are a 250-question stratified sample, whose
+parity slice is 194 questions, not 1540. They are shown here for the
+category-5 comparison, **not** as a leaderboard-parity claim.
 
 Category 5 sits near the mean, so excluding it barely moves the numbers —
 further evidence it is neither anomalously easy nor a scoring artifact. (The
@@ -547,13 +612,25 @@ set this project's benchmark doctrine (native benchmarks, retrieval parity,
 never cross-compare recall with judged accuracy) **before** this judged number
 existed. The doctrine was not written to accommodate the result.
 
-**Scoring provenance.** The [#514](https://github.com/tomcounsell/popoto/issues/514)
-gold-blind scoring correction changed how retrieved turns collapse to *result
-IDs for recall scoring*. The judged stage consumes retrieved memory **text** in
-rank order, so judged accuracy is untouched by that defect. The retrieval
-summary block co-reported inside the judged artifact does carry pre-correction
-scoring, and a corrected re-run is tracked in
-[#530](https://github.com/tomcounsell/popoto/issues/530).
+**Scoring provenance: re-run, and the prediction held.** The
+[#514](https://github.com/tomcounsell/popoto/issues/514) gold-blind scoring
+correction changed how retrieved turns collapse to *result IDs for recall
+scoring*. The judged stage consumes retrieved memory **text** in rank order, so
+judged accuracy should have been untouched by that defect. The whole judged run
+was repeated on 2026-08-07 under gold-blind scoring
+([#530](https://github.com/tomcounsell/popoto/issues/530)) against the identical
+corpus, sample, judge, and generator, and it lands on **exactly 0.3636 again:
+the same 28 correct out of the same 77 scored, zero judge errors.** The
+co-reported retrieval block did move, as expected: Recall@10 0.5900 → 0.5600 and
+MRR 0.3851 → 0.3784, with Recall@1 (0.2900) and Recall@5 (0.4700) unchanged.
+The refreshed artifact is `locomo_20260807_judged.json`; the superseded one
+stays committed as `locomo_20260806_judged.json`.
+
+The five extraction-arm artifacts below (`locomo_latest_ext-*_judged.json`)
+were **not** re-run and still carry pre-correction scoring in their retrieval
+blocks. Their judged-accuracy column, which is the finding, is the quantity the
+re-run above just demonstrated is invariant to the correction, and every arm ran
+on the identical corpus and sample, so the ordering between them is unaffected.
 
 !!! warning "This is not tabulated against vendor leaderboard accuracies"
     Public LoCoMo judged-accuracy claims are not comparable to this number, and
@@ -621,23 +698,36 @@ co-occurrence arm alone retrieve it in zero trials. Mean target rank 2.0 at one
 hop, 3.0 at two. This measures that the traversal works, on a corpus authored
 so that nothing else could work. It is a mechanism proof, not a quality score.
 
-**Cost, on real data** (`graph_eval_484/locomo_latest*.json`, 282-question
-multi-hop LoCoMo slice):
+**Cost, on real data** (`graph_eval_484/locomo_latest*.json`, the **full**
+282-question multi-hop LoCoMo slice, category 1, not sampled), re-measured
+2026-08-07 under gold-blind scoring:
 
-| Mode | Recall@1 | Recall@5 | Recall@10 | MRR | p50 (ms) |
-|------|---------:|---------:|----------:|----:|---------:|
-| `lexical` | 0.1312 | 0.3440 | 0.4965 | 0.2286 | 5.91 |
-| graph traversal | 0.0816 | 0.4858 | 0.5957 | 0.2236 | 22.14 |
+| Mode | n | Recall@1 | Recall@5 | Recall@10 | MRR | p50 (ms) |
+|------|--:|---------:|---------:|----------:|----:|---------:|
+| `lexical` | 282 | 0.1312 | 0.2979 | 0.4220 | 0.2177 | 8.62 |
+| `hybrid` | 282 | 0.1312 | 0.2979 | 0.4220 | 0.2182 | 60.55 |
+| graph traversal | 282 | 0.0745 | 0.2766 | 0.4326 | 0.1747 | 36.02 |
 
-Graph traversal widens the candidate net: Recall@5 and Recall@10 rise
-substantially, Recall@1 falls, MRR is flat, and latency goes up 3.7×. That is
-the real trade-off: better coverage at rank 5–10, worse precision at rank 1,
-for roughly four times the latency. Enable it when your reader consumes a
-top-5/top-10 window; leave it off when rank 1 is what gets injected.
+All three rows are the full 282-question category-1 slice, not a sample. The
+`hybrid` row lands on the lexical row to four decimals on every recall metric,
+which is the same query-shape convergence described under
+[Retrieval modes](#retrieval-modes) showing up again on a different slice.
 
-These retrieval figures predate the #514 scoring correction. Both rows were
-scored the same way, so the comparison between them holds; the absolute values
-will move on re-measurement.
+**The correction changed this conclusion.** Under the pre-#514 scoring these
+same two arms read `lexical` 0.1312 / 0.3440 / 0.4965 / 0.2286 and graph 0.0816
+/ 0.4858 / 0.5957 / 0.2236, which looked like a clear coverage win for graph at
+ranks 5 and 10. Gold-blind scoring removes that. Graph now costs Recall@1
+(0.1312 → 0.0745), costs Recall@5 (0.2979 → 0.2766), costs MRR (0.2177 →
+0.1747), and buys **one extra question at Recall@10** (0.4220 → 0.4326, a
+0.0106 difference, 3 of 282 items) for **4.2× the latency**. On this slice the
+trade is not worth taking, and the earlier "better coverage at rank 5–10"
+framing was an artifact of the defective scoring rather than a measured
+property of the traversal.
+
+The mechanism proof on authored fixtures above still stands: traversal reaches
+targets nothing else reaches. What the real-data slice says is that
+conversational-adjacency edges are not the graph that pays for it. Leave the
+arm off unless you have real association edges, not adjacency ones.
 
 ### Architecture
 
@@ -947,8 +1037,10 @@ The comparable published anchor is MEMTIER (arXiv:2605.03675), which reports
 hybrid-RRF retrieval at **96.7 ms/query** on comparable hardware. Scope the
 Popoto figures before reading them against it: the curve above is the
 **in-process lexical** path. Adding arms costs time. LongMemEval-S hybrid
-(BM25 + CPU embedding + RRF) runs p50 41.5 ms over 500 questions, and graph
-traversal runs p50 22.1 ms on its 282-question LoCoMo slice. None of these are
+(BM25 + CPU embedding + RRF) runs p50 41.5 ms over 500 questions on an
+otherwise idle machine (57.0 ms on the 2026-08-07 re-run, which shared the
+machine with a concurrent benchmark), and graph traversal runs p50 36.0 ms on
+its 282-question LoCoMo slice. None of these are
 compared against hosted-service latencies, which bundle a network round trip
 and a different substrate.
 

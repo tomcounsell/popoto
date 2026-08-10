@@ -43,8 +43,8 @@ Every number here comes from a harness in this repository, with its result JSON
 committed alongside. Method, per-category tables, and the runs that came out
 badly are in [Benchmarks](benchmarks.md).
 
-- **Retrieval quality.** LongMemEval-S, 500 questions, hybrid BM25 + vector:
-  Recall@1 **0.894**, Recall@5 0.986, MRR 0.932. Read the
+- **Retrieval quality.** LongMemEval-S, all 500 questions, hybrid BM25 + vector:
+  Recall@1 **0.892**, Recall@5 0.986, MRR 0.931. Read the
   [granularity disclosure](benchmarks.md#retrieval-modes) before comparing this
   to another system: Popoto ranks turns and scores hits at the session level.
 - **Retrieval latency.** p50 **3.0 ms at 1,000 records, 6.0 ms at 20,000**,
