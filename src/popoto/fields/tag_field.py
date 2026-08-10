@@ -186,6 +186,11 @@ class TagFieldMixin(IndexedFieldMixin):
 
     tag: bool = True
 
+    # Export/import: the per-tag index Sets and pointer are fully rebuilt
+    # from the field's tag list value by on_save(), so nothing needs to be
+    # carried across export/import.
+    roundtrip_policy: str = "rebuild"
+
     @staticmethod
     def _tag_pointer_side_key(model_hash_key: str, field_name: str) -> str:
         """Standalone Redis SET key holding this record's current value-Set keys.

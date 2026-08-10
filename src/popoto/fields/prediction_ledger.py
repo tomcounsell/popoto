@@ -111,6 +111,18 @@ class PredictionLedgerMixin:
 
     _pl_partition: str = "default"
 
+    # Export/import: prediction metadata and the error sorted set accumulate
+    # via record_prediction()/resolve() calls over the model's lifetime --
+    # they are a function of prediction/resolution history, not of any
+    # single record's stored field values, so they cannot be rebuilt or
+    # meaningfully carried by a per-record export/import. Not addressed in
+    # v1 -- see #556.
+    roundtrip_policy: str = "partial"
+    roundtrip_note: str = (
+        "Prediction/resolution ledger history not carried or rebuilt by "
+        "import; see #556"
+    )
+
     # Runtime-lookup properties — read Defaults.* at attribute-access time
     # so that apply_overrides() patches of Defaults are observed. A subclass
     # may shadow any of these with a plain class attribute; subclass-dict-

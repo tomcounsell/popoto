@@ -187,6 +187,11 @@ class IndexedFieldMixin:
 
     indexed: bool = True
 
+    # Export/import: the atomic index Set/pointer is fully rebuilt from the
+    # field value by on_save() (via the INDEX_SWAP_LUA script), so nothing
+    # needs to be carried across export/import.
+    roundtrip_policy: str = "rebuild"
+
     @staticmethod
     def _pointer_side_key(model_hash_key: str, field_name: str) -> str:
         """Build the side key that stores the server-authoritative index pointer.

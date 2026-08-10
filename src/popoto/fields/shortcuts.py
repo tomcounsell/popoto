@@ -417,6 +417,12 @@ class ListField(Field):
     # Track whether this is a capped list field
     _capped = False
 
+    # Export/import: whether stored inline in the model hash or in a
+    # separate capped Redis list key, the list contents are the field's
+    # plain value (captured by to_dict()) and on_save() fully reconstructs
+    # the Redis-side representation from it.
+    roundtrip_policy: str = "rebuild"
+
     def __init__(self, *args, **kwargs):
         """
         Initialize a ListField with list type constraint.

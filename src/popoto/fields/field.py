@@ -190,6 +190,114 @@ class Field(metaclass=FieldBase):
     sorted: bool = False
     indexed: bool = False
 
+    # -------------------------------------------------------------------------
+    # Export/import round-trip protocol (see export_state / import_state below)
+    # -------------------------------------------------------------------------
+    roundtrip_policy: str = "rebuild"
+    """
+    Declares how this field's auxiliary Redis state is treated by
+    ``popoto.transfer`` export/import. One of:
+
+    - ``"rebuild"`` (default) — the field maintains no independent state that
+      export needs to capture; whatever ``on_save`` does on import is
+      sufficient to fully reconstruct it. This is correct for the vast
+      majority of fields (e.g. indexes, sorted sets, geo indexes) whose
+      secondary structures are pure functions of the field's stored value.
+    - ``"carry"`` — the field maintains state that is *not* derivable from the
+      stored value alone (e.g. a running counter, a learned score). Fields
+      declaring ``"carry"`` must implement ``export_state``/``import_state``
+      to serialize and restore that state explicitly.
+    - ``"partial"`` — some state is carried or rebuilt and some is knowingly
+      not preserved. Fields declaring ``"partial"`` must also set
+      ``roundtrip_note`` explaining what is lost and why (typically citing a
+      tracking issue).
+
+    Override this class attribute directly on a Field subclass when it
+    maintains any secondary Redis structure via ``on_save`` that a plain
+    re-save would not otherwise reconstruct byte-for-byte.
+    """
+
+    roundtrip_note: str = None
+    """
+    Human-readable explanation surfaced in the import report when
+    ``roundtrip_policy == "partial"``. Should describe what state is not
+    preserved and, where applicable, cite the tracking issue for future work
+    (e.g. ``"history not carried, see #556"``). Left as ``None`` for
+    ``"rebuild"``/``"carry"`` fields, which need no such caveat.
+    """
+
+    @classmethod
+    def export_state(
+        cls,
+        model_instance: "Model",
+        field_name: str,
+        field_value,
+        **kwargs,
+    ) -> dict:
+        """
+        Return this field's auxiliary state for export, or ``None``.
+
+        Called once per field per exported record by ``popoto.transfer``.
+        Fields whose secondary Redis structures are fully derivable from
+        ``field_value`` via ``on_save`` (``roundtrip_policy == "rebuild"``)
+        should not override this — the base implementation returning
+        ``None`` is correct and means "nothing extra to carry".
+
+        Override this when ``roundtrip_policy`` is ``"carry"`` or
+        ``"partial"`` and there is state to capture: read whatever secondary
+        Redis structure this field maintains (e.g. via a companion hash key
+        this field owns) and return it as a JSON-serializable dict. Return
+        ``None`` if, for this particular instance, there is nothing to carry.
+
+        Args:
+            model_instance: The Model instance being exported.
+            field_name: Name of this field on the model.
+            field_value: The field's current value (as also captured by
+                ``to_dict()``).
+            **kwargs: Reserved for future extension.
+
+        Returns:
+            A JSON-serializable dict of auxiliary state, or ``None`` if this
+            field has nothing beyond its plain value to carry. Base
+            implementation always returns ``None``.
+        """
+        return None
+
+    @classmethod
+    def import_state(
+        cls,
+        model_instance: "Model",
+        field_name: str,
+        state: dict,
+        **kwargs,
+    ) -> None:
+        """
+        Restore this field's auxiliary state after import, or no-op.
+
+        Called once per field per imported record by ``popoto.transfer``,
+        after the instance has been constructed and saved (so any
+        ``on_save``-rebuilt structure already exists and can be overwritten
+        or supplemented). ``state`` is whatever ``export_state`` returned for
+        this field on the exporting side, or ``None`` if nothing was carried.
+
+        Override this when ``roundtrip_policy`` is ``"carry"`` or
+        ``"partial"`` and ``export_state`` returns non-``None`` state: write
+        it back into the same secondary Redis structure ``export_state``
+        read it from. The base implementation is a no-op, which is correct
+        whenever there is no carried state to restore.
+
+        Args:
+            model_instance: The Model instance that was just saved.
+            field_name: Name of this field on the model.
+            state: The dict previously returned by ``export_state`` for this
+                field, or ``None``.
+            **kwargs: Reserved for future extension.
+
+        Returns:
+            None.
+        """
+        return None
+
     def __init__(self, **kwargs):
         """
         Initialize a Field with optional configuration overrides.

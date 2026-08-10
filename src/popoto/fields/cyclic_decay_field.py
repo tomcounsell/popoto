@@ -252,6 +252,120 @@ class CyclicDecayField(DecayingSortedField):
             )
     """
 
+    # Export/import: two companion hashes hold state a plain re-save cannot
+    # reconstruct. Per-member cycle amplitudes are LEARNED (mutated by
+    # strengthen_cycle / weaken_cycle) and diverge from the class-level
+    # ``cycles`` defaults; ``pressure.last_resolved`` is genuine independent
+    # state whose age is the whole point of homeostatic pressure.
+    roundtrip_policy: str = "carry"
+
+    @classmethod
+    def export_state(cls, model_instance, field_name, field_value, **kwargs):
+        """Export the per-member cycles and pressure companion data.
+
+        Returns:
+            ``{"cycles": [[period, amplitude, phase], ...],
+               "pressure": {"rate": float, "last_resolved": float}}``
+            with either key omitted when that companion hash has no entry for
+            this instance, or ``None`` when neither does.
+        """
+        field = model_instance._meta.fields.get(field_name)
+        if not isinstance(field, CyclicDecayField):
+            return None
+
+        member_key = model_instance.db_key.redis_key
+        state = {}
+
+        cycles_raw = POPOTO_REDIS_DB.hget(
+            field.get_cycles_hash_key(model_instance, field_name), member_key
+        )
+        if cycles_raw:
+            try:
+                cycles = msgpack.unpackb(cycles_raw, raw=False)
+            except Exception:
+                logger.warning(
+                    f"Could not decode cycles data for {member_key}; "
+                    f"skipping cycles export of {field_name}"
+                )
+                cycles = None
+            if isinstance(cycles, (list, tuple)):
+                state["cycles"] = [list(cycle) for cycle in cycles]
+
+        pressure_raw = POPOTO_REDIS_DB.hget(
+            field.get_pressure_hash_key(model_instance, field_name), member_key
+        )
+        if pressure_raw:
+            try:
+                pressure = msgpack.unpackb(pressure_raw, raw=False)
+            except Exception:
+                logger.warning(
+                    f"Could not decode pressure data for {member_key}; "
+                    f"skipping pressure export of {field_name}"
+                )
+                pressure = None
+            if isinstance(pressure, dict):
+                state["pressure"] = {
+                    "rate": float(pressure.get("rate", 0.0) or 0.0),
+                    "last_resolved": float(pressure.get("last_resolved", 0.0) or 0.0),
+                }
+
+        return state or None
+
+    @classmethod
+    def import_state(cls, model_instance, field_name, state, **kwargs):
+        """Restore per-member cycles and pressure companion data after import.
+
+        Ordering note -- this looks wrong but is correct:
+        ``CyclicDecayField.on_save`` UNCONDITIONALLY overwrites the cycles
+        hash entry with the class-level ``field.cycles`` defaults, and seeds
+        ``pressure.last_resolved`` to ``now`` whenever the entry is fresh.
+        The transfer driver calls ``import_state`` *after* ``save()``, so
+        these writes land on top of what ``on_save`` just clobbered and the
+        learned amplitudes / accumulated pressure age survive the round trip.
+        Inverting the order would silently discard both.
+
+        (The unconditional clobber in ``on_save`` is a known pre-existing bug
+        on ordinary saves -- deliberately not fixed here; see #556.)
+        """
+        if not state:
+            return None
+
+        field = model_instance._meta.fields.get(field_name)
+        if not isinstance(field, CyclicDecayField):
+            return None
+
+        member_key = model_instance.db_key.redis_key
+
+        cycles = state.get("cycles")
+        if cycles:
+            normalized = []
+            for cycle in cycles:
+                cycle = list(cycle)
+                period, amplitude = cycle[0], cycle[1]
+                phase = cycle[2] if len(cycle) > 2 else 0
+                normalized.append([period, amplitude, phase])
+            POPOTO_REDIS_DB.hset(
+                field.get_cycles_hash_key(model_instance, field_name),
+                member_key,
+                msgpack.packb(normalized),
+            )
+
+        pressure = state.get("pressure")
+        if pressure:
+            POPOTO_REDIS_DB.hset(
+                field.get_pressure_hash_key(model_instance, field_name),
+                member_key,
+                msgpack.packb(
+                    {
+                        "rate": float(pressure.get("rate", 0.0) or 0.0),
+                        "last_resolved": float(
+                            pressure.get("last_resolved", 0.0) or 0.0
+                        ),
+                    }
+                ),
+            )
+        return None
+
     def __init__(self, **kwargs):
         self.cycles = kwargs.pop("cycles", [])
         self.pressure_rate = kwargs.pop("pressure_rate", 0.0)

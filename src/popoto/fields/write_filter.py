@@ -79,6 +79,14 @@ class WriteFilterMixin:
     def _wf_priority_threshold(self):
         return Defaults.WF_PRIORITY_THRESHOLD
 
+    # Export/import: the priority ZSET ($WF:{ClassName}:priority) is fully
+    # recomputed from compute_filter_score() by _tag_priority() on every
+    # save, so nothing needs to be carried across export/import. The gate
+    # itself (_check_write_filter) is honored by default on import and can
+    # be bypassed per-record via Model.save(skip_write_filter=True) -- a
+    # driver-level flag, not carried state.
+    roundtrip_policy: str = "rebuild"
+
     def compute_filter_score(self):
         """Compute the write filter score for this instance.
 
