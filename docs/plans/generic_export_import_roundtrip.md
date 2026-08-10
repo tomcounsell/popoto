@@ -1,11 +1,13 @@
 ---
-status: Planning
+status: Ready
 type: feature
 appetite: Large
 owner: Valor Engels
 created: 2026-08-10
 tracking: https://github.com/tomcounsell/popoto/issues/554
 last_comment_id: none
+revision_applied: true
+revision_applied_at: 2026-08-10T07:15:58Z
 ---
 
 # Generic export/import with per-field round-trip fidelity
@@ -285,7 +287,7 @@ four returned high-confidence findings that materially shaped the design.
 **Import**
 
 1. **Entry point** — `Model.import_records(stream, ...)` with `on_conflict`,
-   `on_write_gate`, `preserve_keys`, `on_embedding_mismatch`.
+   `on_write_gate`, `on_embedding_mismatch`. Keys are always preserved in v1.
 2. **Manifest validation** — format version, model name, and per-field
    `roundtrip_policy` are checked against the destination model. Embedding
    provenance is compared against the destination's configured provider.
@@ -315,10 +317,13 @@ four returned high-confidence findings that materially shaped the design.
   `base64`; the embedding carrier uses `numpy`, which is already an optional
   dependency gated behind `EmbeddingField`'s own availability (`__init__.py:55-63`),
   so it adds nothing to the required set.
-- **Interface changes**: two additive `Model.save()` kwargs are the only change to
-  an existing signature — `skip_write_filter: bool = False`. (`skip_auto_now`
-  already exists.) Three new optional classmethods and two class attributes on
-  `Field`, all with working defaults. New `popoto.transfer` sub-package. New
+- **Interface changes**: one additive `Model.save()` kwarg is the only change to
+  an existing signature — `skip_write_filter: bool = False` (`skip_auto_now`
+  already exists). Note that `save()` already accepts `**kwargs` (base.py:1049-1057),
+  so a misspelled `skip_write_filter=` at a call site is silently swallowed rather
+  than raising — the driver must spell it correctly and the docstring must say so.
+  Two new optional classmethods and two class attributes on `Field`, all with
+  working defaults. New `popoto.transfer` sub-package. New
   `Model.export_records` / `Model.import_records` classmethods. Nothing existing
   changes behavior when the new kwargs are left at their defaults.
 - **Coupling**: *decreases* relative to any alternative. The driver holds zero
@@ -356,26 +361,39 @@ seven-field stacked fixture model against live Redis.
 | Editable install resolves to this worktree | `python -c "import popoto,os;assert os.path.realpath(popoto.__file__).startswith(os.path.realpath('.')),popoto.__file__"` | CLAUDE.md worktree gotcha 1 — wrong package under test |
 | Full extras installed | `python -c "import numpy, sentence_transformers"` | CLAUDE.md worktree gotcha 2 — `.[dev]` alone deselects ~95 tests including every embedding test |
 
+**Critique found 2 of 3 currently FAILING** and these are hard gates on Task 4,
+not advisory. The ambient interpreter resolves `popoto` to
+`/Users/valorengels/src/ai/.venv/.../popoto` — a different checkout entirely —
+and `sentence_transformers` is absent, which would deselect every embedding test,
+i.e. AC #2's hardest field. **First action of the build stage, before any test is
+run:** create a worktree-local venv and `pip install -e '.[dev,embeddings,benchmark]'`
+(not `dataframe` — it pulls pandas, which breaks `test_dataframe_field.py`
+collection on 3.x). No test count is reported to the PM without stating the
+environment alongside it.
+
 ## Solution
 
 ### Key Elements
 
-- **Round-trip protocol on `Field`** — three optional classmethods
-  (`export_state`, `import_state`, `remap_references`) and two class attributes
-  (`roundtrip_policy`, `roundtrip_note`). All defaults are working no-ops, so
-  every existing and third-party `Field` subclass round-trips correctly with zero
-  changes. This is the single mechanism that keeps the driver generic.
+- **Round-trip protocol, applied at two levels** — two optional classmethods
+  (`export_state`, `import_state`) and two class attributes (`roundtrip_policy`,
+  `roundtrip_note`), declared on `Field` **and** honored on Model-level mixins.
+  All defaults are working no-ops, so every existing and third-party `Field`
+  subclass round-trips correctly with zero changes. This is the single mechanism
+  that keeps the driver generic. See "Two levels, one protocol" below — this is
+  the correction that came out of critique.
 - **`popoto.transfer` driver** — `export_records` / `import_records` plus the
-  `ExportResult` and `ImportReport` result types. Iterates `_meta.fields` and
-  calls the protocol. Contains no `isinstance` check against any concrete field
-  type.
+  `ExportResult` and `ImportReport` result types. Iterates `_meta.fields` for
+  field-level state and walks `type(instance).__mro__` for model-level state.
+  Contains no `isinstance` check against any concrete field or mixin type; both
+  passes are duck-typed on the presence of the protocol members.
 - **JSON Lines export format** — a manifest line plus one record per line.
   Streamable, diffable, stdlib-only, and human-inspectable.
 - **Reconciliation ledger** — every exported record is accounted for as landed,
   skipped, rejected, or errored, with a reason string per non-landed record, and
   ground-truthed against Redis rather than against `save()` return values.
-- **Four field carriers** — `ConfidenceField`, `CyclicDecayField`,
-  `EmbeddingField`, `AccessTrackerMixin` override the protocol. Everything else
+- **Four carriers** — three field-level (`ConfidenceField`, `CyclicDecayField`,
+  `EmbeddingField`) and one model-level (`AccessTrackerMixin`). Everything else
   declares its policy and emits nothing.
 - **Two driver-level fidelity flags** — `save(skip_auto_now=True)` preserves decay
   clocks and `auto_now` timestamps; preserved keys are passed to the constructor.
@@ -406,12 +424,51 @@ name, resolves its own config via `model_instance._meta.fields[field_name]`):
   — base returns `None`.
 - `import_state(cls, model_instance, field_name, state, **kwargs) -> None`
   — base is a no-op.
-- `remap_references(cls, model_instance, field_name, field_value, key_map)`
-  — base returns `field_value` unchanged; `Relationship` overrides it. Only
-  consulted when `preserve_keys=False`.
-
 The base defaults are what make AC #3 (an out-of-tree `Field` subclass with no
 round-trip support) pass with no code.
+
+**1b. Two levels, one protocol** *(added after critique — BLOCKER 1)*
+
+Critique caught a real gap: four of the things this feature must account for are
+**not `Field` subclasses**. `AccessTrackerMixin` (access_tracker.py:55),
+`EventStreamMixin` (event_stream.py:61), `PredictionLedgerMixin`
+(prediction_ledger.py:90), and `WriteFilterMixin` (write_filter.py:44) are plain
+Model-level mixins. `_meta.fields` is `{**explicit_fields, **hidden_fields}`
+(base.py:213) and contains only `Field` instances, so a driver that iterates
+`_meta.fields` never reaches them — yet the plan listed `AccessTrackerMixin` as a
+carrier and promised a report line for `EventStreamMixin`. (`ExistenceFilter`,
+`FrequencySketch`, and `CoOccurrenceField` *are* `Field` subclasses and were
+never affected.)
+
+Resolution: keep one protocol, apply it at two levels.
+
+- **Field level** — the driver iterates `_meta.fields` and calls
+  `field.export_state(...)`. State is keyed by field name.
+- **Model level** — the driver walks `type(instance).__mro__` and, for any class
+  that defines `export_state` **as its own attribute** (`"export_state" in
+  cls.__dict__`), calls it with the same signature minus `field_name`. State is
+  keyed by the mixin's class name. The `Model` base itself defines no
+  `export_state`, so a model with no mixins yields nothing.
+
+The MRO walk is duck-typed on `cls.__dict__`, not on `isinstance` against a named
+class, so the generic-driver constraint holds and the plan's own anti-criterion
+still passes. It also means a third-party Model mixin with independent Redis
+state can participate with no driver change — the same property the field-level
+protocol gives field authors.
+
+Scope consequence: `AccessTrackerMixin` is a genuine model-level carrier
+(`roundtrip_policy = "carry"` for `access_count` / `last_accessed`, `"partial"`
+for the uncarried access log). `EventStreamMixin` and `PredictionLedgerMixin`
+declare `"partial"` with a `roundtrip_note` citing #556 and emit nothing — which
+is now actually reachable and actually prints. `WriteFilterMixin` declares
+`"rebuild"`: its priority ZSET is recomputed by `_tag_priority` on every save
+(write_filter.py:139-165).
+
+Risk 3's enforcement test is widened accordingly: it enumerates every `Field`
+subclass in `src/popoto/fields/` **and** every Model-level mixin in the same
+package (a class that is not a `Field` subclass and defines `on_save`,
+`_check_write_filter`, or any `$`-prefixed key builder), asserting each declares
+an explicit `roundtrip_policy`.
 
 **2. The driver (`src/popoto/transfer/`)**
 
@@ -443,15 +500,58 @@ Export takes `to_dict()` and adds every name in `_meta.fields` that is a key fie
 and absent from the dict. `Model._get_auto_key_field_name()` (base.py:3003)
 already exists for this.
 
-**5. Rejection detection**
+**5. Rejection detection and its precedence rule** *(precedence added after
+critique — BLOCKER 2)*
 
 Never truthiness. `result is False or result is None` → rejected (spike-1: HSET
-returns `0` on a pure overwrite). Then each batch is ground-truthed with a
-pipelined `EXISTS` over the target keys, so the landed count is measured against
-Redis, not inferred. This is why the importer does **not** use `bulk_create` — an
-external pipeline makes `save()` return the pipeline for every record and
-destroys per-record observability. Throughput loss is accepted; AC #4 makes
-reconciliation a hard requirement.
+returns `0` on a pure overwrite). This is why the importer does **not** use
+`bulk_create` — an external pipeline makes `save()` return the pipeline for every
+record and destroys per-record observability. Throughput loss is accepted; AC #4
+makes reconciliation a hard requirement.
+
+The plan originally named two sources of truth — the `save()` return value and a
+batch `EXISTS` — without saying which wins, and critique found a case where they
+disagree and the wrong one is louder. Under `on_conflict="overwrite"` into a
+destination that already holds the key, a gate rejection returns `False` *before
+any HSET* (base.py:1146-1153), leaving the **old** hash intact. A post-write
+`EXISTS` returns 1, and a naive reconciliation counts the record as landed while
+none of the imported values were written — the exact "1000 imported, 600 landed"
+failure this feature exists to eliminate, reintroduced at the reconciliation step.
+
+**The rule: the per-record `save()` return value is authoritative for
+classification. `EXISTS` is a corroborating check that may only downgrade
+landed → missing. It may never upgrade rejected → landed.**
+
+Concretely: classify from the return value first, then run the batch `EXISTS`
+over **only** the records already classified as landed, to catch a write that
+vanished. For a record on the collision path, `EXISTS` was already true at the
+pre-write conflict check, so its post-write value carries no information and is
+never consulted. A dedicated test covers `on_conflict="overwrite"` combined with
+a write-gate rejection and asserts the record is reported as rejected, not landed.
+
+**5b. Outcome categories**
+
+Five, not four *(fifth added after critique — CONCERN)*. State restore runs after
+`save()`, so a raise inside `import_state` leaves the primary hash and every
+`on_save`-rebuilt structure already written — including `ConfidenceField`'s
+`HSETNX`-seeded `initial_confidence` and `CyclicDecayField`'s clobbered cycles.
+Reporting that as `errored` would imply nothing landed, when in fact a queryable
+record now exists with degraded auxiliary state.
+
+| Category | Meaning |
+|---|---|
+| `landed` | Saved and all carried state restored. |
+| `skipped` | Key already present, `on_conflict="skip"`. |
+| `rejected` | Refused before any write — write gate, or construction/validation failure. Nothing written. |
+| `errored` | Failed during save. Nothing written, or write state indeterminate. |
+| `partial` | Saved, but state restore raised. **The record exists on the destination with rebuild-default auxiliary state.** |
+
+The per-record loop uses two separate `try` blocks — one around construction and
+`save()`, one around `import_state` — so the handler knows which stage failed. A
+single `try` around both cannot distinguish `rejected`/`errored` from `partial`.
+`partial` is surfaced prominently in `ImportReport.summary()` and documented in
+the user guide as "needs attention", since it is the one category that leaves
+degraded data behind.
 
 **6. New `save()` kwarg**
 
@@ -495,9 +595,14 @@ import produce duplicates instead of converging. Preservation is also what makes
 raises is real but is the *merge semantic's* job (Q4), not a reason to corrupt
 identity. Spike-1 confirmed preservation works with no new machinery:
 `Model(_auto_key=...)` overrides the generated default (base.py:542-544).
-`preserve_keys=False` remains available for cloning into the same database; it
-remaps declared references via `remap_references` and the report states plainly
-that undeclared plain-string pointers are not remapped.
+*Scope, revised after critique.* `preserve_keys=True` is the **only** mode in
+v1; the key-regenerating opt-out is filed as #557. Critique correctly noted that
+the plan was building the opt-out while its own Open Questions section said "no
+identified consumer wants it" — the same rationale used to confidently defer the
+CLI. Applying that standard consistently removes the `remap_references` hook,
+one protocol member, one partial guarantee, and one whole failure mode from the
+v1 surface. `preserve_keys` is not exposed as a parameter at all; if a caller
+needs regeneration, #557 adds it against a settled API.
 
 **Q3. Carry EmbeddingField vectors by default? → Yes, carry by default, guarded
 by a provider fingerprint that errors on mismatch.**
@@ -615,11 +720,10 @@ New test files:
 - **Fixing the `CyclicDecayField.on_save` amplitude clobber.** It is a genuine
   bug found by spike-2, it is adjacent, and it will be tempting. It changes
   in-place save semantics for every existing user of that field. Out of scope.
-- **Designing a general reference-remapping graph.** With `preserve_keys=True`
-  as the default, references never move. Building a full old-key→new-key rewrite
-  across arbitrary string fields means heuristically guessing which strings are
-  keys — unbounded and unsafe. Only fields that *declare* references via
-  `remap_references` get remapped, and the report says so.
+- **Designing a general reference-remapping graph.** Keys are always preserved in
+  v1, so references never move. Building a full old-key→new-key rewrite across
+  arbitrary string fields means heuristically guessing which strings are keys —
+  unbounded and unsafe. Deferred wholesale to #557.
 - **Making the export format a stable public interchange contract.** Versioning
   the manifest is in scope; promising cross-version compatibility, writing a
   formal schema, or supporting import of a future version's file is not.
@@ -729,6 +833,10 @@ for a hazard that only exists under a precondition violation.
 - [SEPARATE-SLUG #556] Fixing `CyclicDecayField.on_save` clobbering learned cycle
   amplitudes (cyclic_decay_field.py:356-361). A real pre-existing bug found by
   spike-2, but fixing it changes in-place save semantics for existing users.
+- [SEPARATE-SLUG #557] Key-regenerating import (`preserve_keys=False`) and the
+  `remap_references` protocol hook. Cut after critique for consistency with the
+  CLI deferral: no identified consumer, and it is the only mode needing a third
+  protocol member and carrying a partial guarantee.
 - [SEPARATE-SLUG #555] `async_export_records` / `async_import_records` twins. The
   repo's `async_` convention would normally require them, but the whole driver is
   I/O-bound on a per-record save loop and the async path would duplicate every
@@ -758,8 +866,9 @@ owns.
 ### Feature Documentation
 - [ ] Create `docs/field-authoring.md` — the round-trip protocol for field
       authors: what `roundtrip_policy` means, when to override `export_state` /
-      `import_state` / `remap_references`, and the rule that a field with
-      independent Redis state must declare `"carry"` or `"partial"`. This is
+      `import_state`, the rule that a field with independent Redis state must
+      declare `"carry"` or `"partial"`, and the fact that the same protocol is
+      honored on Model-level mixins via the MRO walk. This is
       AC #10 and there is **no existing custom-field-authoring doc** to extend
       (spike-4).
 - [ ] Create `docs/guides/export-import.md` — user-facing: exporting with and
@@ -794,8 +903,8 @@ owns.
 - [ ] AC #3 — a `Field` subclass defined inside the test file, with no round-trip
       support, exports and imports correctly via the base default.
 - [ ] AC #4 — `ImportReport` accounts for every exported record as landed,
-      skipped, rejected, or errored, with a reason per non-landed record; a
-      write-gate drop appears as a counted rejection.
+      skipped, rejected, errored, or partial, with a reason per non-landed
+      record; a write-gate drop appears as a counted rejection.
 - [ ] AC #5 — `export_records()` with no arguments exports all records of a model
       that has no grouping field.
 - [ ] AC #6 — filtering goes through `Model.query.filter`; an unqueryable
@@ -828,8 +937,9 @@ owns.
 
 - **Builder (carriers)**
   - Name: `carrier-builder`
-  - Role: the four `export_state`/`import_state` overrides (Confidence, CyclicDecay,
-    Embedding, AccessTracker) + `Relationship.remap_references`
+  - Role: the four `export_state`/`import_state` overrides — three field-level
+    (Confidence, CyclicDecay, Embedding) and one model-level (AccessTracker) —
+    plus those four modules' own `roundtrip_policy` declarations
   - Agent Type: builder
   - Resume: true
 
@@ -852,9 +962,11 @@ owns.
   - Resume: true
 
 All builders work in the single session worktree on disjoint file sets:
-`protocol-builder` owns `fields/field.py` + `models/base.py`; `driver-builder`
-owns `transfer/*` only; `carrier-builder` owns the four field modules +
-`relationship.py`. No file is written by two agents.
+`protocol-builder` owns `fields/field.py`, `models/base.py`, and the
+**non-carrier** field/mixin modules; `driver-builder` owns `transfer/*` only;
+`carrier-builder` owns exactly `confidence_field.py`, `cyclic_decay_field.py`,
+`embedding_field.py`, and `access_tracker.py`. No file is written by two agents —
+verified against Tasks 1 and 3 after critique flagged the original split.
 
 ## Step by Step Tasks
 
@@ -867,16 +979,20 @@ owns `transfer/*` only; `carrier-builder` owns the four field modules +
 - **Assigned To**: protocol-builder
 - **Agent Type**: builder
 - **Parallel**: true
-- Add `roundtrip_policy`, `roundtrip_note`, `export_state`, `import_state`,
-  `remap_references` to `Field` in `src/popoto/fields/field.py` with working
-  no-op defaults and full docstrings.
+- Add `roundtrip_policy`, `roundtrip_note`, `export_state`, `import_state` to
+  `Field` in `src/popoto/fields/field.py` with working no-op defaults and full
+  docstrings. (No `remap_references` — deferred to #557.)
 - Add `skip_write_filter: bool = False` to `Model.save()`, guarding only the
-  `_check_write_filter` call at base.py:1148-1153. Default behavior unchanged.
-- Declare an explicit `roundtrip_policy` on every `Field` subclass in
-  `src/popoto/fields/` — `"rebuild"` for the derivable set, `"carry"` for the
-  four carriers, `"partial"` (with `roundtrip_note` citing #556) for
-  `ExistenceFilter`, `FrequencySketch`, `EventStreamMixin`,
-  `PredictionLedgerMixin`, `CoOccurrenceField`.
+  `_check_write_filter` call at base.py:1148-1153. Default behavior unchanged;
+  docstring notes the `**kwargs` swallow hazard.
+- Declare an explicit `roundtrip_policy` on the **non-carrier** classes only —
+  `"rebuild"` for the derivable set, `"partial"` (with `roundtrip_note` citing
+  #556) for `ExistenceFilter`, `FrequencySketch`, `CoOccurrenceField`,
+  `EventStreamMixin`, `PredictionLedgerMixin`, and `"rebuild"` for
+  `WriteFilterMixin`. **The four carrier modules are Task 3's** — do not edit
+  `confidence_field.py`, `cyclic_decay_field.py`, `embedding_field.py`, or
+  `access_tracker.py` in this task. (Critique caught that the original split
+  broke the disjoint-ownership invariant while Tasks 1 and 2 run in parallel.)
 
 ### 2. Transfer driver
 - **Task ID**: build-driver
@@ -898,8 +1014,12 @@ owns `transfer/*` only; `carrier-builder` owns the four field modules +
 - Import: validate manifest, batch `EXISTS` conflict check, construct, save with
   `skip_auto_now=True`, call `import_state` **after** save, ground-truth landed
   count with a second `EXISTS`, build `ImportReport`.
-- Implement `on_conflict` / `on_write_gate` / `preserve_keys` /
-  `on_embedding_mismatch` per the decisions in Technical Approach.
+- Implement `on_conflict` / `on_write_gate` / `on_embedding_mismatch` per the
+  decisions in Technical Approach. Do **not** add a `preserve_keys` parameter
+  (#557); keys are always preserved.
+- Two passes for carried state: `_meta.fields` for field-level, and an MRO walk
+  over `type(instance).__mro__` for model-level mixins, duck-typed on
+  `"export_state" in cls.__dict__`. No `isinstance` against a concrete type.
 - Rejection detection is `result is False or result is None` with an explanatory
   comment; per-record exceptions become counted report entries, never `pass`.
 - Re-export from `popoto/__init__.py` + `__all__`; add `Model.export_records` /
@@ -922,10 +1042,13 @@ owns `transfer/*` only; `carrier-builder` owns the four field modules +
 - `EmbeddingField`: export the `.npy` bytes base64-encoded plus
   `{provider, model, dimensions}` provenance; import writes the `.npy` +
   `_index.json` entry and calls `invalidate_cache`.
-- `AccessTrackerMixin`: export/import `access_count` and `last_accessed` from the
-  meta hash; declare `"partial"` for the uncarried access log.
-- `Relationship.remap_references`: rewrite a stored `redis_key` through the
-  key map when `preserve_keys=False`.
+- `AccessTrackerMixin`: **model-level** carrier reached by the MRO walk, not by
+  `_meta.fields`. Export/import `access_count` and `last_accessed` from the meta
+  hash; `roundtrip_policy = "partial"` with a note naming the uncarried access
+  log.
+- Each carrier module also declares its own `roundtrip_policy` /
+  `roundtrip_note` in this task (Task 1 deliberately leaves these four files
+  alone so ownership stays disjoint).
 
 ### 4. Tests
 - **Task ID**: build-tests
@@ -939,7 +1062,15 @@ owns `transfer/*` only; `carrier-builder` owns the four field modules +
 - Cover: plain round-trip, empty model vs zero-match filter, all three
   `on_conflict` modes, both `on_write_gate` modes, embedding provenance mismatch,
   malformed JSONL line accounting, `ImportReport` rendering, and the
-  "every field declares a policy" enforcement test.
+  "every field and mixin declares a policy" enforcement test.
+- Cover the two critique blockers explicitly: (a) a model-level mixin carrier
+  (`AccessTrackerMixin`) round-trips via the MRO walk, and a mixin declaring
+  `"partial"` actually appears in the report; (b) `on_conflict="overwrite"` into
+  an existing key **plus** a write-gate rejection reports `rejected`, not
+  `landed`, and the destination still holds the pre-import values.
+- Cover the `partial` outcome category: force `import_state` to raise and assert
+  the record is reported as `partial` with the record present but its carried
+  state not restored.
 - Live Redis only, no mocks. Narrow scope: run only these three files.
 
 ### 5. Documentation
@@ -968,36 +1099,70 @@ owns `transfer/*` only; `carrier-builder` owns the four field modules +
 | Format clean | `black --check src/popoto/transfer/ src/popoto/fields/field.py` | exit code 0 |
 | Types clean | `mypy src/popoto/transfer/` | exit code 0 |
 | Docs build | `mkdocs build --strict` | exit code 0 |
-| Anti-criterion: generic driver (no concrete-field `isinstance`) | `grep -rn "isinstance" src/popoto/transfer/ \| grep -E "Field\|Mixin"` | exit code 1 |
-| Anti-criterion: no new required dependency | `git diff main -- pyproject.toml \| grep -c '^+.*dependencies'` | match count == 0 |
-| Anti-criterion: no CLI entry point added (#555) | `grep -c "project.scripts" pyproject.toml` | match count == 0 |
-| Anti-criterion: `CyclicDecayField.on_save` untouched (#556) | `git diff main --stat -- src/popoto/fields/cyclic_decay_field.py \| grep -c "on_save"` | match count == 0 |
-| Anti-criterion: no silent swallow in import loop | `grep -rn -A1 "except.*:" src/popoto/transfer/import_.py \| grep -c "pass$"` | match count == 0 |
 | Protocol default is a no-op (AC #3) | `python -c "from popoto.fields.field import Field; assert Field.export_state.__func__(Field, None,'x',1) is None; print('ok')"` | output contains ok |
-| Every field declares a policy | `pytest tests/test_transfer_roundtrip.py -k policy_declared -q` | exit code 0 |
+| Every field and mixin declares a policy | `pytest tests/test_transfer_roundtrip.py -k policy_declared -q` | exit code 0 |
+| Precedence rule tested (BLOCKER 2) | `pytest tests/test_transfer_reconciliation.py -k overwrite_gate_reject -q` | exit code 0 |
+| Anti-criterion: no new required dependency | `scripts/verify/no_new_deps.sh` | match count == 0 |
+| Anti-criterion: generic driver | `scripts/verify/generic_driver.sh` | exit code 1 |
+| Anti-criterion: no CLI entry point added (#555) | `grep -c "project.scripts" pyproject.toml` | match count == 0 |
+| Anti-criterion: `CyclicDecayField.on_save` body untouched (#556) | `scripts/verify/cyclic_on_save_untouched.sh` | match count == 0 |
+| Anti-criterion: no silent swallow in import loop | `scripts/verify/no_silent_swallow.sh` | match count == 0 |
+| Anti-criterion: `remap_references` not shipped (#557) | `grep -rc "remap_references" src/popoto/` | match count == 0 |
+
+The five multi-pipe anti-criteria are shell scripts rather than table cells,
+because a markdown table cell must escape `|` as `\|` and a builder copy-pasting
+the cell verbatim gets a broken command (critique NIT). Each script is one line
+and lives in `scripts/verify/`:
+
+```sh
+# scripts/verify/generic_driver.sh — no isinstance against a concrete field/mixin type
+grep -rn "isinstance" src/popoto/transfer/ | grep -E "Field|Mixin"
+
+# scripts/verify/no_new_deps.sh
+git diff main -- pyproject.toml | grep -c '^+.*dependencies'
+
+# scripts/verify/cyclic_on_save_untouched.sh — hunk CONTENT, not --stat
+# (--stat prints only a filename and a change bar, so the original check was vacuous)
+git diff main -U0 -- src/popoto/fields/cyclic_decay_field.py | grep -c '^[+-].*def on_save'
+
+# scripts/verify/no_silent_swallow.sh
+grep -rn -A1 "except.*:" src/popoto/transfer/import_.py | grep -c "pass$"
+```
 
 ## Critique Results
 
-<!-- Populated by /do-plan-critique (war room). Leave empty until critique is run. -->
+Run 2026-08-10 at FULL depth (forced by `appetite: Large`), three critics.
+Verdict: **NEEDS REVISION** — 2 blockers, 3 concerns, 3 nits. All eight are
+addressed below; the plan has been revised and re-committed.
+
+| Severity | Critic | Finding | Addressed By | Implementation Note |
+|----------|--------|---------|--------------|---------------------|
+| BLOCKER | Scope & Value | Protocol is `Field`-only, but `AccessTrackerMixin`, `EventStreamMixin`, `PredictionLedgerMixin`, `WriteFilterMixin` are Model-level mixins the `_meta.fields` loop never reaches — so a listed carrier and a promised report line were unreachable | Technical Approach §1b "Two levels, one protocol" — driver adds an MRO walk keyed by class name | Duck-typed on `"export_state" in cls.__dict__`, never `isinstance`, so the generic-driver anti-criterion still passes. `ExistenceFilter`/`FrequencySketch`/`CoOccurrenceField` are real `Field` subclasses and were never affected |
+| BLOCKER | Risk & Robustness | `save()` return value and batch `EXISTS` are two sources of truth with no precedence rule; under `on_conflict="overwrite"` a gate rejection leaves the old hash and `EXISTS` counts it landed | Technical Approach §5 — explicit precedence rule + dedicated test | Return value classifies; `EXISTS` may only downgrade landed→missing, never upgrade rejected→landed. On the collision path the post-write `EXISTS` carries zero information and is not consulted |
+| CONCERN | Risk & Robustness | An `import_state` failure leaves a queryable record with rebuild-default state, but "errored" implies nothing landed | Technical Approach §5b — fifth outcome category `partial` | Two separate `try` blocks in the per-record loop; a single `try` cannot distinguish the stages |
+| CONCERN | History & Consistency | "No file is written by two agents" was false — Task 1 declared policies on the four carrier modules Task 3 owns | Task 1 scoped to non-carrier classes; Task 3 owns its four modules' declarations; ownership paragraph corrected | Tasks 1 and 2 are `Parallel: true`, so the overlap was a real concurrent-write hazard, not just bookkeeping |
+| CONCERN | Scope & Value | `preserve_keys=False` was being built while Open Questions said no consumer wants it — the same rationale used to defer the CLI | Cut from v1, filed as #557; `preserve_keys` is not a parameter at all | Removes `remap_references`, one protocol member, one partial guarantee, one failure mode. `on_conflict`/`on_write_gate` path untouched |
+| NIT | History & Consistency | `git diff --stat \| grep "on_save"` is vacuous — `--stat` never prints function names | Replaced with a `-U0` hunk-content check in `scripts/verify/` | The original check could never catch a regression to the #556-deferred fix |
+| NIT | History & Consistency | Multi-pipe anti-criteria in table cells are not copy-pasteable (markdown `\|` escaping) | Five anti-criteria moved to one-line scripts in `scripts/verify/` | The commands themselves were correct; only copy-paste safety was at risk |
+| NIT | structural | "two additive `Model.save()` kwargs" then lists one; `**kwargs` silently swallows a misspelled kwarg | Architectural Impact reworded; swallow hazard noted for the docstring | `save()` accepts `**kwargs` at base.py:1049-1057, so `skip_write_filtr=True` would be silently ignored |
+| FAIL | structural (prereqs) | 2 of 3 prerequisites failing — `popoto` resolves to a different checkout, `sentence_transformers` absent | Prerequisites section now names venv setup as the build stage's first action | Not a plan defect; an environment gate that must clear before any test number is reported |
 
 ---
 
 ## Open Questions
 
-The issue's five open questions are **decided above with rationale**, not
-deferred. Two remain for the supervisor, both policy rather than technical:
+The issue's five open questions are **decided in Technical Approach with
+rationale**, not deferred. Critique resolved the second of the two questions this
+plan had left open (`preserve_keys=False` is cut to #557). One remains for the
+supervisor, and it is a policy call about the motivating consumer rather than a
+design gap:
 
 1. **Is `on_write_gate="reject"` the right default for the motivating consumer?**
    Migrating `tomcounsell/ai`'s `Memory` model between machines will hit the
    `WriteFilterMixin` gate on any record whose score has since fallen below the
    destination's threshold, and those records will be *reported but not
    transferred*. If the intent is a faithful machine-to-machine move, that
-   migration should pass `on_write_gate="bypass"` — confirm that is acceptable
-   rather than flipping the library default.
-2. **Should `preserve_keys=False` ship at all in v1?** It is the only mode that
-   needs `remap_references`, the only one with a documented partial guarantee
-   (declared references remapped, plain-string pointers not), and no identified
-   consumer wants it. Dropping it removes a whole hook and a whole failure mode
-   from the surface. Kept in the plan for now because the issue explicitly asks
-   about key preservation being "default or opt-in", which implies both modes
-   exist.
+   migration should pass `on_write_gate="bypass"` at the call site — confirm that
+   is acceptable rather than flipping the library default. Build is not blocked on
+   this: the flag exists either way, and only the recommended recipe in
+   `docs/guides/export-import.md` changes.
