@@ -38,6 +38,7 @@ Example:
     memberships = Membership.query.filter(person__name="Alice")
 """
 
+from typing import TYPE_CHECKING
 import redis
 from .field import Field
 import logging
@@ -45,6 +46,9 @@ import logging
 from ..models.db_key import DB_key
 from ..models.query import QueryException
 from ..redis_db import POPOTO_REDIS_DB
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle guard
+    from ..models.base import Model
 
 logger = logging.getLogger("POPOTO.Relationship")
 

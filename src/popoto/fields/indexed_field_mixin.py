@@ -44,12 +44,16 @@ Usage
 """
 
 import logging
+from typing import TYPE_CHECKING
 import msgpack
 import redis.client
 
 from ..exceptions import ModelException, QueryException
 from ..models.db_key import DB_key
 from ..redis_db import POPOTO_REDIS_DB, scan_keys
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle guard
+    from ..models.base import Model
 
 logger = logging.getLogger("POPOTO.IndexedFieldMixin")
 

@@ -57,6 +57,9 @@ from ..models.db_key import DB_key
 from ..models.query import QueryException
 from ..redis_db import POPOTO_REDIS_DB
 
+if typing.TYPE_CHECKING:  # pragma: no cover - import cycle guard
+    from ..models.base import Model
+
 logger = logging.getLogger("POPOTO.SortedFieldMixin")
 
 
