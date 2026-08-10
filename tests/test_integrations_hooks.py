@@ -293,10 +293,15 @@ def test_output_is_a_single_complete_json_document(tmp_path):
 # --- subprocess behavior, the guarantees that actually matter ------------------------
 
 
-SUBPROCESS_DB = os.environ.get("POPOTO_TEST_DB", "15")
+SUBPROCESS_DB = os.environ.get("POPOTO_TEST_DB") or "15"
 """Database the subprocess tests use. The hook process resolves its own
 connection from ``POPOTO_MEMORY_URL``, so it does not inherit the pytest
-plugin's isolation and would otherwise land on database 0."""
+plugin's isolation and would otherwise land on database 0.
+
+``or "15"`` rather than a ``get`` default: an explicitly-empty
+``POPOTO_TEST_DB=`` satisfies ``get`` and yields ``""``, which builds
+``redis://localhost:6379/`` -- a URL whose database ``parse_url`` drops
+entirely, resolving to database 0. That is the developer's real data."""
 
 
 def _run_cli(payload, env_extra=None):

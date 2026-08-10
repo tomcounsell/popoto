@@ -221,6 +221,13 @@ def bind_connection(config: MemoryConfig) -> bool:
     Returns:
         ``True`` when the connection was rebound, ``False`` when it was
         already correct or no explicit URL was given.
+
+    Raises:
+        ValueError: If ``config.url`` carries no parseable database number.
+            Refusing is the point: ``redis://localhost:6379/`` parses to a
+            dict with no ``db`` key, so silently keeping the current
+            connection would leave writes on database 0 while the caller
+            believes it redirected them.
     """
     if not config.url_is_explicit:
         return False
@@ -231,6 +238,15 @@ def bind_connection(config: MemoryConfig) -> bool:
     from ..redis_db import POPOTO_REDIS_DB
 
     wanted = parse_url(config.url)
+    if "db" not in wanted:
+        raise ValueError(
+            f"POPOTO_MEMORY_URL={config.url!r} has no database number. "
+            "Write it in full, for example redis://localhost:6379/0 -- a "
+            "trailing slash with nothing after it is not database 0, it is "
+            "no database at all, and honouring it would silently leave "
+            "every write on whatever database Popoto is already using."
+        )
+
     client = POPOTO_REDIS_DB
     current = dict(client.connection_pool.connection_kwargs)
     if all(current.get(key) == value for key, value in wanted.items()):

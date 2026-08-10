@@ -32,7 +32,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from .config import PENDING_TTL_SECONDS, MemoryConfig
+from .config import PENDING_TTL_SECONDS, MemoryConfig, bind_connection
 
 logger = logging.getLogger("POPOTO.integrations")
 
@@ -76,6 +76,19 @@ class MemoryService:
         self.config = config or MemoryConfig.from_env()
         self._memory: Any = None
         self._model: Any = None
+        # The single place the connection is bound. Every entry point --
+        # the hook, the MCP server, doctor, demo, the examples, the Hermes
+        # handler -- reaches Redis through a MemoryService, so binding here
+        # is what makes POPOTO_MEMORY_URL mean the same thing on all of
+        # them. Binding in the CLI instead left demo, seed.py, verify.py and
+        # the Hermes handler writing to database 0 while printing the URL
+        # they were not using.
+        #
+        # Safe for in-process callers: bind_connection is a no-op unless
+        # POPOTO_MEMORY_URL was set explicitly, so a test under the pytest
+        # plugin, or a host application that configured its own connection,
+        # keeps the one it chose.
+        bind_connection(self.config)
 
     # -- lazy wiring ----------------------------------------------------
 

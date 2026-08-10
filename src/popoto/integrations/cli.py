@@ -150,13 +150,8 @@ def _cmd_hook(args: Any) -> int:
     except Exception:
         return 0
 
-    try:
-        from .config import MemoryConfig, bind_connection
-
-        bind_connection(MemoryConfig.from_env())
-    except Exception:
-        pass
-
+    # No bind_connection here: MemoryService.__init__ owns that, so every
+    # entry point resolves POPOTO_MEMORY_URL the same way.
     try:
         from . import hooks
 
@@ -188,9 +183,6 @@ def _cmd_hook(args: Any) -> int:
 def _cmd_mcp() -> int:
     """Run the stdio MCP server."""
     try:
-        from .config import MemoryConfig, bind_connection
-
-        bind_connection(MemoryConfig.from_env())
         from .mcp_server import serve
     except ImportError as exc:
         sys.stderr.write(
@@ -213,11 +205,10 @@ def _cmd_mcp() -> int:
 
 def _cmd_doctor(args: Any) -> int:
     """Print the diagnostic report. Returns 1 when Redis is unreachable."""
-    from .config import MemoryConfig, bind_connection
+    from .config import MemoryConfig
     from .service import MemoryService
 
     config = MemoryConfig.from_env()
-    bind_connection(config)
     service = MemoryService(config)
     info = service.status()
 

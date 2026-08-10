@@ -25,8 +25,11 @@ Output rules that are not negotiable:
 """
 
 import json
+import logging
 import os
 from typing import Any, Dict, Optional, Tuple
+
+logger = logging.getLogger("POPOTO.integrations.hooks")
 
 READ_EVENTS = frozenset(
     {
@@ -244,26 +247,43 @@ def run(stdin_text: str, service: Any = None) -> Optional[str]:
     try:
         payload = json.loads(stdin_text)
     except (ValueError, TypeError):
-        _log_malformed(stdin_text)
+        _log_hook_error(
+            "hook_decode", ValueError(f"unparseable stdin ({len(stdin_text)} bytes)")
+        )
         return None
     if not isinstance(payload, dict):
-        _log_malformed(stdin_text)
+        _log_hook_error(
+            "hook_decode", ValueError(f"stdin was {type(payload).__name__}, not object")
+        )
         return None
     try:
         return handle_payload(payload, service=service)
-    except Exception:
+    except Exception as exc:
+        # Covers a misconfigured POPOTO_MEMORY_URL, which raises out of
+        # MemoryService construction. Exiting 0 keeps the turn alive; the
+        # log line is what stops it from being invisible.
+        _log_hook_error("hook_run", exc)
         return None
 
 
-def _log_malformed(stdin_text: str) -> None:
-    """Record an unparseable payload where ``doctor`` can surface it."""
-    try:
-        from .config import MemoryConfig
-        from .service import MemoryService
+def _log_hook_error(operation: str, exc: BaseException) -> None:
+    """Append one failure line to the configured log file.
 
-        service = MemoryService(MemoryConfig.from_env(os.environ))
-        service._record_failure(
-            "hook_decode", ValueError(f"unparseable stdin ({len(stdin_text)} bytes)")
-        )
+    Writes the file directly rather than going through
+    ``MemoryService._record_failure``. Constructing a service is exactly
+    what may have just failed, and it would also open a Redis connection
+    only to record that Redis is unusable.
+    """
+    from datetime import datetime, timezone
+
+    from .config import MemoryConfig
+
+    logger.warning("popoto memory %s failed: %s", operation, exc)
+    try:
+        path = MemoryConfig.from_env(os.environ).log_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(f"{stamp} {operation} {type(exc).__name__}: {exc}\n")
     except Exception:
         pass
