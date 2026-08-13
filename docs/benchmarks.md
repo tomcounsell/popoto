@@ -354,8 +354,11 @@ that no longer exists and was never committed. That artifact carries a
 `fixture_note` instead, reconstructing the fixture identity from corroborating
 evidence (matching seed/limit/sample_mode and question-type distribution
 against a sibling run) rather than restating it directly, and giving the
-command to regenerate the subset. Every other run on this page used the full
-dataset directly, with no `--fixture` file involved.
+command to regenerate the subset. Every other 2026-08-07 run on this page used
+the full dataset directly. The 2026-08-06 judged run and the five
+`--extraction` arms below also used `--fixture` — the same derived
+conv-26,conv-30 subset — but their artifacts record it as a descriptive label
+rather than a path, so no path was ever lost in the first place.
 
 **LoCoMo lexical, full 1986 questions (any-hit Recall):**
 

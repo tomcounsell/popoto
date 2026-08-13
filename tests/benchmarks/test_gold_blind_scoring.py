@@ -35,7 +35,11 @@ from tests.benchmarks.datasets import BenchmarkItem, ground_truth_unit
 from tests.benchmarks.datasets.locomo import iter_items as iter_locomo
 from tests.benchmarks.datasets.longmemeval_s import iter_items as iter_longmemeval
 from tests.benchmarks.metrics.retrieval import mean_reciprocal_rank, recall_at_k
-from tests.benchmarks.run_external import build_markdown_report, compute_aggregate
+from tests.benchmarks.run_external import (
+    REPO_ROOT,
+    build_markdown_report,
+    compute_aggregate,
+)
 from tests.benchmarks.scenarios.external_base import (
     ExternalScenario,
     _resolve_ranking_unit,
@@ -437,3 +441,50 @@ class TestRankingUnitInReport:
         aggregate.pop("ranking_unit")
         md = build_markdown_report(aggregate)
         assert "**Ranking unit:** unrecorded (pre-#514 artifact)" in md
+
+
+class TestFixtureProvenance:
+    """``compute_aggregate``'s fixture-path and pool-size recording (#530).
+
+    Pins the mechanism added to stop a repeat of the defect repaired in
+    ``e8c0dfb``/``b6ca231``: a raw ``str(fixture)`` baked an absolute session
+    scratchpad path into a committed artifact, which was unreproducible by
+    the time anyone read it again. ``compute_aggregate`` now relativizes an
+    in-repo fixture path against ``REPO_ROOT`` and leaves an out-of-repo path
+    untouched (never fabricated), and splices ``corpus_sampled_from`` into
+    ``sampling`` only when the caller supplies one.
+    """
+
+    def test_in_repo_fixture_path_is_relativized(self):
+        """A fixture living inside the repo is recorded repo-relative."""
+        fixture_path = REPO_ROOT / "tests" / "benchmarks" / "fixtures" / "nope.json"
+        aggregate = compute_aggregate([], dataset="locomo", fixture=str(fixture_path))
+        assert aggregate["sampling"]["fixture"] == (
+            "tests/benchmarks/fixtures/nope.json"
+        )
+
+    def test_out_of_repo_fixture_path_stays_absolute(self):
+        """A fixture outside the repo is recorded as-is, not fabricated.
+
+        The honest-not-fabricated choice from ``e8c0dfb``: reformatting a
+        path that does not resolve under ``REPO_ROOT`` would either raise
+        or silently invent a repo-relative path that does not exist. Both
+        are worse than recording the absolute path unchanged.
+        """
+        outside_path = "/tmp/session-scratchpad/locomo_subset_26_30.json"
+        aggregate = compute_aggregate([], dataset="locomo", fixture=outside_path)
+        assert aggregate["sampling"]["fixture"] == outside_path
+
+    def test_corpus_sampled_from_present_when_supplied(self):
+        """``corpus_sampled_from`` is spliced into ``sampling`` when given."""
+        aggregate = compute_aggregate([], dataset="locomo", corpus_sampled_from=304)
+        assert aggregate["sampling"]["corpus_sampled_from"] == 304
+
+    def test_corpus_sampled_from_absent_when_not_supplied(self):
+        """No ``--fixture``/no explicit pool size: the key is omitted, not null.
+
+        Keeps full-corpus-run artifacts byte-identical to their pre-#530
+        shape, per the review's regression-risk check.
+        """
+        aggregate = compute_aggregate([], dataset="locomo")
+        assert "corpus_sampled_from" not in aggregate["sampling"]
