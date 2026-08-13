@@ -28,10 +28,10 @@
     "sample_mode": "stratified",
     "seed": 0,
     "limit": 100,
-    "fixture": "tests/benchmarks/fixtures-derived: LoCoMo subset conv-26,conv-30 (2 of 10 dialogues, 788 turns, 304 QA)",
+    "fixture": null,
     "corpus_full_size": 1986,
     "corpus_sampled_from": 304,
-    "fixture_note": "Repaired (#530): the original run recorded an absolute path into a session scratchpad (.../3c7b6bde-.../scratchpad/locomo_subset_26_30.json) that no longer exists and was never committed. The value above is not a literal repo path; it is reconstructed from make_locomo_subset.py's provenance description, substantiated by this run's identical seed/limit/sample_mode and by_question_type distribution (14/21/4/38/23) against the sibling locomo_20260806_judged.json run over the same conv-26,conv-30 subset. Regenerate with: python tests/benchmarks/make_locomo_subset.py conv-26,conv-30 <out.json>."
+    "fixture_note": "Repaired (#530): the original run recorded an absolute path into a session scratchpad (.../3c7b6bde-.../scratchpad/locomo_subset_26_30.json) that no longer exists and was never committed, so `fixture` is set to null rather than a fabricated path. The fixture was: tests/benchmarks/fixtures-derived: LoCoMo subset conv-26,conv-30 (2 of 10 dialogues, 788 turns, 304 QA). This subset identity is reconstructed from make_locomo_subset.py's provenance description, substantiated by this run's identical seed/limit/sample_mode and by_question_type distribution (14/21/4/38/23) against the sibling locomo_20260806_judged.json run over the same conv-26,conv-30 subset. Regenerate with: python tests/benchmarks/make_locomo_subset.py conv-26,conv-30 <out.json>."
   },
   "machine": {
     "python_version": "3.12.13",
