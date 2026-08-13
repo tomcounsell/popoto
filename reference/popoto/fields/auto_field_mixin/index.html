@@ -2233,9 +2233,65 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../guides/export-import/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Export & Import
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../field-authoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Writing Custom Fields
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -3026,7 +3082,16 @@ collision probability is acceptable in exchange for shorter keys.</p>
 <span class="normal"><a href="#__codelineno-0-340">340</a></span>
 <span class="normal"><a href="#__codelineno-0-341">341</a></span>
 <span class="normal"><a href="#__codelineno-0-342">342</a></span>
-<span class="normal"><a href="#__codelineno-0-343">343</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-99" name="__codelineno-0-99"></a><span class="k">class</span><span class="w"> </span><span class="nc">AutoFieldMixin</span><span class="p">:</span>
+<span class="normal"><a href="#__codelineno-0-343">343</a></span>
+<span class="normal"><a href="#__codelineno-0-344">344</a></span>
+<span class="normal"><a href="#__codelineno-0-345">345</a></span>
+<span class="normal"><a href="#__codelineno-0-346">346</a></span>
+<span class="normal"><a href="#__codelineno-0-347">347</a></span>
+<span class="normal"><a href="#__codelineno-0-348">348</a></span>
+<span class="normal"><a href="#__codelineno-0-349">349</a></span>
+<span class="normal"><a href="#__codelineno-0-350">350</a></span>
+<span class="normal"><a href="#__codelineno-0-351">351</a></span>
+<span class="normal"><a href="#__codelineno-0-352">352</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-99" name="__codelineno-0-99"></a><span class="k">class</span><span class="w"> </span><span class="nc">AutoFieldMixin</span><span class="p">:</span>
 <a id="__codelineno-0-100" name="__codelineno-0-100"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <a id="__codelineno-0-101" name="__codelineno-0-101"></a><span class="sd">    Mixin that provides automatic ID generation for key fields.</span>
 <a id="__codelineno-0-102" name="__codelineno-0-102"></a>
@@ -3084,193 +3149,202 @@ collision probability is acceptable in exchange for shorter keys.</p>
 <a id="__codelineno-0-154" name="__codelineno-0-154"></a>    <span class="n">auto_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
 <a id="__codelineno-0-155" name="__codelineno-0-155"></a>    <span class="n">strategy</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;uuid4&quot;</span>
 <a id="__codelineno-0-156" name="__codelineno-0-156"></a>
-<a id="__codelineno-0-157" name="__codelineno-0-157"></a>    <span class="c1"># Valid strategies and their expected ID lengths</span>
-<a id="__codelineno-0-158" name="__codelineno-0-158"></a>    <span class="n">STRATEGY_LENGTHS</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-159" name="__codelineno-0-159"></a>        <span class="s2">&quot;uuid4&quot;</span><span class="p">:</span> <span class="mi">32</span><span class="p">,</span>
-<a id="__codelineno-0-160" name="__codelineno-0-160"></a>        <span class="s2">&quot;ulid&quot;</span><span class="p">:</span> <span class="mi">26</span><span class="p">,</span>
-<a id="__codelineno-0-161" name="__codelineno-0-161"></a>        <span class="s2">&quot;ksuid&quot;</span><span class="p">:</span> <span class="mi">27</span><span class="p">,</span>
-<a id="__codelineno-0-162" name="__codelineno-0-162"></a>    <span class="p">}</span>
-<a id="__codelineno-0-163" name="__codelineno-0-163"></a>
-<a id="__codelineno-0-164" name="__codelineno-0-164"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<a id="__codelineno-0-165" name="__codelineno-0-165"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<a id="__codelineno-0-166" name="__codelineno-0-166"></a><span class="sd">        Initialize the auto-field mixin with ID generation settings.</span>
-<a id="__codelineno-0-167" name="__codelineno-0-167"></a>
-<a id="__codelineno-0-168" name="__codelineno-0-168"></a><span class="sd">        Follows Popoto&#39;s field initialization pattern: call super().__init__</span>
-<a id="__codelineno-0-169" name="__codelineno-0-169"></a><span class="sd">        first to let other mixins in the MRO initialize, then merge this</span>
-<a id="__codelineno-0-170" name="__codelineno-0-170"></a><span class="sd">        mixin&#39;s defaults into field_defaults and apply any kwargs overrides.</span>
-<a id="__codelineno-0-171" name="__codelineno-0-171"></a>
-<a id="__codelineno-0-172" name="__codelineno-0-172"></a><span class="sd">        This ordering ensures that subclasses can override auto_uuid_length,</span>
-<a id="__codelineno-0-173" name="__codelineno-0-173"></a><span class="sd">        strategy, or other settings through kwargs while maintaining sensible</span>
-<a id="__codelineno-0-174" name="__codelineno-0-174"></a><span class="sd">        defaults.</span>
-<a id="__codelineno-0-175" name="__codelineno-0-175"></a>
-<a id="__codelineno-0-176" name="__codelineno-0-176"></a><span class="sd">        Args:</span>
-<a id="__codelineno-0-177" name="__codelineno-0-177"></a><span class="sd">            **kwargs: Field configuration options. Relevant options:</span>
-<a id="__codelineno-0-178" name="__codelineno-0-178"></a><span class="sd">                - strategy: ID generation strategy (&quot;uuid4&quot;, &quot;ulid&quot;, &quot;ksuid&quot;)</span>
-<a id="__codelineno-0-179" name="__codelineno-0-179"></a><span class="sd">                - auto_uuid_length: Override the UUID length (default 32,</span>
-<a id="__codelineno-0-180" name="__codelineno-0-180"></a><span class="sd">                    only applies to uuid4 strategy)</span>
-<a id="__codelineno-0-181" name="__codelineno-0-181"></a><span class="sd">                - auto: Override auto-generation (rarely needed)</span>
-<a id="__codelineno-0-182" name="__codelineno-0-182"></a>
-<a id="__codelineno-0-183" name="__codelineno-0-183"></a><span class="sd">        Raises:</span>
-<a id="__codelineno-0-184" name="__codelineno-0-184"></a><span class="sd">            ValueError: If an invalid strategy is provided.</span>
-<a id="__codelineno-0-185" name="__codelineno-0-185"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-186" name="__codelineno-0-186"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
-<a id="__codelineno-0-187" name="__codelineno-0-187"></a>
-<a id="__codelineno-0-188" name="__codelineno-0-188"></a>        <span class="c1"># Validate strategy if provided</span>
-<a id="__codelineno-0-189" name="__codelineno-0-189"></a>        <span class="n">strategy</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;strategy&quot;</span><span class="p">,</span> <span class="s2">&quot;uuid4&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-190" name="__codelineno-0-190"></a>        <span class="k">if</span> <span class="n">strategy</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">STRATEGY_LENGTHS</span><span class="p">:</span>
-<a id="__codelineno-0-191" name="__codelineno-0-191"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-192" name="__codelineno-0-192"></a>                <span class="sa">f</span><span class="s2">&quot;Invalid strategy &#39;</span><span class="si">{</span><span class="n">strategy</span><span class="si">}</span><span class="s2">&#39;. &quot;</span>
-<a id="__codelineno-0-193" name="__codelineno-0-193"></a>                <span class="sa">f</span><span class="s2">&quot;Valid strategies are: </span><span class="si">{</span><span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">STRATEGY_LENGTHS</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span><span class="si">}</span><span class="s2">&quot;</span>
-<a id="__codelineno-0-194" name="__codelineno-0-194"></a>            <span class="p">)</span>
-<a id="__codelineno-0-195" name="__codelineno-0-195"></a>
-<a id="__codelineno-0-196" name="__codelineno-0-196"></a>        <span class="n">autokeyfield_defaults</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-197" name="__codelineno-0-197"></a>            <span class="s2">&quot;auto&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
-<a id="__codelineno-0-198" name="__codelineno-0-198"></a>            <span class="s2">&quot;auto_uuid_length&quot;</span><span class="p">:</span> <span class="mi">32</span><span class="p">,</span>
-<a id="__codelineno-0-199" name="__codelineno-0-199"></a>            <span class="s2">&quot;auto_id&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-200" name="__codelineno-0-200"></a>            <span class="s2">&quot;strategy&quot;</span><span class="p">:</span> <span class="s2">&quot;uuid4&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-201" name="__codelineno-0-201"></a>        <span class="p">}</span>
-<a id="__codelineno-0-202" name="__codelineno-0-202"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">field_defaults</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">autokeyfield_defaults</span><span class="p">)</span>
-<a id="__codelineno-0-203" name="__codelineno-0-203"></a>        <span class="c1"># set field options, let kwargs override</span>
-<a id="__codelineno-0-204" name="__codelineno-0-204"></a>        <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">autokeyfield_defaults</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-<a id="__codelineno-0-205" name="__codelineno-0-205"></a>            <span class="nb">setattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">v</span><span class="p">))</span>
-<a id="__codelineno-0-206" name="__codelineno-0-206"></a>
-<a id="__codelineno-0-207" name="__codelineno-0-207"></a>    <span class="nd">@classmethod</span>
-<a id="__codelineno-0-208" name="__codelineno-0-208"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">is_valid</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">field</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">null_check</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-<a id="__codelineno-0-209" name="__codelineno-0-209"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<a id="__codelineno-0-210" name="__codelineno-0-210"></a><span class="sd">        Validate that the auto-generated value has the expected length.</span>
-<a id="__codelineno-0-211" name="__codelineno-0-211"></a>
-<a id="__codelineno-0-212" name="__codelineno-0-212"></a><span class="sd">        This validation catches cases where a value was manually assigned</span>
-<a id="__codelineno-0-213" name="__codelineno-0-213"></a><span class="sd">        with an incorrect length, which could indicate data corruption or</span>
-<a id="__codelineno-0-214" name="__codelineno-0-214"></a><span class="sd">        a programming error. The length check happens before the parent</span>
-<a id="__codelineno-0-215" name="__codelineno-0-215"></a><span class="sd">        class validation to fail fast on obviously invalid data.</span>
-<a id="__codelineno-0-216" name="__codelineno-0-216"></a>
-<a id="__codelineno-0-217" name="__codelineno-0-217"></a><span class="sd">        Args:</span>
-<a id="__codelineno-0-218" name="__codelineno-0-218"></a><span class="sd">            field: The Field instance being validated.</span>
-<a id="__codelineno-0-219" name="__codelineno-0-219"></a><span class="sd">            value: The value to validate (should be an ID string or None).</span>
-<a id="__codelineno-0-220" name="__codelineno-0-220"></a><span class="sd">            null_check: If True, null values will be checked against field.null.</span>
-<a id="__codelineno-0-221" name="__codelineno-0-221"></a><span class="sd">            **kwargs: Additional validation context (passed to parent).</span>
-<a id="__codelineno-0-222" name="__codelineno-0-222"></a>
-<a id="__codelineno-0-223" name="__codelineno-0-223"></a><span class="sd">        Returns:</span>
-<a id="__codelineno-0-224" name="__codelineno-0-224"></a><span class="sd">            True if valid, False otherwise. Logs an error on invalid length.</span>
-<a id="__codelineno-0-225" name="__codelineno-0-225"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-226" name="__codelineno-0-226"></a>        <span class="k">if</span> <span class="n">value</span><span class="p">:</span>
-<a id="__codelineno-0-227" name="__codelineno-0-227"></a>            <span class="c1"># Get expected length based on strategy</span>
-<a id="__codelineno-0-228" name="__codelineno-0-228"></a>            <span class="n">expected_length</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">STRATEGY_LENGTHS</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
-<a id="__codelineno-0-229" name="__codelineno-0-229"></a>                <span class="n">field</span><span class="o">.</span><span class="n">strategy</span><span class="p">,</span> <span class="n">field</span><span class="o">.</span><span class="n">auto_uuid_length</span>
-<a id="__codelineno-0-230" name="__codelineno-0-230"></a>            <span class="p">)</span>
-<a id="__codelineno-0-231" name="__codelineno-0-231"></a>            <span class="c1"># For uuid4 strategy, allow custom auto_uuid_length</span>
-<a id="__codelineno-0-232" name="__codelineno-0-232"></a>            <span class="k">if</span> <span class="n">field</span><span class="o">.</span><span class="n">strategy</span> <span class="o">==</span> <span class="s2">&quot;uuid4&quot;</span><span class="p">:</span>
-<a id="__codelineno-0-233" name="__codelineno-0-233"></a>                <span class="n">expected_length</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">auto_uuid_length</span>
-<a id="__codelineno-0-234" name="__codelineno-0-234"></a>
-<a id="__codelineno-0-235" name="__codelineno-0-235"></a>            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="o">!=</span> <span class="n">expected_length</span><span class="p">:</span>
-<a id="__codelineno-0-236" name="__codelineno-0-236"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span>
-<a id="__codelineno-0-237" name="__codelineno-0-237"></a>                    <span class="sa">f</span><span class="s2">&quot;auto key value is length </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="si">}</span><span class="s2">. &quot;</span>
-<a id="__codelineno-0-238" name="__codelineno-0-238"></a>                    <span class="sa">f</span><span class="s2">&quot;It should be </span><span class="si">{</span><span class="n">expected_length</span><span class="si">}</span><span class="s2"> for strategy &#39;</span><span class="si">{</span><span class="n">field</span><span class="o">.</span><span class="n">strategy</span><span class="si">}</span><span class="s2">&#39;&quot;</span>
-<a id="__codelineno-0-239" name="__codelineno-0-239"></a>                <span class="p">)</span>
-<a id="__codelineno-0-240" name="__codelineno-0-240"></a>                <span class="k">return</span> <span class="kc">False</span>
-<a id="__codelineno-0-241" name="__codelineno-0-241"></a>        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">is_valid</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">null_check</span><span class="o">=</span><span class="n">null_check</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
-<a id="__codelineno-0-242" name="__codelineno-0-242"></a>
-<a id="__codelineno-0-243" name="__codelineno-0-243"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">get_new_auto_key_value</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<a id="__codelineno-0-244" name="__codelineno-0-244"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<a id="__codelineno-0-245" name="__codelineno-0-245"></a><span class="sd">        Generate a new identifier string based on the configured strategy.</span>
-<a id="__codelineno-0-246" name="__codelineno-0-246"></a>
-<a id="__codelineno-0-247" name="__codelineno-0-247"></a><span class="sd">        Strategies:</span>
-<a id="__codelineno-0-248" name="__codelineno-0-248"></a><span class="sd">        - uuid4 (default): Uses uuid.uuid4().hex for a lowercase hexadecimal</span>
-<a id="__codelineno-0-249" name="__codelineno-0-249"></a><span class="sd">          string without hyphens, truncated to auto_uuid_length. URL-safe and</span>
-<a id="__codelineno-0-250" name="__codelineno-0-250"></a><span class="sd">          Redis-key-safe characters.</span>
-<a id="__codelineno-0-251" name="__codelineno-0-251"></a><span class="sd">        - ulid: Generates a ULID (Universally Unique Lexicographically Sortable</span>
-<a id="__codelineno-0-252" name="__codelineno-0-252"></a><span class="sd">          Identifier) using the ulid-py package. Time-sortable, 26 characters.</span>
-<a id="__codelineno-0-253" name="__codelineno-0-253"></a><span class="sd">        - ksuid: Generates a KSUID (K-Sortable Unique Identifier) using the</span>
-<a id="__codelineno-0-254" name="__codelineno-0-254"></a><span class="sd">          cyksuid package. Time-sortable, 27 characters.</span>
+<a id="__codelineno-0-157" name="__codelineno-0-157"></a>    <span class="c1"># Export/import: on_save() is a no-op (auto values skip Set indexing).</span>
+<a id="__codelineno-0-158" name="__codelineno-0-158"></a>    <span class="c1"># Identity round-trips for free -- Model(**values) accepts the exported</span>
+<a id="__codelineno-0-159" name="__codelineno-0-159"></a>    <span class="c1"># key value as a constructor override of the freshly generated default,</span>
+<a id="__codelineno-0-160" name="__codelineno-0-160"></a>    <span class="c1"># since v1 always preserves keys (see #557 for the deferred</span>
+<a id="__codelineno-0-161" name="__codelineno-0-161"></a>    <span class="c1"># key-regeneration opt-out). A key that fails AutoFieldMixin.is_valid&#39;s</span>
+<a id="__codelineno-0-162" name="__codelineno-0-162"></a>    <span class="c1"># length check raises ModelException from __init__, which the importer</span>
+<a id="__codelineno-0-163" name="__codelineno-0-163"></a>    <span class="c1"># catches and reports as a rejection, not a crash.</span>
+<a id="__codelineno-0-164" name="__codelineno-0-164"></a>    <span class="n">roundtrip_policy</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;rebuild&quot;</span>
+<a id="__codelineno-0-165" name="__codelineno-0-165"></a>
+<a id="__codelineno-0-166" name="__codelineno-0-166"></a>    <span class="c1"># Valid strategies and their expected ID lengths</span>
+<a id="__codelineno-0-167" name="__codelineno-0-167"></a>    <span class="n">STRATEGY_LENGTHS</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-0-168" name="__codelineno-0-168"></a>        <span class="s2">&quot;uuid4&quot;</span><span class="p">:</span> <span class="mi">32</span><span class="p">,</span>
+<a id="__codelineno-0-169" name="__codelineno-0-169"></a>        <span class="s2">&quot;ulid&quot;</span><span class="p">:</span> <span class="mi">26</span><span class="p">,</span>
+<a id="__codelineno-0-170" name="__codelineno-0-170"></a>        <span class="s2">&quot;ksuid&quot;</span><span class="p">:</span> <span class="mi">27</span><span class="p">,</span>
+<a id="__codelineno-0-171" name="__codelineno-0-171"></a>    <span class="p">}</span>
+<a id="__codelineno-0-172" name="__codelineno-0-172"></a>
+<a id="__codelineno-0-173" name="__codelineno-0-173"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<a id="__codelineno-0-174" name="__codelineno-0-174"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-175" name="__codelineno-0-175"></a><span class="sd">        Initialize the auto-field mixin with ID generation settings.</span>
+<a id="__codelineno-0-176" name="__codelineno-0-176"></a>
+<a id="__codelineno-0-177" name="__codelineno-0-177"></a><span class="sd">        Follows Popoto&#39;s field initialization pattern: call super().__init__</span>
+<a id="__codelineno-0-178" name="__codelineno-0-178"></a><span class="sd">        first to let other mixins in the MRO initialize, then merge this</span>
+<a id="__codelineno-0-179" name="__codelineno-0-179"></a><span class="sd">        mixin&#39;s defaults into field_defaults and apply any kwargs overrides.</span>
+<a id="__codelineno-0-180" name="__codelineno-0-180"></a>
+<a id="__codelineno-0-181" name="__codelineno-0-181"></a><span class="sd">        This ordering ensures that subclasses can override auto_uuid_length,</span>
+<a id="__codelineno-0-182" name="__codelineno-0-182"></a><span class="sd">        strategy, or other settings through kwargs while maintaining sensible</span>
+<a id="__codelineno-0-183" name="__codelineno-0-183"></a><span class="sd">        defaults.</span>
+<a id="__codelineno-0-184" name="__codelineno-0-184"></a>
+<a id="__codelineno-0-185" name="__codelineno-0-185"></a><span class="sd">        Args:</span>
+<a id="__codelineno-0-186" name="__codelineno-0-186"></a><span class="sd">            **kwargs: Field configuration options. Relevant options:</span>
+<a id="__codelineno-0-187" name="__codelineno-0-187"></a><span class="sd">                - strategy: ID generation strategy (&quot;uuid4&quot;, &quot;ulid&quot;, &quot;ksuid&quot;)</span>
+<a id="__codelineno-0-188" name="__codelineno-0-188"></a><span class="sd">                - auto_uuid_length: Override the UUID length (default 32,</span>
+<a id="__codelineno-0-189" name="__codelineno-0-189"></a><span class="sd">                    only applies to uuid4 strategy)</span>
+<a id="__codelineno-0-190" name="__codelineno-0-190"></a><span class="sd">                - auto: Override auto-generation (rarely needed)</span>
+<a id="__codelineno-0-191" name="__codelineno-0-191"></a>
+<a id="__codelineno-0-192" name="__codelineno-0-192"></a><span class="sd">        Raises:</span>
+<a id="__codelineno-0-193" name="__codelineno-0-193"></a><span class="sd">            ValueError: If an invalid strategy is provided.</span>
+<a id="__codelineno-0-194" name="__codelineno-0-194"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-195" name="__codelineno-0-195"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+<a id="__codelineno-0-196" name="__codelineno-0-196"></a>
+<a id="__codelineno-0-197" name="__codelineno-0-197"></a>        <span class="c1"># Validate strategy if provided</span>
+<a id="__codelineno-0-198" name="__codelineno-0-198"></a>        <span class="n">strategy</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;strategy&quot;</span><span class="p">,</span> <span class="s2">&quot;uuid4&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-199" name="__codelineno-0-199"></a>        <span class="k">if</span> <span class="n">strategy</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">STRATEGY_LENGTHS</span><span class="p">:</span>
+<a id="__codelineno-0-200" name="__codelineno-0-200"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-201" name="__codelineno-0-201"></a>                <span class="sa">f</span><span class="s2">&quot;Invalid strategy &#39;</span><span class="si">{</span><span class="n">strategy</span><span class="si">}</span><span class="s2">&#39;. &quot;</span>
+<a id="__codelineno-0-202" name="__codelineno-0-202"></a>                <span class="sa">f</span><span class="s2">&quot;Valid strategies are: </span><span class="si">{</span><span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">STRATEGY_LENGTHS</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-203" name="__codelineno-0-203"></a>            <span class="p">)</span>
+<a id="__codelineno-0-204" name="__codelineno-0-204"></a>
+<a id="__codelineno-0-205" name="__codelineno-0-205"></a>        <span class="n">autokeyfield_defaults</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-0-206" name="__codelineno-0-206"></a>            <span class="s2">&quot;auto&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-0-207" name="__codelineno-0-207"></a>            <span class="s2">&quot;auto_uuid_length&quot;</span><span class="p">:</span> <span class="mi">32</span><span class="p">,</span>
+<a id="__codelineno-0-208" name="__codelineno-0-208"></a>            <span class="s2">&quot;auto_id&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-209" name="__codelineno-0-209"></a>            <span class="s2">&quot;strategy&quot;</span><span class="p">:</span> <span class="s2">&quot;uuid4&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-210" name="__codelineno-0-210"></a>        <span class="p">}</span>
+<a id="__codelineno-0-211" name="__codelineno-0-211"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">field_defaults</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">autokeyfield_defaults</span><span class="p">)</span>
+<a id="__codelineno-0-212" name="__codelineno-0-212"></a>        <span class="c1"># set field options, let kwargs override</span>
+<a id="__codelineno-0-213" name="__codelineno-0-213"></a>        <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">autokeyfield_defaults</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+<a id="__codelineno-0-214" name="__codelineno-0-214"></a>            <span class="nb">setattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">v</span><span class="p">))</span>
+<a id="__codelineno-0-215" name="__codelineno-0-215"></a>
+<a id="__codelineno-0-216" name="__codelineno-0-216"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-0-217" name="__codelineno-0-217"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">is_valid</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">field</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">null_check</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<a id="__codelineno-0-218" name="__codelineno-0-218"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-219" name="__codelineno-0-219"></a><span class="sd">        Validate that the auto-generated value has the expected length.</span>
+<a id="__codelineno-0-220" name="__codelineno-0-220"></a>
+<a id="__codelineno-0-221" name="__codelineno-0-221"></a><span class="sd">        This validation catches cases where a value was manually assigned</span>
+<a id="__codelineno-0-222" name="__codelineno-0-222"></a><span class="sd">        with an incorrect length, which could indicate data corruption or</span>
+<a id="__codelineno-0-223" name="__codelineno-0-223"></a><span class="sd">        a programming error. The length check happens before the parent</span>
+<a id="__codelineno-0-224" name="__codelineno-0-224"></a><span class="sd">        class validation to fail fast on obviously invalid data.</span>
+<a id="__codelineno-0-225" name="__codelineno-0-225"></a>
+<a id="__codelineno-0-226" name="__codelineno-0-226"></a><span class="sd">        Args:</span>
+<a id="__codelineno-0-227" name="__codelineno-0-227"></a><span class="sd">            field: The Field instance being validated.</span>
+<a id="__codelineno-0-228" name="__codelineno-0-228"></a><span class="sd">            value: The value to validate (should be an ID string or None).</span>
+<a id="__codelineno-0-229" name="__codelineno-0-229"></a><span class="sd">            null_check: If True, null values will be checked against field.null.</span>
+<a id="__codelineno-0-230" name="__codelineno-0-230"></a><span class="sd">            **kwargs: Additional validation context (passed to parent).</span>
+<a id="__codelineno-0-231" name="__codelineno-0-231"></a>
+<a id="__codelineno-0-232" name="__codelineno-0-232"></a><span class="sd">        Returns:</span>
+<a id="__codelineno-0-233" name="__codelineno-0-233"></a><span class="sd">            True if valid, False otherwise. Logs an error on invalid length.</span>
+<a id="__codelineno-0-234" name="__codelineno-0-234"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-235" name="__codelineno-0-235"></a>        <span class="k">if</span> <span class="n">value</span><span class="p">:</span>
+<a id="__codelineno-0-236" name="__codelineno-0-236"></a>            <span class="c1"># Get expected length based on strategy</span>
+<a id="__codelineno-0-237" name="__codelineno-0-237"></a>            <span class="n">expected_length</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">STRATEGY_LENGTHS</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+<a id="__codelineno-0-238" name="__codelineno-0-238"></a>                <span class="n">field</span><span class="o">.</span><span class="n">strategy</span><span class="p">,</span> <span class="n">field</span><span class="o">.</span><span class="n">auto_uuid_length</span>
+<a id="__codelineno-0-239" name="__codelineno-0-239"></a>            <span class="p">)</span>
+<a id="__codelineno-0-240" name="__codelineno-0-240"></a>            <span class="c1"># For uuid4 strategy, allow custom auto_uuid_length</span>
+<a id="__codelineno-0-241" name="__codelineno-0-241"></a>            <span class="k">if</span> <span class="n">field</span><span class="o">.</span><span class="n">strategy</span> <span class="o">==</span> <span class="s2">&quot;uuid4&quot;</span><span class="p">:</span>
+<a id="__codelineno-0-242" name="__codelineno-0-242"></a>                <span class="n">expected_length</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">auto_uuid_length</span>
+<a id="__codelineno-0-243" name="__codelineno-0-243"></a>
+<a id="__codelineno-0-244" name="__codelineno-0-244"></a>            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="o">!=</span> <span class="n">expected_length</span><span class="p">:</span>
+<a id="__codelineno-0-245" name="__codelineno-0-245"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span>
+<a id="__codelineno-0-246" name="__codelineno-0-246"></a>                    <span class="sa">f</span><span class="s2">&quot;auto key value is length </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="si">}</span><span class="s2">. &quot;</span>
+<a id="__codelineno-0-247" name="__codelineno-0-247"></a>                    <span class="sa">f</span><span class="s2">&quot;It should be </span><span class="si">{</span><span class="n">expected_length</span><span class="si">}</span><span class="s2"> for strategy &#39;</span><span class="si">{</span><span class="n">field</span><span class="o">.</span><span class="n">strategy</span><span class="si">}</span><span class="s2">&#39;&quot;</span>
+<a id="__codelineno-0-248" name="__codelineno-0-248"></a>                <span class="p">)</span>
+<a id="__codelineno-0-249" name="__codelineno-0-249"></a>                <span class="k">return</span> <span class="kc">False</span>
+<a id="__codelineno-0-250" name="__codelineno-0-250"></a>        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">is_valid</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">null_check</span><span class="o">=</span><span class="n">null_check</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+<a id="__codelineno-0-251" name="__codelineno-0-251"></a>
+<a id="__codelineno-0-252" name="__codelineno-0-252"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">get_new_auto_key_value</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-0-253" name="__codelineno-0-253"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-254" name="__codelineno-0-254"></a><span class="sd">        Generate a new identifier string based on the configured strategy.</span>
 <a id="__codelineno-0-255" name="__codelineno-0-255"></a>
-<a id="__codelineno-0-256" name="__codelineno-0-256"></a><span class="sd">        Returns:</span>
-<a id="__codelineno-0-257" name="__codelineno-0-257"></a><span class="sd">            A string identifier. Length depends on strategy:</span>
-<a id="__codelineno-0-258" name="__codelineno-0-258"></a><span class="sd">            - uuid4: `auto_uuid_length` (default 32)</span>
-<a id="__codelineno-0-259" name="__codelineno-0-259"></a><span class="sd">            - ulid: 26 characters</span>
-<a id="__codelineno-0-260" name="__codelineno-0-260"></a><span class="sd">            - ksuid: 27 characters</span>
-<a id="__codelineno-0-261" name="__codelineno-0-261"></a>
-<a id="__codelineno-0-262" name="__codelineno-0-262"></a><span class="sd">        Raises:</span>
-<a id="__codelineno-0-263" name="__codelineno-0-263"></a><span class="sd">            ImportError: If ulid or ksuid strategy is used but the required</span>
-<a id="__codelineno-0-264" name="__codelineno-0-264"></a><span class="sd">                package is not installed.</span>
-<a id="__codelineno-0-265" name="__codelineno-0-265"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-266" name="__codelineno-0-266"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">strategy</span> <span class="o">==</span> <span class="s2">&quot;ulid&quot;</span><span class="p">:</span>
-<a id="__codelineno-0-267" name="__codelineno-0-267"></a>            <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-268" name="__codelineno-0-268"></a>                <span class="kn">import</span><span class="w"> </span><span class="nn">ulid</span>
-<a id="__codelineno-0-269" name="__codelineno-0-269"></a>
-<a id="__codelineno-0-270" name="__codelineno-0-270"></a>                <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">ulid</span><span class="o">.</span><span class="n">new</span><span class="p">())</span>
-<a id="__codelineno-0-271" name="__codelineno-0-271"></a>            <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
-<a id="__codelineno-0-272" name="__codelineno-0-272"></a>                <span class="k">raise</span> <span class="ne">ImportError</span><span class="p">(</span>
-<a id="__codelineno-0-273" name="__codelineno-0-273"></a>                    <span class="s2">&quot;ulid-py package required for ULID strategy. &quot;</span>
-<a id="__codelineno-0-274" name="__codelineno-0-274"></a>                    <span class="s2">&quot;Install with: pip install ulid-py&quot;</span>
-<a id="__codelineno-0-275" name="__codelineno-0-275"></a>                <span class="p">)</span>
-<a id="__codelineno-0-276" name="__codelineno-0-276"></a>        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">strategy</span> <span class="o">==</span> <span class="s2">&quot;ksuid&quot;</span><span class="p">:</span>
-<a id="__codelineno-0-277" name="__codelineno-0-277"></a>            <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-278" name="__codelineno-0-278"></a>                <span class="kn">from</span><span class="w"> </span><span class="nn">cyksuid.ksuid</span><span class="w"> </span><span class="kn">import</span> <span class="n">ksuid</span>
-<a id="__codelineno-0-279" name="__codelineno-0-279"></a>
-<a id="__codelineno-0-280" name="__codelineno-0-280"></a>                <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">ksuid</span><span class="p">())</span>
-<a id="__codelineno-0-281" name="__codelineno-0-281"></a>            <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
-<a id="__codelineno-0-282" name="__codelineno-0-282"></a>                <span class="k">raise</span> <span class="ne">ImportError</span><span class="p">(</span>
-<a id="__codelineno-0-283" name="__codelineno-0-283"></a>                    <span class="s2">&quot;cyksuid package required for KSUID strategy. &quot;</span>
-<a id="__codelineno-0-284" name="__codelineno-0-284"></a>                    <span class="s2">&quot;Install with: pip install cyksuid&quot;</span>
-<a id="__codelineno-0-285" name="__codelineno-0-285"></a>                <span class="p">)</span>
-<a id="__codelineno-0-286" name="__codelineno-0-286"></a>        <span class="k">else</span><span class="p">:</span>  <span class="c1"># uuid4 (default)</span>
-<a id="__codelineno-0-287" name="__codelineno-0-287"></a>            <span class="k">return</span> <span class="n">uuid</span><span class="o">.</span><span class="n">uuid4</span><span class="p">()</span><span class="o">.</span><span class="n">hex</span><span class="p">[:</span> <span class="bp">self</span><span class="o">.</span><span class="n">auto_uuid_length</span><span class="p">]</span>
+<a id="__codelineno-0-256" name="__codelineno-0-256"></a><span class="sd">        Strategies:</span>
+<a id="__codelineno-0-257" name="__codelineno-0-257"></a><span class="sd">        - uuid4 (default): Uses uuid.uuid4().hex for a lowercase hexadecimal</span>
+<a id="__codelineno-0-258" name="__codelineno-0-258"></a><span class="sd">          string without hyphens, truncated to auto_uuid_length. URL-safe and</span>
+<a id="__codelineno-0-259" name="__codelineno-0-259"></a><span class="sd">          Redis-key-safe characters.</span>
+<a id="__codelineno-0-260" name="__codelineno-0-260"></a><span class="sd">        - ulid: Generates a ULID (Universally Unique Lexicographically Sortable</span>
+<a id="__codelineno-0-261" name="__codelineno-0-261"></a><span class="sd">          Identifier) using the ulid-py package. Time-sortable, 26 characters.</span>
+<a id="__codelineno-0-262" name="__codelineno-0-262"></a><span class="sd">        - ksuid: Generates a KSUID (K-Sortable Unique Identifier) using the</span>
+<a id="__codelineno-0-263" name="__codelineno-0-263"></a><span class="sd">          cyksuid package. Time-sortable, 27 characters.</span>
+<a id="__codelineno-0-264" name="__codelineno-0-264"></a>
+<a id="__codelineno-0-265" name="__codelineno-0-265"></a><span class="sd">        Returns:</span>
+<a id="__codelineno-0-266" name="__codelineno-0-266"></a><span class="sd">            A string identifier. Length depends on strategy:</span>
+<a id="__codelineno-0-267" name="__codelineno-0-267"></a><span class="sd">            - uuid4: `auto_uuid_length` (default 32)</span>
+<a id="__codelineno-0-268" name="__codelineno-0-268"></a><span class="sd">            - ulid: 26 characters</span>
+<a id="__codelineno-0-269" name="__codelineno-0-269"></a><span class="sd">            - ksuid: 27 characters</span>
+<a id="__codelineno-0-270" name="__codelineno-0-270"></a>
+<a id="__codelineno-0-271" name="__codelineno-0-271"></a><span class="sd">        Raises:</span>
+<a id="__codelineno-0-272" name="__codelineno-0-272"></a><span class="sd">            ImportError: If ulid or ksuid strategy is used but the required</span>
+<a id="__codelineno-0-273" name="__codelineno-0-273"></a><span class="sd">                package is not installed.</span>
+<a id="__codelineno-0-274" name="__codelineno-0-274"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-275" name="__codelineno-0-275"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">strategy</span> <span class="o">==</span> <span class="s2">&quot;ulid&quot;</span><span class="p">:</span>
+<a id="__codelineno-0-276" name="__codelineno-0-276"></a>            <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-277" name="__codelineno-0-277"></a>                <span class="kn">import</span><span class="w"> </span><span class="nn">ulid</span>
+<a id="__codelineno-0-278" name="__codelineno-0-278"></a>
+<a id="__codelineno-0-279" name="__codelineno-0-279"></a>                <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">ulid</span><span class="o">.</span><span class="n">new</span><span class="p">())</span>
+<a id="__codelineno-0-280" name="__codelineno-0-280"></a>            <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+<a id="__codelineno-0-281" name="__codelineno-0-281"></a>                <span class="k">raise</span> <span class="ne">ImportError</span><span class="p">(</span>
+<a id="__codelineno-0-282" name="__codelineno-0-282"></a>                    <span class="s2">&quot;ulid-py package required for ULID strategy. &quot;</span>
+<a id="__codelineno-0-283" name="__codelineno-0-283"></a>                    <span class="s2">&quot;Install with: pip install ulid-py&quot;</span>
+<a id="__codelineno-0-284" name="__codelineno-0-284"></a>                <span class="p">)</span>
+<a id="__codelineno-0-285" name="__codelineno-0-285"></a>        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">strategy</span> <span class="o">==</span> <span class="s2">&quot;ksuid&quot;</span><span class="p">:</span>
+<a id="__codelineno-0-286" name="__codelineno-0-286"></a>            <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-287" name="__codelineno-0-287"></a>                <span class="kn">from</span><span class="w"> </span><span class="nn">cyksuid.ksuid</span><span class="w"> </span><span class="kn">import</span> <span class="n">ksuid</span>
 <a id="__codelineno-0-288" name="__codelineno-0-288"></a>
-<a id="__codelineno-0-289" name="__codelineno-0-289"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">set_auto_key_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">force</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">):</span>
-<a id="__codelineno-0-290" name="__codelineno-0-290"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<a id="__codelineno-0-291" name="__codelineno-0-291"></a><span class="sd">        Set a new auto-generated value as this field&#39;s default.</span>
-<a id="__codelineno-0-292" name="__codelineno-0-292"></a>
-<a id="__codelineno-0-293" name="__codelineno-0-293"></a><span class="sd">        Called during model instantiation to prepare a fresh UUID for new</span>
-<a id="__codelineno-0-294" name="__codelineno-0-294"></a><span class="sd">        instances. The value is stored as `self.default` so it gets applied</span>
-<a id="__codelineno-0-295" name="__codelineno-0-295"></a><span class="sd">        when the model sets field defaults.</span>
-<a id="__codelineno-0-296" name="__codelineno-0-296"></a>
-<a id="__codelineno-0-297" name="__codelineno-0-297"></a><span class="sd">        This is called in Model.__init__ for all fields with `auto=True`,</span>
-<a id="__codelineno-0-298" name="__codelineno-0-298"></a><span class="sd">        ensuring each new model instance starts with its own unique key.</span>
-<a id="__codelineno-0-299" name="__codelineno-0-299"></a>
-<a id="__codelineno-0-300" name="__codelineno-0-300"></a><span class="sd">        Args:</span>
-<a id="__codelineno-0-301" name="__codelineno-0-301"></a><span class="sd">            force: If True, generate a new value even if auto=False.</span>
-<a id="__codelineno-0-302" name="__codelineno-0-302"></a><span class="sd">                   Useful for programmatically resetting a field&#39;s identity.</span>
-<a id="__codelineno-0-303" name="__codelineno-0-303"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-304" name="__codelineno-0-304"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">auto</span> <span class="ow">or</span> <span class="n">force</span><span class="p">:</span>
-<a id="__codelineno-0-305" name="__codelineno-0-305"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">default</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_new_auto_key_value</span><span class="p">()</span>
-<a id="__codelineno-0-306" name="__codelineno-0-306"></a>
-<a id="__codelineno-0-307" name="__codelineno-0-307"></a>    <span class="nd">@classmethod</span>
-<a id="__codelineno-0-308" name="__codelineno-0-308"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">on_save</span><span class="p">(</span>
-<a id="__codelineno-0-309" name="__codelineno-0-309"></a>        <span class="bp">cls</span><span class="p">,</span>
-<a id="__codelineno-0-310" name="__codelineno-0-310"></a>        <span class="n">model_instance</span><span class="p">:</span> <span class="s2">&quot;Model&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-311" name="__codelineno-0-311"></a>        <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<a id="__codelineno-0-312" name="__codelineno-0-312"></a>        <span class="n">field_value</span><span class="p">,</span>
-<a id="__codelineno-0-313" name="__codelineno-0-313"></a>        <span class="n">pipeline</span><span class="p">:</span> <span class="n">redis</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">Pipeline</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-314" name="__codelineno-0-314"></a>        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
-<a id="__codelineno-0-315" name="__codelineno-0-315"></a>    <span class="p">):</span>
-<a id="__codelineno-0-316" name="__codelineno-0-316"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<a id="__codelineno-0-317" name="__codelineno-0-317"></a><span class="sd">        Handle post-save operations for auto-generated fields.</span>
-<a id="__codelineno-0-318" name="__codelineno-0-318"></a>
-<a id="__codelineno-0-319" name="__codelineno-0-319"></a><span class="sd">        Intentionally a no-op that returns the pipeline unchanged. This</span>
-<a id="__codelineno-0-320" name="__codelineno-0-320"></a><span class="sd">        overrides KeyFieldMixin.on_save to prevent auto-fields from being</span>
-<a id="__codelineno-0-321" name="__codelineno-0-321"></a><span class="sd">        added to Redis Sets for value-based indexing.</span>
-<a id="__codelineno-0-322" name="__codelineno-0-322"></a>
-<a id="__codelineno-0-323" name="__codelineno-0-323"></a><span class="sd">        Why skip indexing?</span>
-<a id="__codelineno-0-324" name="__codelineno-0-324"></a><span class="sd">        ------------------</span>
-<a id="__codelineno-0-325" name="__codelineno-0-325"></a><span class="sd">        Auto-generated values are unique and random, making Set-based</span>
-<a id="__codelineno-0-326" name="__codelineno-0-326"></a><span class="sd">        indexing pointless: you would have one Set per unique value, each</span>
-<a id="__codelineno-0-327" name="__codelineno-0-327"></a><span class="sd">        containing exactly one model instance. The storage cost would be</span>
-<a id="__codelineno-0-328" name="__codelineno-0-328"></a><span class="sd">        significant with no query benefit.</span>
-<a id="__codelineno-0-329" name="__codelineno-0-329"></a>
-<a id="__codelineno-0-330" name="__codelineno-0-330"></a><span class="sd">        Instead, auto-key lookups go directly through the Redis key, which</span>
-<a id="__codelineno-0-331" name="__codelineno-0-331"></a><span class="sd">        already contains the auto value (e.g., &quot;Article:a1b2c3d4...&quot;).</span>
-<a id="__codelineno-0-332" name="__codelineno-0-332"></a>
-<a id="__codelineno-0-333" name="__codelineno-0-333"></a><span class="sd">        Args:</span>
-<a id="__codelineno-0-334" name="__codelineno-0-334"></a><span class="sd">            model_instance: The model being saved.</span>
-<a id="__codelineno-0-335" name="__codelineno-0-335"></a><span class="sd">            field_name: Name of this field on the model.</span>
-<a id="__codelineno-0-336" name="__codelineno-0-336"></a><span class="sd">            field_value: The auto-generated value being saved.</span>
-<a id="__codelineno-0-337" name="__codelineno-0-337"></a><span class="sd">            pipeline: Redis pipeline for batched operations, or None.</span>
-<a id="__codelineno-0-338" name="__codelineno-0-338"></a><span class="sd">            **kwargs: Additional context (ignored).</span>
-<a id="__codelineno-0-339" name="__codelineno-0-339"></a>
-<a id="__codelineno-0-340" name="__codelineno-0-340"></a><span class="sd">        Returns:</span>
-<a id="__codelineno-0-341" name="__codelineno-0-341"></a><span class="sd">            The pipeline unchanged, or None if no pipeline was provided.</span>
-<a id="__codelineno-0-342" name="__codelineno-0-342"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-343" name="__codelineno-0-343"></a>        <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
+<a id="__codelineno-0-289" name="__codelineno-0-289"></a>                <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">ksuid</span><span class="p">())</span>
+<a id="__codelineno-0-290" name="__codelineno-0-290"></a>            <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+<a id="__codelineno-0-291" name="__codelineno-0-291"></a>                <span class="k">raise</span> <span class="ne">ImportError</span><span class="p">(</span>
+<a id="__codelineno-0-292" name="__codelineno-0-292"></a>                    <span class="s2">&quot;cyksuid package required for KSUID strategy. &quot;</span>
+<a id="__codelineno-0-293" name="__codelineno-0-293"></a>                    <span class="s2">&quot;Install with: pip install cyksuid&quot;</span>
+<a id="__codelineno-0-294" name="__codelineno-0-294"></a>                <span class="p">)</span>
+<a id="__codelineno-0-295" name="__codelineno-0-295"></a>        <span class="k">else</span><span class="p">:</span>  <span class="c1"># uuid4 (default)</span>
+<a id="__codelineno-0-296" name="__codelineno-0-296"></a>            <span class="k">return</span> <span class="n">uuid</span><span class="o">.</span><span class="n">uuid4</span><span class="p">()</span><span class="o">.</span><span class="n">hex</span><span class="p">[:</span> <span class="bp">self</span><span class="o">.</span><span class="n">auto_uuid_length</span><span class="p">]</span>
+<a id="__codelineno-0-297" name="__codelineno-0-297"></a>
+<a id="__codelineno-0-298" name="__codelineno-0-298"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">set_auto_key_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">force</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">):</span>
+<a id="__codelineno-0-299" name="__codelineno-0-299"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-300" name="__codelineno-0-300"></a><span class="sd">        Set a new auto-generated value as this field&#39;s default.</span>
+<a id="__codelineno-0-301" name="__codelineno-0-301"></a>
+<a id="__codelineno-0-302" name="__codelineno-0-302"></a><span class="sd">        Called during model instantiation to prepare a fresh UUID for new</span>
+<a id="__codelineno-0-303" name="__codelineno-0-303"></a><span class="sd">        instances. The value is stored as `self.default` so it gets applied</span>
+<a id="__codelineno-0-304" name="__codelineno-0-304"></a><span class="sd">        when the model sets field defaults.</span>
+<a id="__codelineno-0-305" name="__codelineno-0-305"></a>
+<a id="__codelineno-0-306" name="__codelineno-0-306"></a><span class="sd">        This is called in Model.__init__ for all fields with `auto=True`,</span>
+<a id="__codelineno-0-307" name="__codelineno-0-307"></a><span class="sd">        ensuring each new model instance starts with its own unique key.</span>
+<a id="__codelineno-0-308" name="__codelineno-0-308"></a>
+<a id="__codelineno-0-309" name="__codelineno-0-309"></a><span class="sd">        Args:</span>
+<a id="__codelineno-0-310" name="__codelineno-0-310"></a><span class="sd">            force: If True, generate a new value even if auto=False.</span>
+<a id="__codelineno-0-311" name="__codelineno-0-311"></a><span class="sd">                   Useful for programmatically resetting a field&#39;s identity.</span>
+<a id="__codelineno-0-312" name="__codelineno-0-312"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-313" name="__codelineno-0-313"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">auto</span> <span class="ow">or</span> <span class="n">force</span><span class="p">:</span>
+<a id="__codelineno-0-314" name="__codelineno-0-314"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">default</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_new_auto_key_value</span><span class="p">()</span>
+<a id="__codelineno-0-315" name="__codelineno-0-315"></a>
+<a id="__codelineno-0-316" name="__codelineno-0-316"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-0-317" name="__codelineno-0-317"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">on_save</span><span class="p">(</span>
+<a id="__codelineno-0-318" name="__codelineno-0-318"></a>        <span class="bp">cls</span><span class="p">,</span>
+<a id="__codelineno-0-319" name="__codelineno-0-319"></a>        <span class="n">model_instance</span><span class="p">:</span> <span class="s2">&quot;Model&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-320" name="__codelineno-0-320"></a>        <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-321" name="__codelineno-0-321"></a>        <span class="n">field_value</span><span class="p">,</span>
+<a id="__codelineno-0-322" name="__codelineno-0-322"></a>        <span class="n">pipeline</span><span class="p">:</span> <span class="n">redis</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">Pipeline</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-323" name="__codelineno-0-323"></a>        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+<a id="__codelineno-0-324" name="__codelineno-0-324"></a>    <span class="p">):</span>
+<a id="__codelineno-0-325" name="__codelineno-0-325"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-326" name="__codelineno-0-326"></a><span class="sd">        Handle post-save operations for auto-generated fields.</span>
+<a id="__codelineno-0-327" name="__codelineno-0-327"></a>
+<a id="__codelineno-0-328" name="__codelineno-0-328"></a><span class="sd">        Intentionally a no-op that returns the pipeline unchanged. This</span>
+<a id="__codelineno-0-329" name="__codelineno-0-329"></a><span class="sd">        overrides KeyFieldMixin.on_save to prevent auto-fields from being</span>
+<a id="__codelineno-0-330" name="__codelineno-0-330"></a><span class="sd">        added to Redis Sets for value-based indexing.</span>
+<a id="__codelineno-0-331" name="__codelineno-0-331"></a>
+<a id="__codelineno-0-332" name="__codelineno-0-332"></a><span class="sd">        Why skip indexing?</span>
+<a id="__codelineno-0-333" name="__codelineno-0-333"></a><span class="sd">        ------------------</span>
+<a id="__codelineno-0-334" name="__codelineno-0-334"></a><span class="sd">        Auto-generated values are unique and random, making Set-based</span>
+<a id="__codelineno-0-335" name="__codelineno-0-335"></a><span class="sd">        indexing pointless: you would have one Set per unique value, each</span>
+<a id="__codelineno-0-336" name="__codelineno-0-336"></a><span class="sd">        containing exactly one model instance. The storage cost would be</span>
+<a id="__codelineno-0-337" name="__codelineno-0-337"></a><span class="sd">        significant with no query benefit.</span>
+<a id="__codelineno-0-338" name="__codelineno-0-338"></a>
+<a id="__codelineno-0-339" name="__codelineno-0-339"></a><span class="sd">        Instead, auto-key lookups go directly through the Redis key, which</span>
+<a id="__codelineno-0-340" name="__codelineno-0-340"></a><span class="sd">        already contains the auto value (e.g., &quot;Article:a1b2c3d4...&quot;).</span>
+<a id="__codelineno-0-341" name="__codelineno-0-341"></a>
+<a id="__codelineno-0-342" name="__codelineno-0-342"></a><span class="sd">        Args:</span>
+<a id="__codelineno-0-343" name="__codelineno-0-343"></a><span class="sd">            model_instance: The model being saved.</span>
+<a id="__codelineno-0-344" name="__codelineno-0-344"></a><span class="sd">            field_name: Name of this field on the model.</span>
+<a id="__codelineno-0-345" name="__codelineno-0-345"></a><span class="sd">            field_value: The auto-generated value being saved.</span>
+<a id="__codelineno-0-346" name="__codelineno-0-346"></a><span class="sd">            pipeline: Redis pipeline for batched operations, or None.</span>
+<a id="__codelineno-0-347" name="__codelineno-0-347"></a><span class="sd">            **kwargs: Additional context (ignored).</span>
+<a id="__codelineno-0-348" name="__codelineno-0-348"></a>
+<a id="__codelineno-0-349" name="__codelineno-0-349"></a><span class="sd">        Returns:</span>
+<a id="__codelineno-0-350" name="__codelineno-0-350"></a><span class="sd">            The pipeline unchanged, or None if no pipeline was provided.</span>
+<a id="__codelineno-0-351" name="__codelineno-0-351"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-352" name="__codelineno-0-352"></a>        <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -3409,16 +3483,7 @@ class validation to fail fast on obviously invalid data.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/fields/auto_field_mixin.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-207">207</a></span>
-<span class="normal"><a href="#__codelineno-0-208">208</a></span>
-<span class="normal"><a href="#__codelineno-0-209">209</a></span>
-<span class="normal"><a href="#__codelineno-0-210">210</a></span>
-<span class="normal"><a href="#__codelineno-0-211">211</a></span>
-<span class="normal"><a href="#__codelineno-0-212">212</a></span>
-<span class="normal"><a href="#__codelineno-0-213">213</a></span>
-<span class="normal"><a href="#__codelineno-0-214">214</a></span>
-<span class="normal"><a href="#__codelineno-0-215">215</a></span>
-<span class="normal"><a href="#__codelineno-0-216">216</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-216">216</a></span>
 <span class="normal"><a href="#__codelineno-0-217">217</a></span>
 <span class="normal"><a href="#__codelineno-0-218">218</a></span>
 <span class="normal"><a href="#__codelineno-0-219">219</a></span>
@@ -3443,41 +3508,50 @@ class validation to fail fast on obviously invalid data.</p>
 <span class="normal"><a href="#__codelineno-0-238">238</a></span>
 <span class="normal"><a href="#__codelineno-0-239">239</a></span>
 <span class="normal"><a href="#__codelineno-0-240">240</a></span>
-<span class="normal"><a href="#__codelineno-0-241">241</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-207" name="__codelineno-0-207"></a><span class="nd">@classmethod</span>
-<a id="__codelineno-0-208" name="__codelineno-0-208"></a><span class="k">def</span><span class="w"> </span><span class="nf">is_valid</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">field</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">null_check</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-<a id="__codelineno-0-209" name="__codelineno-0-209"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<a id="__codelineno-0-210" name="__codelineno-0-210"></a><span class="sd">    Validate that the auto-generated value has the expected length.</span>
-<a id="__codelineno-0-211" name="__codelineno-0-211"></a>
-<a id="__codelineno-0-212" name="__codelineno-0-212"></a><span class="sd">    This validation catches cases where a value was manually assigned</span>
-<a id="__codelineno-0-213" name="__codelineno-0-213"></a><span class="sd">    with an incorrect length, which could indicate data corruption or</span>
-<a id="__codelineno-0-214" name="__codelineno-0-214"></a><span class="sd">    a programming error. The length check happens before the parent</span>
-<a id="__codelineno-0-215" name="__codelineno-0-215"></a><span class="sd">    class validation to fail fast on obviously invalid data.</span>
-<a id="__codelineno-0-216" name="__codelineno-0-216"></a>
-<a id="__codelineno-0-217" name="__codelineno-0-217"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-218" name="__codelineno-0-218"></a><span class="sd">        field: The Field instance being validated.</span>
-<a id="__codelineno-0-219" name="__codelineno-0-219"></a><span class="sd">        value: The value to validate (should be an ID string or None).</span>
-<a id="__codelineno-0-220" name="__codelineno-0-220"></a><span class="sd">        null_check: If True, null values will be checked against field.null.</span>
-<a id="__codelineno-0-221" name="__codelineno-0-221"></a><span class="sd">        **kwargs: Additional validation context (passed to parent).</span>
-<a id="__codelineno-0-222" name="__codelineno-0-222"></a>
-<a id="__codelineno-0-223" name="__codelineno-0-223"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-224" name="__codelineno-0-224"></a><span class="sd">        True if valid, False otherwise. Logs an error on invalid length.</span>
-<a id="__codelineno-0-225" name="__codelineno-0-225"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-226" name="__codelineno-0-226"></a>    <span class="k">if</span> <span class="n">value</span><span class="p">:</span>
-<a id="__codelineno-0-227" name="__codelineno-0-227"></a>        <span class="c1"># Get expected length based on strategy</span>
-<a id="__codelineno-0-228" name="__codelineno-0-228"></a>        <span class="n">expected_length</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">STRATEGY_LENGTHS</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
-<a id="__codelineno-0-229" name="__codelineno-0-229"></a>            <span class="n">field</span><span class="o">.</span><span class="n">strategy</span><span class="p">,</span> <span class="n">field</span><span class="o">.</span><span class="n">auto_uuid_length</span>
-<a id="__codelineno-0-230" name="__codelineno-0-230"></a>        <span class="p">)</span>
-<a id="__codelineno-0-231" name="__codelineno-0-231"></a>        <span class="c1"># For uuid4 strategy, allow custom auto_uuid_length</span>
-<a id="__codelineno-0-232" name="__codelineno-0-232"></a>        <span class="k">if</span> <span class="n">field</span><span class="o">.</span><span class="n">strategy</span> <span class="o">==</span> <span class="s2">&quot;uuid4&quot;</span><span class="p">:</span>
-<a id="__codelineno-0-233" name="__codelineno-0-233"></a>            <span class="n">expected_length</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">auto_uuid_length</span>
-<a id="__codelineno-0-234" name="__codelineno-0-234"></a>
-<a id="__codelineno-0-235" name="__codelineno-0-235"></a>        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="o">!=</span> <span class="n">expected_length</span><span class="p">:</span>
-<a id="__codelineno-0-236" name="__codelineno-0-236"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span>
-<a id="__codelineno-0-237" name="__codelineno-0-237"></a>                <span class="sa">f</span><span class="s2">&quot;auto key value is length </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="si">}</span><span class="s2">. &quot;</span>
-<a id="__codelineno-0-238" name="__codelineno-0-238"></a>                <span class="sa">f</span><span class="s2">&quot;It should be </span><span class="si">{</span><span class="n">expected_length</span><span class="si">}</span><span class="s2"> for strategy &#39;</span><span class="si">{</span><span class="n">field</span><span class="o">.</span><span class="n">strategy</span><span class="si">}</span><span class="s2">&#39;&quot;</span>
-<a id="__codelineno-0-239" name="__codelineno-0-239"></a>            <span class="p">)</span>
-<a id="__codelineno-0-240" name="__codelineno-0-240"></a>            <span class="k">return</span> <span class="kc">False</span>
-<a id="__codelineno-0-241" name="__codelineno-0-241"></a>    <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">is_valid</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">null_check</span><span class="o">=</span><span class="n">null_check</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-241">241</a></span>
+<span class="normal"><a href="#__codelineno-0-242">242</a></span>
+<span class="normal"><a href="#__codelineno-0-243">243</a></span>
+<span class="normal"><a href="#__codelineno-0-244">244</a></span>
+<span class="normal"><a href="#__codelineno-0-245">245</a></span>
+<span class="normal"><a href="#__codelineno-0-246">246</a></span>
+<span class="normal"><a href="#__codelineno-0-247">247</a></span>
+<span class="normal"><a href="#__codelineno-0-248">248</a></span>
+<span class="normal"><a href="#__codelineno-0-249">249</a></span>
+<span class="normal"><a href="#__codelineno-0-250">250</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-216" name="__codelineno-0-216"></a><span class="nd">@classmethod</span>
+<a id="__codelineno-0-217" name="__codelineno-0-217"></a><span class="k">def</span><span class="w"> </span><span class="nf">is_valid</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">field</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">null_check</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<a id="__codelineno-0-218" name="__codelineno-0-218"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-219" name="__codelineno-0-219"></a><span class="sd">    Validate that the auto-generated value has the expected length.</span>
+<a id="__codelineno-0-220" name="__codelineno-0-220"></a>
+<a id="__codelineno-0-221" name="__codelineno-0-221"></a><span class="sd">    This validation catches cases where a value was manually assigned</span>
+<a id="__codelineno-0-222" name="__codelineno-0-222"></a><span class="sd">    with an incorrect length, which could indicate data corruption or</span>
+<a id="__codelineno-0-223" name="__codelineno-0-223"></a><span class="sd">    a programming error. The length check happens before the parent</span>
+<a id="__codelineno-0-224" name="__codelineno-0-224"></a><span class="sd">    class validation to fail fast on obviously invalid data.</span>
+<a id="__codelineno-0-225" name="__codelineno-0-225"></a>
+<a id="__codelineno-0-226" name="__codelineno-0-226"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-227" name="__codelineno-0-227"></a><span class="sd">        field: The Field instance being validated.</span>
+<a id="__codelineno-0-228" name="__codelineno-0-228"></a><span class="sd">        value: The value to validate (should be an ID string or None).</span>
+<a id="__codelineno-0-229" name="__codelineno-0-229"></a><span class="sd">        null_check: If True, null values will be checked against field.null.</span>
+<a id="__codelineno-0-230" name="__codelineno-0-230"></a><span class="sd">        **kwargs: Additional validation context (passed to parent).</span>
+<a id="__codelineno-0-231" name="__codelineno-0-231"></a>
+<a id="__codelineno-0-232" name="__codelineno-0-232"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-233" name="__codelineno-0-233"></a><span class="sd">        True if valid, False otherwise. Logs an error on invalid length.</span>
+<a id="__codelineno-0-234" name="__codelineno-0-234"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-235" name="__codelineno-0-235"></a>    <span class="k">if</span> <span class="n">value</span><span class="p">:</span>
+<a id="__codelineno-0-236" name="__codelineno-0-236"></a>        <span class="c1"># Get expected length based on strategy</span>
+<a id="__codelineno-0-237" name="__codelineno-0-237"></a>        <span class="n">expected_length</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">STRATEGY_LENGTHS</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+<a id="__codelineno-0-238" name="__codelineno-0-238"></a>            <span class="n">field</span><span class="o">.</span><span class="n">strategy</span><span class="p">,</span> <span class="n">field</span><span class="o">.</span><span class="n">auto_uuid_length</span>
+<a id="__codelineno-0-239" name="__codelineno-0-239"></a>        <span class="p">)</span>
+<a id="__codelineno-0-240" name="__codelineno-0-240"></a>        <span class="c1"># For uuid4 strategy, allow custom auto_uuid_length</span>
+<a id="__codelineno-0-241" name="__codelineno-0-241"></a>        <span class="k">if</span> <span class="n">field</span><span class="o">.</span><span class="n">strategy</span> <span class="o">==</span> <span class="s2">&quot;uuid4&quot;</span><span class="p">:</span>
+<a id="__codelineno-0-242" name="__codelineno-0-242"></a>            <span class="n">expected_length</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">auto_uuid_length</span>
+<a id="__codelineno-0-243" name="__codelineno-0-243"></a>
+<a id="__codelineno-0-244" name="__codelineno-0-244"></a>        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="o">!=</span> <span class="n">expected_length</span><span class="p">:</span>
+<a id="__codelineno-0-245" name="__codelineno-0-245"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span>
+<a id="__codelineno-0-246" name="__codelineno-0-246"></a>                <span class="sa">f</span><span class="s2">&quot;auto key value is length </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="si">}</span><span class="s2">. &quot;</span>
+<a id="__codelineno-0-247" name="__codelineno-0-247"></a>                <span class="sa">f</span><span class="s2">&quot;It should be </span><span class="si">{</span><span class="n">expected_length</span><span class="si">}</span><span class="s2"> for strategy &#39;</span><span class="si">{</span><span class="n">field</span><span class="o">.</span><span class="n">strategy</span><span class="si">}</span><span class="s2">&#39;&quot;</span>
+<a id="__codelineno-0-248" name="__codelineno-0-248"></a>            <span class="p">)</span>
+<a id="__codelineno-0-249" name="__codelineno-0-249"></a>            <span class="k">return</span> <span class="kc">False</span>
+<a id="__codelineno-0-250" name="__codelineno-0-250"></a>    <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">is_valid</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">null_check</span><span class="o">=</span><span class="n">null_check</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -3587,16 +3661,7 @@ package is not installed.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/fields/auto_field_mixin.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-243">243</a></span>
-<span class="normal"><a href="#__codelineno-0-244">244</a></span>
-<span class="normal"><a href="#__codelineno-0-245">245</a></span>
-<span class="normal"><a href="#__codelineno-0-246">246</a></span>
-<span class="normal"><a href="#__codelineno-0-247">247</a></span>
-<span class="normal"><a href="#__codelineno-0-248">248</a></span>
-<span class="normal"><a href="#__codelineno-0-249">249</a></span>
-<span class="normal"><a href="#__codelineno-0-250">250</a></span>
-<span class="normal"><a href="#__codelineno-0-251">251</a></span>
-<span class="normal"><a href="#__codelineno-0-252">252</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-252">252</a></span>
 <span class="normal"><a href="#__codelineno-0-253">253</a></span>
 <span class="normal"><a href="#__codelineno-0-254">254</a></span>
 <span class="normal"><a href="#__codelineno-0-255">255</a></span>
@@ -3631,51 +3696,60 @@ package is not installed.</p>
 <span class="normal"><a href="#__codelineno-0-284">284</a></span>
 <span class="normal"><a href="#__codelineno-0-285">285</a></span>
 <span class="normal"><a href="#__codelineno-0-286">286</a></span>
-<span class="normal"><a href="#__codelineno-0-287">287</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-243" name="__codelineno-0-243"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_new_auto_key_value</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<a id="__codelineno-0-244" name="__codelineno-0-244"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<a id="__codelineno-0-245" name="__codelineno-0-245"></a><span class="sd">    Generate a new identifier string based on the configured strategy.</span>
-<a id="__codelineno-0-246" name="__codelineno-0-246"></a>
-<a id="__codelineno-0-247" name="__codelineno-0-247"></a><span class="sd">    Strategies:</span>
-<a id="__codelineno-0-248" name="__codelineno-0-248"></a><span class="sd">    - uuid4 (default): Uses uuid.uuid4().hex for a lowercase hexadecimal</span>
-<a id="__codelineno-0-249" name="__codelineno-0-249"></a><span class="sd">      string without hyphens, truncated to auto_uuid_length. URL-safe and</span>
-<a id="__codelineno-0-250" name="__codelineno-0-250"></a><span class="sd">      Redis-key-safe characters.</span>
-<a id="__codelineno-0-251" name="__codelineno-0-251"></a><span class="sd">    - ulid: Generates a ULID (Universally Unique Lexicographically Sortable</span>
-<a id="__codelineno-0-252" name="__codelineno-0-252"></a><span class="sd">      Identifier) using the ulid-py package. Time-sortable, 26 characters.</span>
-<a id="__codelineno-0-253" name="__codelineno-0-253"></a><span class="sd">    - ksuid: Generates a KSUID (K-Sortable Unique Identifier) using the</span>
-<a id="__codelineno-0-254" name="__codelineno-0-254"></a><span class="sd">      cyksuid package. Time-sortable, 27 characters.</span>
+<span class="normal"><a href="#__codelineno-0-287">287</a></span>
+<span class="normal"><a href="#__codelineno-0-288">288</a></span>
+<span class="normal"><a href="#__codelineno-0-289">289</a></span>
+<span class="normal"><a href="#__codelineno-0-290">290</a></span>
+<span class="normal"><a href="#__codelineno-0-291">291</a></span>
+<span class="normal"><a href="#__codelineno-0-292">292</a></span>
+<span class="normal"><a href="#__codelineno-0-293">293</a></span>
+<span class="normal"><a href="#__codelineno-0-294">294</a></span>
+<span class="normal"><a href="#__codelineno-0-295">295</a></span>
+<span class="normal"><a href="#__codelineno-0-296">296</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-252" name="__codelineno-0-252"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_new_auto_key_value</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-0-253" name="__codelineno-0-253"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-254" name="__codelineno-0-254"></a><span class="sd">    Generate a new identifier string based on the configured strategy.</span>
 <a id="__codelineno-0-255" name="__codelineno-0-255"></a>
-<a id="__codelineno-0-256" name="__codelineno-0-256"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-257" name="__codelineno-0-257"></a><span class="sd">        A string identifier. Length depends on strategy:</span>
-<a id="__codelineno-0-258" name="__codelineno-0-258"></a><span class="sd">        - uuid4: `auto_uuid_length` (default 32)</span>
-<a id="__codelineno-0-259" name="__codelineno-0-259"></a><span class="sd">        - ulid: 26 characters</span>
-<a id="__codelineno-0-260" name="__codelineno-0-260"></a><span class="sd">        - ksuid: 27 characters</span>
-<a id="__codelineno-0-261" name="__codelineno-0-261"></a>
-<a id="__codelineno-0-262" name="__codelineno-0-262"></a><span class="sd">    Raises:</span>
-<a id="__codelineno-0-263" name="__codelineno-0-263"></a><span class="sd">        ImportError: If ulid or ksuid strategy is used but the required</span>
-<a id="__codelineno-0-264" name="__codelineno-0-264"></a><span class="sd">            package is not installed.</span>
-<a id="__codelineno-0-265" name="__codelineno-0-265"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-266" name="__codelineno-0-266"></a>    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">strategy</span> <span class="o">==</span> <span class="s2">&quot;ulid&quot;</span><span class="p">:</span>
-<a id="__codelineno-0-267" name="__codelineno-0-267"></a>        <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-268" name="__codelineno-0-268"></a>            <span class="kn">import</span><span class="w"> </span><span class="nn">ulid</span>
-<a id="__codelineno-0-269" name="__codelineno-0-269"></a>
-<a id="__codelineno-0-270" name="__codelineno-0-270"></a>            <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">ulid</span><span class="o">.</span><span class="n">new</span><span class="p">())</span>
-<a id="__codelineno-0-271" name="__codelineno-0-271"></a>        <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
-<a id="__codelineno-0-272" name="__codelineno-0-272"></a>            <span class="k">raise</span> <span class="ne">ImportError</span><span class="p">(</span>
-<a id="__codelineno-0-273" name="__codelineno-0-273"></a>                <span class="s2">&quot;ulid-py package required for ULID strategy. &quot;</span>
-<a id="__codelineno-0-274" name="__codelineno-0-274"></a>                <span class="s2">&quot;Install with: pip install ulid-py&quot;</span>
-<a id="__codelineno-0-275" name="__codelineno-0-275"></a>            <span class="p">)</span>
-<a id="__codelineno-0-276" name="__codelineno-0-276"></a>    <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">strategy</span> <span class="o">==</span> <span class="s2">&quot;ksuid&quot;</span><span class="p">:</span>
-<a id="__codelineno-0-277" name="__codelineno-0-277"></a>        <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-278" name="__codelineno-0-278"></a>            <span class="kn">from</span><span class="w"> </span><span class="nn">cyksuid.ksuid</span><span class="w"> </span><span class="kn">import</span> <span class="n">ksuid</span>
-<a id="__codelineno-0-279" name="__codelineno-0-279"></a>
-<a id="__codelineno-0-280" name="__codelineno-0-280"></a>            <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">ksuid</span><span class="p">())</span>
-<a id="__codelineno-0-281" name="__codelineno-0-281"></a>        <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
-<a id="__codelineno-0-282" name="__codelineno-0-282"></a>            <span class="k">raise</span> <span class="ne">ImportError</span><span class="p">(</span>
-<a id="__codelineno-0-283" name="__codelineno-0-283"></a>                <span class="s2">&quot;cyksuid package required for KSUID strategy. &quot;</span>
-<a id="__codelineno-0-284" name="__codelineno-0-284"></a>                <span class="s2">&quot;Install with: pip install cyksuid&quot;</span>
-<a id="__codelineno-0-285" name="__codelineno-0-285"></a>            <span class="p">)</span>
-<a id="__codelineno-0-286" name="__codelineno-0-286"></a>    <span class="k">else</span><span class="p">:</span>  <span class="c1"># uuid4 (default)</span>
-<a id="__codelineno-0-287" name="__codelineno-0-287"></a>        <span class="k">return</span> <span class="n">uuid</span><span class="o">.</span><span class="n">uuid4</span><span class="p">()</span><span class="o">.</span><span class="n">hex</span><span class="p">[:</span> <span class="bp">self</span><span class="o">.</span><span class="n">auto_uuid_length</span><span class="p">]</span>
+<a id="__codelineno-0-256" name="__codelineno-0-256"></a><span class="sd">    Strategies:</span>
+<a id="__codelineno-0-257" name="__codelineno-0-257"></a><span class="sd">    - uuid4 (default): Uses uuid.uuid4().hex for a lowercase hexadecimal</span>
+<a id="__codelineno-0-258" name="__codelineno-0-258"></a><span class="sd">      string without hyphens, truncated to auto_uuid_length. URL-safe and</span>
+<a id="__codelineno-0-259" name="__codelineno-0-259"></a><span class="sd">      Redis-key-safe characters.</span>
+<a id="__codelineno-0-260" name="__codelineno-0-260"></a><span class="sd">    - ulid: Generates a ULID (Universally Unique Lexicographically Sortable</span>
+<a id="__codelineno-0-261" name="__codelineno-0-261"></a><span class="sd">      Identifier) using the ulid-py package. Time-sortable, 26 characters.</span>
+<a id="__codelineno-0-262" name="__codelineno-0-262"></a><span class="sd">    - ksuid: Generates a KSUID (K-Sortable Unique Identifier) using the</span>
+<a id="__codelineno-0-263" name="__codelineno-0-263"></a><span class="sd">      cyksuid package. Time-sortable, 27 characters.</span>
+<a id="__codelineno-0-264" name="__codelineno-0-264"></a>
+<a id="__codelineno-0-265" name="__codelineno-0-265"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-266" name="__codelineno-0-266"></a><span class="sd">        A string identifier. Length depends on strategy:</span>
+<a id="__codelineno-0-267" name="__codelineno-0-267"></a><span class="sd">        - uuid4: `auto_uuid_length` (default 32)</span>
+<a id="__codelineno-0-268" name="__codelineno-0-268"></a><span class="sd">        - ulid: 26 characters</span>
+<a id="__codelineno-0-269" name="__codelineno-0-269"></a><span class="sd">        - ksuid: 27 characters</span>
+<a id="__codelineno-0-270" name="__codelineno-0-270"></a>
+<a id="__codelineno-0-271" name="__codelineno-0-271"></a><span class="sd">    Raises:</span>
+<a id="__codelineno-0-272" name="__codelineno-0-272"></a><span class="sd">        ImportError: If ulid or ksuid strategy is used but the required</span>
+<a id="__codelineno-0-273" name="__codelineno-0-273"></a><span class="sd">            package is not installed.</span>
+<a id="__codelineno-0-274" name="__codelineno-0-274"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-275" name="__codelineno-0-275"></a>    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">strategy</span> <span class="o">==</span> <span class="s2">&quot;ulid&quot;</span><span class="p">:</span>
+<a id="__codelineno-0-276" name="__codelineno-0-276"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-277" name="__codelineno-0-277"></a>            <span class="kn">import</span><span class="w"> </span><span class="nn">ulid</span>
+<a id="__codelineno-0-278" name="__codelineno-0-278"></a>
+<a id="__codelineno-0-279" name="__codelineno-0-279"></a>            <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">ulid</span><span class="o">.</span><span class="n">new</span><span class="p">())</span>
+<a id="__codelineno-0-280" name="__codelineno-0-280"></a>        <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+<a id="__codelineno-0-281" name="__codelineno-0-281"></a>            <span class="k">raise</span> <span class="ne">ImportError</span><span class="p">(</span>
+<a id="__codelineno-0-282" name="__codelineno-0-282"></a>                <span class="s2">&quot;ulid-py package required for ULID strategy. &quot;</span>
+<a id="__codelineno-0-283" name="__codelineno-0-283"></a>                <span class="s2">&quot;Install with: pip install ulid-py&quot;</span>
+<a id="__codelineno-0-284" name="__codelineno-0-284"></a>            <span class="p">)</span>
+<a id="__codelineno-0-285" name="__codelineno-0-285"></a>    <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">strategy</span> <span class="o">==</span> <span class="s2">&quot;ksuid&quot;</span><span class="p">:</span>
+<a id="__codelineno-0-286" name="__codelineno-0-286"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-287" name="__codelineno-0-287"></a>            <span class="kn">from</span><span class="w"> </span><span class="nn">cyksuid.ksuid</span><span class="w"> </span><span class="kn">import</span> <span class="n">ksuid</span>
+<a id="__codelineno-0-288" name="__codelineno-0-288"></a>
+<a id="__codelineno-0-289" name="__codelineno-0-289"></a>            <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">ksuid</span><span class="p">())</span>
+<a id="__codelineno-0-290" name="__codelineno-0-290"></a>        <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+<a id="__codelineno-0-291" name="__codelineno-0-291"></a>            <span class="k">raise</span> <span class="ne">ImportError</span><span class="p">(</span>
+<a id="__codelineno-0-292" name="__codelineno-0-292"></a>                <span class="s2">&quot;cyksuid package required for KSUID strategy. &quot;</span>
+<a id="__codelineno-0-293" name="__codelineno-0-293"></a>                <span class="s2">&quot;Install with: pip install cyksuid&quot;</span>
+<a id="__codelineno-0-294" name="__codelineno-0-294"></a>            <span class="p">)</span>
+<a id="__codelineno-0-295" name="__codelineno-0-295"></a>    <span class="k">else</span><span class="p">:</span>  <span class="c1"># uuid4 (default)</span>
+<a id="__codelineno-0-296" name="__codelineno-0-296"></a>        <span class="k">return</span> <span class="n">uuid</span><span class="o">.</span><span class="n">uuid4</span><span class="p">()</span><span class="o">.</span><span class="n">hex</span><span class="p">[:</span> <span class="bp">self</span><span class="o">.</span><span class="n">auto_uuid_length</span><span class="p">]</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -3735,39 +3809,39 @@ ensuring each new model instance starts with its own unique key.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/fields/auto_field_mixin.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-289">289</a></span>
-<span class="normal"><a href="#__codelineno-0-290">290</a></span>
-<span class="normal"><a href="#__codelineno-0-291">291</a></span>
-<span class="normal"><a href="#__codelineno-0-292">292</a></span>
-<span class="normal"><a href="#__codelineno-0-293">293</a></span>
-<span class="normal"><a href="#__codelineno-0-294">294</a></span>
-<span class="normal"><a href="#__codelineno-0-295">295</a></span>
-<span class="normal"><a href="#__codelineno-0-296">296</a></span>
-<span class="normal"><a href="#__codelineno-0-297">297</a></span>
-<span class="normal"><a href="#__codelineno-0-298">298</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-298">298</a></span>
 <span class="normal"><a href="#__codelineno-0-299">299</a></span>
 <span class="normal"><a href="#__codelineno-0-300">300</a></span>
 <span class="normal"><a href="#__codelineno-0-301">301</a></span>
 <span class="normal"><a href="#__codelineno-0-302">302</a></span>
 <span class="normal"><a href="#__codelineno-0-303">303</a></span>
 <span class="normal"><a href="#__codelineno-0-304">304</a></span>
-<span class="normal"><a href="#__codelineno-0-305">305</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-289" name="__codelineno-0-289"></a><span class="k">def</span><span class="w"> </span><span class="nf">set_auto_key_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">force</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">):</span>
-<a id="__codelineno-0-290" name="__codelineno-0-290"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<a id="__codelineno-0-291" name="__codelineno-0-291"></a><span class="sd">    Set a new auto-generated value as this field&#39;s default.</span>
-<a id="__codelineno-0-292" name="__codelineno-0-292"></a>
-<a id="__codelineno-0-293" name="__codelineno-0-293"></a><span class="sd">    Called during model instantiation to prepare a fresh UUID for new</span>
-<a id="__codelineno-0-294" name="__codelineno-0-294"></a><span class="sd">    instances. The value is stored as `self.default` so it gets applied</span>
-<a id="__codelineno-0-295" name="__codelineno-0-295"></a><span class="sd">    when the model sets field defaults.</span>
-<a id="__codelineno-0-296" name="__codelineno-0-296"></a>
-<a id="__codelineno-0-297" name="__codelineno-0-297"></a><span class="sd">    This is called in Model.__init__ for all fields with `auto=True`,</span>
-<a id="__codelineno-0-298" name="__codelineno-0-298"></a><span class="sd">    ensuring each new model instance starts with its own unique key.</span>
-<a id="__codelineno-0-299" name="__codelineno-0-299"></a>
-<a id="__codelineno-0-300" name="__codelineno-0-300"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-301" name="__codelineno-0-301"></a><span class="sd">        force: If True, generate a new value even if auto=False.</span>
-<a id="__codelineno-0-302" name="__codelineno-0-302"></a><span class="sd">               Useful for programmatically resetting a field&#39;s identity.</span>
-<a id="__codelineno-0-303" name="__codelineno-0-303"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-304" name="__codelineno-0-304"></a>    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">auto</span> <span class="ow">or</span> <span class="n">force</span><span class="p">:</span>
-<a id="__codelineno-0-305" name="__codelineno-0-305"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">default</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_new_auto_key_value</span><span class="p">()</span>
+<span class="normal"><a href="#__codelineno-0-305">305</a></span>
+<span class="normal"><a href="#__codelineno-0-306">306</a></span>
+<span class="normal"><a href="#__codelineno-0-307">307</a></span>
+<span class="normal"><a href="#__codelineno-0-308">308</a></span>
+<span class="normal"><a href="#__codelineno-0-309">309</a></span>
+<span class="normal"><a href="#__codelineno-0-310">310</a></span>
+<span class="normal"><a href="#__codelineno-0-311">311</a></span>
+<span class="normal"><a href="#__codelineno-0-312">312</a></span>
+<span class="normal"><a href="#__codelineno-0-313">313</a></span>
+<span class="normal"><a href="#__codelineno-0-314">314</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-298" name="__codelineno-0-298"></a><span class="k">def</span><span class="w"> </span><span class="nf">set_auto_key_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">force</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">):</span>
+<a id="__codelineno-0-299" name="__codelineno-0-299"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-300" name="__codelineno-0-300"></a><span class="sd">    Set a new auto-generated value as this field&#39;s default.</span>
+<a id="__codelineno-0-301" name="__codelineno-0-301"></a>
+<a id="__codelineno-0-302" name="__codelineno-0-302"></a><span class="sd">    Called during model instantiation to prepare a fresh UUID for new</span>
+<a id="__codelineno-0-303" name="__codelineno-0-303"></a><span class="sd">    instances. The value is stored as `self.default` so it gets applied</span>
+<a id="__codelineno-0-304" name="__codelineno-0-304"></a><span class="sd">    when the model sets field defaults.</span>
+<a id="__codelineno-0-305" name="__codelineno-0-305"></a>
+<a id="__codelineno-0-306" name="__codelineno-0-306"></a><span class="sd">    This is called in Model.__init__ for all fields with `auto=True`,</span>
+<a id="__codelineno-0-307" name="__codelineno-0-307"></a><span class="sd">    ensuring each new model instance starts with its own unique key.</span>
+<a id="__codelineno-0-308" name="__codelineno-0-308"></a>
+<a id="__codelineno-0-309" name="__codelineno-0-309"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-310" name="__codelineno-0-310"></a><span class="sd">        force: If True, generate a new value even if auto=False.</span>
+<a id="__codelineno-0-311" name="__codelineno-0-311"></a><span class="sd">               Useful for programmatically resetting a field&#39;s identity.</span>
+<a id="__codelineno-0-312" name="__codelineno-0-312"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-313" name="__codelineno-0-313"></a>    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">auto</span> <span class="ow">or</span> <span class="n">force</span><span class="p">:</span>
+<a id="__codelineno-0-314" name="__codelineno-0-314"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">default</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_new_auto_key_value</span><span class="p">()</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -3919,16 +3993,7 @@ already contains the auto value (e.g., "Article:a1b2c3d4...").</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/fields/auto_field_mixin.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-307">307</a></span>
-<span class="normal"><a href="#__codelineno-0-308">308</a></span>
-<span class="normal"><a href="#__codelineno-0-309">309</a></span>
-<span class="normal"><a href="#__codelineno-0-310">310</a></span>
-<span class="normal"><a href="#__codelineno-0-311">311</a></span>
-<span class="normal"><a href="#__codelineno-0-312">312</a></span>
-<span class="normal"><a href="#__codelineno-0-313">313</a></span>
-<span class="normal"><a href="#__codelineno-0-314">314</a></span>
-<span class="normal"><a href="#__codelineno-0-315">315</a></span>
-<span class="normal"><a href="#__codelineno-0-316">316</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-316">316</a></span>
 <span class="normal"><a href="#__codelineno-0-317">317</a></span>
 <span class="normal"><a href="#__codelineno-0-318">318</a></span>
 <span class="normal"><a href="#__codelineno-0-319">319</a></span>
@@ -3955,43 +4020,52 @@ already contains the auto value (e.g., "Article:a1b2c3d4...").</p>
 <span class="normal"><a href="#__codelineno-0-340">340</a></span>
 <span class="normal"><a href="#__codelineno-0-341">341</a></span>
 <span class="normal"><a href="#__codelineno-0-342">342</a></span>
-<span class="normal"><a href="#__codelineno-0-343">343</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-307" name="__codelineno-0-307"></a><span class="nd">@classmethod</span>
-<a id="__codelineno-0-308" name="__codelineno-0-308"></a><span class="k">def</span><span class="w"> </span><span class="nf">on_save</span><span class="p">(</span>
-<a id="__codelineno-0-309" name="__codelineno-0-309"></a>    <span class="bp">cls</span><span class="p">,</span>
-<a id="__codelineno-0-310" name="__codelineno-0-310"></a>    <span class="n">model_instance</span><span class="p">:</span> <span class="s2">&quot;Model&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-311" name="__codelineno-0-311"></a>    <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<a id="__codelineno-0-312" name="__codelineno-0-312"></a>    <span class="n">field_value</span><span class="p">,</span>
-<a id="__codelineno-0-313" name="__codelineno-0-313"></a>    <span class="n">pipeline</span><span class="p">:</span> <span class="n">redis</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">Pipeline</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-314" name="__codelineno-0-314"></a>    <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
-<a id="__codelineno-0-315" name="__codelineno-0-315"></a><span class="p">):</span>
-<a id="__codelineno-0-316" name="__codelineno-0-316"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<a id="__codelineno-0-317" name="__codelineno-0-317"></a><span class="sd">    Handle post-save operations for auto-generated fields.</span>
-<a id="__codelineno-0-318" name="__codelineno-0-318"></a>
-<a id="__codelineno-0-319" name="__codelineno-0-319"></a><span class="sd">    Intentionally a no-op that returns the pipeline unchanged. This</span>
-<a id="__codelineno-0-320" name="__codelineno-0-320"></a><span class="sd">    overrides KeyFieldMixin.on_save to prevent auto-fields from being</span>
-<a id="__codelineno-0-321" name="__codelineno-0-321"></a><span class="sd">    added to Redis Sets for value-based indexing.</span>
-<a id="__codelineno-0-322" name="__codelineno-0-322"></a>
-<a id="__codelineno-0-323" name="__codelineno-0-323"></a><span class="sd">    Why skip indexing?</span>
-<a id="__codelineno-0-324" name="__codelineno-0-324"></a><span class="sd">    ------------------</span>
-<a id="__codelineno-0-325" name="__codelineno-0-325"></a><span class="sd">    Auto-generated values are unique and random, making Set-based</span>
-<a id="__codelineno-0-326" name="__codelineno-0-326"></a><span class="sd">    indexing pointless: you would have one Set per unique value, each</span>
-<a id="__codelineno-0-327" name="__codelineno-0-327"></a><span class="sd">    containing exactly one model instance. The storage cost would be</span>
-<a id="__codelineno-0-328" name="__codelineno-0-328"></a><span class="sd">    significant with no query benefit.</span>
-<a id="__codelineno-0-329" name="__codelineno-0-329"></a>
-<a id="__codelineno-0-330" name="__codelineno-0-330"></a><span class="sd">    Instead, auto-key lookups go directly through the Redis key, which</span>
-<a id="__codelineno-0-331" name="__codelineno-0-331"></a><span class="sd">    already contains the auto value (e.g., &quot;Article:a1b2c3d4...&quot;).</span>
-<a id="__codelineno-0-332" name="__codelineno-0-332"></a>
-<a id="__codelineno-0-333" name="__codelineno-0-333"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-334" name="__codelineno-0-334"></a><span class="sd">        model_instance: The model being saved.</span>
-<a id="__codelineno-0-335" name="__codelineno-0-335"></a><span class="sd">        field_name: Name of this field on the model.</span>
-<a id="__codelineno-0-336" name="__codelineno-0-336"></a><span class="sd">        field_value: The auto-generated value being saved.</span>
-<a id="__codelineno-0-337" name="__codelineno-0-337"></a><span class="sd">        pipeline: Redis pipeline for batched operations, or None.</span>
-<a id="__codelineno-0-338" name="__codelineno-0-338"></a><span class="sd">        **kwargs: Additional context (ignored).</span>
-<a id="__codelineno-0-339" name="__codelineno-0-339"></a>
-<a id="__codelineno-0-340" name="__codelineno-0-340"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-341" name="__codelineno-0-341"></a><span class="sd">        The pipeline unchanged, or None if no pipeline was provided.</span>
-<a id="__codelineno-0-342" name="__codelineno-0-342"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-343" name="__codelineno-0-343"></a>    <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
+<span class="normal"><a href="#__codelineno-0-343">343</a></span>
+<span class="normal"><a href="#__codelineno-0-344">344</a></span>
+<span class="normal"><a href="#__codelineno-0-345">345</a></span>
+<span class="normal"><a href="#__codelineno-0-346">346</a></span>
+<span class="normal"><a href="#__codelineno-0-347">347</a></span>
+<span class="normal"><a href="#__codelineno-0-348">348</a></span>
+<span class="normal"><a href="#__codelineno-0-349">349</a></span>
+<span class="normal"><a href="#__codelineno-0-350">350</a></span>
+<span class="normal"><a href="#__codelineno-0-351">351</a></span>
+<span class="normal"><a href="#__codelineno-0-352">352</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-316" name="__codelineno-0-316"></a><span class="nd">@classmethod</span>
+<a id="__codelineno-0-317" name="__codelineno-0-317"></a><span class="k">def</span><span class="w"> </span><span class="nf">on_save</span><span class="p">(</span>
+<a id="__codelineno-0-318" name="__codelineno-0-318"></a>    <span class="bp">cls</span><span class="p">,</span>
+<a id="__codelineno-0-319" name="__codelineno-0-319"></a>    <span class="n">model_instance</span><span class="p">:</span> <span class="s2">&quot;Model&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-320" name="__codelineno-0-320"></a>    <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-321" name="__codelineno-0-321"></a>    <span class="n">field_value</span><span class="p">,</span>
+<a id="__codelineno-0-322" name="__codelineno-0-322"></a>    <span class="n">pipeline</span><span class="p">:</span> <span class="n">redis</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">Pipeline</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-323" name="__codelineno-0-323"></a>    <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+<a id="__codelineno-0-324" name="__codelineno-0-324"></a><span class="p">):</span>
+<a id="__codelineno-0-325" name="__codelineno-0-325"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-326" name="__codelineno-0-326"></a><span class="sd">    Handle post-save operations for auto-generated fields.</span>
+<a id="__codelineno-0-327" name="__codelineno-0-327"></a>
+<a id="__codelineno-0-328" name="__codelineno-0-328"></a><span class="sd">    Intentionally a no-op that returns the pipeline unchanged. This</span>
+<a id="__codelineno-0-329" name="__codelineno-0-329"></a><span class="sd">    overrides KeyFieldMixin.on_save to prevent auto-fields from being</span>
+<a id="__codelineno-0-330" name="__codelineno-0-330"></a><span class="sd">    added to Redis Sets for value-based indexing.</span>
+<a id="__codelineno-0-331" name="__codelineno-0-331"></a>
+<a id="__codelineno-0-332" name="__codelineno-0-332"></a><span class="sd">    Why skip indexing?</span>
+<a id="__codelineno-0-333" name="__codelineno-0-333"></a><span class="sd">    ------------------</span>
+<a id="__codelineno-0-334" name="__codelineno-0-334"></a><span class="sd">    Auto-generated values are unique and random, making Set-based</span>
+<a id="__codelineno-0-335" name="__codelineno-0-335"></a><span class="sd">    indexing pointless: you would have one Set per unique value, each</span>
+<a id="__codelineno-0-336" name="__codelineno-0-336"></a><span class="sd">    containing exactly one model instance. The storage cost would be</span>
+<a id="__codelineno-0-337" name="__codelineno-0-337"></a><span class="sd">    significant with no query benefit.</span>
+<a id="__codelineno-0-338" name="__codelineno-0-338"></a>
+<a id="__codelineno-0-339" name="__codelineno-0-339"></a><span class="sd">    Instead, auto-key lookups go directly through the Redis key, which</span>
+<a id="__codelineno-0-340" name="__codelineno-0-340"></a><span class="sd">    already contains the auto value (e.g., &quot;Article:a1b2c3d4...&quot;).</span>
+<a id="__codelineno-0-341" name="__codelineno-0-341"></a>
+<a id="__codelineno-0-342" name="__codelineno-0-342"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-343" name="__codelineno-0-343"></a><span class="sd">        model_instance: The model being saved.</span>
+<a id="__codelineno-0-344" name="__codelineno-0-344"></a><span class="sd">        field_name: Name of this field on the model.</span>
+<a id="__codelineno-0-345" name="__codelineno-0-345"></a><span class="sd">        field_value: The auto-generated value being saved.</span>
+<a id="__codelineno-0-346" name="__codelineno-0-346"></a><span class="sd">        pipeline: Redis pipeline for batched operations, or None.</span>
+<a id="__codelineno-0-347" name="__codelineno-0-347"></a><span class="sd">        **kwargs: Additional context (ignored).</span>
+<a id="__codelineno-0-348" name="__codelineno-0-348"></a>
+<a id="__codelineno-0-349" name="__codelineno-0-349"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-350" name="__codelineno-0-350"></a><span class="sd">        The pipeline unchanged, or None if no pipeline was provided.</span>
+<a id="__codelineno-0-351" name="__codelineno-0-351"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-352" name="__codelineno-0-352"></a>    <span class="k">return</span> <span class="n">pipeline</span> <span class="k">if</span> <span class="n">pipeline</span> <span class="k">else</span> <span class="kc">None</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

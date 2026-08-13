@@ -96,9 +96,11 @@ print(f"{restaurant.name} serves {restaurant.cuisine} food.")
 Reading and writing happen at RAM speed. Popoto adds
 [async operations](async.md), [multi-tenancy](multi-tenancy.md) via KeyField
 namespacing, geometric distance search, timeseries for streaming data, Pandas
-and Xarray interoperation, [pub/sub](pubsub.md) for message queues, and
+and Xarray interoperation, [pub/sub](pubsub.md) for message queues,
 [content and embedding fields](features/content-and-embedding-fields.md) for
-large content storage and semantic search.
+large content storage and semantic search, and
+[generic export/import](guides/export-import.md) with per-field round-trip
+fidelity for moving records between Redis instances.
 
 Start at [Configuration](configuration.md) and
 [Models and Fields](fields.md) for the ORM half of the library.
@@ -7750,6 +7752,11 @@ Each field type controls how data is validated, stored, and indexed in Redis. Th
 guide covers every field type and its configuration options, working through a food
 delivery system as a running example.
 
+If you need a field type Popoto does not provide, see
+[Writing Custom Fields](field-authoring.md) for the `Field` subclassing contract,
+including the round-trip protocol a field with independent Redis state must
+implement so it works correctly with [Export & Import](guides/export-import.md).
+
 ## KeyField
 
 A `KeyField` determines how Popoto stores and retrieves your objects in Redis. The
@@ -13802,6 +13809,358 @@ invalidate_cache()
 - [Making Queries > Semantic Search](../query.md#semantic-search) -- query interface
 - [Configuration](../configuration.md#content-and-embedding-configuration) -- global setup
 - [API Reference: ContentField](../reference/popoto/fields/content_field.md) -- method signatures
+
+---
+
+## Export & Import
+
+# Export & Import
+
+`popoto.transfer` moves one model's records between Redis instances — migrating to a
+new machine, seeding staging from production, taking a logical backup of a single
+model, or merging two datasets. It exists because the two naive approaches both lose
+data silently:
+
+- An RDB copy or `DUMP`/`RESTORE` is all-or-nothing at the database level. It cannot
+  extract one model, cannot filter to a subset, and clobbers rather than merges.
+- `to_dict()` followed by `Model(**d).save()` looks correct and mostly is, but four
+  things reset silently: an `AutoKeyField` generates a fresh key, learned state like
+  a `ConfidenceField` score reseeds to its initial value, `auto_now` timestamps
+  restart their clock, and a write-gate rejection makes `save()` return falsy with
+  no exception — a script that ignores the return value reports success.
+
+Export and import fix all four by round-tripping through a documented protocol (see
+[Writing Custom Fields](../field-authoring.md) for the field-author side) and by
+reconciling every record against Redis rather than trusting `save()`'s return value
+alone.
+
+## Exporting
+
+```python
+from popoto import Model, KeyField, Field, SortedField
+
+class Memory(Model):
+    memory_id = KeyField()
+    content = Field(type=str)
+    project_key = Field(type=str)
+    relevance = SortedField(type=float)
+
+with open("memories.jsonl", "w") as fh:
+    result = Memory.export_records(project_key="ai", stream=fh)
+
+print(result.summary())
+```
+
+With no arguments, `export_records()` exports every record of the model:
+
+```python
+with open("all_memories.jsonl", "w") as fh:
+    result = Memory.export_records(stream=fh)
+```
+
+Filter arguments are forwarded verbatim to `Model.query.filter(...)` — plain keyword
+filters, `Q` objects, or both. An unknown filter parameter raises `QueryException`
+rather than being silently ignored, so a typo in a filter name fails loudly instead
+of exporting everything.
+
+If you omit `stream`, the JSON Lines text is returned on `result.data` instead of
+being written to a file — convenient for small models or tests.
+
+Export writes a manifest line followed by one JSON object per record. The manifest
+records the model name, the applied filter (or `null` for an unfiltered export), the
+number of records the filter matched at resolution time, and the round-trip policy
+Popoto is about to apply to each field. This is what makes an empty model
+distinguishable from a filter that matched nothing: an unfiltered empty model reports
+`{"filter": null, "matched_count": 0}`, while a filter matching nothing reports
+`{"filter": "Q(project_key='nope')", "matched_count": 0}`.
+
+Export is **not** a point-in-time snapshot. The key set is resolved once and then
+hydrated in chunks (500 keys at a time, by default), so a record deleted after key
+resolution is counted as `vanished` and simply omitted, and a record created
+afterward is absent from the export. `result.matched_count` versus
+`result.record_count` shows you the gap if one exists.
+
+### `ExportResult`
+
+`export_records()` returns an `ExportResult`:
+
+| Attribute | Meaning |
+|---|---|
+| `matched_count` | Keys the filter resolved to, at resolution time. |
+| `record_count` | Record lines actually written. |
+| `vanished` | Keys that resolved but no longer had a hash by the time their chunk was hydrated. |
+| `filtered_out` | Records dropped by a client-side (unindexed) filter, applied after hydration. |
+| `warnings` | Non-fatal notes — a client-side filter downgrade, or a field whose `export_state` raised. |
+| `errors` | Records that could not be serialized, with the reason. |
+
+`result.summary()` renders all of this as human-readable text.
+
+## Importing
+
+```python
+with open("memories.jsonl") as fh:
+    report = Memory.import_records(fh, on_conflict="overwrite")
+
+print(report.summary())
+```
+
+Keys are always preserved on import — the imported record lands at the same Redis
+key it exported from. This is what makes `Relationship` values and any
+application-level string holding a Redis key keep pointing at the right record, and
+it is what makes `on_conflict="overwrite"` an idempotent way to resume an interrupted
+import.
+
+### The three policy flags
+
+`import_records` takes three flags, each with a default chosen to fail safely rather
+than silently:
+
+**`on_conflict`** — what to do when the destination already holds a key.
+
+- `"error"` (default) — refuses on the first collision. The only mode that cannot
+  clobber existing data. Costs nothing on a fresh destination, since there are no
+  collisions to refuse.
+- `"skip"` — leaves the existing record untouched and reports it as `skipped`. Use
+  this for a merge that must not disturb what is already there.
+- `"overwrite"` — replaces the existing record. Safe specifically because keys are
+  preserved, and it is what makes re-running an import after an interruption
+  converge instead of duplicating.
+
+**`on_write_gate`** — how to handle the destination model's `WriteFilterMixin` gate,
+if it has one.
+
+- `"reject"` (default) — honors the gate. A record the gate refuses is reported as
+  `rejected`, not silently dropped.
+- `"bypass"` — writes around Popoto's own gate. This is a deliberate keystroke for
+  restoring a faithful backup into a model whose threshold has since risen; the
+  report states how many records used it (`report.write_gate_bypassed`). Note the
+  limit: `"bypass"` only disables Popoto's `WriteFilterMixin` gate. An
+  application-level `save()` override that returns falsy for its own reasons cannot
+  be bypassed from the library — those records still appear as rejections.
+
+**`on_embedding_mismatch`** — how to handle an `EmbeddingField` whose exported
+provider fingerprint (`provider`, `model`, `dimensions`) differs from the
+destination's configured provider.
+
+- `"error"` (default) — refuses. Carrying a vector into a different vector space is
+  silent corruption; this turns it into a loud, cheap check naming both fingerprints.
+- `"carry"` — imports the vectors anyway, for when you know both sides run
+  compatible models despite the fingerprint mismatch.
+- `"regenerate"` — drops the carried vector so `on_save` re-embeds from the source
+  text on the destination.
+
+### Reading an `ImportReport`
+
+Every exported record ends up in exactly one of five categories:
+
+| Category | Meaning |
+|---|---|
+| `landed` | Saved, and all carried state restored. |
+| `skipped` | Key already present, `on_conflict="skip"`. |
+| `rejected` | Refused before any write — write gate, or construction/validation failure. Nothing written. |
+| `errored` | Failed during save, or the write could not be confirmed afterward. |
+| `partial` | Saved, but restoring carried state raised. **The record exists on the destination with rebuild-default auxiliary state.** |
+
+`partial` is the one category that leaves degraded data behind rather than a clean
+absence, so `report.summary()` surfaces it first. `report.fidelity` carries the
+per-field `roundtrip_policy` roll-up from the manifest, so the report can tell you
+which fields were fully restored and which were only ever declared `"partial"` on
+the source side (for example, `CoOccurrenceField` or `EventStreamMixin` — see
+[Writing Custom Fields](../field-authoring.md) for the full policy taxonomy).
+
+Rejection is never detected by truthiness. `Model.save()` returns the `HSET` reply
+count on success, and `HSET` returns `0` when every field already existed — so a
+successful overwrite would look identical to a rejection under a truthiness check.
+Only `save()` returning `False` or `None` counts as a refusal. A batch `EXISTS`
+check afterward corroborates `landed` records and can *downgrade* one to `errored`
+if the write did not actually survive, but it can never *upgrade* a rejection to
+`landed` — a write-gate rejection under `on_conflict="overwrite"` leaves the
+destination's old record in place, and a naive `EXISTS`-only check would have
+misreported that as success.
+
+## Resuming an interrupted import
+
+Import is not atomic across records — a crash partway through leaves some records
+written and some not. The recovery path is to re-run the same file with
+`on_conflict="overwrite"`: already-landed records overwrite themselves with identical
+values (a no-op in effect), and records that had not yet been written land normally.
+Because keys are always preserved, this converges rather than producing duplicates.
+
+```python
+with open("memories.jsonl") as fh:
+    report = Memory.import_records(fh, on_conflict="overwrite")
+
+if report.errored or report.partial:
+    print(report.summary())  # inspect what needs attention
+```
+
+## What is not carried
+
+A handful of Redis structures are shaped by *history* — an event stream, a
+prediction ledger, an access log, a frequency-sketch counter — rather than by a
+snapshot of current state. Popoto does not attempt to carry these; the affected
+fields declare `roundtrip_policy = "partial"` with a `roundtrip_note` explaining
+what is lost, and that note appears in the import report rather than the loss
+happening silently. See the field-level policy table on the destination model, or
+[Writing Custom Fields](../field-authoring.md) if you are deciding how to declare
+this for your own field.
+
+Async twins (`async_export_records` / `async_import_records`) and a CLI front-end
+are not part of this API; the driver is a synchronous Python function you call from
+your own script or an async wrapper.
+
+---
+
+## Writing Custom Fields
+
+# Writing Custom Fields
+
+Popoto's field types (`Field`, `SortedField`, `KeyField`, `GeoField`, and the rest)
+all derive from a single `Field` base class. Subclassing `Field` directly is how you
+add a new storage or indexing behavior that the built-in field types do not cover —
+for example a field that maintains its own companion hash in Redis alongside the
+model's primary hash, the way `ConfidenceField` and `CyclicDecayField` do.
+
+This page documents the contract a `Field` subclass should follow, with a focus on
+the round-trip protocol every field author must satisfy: `roundtrip_policy`,
+`roundtrip_note`, `export_state`, and `import_state`. These four members exist so that
+[`popoto.transfer`](guides/export-import.md) — the export/import driver — can move
+records between Redis instances without losing state that only your field knows how
+to serialize.
+
+## The `on_save` hook
+
+Most custom fields extend behavior through `on_save`, a classmethod called after the
+model instance's primary hash is written:
+
+```python
+from popoto import Field
+
+class UppercaseField(Field):
+    @classmethod
+    def on_save(cls, model_instance, field_name, field_value, pipeline=None, **kwargs):
+        # maintain whatever secondary Redis structure this field needs
+        ...
+```
+
+If your field's secondary structures are a pure function of the field's stored
+value — an index entry, a sorted-set score, a geo-set member — `on_save` alone is
+sufficient. A plain re-save (construct a new instance with the same values and call
+`save()`) fully reconstructs that structure. This is the common case, and it is
+exactly what `roundtrip_policy = "rebuild"` (the default) declares.
+
+## The round-trip obligation
+
+Some fields maintain state that is *not* derivable from the field's stored value
+alone — a running counter, a learned score, an amplitude that accumulated over many
+`strengthen`/`weaken` calls. For those fields, `on_save` is not enough: reconstructing
+the record from its plain value on a new Redis instance silently resets that state to
+whatever `on_save` seeds it to.
+
+**Every `Field` subclass in `src/popoto/fields/` must declare an explicit
+`roundtrip_policy`.** This is enforced by a test (`tests/test_transfer_roundtrip.py`)
+that enumerates every field subclass in the package and asserts each declares a
+policy, so a field with independent Redis state cannot silently ship with the
+inherited `"rebuild"` default. Third-party fields outside the package are not
+enforced by that test, but the obligation is the same: if your field holds state
+`on_save` cannot reconstruct, declare it honestly.
+
+`roundtrip_policy` is one of three values:
+
+- **`"rebuild"`** (default) — the field maintains no independent state that export
+  needs to capture. Whatever `on_save` does on import is sufficient to fully
+  reconstruct it. Correct for the vast majority of fields: indexes, sorted sets, geo
+  indexes, and any structure that is a pure function of the stored value.
+- **`"carry"`** — the field maintains state that is not derivable from the stored
+  value alone. A field declaring `"carry"` must implement `export_state` and
+  `import_state` to serialize and restore that state explicitly.
+- **`"partial"`** — some state is carried or rebuilt, and some is knowingly not
+  preserved. A field declaring `"partial"` must also set `roundtrip_note` explaining
+  what is lost and why — typically citing a tracking issue for future work.
+
+```python
+class LearnedScoreField(Field):
+    roundtrip_policy = "carry"
+
+    @classmethod
+    def export_state(cls, model_instance, field_name, field_value, **kwargs):
+        """Return this field's auxiliary state, or None if there is nothing to carry."""
+        raw = POPOTO_REDIS_DB.hget(cls._data_hash_key(model_instance), field_name)
+        if raw is None:
+            return None
+        return {"score": float(raw)}
+
+    @classmethod
+    def import_state(cls, model_instance, field_name, state, **kwargs):
+        """Restore state after the record has been constructed and saved."""
+        if state is None:
+            return
+        POPOTO_REDIS_DB.hset(
+            cls._data_hash_key(model_instance), field_name, state["score"]
+        )
+```
+
+`export_state` is called once per field per exported record, after the field's plain
+value has already been captured by `to_dict()`. Read whatever secondary Redis
+structure your field owns and return it as a JSON-serializable dict, or `None` if,
+for this particular instance, there is nothing to carry. The base implementation
+always returns `None`, which is correct for `"rebuild"` fields.
+
+`import_state` is called once per field per imported record, **after** the instance
+has been constructed and saved — so any structure `on_save` already rebuilt exists
+and can be overwritten or supplemented. `state` is whatever `export_state` returned
+for this field on the exporting side, or `None` if nothing was carried. The base
+implementation is a no-op, which is correct whenever there is no carried state to
+restore.
+
+Both methods resolve their own configuration from
+`model_instance._meta.fields[field_name]` rather than taking it as an argument,
+mirroring `on_save`'s existing shape.
+
+## Model-level state
+
+The round-trip protocol also applies to Model-level mixins that are not `Field`
+subclasses — for example a mixin that maintains its own top-level Redis key rather
+than a field-scoped one. `popoto.transfer` walks `type(instance).__mro__` and calls
+`export_state`/`import_state` on any class that defines them **as its own
+attribute** (`"export_state" in cls.__dict__`), with the same two-value shape minus
+`field_name`:
+
+```python
+class AuditedMixin:
+    roundtrip_policy = "carry"
+
+    def export_state(self):
+        return {"audit_log": self._read_audit_log()}
+
+    def import_state(self, state):
+        if state:
+            self._write_audit_log(state["audit_log"])
+```
+
+State from a model-level mixin is keyed by the mixin's class name in the export
+file, distinct from the field-keyed state above. `Model` itself defines neither
+method, so a model with no such mixins contributes nothing at this level.
+
+## Why this matters
+
+The driver holds no knowledge of any concrete field or mixin type — it never checks
+`isinstance` against a named class. That is what lets a new field type work
+correctly with zero changes to `popoto.transfer`. The cost of that genericity is
+that it is entirely on the field author to declare `roundtrip_policy` honestly and
+implement `export_state`/`import_state` when the default is wrong. A field that
+declares `"rebuild"` while quietly growing independent state produces the exact
+failure the export/import feature exists to prevent: an import report that confirms
+success while auxiliary state was silently reset.
+
+If you are unsure which policy applies, ask: "if I export this record, delete it,
+and reconstruct it from the exported plain values with a normal `save()`, is
+anything about this field's Redis footprint different from before?" If yes, that
+field needs `"carry"` (fully) or `"partial"` (partly), plus the corresponding
+`export_state`/`import_state` overrides.
+
+See [Export & Import](guides/export-import.md) for the user-facing guide to running
+an export/import and reading the resulting report.
 
 ---
 

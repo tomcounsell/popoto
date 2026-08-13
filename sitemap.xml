@@ -17,6 +17,10 @@
          <lastmod>2026-08-13</lastmod>
     </url>
     <url>
+         <loc>https://popoto.io/field-authoring/</loc>
+         <lastmod>2026-08-13</lastmod>
+    </url>
+    <url>
          <loc>https://popoto.io/fields/</loc>
          <lastmod>2026-08-13</lastmod>
     </url>
@@ -166,6 +170,10 @@
     </url>
     <url>
          <loc>https://popoto.io/guides/agent-memory-quickstart/</loc>
+         <lastmod>2026-08-13</lastmod>
+    </url>
+    <url>
+         <loc>https://popoto.io/guides/export-import/</loc>
          <lastmod>2026-08-13</lastmod>
     </url>
     <url>
@@ -418,6 +426,22 @@
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/streams/consumer/</loc>
+         <lastmod>2026-08-13</lastmod>
+    </url>
+    <url>
+         <loc>https://popoto.io/reference/popoto/transfer/export/</loc>
+         <lastmod>2026-08-13</lastmod>
+    </url>
+    <url>
+         <loc>https://popoto.io/reference/popoto/transfer/format/</loc>
+         <lastmod>2026-08-13</lastmod>
+    </url>
+    <url>
+         <loc>https://popoto.io/reference/popoto/transfer/import_/</loc>
+         <lastmod>2026-08-13</lastmod>
+    </url>
+    <url>
+         <loc>https://popoto.io/reference/popoto/transfer/results/</loc>
          <lastmod>2026-08-13</lastmod>
     </url>
     <url>

@@ -3197,9 +3197,65 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/export-import/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Export & Import
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../field-authoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Writing Custom Fields
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -4254,6 +4310,10 @@ class attributes, and Popoto handles persistence, indexing, and querying.</p>
 <p>Each field type controls how data is validated, stored, and indexed in Redis. This
 guide covers every field type and its configuration options, working through a food
 delivery system as a running example.</p>
+<p>If you need a field type Popoto does not provide, see
+<a href="../field-authoring/">Writing Custom Fields</a> for the <code>Field</code> subclassing contract,
+including the round-trip protocol a field with independent Redis state must
+implement so it works correctly with <a href="../guides/export-import/">Export &amp; Import</a>.</p>
 <h2 id="keyfield">KeyField<a class="headerlink" href="#keyfield" title="Permanent link">&para;</a></h2>
 <p>A <code>KeyField</code> determines how Popoto stores and retrieves your objects in Redis. The
 values of all KeyFields on a model are concatenated to form the Redis key, making
