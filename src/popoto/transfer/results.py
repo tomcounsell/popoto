@@ -128,7 +128,9 @@ class ImportReport:
         fidelity: The manifest's per-field and per-mixin ``roundtrip_policy``
             roll-up, keyed by field or mixin name.
         warnings: Non-fatal notes (embedding provenance mismatches that were
-            carried, unknown field names in carried state, and so on).
+            carried, and so on). Unknown field names in carried state are
+            fatal for that record instead: they raise inside
+            ``_restore_state`` and are classified ``partial``, not warned.
         write_gate_bypassed: How many records were saved with the destination's
             write gate deliberately bypassed.
         source_matched_count: The manifest's ``matched_count``, for comparison
