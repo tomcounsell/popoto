@@ -178,7 +178,7 @@ class MemoryService:
             return ""
 
         try:
-            result = self.memory._assembler.assemble(
+            result = self.memory.assembler.assemble(
                 query_cues={"topic": query.strip()},
                 agent_id=self.config.agent_id,
             )
@@ -422,7 +422,7 @@ class MemoryService:
             return info
 
         try:
-            mode = getattr(self.memory._assembler, "_effective_mode", None)
+            mode = getattr(self.memory.assembler, "_effective_mode", None)
             info["retrieval_mode"] = mode
             info["query_blind"] = mode == "composite"
         except Exception as exc:

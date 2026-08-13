@@ -209,7 +209,23 @@ def _cmd_doctor(args: Any) -> int:
     from .service import MemoryService
 
     config = MemoryConfig.from_env()
-    service = MemoryService(config)
+    try:
+        service = MemoryService(config)
+    except ValueError as exc:
+        # MemoryService.__init__ -> bind_connection raises when
+        # POPOTO_MEMORY_URL carries no database number. Doctor's entire job
+        # is diagnosing misconfiguration, so it must print the message
+        # rather than let it surface as a traceback.
+        if args.json:
+            import json
+
+            sys.stdout.write(
+                json.dumps({"redis_reachable": False, "error": str(exc)}, indent=2)
+                + "\n"
+            )
+        else:
+            sys.stdout.write(f"popoto-memory doctor\n\n{exc}\n")
+        return 1
     info = service.status()
 
     if not args.no_latency and info.get("redis_reachable"):

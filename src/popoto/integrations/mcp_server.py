@@ -319,7 +319,10 @@ def build_server() -> Any:
     # MCP SDK 1.x: handlers are registered by decorator. Reached through
     # getattr because those attributes do not exist on the 2.x Server, and a
     # direct reference would not type-check against the installed SDK.
-    server = Server(SERVER_NAME)
+    # 1.x's Server.__init__ also accepts instructions=, so pass it here too --
+    # otherwise SERVER_INSTRUCTIONS (which tells the model recall/capture
+    # already run automatically) never reaches a 1.x client.
+    server = Server(SERVER_NAME, instructions=SERVER_INSTRUCTIONS)
 
     async def _list_tools() -> Any:
         return _tools()

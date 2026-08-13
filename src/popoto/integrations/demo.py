@@ -60,7 +60,11 @@ def run_demo(
         log_path=config.log_path,
         url_is_explicit=config.url_is_explicit,
     )
-    service = MemoryService(config)
+    try:
+        service = MemoryService(config)
+    except ValueError as exc:
+        out.write(f"popoto-memory demo\n\n{exc}\n")
+        return 1
 
     out.write("popoto-memory demo\n")
     out.write(f"  redis   {config.url}\n")
