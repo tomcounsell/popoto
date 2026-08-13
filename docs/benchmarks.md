@@ -347,7 +347,15 @@ macOS-26.5.2-arm64 (10-core Apple silicon), Redis 8.6.2 on localhost, redis-py
 8.1.0, sentence-transformers 5.7.0 with all-MiniLM-L6-v2 on CPU, numpy 2.5.1.
 Datasets are the cached HuggingFace releases (`locomo10.json`,
 `longmemeval_s_cleaned.json`). Each artifact restates its own Python, platform,
-sample mode, seed, and limit, so any single report is reproducible from itself.
+sample mode, seed, and limit, so any single report is reproducible from itself
+— with one exception: `locomo_20260807_judged.json`'s `fixture` is `null`
+because the original run recorded an absolute path into a session scratchpad
+that no longer exists and was never committed. That artifact carries a
+`fixture_note` instead, reconstructing the fixture identity from corroborating
+evidence (matching seed/limit/sample_mode and question-type distribution
+against a sibling run) rather than restating it directly, and giving the
+command to regenerate the subset. Every other run on this page used the full
+dataset directly, with no `--fixture` file involved.
 
 **LoCoMo lexical, full 1986 questions (any-hit Recall):**
 
