@@ -154,6 +154,15 @@ class AutoFieldMixin:
     auto_id: str = ""
     strategy: str = "uuid4"
 
+    # Export/import: on_save() is a no-op (auto values skip Set indexing).
+    # Identity round-trips for free -- Model(**values) accepts the exported
+    # key value as a constructor override of the freshly generated default,
+    # since v1 always preserves keys (see #557 for the deferred
+    # key-regeneration opt-out). A key that fails AutoFieldMixin.is_valid's
+    # length check raises ModelException from __init__, which the importer
+    # catches and reports as a rejection, not a crash.
+    roundtrip_policy: str = "rebuild"
+
     # Valid strategies and their expected ID lengths
     STRATEGY_LENGTHS = {
         "uuid4": 32,

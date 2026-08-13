@@ -82,6 +82,16 @@ class EventStreamMixin:
     _stream_max_length: int = 10000
     _stream_metadata_fields: tuple = ()
 
+    # Export/import: the Redis Stream is an append-only mutation log built
+    # incrementally by every save/delete over the model's lifetime. There is
+    # no single-record snapshot that reconstructs prior stream entries, and
+    # replaying export/import would fabricate a mutation history that never
+    # happened. Not addressed in v1 -- see #556.
+    roundtrip_policy: str = "partial"
+    roundtrip_note: str = (
+        "Mutation stream history not carried or rebuilt by import; see #556"
+    )
+
     def _get_stream_key(self):
         """Build the Redis Stream key for this instance.
 

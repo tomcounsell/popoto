@@ -22,6 +22,11 @@ Each field type controls how data is validated, stored, and indexed in Redis. Th
 guide covers every field type and its configuration options, working through a food
 delivery system as a running example.
 
+If you need a field type Popoto does not provide, see
+[Writing Custom Fields](field-authoring.md) for the `Field` subclassing contract,
+including the round-trip protocol a field with independent Redis state must
+implement so it works correctly with [Export & Import](guides/export-import.md).
+
 ## KeyField
 
 A `KeyField` determines how Popoto stores and retrieves your objects in Redis. The

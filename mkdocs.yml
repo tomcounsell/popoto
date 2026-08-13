@@ -85,6 +85,8 @@ nav:
                 - Multi-Tenancy: 'multi-tenancy.md'
                 - PubSub: 'pubsub.md'
                 - Content & Embeddings: 'features/content-and-embedding-fields.md'
+                - Export & Import: 'guides/export-import.md'
+          - Writing Custom Fields: 'field-authoring.md'
           - Testing: 'testing.md'
     - API Reference: reference/index.md
     - Contributing: 'style-guide.md'

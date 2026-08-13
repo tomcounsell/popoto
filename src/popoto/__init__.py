@@ -82,6 +82,13 @@ from .recipes.memory_telemetry import (
     report_outcomes,
 )
 from .streams import StreamConsumer
+from .transfer import (
+    ExportResult,
+    ImportReport,
+    RecordOutcome,
+    export_records,
+    import_records,
+)
 from .redis_db import POPOTO_REDIS_DB, get_async_redis_db
 from ._error_reporting import enable_error_reporting
 
@@ -223,4 +230,9 @@ __all__ = [
     "BM25Field",
     "configure",
     "enable_error_reporting",
+    "export_records",
+    "import_records",
+    "ExportResult",
+    "ImportReport",
+    "RecordOutcome",
 ]

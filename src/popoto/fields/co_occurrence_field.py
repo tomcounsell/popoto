@@ -252,6 +252,17 @@ class CoOccurrenceField(Field):
             associations = CoOccurrenceField(symmetric=True, max_edges=100)
     """
 
+    # Export/import: edge weights are accumulated by strengthen()/weaken_all()
+    # calls over time -- a function of interaction history between records,
+    # not of any single record's own field value -- so they cannot be
+    # rebuilt from a per-record export/import replay. Not addressed in v1
+    # -- see #556.
+    roundtrip_policy: str = "partial"
+    roundtrip_note: str = (
+        "Weighted association edges reflect interaction history, not "
+        "carried or rebuilt by import; see #556"
+    )
+
     def __init__(self, **kwargs):
         self.symmetric = kwargs.pop("symmetric", True)
         self.max_edges = kwargs.pop("max_edges", 500)

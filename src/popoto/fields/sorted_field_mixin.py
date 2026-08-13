@@ -122,6 +122,13 @@ class SortedFieldMixin:
     default = ""
     partition_by = tuple()
 
+    # Export/import: the sorted-set index is fully rebuilt from the field
+    # value by on_save(). auto_now fields need the driver's
+    # save(skip_auto_now=True) to preserve the exported timestamp rather than
+    # restamping time.time() -- that is a generic driver-level flag, not
+    # field-specific carried state.
+    roundtrip_policy: str = "rebuild"
+
     def __init__(self, **kwargs):
         """
         Initialize the sorted field mixin with sorting configuration.

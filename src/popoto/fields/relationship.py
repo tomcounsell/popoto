@@ -115,6 +115,12 @@ class Relationship(Field):
     many: bool = False
     null: bool = True
 
+    # Export/import: the reverse-lookup Set is fully rebuilt from the stored
+    # redis_key value by on_save(). Since v1 always preserves keys on import
+    # (see #557 for the deferred key-regeneration opt-out), a carried
+    # redis_key string round-trips correctly with no extra state.
+    roundtrip_policy: str = "rebuild"
+
     def __init__(self, **kwargs):
         """
         Initialize a Relationship field with the specified related model.

@@ -367,6 +367,11 @@ class BM25Field(Field):
     null: bool = True
     default = None
 
+    # Export/import: the inverted index, corpus stats, and forward index are
+    # all rebuilt from the source field's content by on_save(), so nothing
+    # needs to be carried across export/import.
+    roundtrip_policy: str = "rebuild"
+
     def __init__(self, source: str = None, **kwargs):
         if source is None:
             raise ValueError("BM25Field requires a 'source' parameter")
