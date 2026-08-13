@@ -265,7 +265,7 @@ class CyclicDecayField(DecayingSortedField):
 
         Returns:
             ``{"cycles": [[period, amplitude, phase], ...],
-               "pressure": {"rate": float, "last_resolved": float}}``
+                "pressure": {"rate": float, "last_resolved": float}}``
             with either key omitted when that companion hash has no entry for
             this instance, or ``None`` when neither does.
         """
