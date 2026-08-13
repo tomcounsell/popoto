@@ -355,7 +355,7 @@ that no longer exists and was never committed. That artifact carries a
 evidence (matching seed/limit/sample_mode and question-type distribution
 against a sibling run) rather than restating it directly, and giving the
 command to regenerate the subset. Every other 2026-08-07 run on this page used
-the full dataset directly. The 2026-08-06 judged run and the five
+the full dataset directly. The 2026-08-06 judged run and the four
 `--extraction` arms below also used `--fixture` — the same derived
 conv-26,conv-30 subset — but their artifacts record it as a descriptive label
 rather than a path, so no path was ever lost in the first place.
@@ -608,7 +608,7 @@ decimal. Artifact: `tests/benchmarks/results/external/locomo_latest_judged.json`
 
 **Scope of the run.** The 100 questions are a stratified sample (seed 0) from a
 derived two-dialogue LoCoMo subset (conversations 26 and 30, 788 turns, 304 QA
-pairs), chosen so the five extraction arms below could be run against an
+pairs), chosen so the four extraction arms below could be run against an
 identical corpus at a bounded API cost. This is not the full 1986-pair LoCoMo,
 and the interval above covers only sampling error within this subset, not
 dialogue-selection variance across the other eight conversations.
@@ -637,11 +637,13 @@ MRR 0.3851 → 0.3784, with Recall@1 (0.2900) and Recall@5 (0.4700) unchanged.
 The refreshed artifact is `locomo_20260807_judged.json`; the superseded one
 stays committed as `locomo_20260806_judged.json`.
 
-The five extraction-arm artifacts below (`locomo_latest_ext-*_judged.json`)
-were **not** re-run and still carry pre-correction scoring in their retrieval
-blocks. Their judged-accuracy column, which is the finding, is the quantity the
-re-run above just demonstrated is invariant to the correction, and every arm ran
-on the identical corpus and sample, so the ordering between them is unaffected.
+The four extraction-arm artifacts below (`locomo_latest_ext-*_judged.json`;
+the results table's first row, raw-ingestion, is the baseline rather than an
+extraction arm) were **not** re-run and still carry pre-correction scoring in
+their retrieval blocks. Their judged-accuracy column, which is the finding, is
+the quantity the re-run above just demonstrated is invariant to the correction,
+and every arm ran on the identical corpus and sample, so the ordering between
+them is unaffected.
 
 !!! warning "This is not tabulated against vendor leaderboard accuracies"
     Public LoCoMo judged-accuracy claims are not comparable to this number, and
