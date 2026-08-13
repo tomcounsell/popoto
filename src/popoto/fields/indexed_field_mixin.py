@@ -76,8 +76,10 @@ _SENTINEL = object()
 #             Namespaced under "$IdxPtr:" — see _pointer_side_key (#540).
 #   KEYS[4] = pre-#540 pointer side key ({model_hash_key}\x00idxptr\x00{field}),
 #             read-only migration fallback for records written by 1.8.1/1.8.2.
-#             DEL'd once its value has been adopted, so records self-heal off
-#             the colliding key space on next write.
+#             DEL'd unconditionally on every save (not just when its value is
+#             adopted), so records self-heal off the colliding key space even
+#             if an old 1.8.1/1.8.2 node re-writes it after a new node has
+#             already migrated the record onto the KEYS[3] namespaced pointer.
 #
 #   ARGV[1] = field name (hash field name, for reading/writing field value in hash)
 #   ARGV[2] = member key (the record's redis_key — the member stored in the Set)
@@ -98,9 +100,10 @@ _SENTINEL = object()
 # Logic:
 #   1. Read the pointer from the side key (KEYS[3]). If absent, fall back to
 #      the pre-#540 side key (KEYS[4]) and then to the legacy in-hash pointer
-#      field (ARGV[6]) for records written by the pre-#476 code path, removing
-#      each stale carrier (DEL / HDEL) once adopted so it never surfaces to a
-#      key glob or a hash decoder again.
+#      field (ARGV[6]) for records written by the pre-#476 code path. KEYS[4]
+#      is DEL'd unconditionally (whether or not it had a value to adopt) so it
+#      never surfaces to a key glob again, even under interleaving with an old
+#      node; the legacy in-hash field (ARGV[6]) is HDEL'd only when adopted.
 #   2. Idempotent re-save: if pointer already points to the new Set AND member
 #      is already in it, just re-write the field bytes and return 1.
 #   3. Uniqueness check (if ARGV[4]=="1"): scan the new Set for any member
@@ -137,8 +140,12 @@ if not old_set or old_set == false then
   if prev_ptr and prev_ptr ~= false then
     old_set = prev_ptr
   end
-  redis.call('DEL', old_ptr_key)
 end
+-- Unconditional: reclaim the colliding legacy key even when the namespaced
+-- ptr_key already exists (e.g. an old 1.8.1/1.8.2 node wrote old_ptr_key
+-- again after a new node had already migrated to ptr_key). Otherwise the
+-- legacy key survives inside the model key glob for the life of the record.
+redis.call('DEL', old_ptr_key)
 if not old_set or old_set == false then
   -- Migration fallback 2: pre-#476 records may still carry the pointer as a
   -- polluting field inside the model hash. Read it once, then scrub it.

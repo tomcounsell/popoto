@@ -273,6 +273,75 @@ def test_scan_survives_listfield_companion_key_in_model_glob():
     assert found[0].name == "listcompanion"
 
 
+def test_legacy_index_pointer_reclaimed_when_namespaced_pointer_already_exists():
+    """PR #547 review round 5 tech-debt: coexistence interleaving.
+
+    ``INDEX_SWAP_LUA`` only adopted-and-deleted the pre-#540 legacy pointer
+    key (KEYS[4]) inside the ``if not old_set`` branch, i.e. only when the
+    namespaced ``$IdxPtr:`` key (KEYS[3]) was itself absent. That leaves a
+    gap: a new node writes ``$IdxPtr:`` first (this save), then an old
+    1.8.1/1.8.2 node writes the legacy colliding key again (its save uses
+    the pre-#540 scheme exclusively). On the *next* new-node save, ``GET
+    ptr_key`` succeeds, so the legacy-key ``DEL`` was skipped entirely and
+    the colliding key survived inside the model glob for the life of the
+    record -- contradicting the PR's "records self-heal on next write"
+    claim for this interleaving. The fix makes the ``DEL`` unconditional.
+    """
+    s = Sess540(project_key="p540coexist", status="pending")
+    s.save()
+
+    model_key = s.db_key.redis_key
+    new_ptr = IndexedFieldMixin._pointer_side_key(model_key, "status")
+    old_ptr = IndexedFieldMixin._pre_540_pointer_side_key(model_key, "status")
+
+    # $IdxPtr: already exists (from the save above). Now simulate an old
+    # 1.8.1/1.8.2 node writing the legacy colliding key too, so both
+    # carriers coexist -- this is the interleaving the DEL must reclaim.
+    assert POPOTO_REDIS_DB.exists(new_ptr) == 1
+    POPOTO_REDIS_DB.set(old_ptr, POPOTO_REDIS_DB.get(new_ptr))
+    assert POPOTO_REDIS_DB.exists(old_ptr) == 1
+
+    # A subsequent save via the public API must reclaim the legacy key even
+    # though $IdxPtr: was never missing.
+    s.status = "running"
+    s.save()
+
+    assert POPOTO_REDIS_DB.exists(old_ptr) == 0, (
+        "legacy pre-#540 pointer key survived a save that coexisted with an "
+        "already-present $IdxPtr: key"
+    )
+    assert [o.id for o in Sess540.query.filter(status="running")] == [s.id]
+
+
+def test_legacy_tag_pointer_reclaimed_when_namespaced_pointer_already_exists():
+    """Control: TAG_SWAP_LUA already DELs old_ptr_key unconditionally.
+
+    Mirrors the index-pointer coexistence test above for TagField, which
+    never had the asymmetry -- confirms the control behaves correctly both
+    before and after the INDEX_SWAP_LUA fix.
+    """
+    t = Tagged540(project_key="p540tagcoexist", labels=["alpha"])
+    t.save()
+
+    model_key = t.db_key.redis_key
+    new_ptr = TagFieldMixin._tag_pointer_side_key(model_key, "labels")
+    old_ptr = TagFieldMixin._pre_540_tag_pointer_side_key(model_key, "labels")
+
+    assert POPOTO_REDIS_DB.exists(new_ptr) == 1
+    old_members = POPOTO_REDIS_DB.smembers(new_ptr)
+    POPOTO_REDIS_DB.sadd(old_ptr, *old_members)
+    assert POPOTO_REDIS_DB.exists(old_ptr) == 1
+
+    t.labels = ["beta"]
+    t.save()
+
+    assert POPOTO_REDIS_DB.exists(old_ptr) == 0, (
+        "legacy pre-#540 tag pointer key survived a save that coexisted "
+        "with an already-present $TagPtr: key"
+    )
+    assert [o.id for o in Tagged540.query.filter(labels__contains="beta")] == [t.id]
+
+
 def test_scan_keeps_hash_key_containing_nul_byte():
     """PR #547 review round 3, Blocker 2.
 
