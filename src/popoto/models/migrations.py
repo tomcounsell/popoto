@@ -1116,12 +1116,19 @@ hash key, and runs one ``rebuild_indexes()`` at the end.
 A model with no ``KeyField(type=datetime)`` needs none of this: the audit
 reports "not applicable" and the kill switch is irrelevant.
 
-**Two things this does not do.** It does not rewrite ``Relationship`` values on
-other models that point at a renamed key -- it refuses to run when any exist,
-and ``allow_inbound_relationships=True`` acknowledges rather than repairs them,
-because a Relationship value is indistinguishable from an ordinary string
-field's content and a blind rewrite could corrupt unrelated data. And it never
-resolves a duplicate pair; that is recipe 20.
+**Three things this does not do.** It does not rewrite ``Relationship`` values
+on other models that point at a renamed key -- it refuses to run when any
+exist, and ``allow_inbound_relationships=True`` acknowledges rather than
+repairs them, because a Relationship value is indistinguishable from an
+ordinary string field's content and a blind rewrite could corrupt unrelated
+data. It does not move a ``BM25Field``, ``EmbeddingField``,
+``ConfidenceField``, ``CoOccurrenceField``, or ``ContentField``'s per-instance
+data either -- each keys its own Redis structures (or, for ``EmbeddingField``,
+filesystem paths) off the instance's redis_key through a path this migration
+does not know how to rename, so it refuses to run when the model declares any
+of them, and ``allow_orphaned_per_instance_fields=True`` acknowledges rather
+than repairs that too. And it never resolves a duplicate pair; that is
+recipe 20.
 
 Note that ``rebuild_indexes()`` alone does **not** repair any of this. It
 rebuilds indexes from the hashes that exist, and for a row whose stored key
@@ -1236,11 +1243,14 @@ API Reference
     canonical key, and duplicate pairs from before 1.9.0, with a
     per-field diff of both hashes. ``print()`` it. See recipe 19.
 
-``Model.migrate_datetime_keys(dry_run=True, allow_inbound_relationships=False)``
+``Model.migrate_datetime_keys(dry_run=True, allow_inbound_relationships=False, allow_orphaned_per_instance_fields=False)``
     Move datetime-keyed rows onto their canonical key. Dry run by
     default. Idempotent and resumable. Refuses the whole run on a
-    duplicate pair or an inbound ``Relationship`` reference. See
-    recipes 19 and 20.
+    duplicate pair, an inbound ``Relationship`` reference, or a
+    ``BM25Field``/``EmbeddingField``/``ConfidenceField``/
+    ``CoOccurrenceField``/``ContentField`` declared on the model (its
+    per-instance data is keyed off the instance's redis_key and would be
+    orphaned by a rename). See recipes 19 and 20.
 
 ``await Model.async_rebuild_indexes(batch_size=1000)``
     Async wrapper using ``asyncio.to_thread(Model.rebuild_indexes)``.

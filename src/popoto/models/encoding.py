@@ -48,6 +48,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 import msgpack
 from ..exceptions import ModelException
+from ..fields.constants import Defaults
 from ..redis_db import ENCODING
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard
@@ -112,6 +113,17 @@ def _decode_datetime(obj: dict[str, Any]) -> datetime.datetime:
     this change; what changes is that it now *compares* as the instant it was
     always scored as.
 
+    This is gated on `Defaults.DATETIME_KEY_LEGACY`, read here at call time --
+    the same way `canonical_key_str` reads it, so the switch is not a trap that
+    only works if set before import. With the switch **on**, this returns the
+    naive value unchanged (1.8.2 behavior): `canonical_key_str` also falls back
+    to `str(value)` for a naive value, so decode and key derivation agree and a
+    legacy row re-saves onto its original 1.8.2 key, not a third one. With the
+    switch **off** (the default), the aware-UTC assumption below applies, and
+    it is safe for the reason `canonical_key_str` renders the *instant* rather
+    than the representation, so a legacy value and the same value stamped UTC
+    key identically either way.
+
     This assumption was written once before (commit `0342550`) and reverted,
     and the reason it is safe now is worth stating precisely. `datetime` is a
     valid `KeyField` type, and `DB_key` used to build both the hash key and the
@@ -138,6 +150,12 @@ def _decode_datetime(obj: dict[str, Any]) -> datetime.datetime:
     as_encodable = obj["as_encodable"]
     if _LEGACY_DATETIME_RE.match(as_encodable):
         legacy = datetime.datetime.strptime(as_encodable, _LEGACY_DATETIME_FORMAT)
+        if Defaults.DATETIME_KEY_LEGACY:
+            # Kill switch on: reproduce 1.8.2 exactly. Stamping UTC here while
+            # canonical_key_str falls back to str(value) for the switch would
+            # decode this row aware and re-key it onto neither its 1.8.2 key
+            # nor the canonical one -- a third key.
+            return legacy
         return legacy.replace(tzinfo=datetime.timezone.utc)
     # Not the legacy shape: parse as isoformat and let a genuinely malformed
     # value raise rather than be coerced into a plausible datetime.

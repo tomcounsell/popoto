@@ -488,6 +488,85 @@ def test_inbound_relationships_can_be_acknowledged_explicitly():
         POPOTO_REDIS_DB.delete(key)
 
 
+# --- per-instance field data (third-review finding) -------------------------
+#
+# BM25Field, EmbeddingField, ConfidenceField, CoOccurrenceField, and
+# ContentField are plain Field subclasses declared on the model *being*
+# migrated (not on some other model, the way Relationship is). Each keys its
+# own per-instance Redis structures -- or, for EmbeddingField, filesystem
+# paths -- off the instance's redis_key through a path `_side_keys` does not
+# cover, so a rename would silently orphan them. This refuses exactly the way
+# an inbound Relationship reference does: reported, not moved, with an
+# explicit opt-in to proceed anyway.
+
+
+class Instrument(popoto.Model):
+    at = popoto.KeyField(type=datetime.datetime)
+    confidence = popoto.ConfidenceField(null=True)
+
+
+@pytest.fixture(autouse=True)
+def _clean_instrument_keyspace():
+    for key in POPOTO_REDIS_DB.keys("*Instrument*"):
+        POPOTO_REDIS_DB.delete(key)
+    yield
+    for key in POPOTO_REDIS_DB.keys("*Instrument*"):
+        POPOTO_REDIS_DB.delete(key)
+
+
+def _write_instrument_at_legacy_key(value):
+    legacy_key = f"Instrument:{DB_key.clean(str(value))}"
+    instance = Instrument(at=value)
+    POPOTO_REDIS_DB.hset(legacy_key, mapping=encode_popoto_model_obj(instance))
+    POPOTO_REDIS_DB.sadd(Instrument._meta.db_class_set_key.redis_key, legacy_key)
+    return legacy_key
+
+
+def test_audit_reports_a_per_instance_field_risk():
+    _write_instrument_at_legacy_key(INSTANT_NAIVE)
+
+    audit = Instrument.audit_datetime_keys()
+
+    field_names = {risk.field_name for risk in audit.per_instance_field_risks}
+    assert field_names == {"confidence"}
+    assert "PER-INSTANCE FIELD RISK" in str(audit)
+    assert "confidence" in str(audit)
+
+
+def test_migration_refuses_when_a_per_instance_field_is_declared():
+    old_key = _write_instrument_at_legacy_key(INSTANT_NAIVE)
+
+    report = Instrument.migrate_datetime_keys(dry_run=False)
+
+    assert report.refused
+    assert "per-instance data" in report.refusal_reason
+    assert "confidence" in report.refusal_reason
+    assert POPOTO_REDIS_DB.exists(old_key)
+
+
+def test_per_instance_field_risk_can_be_acknowledged_explicitly():
+    old_key = _write_instrument_at_legacy_key(INSTANT_NAIVE)
+    new_key = "Instrument:" + DB_key.clean(CANONICAL_VALUE)
+
+    report = Instrument.migrate_datetime_keys(
+        dry_run=False, allow_orphaned_per_instance_fields=True
+    )
+
+    assert not report.refused
+    assert report.moved_count == 1
+    assert not POPOTO_REDIS_DB.exists(old_key)
+    assert POPOTO_REDIS_DB.exists(new_key)
+
+
+def test_a_model_with_no_per_instance_fields_reports_no_risk():
+    """Sanity: the check does not false-positive on Reading, which has none."""
+    _write_row_at_legacy_key(INSTANT_NAIVE, "legacy")
+
+    audit = Reading.audit_datetime_keys()
+
+    assert audit.per_instance_field_risks == []
+
+
 # --- rebuild_indexes divergence guard ---------------------------------------
 
 

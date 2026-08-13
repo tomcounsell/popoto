@@ -2942,14 +2942,21 @@ class Model(metaclass=ModelBase):
 
     @classmethod
     def migrate_datetime_keys(
-        cls, dry_run: bool = True, allow_inbound_relationships: bool = False
+        cls,
+        dry_run: bool = True,
+        allow_inbound_relationships: bool = False,
+        allow_orphaned_per_instance_fields: bool = False,
     ):
         """Move datetime-keyed rows onto their canonical key. Dry run by default.
 
         Refuses to run at all when :meth:`audit_datetime_keys` reports a
         duplicate pair: the copies can have diverged, so which one survives is
-        the operator's call, not the library's. See migration cookbook recipes
-        19 and 20.
+        the operator's call, not the library's. Also refuses when the model
+        declares a ``BM25Field``, ``EmbeddingField``, ``ConfidenceField``,
+        ``CoOccurrenceField``, or ``ContentField`` -- their per-instance data
+        is keyed by the instance's redis_key through a path this migration
+        does not rename, so a rename would silently orphan it. See migration
+        cookbook recipes 19 and 20.
 
         Returns:
             A ``DatetimeKeyMigrationReport``.
@@ -2964,6 +2971,7 @@ class Model(metaclass=ModelBase):
             cls,
             dry_run=dry_run,
             allow_inbound_relationships=allow_inbound_relationships,
+            allow_orphaned_per_instance_fields=allow_orphaned_per_instance_fields,
         )
 
     # Index rebuild operations

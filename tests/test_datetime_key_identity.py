@@ -189,6 +189,94 @@ def test_kill_switch_restores_the_pre_1_9_0_duplication_semantics(legacy_key_byt
     assert len(keys) == 3
 
 
+# --- the kill switch, DECODED path (third-review finding) -------------------
+#
+# The tests above only ever construct datetimes in memory. They pass even if
+# the *decode* of an already-stored legacy value ignores the kill switch --
+# which is exactly what happened for three review rounds. `_decode_datetime`
+# in `encoding.py` has its own legacy-as-UTC branch (#537), gated separately
+# from `canonical_key_str`'s `str(value)` fallback. If the two gates disagree,
+# the switch is a trap: with it "on", a legacy row decodes aware-UTC anyway,
+# and `str(aware_utc_value)` is neither the 1.8.2 key nor the canonical key --
+# a third key, on every legacy row's first re-save.
+
+
+def _write_legacy_encoded_row(naive_value, note):
+    """Write a Meeting row using the actual pre-#521 on-disk *value* shape.
+
+    Before #521, a datetime field's msgpack payload carried
+    `_LEGACY_DATETIME_FORMAT` (`%Y%m%dT%H:%M:%S.%f`), not `isoformat()`, so
+    the offset was always dropped and decode was always naive. The row lived
+    under `str(naive_value)` -- 1.8.2's `KeyField` rendering -- which is what
+    `legacy_key` reproduces here.
+    """
+    import msgpack
+
+    legacy_key = f"Meeting:{DB_key.clean(str(naive_value))}"
+    at_encoded = msgpack.packb(
+        {
+            "__datetime__": True,
+            "as_encodable": naive_value.strftime("%Y%m%dT%H:%M:%S.%f"),
+        }
+    )
+    note_encoded = msgpack.packb(note)
+    POPOTO_REDIS_DB.hset(legacy_key, mapping={b"at": at_encoded, b"note": note_encoded})
+    POPOTO_REDIS_DB.sadd(Meeting._meta.db_class_set_key.redis_key, legacy_key)
+    return legacy_key
+
+
+def test_kill_switch_on_legacy_decode_resaves_onto_the_1_8_2_key(legacy_key_bytes):
+    """The blocker this test file was missing: the *decode*, not just the value.
+
+    With the switch on, a legacy-encoded value must decode naive -- 1.8.2's
+    behavior -- so `canonical_key_str` (which falls back to `str(value)` under
+    the switch) derives the exact same key the row is already stored under.
+    Load, then re-save, and assert the key never moved: not to the canonical
+    key, and not to some third `...+00:00` key either.
+    """
+    naive_value = INSTANT_NAIVE
+    old_key = _write_legacy_encoded_row(naive_value, "legacy value")
+
+    loaded = DB_key.from_redis_key(old_key).get_instance(Meeting)
+    assert loaded is not None
+    assert loaded.at.tzinfo is None, "kill switch must reproduce 1.8.2's naive decode"
+    assert loaded.at == naive_value
+
+    loaded.note = "resaved under the kill switch"
+    loaded.save()
+
+    stored_keys = [k.decode("utf-8") for k in POPOTO_REDIS_DB.keys("Meeting:*")]
+    assert stored_keys == [old_key], (
+        "a legacy row resaved with the kill switch on must land back on its "
+        "1.8.2 key, not a third key"
+    )
+
+
+def test_kill_switch_off_legacy_decode_resaves_onto_the_canonical_key():
+    """Inverse of the above: switch off is the default (#537's shipped behavior).
+
+    A legacy-encoded value decodes aware-UTC and a re-save must land on the
+    canonical key -- the contract `test_reload_and_resave_does_not_duplicate`
+    pins for in-memory values, now pinned for a value that was actually
+    decoded off disk in the legacy shape.
+    """
+    naive_value = INSTANT_NAIVE
+    old_key = _write_legacy_encoded_row(naive_value, "legacy value")
+
+    loaded = DB_key.from_redis_key(old_key).get_instance(Meeting)
+    assert loaded is not None
+    assert loaded.at.tzinfo == UTC, "switch off must apply the legacy-as-UTC assumption"
+
+    loaded.note = "resaved onto canonical"
+    loaded.save()
+
+    stored_keys = [k.decode("utf-8") for k in POPOTO_REDIS_DB.keys("Meeting:*")]
+    canonical_key = "Meeting:" + DB_key.clean(
+        canonical_key_str(naive_value.replace(tzinfo=UTC))
+    )
+    assert stored_keys == [canonical_key]
+
+
 # --- identity through DB_key and through Redis ------------------------------
 
 

@@ -170,6 +170,87 @@ class DatetimeKeyCollision:
         )
 
 
+#: Field types whose per-instance data is keyed by the *instance's* redis_key
+#: through a path this module's ``_side_keys`` does not cover -- unlike
+#: ``IndexedFieldMixin`` pointers and capped ``ListField`` list keys, which
+#: are derivable from the model's declared fields and are renamed alongside
+#: the hash. Renaming the hash without also moving these leaves them pointing
+#: at a key that no longer holds the row, with no detection and no
+#: disclosure: e.g. ``ConfidenceField`` keys a ``:data`` hash off
+#: ``base_key.redis_key``, ``EmbeddingField`` derives its ``.npy`` path from a
+#: hash of ``redis_key``, and ``BM25Field``/``CoOccurrenceField``/
+#: ``ContentField`` all store or index data the same way. Imported lazily and
+#: each entry optional, because some of these are gated behind extras
+#: (``EmbeddingField`` needs numpy) and may not be importable.
+def _per_instance_field_types() -> "tuple[type, ...]":
+    resolved: "list[type]" = []
+    try:
+        from ..fields.bm25_field import BM25Field
+
+        resolved.append(BM25Field)
+    except ImportError:  # pragma: no cover - always installed today
+        pass
+    try:
+        from ..fields.confidence_field import ConfidenceField
+
+        resolved.append(ConfidenceField)
+    except ImportError:  # pragma: no cover - always installed today
+        pass
+    try:
+        from ..fields.co_occurrence_field import CoOccurrenceField
+
+        resolved.append(CoOccurrenceField)
+    except ImportError:  # pragma: no cover - always installed today
+        pass
+    try:
+        from ..fields.content_field import ContentField
+
+        resolved.append(ContentField)
+    except ImportError:  # pragma: no cover - always installed today
+        pass
+    try:
+        from ..fields.embedding_field import EmbeddingField
+
+        resolved.append(EmbeddingField)
+    except ImportError:  # pragma: no cover - optional extra not installed
+        pass
+    return tuple(resolved)
+
+
+class PerInstanceFieldRisk:
+    """A field on the model being migrated whose per-instance data a rename orphans.
+
+    Declaration is the signal, not stored usage: unlike an inbound
+    ``Relationship`` (declared on some *other* model and only a problem when a
+    row actually points here), one of these field types on the model *being
+    migrated* creates its per-instance structure the first time any row sets
+    it, so waiting for evidence of use would still miss every row that has not
+    written one yet. Reported, never rewritten -- same posture as
+    :class:`InboundRelationship`.
+    """
+
+    __slots__ = ("field_name", "field_type_name")
+
+    def __init__(self, field_name: str, field_type_name: str) -> None:
+        self.field_name = field_name
+        self.field_type_name = field_type_name
+
+    def __repr__(self) -> str:
+        return f"<PerInstanceFieldRisk {self.field_name} ({self.field_type_name})>"
+
+
+def _find_per_instance_field_risks(model_class) -> "list[PerInstanceFieldRisk]":
+    """Fields declared on *model_class* whose per-instance data a rename would orphan."""
+    risky_types = _per_instance_field_types()
+    if not risky_types:
+        return []
+    return [
+        PerInstanceFieldRisk(field_name, type(field).__name__)
+        for field_name, field in model_class._meta.fields.items()
+        if isinstance(field, risky_types)
+    ]
+
+
 class InboundRelationship:
     """A ``Relationship`` field on another model pointing at the model migrated.
 
@@ -204,6 +285,7 @@ class DatetimeKeyAudit:
         rows: "list[DatetimeKeyRow] | None" = None,
         collisions: "list[DatetimeKeyCollision] | None" = None,
         inbound_relationships: "list[InboundRelationship] | None" = None,
+        per_instance_field_risks: "list[PerInstanceFieldRisk] | None" = None,
         applicable: bool = True,
     ) -> None:
         self.model_name = model_name
@@ -211,6 +293,7 @@ class DatetimeKeyAudit:
         self.rows = rows or []
         self.collisions = collisions or []
         self.inbound_relationships = inbound_relationships or []
+        self.per_instance_field_risks = per_instance_field_risks or []
         #: False when the model has no datetime KeyField at all -- a clean
         #: "nothing to do here", not an error.
         self.applicable = applicable
@@ -292,6 +375,13 @@ class DatetimeKeyAudit:
                     f"    {inbound.model_name}.{inbound.field_name}: "
                     f"{inbound.reference_count} reference(s)"
                 )
+        if self.per_instance_field_risks:
+            lines.append("")
+            lines.append(
+                "  PER-INSTANCE FIELD RISK (renaming orphans this field's data):"
+            )
+            for risk in self.per_instance_field_risks:
+                lines.append(f"    {risk.field_name}: {risk.field_type_name}")
         if self.unparsable_rows:
             lines.append("")
             lines.append("  UNPARSABLE (left untouched):")
@@ -511,8 +601,16 @@ def audit_datetime_keys(model_class) -> DatetimeKeyAudit:
         )
 
     inbound = _find_inbound_relationships(model_class) if rows else []
+    per_instance_field_risks = _find_per_instance_field_risks(model_class)
 
-    return DatetimeKeyAudit(model_name, field_name, rows, collisions, inbound)
+    return DatetimeKeyAudit(
+        model_name,
+        field_name,
+        rows,
+        collisions,
+        inbound,
+        per_instance_field_risks,
+    )
 
 
 def _side_keys(model_class, redis_key: str) -> "list[str]":
@@ -538,6 +636,7 @@ def migrate_datetime_keys(
     model_class,
     dry_run: bool = True,
     allow_inbound_relationships: bool = False,
+    allow_orphaned_per_instance_fields: bool = False,
 ) -> DatetimeKeyMigrationReport:
     """Move datetime-keyed rows onto their canonical key. Dry run by default.
 
@@ -558,6 +657,15 @@ def migrate_datetime_keys(
             values on other models that point at the old key, and this refuses
             to run when any exist. Pass True to acknowledge and proceed --
             the inbound references still are not rewritten, so repairing them
+            is yours.
+        allow_orphaned_per_instance_fields: A ``BM25Field``, ``EmbeddingField``,
+            ``ConfidenceField``, ``CoOccurrenceField``, or ``ContentField`` on
+            *this* model keys its own per-instance data off the instance's
+            redis_key through a path this migration does not know how to
+            rename, and this refuses to run when the model declares any of
+            them. Pass True to acknowledge and proceed -- that field's data is
+            not moved and is left keyed by the old redis_key, so repairing it
+            (or confirming it does not need repair for your storage backend)
             is yours.
 
     Returns:
@@ -588,6 +696,21 @@ def migrate_datetime_keys(
             f"Relationship references to {audit.model_name}. Renaming a hash "
             f"breaks them and they are not rewritten automatically. Re-run with "
             f"allow_inbound_relationships=True to proceed anyway."
+        )
+        return report
+
+    if audit.per_instance_field_risks and not allow_orphaned_per_instance_fields:
+        field_list = ", ".join(
+            f"{risk.field_name} ({risk.field_type_name})"
+            for risk in audit.per_instance_field_risks
+        )
+        report.refused = True
+        report.refusal_reason = (
+            f"{audit.model_name} declares {len(audit.per_instance_field_risks)} "
+            f"field(s) whose per-instance data is keyed by the instance's "
+            f"redis_key and would be orphaned by a rename: {field_list}. "
+            f"Re-run with allow_orphaned_per_instance_fields=True to proceed "
+            f"anyway -- that field's data is not moved."
         )
         return report
 
