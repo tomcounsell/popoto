@@ -86,8 +86,12 @@ Example::
 
 import logging
 import uuid
+from typing import TYPE_CHECKING
 
 import redis
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle guard
+    from ..models.base import Model
 
 logger = logging.getLogger("POPOTO.field")
 

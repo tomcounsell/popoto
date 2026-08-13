@@ -89,6 +89,8 @@ class AbstractContentStore(ABC):
         ...
 
 
-from .filesystem import FilesystemStore
+# Imported last on purpose: filesystem.py imports AbstractContentStore from this
+# module, so the import has to follow the class definition above.
+from .filesystem import FilesystemStore  # noqa: E402
 
 __all__ = ["AbstractContentStore", "FilesystemStore"]

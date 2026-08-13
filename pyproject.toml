@@ -133,3 +133,22 @@ line-length = 88
 target-version = ['py310']
 include = '\.pyi?$'
 exclude = ''
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+src = ["src"]
+
+[tool.ruff.lint]
+# black owns formatting, so the pycodestyle rules it already enforces are left
+# out: E1 (indentation), E2 (whitespace), E3 (blank lines) and E501 (line
+# length, which black cannot fix inside strings/comments). What remains is the
+# correctness-oriented default set.
+#   E4 - import placement (E402)
+#   E7 - statement-level bugs (E711/E712/E721 ...)
+#   E9 - syntax/IO errors
+#   F  - pyflakes (undefined names, unused imports/variables)
+select = ["E4", "E7", "E9", "F"]
+# "I" (isort) is intentionally not selected: import order is owned by isort
+# (line_length 79 in [tool.isort]) and enabling it here would rewrite import
+# blocks across the package.

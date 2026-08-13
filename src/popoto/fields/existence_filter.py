@@ -68,7 +68,6 @@ import math
 
 import redis
 
-from ..models.db_key import DB_key
 from ..redis_db import POPOTO_REDIS_DB
 from .field import Field
 

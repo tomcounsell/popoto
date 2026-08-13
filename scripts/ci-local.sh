@@ -7,26 +7,30 @@
 #
 #   Gate      Mirrors workflow        What it runs
 #   ----      ----------------        ------------
-#   tests     test-valkey.yml         full pytest suite against local Redis
-#   stress    stress-tests.yml        pytest tests/test_stress.py (+durations)
+#   lint      lint.yml                ruff check src/
+#   tests     tests.yml               full pytest suite against local Redis
+#   stress    (local only)            pytest tests/test_stress.py (+durations)
 #   docs      deploy-docs.yml         mkdocs build --strict (the deploy gate)
 #   build     release.yml             python -m build (sdist + wheel sanity)
 #   lock      lock-check.yml          uv lock --check (lock matches pyproject)
 #   guard     guard-main-push.yml     warns if a main push isn't docs-only
 #
-# Valkey is intentionally skipped: redis-py talks to Redis and Valkey
-# identically, and the project rule is "never use Redis modules", so the
-# suite against local Redis covers the same ground. GitHub still runs the
-# real Valkey job on PR/merge as the final word.
+# Valkey is skipped locally: redis-py talks to Redis and Valkey identically,
+# and the project rule is "never use Redis modules", so the suite against
+# local Redis covers the same ground. tests.yml runs a real Valkey job on
+# every PR as the final word (#544).
+#
+# The stress suite has no workflow: tests.yml runs `-m "not slow"`, so stress
+# is a local-only gate.
 #
 # Usage:
-#   scripts/ci-local.sh              # default gates: tests + stress + docs
+#   scripts/ci-local.sh              # default gates: lint + tests + stress + docs
 #   scripts/ci-local.sh --all        # everything, incl. build + lock + guard
-#   scripts/ci-local.sh --fast       # tests only (skip stress + docs)
+#   scripts/ci-local.sh --fast       # tests only (skip lint + stress + docs)
 #   scripts/ci-local.sh tests docs   # run only the named gates
 #
 # Flags:
-#   --all     run every gate (tests stress docs build lock guard)
+#   --all     run every gate (lint tests stress docs build lock guard)
 #   --fast    run only the test suite
 #   -h|--help show this help
 
@@ -37,6 +41,7 @@ ROOT="$(pwd)"
 PY="${ROOT}/.venv/bin/python"
 PYTEST="${ROOT}/.venv/bin/pytest"
 MKDOCS="${ROOT}/.venv/bin/mkdocs"
+RUFF="${ROOT}/.venv/bin/ruff"
 REDIS_URL="${REDIS_URL:-redis://localhost:6379}"
 export REDIS_URL
 
@@ -60,15 +65,15 @@ esac
 FAST=0
 for arg in "$@"; do
   case "$arg" in
-    --all)  GATES=(tests stress docs build lock guard) ;;
+    --all)  GATES=(lint tests stress docs build lock guard) ;;
     --fast) GATES=(tests); FAST=1 ;;
-    tests|stress|docs|build|lock|guard) GATES+=("$arg") ;;
+    lint|tests|stress|docs|build|lock|guard) GATES+=("$arg") ;;
     *) fail "unknown argument: $arg"; exit 2 ;;
   esac
 done
 # Default gate set when nothing specified.
 if [ "${#GATES[@]}" -eq 0 ]; then
-  GATES=(tests stress docs)
+  GATES=(lint tests stress docs)
 fi
 
 # --- preflight ---------------------------------------------------------------
@@ -205,6 +210,17 @@ run_gate() {
 }
 
 # --- gate implementations ----------------------------------------------------
+gate_lint() {
+  # Rule selection lives in [tool.ruff.lint] in pyproject.toml so this and
+  # lint.yml cannot drift. Ruff's own version can still drift: CI pins one,
+  # so say which version produced the local verdict.
+  if [ ! -x "$RUFF" ]; then
+    warn "ruff not in .venv — run: pip install -e '.[dev]'"
+    return 0
+  fi
+  printf 'using %s\n' "$("$RUFF" --version)"
+  "$RUFF" check src/
+}
 gate_tests() {
   # --fast deselects `slow`, which is what keeps the read-hook latency
   # measurement (tests/test_integrations_latency.py, 25 subprocess spawns)
@@ -285,6 +301,7 @@ gate_guard() {
 printf '%sLocal CI%s  ·  gates: %s  ·  %s\n' "$B" "$X" "${GATES[*]}" "$REDIS_URL"
 for g in "${GATES[@]}"; do
   case "$g" in
+    lint)   run_gate lint   gate_lint   ;;
     tests)  run_gate tests  gate_tests  ;;
     stress) run_gate stress gate_stress ;;
     docs)   run_gate docs   gate_docs   ;;

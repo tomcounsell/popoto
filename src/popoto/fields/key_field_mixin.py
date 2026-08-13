@@ -56,15 +56,18 @@ See Also
 
 from decimal import Decimal
 from datetime import date, datetime, time
+from typing import TYPE_CHECKING
 import redis.client
 import logging
 from ..models.db_key import DB_key
-
-logger = logging.getLogger("POPOTO.KeyFieldMixin")
-
 from ..exceptions import ModelException
 from ..models.query import QueryException
 from ..redis_db import POPOTO_REDIS_DB, scan_keys
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle guard
+    from ..models.base import Model
+
+logger = logging.getLogger("POPOTO.KeyFieldMixin")
 
 # Key fields must be serializable to strings for Redis key construction.
 # Complex types like dict, list, and set are excluded because they don't
