@@ -210,15 +210,27 @@ class TestLoCoMoParityRegression:
         assert out["recall_at_10"] == pytest.approx(0.5877, abs=1e-4)
         assert out["mrr"] == pytest.approx(0.3875, abs=1e-4)
 
-    def test_hybrid_parity_slice_is_1540_qa(self):
-        """Hybrid parity numbers — still pre-#514 scoring, re-run pending."""
+    def test_hybrid_parity_slice_is_a_labelled_sample(self):
+        """Hybrid parity numbers, gold-blind scoring on a 250-question sample.
+
+        ``locomo_latest_hybrid`` is NOT a full-1986 run. A full hybrid pass
+        re-embeds ~1.19M records and measured ~5.2 h on the reference machine,
+        so #530 re-ran it as a 250-question stratified sample (seed 0) under
+        gold-blind scoring rather than leaving the pre-#514 full run standing.
+        The parity slice is therefore 194 questions, not 1540; asserting the
+        sampled n is deliberate, so a later full re-run trips this test instead
+        of silently swapping a sample for a full run (or vice versa).
+
+        Re-pinned from 0.1552 / 0.4065 / 0.5181 / 0.2686 (``locomo_20260708``
+        = full 1986, pre-#514 scoring, unweighted RRF).
+        """
         out = self._slice("locomo_latest_hybrid.json")
         assert out["excluded"] == ["5"]
-        assert out["n"] == 1540
-        assert out["recall_at_1"] == pytest.approx(0.1552, abs=1e-4)
-        assert out["recall_at_5"] == pytest.approx(0.4065, abs=1e-4)
-        assert out["recall_at_10"] == pytest.approx(0.5181, abs=1e-4)
-        assert out["mrr"] == pytest.approx(0.2686, abs=1e-4)
+        assert out["n"] == 194  # 250 sampled − 56 cat-5
+        assert out["recall_at_1"] == pytest.approx(0.3041, abs=1e-4)
+        assert out["recall_at_5"] == pytest.approx(0.4846, abs=1e-4)
+        assert out["recall_at_10"] == pytest.approx(0.5619, abs=1e-4)
+        assert out["mrr"] == pytest.approx(0.3836, abs=1e-4)
 
 
 # ---------------------------------------------------------------------------

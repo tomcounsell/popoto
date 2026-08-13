@@ -26,6 +26,8 @@ run a real ingest + retrieve cycle on the test DB like the rest of the suite.
 """
 
 import inspect
+import json
+from pathlib import Path
 
 import pytest
 
@@ -33,7 +35,11 @@ from tests.benchmarks.datasets import BenchmarkItem, ground_truth_unit
 from tests.benchmarks.datasets.locomo import iter_items as iter_locomo
 from tests.benchmarks.datasets.longmemeval_s import iter_items as iter_longmemeval
 from tests.benchmarks.metrics.retrieval import mean_reciprocal_rank, recall_at_k
-from tests.benchmarks.run_external import build_markdown_report, compute_aggregate
+from tests.benchmarks.run_external import (
+    REPO_ROOT,
+    build_markdown_report,
+    compute_aggregate,
+)
 from tests.benchmarks.scenarios.external_base import (
     ExternalScenario,
     _resolve_ranking_unit,
@@ -266,7 +272,7 @@ class TestLongMemEvalUnaffected:
     Its ground truth is session IDs, and the session ID was always candidate
     element 0, so the old rule's gold-matching branch and its
     ``candidate_ids[:1]`` fallback both emitted the same ID. The published
-    LongMemEval-S numbers (R@1 0.894 / R@5 0.986 / R@10 0.992 / MRR 0.932)
+    LongMemEval-S numbers (R@1 0.892 / R@5 0.986 / R@10 0.992 / MRR 0.931)
     therefore stand.
     """
 
@@ -327,6 +333,25 @@ class TestLongMemEvalUnaffected:
         assert result.status == "ok"
         assert result.metadata["ranking_unit"] == "session"
         assert result.retrieved_ids == ["s1"]
+
+    def test_published_numbers_match_the_latest_hybrid_run(self):
+        """Pins this docstring's claim against the committed results artifact.
+
+        Guards against the class docstring drifting from the published
+        numbers again (as it did after #530's post-correction refresh moved
+        R@1/MRR from 0.894/0.932 to 0.892/0.931 everywhere except here).
+        """
+        results_path = (
+            Path(__file__).parent
+            / "results"
+            / "external"
+            / "longmemeval_s_latest_hybrid.json"
+        )
+        summary = json.loads(results_path.read_text())["summary"]
+        assert round(summary["recall_at_1"], 3) == 0.892
+        assert round(summary["recall_at_5"], 3) == 0.986
+        assert round(summary["recall_at_10"], 3) == 0.992
+        assert round(summary["mrr"], 3) == 0.931
 
 
 class TestRankingUnitResolution:
@@ -416,3 +441,50 @@ class TestRankingUnitInReport:
         aggregate.pop("ranking_unit")
         md = build_markdown_report(aggregate)
         assert "**Ranking unit:** unrecorded (pre-#514 artifact)" in md
+
+
+class TestFixtureProvenance:
+    """``compute_aggregate``'s fixture-path and pool-size recording (#530).
+
+    Pins the mechanism added to stop a repeat of the defect repaired in
+    ``e8c0dfb``/``b6ca231``: a raw ``str(fixture)`` baked an absolute session
+    scratchpad path into a committed artifact, which was unreproducible by
+    the time anyone read it again. ``compute_aggregate`` now relativizes an
+    in-repo fixture path against ``REPO_ROOT`` and leaves an out-of-repo path
+    untouched (never fabricated), and splices ``corpus_sampled_from`` into
+    ``sampling`` only when the caller supplies one.
+    """
+
+    def test_in_repo_fixture_path_is_relativized(self):
+        """A fixture living inside the repo is recorded repo-relative."""
+        fixture_path = REPO_ROOT / "tests" / "benchmarks" / "fixtures" / "nope.json"
+        aggregate = compute_aggregate([], dataset="locomo", fixture=str(fixture_path))
+        assert aggregate["sampling"]["fixture"] == (
+            "tests/benchmarks/fixtures/nope.json"
+        )
+
+    def test_out_of_repo_fixture_path_stays_absolute(self):
+        """A fixture outside the repo is recorded as-is, not fabricated.
+
+        The honest-not-fabricated choice from ``e8c0dfb``: reformatting a
+        path that does not resolve under ``REPO_ROOT`` would either raise
+        or silently invent a repo-relative path that does not exist. Both
+        are worse than recording the absolute path unchanged.
+        """
+        outside_path = "/tmp/session-scratchpad/locomo_subset_26_30.json"
+        aggregate = compute_aggregate([], dataset="locomo", fixture=outside_path)
+        assert aggregate["sampling"]["fixture"] == outside_path
+
+    def test_corpus_sampled_from_present_when_supplied(self):
+        """``corpus_sampled_from`` is spliced into ``sampling`` when given."""
+        aggregate = compute_aggregate([], dataset="locomo", corpus_sampled_from=304)
+        assert aggregate["sampling"]["corpus_sampled_from"] == 304
+
+    def test_corpus_sampled_from_absent_when_not_supplied(self):
+        """No ``--fixture``/no explicit pool size: the key is omitted, not null.
+
+        Keeps full-corpus-run artifacts byte-identical to their pre-#530
+        shape, per the review's regression-risk check.
+        """
+        aggregate = compute_aggregate([], dataset="locomo")
+        assert "corpus_sampled_from" not in aggregate["sampling"]

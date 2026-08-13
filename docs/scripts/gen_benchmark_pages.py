@@ -136,11 +136,22 @@ SPECS: tuple[Spec, ...] = (
         note=(
             '!!! success "Headline result — like-for-like win over the reference"\n'
             "    Hybrid retrieval (BM25 + all-MiniLM-L6-v2 vector fused via Reciprocal\n"
-            "    Rank Fusion, k=60) reaches **Recall@1 0.894 / Recall@5 0.986 /\n"
-            "    Recall@10 0.992 / MRR 0.932**, beating the agentmemory BM25+Vector\n"
+            "    Rank Fusion, k=60) reaches **Recall@1 0.892 / Recall@5 0.986 /\n"
+            "    Recall@10 0.992 / MRR 0.931**, beating the agentmemory BM25+Vector\n"
             "    reference (Recall@5 0.952 / Recall@10 0.986 / MRR 0.882). Both use the\n"
             "    same retrieval-recall metric family on the same dataset, so this\n"
             "    comparison is like-for-like and real.\n"
+            "\n"
+            '!!! info "Full 500 questions, re-confirmed 2026-08-07, not a sample"\n'
+            "    This page is the complete LongMemEval-S question set, no sampling.\n"
+            "    It replaces a run that predated the\n"
+            "    [#457](https://github.com/tomcounsell/popoto/issues/457) weighted\n"
+            "    fusion change and whose only post-#457 evidence was a 100-question\n"
+            "    sample ([#530](https://github.com/tomcounsell/popoto/issues/530)).\n"
+            "    Recall@1 moved 0.894 → 0.892 (one question of 500), Recall@5 and\n"
+            "    Recall@10 are unchanged, MRR moved 0.9317 → 0.9307. LongMemEval-S was\n"
+            "    never affected by the #514 scoring correction: its ground truth is\n"
+            "    session IDs, which the old rule already emitted on both branches.\n"
         ),
     ),
     Spec(
@@ -195,21 +206,37 @@ SPECS: tuple[Spec, ...] = (
         stem="external/locomo_latest_hybrid",
         kind="external",
         note=(
-            '!!! info "Scored before the #514 correction — re-run pending"\n'
-            "    This artifact predates the gold-blind scoring fix\n"
-            "    ([#514](https://github.com/tomcounsell/popoto/issues/514)), so its\n"
-            "    numbers are inflated by the same margin the lexical page describes.\n"
-            "    It stays published for continuity and is not comparable to the\n"
-            "    corrected lexical page; a corrected hybrid run is pending.\n"
+            '!!! warning "This page is a 250-question SAMPLE, not a full run"\n'
+            "    Unlike every other LoCoMo page here, this artifact covers **250 of\n"
+            "    the 1986 questions**: a stratified sample, seed 0, every category\n"
+            "    represented. A full hybrid pass re-embeds ~1.19M records and measured\n"
+            "    ~5.2 hours on the reference machine, so\n"
+            "    [#530](https://github.com/tomcounsell/popoto/issues/530) re-ran it\n"
+            "    sampled under gold-blind scoring rather than leave the superseded\n"
+            "    full run standing. Treat the numbers as a bounded estimate: they\n"
+            "    carry sampling error a full run does not, and they are not\n"
+            "    interchangeable with the full-1986 lexical page.\n"
             "\n"
-            '!!! warning "Hybrid underperforms lexical here — reported factually, untuned"\n'
-            "    On this LoCoMo variant, hybrid (**Recall@1 0.1667 / MRR 0.2835**)\n"
-            "    measurably underperforms the lexical path (pre-correction\n"
-            "    **Recall@1 0.2986 / MRR 0.4124**, the like-for-like comparison since\n"
-            "    both were scored the same way). This run was untuned: an unweighted\n"
-            "    RRF gave a weak vector arm equal say on every query. Weighted,\n"
-            "    query-adaptive fusion addresses that, and the confirmation numbers\n"
-            "    are in [Benchmarking](../../benchmarks.md#retrieval-modes).\n"
+            '!!! info "Corrected 2026-08-07, supersedes an inflated, unweighted run"\n'
+            "    The superseded artifact (`locomo_20260708_hybrid.json`, full 1986,\n"
+            "    unweighted RRF) reported Recall@1 0.1667 / Recall@5 0.4235 /\n"
+            "    Recall@10 0.5403 / MRR 0.2835 under the pre-correction scoring the\n"
+            "    lexical page describes\n"
+            "    ([#514](https://github.com/tomcounsell/popoto/issues/514)). It stays\n"
+            "    committed. Two things changed between it and this page: gold-blind\n"
+            "    scoring **and** the weighted/query-adaptive fusion of\n"
+            "    [#457](https://github.com/tomcounsell/popoto/issues/457), so the\n"
+            "    difference cannot be attributed to either one alone.\n"
+            "\n"
+            '!!! note "Hybrid no longer underperforms lexical here"\n'
+            "    On the identical 250 questions, the corrected lexical run scores\n"
+            "    Recall@1 0.3400 / Recall@5 0.5120 / Recall@10 0.5840 / MRR 0.4178\n"
+            "    (re-aggregated from the committed full-1986 artifact over the same\n"
+            "    item IDs). Hybrid matches it to within one Recall@10 question. The\n"
+            "    query-shape discriminator routes LoCoMo's name/date-anchored queries\n"
+            "    to the keyword-lean regime, so the fused order converges on the\n"
+            "    lexical order. Detail in\n"
+            "    [Benchmarking](../../benchmarks.md#retrieval-modes).\n"
         ),
     ),
     Spec(
@@ -393,11 +420,17 @@ in the same metric family on the same dataset.
 
 ## LoCoMo — read in the retrieval regime
 
-**Correction (2026-08-07):** the LoCoMo lexical numbers below were re-measured
-after a scoring defect that consulted the answer key when collapsing retrieved
-turns to result IDs was fixed ([#514](https://github.com/tomcounsell/popoto/issues/514));
-the corrected figures are lower, and the hybrid/graph/judged LoCoMo arms still
-carry pre-correction scoring.
+**Correction (2026-08-07):** every LoCoMo number below was re-measured after a
+scoring defect that consulted the answer key when collapsing retrieved turns to
+result IDs was fixed ([#514](https://github.com/tomcounsell/popoto/issues/514)).
+The corrected figures are lower. All four arms (lexical, hybrid, graph, judged)
+now run under gold-blind scoring
+([#530](https://github.com/tomcounsell/popoto/issues/530)), but their **coverage
+differs and is not uniform**: lexical is the full 1986 questions, hybrid is a
+250-question stratified sample (a full hybrid pass measured ~5.2 h), graph is
+the full 282-question multi-hop slice, and judged is 100 questions sampled from
+a 2-dialogue subset. Each page states its own sample mode and limit in the run
+header; read that before comparing two pages.
 
 !!! note "MEMTIER anchor (arXiv:2605.03675)"
     MEMTIER is the nearest published work that measures LoCoMo *as retrieval*
