@@ -185,7 +185,13 @@ def test_scan_survives_stray_non_hash_key_in_model_glob_during_rolling_upgrade()
     s.save()
 
     model_key = s.db_key.redis_key
+    # Deliberately NOT delegating to _pre_540_pointer_side_key here: this
+    # literal stands in for a foreign (pre-#540) node's write, which by
+    # definition does not share this codebase's helper.
     colliding_key = f"{model_key}\x00idxptr\x00status"
+    assert colliding_key == IndexedFieldMixin._pre_540_pointer_side_key(
+        model_key, "status"
+    )
     POPOTO_REDIS_DB.set(colliding_key, "$IndexF:Sess540:status:pending")
 
     try:

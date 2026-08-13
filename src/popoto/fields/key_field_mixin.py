@@ -108,16 +108,23 @@ def _scan_hash_keys(pattern: str) -> list:  # type: ignore[type-arg]
     non-hash key is skipped rather than crashing or corrupting the read;
     it self-heals once every node is upgraded and the record is
     next written (the swap Lua adopts and deletes the legacy pointer).
+
+    The disclosed hazard is *exactly* the legacy NUL-suffixed pointer keys
+    (`{model_hash_key}\\x00idxptr\\x00{field}` / `...\\x00tagptr\\x00{field}`).
+    A model key -- built from key field values via `DB_key` -- can never
+    contain a NUL byte, so filtering client-side on the presence of `\\x00`
+    catches the disclosed hazard precisely, with zero Redis round trips,
+    instead of charging every AutoKeyField lookup and every KeyField
+    `__startswith`/`__endswith`/`__isnull=False` query a permanent
+    pipelined `TYPE` round trip to defend a transient mixed-version window.
     """
     keys = scan_keys(pattern)
     if not keys:
         return keys
-    pipeline = POPOTO_REDIS_DB.pipeline()
-    for key in keys:
-        pipeline.type(key)
-    key_types = pipeline.execute()
     return [
-        key for key, key_type in zip(keys, key_types) if key_type in (b"hash", "hash")
+        key
+        for key in keys
+        if (b"\x00" if isinstance(key, bytes) else "\x00") not in key
     ]
 
 

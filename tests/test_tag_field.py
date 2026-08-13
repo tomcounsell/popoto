@@ -26,6 +26,7 @@ from popoto import (
 )
 from popoto.fields.constants import Defaults
 from popoto.fields.decaying_sorted_field import DecayingSortedField
+from popoto.fields.tag_field import TagFieldMixin
 from popoto.recipes.context_assembler import ContextAssembler
 from popoto.redis_db import POPOTO_REDIS_DB
 
@@ -95,8 +96,6 @@ class TestTagFieldCRUD:
             assert reloaded.tags == []
 
     def test_delete_removes_from_all_tag_sets(self):
-        from popoto.fields.tag_field import TagFieldMixin
-
         m = TaggedMemory.create(tags=["a", "b", "c"])
         assert len(TaggedMemory.query.filter(tags__contains="b")) == 1
         # Pointer side key must exist BEFORE delete(), otherwise the
@@ -271,8 +270,6 @@ class TestTagFieldValkeySafety:
         assert POPOTO_REDIS_DB.scard(idx_key) == 1
 
     def test_pointer_side_key_is_a_set(self):
-        from popoto.fields.tag_field import TagFieldMixin
-
         m = TaggedMemory.create(tags=["a", "b"])
         ptr = TagFieldMixin._tag_pointer_side_key(m.db_key.redis_key, "tags")
         assert POPOTO_REDIS_DB.type(ptr) == b"set"
