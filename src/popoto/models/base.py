@@ -3018,6 +3018,8 @@ class Model(metaclass=ModelBase):
         """
         from .encoding import decode_popoto_model_hashmap
 
+        model_name = cls._meta.model_name
+
         # Step 1: Delete all secondary index keys
 
         # Delete class set
