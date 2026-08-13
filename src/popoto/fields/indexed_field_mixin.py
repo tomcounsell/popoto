@@ -44,12 +44,16 @@ Usage
 """
 
 import logging
+from typing import TYPE_CHECKING
 import msgpack
 import redis.client
 
 from ..exceptions import ModelException, QueryException
 from ..models.db_key import DB_key
 from ..redis_db import POPOTO_REDIS_DB, scan_keys
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle guard
+    from ..models.base import Model
 
 logger = logging.getLogger("POPOTO.IndexedFieldMixin")
 
@@ -296,8 +300,20 @@ class IndexedFieldMixin:
         else:
             legacy_old_set = ""
 
-        # Pack field value with msgpack to match encode_popoto_model_obj() output
-        new_bytes = msgpack.packb(field_value)
+        # Pack field value with msgpack to match encode_popoto_model_obj()
+        # output. Types in TYPE_ENCODER_DECODERS (datetime, date, time,
+        # Decimal, ...) are not natively serializable by msgpack, so they must
+        # go through their registered encoder first — exactly as
+        # encode_popoto_model_obj() does — otherwise packb() raises TypeError
+        # and the bytes would not match the canonical hash encoding (#534).
+        from ..models.encoding import TYPE_ENCODER_DECODERS
+
+        if field_value is not None and field.type in TYPE_ENCODER_DECODERS:
+            new_bytes = msgpack.packb(
+                TYPE_ENCODER_DECODERS[field.type].encoder(field_value)
+            )
+        else:
+            new_bytes = msgpack.packb(field_value)
         is_unique = "1" if getattr(field, "unique", False) else "0"
 
         if isinstance(pipeline, redis.client.Pipeline):

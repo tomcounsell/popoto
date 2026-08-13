@@ -4,9 +4,13 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   check-docs-only:
-    # Skip for repository admins (owner) — only guard bypass users
+    # Skip for repository admins (owner) - only guard bypass users
     if: github.actor == 'valorengels'
     runs-on: ubuntu-latest
     steps:
@@ -14,7 +18,54 @@ jobs:
         with:
           fetch-depth: 2
 
+      - name: Detect whether this push came from a merged pull request
+        id: detect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Merging a PR (squash, rebase, or merge commit) produces a push to
+          # main attributed to whoever clicked merge, so the push event alone
+          # cannot tell a merge apart from a hand-push. Ask the API which pull
+          # requests this commit belongs to instead. GitHub can take a moment
+          # to attach the association, so retry a few times.
+          #
+          # On an API error gh writes the error body to stdout, so only trust
+          # output from a successful call, and only when it is a PR number.
+          # Anything else counts as "no merged PR", which runs the guard
+          # (fail closed) rather than waving the push through.
+          pr=""
+          for attempt in 1 2 3; do
+            if out=$(gh api "/repos/${REPO}/commits/${SHA}/pulls" \
+                       --jq '[.[] | select(.merged_at != null and .base.ref == "main")][0].number' \
+                     2>/dev/null); then
+              case "$out" in
+                ''|*[!0-9]*) pr="" ;;
+                *) pr="$out" ;;
+              esac
+            else
+              echo "Warning: could not query pull requests for ${SHA} (attempt ${attempt})."
+              pr=""
+            fi
+            if [ -n "$pr" ]; then
+              break
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              sleep 5
+            fi
+          done
+
+          if [ -n "$pr" ]; then
+            echo "Commit ${SHA} reached main through merged pull request #${pr}."
+            echo "merged_pr=$pr" >> "$GITHUB_OUTPUT"
+          else
+            echo "No merged pull request found for ${SHA}; treating this as a direct push."
+            echo "merged_pr=" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Check that only docs files were changed
+        if: steps.detect.outputs.merged_pr == ''
         run: |
           # Get files changed in this push
           changed=$(git diff --name-only HEAD~1 HEAD)
@@ -32,3 +83,8 @@ jobs:
           fi
 
           echo "All changes are docs-only. Allowed."
+
+      - name: Report merged pull request
+        if: steps.detect.outputs.merged_pr != ''
+        run: |
+          echo "This push is the merge of pull request #${{ steps.detect.outputs.merged_pr }}, so the docs-only guard does not apply."

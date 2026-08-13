@@ -563,8 +563,6 @@ class Model(metaclass=ModelBase):
             save() to persist, or use Model.create() for atomic
             create-and-save.
         """
-        cls = self.__class__
-
         # allow init kwargs to set any base parameters
         self.__dict__.update(kwargs)
 
@@ -3019,8 +3017,6 @@ class Model(metaclass=ModelBase):
                 print(Event.audit_datetime_keys())
         """
         from .encoding import decode_popoto_model_hashmap
-
-        model_name = cls._meta.model_name
 
         # Step 1: Delete all secondary index keys
 

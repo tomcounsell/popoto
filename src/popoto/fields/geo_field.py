@@ -44,13 +44,17 @@ Example:
 """
 
 from collections import namedtuple
+from typing import TYPE_CHECKING
 import redis
 from .field import Field
 import logging
 from ..models.db_key import DB_key
+from ..redis_db import POPOTO_REDIS_DB
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle guard
+    from ..models.base import Model
 
 logger = logging.getLogger("POPOTO.GeoField")
-from ..redis_db import POPOTO_REDIS_DB
 
 
 class GeoField(Field):
@@ -429,7 +433,6 @@ class GeoField(Field):
                 location_radius_unit='km'
             )
         """
-        field = model._meta.fields[field_name]
         geo_db_key = cls.get_geo_db_key(model, field_name)
         coordinates = GeoField.Coordinates(None, None)
         member, radius, unit = None, 1, "m"

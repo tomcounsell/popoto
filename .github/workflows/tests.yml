@@ -1,0 +1,167 @@
+name: Tests
+
+# Restores server-side test coverage on pull requests.
+#
+# #405 removed stress-tests.yml and test-valkey.yml in favour of the local
+# scripts/ci-local.sh runner. That left the repo with no automated Valkey
+# coverage at all, and the local runner only ever talks to Redis. The README
+# states that Valkey is a first-class target, so a Valkey job has to run
+# somewhere that is not a developer laptop.
+#
+# Two separate jobs rather than a matrix: the Redis and Valkey results appear
+# as independently named checks, so a Valkey-only failure is visible at a
+# glance instead of being buried in a matrix leg, and each job can health-check
+# its own server with that server's own CLI.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# A newer push to a PR supersedes the older run for that PR. Runs on main are
+# never cancelled, so every merged commit keeps a complete result.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  redis:
+    name: pytest (Redis)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    env:
+      REDIS_URL: redis://localhost:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: pyproject.toml
+
+      # Extras are load-bearing. With [dev] alone, numpy and
+      # sentence-transformers are missing and roughly 95 tests skip or fail to
+      # collect without the run looking any different. [dataframe] is
+      # deliberately excluded: it pulls pandas, which breaks
+      # test_dataframe_field.py collection on current Python 3.x.
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,embeddings,benchmark]"
+
+      - name: Verify server reachable
+        run: |
+          python - <<'PY'
+          import redis
+          r = redis.from_url("redis://localhost:6379")
+          r.ping()
+          info = r.info("server")
+          print("server_name:", info.get("server_name", "redis"))
+          print("version:", info.get("redis_version"))
+          PY
+
+      # Guards the silent-deselect failure mode above: if an extra goes
+      # missing, collection drops well below the floor and this fails loudly
+      # instead of reporting a green run over a shrunken suite. The floor is
+      # intentionally slack (2646 collected locally at the time of writing).
+      - name: Check collection floor
+        run: |
+          out=$(pytest --collect-only -q 2>/dev/null || true)
+          count=$(echo "$out" | grep -oE '[0-9]+ tests? collected' | tail -1 | grep -oE '^[0-9]+' || true)
+          echo "collected: $count"
+          if [ -z "$count" ] || [ "$count" -lt 2500 ]; then
+            echo "::error::Only ${count:-0} tests collected (expected >= 2500)."
+            echo "::error::An optional dependency is probably missing."
+            exit 1
+          fi
+
+      # -m "not slow" drops the stress suite, which stays a local gate
+      # (scripts/ci-local.sh stress). Everything else runs, including the
+      # spawn-based concurrent_mp tests.
+      - name: Run tests
+        run: pytest -m "not slow" --tb=short
+
+  valkey:
+    name: pytest (Valkey)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      valkey:
+        image: valkey/valkey:8-alpine
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    env:
+      REDIS_URL: redis://localhost:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: pyproject.toml
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,embeddings,benchmark]"
+
+      # Assert the service really is Valkey. A misconfigured service block
+      # would otherwise run the Redis suite twice under a Valkey label, which
+      # is the exact false confidence this job exists to prevent.
+      - name: Verify server is Valkey
+        run: |
+          python - <<'PY'
+          import sys
+          import redis
+
+          r = redis.from_url("redis://localhost:6379")
+          r.ping()
+          info = r.info("server")
+          name = str(info.get("server_name", "redis")).lower()
+          print("server_name:", name)
+          print("version:", info.get("redis_version"))
+          if name != "valkey":
+              print("::error::Expected a Valkey server, got", name)
+              sys.exit(1)
+          PY
+
+      - name: Check collection floor
+        run: |
+          out=$(pytest --collect-only -q 2>/dev/null || true)
+          count=$(echo "$out" | grep -oE '[0-9]+ tests? collected' | tail -1 | grep -oE '^[0-9]+' || true)
+          echo "collected: $count"
+          if [ -z "$count" ] || [ "$count" -lt 2500 ]; then
+            echo "::error::Only ${count:-0} tests collected (expected >= 2500)."
+            echo "::error::An optional dependency is probably missing."
+            exit 1
+          fi
+
+      - name: Run tests
+        run: pytest -m "not slow" --tb=short

@@ -12,9 +12,10 @@ Popoto is a Python Redis/Valkey ORM providing Django-like model syntax: object p
 pytest                          # requires Redis on localhost:6379; auto-isolated on DB 15
 pytest -k "test_name"           # single test by name
 mypy src/                       # type checking
+ruff check src/                 # lint (config in [tool.ruff.lint]; gated by lint.yml)
 black src/ tests/               # format
 mkdocs serve                    # docs locally
-scripts/ci-local.sh             # local CI gates: tests + stress + docs (--all, --fast, or named gates)
+scripts/ci-local.sh             # local CI gates: lint + tests + stress + docs (--all, --fast, or named gates)
 ```
 
 Tests are auto-isolated on Redis DB 15 via the `popoto.pytest_plugin` entry point (both `import popoto` and `import src.popoto` collapse onto one canonical module/connection). Override with `POPOTO_TEST_DB=<n>`; DB 0 is rejected to prevent accidental production data loss.
@@ -51,6 +52,7 @@ Rule: state the environment alongside any count, and reproduce a subagent's metr
 
 - Line length: 88 (black), imports: 79 (isort)
 - Python 3.10+
+- `ruff check src/` must exit 0 (enforced by `.github/workflows/lint.yml`). Selected rules are `E4,E7,E9,F`; formatting rules (E1/E2/E3/E501) and import order are left to black and isort so the tools do not fight. `tests/` is not gated yet.
 
 ## Git Workflow
 
