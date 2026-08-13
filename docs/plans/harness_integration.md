@@ -431,15 +431,15 @@ This plan *is* the agent-integration surface for Popoto, so the section is load-
 - [ ] `pip install popoto[mcp]` then an 8-line `settings.json` block gives working subconscious memory in Claude Code: memories injected before a turn, the turn captured after, both verified live by the maintainer
 - [ ] The same `popoto-memory hook` command string works unmodified in Codex (feature flag and trust review documented, not hidden)
 - [ ] Hermes hook directory and OpenClaw MCP config verified against captured payloads; OpenClaw automatic-injection status resolved by spike-6 and stated honestly
-- [ ] `examples/harness_memory/` runs against local Redis with zero API keys and no harness installed, exercising assemble → inject → capture → report
-- [ ] Default write path is raw-turn ingestion; no code path reaches `HeuristicExtractionProvider` without explicit opt-in
-- [ ] Retrieval configuration is #513's default model with `score_weights={"relevance": 1.0}`; the `max_items`/`max_tokens` divergence is documented with its reason
-- [ ] Read-hook p95 under 400 ms, measured and published
-- [ ] Whole flow passes against Valkey with no Redis modules
-- [ ] Four wiring guides published; the per-harness capability table is accurate
-- [ ] Core `pip install popoto` still resolves 3 packages with zero API keys — the extra does not leak into core
-- [ ] MCP tool names frozen and asserted by test
-- [ ] Tests pass (`/do-test`); docs updated (`/do-docs`); `mkdocs build --strict` passes
+- [x] `examples/harness_memory/` runs against local Redis with zero API keys and no harness installed, exercising assemble → inject → capture → report
+- [x] Default write path is raw-turn ingestion; no code path reaches `HeuristicExtractionProvider` without explicit opt-in
+- [x] Retrieval configuration is #513's default model with `score_weights={"relevance": 1.0}`; the `max_items`/`max_tokens` divergence is documented with its reason
+- [x] Read-hook p95 under 400 ms, measured and published
+- [x] Whole flow passes against Valkey with no Redis modules
+- [x] Four wiring guides published; the per-harness capability table is accurate
+- [x] Core `pip install popoto` still resolves 3 packages with zero API keys — the extra does not leak into core
+- [x] MCP tool names frozen and asserted by test
+- [x] Tests pass (`/do-test`); docs updated (`/do-docs`); `mkdocs build --strict` passes
 
 ## Team Orchestration
 
