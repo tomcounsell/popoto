@@ -26,14 +26,54 @@ plus which of `verdict_present` / `trailer_matches_head` / `marker_completed`
 is false, and surface it. Do not re-dispatch REVIEW yourself and do not advance
 to DOCS/MERGE.
 
+The underlying design gap — 3d.4 assumes a substrate that the generic
+`/do-pr-review` path is entitled to skip — is filed upstream as
+`tomcounsell/ai#2767`, together with the integer-count flag ergonomics below.
+
 Recovery, when a human decides to hand-run it, is one atomic call. The count
 flags are integers, not prose (`--blockers "3 blockers found"` fails with
-`argument --blockers: invalid int value`):
+`argument --blockers: invalid int value`; `tomcounsell/ai#2767`):
 
 ```bash
 sdlc-tool verdict finalize --pr 558 --issue-number 554 --run-id <hex> \
   --verdict "CHANGES REQUESTED" --blockers 3 --tech-debt 5
 ```
+
+If the router stops producing a dispatch after a second REVIEW→PATCH cycle
+(falls off the rule table rather than blocking with a named guard), that is the
+second half of `tomcounsell/ai#2767` — report it as a stop condition; do not
+hand-pick the next stage.
+
+## Branch naming: G8 expects `session/{plan-slug}`
+
+G8 (artifact verification) does not read the PR's `headRefName`. Its
+live-verification path derives the slug from the **plan filename** —
+`slug = Path(plan_path).stem` in `tools/sdlc_next_skill.py` — and then checks
+`git ls-remote --heads origin session/{slug}` for the BUILD and PATCH
+artifacts, plus `git show main:docs/plans/{slug}.md` for PLAN. Filed upstream
+as `tomcounsell/ai#2765`.
+
+Consequence for popoto, where human-authored branches are conventionally
+`feature/…` / `fix/…` / `bench/…`: **a pipeline PR opened from any branch other
+than `session/{slug}` will fail G8's check even though the branch is genuinely
+pushed.** G8 then silently re-dispatches BUILD (or PATCH) until G4's
+oscillation cap blocks the run. So:
+
+- Name the pipeline build branch exactly `session/{slug}`, where `{slug}` is
+  the stem of `docs/plans/{slug}.md`. The `feature/…` / `fix/…` convention in
+  `CLAUDE.md` governs hand-authored branches, not pipeline runs.
+- Commit the plan to `main` at `docs/plans/{slug}.md` before BUILD completes.
+  This is permitted here: `docs/plans/` is under `docs/`, so `guard-main-push.yml`
+  allows the direct push.
+- A PR taken over mid-flight on a non-`session/` branch (or one with no plan)
+  will keep tripping G8 — expect it, and surface it rather than re-dispatching.
+
+If the **first** `sdlc-tool next-skill` of a run returns blocked against a
+`run_id` that is your own supervisor's, that is `tomcounsell/ai#2766`
+(`session-ensure` not writing the `active_run_id` mirror), not a foreign lock.
+Apply the `owner_run_id` self-identity check from the global Step 2 three-way
+table: your own run_id means inherit and continue; only a genuinely foreign
+`ISSUE_LOCKED` means stop.
 
 ## Verification commands the pipeline can rely on
 

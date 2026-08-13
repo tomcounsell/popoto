@@ -28,8 +28,9 @@ sdlc-tool verdict finalize --pr "$PR_NUMBER" --issue-number "$ISSUE_NUMBER" \
 
 ### `--blockers` / `--tech-debt` take INTEGER COUNTS, not prose
 
-This is the mistake that costs a retry. The flags are `int`-typed; passing a
-description fails immediately:
+This is the mistake that costs a retry (filed upstream as
+`tomcounsell/ai#2767`). The flags are `int`-typed; passing a description fails
+immediately:
 
 ```
 argument --blockers: invalid int value: "unverified benchmark claim, ..."
@@ -168,3 +169,10 @@ Never push directly to `main` except docs-only changes (`docs/`, `CLAUDE.md`,
 which rejects any other path pushed straight to main. Everything else goes
 through a PR from a descriptive branch (`feature/query-performance`,
 `fix/scan-keys`).
+
+One caveat for **pipeline** PRs: G8's artifact verification checks
+`origin/session/{slug}` (slug = the stem of `docs/plans/{slug}.md`), not the
+PR's `headRefName` — see [`do-sdlc.md`](do-sdlc.md) and `tomcounsell/ai#2765`.
+A pipeline PR on a `feature/…` or `fix/…` branch will fail that check even
+though the branch is pushed. That is a router/branch-naming mismatch, not a
+code finding — do not raise it as a blocker against the diff.
