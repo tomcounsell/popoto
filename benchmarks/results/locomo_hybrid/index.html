@@ -1741,6 +1741,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#leaderboard-parity-slice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Leaderboard-parity slice
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#notes" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2544,6 +2555,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#leaderboard-parity-slice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Leaderboard-parity slice
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#notes" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2586,31 +2608,49 @@
 
 
 <h1 id="locomo-hybrid-retrieval">LoCoMo — Hybrid Retrieval<a class="headerlink" href="#locomo-hybrid-retrieval" title="Permanent link">&para;</a></h1>
-<div class="admonition info">
-<p class="admonition-title">Scored before the #514 correction — re-run pending</p>
-<p>This artifact predates the gold-blind scoring fix
-(<a href="https://github.com/tomcounsell/popoto/issues/514">#514</a>), so its
-numbers are inflated by the same margin the lexical page describes.
-It stays published for continuity and is not comparable to the
-corrected lexical page; a corrected hybrid run is pending.</p>
-</div>
 <div class="admonition warning">
-<p class="admonition-title">Hybrid underperforms lexical here — reported factually, untuned</p>
-<p>On this LoCoMo variant, hybrid (<strong>Recall@1 0.1667 / MRR 0.2835</strong>)
-measurably underperforms the lexical path (pre-correction
-<strong>Recall@1 0.2986 / MRR 0.4124</strong>, the like-for-like comparison since
-both were scored the same way). This run was untuned: an unweighted
-RRF gave a weak vector arm equal say on every query. Weighted,
-query-adaptive fusion addresses that, and the confirmation numbers
-are in <a href="../../#retrieval-modes">Benchmarking</a>.</p>
+<p class="admonition-title">This page is a 250-question SAMPLE, not a full run</p>
+<p>Unlike every other LoCoMo page here, this artifact covers <strong>250 of
+the 1986 questions</strong>: a stratified sample, seed 0, every category
+represented. A full hybrid pass re-embeds ~1.19M records and measured
+~5.2 hours on the reference machine, so
+<a href="https://github.com/tomcounsell/popoto/issues/530">#530</a> re-ran it
+sampled under gold-blind scoring rather than leave the superseded
+full run standing. Treat the numbers as a bounded estimate: they
+carry sampling error a full run does not, and they are not
+interchangeable with the full-1986 lexical page.</p>
 </div>
-<p><strong>Run date:</strong> 2026-07-08<br />
+<div class="admonition info">
+<p class="admonition-title">Corrected 2026-08-07, supersedes an inflated, unweighted run</p>
+<p>The superseded artifact (<code>locomo_20260708_hybrid.json</code>, full 1986,
+unweighted RRF) reported Recall@1 0.1667 / Recall@5 0.4235 /
+Recall@10 0.5403 / MRR 0.2835 under the pre-correction scoring the
+lexical page describes
+(<a href="https://github.com/tomcounsell/popoto/issues/514">#514</a>). It stays
+committed. Two things changed between it and this page: gold-blind
+scoring <strong>and</strong> the weighted/query-adaptive fusion of
+<a href="https://github.com/tomcounsell/popoto/issues/457">#457</a>, so the
+difference cannot be attributed to either one alone.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Hybrid no longer underperforms lexical here</p>
+<p>On the identical 250 questions, the corrected lexical run scores
+Recall@1 0.3400 / Recall@5 0.5120 / Recall@10 0.5840 / MRR 0.4178
+(re-aggregated from the committed full-1986 artifact over the same
+item IDs). Hybrid matches it to within one Recall@10 question. The
+query-shape discriminator routes LoCoMo's name/date-anchored queries
+to the keyword-lean regime, so the fused order converges on the
+lexical order. Detail in
+<a href="../../#retrieval-modes">Benchmarking</a>.</p>
+</div>
+<p><strong>Run date:</strong> 2026-08-07<br />
 <strong>Retrieval mode:</strong> hybrid<br />
+<strong>Ranking unit:</strong> turn (gold-blind, first occurrence wins)<br />
 <strong>Python:</strong> 3.12.13<br />
-<strong>Platform:</strong> macOS-26.3.1-arm64-arm-64bit<br />
-<strong>Sample mode:</strong> stride<br />
+<strong>Platform:</strong> macOS-26.5.2-arm64-arm-64bit<br />
+<strong>Sample mode:</strong> stratified<br />
 <strong>Seed:</strong> 0<br />
-<strong>Limit:</strong> all  </p>
+<strong>Limit:</strong> 250  </p>
 <h2 id="summary">Summary<a class="headerlink" href="#summary" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -2622,7 +2662,7 @@ are in <a href="../../#retrieval-modes">Benchmarking</a>.</p>
 <tbody>
 <tr>
 <td>Questions evaluated</td>
-<td>1986 / 1986</td>
+<td>250 / 250</td>
 </tr>
 <tr>
 <td>Errors</td>
@@ -2634,27 +2674,27 @@ are in <a href="../../#retrieval-modes">Benchmarking</a>.</p>
 </tr>
 <tr>
 <td>Recall@1</td>
-<td>0.1667</td>
+<td>0.3400</td>
 </tr>
 <tr>
 <td>Recall@5</td>
-<td>0.4235</td>
+<td>0.5120</td>
 </tr>
 <tr>
 <td>Recall@10</td>
-<td>0.5403</td>
+<td>0.5880</td>
 </tr>
 <tr>
 <td>MRR</td>
-<td>0.2835</td>
+<td>0.4172</td>
 </tr>
 <tr>
 <td>Latency p50 (ms)</td>
-<td>63.21</td>
+<td>61.78</td>
 </tr>
 <tr>
 <td>Latency p95 (ms)</td>
-<td>110.29</td>
+<td>83.06</td>
 </tr>
 </tbody>
 </table>
@@ -2673,43 +2713,75 @@ are in <a href="../../#retrieval-modes">Benchmarking</a>.</p>
 <tbody>
 <tr>
 <td>1</td>
-<td>282</td>
-<td>0.0674</td>
-<td>0.3014</td>
-<td>0.4220</td>
-<td>0.1707</td>
+<td>36</td>
+<td>0.1111</td>
+<td>0.1667</td>
+<td>0.3056</td>
+<td>0.1589</td>
 </tr>
 <tr>
 <td>2</td>
-<td>321</td>
-<td>0.1589</td>
-<td>0.4268</td>
-<td>0.5389</td>
-<td>0.2851</td>
+<td>40</td>
+<td>0.3750</td>
+<td>0.5500</td>
+<td>0.6750</td>
+<td>0.4533</td>
 </tr>
 <tr>
 <td>3</td>
-<td>96</td>
-<td>0.0729</td>
-<td>0.1771</td>
-<td>0.2708</td>
-<td>0.1247</td>
+<td>12</td>
+<td>0.0000</td>
+<td>0.1667</td>
+<td>0.2500</td>
+<td>0.0778</td>
 </tr>
 <tr>
 <td>4</td>
-<td>841</td>
-<td>0.1926</td>
-<td>0.4602</td>
-<td>0.5707</td>
-<td>0.3116</td>
+<td>106</td>
+<td>0.3774</td>
+<td>0.6038</td>
+<td>0.6415</td>
+<td>0.4682</td>
 </tr>
 <tr>
 <td>5</td>
-<td>446</td>
-<td>0.2063</td>
-<td>0.4821</td>
-<td>0.6166</td>
-<td>0.3349</td>
+<td>56</td>
+<td>0.4643</td>
+<td>0.6071</td>
+<td>0.6786</td>
+<td>0.5338</td>
+</tr>
+</tbody>
+</table>
+<h2 id="leaderboard-parity-slice">Leaderboard-parity slice<a class="headerlink" href="#leaderboard-parity-slice" title="Permanent link">&para;</a></h2>
+<p>Categories excluded: 5 (LoCoMo cat-5 'adversarial' — see docs/benchmarks.md for the evidence audit and caveat). Re-aggregated from the per-category breakdown; comparable to the no-adversarial leaderboard variant.</p>
+<table>
+<thead>
+<tr>
+<th>Slice</th>
+<th>n</th>
+<th>Recall@1</th>
+<th>Recall@5</th>
+<th>Recall@10</th>
+<th>MRR</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Full (hybrid)</td>
+<td>250</td>
+<td>0.3400</td>
+<td>0.5120</td>
+<td>0.5880</td>
+<td>0.4172</td>
+</tr>
+<tr>
+<td>Parity (hybrid)</td>
+<td>194</td>
+<td>0.3041</td>
+<td>0.4846</td>
+<td>0.5619</td>
+<td>0.3836</td>
 </tr>
 </tbody>
 </table>
@@ -2717,6 +2789,7 @@ are in <a href="../../#retrieval-modes">Benchmarking</a>.</p>
 <ul>
 <li>Retrieval mode: hybrid — ContextAssembler.assemble() is the primary path; effective mode resolves to 'hybrid'.</li>
 <li>Hybrid fuses BM25 (lexical) + vector (all-MiniLM-L6-v2, 384-dim, in-process numpy cosine) via Reciprocal Rank Fusion (k=60).</li>
+<li>Ranking unit: turn — Every retrieved record is collapsed to its turn ID before scoring — gold and non-gold alike. The unit is fixed by the dataset's ground-truth granularity and resolved before retrieval, so the answer key affects only the final metric (issue #514).</li>
 <li>LoCoMo: image-only turns skipped (text-only evaluation).</li>
 </ul>
 <h2 id="reference-numbers">Reference Numbers<a class="headerlink" href="#reference-numbers" title="Permanent link">&para;</a></h2>

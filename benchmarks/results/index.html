@@ -2628,19 +2628,25 @@ in the same metric family on the same dataset.</p>
 </tr>
 <tr>
 <td><a href="longmemeval_s_hybrid/">LongMemEval-S — Hybrid Retrieval</a></td>
-<td>0.8940</td>
+<td>0.8920</td>
 <td>0.9860</td>
 <td>0.9920</td>
-<td>0.9317</td>
+<td>0.9307</td>
 </tr>
 </tbody>
 </table>
 <h2 id="locomo-read-in-the-retrieval-regime">LoCoMo — read in the retrieval regime<a class="headerlink" href="#locomo-read-in-the-retrieval-regime" title="Permanent link">&para;</a></h2>
-<p><strong>Correction (2026-08-07):</strong> the LoCoMo lexical numbers below were re-measured
-after a scoring defect that consulted the answer key when collapsing retrieved
-turns to result IDs was fixed (<a href="https://github.com/tomcounsell/popoto/issues/514">#514</a>);
-the corrected figures are lower, and the hybrid/graph/judged LoCoMo arms still
-carry pre-correction scoring.</p>
+<p><strong>Correction (2026-08-07):</strong> every LoCoMo number below was re-measured after a
+scoring defect that consulted the answer key when collapsing retrieved turns to
+result IDs was fixed (<a href="https://github.com/tomcounsell/popoto/issues/514">#514</a>).
+The corrected figures are lower. All four arms (lexical, hybrid, graph, judged)
+now run under gold-blind scoring
+(<a href="https://github.com/tomcounsell/popoto/issues/530">#530</a>), but their <strong>coverage
+differs and is not uniform</strong>: lexical is the full 1986 questions, hybrid is a
+250-question stratified sample (a full hybrid pass measured ~5.2 h), graph is
+the full 282-question multi-hop slice, and judged is 100 questions sampled from
+a 2-dialogue subset. Each page states its own sample mode and limit in the run
+header; read that before comparing two pages.</p>
 <div class="admonition note">
 <p class="admonition-title">MEMTIER anchor (arXiv:2605.03675)</p>
 <p>MEMTIER is the nearest published work that measures LoCoMo <em>as retrieval</em>
@@ -2675,10 +2681,10 @@ cross-read; they are not comparable.</p>
 </tr>
 <tr>
 <td><a href="locomo_hybrid/">LoCoMo — Hybrid Retrieval</a></td>
-<td>0.1667</td>
-<td>0.4235</td>
-<td>0.5403</td>
-<td>0.2835</td>
+<td>0.3400</td>
+<td>0.5120</td>
+<td>0.5880</td>
+<td>0.4172</td>
 </tr>
 </tbody>
 </table>
