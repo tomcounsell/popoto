@@ -30,6 +30,12 @@ The underlying design gap — 3d.4 assumes a substrate that the generic
 `/do-pr-review` path is entitled to skip — is filed upstream as
 `tomcounsell/ai#2767`, together with the integer-count flag ergonomics below.
 
+Note what this file can and cannot guarantee: the substrate declaration is a
+prose instruction the reviewing model is asked to honor, not a mechanical
+switch. Its existence has not been confirmed end to end — the confirmation is
+the first live run that reaches 3d.4 with `ok:true`. Until then, check the
+selfcheck result rather than assuming this file settled it.
+
 Recovery, when a human decides to hand-run it, is one atomic call. The count
 flags are integers, not prose (`--blockers "3 blockers found"` fails with
 `argument --blockers: invalid int value`; `tomcounsell/ai#2767`):
@@ -44,29 +50,48 @@ If the router stops producing a dispatch after a second REVIEW→PATCH cycle
 second half of `tomcounsell/ai#2767` — report it as a stop condition; do not
 hand-pick the next stage.
 
-## Branch naming: G8 expects `session/{plan-slug}`
+## G8 branch verification is a known upstream defect (`tomcounsell/ai#2765`)
 
-G8 (artifact verification) does not read the PR's `headRefName`. Its
-live-verification path derives the slug from the **plan filename** —
-`slug = Path(plan_path).stem` in `tools/sdlc_next_skill.py` — and then checks
-`git ls-remote --heads origin session/{slug}` for the BUILD and PATCH
-artifacts, plus `git show main:docs/plans/{slug}.md` for PLAN. Filed upstream
-as `tomcounsell/ai#2765`.
+**Popoto's branch naming does not change.** `CLAUDE.md`'s convention —
+descriptive names like `feature/query-performance`, `fix/scan-keys` — is the
+single rule here, for pipeline runs as much as for hand-authored work. What
+follows is a defect to route around, not a convention to bend to.
 
-Consequence for popoto, where human-authored branches are conventionally
-`feature/…` / `fix/…` / `bench/…`: **a pipeline PR opened from any branch other
-than `session/{slug}` will fail G8's check even though the branch is genuinely
-pushed.** G8 then silently re-dispatches BUILD (or PATCH) until G4's
-oscillation cap blocks the run. So:
+G8 (artifact verification) never reads the PR's `headRefName`. Traced in
+`tools/sdlc_next_skill.py`: the live-verification path derives the slug from
+the **plan filename** (`slug = Path(plan_path).stem`), then verifies the BUILD
+and PATCH artifacts with `git ls-remote --heads origin session/{slug}` (and
+PLAN with `git show main:docs/plans/{slug}.md`). Nothing in that path consults
+the branch the PR is actually open from. Filed upstream as
+`tomcounsell/ai#2765`; the fix is to make G8 read `headRefName`.
 
-- Name the pipeline build branch exactly `session/{slug}`, where `{slug}` is
-  the stem of `docs/plans/{slug}.md`. The `feature/…` / `fix/…` convention in
-  `CLAUDE.md` governs hand-authored branches, not pipeline runs.
-- Commit the plan to `main` at `docs/plans/{slug}.md` before BUILD completes.
-  This is permitted here: `docs/plans/` is under `docs/`, so `guard-main-push.yml`
-  allows the direct push.
-- A PR taken over mid-flight on a non-`session/` branch (or one with no plan)
-  will keep tripping G8 — expect it, and surface it rather than re-dispatching.
+**Expected symptom here:** a real, pushed, CI-green popoto branch under the
+documented naming fails G8, because G8 is looking for a `session/{slug}` ref
+that has never existed. G8 is a re-dispatch guard, not a blocking one, so it
+silently re-dispatches BUILD (or PATCH) until G4's oscillation cap blocks the
+run — the visible failure is stage oscillation, several dispatches removed
+from the actual cause.
+
+**Sanctioned response — override G8 and advance**, on two conditions, both
+verified, not assumed:
+
+1. The real head branch is pushed to origin (`git ls-remote --heads origin
+   <headRefName>` returns a ref).
+2. CI is green on that **exact head SHA**. Verify per run — resolve the PR's
+   `headRefOid` and check the run's `headSha`, e.g. `gh pr view N --json
+   headRefOid,statusCheckRollup`. Do not match on check name alone; a green
+   check from an earlier SHA proves nothing about the commit under review.
+
+Then **report that the override was exercised** — which PR, which head SHA, and
+that G8 was overridden per ai#2765 — in the stage trail and the final report.
+These reports are the evidence that accrues to the upstream issue; an
+unreported override is indistinguishable from the gate having passed.
+
+**Prohibited:** do NOT push a decoy `session/…` ref to satisfy the gate. That
+was done once on 2026-08-13 and left a ref requiring manual cleanup after
+merge. Do not commit the plan to `main` as a G8 workaround either — `docs/plans/`
+is genuinely pushable under `guard-main-push.yml`, but the docs-only push
+exemption exists for docs, not as a gate-satisfaction trick.
 
 If the **first** `sdlc-tool next-skill` of a run returns blocked against a
 `run_id` that is your own supervisor's, that is `tomcounsell/ai#2766`
