@@ -89,9 +89,11 @@ print(f"{restaurant.name} serves {restaurant.cuisine} food.")
 Reading and writing happen at RAM speed. Popoto adds
 [async operations](async.md), [multi-tenancy](multi-tenancy.md) via KeyField
 namespacing, geometric distance search, timeseries for streaming data, Pandas
-and Xarray interoperation, [pub/sub](pubsub.md) for message queues, and
+and Xarray interoperation, [pub/sub](pubsub.md) for message queues,
 [content and embedding fields](features/content-and-embedding-fields.md) for
-large content storage and semantic search.
+large content storage and semantic search, and
+[generic export/import](guides/export-import.md) with per-field round-trip
+fidelity for moving records between Redis instances.
 
 Start at [Configuration](configuration.md) and
 [Models and Fields](fields.md) for the ORM half of the library.
