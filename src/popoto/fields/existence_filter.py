@@ -344,6 +344,17 @@ class ExistenceFilter(Field):
     null: bool = True
     default = None
 
+    # Export/import: the Bloom filter's bit array is a function of save
+    # *history* (every fingerprint ever added), not of any single record's
+    # current value, so it cannot be reconstructed by replaying on_save()
+    # for the exported record set alone, nor practically carried as
+    # per-record state. Not addressed in v1 -- see #556.
+    roundtrip_policy: str = "partial"
+    roundtrip_note: str = (
+        "Bloom filter bit array reflects save history, not carried or "
+        "rebuilt by import; see #556"
+    )
+
     def __init__(self, **kwargs):
         self.error_rate = kwargs.pop("error_rate", 0.01)
         self.capacity = kwargs.pop("capacity", 100_000)
@@ -631,6 +642,17 @@ class FrequencySketch(Field):
     type: type = str
     null: bool = True
     default = None
+
+    # Export/import: the Count-Min Sketch counters accumulate across every
+    # save of every record (a function of save history), not of any single
+    # record's current value, so they cannot be reconstructed by import
+    # replay nor practically carried as per-record state. Not addressed in
+    # v1 -- see #556.
+    roundtrip_policy: str = "partial"
+    roundtrip_note: str = (
+        "Count-Min Sketch counters reflect save history, not carried or "
+        "rebuilt by import; see #556"
+    )
 
     def __init__(self, **kwargs):
         self.width = kwargs.pop("width", 2003)

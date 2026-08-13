@@ -80,6 +80,68 @@ class AccessTrackerMixin:
         86400  # 24h — magic-number tuning knob; see on_read() docstring
     )
 
+    # Export/import: this is a Model-level mixin, reached by the transfer
+    # driver's MRO walk rather than by iterating _meta.fields, so its
+    # export_state/import_state take the same signature minus ``field_name``.
+    # The meta hash counters are carried; the confirmed access log and any
+    # staged reads are a function of read *history* and are not.
+    roundtrip_policy: str = "partial"
+    roundtrip_note: str = (
+        "access_count and last_accessed are carried; the confirmed access log "
+        "($AT:{Class}:access_log:{key}) and staged reads are not carried or "
+        "rebuilt by import; see #556"
+    )
+
+    @classmethod
+    def export_state(cls, model_instance, **kwargs):
+        """Export the access-tracker meta counters for one instance.
+
+        Returns:
+            ``{"access_count": int, "last_accessed": float | None}``, or
+            ``None`` when this instance has never had a confirmed access.
+        """
+        meta_key = model_instance._at_key("meta")
+        raw_count = POPOTO_REDIS_DB.hget(meta_key, "access_count")
+        raw_last = POPOTO_REDIS_DB.hget(meta_key, "last_accessed")
+        if raw_count is None and raw_last is None:
+            return None
+
+        state = {}
+        if raw_count is not None:
+            try:
+                state["access_count"] = int(raw_count)
+            except (TypeError, ValueError):
+                logger.warning(f"Non-numeric access_count in {meta_key}; skipping")
+        if raw_last is not None:
+            try:
+                state["last_accessed"] = float(raw_last)
+            except (TypeError, ValueError):
+                logger.warning(f"Non-numeric last_accessed in {meta_key}; skipping")
+        return state or None
+
+    @classmethod
+    def import_state(cls, model_instance, state, **kwargs):
+        """Restore the access-tracker meta counters after import.
+
+        ``access_count`` and ``last_accessed`` are exposed only as read-only
+        properties, so this writes the meta hash directly -- the same hash
+        ``CONFIRM_ACCESS_LUA`` maintains. The access log itself is not
+        restored (see ``roundtrip_note``), so a subsequent
+        ``confirm_access()`` continues the carried count rather than
+        restarting it.
+        """
+        if not state:
+            return None
+
+        mapping = {}
+        if state.get("access_count") is not None:
+            mapping["access_count"] = int(state["access_count"])
+        if state.get("last_accessed") is not None:
+            mapping["last_accessed"] = float(state["last_accessed"])
+        if mapping:
+            POPOTO_REDIS_DB.hset(model_instance._at_key("meta"), mapping=mapping)
+        return None
+
     def _at_key(self, kind):
         """Build an access tracker Redis key.
 

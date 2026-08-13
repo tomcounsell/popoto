@@ -110,6 +110,10 @@ class GeoField(Field):
     default: tuple = Coordinates(None, None)
     null: bool = True
 
+    # Export/import: the geo sorted-set index is fully rebuilt from the
+    # coordinate value by on_save(), so nothing needs to be carried.
+    roundtrip_policy: str = "rebuild"
+
     def __init__(self, **kwargs):
         """
         Initialize a GeoField with optional configuration overrides.

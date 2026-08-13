@@ -1113,6 +1113,7 @@ class Model(metaclass=ModelBase):
         skip_auto_now: bool = False,
         update_fields: list = None,
         migrate_key: bool = False,
+        skip_write_filter: bool = False,
         **kwargs,
     ) -> Union["Pipeline", int, bool]:
         """Persist the model instance to Redis.
@@ -1139,6 +1140,16 @@ class Model(metaclass=ModelBase):
             migrate_key: If True, allow KeyField value changes (key migration).
                 By default, changing a KeyField value after initial save raises
                 KeyMutationError to prevent accidental identity changes.
+            skip_write_filter: If True, bypass WriteFilterMixin's write gate
+                (the SkipSaveException check) for this call, so the save
+                proceeds even if it would otherwise be rejected by the
+                model's write filter. Default False preserves today's
+                behavior exactly (gate is honored). CAUTION: save() accepts
+                arbitrary **kwargs, so a misspelled keyword such as
+                skip_write_filtr=True is silently absorbed into **kwargs and
+                has NO effect -- the gate remains enforced with no error or
+                warning. Double-check the spelling at call sites that rely
+                on this flag.
             **kwargs: Passed to field on_save hooks.
 
         Returns:
@@ -1206,7 +1217,7 @@ class Model(metaclass=ModelBase):
         # WriteFilterMixin: check write filter before any save work
         from ..fields.write_filter import WriteFilterMixin
 
-        if isinstance(self, WriteFilterMixin):
+        if isinstance(self, WriteFilterMixin) and not skip_write_filter:
             try:
                 self._check_write_filter()
             except SkipSaveException:
@@ -2687,6 +2698,80 @@ class Model(metaclass=ModelBase):
             pipeline.execute()
 
         return created
+
+    @classmethod
+    def export_records(
+        cls,
+        *q_objects,
+        stream=None,
+        chunk_size: int = 500,
+        **filters,
+    ):
+        """Export this model's records as JSON Lines.
+
+        Thin delegate to :func:`popoto.transfer.export_records`; see that
+        function for the full contract. Filter arguments forward verbatim to
+        ``cls.query.filter(...)``, so an unknown filter parameter raises
+        ``QueryException`` rather than being ignored.
+
+        Args:
+            *q_objects: ``Q`` / ``Expression`` objects to filter by.
+            stream: Text file-like object to write to. When ``None``, the
+                JSONL text comes back on ``ExportResult.data``.
+            chunk_size: Keys hydrated per round trip (bounds peak memory).
+            **filters: Plain keyword filters.
+
+        Returns:
+            popoto.transfer.ExportResult
+
+        Example:
+            with open("memories.jsonl", "w") as fh:
+                result = Memory.export_records(project_key="ai", stream=fh)
+        """
+        from ..transfer.export import export_records as _export_records
+
+        return _export_records(
+            cls, *q_objects, stream=stream, chunk_size=chunk_size, **filters
+        )
+
+    @classmethod
+    def import_records(
+        cls,
+        stream,
+        on_conflict: str = "error",
+        on_write_gate: str = "reject",
+        on_embedding_mismatch: str = "error",
+    ):
+        """Import records from a JSON Lines export into this model.
+
+        Thin delegate to :func:`popoto.transfer.import_records`; see that
+        function for the full contract. Keys are always preserved, so a re-run
+        converges rather than duplicating.
+
+        Args:
+            stream: Text file-like object positioned at the manifest line.
+            on_conflict: ``"error"`` (default) / ``"skip"`` / ``"overwrite"``.
+            on_write_gate: ``"reject"`` (default) / ``"bypass"``.
+            on_embedding_mismatch: ``"error"`` (default) / ``"carry"`` /
+                ``"regenerate"``.
+
+        Returns:
+            popoto.transfer.ImportReport
+
+        Example:
+            with open("memories.jsonl") as fh:
+                report = Memory.import_records(fh, on_conflict="overwrite")
+            print(report.summary())
+        """
+        from ..transfer.import_ import import_records as _import_records
+
+        return _import_records(
+            cls,
+            stream,
+            on_conflict=on_conflict,
+            on_write_gate=on_write_gate,
+            on_embedding_mismatch=on_embedding_mismatch,
+        )
 
     @classmethod
     def bulk_update(cls, queryset_or_instances, batch_size: int = 1000, **updates):

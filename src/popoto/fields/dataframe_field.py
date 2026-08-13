@@ -111,6 +111,12 @@ class DataFrameField(Field):
 
     null: bool = False
 
+    # Export/import: the DataFrame is stored as the field's plain value
+    # (JSON-serialized via TYPE_ENCODER_DECODERS, captured by to_dict()) with
+    # no independent secondary Redis structure, so it round-trips with no
+    # carried state.
+    roundtrip_policy: str = "rebuild"
+
     def __init__(self, **kwargs):
         """
         Initialize a DataFrameField with DataFrame-specific defaults.

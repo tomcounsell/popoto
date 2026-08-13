@@ -158,6 +158,85 @@ class ConfidenceField(Field):
         ConfidenceField.update_confidence(memory, "certainty", signal=0.9)
     """
 
+    # Export/import: the companion hash holds evidence_count, corroborations
+    # and contradictions, which exist nowhere else -- only ``confidence`` is
+    # mirrored onto the model attribute. A plain re-save reseeds the hash with
+    # ``initial_confidence`` via HSETNX (see on_save), discarding all four
+    # values, so they must be carried explicitly.
+    roundtrip_policy: str = "carry"
+
+    @classmethod
+    def export_state(cls, model_instance, field_name, field_value, **kwargs):
+        """Export the companion-hash confidence metadata for one instance.
+
+        Reads ``{confidence, evidence_count, corroborations, contradictions}``
+        from the field's own companion hash (partition-aware via
+        :meth:`get_data_hash_key`).
+
+        Returns:
+            dict of the four metadata values, or ``None`` when this instance
+            has no companion-hash entry (never saved, or already deleted).
+        """
+        field = model_instance._meta.fields.get(field_name)
+        if not isinstance(field, ConfidenceField):
+            return None
+
+        data_hash_key = field.get_data_hash_key(model_instance, field_name)
+        member_key = model_instance.db_key.redis_key
+        raw = POPOTO_REDIS_DB.hget(data_hash_key, member_key)
+        if not raw:
+            return None
+
+        try:
+            data = msgpack.unpackb(raw, raw=False)
+        except Exception:
+            logger.warning(
+                f"Could not decode confidence data for {member_key} "
+                f"in {data_hash_key}; skipping export of {field_name}"
+            )
+            return None
+        if not isinstance(data, dict):
+            return None
+
+        return {
+            "confidence": float(data.get("confidence", field.initial_confidence)),
+            "evidence_count": int(data.get("evidence_count", 0) or 0),
+            "corroborations": int(data.get("corroborations", 0) or 0),
+            "contradictions": int(data.get("contradictions", 0) or 0),
+        }
+
+    @classmethod
+    def import_state(cls, model_instance, field_name, state, **kwargs):
+        """Restore companion-hash confidence metadata after import.
+
+        Written with a raw ``HSET`` of msgpack -- mirroring what ``on_save``
+        does -- because there is no public setter (``update_confidence`` is
+        signal-only and would apply the capped-evidence update rule rather
+        than restoring exact values).
+
+        This deliberately OVERWRITES: ``on_save`` has already run by the time
+        the transfer driver calls this, and it seeds the entry with
+        ``field.initial_confidence`` via HSETNX. An HSETNX here would be a
+        no-op and the exported values would be silently lost.
+        """
+        if not state:
+            return None
+
+        field = model_instance._meta.fields.get(field_name)
+        if not isinstance(field, ConfidenceField):
+            return None
+
+        data_hash_key = field.get_data_hash_key(model_instance, field_name)
+        member_key = model_instance.db_key.redis_key
+        data = {
+            "confidence": float(state.get("confidence", field.initial_confidence)),
+            "evidence_count": int(state.get("evidence_count", 0) or 0),
+            "corroborations": int(state.get("corroborations", 0) or 0),
+            "contradictions": int(state.get("contradictions", 0) or 0),
+        }
+        POPOTO_REDIS_DB.hset(data_hash_key, member_key, msgpack.packb(data))
+        return None
+
     def __init__(self, **kwargs):
         initial_confidence = kwargs.pop("initial_confidence", None)
         self.initial_confidence = (
