@@ -103,6 +103,19 @@ the confidence and decay loop. Nothing is written to stdout, and on Claude
 Code this hook is configured `"async": true` so it never sits on the turn's
 critical path.
 
+**Known gap: the read→write handoff is a session-wide FIFO, not a turn ID.**
+`MemoryService` queues selected record keys per `session_id` as a plain
+list and pops one entry per write event; it does not key the entry on a
+turn identifier, even though Claude Code and Codex fixtures both carry one
+(`prompt_id` / `turn_id`). A read whose paired write event never fires — an
+aborted turn, a crashed session — leaves its entry in the list and shifts
+every later push/pop pairing by one, and a `SubagentStop`-configured
+session pops one queued entry per subagent against a single earlier read.
+The failure mode is misattributed outcome reporting (confidence/decay
+adjustments land on the wrong turn's records), not a crash, and it is
+bounded by `MAX_PENDING_TURNS` (32) per session. Tracked as follow-up work;
+not fixed in this PR.
+
 Neither path parses a transcript file. Every harness supplies the assistant's
 final text on the event itself, so a change to the JSONL format cannot break
 capture.

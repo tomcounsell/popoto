@@ -482,6 +482,19 @@ class MemoryService:
         read that preceded it, and both commands are atomic, so no lock is
         needed. The list carries a TTL and a length cap so an abandoned
         session cannot leak.
+
+        NOTE (PR #546 review, tech debt): this is a session-wide FIFO, not
+        keyed on the turn identifiers Claude Code (``prompt_id``) and Codex
+        (``turn_id``) already send -- left as-is for this PR because keying
+        on those would still need a FIFO fallback for Hermes/OpenClaw
+        payloads that carry neither, and that dual-path handoff is scoped
+        as follow-up work rather than a patch-sized change. A read whose
+        paired write never fires (aborted turn, crashed session, or a
+        ``SubagentStop``-configured session popping more than it pushed)
+        shifts every later pairing by one and misattributes an outcome
+        report to the wrong turn's records. See
+        ``docs/features/harness-integration.md`` ("Known gap") for the
+        full disclosure.
         """
         try:
             keys = []
