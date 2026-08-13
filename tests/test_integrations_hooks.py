@@ -16,6 +16,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -267,6 +268,29 @@ def test_outcome_is_reported_on_the_following_stop(tmp_path):
     assert POPOTO_REDIS_DB.llen(service._pending_key(session)) == 1
     hooks.handle_payload(load("claude_code_stop.json"), service=service)
     assert POPOTO_REDIS_DB.llen(service._pending_key(session)) == 0
+
+
+def test_write_path_reports_used_not_acted():
+    # A hook fires every turn and cannot know whether a surfaced memory
+    # influenced the response, so it must never claim "acted" -- that would
+    # strengthen ConfidenceField/decay clocks on every turn and defeat decay
+    # entirely (see fields/observation.py). Pin the outcome the write path
+    # passes to service.feedback so this can't silently regress.
+    class RecordingService:
+        def __init__(self):
+            self.config = SimpleNamespace(enabled=True)
+            self.feedback_calls = []
+
+        def capture(self, text, session_id=None):
+            pass
+
+        def feedback(self, session_id, outcome="acted"):
+            self.feedback_calls.append((session_id, outcome))
+
+    service = RecordingService()
+    payload = load("claude_code_stop.json")
+    hooks.handle_payload(payload, service=service)
+    assert service.feedback_calls == [(payload["session_id"], "used")]
 
 
 # --- malformed input --------------------------------------------------------------

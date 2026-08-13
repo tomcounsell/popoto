@@ -225,7 +225,12 @@ def handle_payload(payload: Dict[str, Any], service: Any = None) -> Optional[str
 
     service.capture(event.text, session_id=event.session_id)
     if event.session_id:
-        service.feedback(event.session_id, outcome="acted")
+        # A hook fires on every turn and cannot know whether a surfaced
+        # memory actually influenced the response, so it must not claim
+        # "acted" (which strengthens ConfidenceField/decay clocks on every
+        # turn and defeats decay entirely). "used" only confirms the staged
+        # read. See fields/observation.py for the outcome effects matrix.
+        service.feedback(event.session_id, outcome="used")
     return None
 
 
