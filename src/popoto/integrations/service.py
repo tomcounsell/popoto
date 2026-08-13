@@ -251,7 +251,7 @@ class MemoryService:
             )
         return keys
 
-    def feedback(self, session_id: str, outcome: str = "acted") -> int:
+    def feedback(self, session_id: str, outcome: str = "used") -> int:
         """Report how the memories injected for a turn were used.
 
         Pops the oldest unresolved turn for ``session_id`` and applies
@@ -266,7 +266,10 @@ class MemoryService:
         Args:
             session_id: Harness session identifier.
             outcome: One of ``"acted"``, ``"used"``, ``"dismissed"``,
-                ``"deferred"``, ``"contradicted"``. Default ``"acted"``.
+                ``"deferred"``, ``"contradicted"``. Default ``"used"``: a
+                caller that omits the outcome cannot have observed the
+                memory influencing the response, so the safe default must
+                not strengthen confidence or refresh decay clocks.
 
         Returns:
             Number of records the outcome was applied to.

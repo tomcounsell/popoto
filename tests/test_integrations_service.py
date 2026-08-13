@@ -229,6 +229,36 @@ def test_feedback_reports_against_the_turn_that_was_injected(tmp_path):
     assert service.feedback("s1", outcome="acted") == 1
 
 
+def test_feedback_default_outcome_is_used_not_acted(tmp_path, monkeypatch):
+    """A caller that omits ``outcome`` cannot have observed the memory
+    influencing the response, so the default must not strengthen
+    ConfidenceField or refresh any decay clock (see fields/observation.py).
+    Pin the outcome service.feedback applies by default so an omitted
+    argument can't silently regress to "acted".
+    """
+    from popoto.fields import observation as observation_module
+
+    calls = []
+    original = observation_module.ObservationProtocol.on_context_used
+
+    def recording_on_context_used(instances, outcome_map, **kwargs):
+        calls.append(dict(outcome_map))
+        return original(instances, outcome_map, **kwargs)
+
+    monkeypatch.setattr(
+        observation_module.ObservationProtocol,
+        "on_context_used",
+        staticmethod(recording_on_context_used),
+    )
+
+    service = make_service(tmp_path)
+    seed(service, "Deploys are blue-green with automatic rollback")
+    service.assemble("how do deploys roll back?", session_id="s1")
+    assert service.feedback("s1") == 1
+    assert calls
+    assert set(calls[0].values()) == {"used"}
+
+
 def test_feedback_without_a_pending_turn_is_a_no_op(tmp_path):
     assert make_service(tmp_path).feedback("never-assembled") == 0
 
