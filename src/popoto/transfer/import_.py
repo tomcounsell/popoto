@@ -346,7 +346,7 @@ def import_records(
             ) from exc
         break
 
-    _validate_manifest(model_class, manifest)
+    manifest = _validate_manifest(model_class, manifest)
     report.source_matched_count = manifest.get("matched_count")
     report.fidelity = {
         **(manifest.get("fields") or {}),
