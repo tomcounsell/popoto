@@ -75,6 +75,8 @@ memory.report_outcomes(assembly)
 
 Next steps: the [Agent Memory Quickstart](https://popoto.io/guides/agent-memory-quickstart/) builds the primitives up level by level, and the [Agent Memory overview](https://popoto.io/features/agent-memory/) is the full reference.
 
+Running inside Claude Code, Codex, Hermes, or OpenClaw? [Harness Integration](https://popoto.io/features/harness-integration/) wires the same loop into hooks and MCP with no glue code: `pip install 'popoto[mcp]'`, paste a config block, and memory injects before every turn and captures after it.
+
 ## What is measured
 
 Every number below comes from a harness in this repository, with its result JSON committed alongside. Method, per-category tables, and the runs that came out badly are in [Benchmarks](https://popoto.io/benchmarks/).
@@ -121,6 +123,7 @@ print(f"{restaurant.name} serves {restaurant.cuisine} food.")
  - **Full Redis and Valkey support** - works with both out of the box
  - **[Agent Memory](https://popoto.io/features/agent-memory/)** - programmable memory primitives for AI agents (decay, confidence, associations, context assembly)
  - **[Content & Embeddings](https://popoto.io/features/content-and-embedding-fields/)** - large content storage, vector embeddings, and semantic search
+ - **[Harness Integration](https://popoto.io/features/harness-integration/)** - subconscious memory for Claude Code, Codex, Hermes, and OpenClaw via hooks and MCP
 
 **Popoto** is ideal for streaming data. The pub/sub module allows you to trigger state updates in real time.
 Currently being used in production for:

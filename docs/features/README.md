@@ -15,6 +15,7 @@ Agent-memory primitives and composed layers shipped in Popoto. Start at
 | [CyclicDecayField](cyclic-decay-field.md) | Cyclical resonance, pressure, proactive surfacing, and confidence-modulated decay | Stable |
 | [DecayingSortedField](decaying-sorted-field.md) | Time-decayed sorted index for relevance ranking, with confidence-modulated per-record decay rates | Stable |
 | [ExistenceFilter](existence-filter.md) | Probabilistic membership pre-check (Bloom-style) | Stable |
+| [Harness Integration](harness-integration.md) | Subconscious memory for Claude Code, Codex, Hermes, and OpenClaw via hooks and MCP | Stable |
 | [Hybrid Retrieval (BM25 + RRF)](hybrid-retrieval.md) | BM25 keyword search fused with vector scores via RRF | Stable |
 | [LLM Memory Extraction](llm-memory-extraction.md) | Pluggable extraction providers (heuristic default, opt-in Claude) for `SubconsciousMemory` | Stable |
 | [Metacognitive Layer](metacognitive-layer.md) | Retrieval quality scoring, FOK, `"used"` outcome, AdaptiveAssembler | Stable |
