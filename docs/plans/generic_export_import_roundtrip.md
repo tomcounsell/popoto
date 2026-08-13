@@ -870,61 +870,61 @@ owns.
 ## Documentation
 
 ### Feature Documentation
-- [ ] Create `docs/field-authoring.md` — the round-trip protocol for field
+- [x] Create `docs/field-authoring.md` — the round-trip protocol for field
       authors: what `roundtrip_policy` means, when to override `export_state` /
       `import_state`, the rule that a field with independent Redis state must
       declare `"carry"` or `"partial"`, and the fact that the same protocol is
       honored on Model-level mixins via the MRO walk. This is
       AC #10 and there is **no existing custom-field-authoring doc** to extend
       (spike-4).
-- [ ] Create `docs/guides/export-import.md` — user-facing: exporting with and
+- [x] Create `docs/guides/export-import.md` — user-facing: exporting with and
       without filters, the four policy flags and their defaults with the rationale
       for each, reading an `ImportReport`, and the "resuming an interrupted
       import" recipe.
-- [ ] Add both to the `mkdocs.yml` nav under the "Redis ORM" section
+- [x] Add both to the `mkdocs.yml` nav under the "Redis ORM" section
       (mkdocs.yml:68-82).
 
 ### External Documentation Site
-- [ ] `mkdocs build --strict` passes.
-- [ ] `docs/fields.md` gains a pointer to `field-authoring.md`.
+- [x] `mkdocs build --strict` passes.
+- [x] `docs/fields.md` gains a pointer to `field-authoring.md`.
 
 ### Inline Documentation
-- [ ] Docstrings on all five protocol members of `Field`, each stating the
+- [x] Docstrings on all five protocol members of `Field`, each stating the
       default behavior and when to override.
-- [ ] Docstrings on `export_records` / `import_records` / `ExportResult` /
+- [x] Docstrings on `export_records` / `import_records` / `ExportResult` /
       `ImportReport` (they surface via mkdocstrings in `docs/reference/`).
-- [ ] A comment at the rejection-detection site explaining why truthiness is
+- [x] A comment at the rejection-detection site explaining why truthiness is
       wrong (HSET returns 0 on overwrite) — this is the single most re-derivable
       mistake in the file.
 
 ## Success Criteria
 
-- [ ] AC #1 — a plain-field model round-trips with identical field values, and
+- [x] AC #1 — a plain-field model round-trips with identical field values, and
       `grep -c "isinstance" src/popoto/transfer/*.py` finds no check against a
       concrete field class.
-- [ ] AC #2 — a fixture model stacking `AutoKeyField`, `DecayingSortedField`,
+- [x] AC #2 — a fixture model stacking `AutoKeyField`, `DecayingSortedField`,
       `BM25Field`, `EmbeddingField`, `ConfidenceField`, `ExistenceFilter`, and
       `WriteFilterMixin` round-trips; every field either restores its state or is
       reported with its `roundtrip_policy`.
-- [ ] AC #3 — a `Field` subclass defined inside the test file, with no round-trip
+- [x] AC #3 — a `Field` subclass defined inside the test file, with no round-trip
       support, exports and imports correctly via the base default.
-- [ ] AC #4 — `ImportReport` accounts for every exported record as landed,
+- [x] AC #4 — `ImportReport` accounts for every exported record as landed,
       skipped, rejected, errored, or partial, with a reason per non-landed
       record; a write-gate drop appears as a counted rejection.
-- [ ] AC #5 — `export_records()` with no arguments exports all records of a model
+- [x] AC #5 — `export_records()` with no arguments exports all records of a model
       that has no grouping field.
-- [ ] AC #6 — filtering goes through `Model.query.filter`; an unqueryable
+- [x] AC #6 — filtering goes through `Model.query.filter`; an unqueryable
       predicate raises rather than being ignored.
-- [ ] AC #7 — a zero-match filter is distinguishable from an empty model in the
+- [x] AC #7 — a zero-match filter is distinguishable from an empty model in the
       manifest.
-- [ ] AC #8 — importing into a populated destination has a tested semantic for
+- [x] AC #8 — importing into a populated destination has a tested semantic for
       all three `on_conflict` modes.
-- [ ] AC #9 — all round-trip tests run against live Redis, no mocks.
-- [ ] AC #10 — `docs/field-authoring.md` documents the protocol.
-- [ ] Every `Field` subclass in `src/popoto/fields/` has an explicit
+- [x] AC #9 — all round-trip tests run against live Redis, no mocks.
+- [x] AC #10 — `docs/field-authoring.md` documents the protocol.
+- [x] Every `Field` subclass in `src/popoto/fields/` has an explicit
       `roundtrip_policy` (enforced by test).
-- [ ] Tests pass (`/do-test`), narrow-scoped to the three new files.
-- [ ] Documentation updated (`/do-docs`).
+- [x] Tests pass (`/do-test`), narrow-scoped to the three new files.
+- [x] Documentation updated (`/do-docs`).
 
 ## Team Orchestration
 
