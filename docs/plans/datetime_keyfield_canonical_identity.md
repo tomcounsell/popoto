@@ -827,7 +827,7 @@ future recipe edit cannot quietly acquire the migration burden.
 | Escape logic untouched (#525 anti-criterion) | `git diff origin/main -- src/popoto/models/db_key.py \| grep -E '^[-+].*(COLON_ESCAPE\|GLOB_CHARS\|ESCAPABLE)'` | match count == 0 |
 | `Model.db_key` no longer pre-stringifies | `grep -c 'str(getattr(self, key_field_name' src/popoto/models/base.py` | match count == 0 |
 | Kill switch present | `grep -rn 'POPOTO_DATETIME_KEY_LEGACY' src/popoto/` | exit code 0 |
-| Canonical helper is the single entry point | `grep -rc 'canonical_key_str' src/popoto/models/db_key.py src/popoto/models/base.py` | output contains `1` |
+| Canonical helper is the single entry point | `grep -c 'canonical_key_str(' src/popoto/models/db_key.py src/popoto/models/base.py` | `db_key.py:1`, `base.py:2` (call sites only; the bare-word variant matches docstring mentions too and is not what this row checks) |
 | #534 not implemented here (anti-criterion) | `git diff origin/main --name-only \| grep -c 'indexed_field_mixin.py'` | match count == 0 |
 | Both cookbook recipes exist | `grep -c '^19\. \|^20\. ' src/popoto/models/migrations.py` | output > 1 |
 

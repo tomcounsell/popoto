@@ -1066,6 +1066,18 @@ Two consequences to read before upgrading:
 **Action required**: Audit, resolve, migrate, re-verify. Set the kill switch
 first so the fleet keeps writing 1.8.2 key bytes while readers roll forward.
 
+The switch governs only the *encode* path (what a live ``save()`` renders) and
+the *audit's own no-op sibling*, ``canonical_key_str``'s default. It does
+**not** blind ``audit_datetime_keys()`` -- the audit computes each row's
+canonical target independently of the switch, so steps 2 and 4 below report
+the truth whether the switch is set in this process or not. It **does** gate
+*applying* the move: ``migrate_datetime_keys(dry_run=False)`` refuses if the
+switch is set in the process calling it, because renaming a row onto its
+canonical key while this process's own ``save()`` still derives legacy key
+bytes would immediately re-diverge the row the moment it is next loaded and
+saved here. That is a property of *this process's* setting, not the fleet's --
+step 5 below is where it matters.
+
 ::
 
     # 1. Deploy 1.9.0 fleet-wide with the kill switch set. Key bytes are
@@ -1077,7 +1089,8 @@ first so the fleet keeps writing 1.8.2 key bytes while readers roll forward.
     #    from popoto.fields.constants import Defaults
     #    Defaults.DATETIME_KEY_LEGACY = True
 
-    # 2. Audit. Read-only -- safe against a live keyspace.
+    # 2. Audit. Read-only -- safe against a live keyspace, and truthful
+    #    regardless of the kill switch.
     print(Event.audit_datetime_keys())
 
     # Datetime KeyField audit: Event.at
@@ -1097,11 +1110,19 @@ first so the fleet keeps writing 1.8.2 key bytes while readers roll forward.
     # 3. Resolve any collision by hand -- see recipe 20. The migration
     #    refuses to run at all while one exists.
 
-    # 4. Preview. dry_run=True is the default, so this writes nothing.
+    # 4. Preview. dry_run=True is the default, so this writes nothing, and the
+    #    preview is unaffected by the kill switch -- safe to run with it set.
     print(Event.migrate_datetime_keys())
 
-    # 5. Apply. Quiesce writers first, or leave the kill switch set fleet-wide
-    #    so no live writer is deriving the new form while this produces it.
+    # 5. Apply, from a process where the switch is NOT set (unset it here, or
+    #    run the migration from a process that never set it). Other fleet
+    #    members may keep POPOTO_DATETIME_KEY_LEGACY=1 for now -- this is a
+    #    property of the process calling migrate_datetime_keys, not the
+    #    fleet -- but quiesce writers to this model everywhere first, so
+    #    nothing else saves a row this call just renamed while its own
+    #    encode path still disagrees about where that row belongs.
+    #
+    #    Defaults.DATETIME_KEY_LEGACY = False   # in *this* process only
     print(Event.migrate_datetime_keys(dry_run=False))
 
     # 6. Re-verify, then lift the kill switch fleet-wide.
@@ -1115,6 +1136,13 @@ hash key, and runs one ``rebuild_indexes()`` at the end.
 
 A model with no ``KeyField(type=datetime)`` needs none of this: the audit
 reports "not applicable" and the kill switch is irrelevant.
+
+**A fourth refusal, specific to the switch.** ``migrate_datetime_keys(dry_run=False)``
+also refuses -- with no acknowledgment kwarg, because the fix is one line --
+when ``POPOTO_DATETIME_KEY_LEGACY`` is set in the calling process. There is no
+override: unset it in that process (step 5 above) and re-run. The audit and a
+``dry_run=True`` preview are never affected by the switch and are always safe
+to run regardless of it.
 
 **Three things this does not do.** It does not rewrite ``Relationship`` values
 on other models that point at a renamed key -- it refuses to run when any

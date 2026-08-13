@@ -15,6 +15,16 @@ and **refuses to touch a duplicate pair**, because choosing which copy survives
 is not a decision a library can make for an operator -- see
 :class:`DatetimeKeyCollision`.
 
+Both compute a row's canonical target through ``canonical_key_str(..., force=True)``,
+independent of the ``POPOTO_DATETIME_KEY_LEGACY`` kill switch. The switch exists
+so *writes* keep producing 1.8.2 key bytes during a rollout (see
+``canonical_key.py``); it must not also blind the audit -- with the switch on
+and the target gated the same way, every row would compute its own key as its
+target, ``is_clean`` would report ``True``, and a genuine #538 duplicate pair
+would report zero collisions, over a keyspace this tool exists to repair. The
+audit and migration tell the truth regardless of the switch; only the encode
+path (``DB_key.__str__``, live writes) respects it. See cookbook recipe 19.
+
 Both are exposed as ``Model`` classmethods; this module holds the
 implementation because ``base.py`` is already large. See migration cookbook
 recipes 19 and 20 for the operator procedure.
@@ -27,6 +37,7 @@ from collections.abc import Iterator
 
 from redis.exceptions import ResponseError
 
+from ..fields.constants import Defaults
 from ..redis_db import POPOTO_REDIS_DB, ENCODING
 from .canonical_key import canonical_key_str
 from .db_key import DB_key
@@ -556,8 +567,14 @@ def audit_datetime_keys(model_class) -> DatetimeKeyAudit:
     """Report every non-canonical and every duplicated datetime-keyed row.
 
     Strictly read-only: this issues SCAN and HGETALL and nothing else. Safe to
-    run against a live keyspace, and cheap enough to re-run as verification
-    after a migration.
+    run against a live keyspace. Truthful regardless of
+    ``POPOTO_DATETIME_KEY_LEGACY`` -- each row's canonical target is computed
+    with ``canonical_key_str(..., force=True)``, so the switch (which governs
+    what a live *write* renders) cannot make an already-non-canonical row
+    report as clean. Re-running as verification after a migration costs one
+    SCAN per model plus one inbound-relationship scan per related model; at
+    the repo's 20k-scale target that inbound scan is not free (see
+    ``_find_inbound_relationships``).
     """
     field_name = _datetime_key_field_name(model_class)
     model_name = model_class._meta.model_name
@@ -579,7 +596,13 @@ def audit_datetime_keys(model_class) -> DatetimeKeyAudit:
             continue
 
         canonical_partials = list(partials)
-        canonical_partials[position] = canonical_key_str(parsed)
+        # force=True: the audit must report the truth regardless of
+        # POPOTO_DATETIME_KEY_LEGACY. The switch exists to keep *writes*
+        # producing 1.8.2 key bytes during a rollout; it must not also make
+        # this read-only tool blind to what needs migrating. See
+        # canonical_key_str's docstring for why this is the one caller that
+        # forces.
+        canonical_partials[position] = canonical_key_str(parsed, force=True)
         canonical_redis_key = DB_key(*canonical_partials).redis_key
 
         row = DatetimeKeyRow(redis_key, rendered, shape, canonical_redis_key)
@@ -677,6 +700,24 @@ def migrate_datetime_keys(
     )
 
     if not audit.applicable:
+        return report
+
+    if not dry_run and Defaults.DATETIME_KEY_LEGACY:
+        report.refused = True
+        report.refusal_reason = (
+            "POPOTO_DATETIME_KEY_LEGACY is set in this process. The audit above "
+            "is truthful regardless of the switch, but *applying* the move here "
+            "is not safe while it is set: this process's own encode path still "
+            "renders 1.8.2 key bytes on save (that is the switch's job), so a "
+            "row renamed onto its canonical key now would immediately diverge "
+            "the moment this process next loads and saves it -- the exact "
+            "'stored key disagrees with the derived key' state "
+            "rebuild_indexes() warns about, and the row would drop out of "
+            "every index in the meantime. Unset the switch in this process (or "
+            "run the migration from a process that never set it) before "
+            "calling with dry_run=False; a dry_run=True preview is unaffected "
+            "and safe to run with the switch either way."
+        )
         return report
 
     if audit.collisions:

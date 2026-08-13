@@ -23,6 +23,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 from src import popoto
+from src.popoto.fields.constants import Defaults
 from src.popoto.models.canonical_key import canonical_key_str
 from src.popoto.models.datetime_key_migration import (
     SHAPE_CANONICAL,
@@ -229,6 +230,111 @@ def test_identical_copies_are_reported_as_safe_to_collapse():
 
     assert collision.differing_fields == set()
     assert "copies are identical" in str(Reading.audit_datetime_keys())
+
+
+# --- the kill switch (fourth-review finding) --------------------------------
+#
+# `audit_datetime_keys` used to compute a row's canonical target through the
+# same gated `canonical_key_str` the encode path uses. With the switch on,
+# that made the "canonical target" equal to the legacy key the row was
+# already on, so every row looked already-canonical: `is_clean` was True,
+# `migratable_rows` was empty, and a genuine #538 duplicate pair reported
+# zero collisions. Recipe 19 sets the switch at step 1 and does not lift it
+# until step 6, so the documented procedure silently no-op'd. These tests
+# pin the fix: the audit is truthful under the switch, a dry-run preview is
+# unaffected by it, and an actual apply refuses outright while it is set
+# (rather than moving a row into the diverged, unindexed state a same-process
+# save would produce next).
+
+
+@pytest.fixture
+def legacy_key_bytes():
+    """Force 1.8.2 key bytes for the duration of a test, same as save()'s."""
+    previous = Defaults.DATETIME_KEY_LEGACY
+    Defaults.DATETIME_KEY_LEGACY = True
+    yield
+    Defaults.DATETIME_KEY_LEGACY = previous
+
+
+def test_audit_finds_a_migratable_row_even_with_the_kill_switch_on(legacy_key_bytes):
+    """Reviewer's first repro on PR #548: a lone legacy row must not vanish."""
+    old_key = _write_row_at_legacy_key(INSTANT_NAIVE, "legacy")
+
+    audit = Reading.audit_datetime_keys()
+
+    assert not audit.is_clean
+    (row,) = audit.migratable_rows
+    assert row.redis_key == old_key
+    assert row.canonical_redis_key == "Reading:" + DB_key.clean(CANONICAL_VALUE)
+
+
+def test_audit_detects_the_duplicate_pair_even_with_the_kill_switch_on(
+    legacy_key_bytes,
+):
+    """Reviewer's second, worse repro: #538 collision detection must not go blind.
+
+    Without this fix this reported ``collisions=0`` on a keyspace that has
+    one -- the CHANGELOG's promise that the audit "reports every such pair
+    before anything moves" was false in the exact configuration (kill switch
+    set) the CHANGELOG itself tells adopters to run first.
+    """
+    aware_key = _write_row_at_legacy_key(INSTANT_PLUS_7, "original")
+    naive_key = _write_row_at_legacy_key(INSTANT_NAIVE, "the copy that drifted")
+
+    audit = Reading.audit_datetime_keys()
+
+    assert not audit.is_clean
+    assert len(audit.collisions) == 1
+    (collision,) = audit.collisions
+    assert {row.redis_key for row in collision.rows} == {aware_key, naive_key}
+
+
+def test_migrate_dry_run_preview_is_unaffected_by_the_kill_switch(legacy_key_bytes):
+    """A preview never writes, so it is safe -- and must stay truthful -- under the switch."""
+    old_key = _write_row_at_legacy_key(INSTANT_NAIVE, "legacy")
+
+    report = Reading.migrate_datetime_keys()  # dry_run=True default
+
+    assert not report.refused
+    assert report.moved == [(old_key, "Reading:" + DB_key.clean(CANONICAL_VALUE))]
+    assert POPOTO_REDIS_DB.exists(old_key)
+
+
+def test_migrate_refuses_to_apply_while_the_kill_switch_is_set(legacy_key_bytes):
+    """Applying under the switch would immediately re-diverge the row on next save.
+
+    This is the fix's other half: the audit sees through the switch so it
+    never lies, but *moving* data while this process's own encode path still
+    renders legacy bytes on save would strand the row in the diverged,
+    unindexed state ``rebuild_indexes()`` warns about the moment anything
+    here loads and re-saves it. Refusing outright -- with no acknowledgment
+    kwarg -- is safer than moving it anyway.
+    """
+    old_key = _write_row_at_legacy_key(INSTANT_NAIVE, "legacy")
+
+    report = Reading.migrate_datetime_keys(dry_run=False)
+
+    assert report.refused
+    assert "POPOTO_DATETIME_KEY_LEGACY" in report.refusal_reason
+    assert report.moved == []
+    assert POPOTO_REDIS_DB.exists(old_key)
+    assert len(POPOTO_REDIS_DB.keys("Reading:*")) == 1
+
+
+def test_migrate_applies_once_the_kill_switch_is_unset(legacy_key_bytes):
+    """The documented recovery: unset the switch in this process, then apply."""
+    old_key = _write_row_at_legacy_key(INSTANT_NAIVE, "legacy")
+
+    refused = Reading.migrate_datetime_keys(dry_run=False)
+    assert refused.refused
+
+    Defaults.DATETIME_KEY_LEGACY = False
+    applied = Reading.migrate_datetime_keys(dry_run=False)
+
+    assert not applied.refused
+    assert applied.moved_count == 1
+    assert not POPOTO_REDIS_DB.exists(old_key)
+    assert Reading.audit_datetime_keys().is_clean
 
 
 # --- migration --------------------------------------------------------------

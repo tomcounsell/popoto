@@ -43,7 +43,7 @@ CANONICAL_DATETIME_FORMAT = "%Y-%m-%dT%H:%M:%S.%f"
 CANONICAL_UTC_SUFFIX = "Z"
 
 
-def canonical_key_str(value) -> str:
+def canonical_key_str(value, *, force: bool = False) -> str:
     """Render *value* as the bytes it contributes to a Redis key.
 
     For a ``datetime.datetime``: normalize to UTC and render
@@ -73,8 +73,25 @@ def canonical_key_str(value) -> str:
     Setting ``POPOTO_DATETIME_KEY_LEGACY=1`` restores 1.8.2's ``str(value)``
     for datetimes without a model-code edit, so an adopter can roll readers
     forward before moving key bytes. See the migration cookbook, recipe 19.
+
+    ``force=True`` ignores that switch and always renders the canonical form.
+    This exists for exactly one caller: the #537/#538 audit and migration in
+    ``datetime_key_migration.py``, whose entire job is to find and move rows
+    that are *not* on their canonical key. If the audit computed its target
+    through the gated default, the switch would make every row look
+    already-canonical -- ``is_clean`` would be ``True`` and the migration
+    would report nothing to move, even over a genuine #538 duplicate pair --
+    which defeats the tool the switch exists to let operators run safely.
+    Every other caller (``DB_key.__str__``, the two index-hash helpers in
+    ``base.py``) must stay gated, because those sit on the *write* path: while
+    the switch is set, live writes still need to derive 1.8.2 key bytes so a
+    fleet mid-rollout keeps reading its own writes. Only the read-only audit
+    (and the migration, which delegates to it) needs the truth regardless of
+    the switch.
     """
-    if isinstance(value, datetime.datetime) and not Defaults.DATETIME_KEY_LEGACY:
+    if isinstance(value, datetime.datetime) and (
+        force or not Defaults.DATETIME_KEY_LEGACY
+    ):
         if value.tzinfo is None:
             as_utc = value.replace(tzinfo=datetime.timezone.utc)
         else:
