@@ -162,3 +162,52 @@ def test_pre_540_tag_pointer_key_is_adopted_and_scrubbed_on_save():
         ), "record left stranded in a dropped tag Set"
     assert [o.id for o in Tagged540.query.filter(labels__contains="gamma")] == [t.id]
     assert list(Tagged540.query.filter(labels__contains="alpha")) == []
+
+
+def test_scan_survives_stray_non_hash_key_in_model_glob_during_rolling_upgrade():
+    """A mixed-version node writing a pre-#540 pointer must not break reads.
+
+    #547 (this PR) namespaces pointer keys under ``$IdxPtr:``/``$TagPtr:`` so
+    a same-version node never collides with a model's key glob. But during a
+    *rolling upgrade*, a node still running 1.8.1/1.8.2 keeps writing its
+    pointer as a STRING suffixed directly onto the model hash key -- which
+    DOES match the glob `KeyFieldMixin.filter_query` scans for AutoKeyField
+    lookups. Before the type guard in `_scan_hash_keys`, that STRING key fed
+    straight into the pipelined HGETALL and raised WRONGTYPE for the whole
+    batch, reproducing #540 (get_by_id()/filter(id=...) returning nothing for
+    rows that exist) for the duration of the mixed-version window.
+
+    This simulates that window directly: inject a STRING key that collides
+    with the AutoKeyField glob without going through any real save path, and
+    confirm the read is unaffected rather than crashing or dropping rows.
+    """
+    s = Sess540(project_key="p540rolling", status="pending")
+    s.save()
+
+    model_key = s.db_key.redis_key
+    colliding_key = f"{model_key}\x00idxptr\x00status"
+    POPOTO_REDIS_DB.set(colliding_key, "$IndexF:Sess540:status:pending")
+
+    try:
+        # Sanity: the collision really does land inside the AutoKeyField glob.
+        matched = scan_keys(f"{Sess540.__name__}:*")
+        matched_types = {key: POPOTO_REDIS_DB.type(key) for key in matched}
+        assert any(
+            t not in (b"hash", "hash") for t in matched_types.values()
+        ), "test setup failed to produce a non-hash key inside the model glob"
+
+        # The real assertion: the AutoKeyField lookup path (the ORM-level
+        # equivalent of the downstream `get_by_id()` wrapper in #540) must
+        # still find the row instead of raising WRONGTYPE or silently
+        # returning nothing.
+        loaded = Sess540.query.get(id=s.id)
+        assert (
+            loaded is not None
+        ), "query.get(id=...) regressed under a stray STRING key"
+        assert loaded.id == s.id
+
+        by_key = list(Sess540.query.filter(id=s.id))
+        assert len(by_key) == 1
+        assert by_key[0].id == s.id
+    finally:
+        POPOTO_REDIS_DB.delete(colliding_key)
