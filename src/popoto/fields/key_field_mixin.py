@@ -109,22 +109,34 @@ def _scan_hash_keys(pattern: str) -> list:  # type: ignore[type-arg]
     it self-heals once every node is upgraded and the record is
     next written (the swap Lua adopts and deletes the legacy pointer).
 
-    The disclosed hazard is *exactly* the legacy NUL-suffixed pointer keys
-    (`{model_hash_key}\\x00idxptr\\x00{field}` / `...\\x00tagptr\\x00{field}`).
-    A model key -- built from key field values via `DB_key` -- can never
-    contain a NUL byte, so filtering client-side on the presence of `\\x00`
-    catches the disclosed hazard precisely, with zero Redis round trips,
-    instead of charging every AutoKeyField lookup and every KeyField
-    `__startswith`/`__endswith`/`__isnull=False` query a permanent
-    pipelined `TYPE` round trip to defend a transient mixed-version window.
+    This filter classifies scanned keys by their actual Redis TYPE rather
+    than by any byte pattern in the key name. That matters because a byte
+    pattern is neither necessary nor sufficient to identify a non-hash key:
+    the legacy `\\x00idxptr\\x00`/`\\x00tagptr\\x00` pointer keys are one
+    shape of non-hash companion key that can land in a model's glob, but
+    they are not the only one -- `ListField`'s capped-list companion key
+    (`{model_hash_key}::{field_name}`, a Redis LIST) contains no NUL byte
+    and would slip past a byte-pattern filter, feeding the same WRONGTYPE
+    crash into a same-version (not just rolling-upgrade) lookup. Conversely,
+    a `KeyField(type=str)` value is free to contain a literal NUL byte, so a
+    byte-pattern filter can wrongly drop a real hash key from the scan and
+    silently return an incomplete result set. TYPE-based filtering handles
+    both: it drops any non-hash companion key regardless of its name, and
+    it always keeps a hash-type model key regardless of what characters its
+    key text contains. The pipeline uses `transaction=False` (no MULTI/EXEC)
+    so this costs a single non-transactional round trip of `TYPE` calls
+    rather than paying for transactional guarantees this read-only check
+    doesn't need.
     """
     keys = scan_keys(pattern)
     if not keys:
         return keys
+    pipeline = POPOTO_REDIS_DB.pipeline(transaction=False)
+    for key in keys:
+        pipeline.type(key)
+    key_types = pipeline.execute()
     return [
-        key
-        for key in keys
-        if (b"\x00" if isinstance(key, bytes) else "\x00") not in key
+        key for key, key_type in zip(keys, key_types) if key_type in (b"hash", "hash")
     ]
 
 

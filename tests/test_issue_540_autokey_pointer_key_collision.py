@@ -36,6 +36,16 @@ class Tagged540(popoto.Model):
     labels = popoto.TagField(null=True)
 
 
+class LProbe540(popoto.Model):
+    name = popoto.KeyField(type=str)
+    tags = popoto.ListField(max_length=5)
+
+
+class NulProbe540(popoto.Model):
+    name = popoto.KeyField(type=str)
+    tier = popoto.KeyField(type=str)
+
+
 def test_autokey_lookup_agrees_with_indexed_filter():
     """#540: the three views of the same row must agree.
 
@@ -217,3 +227,78 @@ def test_scan_survives_stray_non_hash_key_in_model_glob_during_rolling_upgrade()
         assert by_key[0].id == s.id
     finally:
         POPOTO_REDIS_DB.delete(colliding_key)
+
+
+def test_scan_survives_listfield_companion_key_in_model_glob():
+    """PR #547 review round 3, Blocker 1.
+
+    A byte-pattern (NUL-suffix) filter only catches the legacy pointer-key
+    shape. `ListField`'s capped-list companion key -- a Redis LIST stored at
+    `{model_hash_key}::{field_name}` -- contains no NUL byte, so it slips
+    straight past a NUL-byte filter and lands inside the model's key glob.
+    Piping it into the pipelined HGETALL raises WRONGTYPE and crashes the
+    whole batch, on the *same* version, not just during a rolling upgrade.
+    Restoring the Redis-TYPE guard (now via a non-transactional pipeline)
+    fixes this because a LIST is never mistaken for a hash regardless of
+    its key text.
+    """
+    obj = LProbe540(name="listcompanion", tags=["a", "b", "c"])
+    obj.save()
+
+    model_key = obj.db_key.redis_key
+    list_key = f"{model_key}::tags"
+
+    # Sanity: the companion key really exists, contains no NUL byte, and is
+    # NOT a hash -- i.e. it is exactly the kind of key a byte-pattern filter
+    # would miss but a TYPE-based filter must exclude.
+    assert POPOTO_REDIS_DB.exists(list_key), "ListField companion key missing"
+    assert "\x00" not in list_key
+    key_type = POPOTO_REDIS_DB.type(list_key)
+    assert key_type not in (
+        b"hash",
+        "hash",
+    ), f"expected ListField companion key to be non-hash, got {key_type!r}"
+
+    # Sanity: the companion key lands inside the same glob the pattern-based
+    # KeyField lookup scans.
+    matched = scan_keys(f"{LProbe540.__name__}:*")
+    assert any(
+        (key.decode() if isinstance(key, bytes) else key) == list_key for key in matched
+    ), "test setup failed to produce a companion key inside the model glob"
+
+    # The real assertion: a pattern-based KeyField query must not crash with
+    # WRONGTYPE and must still find the row.
+    found = list(LProbe540.query.filter(name__startswith="listcompan"))
+    assert len(found) == 1, "filter(name__startswith=...) lost the row"
+    assert found[0].name == "listcompanion"
+
+
+def test_scan_keeps_hash_key_containing_nul_byte():
+    """PR #547 review round 3, Blocker 2.
+
+    Nothing forbids a `KeyField(type=str)` value from containing a literal
+    NUL byte, so a real model hash key can legitimately contain one. A
+    NUL-byte filter would wrongly drop that hash key from every scan-based
+    lookup -- a silent wrong-results regression versus main (which has no
+    filter and returns the row correctly). The TYPE-based guard must keep
+    it, since its Redis TYPE is still `hash`.
+    """
+    nul_obj = NulProbe540(name="al\x00ice", tier="gold")
+    nul_obj.save()
+    plain_obj = NulProbe540(name="bob", tier="gold")
+    plain_obj.save()
+
+    # Sanity: the NUL byte really made it into the stored Redis key.
+    nul_model_key = nul_obj.db_key.redis_key
+    assert "\x00" in nul_model_key
+    assert POPOTO_REDIS_DB.type(nul_model_key) in (b"hash", "hash")
+
+    # The pattern query scans the model's full key glob (both key fields
+    # appear in the glob positionally), so both rows -- including the one
+    # whose key contains a NUL byte -- must be returned.
+    found = list(NulProbe540.query.filter(tier__startswith="g"))
+    found_names = {o.name for o in found}
+    assert found_names == {
+        "al\x00ice",
+        "bob",
+    }, "NUL-byte-containing model key was silently dropped from the scan"
