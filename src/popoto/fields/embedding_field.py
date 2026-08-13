@@ -25,6 +25,7 @@ Example:
     m.save()  # embedding generated automatically via provider
 """
 
+import base64
 import hashlib
 import json
 import logging
@@ -386,6 +387,137 @@ class EmbeddingField(Field):
             content = ContentField()
             embedding = EmbeddingField(source="content")
     """
+
+    # Export/import: Redis holds only the dimension count -- the vector itself
+    # lives in a .npy file on the filesystem, which a plain re-save on the
+    # destination cannot reproduce (the source text may be absent or changed,
+    # and with auto_embed=False nothing is generated at all). The vector is
+    # therefore carried verbatim, fingerprinted with provider provenance so a
+    # cross-vector-space import is a loud error rather than silent corruption.
+    roundtrip_policy: str = "carry"
+
+    @classmethod
+    def _provider_provenance(cls, field_instance) -> dict:
+        """Describe the provider that produced this field's vectors.
+
+        No provider/model identity marker exists in Redis today -- this is
+        export-file metadata only and changes nothing about what
+        ``EmbeddingField`` stores. When no provider is configured (e.g.
+        ``auto_embed=False`` deployments) every value is ``"unknown"`` so the
+        importer can refuse rather than guess.
+
+        Returns:
+            ``{"provider": str, "model": str, "dimensions": int | None}``
+        """
+        unknown = {"provider": "unknown", "model": "unknown", "dimensions": None}
+        try:
+            provider = field_instance.provider
+        except Exception:
+            return unknown
+        if provider is None:
+            return unknown
+
+        model = (
+            getattr(provider, "_model_name", None)
+            or getattr(provider, "_model", None)
+            or getattr(provider, "model", None)
+        )
+        try:
+            dimensions = provider.dimensions
+        except Exception:
+            dimensions = None
+
+        return {
+            "provider": type(provider).__name__,
+            "model": str(model) if model else "unknown",
+            "dimensions": int(dimensions) if dimensions else None,
+        }
+
+    @classmethod
+    def export_state(cls, model_instance, field_name, field_value, **kwargs):
+        """Export the on-disk embedding vector plus provider provenance.
+
+        The ``.npy`` file bytes are carried verbatim (base64-encoded so they
+        survive a JSON transport) rather than re-derived, because the source
+        text may be gone or changed on the destination.
+
+        Returns:
+            ``{"vector_npy_b64": str, "provenance": {...}}``, or ``None`` when
+            no vector exists on disk for this instance (e.g. ``auto_embed``
+            is False, or the record was never embedded).
+        """
+        field_instance = model_instance._meta.fields.get(field_name)
+        if not isinstance(field_instance, EmbeddingField):
+            return None
+
+        model_class_name = model_instance.__class__.__name__
+        redis_key = model_instance._redis_key or model_instance.db_key.redis_key
+        npy_path = cls._embedding_path(model_class_name, redis_key)
+        if not os.path.exists(npy_path):
+            # Fall back to the legacy hex-encoded path, which garbage
+            # collection may not have migrated yet.
+            npy_path = cls._legacy_embedding_path(model_class_name, redis_key)
+            if not os.path.exists(npy_path):
+                return None
+
+        try:
+            with open(npy_path, "rb") as f:
+                raw = f.read()
+        except OSError:
+            logger.warning(
+                f"Could not read embedding file {npy_path}; "
+                f"skipping export of {field_name}"
+            )
+            return None
+
+        return {
+            "vector_npy_b64": base64.b64encode(raw).decode("ascii"),
+            "provenance": cls._provider_provenance(field_instance),
+        }
+
+    @classmethod
+    def import_state(cls, model_instance, field_name, state, **kwargs):
+        """Restore the on-disk embedding vector after import.
+
+        Writes the carried ``.npy`` bytes back atomically (temp file +
+        rename), registers the hash-to-key mapping in the ``_index.json``
+        sidecar so reverse lookup and ``load_embeddings`` find it, and
+        invalidates the in-memory matrix cache.
+        """
+        if not state:
+            return None
+
+        encoded = state.get("vector_npy_b64")
+        if not encoded:
+            return None
+
+        model_class_name = model_instance.__class__.__name__
+        redis_key = model_instance._redis_key or model_instance.db_key.redis_key
+        npy_path = cls._embedding_path(model_class_name, redis_key)
+
+        directory = os.path.dirname(npy_path)
+        os.makedirs(directory, exist_ok=True)
+
+        raw = base64.b64decode(encoded)
+
+        # Atomic write: temp file + rename (mirrors on_save).
+        fd, tmp_path = tempfile.mkstemp(dir=directory, suffix=".npy")
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(raw)
+            os.rename(tmp_path, npy_path)
+        except Exception:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            raise
+
+        index = _read_index(model_class_name)
+        index[os.path.basename(npy_path)] = redis_key
+        _write_index(model_class_name, index)
+
+        invalidate_cache(model_class_name)
+        _publish_invalidation(model_class_name)
+        return None
 
     def __init__(
         self,

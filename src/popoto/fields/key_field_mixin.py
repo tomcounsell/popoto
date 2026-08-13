@@ -135,6 +135,12 @@ class KeyFieldMixin:
     key: bool = True
     max_length: int = None
 
+    # Export/import: the per-value index Set is fully rebuilt from the field
+    # value by on_save(); identity itself round-trips via the preserved
+    # redis_key (v1 always preserves keys -- see #557 for the deferred
+    # key-regeneration opt-out).
+    roundtrip_policy: str = "rebuild"
+
     def __init__(self, **kwargs):
         """
         Initialize KeyFieldMixin defaults and validate the field type.

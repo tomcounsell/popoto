@@ -73,6 +73,11 @@ class ContentField(Field):
         m.save()
     """
 
+    # Export/import: the store reference string is the field's plain value
+    # (captured by to_dict()); on_save() writes the content to the store from
+    # that same value, so no separate carried state is needed.
+    roundtrip_policy: str = "rebuild"
+
     def __init__(self, store="filesystem", **kwargs):
         kwargs.setdefault("type", str)
         kwargs.setdefault("null", True)
