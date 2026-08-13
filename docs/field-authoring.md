@@ -8,7 +8,7 @@ model's primary hash, the way `ConfidenceField` and `CyclicDecayField` do.
 
 This page documents the contract a `Field` subclass should follow, with a focus on
 the round-trip protocol every field author must satisfy: `roundtrip_policy`,
-`export_state`, and `import_state`. These four members exist so that
+`roundtrip_note`, `export_state`, and `import_state`. These four members exist so that
 [`popoto.transfer`](guides/export-import.md) — the export/import driver — can move
 records between Redis instances without losing state that only your field knows how
 to serialize.

@@ -842,6 +842,12 @@ for a hazard that only exists under a precondition violation.
   I/O-bound on a per-record save loop and the async path would duplicate every
   reconciliation branch; deferred with the CLI so both land against a settled
   API.
+- [SEPARATE-SLUG #572] Full `mypy src/popoto/transfer/` cleanliness. The plan's
+  "Types clean: exit code 0" Verification row was never actually satisfied; 2
+  genuine Optional-narrowing bugs were fixed (commit `744c3dc`) but ~49 errors
+  in waived categories (missing annotations, bare generics) remain, waived by
+  maintainer ruling rather than blocking merge:
+  https://github.com/tomcounsell/popoto/pull/558#issuecomment-5277221524
 
 Anti-criteria for the code-level No-Gos appear as inverse rows in the
 Verification table below.
@@ -1097,7 +1103,7 @@ verified against Tasks 1 and 3 after critique flagged the original split.
 | Transfer tests pass | `pytest tests/test_transfer_roundtrip.py tests/test_transfer_fidelity_fields.py tests/test_transfer_reconciliation.py -q` | exit code 0 |
 | No regression in touched field tests | `pytest tests/test_confidence_field.py tests/test_write_filter.py -q` | exit code 0 |
 | Format clean | `black --check src/popoto/transfer/ src/popoto/fields/field.py` | exit code 0 |
-| Types clean | `mypy src/popoto/transfer/` | exit code 0 |
+| Types clean | `mypy src/popoto/transfer/` | **Waived by maintainer ruling** (https://github.com/tomcounsell/popoto/pull/558#issuecomment-5277221524), not exit code 0. Of the original 53 errors, the 2 genuine Optional-narrowing bugs at `import_.py:350-356` were fixed (commit `744c3dc`); ~49 errors in waived categories (missing annotations, bare generics) remain and are tracked in #572. |
 | Docs build | `mkdocs build --strict` | exit code 0 |
 | Protocol default is a no-op (AC #3) | `python -c "from popoto.fields.field import Field; assert Field.export_state.__func__(Field, None,'x',1) is None; print('ok')"` | output contains ok |
 | Every field and mixin declares a policy | `pytest tests/test_transfer_roundtrip.py -k policy_declared -q` | exit code 0 |
