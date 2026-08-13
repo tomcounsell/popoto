@@ -26,6 +26,8 @@ run a real ingest + retrieve cycle on the test DB like the rest of the suite.
 """
 
 import inspect
+import json
+from pathlib import Path
 
 import pytest
 
@@ -266,7 +268,7 @@ class TestLongMemEvalUnaffected:
     Its ground truth is session IDs, and the session ID was always candidate
     element 0, so the old rule's gold-matching branch and its
     ``candidate_ids[:1]`` fallback both emitted the same ID. The published
-    LongMemEval-S numbers (R@1 0.894 / R@5 0.986 / R@10 0.992 / MRR 0.932)
+    LongMemEval-S numbers (R@1 0.892 / R@5 0.986 / R@10 0.992 / MRR 0.931)
     therefore stand.
     """
 
@@ -327,6 +329,25 @@ class TestLongMemEvalUnaffected:
         assert result.status == "ok"
         assert result.metadata["ranking_unit"] == "session"
         assert result.retrieved_ids == ["s1"]
+
+    def test_published_numbers_match_the_latest_hybrid_run(self):
+        """Pins this docstring's claim against the committed results artifact.
+
+        Guards against the class docstring drifting from the published
+        numbers again (as it did after #530's post-correction refresh moved
+        R@1/MRR from 0.894/0.932 to 0.892/0.931 everywhere except here).
+        """
+        results_path = (
+            Path(__file__).parent
+            / "results"
+            / "external"
+            / "longmemeval_s_latest_hybrid.json"
+        )
+        summary = json.loads(results_path.read_text())["summary"]
+        assert round(summary["recall_at_1"], 3) == 0.892
+        assert round(summary["recall_at_5"], 3) == 0.986
+        assert round(summary["recall_at_10"], 3) == 0.992
+        assert round(summary["mrr"], 3) == 0.931
 
 
 class TestRankingUnitResolution:

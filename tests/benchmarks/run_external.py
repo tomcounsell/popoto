@@ -65,6 +65,11 @@ logging.basicConfig(
 logger = logging.getLogger("ExternalBenchmark")
 
 RESULTS_DIR = Path(__file__).parent / "results" / "external"
+# Repo root, for rendering --fixture provenance as a repo-relative path (#530)
+# instead of the raw absolute path a caller happened to pass, which is often
+# a session-scoped scratchpad file that won't exist by the time the artifact
+# is read.
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 DATASET_CHOICES = ("longmemeval-s", "locomo")
 
@@ -386,6 +391,7 @@ def compute_aggregate(
     retrieval_mode: str = "lexical",
     extraction: dict = None,
     fixture: str = None,
+    corpus_sampled_from: int = None,
 ) -> dict:
     """Compute aggregate metrics over all question results.
 
@@ -399,6 +405,11 @@ def compute_aggregate(
         retrieval_mode: ``"lexical"``, ``"hybrid"``, or ``"vector"`` — the
             retrieval mode the run was executed in (recorded and surfaced in
             the report).
+        fixture: ``--fixture`` path used for this run, if any.
+        corpus_sampled_from: Size of the item pool ``--limit`` sampled from —
+            i.e. the fixture's full item count when ``--fixture`` scoped the
+            corpus before sampling, so a bounded run over a small fixture
+            subset is distinguishable from one over the full dataset.
 
     Returns:
         Dict with aggregate metrics, per-``question_type`` breakdown, the
@@ -498,6 +509,20 @@ def compute_aggregate(
         ),
     }
 
+    # Provenance (#530): render --fixture repo-relative when it lives inside
+    # the repo, so the recorded path still resolves for someone checking out
+    # the commit later. A fixture outside the repo (e.g. a session scratchpad)
+    # cannot be made reproducible by reformatting its path — record it as an
+    # absolute path so the record is honest about not being self-contained,
+    # rather than fabricating a repo-relative path that doesn't exist.
+    fixture_str = None
+    if fixture:
+        fixture_path = Path(fixture)
+        try:
+            fixture_str = str(fixture_path.resolve().relative_to(REPO_ROOT))
+        except ValueError:
+            fixture_str = str(fixture_path)
+
     now = datetime.now(timezone.utc)
     aggregate = {
         "dataset": dataset,
@@ -518,8 +543,13 @@ def compute_aggregate(
             # limit of 100 against a 2-dialogue subset is not the same run as
             # a limit of 100 against the full corpus. Recorded so a bounded
             # run can never be mistaken for a full-corpus baseline.
-            "fixture": str(fixture) if fixture else None,
+            "fixture": fixture_str,
             "corpus_full_size": DATASET_FULL_SIZE.get(dataset),
+            **(
+                {"corpus_sampled_from": corpus_sampled_from}
+                if corpus_sampled_from is not None
+                else {}
+            ),
         },
         "machine": {
             "python_version": platform.python_version(),
@@ -1173,6 +1203,23 @@ def _run_benchmark(args, bench_db):
         logger.error("Unknown dataset: %s", args.dataset)
         return 1
 
+    # Provenance (#530): the size of the pool --limit sampled from. Only
+    # meaningful when --fixture scoped the corpus (otherwise it's just
+    # DATASET_FULL_SIZE again), so it's only computed in that case — a second,
+    # unlimited parse of the same fixture via the dataset's own adapter,
+    # rather than reimplementing per-dataset item counting here.
+    corpus_sampled_from = None
+    if args.fixture is not None:
+        loader = iter_longmemeval if args.dataset == "longmemeval-s" else iter_locomo
+        corpus_sampled_from = len(
+            loader(
+                fixture_path=args.fixture,
+                limit=None,
+                sample=args.sample,
+                seed=args.seed,
+            )
+        )
+
     if wanted_types:
         from tests.benchmarks.datasets.sampling import sample_items
 
@@ -1325,6 +1372,7 @@ def _run_benchmark(args, bench_db):
         retrieval_mode=args.retrieval_mode,
         extraction=extraction_block,
         fixture=args.fixture,
+        corpus_sampled_from=corpus_sampled_from,
     )
     s = aggregate["summary"]
 
