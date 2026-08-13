@@ -95,13 +95,19 @@ class TestTagFieldCRUD:
             assert reloaded.tags == []
 
     def test_delete_removes_from_all_tag_sets(self):
+        from popoto.fields.tag_field import TagFieldMixin
+
         m = TaggedMemory.create(tags=["a", "b", "c"])
         assert len(TaggedMemory.query.filter(tags__contains="b")) == 1
+        # Pointer side key must exist BEFORE delete(), otherwise the
+        # post-delete "doesn't exist" assertion below is vacuously true —
+        # it would pass whether or not delete() actually cleaned anything up.
+        ptr = TagFieldMixin._tag_pointer_side_key(m.db_key.redis_key, "tags")
+        assert POPOTO_REDIS_DB.exists(ptr) == 1, "pointer side key was never created"
         m.delete()
         for tag in ("a", "b", "c"):
             assert len(TaggedMemory.query.filter(tags__contains=tag)) == 0
         # Pointer side key is cleaned up.
-        ptr = f"{m.db_key.redis_key}\x00tagptr\x00tags"
         assert POPOTO_REDIS_DB.exists(ptr) == 0
 
     def test_resave_diff_no_orphans(self):
