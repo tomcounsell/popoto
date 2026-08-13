@@ -109,9 +109,16 @@ def run_demo(
         out.write(f"   + {key}\n")
 
     out.write("\n5. report outcome\n")
-    updated = service.feedback(session_id, outcome="acted")
-    out.write(f"   marked {updated} injected record(s) as acted upon\n")
-    out.write("   confidence rises on memories the agent used; unused ones decay\n")
+    updated = service.feedback(session_id, outcome="used")
+    out.write(f"   marked {updated} injected record(s) as used\n")
+    out.write(
+        "   confirms the staged read and resolves predictions; "
+        "confidence/decay are untouched\n"
+    )
+    out.write(
+        "   (outcome=acted, which does affect confidence/decay, is a "
+        "discretionary memory_feedback call)\n"
+    )
 
     out.write("\n6. verify\n")
     again = service.assemble(DEMO_QUERY, session_id=None)

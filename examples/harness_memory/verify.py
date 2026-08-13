@@ -113,10 +113,11 @@ def main() -> int:
                 "system" not in output.lower(),
             )
 
-        print("\n4. outcomes feed back into confidence")
+        print("\n4. outcomes are reported as used")
         check(
-            "the injected records were reported as acted upon",
-            service.feedback(session_id, outcome="acted") == 1,
+            "the injected records were reported as used "
+            "(confirms the read, no confidence change)",
+            service.feedback(session_id, outcome="used") == 1,
         )
 
         print("\n5. doctor sees a healthy setup")

@@ -98,10 +98,15 @@ following write event can report outcomes against exactly those records.
 **Write path.** The harness fires its post-model event carrying the
 assistant's final text. The turn is saved through
 `RawTurnExtractionProvider`, one verbatim record. The queued keys from the
-read path are popped and reported through `ObservationProtocol`, which feeds
-the confidence and decay loop. Nothing is written to stdout, and on Claude
-Code this hook is configured `"async": true` so it never sits on the turn's
-critical path.
+read path are popped and reported through `ObservationProtocol` with
+outcome `used`, which confirms the staged read and auto-resolves
+predictions — `_apply_used()` (`src/popoto/fields/observation.py:391`)
+explicitly does not touch `ConfidenceField`, `CyclicDecayField`, or
+`DecayingSortedField`. Outcome `acted`, which does raise confidence and
+affect decay, is reserved for an explicit, discretionary `memory_feedback`
+MCP tool call — the automatic hook path never emits it. Nothing is written
+to stdout, and on Claude Code this hook is configured `"async": true` so it
+never sits on the turn's critical path.
 
 **Known gap: the read→write handoff is a session-wide FIFO, not a turn ID.**
 `MemoryService` queues selected record keys per `session_id` as a plain
@@ -113,8 +118,8 @@ every later push/pop pairing by one, and a `SubagentStop`-configured
 session pops one queued entry per subagent against a single earlier read.
 The failure mode is misattributed outcome reporting (confidence/decay
 adjustments land on the wrong turn's records), not a crash, and it is
-bounded by `MAX_PENDING_TURNS` (32) per session. Tracked as follow-up work;
-not fixed in this PR.
+bounded by `MAX_PENDING_TURNS` (32) per session. Tracked as follow-up work
+in #574; not fixed in this PR.
 
 Neither path parses a transcript file. Every harness supplies the assistant's
 final text on the event itself, so a change to the JSONL format cannot break

@@ -488,7 +488,8 @@ class MemoryService:
         (``turn_id``) already send -- left as-is for this PR because keying
         on those would still need a FIFO fallback for Hermes/OpenClaw
         payloads that carry neither, and that dual-path handoff is scoped
-        as follow-up work rather than a patch-sized change. A read whose
+        as follow-up work rather than a patch-sized change (tracked in
+        #574). A read whose
         paired write never fires (aborted turn, crashed session, or a
         ``SubagentStop``-configured session popping more than it pushed)
         shifts every later pairing by one and misattributes an outcome
