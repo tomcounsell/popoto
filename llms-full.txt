@@ -9866,8 +9866,13 @@ Index maintenance rides a single atomic Lua script (`TAG_SWAP_LUA`) that **diffs
 the record's previous tag membership against the new one and issues only the
 necessary `SREM`/`SADD` calls — so re-saving with changed tags never leaves
 orphaned Set members. The previous membership is read from a server-authoritative
-pointer side key (a standalone Redis Set), never a client snapshot. All commands
-are core Redis Set operations (`SADD`/`SREM`/`SMEMBERS`/`SUNION`/`SINTER`/`DEL`) —
+pointer side key (a standalone Redis Set, namespaced `$TagPtr:<Model:key>:<field_name>`
+alongside Popoto's other internal keys — `$Class:`, `$KeyF:`, `$SortedF:`, `$IdxPtr:`),
+never a client snapshot; a model name can never begin with `$`, so this key can
+never collide with a model key glob (see [Indexed Fields → Operator
+Note](indexed_fields.md#operator-note) for the equivalent `$IdxPtr:` story and the
+1.8.0-1.8.2 migration/self-heal behavior that also applies to this pointer). All
+commands are core Redis Set operations (`SADD`/`SREM`/`SMEMBERS`/`SUNION`/`SINTER`/`DEL`) —
 **no Redis modules**, so it runs identically on Redis and Valkey.
 
 ### ContextAssembler integration
@@ -12738,11 +12743,16 @@ hash, no class-set membership, nothing to clean up.
 The server-authoritative pointer is stored in a standalone Redis key (a plain
 string, `GET`/`SET`), **not** as a field inside the model hash. `redis-cli HGETALL
 <Model:key>` shows only your declared fields — no extra bookkeeping field. The
-pointer key itself follows the pattern:
+pointer key itself is namespaced under `$IdxPtr:`, alongside Popoto's other
+internal keys (`$Class:`, `$KeyF:`, `$SortedF:`), and follows the pattern:
 
 ```
-<Model:key>\x00idxptr\x00<field_name>  ->  $IndexF:ModelName:field_name:current_value
+$IdxPtr:<Model:key>:<field_name>  ->  $IndexF:ModelName:field_name:current_value
 ```
+
+A model name can never begin with `$`, so this key sits outside every model's
+own key space and can never collide with a model key glob (e.g. the
+`AutoKeyField` lookup path, which resolves via a `scan_keys()` glob).
 
 - Do NOT edit or delete it manually. Removing it reopens the index-stranding race until
   the record's next save.
@@ -12750,15 +12760,28 @@ pointer key itself follows the pattern:
   `is_valid()` all ignore it (it isn't part of the model hash at all).
 - The `$IndexF:` and `$UniquF:` Set schema itself is unchanged from earlier versions.
 
-!!! note "Versions prior to this fix (1.8.0, see issue #476)"
+!!! note "Versions prior to this fix (1.8.0-1.8.2, see issues #476, #540)"
     An earlier 1.8.0 revision stored this pointer as a `{field_name}\x00idxset`
     field **inside** the model hash. That is forward-incompatible: any decoder
     that unconditionally `msgpack.unpackb()`s every hash field (all pre-1.8.0
     releases) crashes with `msgpack.exceptions.ExtraData` on such records.
-    Current code never writes that in-hash field. Records written by the
-    affected 1.8.0 revision are read as a migration fallback and self-heal
-    (the field is scrubbed and the pointer moves to the side key) the next
-    time they're saved. A full clean cut-over is optional:
+
+    The 1.8.1/1.8.2 fix for that moved the pointer to a side key, but derived
+    it by suffixing the model hash key itself
+    (`<Model:key>\x00idxptr\x00<field_name>`) rather than namespacing it under
+    `$IdxPtr:`. A NUL byte does not keep a key out of a glob — Redis glob `*`
+    matches any byte, including NUL — so that key was matched by the same
+    glob `AutoKeyField` lookups scan, and the follow-up `HGETALL` failed with
+    `WRONGTYPE`. This regressed `get_by_id()`-style AutoKey lookups to return
+    nothing for rows that exist (#540).
+
+    Current code never writes to either legacy location. Records written by
+    an affected 1.8.0-1.8.2 release are read as a migration fallback and
+    self-heal (the legacy pointer is scrubbed and moves to the `$IdxPtr:`
+    side key) the next time they're saved. During a rolling upgrade, a
+    legacy pointer still visible to a not-yet-upgraded node is skipped by a
+    type guard on the scan path rather than crashing the read. No offline
+    migration step is required; a full clean cut-over is optional:
 
     ```python
     User.rebuild_indexes()   # optional — not required for correctness

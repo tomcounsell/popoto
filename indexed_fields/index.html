@@ -3071,9 +3071,13 @@ hash, no class-set membership, nothing to clean up.</p>
 <p>The server-authoritative pointer is stored in a standalone Redis key (a plain
 string, <code>GET</code>/<code>SET</code>), <strong>not</strong> as a field inside the model hash. <code>redis-cli HGETALL
 &lt;Model:key&gt;</code> shows only your declared fields — no extra bookkeeping field. The
-pointer key itself follows the pattern:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>&lt;Model:key&gt;\x00idxptr\x00&lt;field_name&gt;  -&gt;  $IndexF:ModelName:field_name:current_value
+pointer key itself is namespaced under <code>$IdxPtr:</code>, alongside Popoto's other
+internal keys (<code>$Class:</code>, <code>$KeyF:</code>, <code>$SortedF:</code>), and follows the pattern:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>$IdxPtr:&lt;Model:key&gt;:&lt;field_name&gt;  -&gt;  $IndexF:ModelName:field_name:current_value
 </code></pre></div>
+<p>A model name can never begin with <code>$</code>, so this key sits outside every model's
+own key space and can never collide with a model key glob (e.g. the
+<code>AutoKeyField</code> lookup path, which resolves via a <code>scan_keys()</code> glob).</p>
 <ul>
 <li>Do NOT edit or delete it manually. Removing it reopens the index-stranding race until
   the record's next save.</li>
@@ -3082,15 +3086,26 @@ pointer key itself follows the pattern:</p>
 <li>The <code>$IndexF:</code> and <code>$UniquF:</code> Set schema itself is unchanged from earlier versions.</li>
 </ul>
 <div class="admonition note">
-<p class="admonition-title">Versions prior to this fix (1.8.0, see issue #476)</p>
+<p class="admonition-title">Versions prior to this fix (1.8.0-1.8.2, see issues #476, #540)</p>
 <p>An earlier 1.8.0 revision stored this pointer as a <code>{field_name}\x00idxset</code>
 field <strong>inside</strong> the model hash. That is forward-incompatible: any decoder
 that unconditionally <code>msgpack.unpackb()</code>s every hash field (all pre-1.8.0
-releases) crashes with <code>msgpack.exceptions.ExtraData</code> on such records.
-Current code never writes that in-hash field. Records written by the
-affected 1.8.0 revision are read as a migration fallback and self-heal
-(the field is scrubbed and the pointer moves to the side key) the next
-time they're saved. A full clean cut-over is optional:</p>
+releases) crashes with <code>msgpack.exceptions.ExtraData</code> on such records.</p>
+<p>The 1.8.1/1.8.2 fix for that moved the pointer to a side key, but derived
+it by suffixing the model hash key itself
+(<code>&lt;Model:key&gt;\x00idxptr\x00&lt;field_name&gt;</code>) rather than namespacing it under
+<code>$IdxPtr:</code>. A NUL byte does not keep a key out of a glob — Redis glob <code>*</code>
+matches any byte, including NUL — so that key was matched by the same
+glob <code>AutoKeyField</code> lookups scan, and the follow-up <code>HGETALL</code> failed with
+<code>WRONGTYPE</code>. This regressed <code>get_by_id()</code>-style AutoKey lookups to return
+nothing for rows that exist (#540).</p>
+<p>Current code never writes to either legacy location. Records written by
+an affected 1.8.0-1.8.2 release are read as a migration fallback and
+self-heal (the legacy pointer is scrubbed and moves to the <code>$IdxPtr:</code>
+side key) the next time they're saved. During a rolling upgrade, a
+legacy pointer still visible to a not-yet-upgraded node is skipped by a
+type guard on the scan path rather than crashing the read. No offline
+migration step is required; a full clean cut-over is optional:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">User</span><span class="o">.</span><span class="n">rebuild_indexes</span><span class="p">()</span>   <span class="c1"># optional — not required for correctness</span>
 </code></pre></div>
 </div>
