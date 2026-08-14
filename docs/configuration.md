@@ -398,6 +398,7 @@ popoto.enable_error_reporting(dsn="https://your-key@your-org.ingest.sentry.io/yo
 | `POPOTO_TEST_DB` | `15` | Redis DB number used by the pytest plugin for test isolation. Overrides the `popoto_test_db` ini option. DB 0 is rejected to prevent accidental production data loss. |
 | `POPOTO_ASYNC_MAX_CONNECTIONS` | `128` | Maximum async Redis connection pool size (BlockingConnectionPool). |
 | `POPOTO_SYNC_MAX_CONNECTIONS` | `128` | Maximum sync Redis connection pool size (BlockingConnectionPool). |
+| `POPOTO_DATETIME_KEY_LEGACY` | unset (falsy) | Kill switch that restores 1.8.2 `str(value)` key bytes for `KeyField(type=datetime)` values on the write path, so a fleet can roll readers forward before moving key bytes. Does not affect `audit_datetime_keys()`, which always reports the truth. See [Datetime KeyFields](fields.md#datetime-keyfields) and migration cookbook recipe 19. |
 
 ## Thread Safety
 

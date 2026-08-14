@@ -14,11 +14,11 @@ from collections import namedtuple
 BenchmarkItem = namedtuple(
     "BenchmarkItem",
     [
-        "item_id",        # Unique identifier for this question
-        "history",        # list[dict] with "role", "content", "turn_id" keys
-        "query",          # str — the question to answer via retrieval
-        "relevant_ids",   # set[str] — ground-truth turn_ids (usually 1 item)
-        "metadata",       # dict — dataset-specific extra fields
+        "item_id",  # Unique identifier for this question
+        "history",  # list[dict] with "role", "content", "turn_id" keys
+        "query",  # str — the question to answer via retrieval
+        "relevant_ids",  # set[str] — ground-truth turn_ids (usually 1 item)
+        "metadata",  # dict — dataset-specific extra fields
     ],
 )
 

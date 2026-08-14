@@ -4,6 +4,7 @@ Arms: the committed ``native`` baseline (fixture-authored memories, hand-tuned
 importance) plus one extraction arm per provider, which extracts from the raw
 utterance and takes the provider's importance.
 """
+
 import json
 import sys
 from pathlib import Path
@@ -43,9 +44,7 @@ def main():
             ident = {"arm": "native (fixture-authored memories)"}
             diag = None
         else:
-            provider, stats, ident = resolve_arm(
-                arm, model=model or "claude-opus-4-8"
-            )
+            provider, stats, ident = resolve_arm(arm, model=model or "claude-opus-4-8")
             diags = []
 
             def factory(trace, _p=provider, _l=label, _d=diags):

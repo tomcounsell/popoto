@@ -402,9 +402,9 @@ class TestPolicyCache:
         weekly = [c for c in cycles if c[0] == TemporalPeriod.WEEKLY]
         assert len(weekly) == 1, f"expected one weekly cycle for {label}"
         _period, _amplitude, phase = weekly[0]
-        assert phase == expected_phase, (
-            f"{label}: phase={phase} expected {expected_phase} (seconds, not radians)"
-        )
+        assert (
+            phase == expected_phase
+        ), f"{label}: phase={phase} expected {expected_phase} (seconds, not radians)"
 
     def test_temporal_discovery_no_biased_configs(self):
         """week_of_month/month_of_year configs are removed.
@@ -457,24 +457,26 @@ class TestPolicyCache:
         for entries in cases:
             cycles = asyncio.run(temporal_discovery_handler(entries))
             periods = {c[0] for c in cycles}
-            assert TemporalPeriod.MONTHLY not in periods, (
-                f"MONTHLY emitted for input of shape {len(entries)}"
-            )
-            assert TemporalPeriod.YEARLY not in periods, (
-                f"YEARLY emitted for input of shape {len(entries)}"
-            )
+            assert (
+                TemporalPeriod.MONTHLY not in periods
+            ), f"MONTHLY emitted for input of shape {len(entries)}"
+            assert (
+                TemporalPeriod.YEARLY not in periods
+            ), f"YEARLY emitted for input of shape {len(entries)}"
 
         # Behavioural check: no dropped config references remain in the source.
         repo_root = os.path.dirname(SCRIPT_DIR)
-        src_path = os.path.join(repo_root, "src", "popoto", "recipes", "policy_cache.py")
+        src_path = os.path.join(
+            repo_root, "src", "popoto", "recipes", "policy_cache.py"
+        )
         with open(src_path) as fh:
             source = fh.read()
-        assert "week_of_month" not in source, (
-            "week_of_month config must be removed from policy_cache.py"
-        )
-        assert "month_of_year" not in source, (
-            "month_of_year config must be removed from policy_cache.py"
-        )
+        assert (
+            "week_of_month" not in source
+        ), "week_of_month config must be removed from policy_cache.py"
+        assert (
+            "month_of_year" not in source
+        ), "month_of_year config must be removed from policy_cache.py"
 
     def test_temporal_discovery_all_malformed_ts(self):
         """All-malformed ts strings -> timestamps list ends up < 3 -> returns [].
@@ -546,8 +548,7 @@ class TestPolicyCache:
         # Sunday 1970-01-04 00:00 UTC == 3 * 86400 (tm_wday==6).
         sunday_epoch = 3 * 86400
         entries = [
-            (f"sun-{i}", {"ts": str(sunday_epoch + i * 7 * 86400)})
-            for i in range(21)
+            (f"sun-{i}", {"ts": str(sunday_epoch + i * 7 * 86400)}) for i in range(21)
         ]
         cycles = asyncio.run(temporal_discovery_handler(entries))
         weekly = [c for c in cycles if c[0] == TemporalPeriod.WEEKLY]
@@ -974,9 +975,9 @@ class TestQValueStorageSlotSeparation:
         ).first()
         assert after_save is not None
         assert isinstance(after_save.q_value, Decimal)
-        assert abs(float(after_save.q_value) - 0.2) < 0.001, (
-            f"Expected q_value ~0.2 after save(), got {after_save.q_value}"
-        )
+        assert (
+            abs(float(after_save.q_value) - 0.2) < 0.001
+        ), f"Expected q_value ~0.2 after save(), got {after_save.q_value}"
 
     # -------------------------------------------------------------------------
     # 2. Touch-after-learn: Q survives touch()
@@ -1008,9 +1009,9 @@ class TestQValueStorageSlotSeparation:
         ).first()
         assert reloaded is not None
         assert isinstance(reloaded.q_value, Decimal)
-        assert abs(float(reloaded.q_value) - 0.15) < 0.001, (
-            f"Expected q_value ~0.15 after touch(), got {reloaded.q_value}"
-        )
+        assert (
+            abs(float(reloaded.q_value) - 0.15) < 0.001
+        ), f"Expected q_value ~0.15 after touch(), got {reloaded.q_value}"
 
     # -------------------------------------------------------------------------
     # 3. "acted" outcome: Q survives ObservationProtocol acted handler
@@ -1045,9 +1046,9 @@ class TestQValueStorageSlotSeparation:
         ).first()
         assert reloaded is not None
         assert isinstance(reloaded.q_value, Decimal)
-        assert abs(float(reloaded.q_value) - 0.3) < 0.001, (
-            f"Expected q_value ~0.3 after acted, got {reloaded.q_value}"
-        )
+        assert (
+            abs(float(reloaded.q_value) - 0.3) < 0.001
+        ), f"Expected q_value ~0.3 after acted, got {reloaded.q_value}"
 
     # -------------------------------------------------------------------------
     # 4. Lua<->Python encoding round-trip
@@ -1086,12 +1087,12 @@ class TestQValueStorageSlotSeparation:
                 action_type=f"action_{idx}",
             ).first()
             assert reloaded is not None, f"Case {idx}: policy not found"
-            assert isinstance(reloaded.q_value, Decimal), (
-                f"Case {idx}: expected Decimal, got {type(reloaded.q_value)}"
-            )
-            assert abs(float(reloaded.q_value) - expected_q) < 0.001, (
-                f"Case {idx}: expected q_value ~{expected_q}, got {reloaded.q_value}"
-            )
+            assert isinstance(
+                reloaded.q_value, Decimal
+            ), f"Case {idx}: expected Decimal, got {type(reloaded.q_value)}"
+            assert (
+                abs(float(reloaded.q_value) - expected_q) < 0.001
+            ), f"Case {idx}: expected q_value ~{expected_q}, got {reloaded.q_value}"
 
     # -------------------------------------------------------------------------
     # 5. Negative-base ranking
@@ -1132,15 +1133,15 @@ class TestQValueStorageSlotSeparation:
         zero_idx = action_order.index("action-zero")
         neg_idx = action_order.index("action-neg")
 
-        assert pos_idx < neg_idx, (
-            f"Positive Q must rank above negative Q. Got order: {action_order}"
-        )
+        assert (
+            pos_idx < neg_idx
+        ), f"Positive Q must rank above negative Q. Got order: {action_order}"
         # zero Q with base_score=0.0 → decayed_score = 0 * decay = 0
         # neg Q with base_score=-0.4 → decayed_score < 0
         # So zero should rank above negative
-        assert zero_idx < neg_idx, (
-            f"Zero Q must rank above negative Q. Got order: {action_order}"
-        )
+        assert (
+            zero_idx < neg_idx
+        ), f"Zero Q must rank above negative Q. Got order: {action_order}"
 
     # -------------------------------------------------------------------------
     # 6. Rank derives from stored Q, not 1.0 fallback
@@ -1217,9 +1218,9 @@ class TestQValueStorageSlotSeparation:
         ).first()
         assert after is not None
         assert isinstance(after.q_value, Decimal)
-        assert abs(float(after.q_value) - 0.1) < 0.001, (
-            f"Race 3 Order 1: expected q_value ~0.1, got {after.q_value}"
-        )
+        assert (
+            abs(float(after.q_value) - 0.1) < 0.001
+        ), f"Race 3 Order 1: expected q_value ~0.1, got {after.q_value}"
 
     def test_save_then_td_then_save_no_reset(self):
         """save → td_update → reload → save(unrelated mutation) preserves the
@@ -1259,9 +1260,9 @@ class TestQValueStorageSlotSeparation:
         ).first()
         assert final is not None
         assert isinstance(final.q_value, Decimal)
-        assert abs(float(final.q_value) - 0.2) < 0.001, (
-            f"Race 3 Order 2: expected q_value ~0.2, got {final.q_value}"
-        )
+        assert (
+            abs(float(final.q_value) - 0.2) < 0.001
+        ), f"Race 3 Order 2: expected q_value ~0.2, got {final.q_value}"
 
     # -------------------------------------------------------------------------
     # 8. Edge cases
@@ -1287,9 +1288,9 @@ class TestQValueStorageSlotSeparation:
 
         # With current_q=0 (from Decimal default in hash): td_error = reward = 4.0
         # new_q = 0 + alpha * 4.0 = 0.4
-        assert abs(td_error - reward) < 0.001, (
-            f"Expected td_error={reward} when current_q=0, got {td_error}"
-        )
+        assert (
+            abs(td_error - reward) < 0.001
+        ), f"Expected td_error={reward} when current_q=0, got {td_error}"
 
         reloaded = PolicyEntry.query.filter(
             agent_id="agent-nil",
@@ -1298,9 +1299,9 @@ class TestQValueStorageSlotSeparation:
         ).first()
         assert reloaded is not None
         expected_new_q = 0.1 * reward  # alpha=0.1, current_q=0
-        assert abs(float(reloaded.q_value) - expected_new_q) < 0.001, (
-            f"Expected q_value ~{expected_new_q}, got {reloaded.q_value}"
-        )
+        assert (
+            abs(float(reloaded.q_value) - expected_new_q) < 0.001
+        ), f"Expected q_value ~{expected_new_q}, got {reloaded.q_value}"
 
     def test_decay_rank_with_missing_q_value(self):
         """A PolicyEntry with no explicit q_value still decay-ranks (base 1.0
@@ -1320,8 +1321,8 @@ class TestQValueStorageSlotSeparation:
         results = PolicyEntry.query.filter(agent_id="agent-noq").top_by_decay(
             "expected_value", n=10
         )
-        assert len(results) >= 1, (
-            "Expected at least one result even with default q_value"
-        )
+        assert (
+            len(results) >= 1
+        ), "Expected at least one result even with default q_value"
         found_actions = [r.action_type for r in results]
         assert "no_q_action" in found_actions

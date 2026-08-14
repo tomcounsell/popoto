@@ -102,6 +102,11 @@ class TestDefaultsSync:
             # Defaults in the query path (models/query.py); no module-level
             # alias exists, so not in MODULE_CONSTANTS.
             "SORTED_PUSHDOWN_OVERFETCH_MARGIN",
+            # datetime KeyField identity kill switch (#537/#538) — a
+            # deploy-level switch rather than a swept constant, read directly
+            # from Defaults in models/canonical_key.py; no module-level alias
+            # exists, so not in MODULE_CONSTANTS.
+            "DATETIME_KEY_LEGACY",
         }
 
         expected_in_module = defaults_attrs - field_kwargs_and_class_attrs

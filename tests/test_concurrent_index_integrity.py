@@ -36,6 +36,7 @@ from popoto.redis_db import POPOTO_REDIS_DB
 # message if the symbol is absent.
 try:
     from popoto.fields.indexed_field_mixin import INDEX_SWAP_LUA
+
     _LUA_AVAILABLE = True
 except ImportError:
     INDEX_SWAP_LUA = None  # type: ignore[assignment]
@@ -176,7 +177,9 @@ def _index_set_key(field_class, model_class, field_name: str, value) -> str:
     return DB_key(set_key_prefix, value).redis_key
 
 
-def _get_all_sets_for_field(r: redis_lib.Redis, field_class, model_class, field_name: str) -> dict:
+def _get_all_sets_for_field(
+    r: redis_lib.Redis, field_class, model_class, field_name: str
+) -> dict:
     """Return {set_key: set(members)} for every value-Set of a field."""
     prefix = _set_prefix(field_class, model_class, field_name)
     pattern = f"{prefix}:*"
@@ -191,39 +194,53 @@ def _get_all_sets_for_field(r: redis_lib.Redis, field_class, model_class, field_
     return result
 
 
-def _assert_no_dual_membership(r: redis_lib.Redis, member_key: str, field_class, model_class, field_name: str):
+def _assert_no_dual_membership(
+    r: redis_lib.Redis, member_key: str, field_class, model_class, field_name: str
+):
     """Assert that member_key appears in at most one value-Set for the field."""
     sets = _get_all_sets_for_field(r, field_class, model_class, field_name)
     containing = [k for k, members in sets.items() if member_key in members]
-    assert len(containing) <= 1, (
-        f"Dual membership: {member_key!r} found in {len(containing)} sets: {containing}"
-    )
+    assert (
+        len(containing) <= 1
+    ), f"Dual membership: {member_key!r} found in {len(containing)} sets: {containing}"
 
 
-def _assert_exactly_one_set(r: redis_lib.Redis, member_key: str, field_class, model_class, field_name: str):
+def _assert_exactly_one_set(
+    r: redis_lib.Redis, member_key: str, field_class, model_class, field_name: str
+):
     """Assert that member_key appears in exactly one value-Set for the field."""
     sets = _get_all_sets_for_field(r, field_class, model_class, field_name)
     containing = [k for k, members in sets.items() if member_key in members]
-    assert len(containing) == 1, (
-        f"Expected {member_key!r} in exactly one set, found in {len(containing)}: {containing}"
-    )
+    assert (
+        len(containing) == 1
+    ), f"Expected {member_key!r} in exactly one set, found in {len(containing)}: {containing}"
 
 
-def _assert_no_unique_set_has_multiple(r: redis_lib.Redis, field_class, model_class, field_name: str):
+def _assert_no_unique_set_has_multiple(
+    r: redis_lib.Redis, field_class, model_class, field_name: str
+):
     """Assert no UniqueField value-Set has more than one member."""
     sets = _get_all_sets_for_field(r, field_class, model_class, field_name)
     for key, members in sets.items():
-        assert len(members) <= 1, (
-            f"UniqueField Set {key!r} has {len(members)} members: {members}"
-        )
+        assert (
+            len(members) <= 1
+        ), f"UniqueField Set {key!r} has {len(members)} members: {members}"
 
 
 def _pointer_side_key(member_redis_key: str, field_name: str) -> str:
-    """Match production's IndexedFieldMixin._pointer_side_key() derivation (#476)."""
-    return f"{member_redis_key}\x00idxptr\x00{field_name}"
+    """Match production's IndexedFieldMixin._pointer_side_key() derivation (#476).
+
+    Delegated rather than restated: the derivation moved under the
+    "$IdxPtr:" namespace in #540 and a copy here would silently rot.
+    """
+    from popoto.fields.indexed_field_mixin import IndexedFieldMixin
+
+    return IndexedFieldMixin._pointer_side_key(member_redis_key, field_name)
 
 
-def _check_pointer_matches_set(r: redis_lib.Redis, member_redis_key: str, field_name: str, field_class, model_class):
+def _check_pointer_matches_set(
+    r: redis_lib.Redis, member_redis_key: str, field_name: str, field_class, model_class
+):
     """Verify that the server-authoritative pointer side key matches which Set contains the member.
 
     #476: the pointer now lives in a standalone side key (not a field inside
@@ -236,13 +253,17 @@ def _check_pointer_matches_set(r: redis_lib.Redis, member_redis_key: str, field_
         return
     pointer_set = raw_ptr.decode("utf-8") if isinstance(raw_ptr, bytes) else raw_ptr
     # The member must be in the pointed-to set
-    assert r.sismember(pointer_set, member_redis_key), (
-        f"Pointer {ptr_key!r} = {pointer_set!r} but member {member_redis_key!r} is NOT in that Set"
-    )
+    assert r.sismember(
+        pointer_set, member_redis_key
+    ), f"Pointer {ptr_key!r} = {pointer_set!r} but member {member_redis_key!r} is NOT in that Set"
     # And must not be in any other set
-    _assert_no_dual_membership(r, member_redis_key, field_class, model_class, field_name)
+    _assert_no_dual_membership(
+        r, member_redis_key, field_class, model_class, field_name
+    )
     # And must never be exposed as a hash field (that was the pre-#476 bug)
-    assert r.hget(member_redis_key, f"{field_name}\x00idxset".encode("utf-8")) is None, (
+    assert (
+        r.hget(member_redis_key, f"{field_name}\x00idxset".encode("utf-8")) is None
+    ), (
         "Legacy in-hash pointer field was written by current code (should only ever "
         "be read as a migration fallback, never written)"
     )
@@ -286,17 +307,30 @@ def _swap_db_inplace(redis_url: str) -> None:
     current_kwargs.setdefault("socket_timeout", 5)
     current_kwargs.setdefault("socket_connect_timeout", 5)
     # Remove non-serializable attrs injected by redis-py maint pool
-    for _k in ("maint_notifications_pool_handler", "maint_notifications_config",
-               "orig_host_address", "orig_socket_timeout", "orig_socket_connect_timeout"):
+    for _k in (
+        "maint_notifications_pool_handler",
+        "maint_notifications_config",
+        "orig_host_address",
+        "orig_socket_timeout",
+        "orig_socket_connect_timeout",
+    ):
         current_kwargs.pop(_k, None)
     connection_class = db_obj.connection_pool.connection_class
-    new_pool = _redis_lib.ConnectionPool(connection_class=connection_class, **current_kwargs)
+    new_pool = _redis_lib.ConnectionPool(
+        connection_class=connection_class, **current_kwargs
+    )
     old_pool = db_obj.connection_pool
     db_obj.connection_pool = new_pool
     old_pool.disconnect()
 
 
-def _worker_set_status(record_id: str, value: str, barrier: mp.Barrier, result_queue: mp.Queue, redis_url: str = "redis://localhost:6379/15"):
+def _worker_set_status(
+    record_id: str,
+    value: str,
+    barrier: mp.Barrier,
+    result_queue: mp.Queue,
+    redis_url: str = "redis://localhost:6379/15",
+):
     """Worker: wait at barrier then save status=value on the shared record.
 
     The spawn-based worker re-imports the test module (including ``import popoto``
@@ -326,7 +360,12 @@ def _worker_set_status(record_id: str, value: str, barrier: mp.Barrier, result_q
         result_queue.put(("error", str(exc)))
 
 
-def _worker_save_unique_email(email: str, barrier: mp.Barrier, result_queue: mp.Queue, redis_url: str = "redis://localhost:6379/15"):
+def _worker_save_unique_email(
+    email: str,
+    barrier: mp.Barrier,
+    result_queue: mp.Queue,
+    redis_url: str = "redis://localhost:6379/15",
+):
     """Worker: wait at barrier then try to create a record with the given email.
 
     Same spawn-reconnect pattern as _worker_set_status: _swap_db_inplace() is
@@ -389,8 +428,12 @@ class TestMultiprocessConcurrency:
             barrier = ctx.Barrier(2)
             q = ctx.Queue()
 
-            p1 = ctx.Process(target=_worker_set_status, args=(record_id, "A", barrier, q, redis_url))
-            p2 = ctx.Process(target=_worker_set_status, args=(record_id, "B", barrier, q, redis_url))
+            p1 = ctx.Process(
+                target=_worker_set_status, args=(record_id, "A", barrier, q, redis_url)
+            )
+            p2 = ctx.Process(
+                target=_worker_set_status, args=(record_id, "B", barrier, q, redis_url)
+            )
             p1.start()
             p2.start()
             p1.join(timeout=10)
@@ -401,7 +444,9 @@ class TestMultiprocessConcurrency:
             assert not errors, f"Round {round_num}: worker errors: {errors}"
 
             # Check invariant: no dual-membership
-            all_sets = _get_all_sets_for_field(r, IndexedField, ConcurrentStatusModel, "status")
+            all_sets = _get_all_sets_for_field(
+                r, IndexedField, ConcurrentStatusModel, "status"
+            )
             containing = [k for k, members in all_sets.items() if member_key in members]
             if len(containing) > 1:
                 dual_membership_rounds += 1
@@ -411,9 +456,9 @@ class TestMultiprocessConcurrency:
             for k in r.keys(f"$IndexF:ConcurrentStatusModel:*"):
                 r.delete(k)
 
-        assert dual_membership_rounds == 0, (
-            f"{dual_membership_rounds}/{self.ROUNDS} rounds had dual-membership"
-        )
+        assert (
+            dual_membership_rounds == 0
+        ), f"{dual_membership_rounds}/{self.ROUNDS} rounds had dual-membership"
 
     @pytest.mark.slow
     def test_unique_field_no_double_occupancy(self):
@@ -439,8 +484,14 @@ class TestMultiprocessConcurrency:
             barrier = ctx.Barrier(2)
             q = ctx.Queue()
 
-            p1 = ctx.Process(target=_worker_save_unique_email, args=(test_email, barrier, q, redis_url))
-            p2 = ctx.Process(target=_worker_save_unique_email, args=(test_email, barrier, q, redis_url))
+            p1 = ctx.Process(
+                target=_worker_save_unique_email,
+                args=(test_email, barrier, q, redis_url),
+            )
+            p2 = ctx.Process(
+                target=_worker_save_unique_email,
+                args=(test_email, barrier, q, redis_url),
+            )
             p1.start()
             p2.start()
             p1.join(timeout=10)
@@ -453,7 +504,9 @@ class TestMultiprocessConcurrency:
                 double_occupancy_rounds += 1
 
             # Verify the Set has at most 1 member
-            _assert_no_unique_set_has_multiple(r, UniqueField, ConcurrentEmailModel, "email")
+            _assert_no_unique_set_has_multiple(
+                r, UniqueField, ConcurrentEmailModel, "email"
+            )
 
             # Cleanup
             for k in r.keys("ConcurrentEmailModel:*"):
@@ -461,9 +514,9 @@ class TestMultiprocessConcurrency:
             for k in r.keys("$Class:ConcurrentEmailModel"):
                 r.delete(k)
 
-        assert double_occupancy_rounds == 0, (
-            f"{double_occupancy_rounds} rounds had double occupancy in UniqueField Set"
-        )
+        assert (
+            double_occupancy_rounds == 0
+        ), f"{double_occupancy_rounds} rounds had double occupancy in UniqueField Set"
 
 
 # ---------------------------------------------------------------------------
@@ -649,9 +702,9 @@ class TestRejectedUniqueLeaveNoTrace:
             b.save()
 
         # B's hash should not exist in Redis
-        assert r.exists(b.db_key.redis_key.encode("utf-8")) == 0, (
-            "Rejected record B's hash was written despite uniqueness conflict"
-        )
+        assert (
+            r.exists(b.db_key.redis_key.encode("utf-8")) == 0
+        ), "Rejected record B's hash was written despite uniqueness conflict"
 
     def test_rejected_unique_leaves_no_pointer(self):
         """Rejected save must not write any pointer (side key or legacy in-hash) for B."""
@@ -665,11 +718,17 @@ class TestRejectedUniqueLeaveNoTrace:
 
         ptr_key = _pointer_side_key(b.db_key.redis_key, "email")
         ptr_b = r.get(ptr_key.encode("utf-8"))
-        assert ptr_b is None, f"Pointer side key was written for rejected record B: {ptr_b}"
+        assert (
+            ptr_b is None
+        ), f"Pointer side key was written for rejected record B: {ptr_b}"
 
         legacy_ptr_field = "email\x00idxset"
-        legacy_ptr_b = r.hget(b.db_key.redis_key.encode("utf-8"), legacy_ptr_field.encode("utf-8"))
-        assert legacy_ptr_b is None, f"Legacy in-hash pointer was written for rejected record B: {legacy_ptr_b}"
+        legacy_ptr_b = r.hget(
+            b.db_key.redis_key.encode("utf-8"), legacy_ptr_field.encode("utf-8")
+        )
+        assert (
+            legacy_ptr_b is None
+        ), f"Legacy in-hash pointer was written for rejected record B: {legacy_ptr_b}"
 
     def test_rejected_unique_set_still_has_only_a(self):
         """After B is rejected, the UniqueField Set must contain only A's key."""
@@ -681,12 +740,16 @@ class TestRejectedUniqueLeaveNoTrace:
         with pytest.raises(ModelException):
             b.save()
 
-        set_key = _index_set_key(UniqueField, UniqueRejectionModel, "email", "taken3@example.com")
+        set_key = _index_set_key(
+            UniqueField, UniqueRejectionModel, "email", "taken3@example.com"
+        )
         members = {
             m.decode("utf-8") if isinstance(m, bytes) else m
             for m in r.smembers(set_key)
         }
-        assert len(members) == 1, f"Expected 1 member after rejection, got {len(members)}: {members}"
+        assert (
+            len(members) == 1
+        ), f"Expected 1 member after rejection, got {len(members)}: {members}"
         assert a.db_key.redis_key in members
 
 
@@ -701,7 +764,9 @@ class TestHashContentParityAfterSave:
     encode_popoto_model_obj() / msgpack.packb() would produce.
     """
 
-    def _read_hash_field_raw(self, r: redis_lib.Redis, redis_key: str, field_name: str) -> bytes:
+    def _read_hash_field_raw(
+        self, r: redis_lib.Redis, redis_key: str, field_name: str
+    ) -> bytes:
         """Return raw msgpack bytes for a field from the model hash."""
         return r.hget(redis_key.encode("utf-8"), field_name.encode("utf-8"))
 
@@ -713,9 +778,9 @@ class TestHashContentParityAfterSave:
 
         raw = self._read_hash_field_raw(r, obj.db_key.redis_key, "status")
         expected = msgpack.packb("parity_check")
-        assert raw == expected, (
-            f"Hash field bytes mismatch: got {raw!r}, expected {expected!r}"
-        )
+        assert (
+            raw == expected
+        ), f"Hash field bytes mismatch: got {raw!r}, expected {expected!r}"
 
     def test_unique_field_hash_bytes_match_msgpack(self):
         """UniqueField: after save(), HGET returns the correct msgpack bytes."""
@@ -777,9 +842,9 @@ class TestPointerInvisibility:
         obj = PointerInvisibleModel.create(status="visible")
 
         for attr_name in vars(obj):
-            assert "\x00" not in attr_name, (
-                f"Pointer field leaked as model attribute: {attr_name!r}"
-            )
+            assert (
+                "\x00" not in attr_name
+            ), f"Pointer field leaked as model attribute: {attr_name!r}"
 
     def test_pointer_field_not_in_filter_results(self):
         """filter() results must not include a \x00-containing attribute."""
@@ -789,9 +854,9 @@ class TestPointerInvisibility:
 
         for result in results:
             for attr_name in vars(result):
-                assert "\x00" not in attr_name, (
-                    f"Pointer field leaked in filter() result: {attr_name!r}"
-                )
+                assert (
+                    "\x00" not in attr_name
+                ), f"Pointer field leaked in filter() result: {attr_name!r}"
 
     def test_pointer_field_not_in_query_all(self):
         """query.all() results must not include pointer fields."""
@@ -806,7 +871,9 @@ class TestPointerInvisibility:
 
         # This would crash with TypeError if pointer bytes were decoded as str key
         try:
-            values_list = list(PointerInvisibleModel.query.filter(status="val_test").values("status"))
+            values_list = list(
+                PointerInvisibleModel.query.filter(status="val_test").values("status")
+            )
         except TypeError as exc:
             pytest.fail(f"values() crashed with TypeError (pointer decode bug?): {exc}")
 
@@ -815,9 +882,9 @@ class TestPointerInvisibility:
             # The pointer field must not appear in the projected dict
             for key in row:
                 key_str = key.decode("utf-8") if isinstance(key, bytes) else key
-                assert "\x00" not in key_str, (
-                    f"Pointer field appeared in values() projection: {key!r}"
-                )
+                assert (
+                    "\x00" not in key_str
+                ), f"Pointer field appeared in values() projection: {key!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -835,7 +902,9 @@ class TestLegacyRecordUpgrade:
       - Leaves no dual-membership
     """
 
-    def _seed_legacy_indexed_record(self, r: redis_lib.Redis, record_id: str, value: str):
+    def _seed_legacy_indexed_record(
+        self, r: redis_lib.Redis, record_id: str, value: str
+    ):
         """Write a LegacyUpgradeModel hash without the \x00idxset pointer."""
         model_key = f"LegacyUpgradeModel:{record_id}"
         # Write minimal hash: only the data fields (no pointer)
@@ -852,7 +921,9 @@ class TestLegacyRecordUpgrade:
         old_set_key = f"$IndexF:LegacyUpgradeModel:status:{value}"
         r.sadd(old_set_key, model_key)
 
-    def _seed_legacy_unique_record(self, r: redis_lib.Redis, record_id: str, email: str):
+    def _seed_legacy_unique_record(
+        self, r: redis_lib.Redis, record_id: str, email: str
+    ):
         """Write a LegacyUniqueModel hash without the \x00idxset pointer."""
         model_key = f"LegacyUniqueModel:{record_id}"
         r.hset(
@@ -890,15 +961,15 @@ class TestLegacyRecordUpgrade:
         obj.save()
 
         # Record removed from old Set
-        assert not r.sismember(old_set_key, model_key), (
-            "Legacy record still in old Set after upgrade save"
-        )
+        assert not r.sismember(
+            old_set_key, model_key
+        ), "Legacy record still in old Set after upgrade save"
 
         # Record in new Set
         new_set_key = f"$IndexF:LegacyUpgradeModel:status:{new_value}"
-        assert r.sismember(new_set_key, model_key), (
-            "Legacy record not in new Set after upgrade save"
-        )
+        assert r.sismember(
+            new_set_key, model_key
+        ), "Legacy record not in new Set after upgrade save"
 
         # Pointer now written to the side key (#476), not the legacy in-hash field
         ptr_key = _pointer_side_key(model_key, "status")
@@ -907,12 +978,14 @@ class TestLegacyRecordUpgrade:
         assert ptr.decode("utf-8") == new_set_key
 
         # The legacy in-hash pointer field must have been scrubbed, not repopulated
-        assert r.hget(model_key, "status\x00idxset".encode("utf-8")) is None, (
-            "Legacy in-hash pointer field was written/left behind by current code"
-        )
+        assert (
+            r.hget(model_key, "status\x00idxset".encode("utf-8")) is None
+        ), "Legacy in-hash pointer field was written/left behind by current code"
 
         # No dual-membership
-        _assert_no_dual_membership(r, model_key, IndexedField, LegacyUpgradeModel, "status")
+        _assert_no_dual_membership(
+            r, model_key, IndexedField, LegacyUpgradeModel, "status"
+        )
 
     def test_legacy_unique_record_upgrade_no_stranded_membership(self):
         """Pre-fix UniqueField record: first new-code save moves membership correctly."""
@@ -931,25 +1004,27 @@ class TestLegacyRecordUpgrade:
         obj.save()
 
         old_set_key = f"$UniquF:LegacyUniqueModel:email:{old_email}"
-        assert not r.sismember(old_set_key, model_key), (
-            "Legacy unique record still in old Set after upgrade"
-        )
+        assert not r.sismember(
+            old_set_key, model_key
+        ), "Legacy unique record still in old Set after upgrade"
 
         new_set_key = f"$UniquF:LegacyUniqueModel:email:{new_email}"
-        assert r.sismember(new_set_key, model_key), (
-            "Legacy unique record not in new Set after upgrade"
-        )
+        assert r.sismember(
+            new_set_key, model_key
+        ), "Legacy unique record not in new Set after upgrade"
 
         ptr_key = _pointer_side_key(model_key, "email")
         ptr = r.get(ptr_key.encode("utf-8"))
         assert ptr is not None
         assert ptr.decode("utf-8") == new_set_key
 
-        assert r.hget(model_key, "email\x00idxset".encode("utf-8")) is None, (
-            "Legacy in-hash pointer field was written/left behind by current code"
-        )
+        assert (
+            r.hget(model_key, "email\x00idxset".encode("utf-8")) is None
+        ), "Legacy in-hash pointer field was written/left behind by current code"
 
-        _assert_no_dual_membership(r, model_key, UniqueField, LegacyUniqueModel, "email")
+        _assert_no_dual_membership(
+            r, model_key, UniqueField, LegacyUniqueModel, "email"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -988,7 +1063,9 @@ return redis.error_reply('FORCED_TEST_ERROR_PARTIAL_STATE')
         before_bytes = r.hget(model_key.encode("utf-8"), b"status")
 
         # Run the test-only broken Lua script directly
-        new_set_key = _index_set_key(IndexedField, PtrTestModel, "status", "after_error")
+        new_set_key = _index_set_key(
+            IndexedField, PtrTestModel, "status", "after_error"
+        )
         ptr_field = "status\x00idxset"
 
         try:
@@ -1009,9 +1086,9 @@ return redis.error_reply('FORCED_TEST_ERROR_PARTIAL_STATE')
 
         # Hash field must be unchanged
         after_bytes = r.hget(model_key.encode("utf-8"), b"status")
-        assert before_bytes == after_bytes, (
-            "Hash field was mutated by partial Lua script that errored"
-        )
+        assert (
+            before_bytes == after_bytes
+        ), "Hash field was mutated by partial Lua script that errored"
 
     def test_forced_error_filter_sees_consistent_state(self):
         """After Lua error, filter() must not return a record with corrupted state."""
@@ -1048,9 +1125,9 @@ return redis.error_reply('FORCED_TEST_ERROR_PARTIAL_STATE')
         # The key assertion is: querying via filter("consistent") must still
         # return our record (it was in the "consistent" Set before the error).
         results = PtrTestModel.query.filter(status="consistent")
-        assert any(r2.record_id == obj.record_id for r2 in results), (
-            "Record not found via original value after forced partial error"
-        )
+        assert any(
+            r2.record_id == obj.record_id for r2 in results
+        ), "Record not found via original value after forced partial error"
 
 
 # ---------------------------------------------------------------------------
@@ -1075,7 +1152,9 @@ class TestPartialSaveIndexedField:
         obj.save(update_fields=["status"])
 
         # Must be in "updated" set
-        updated_set_key = _index_set_key(IndexedField, PartialSaveModel, "status", "updated")
+        updated_set_key = _index_set_key(
+            IndexedField, PartialSaveModel, "status", "updated"
+        )
         members = {
             m.decode("utf-8") if isinstance(m, bytes) else m
             for m in r.smembers(updated_set_key)
@@ -1083,7 +1162,9 @@ class TestPartialSaveIndexedField:
         assert member_key in members
 
         # Must not be in old set
-        _assert_no_dual_membership(r, member_key, IndexedField, PartialSaveModel, "status")
+        _assert_no_dual_membership(
+            r, member_key, IndexedField, PartialSaveModel, "status"
+        )
 
     def test_partial_save_indexed_only_no_data_error(self):
         """
@@ -1114,9 +1195,9 @@ class TestPartialSaveIndexedField:
 
         raw = r.hget(obj.db_key.redis_key.encode("utf-8"), b"status")
         expected = msgpack.packb("new")
-        assert raw == expected, (
-            f"Partial save did not write field value to hash: got {raw!r}, expected {expected!r}"
-        )
+        assert (
+            raw == expected
+        ), f"Partial save did not write field value to hash: got {raw!r}, expected {expected!r}"
 
     def test_partial_save_does_not_overwrite_non_updated_field(self):
         """save(update_fields=['status']) must not touch the 'other' field."""
@@ -1151,15 +1232,21 @@ class TestPartialSaveIndexedField:
             b.save(update_fields=["email"])
 
         # b must still be in the "d@example.com" set
-        d_set_key = _index_set_key(UniqueField, PartialSaveUniqueModel, "email", "d@example.com")
+        d_set_key = _index_set_key(
+            UniqueField, PartialSaveUniqueModel, "email", "d@example.com"
+        )
         d_members = {
             m.decode("utf-8") if isinstance(m, bytes) else m
             for m in r.smembers(d_set_key)
         }
-        assert b_key in d_members, "b was removed from its original set after rejected partial save"
+        assert (
+            b_key in d_members
+        ), "b was removed from its original set after rejected partial save"
 
         # b must NOT be in "c@example.com" set alongside a
-        c_set_key = _index_set_key(UniqueField, PartialSaveUniqueModel, "email", "c@example.com")
+        c_set_key = _index_set_key(
+            UniqueField, PartialSaveUniqueModel, "email", "c@example.com"
+        )
         c_members = {
             m.decode("utf-8") if isinstance(m, bytes) else m
             for m in r.smembers(c_set_key)

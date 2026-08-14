@@ -10,9 +10,14 @@ covers the *value* itself.
 Two invariants, and the second matters as much as the first:
 
 1. awareness and offset round-trip for values written from #521 onward;
-2. values already on disk in the offset-free form still decode, and decode
-   *naive*, because their offset was never written and inventing one would
-   move the value.
+2. values already on disk in the offset-free form still decode, and decode as
+   *UTC* (#537), matching what #519 has assumed about them for scoring and
+   #421 for stamping.
+
+Invariant 2 was the opposite of this until #537. Assuming UTC shifted
+``str(value)``, and identity was derived from ``str(value)``, so the
+assumption duplicated every legacy row on its next save. Identity now derives
+from the instant instead (``canonical_key_str``), which is what unblocked it.
 
 The tests pin a non-UTC process timezone for the same reason #519's do: on a
 UTC box a dropped offset is indistinguishable from a preserved one.
@@ -29,6 +34,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 from src import popoto
+from src.popoto.models.db_key import DB_key
 from src.popoto.models.encoding import TYPE_ENCODER_DECODERS
 from src.popoto.redis_db import POPOTO_REDIS_DB
 
@@ -103,7 +109,14 @@ def test_awareness_survives_rather_than_merely_comparing_equal():
 
 
 def test_two_offsets_of_the_same_instant_no_longer_collide():
-    """The headline defect: these stored byte-identically before #521."""
+    """The headline defect: these stored byte-identically before #521.
+
+    This is about *encoded values*, which must stay distinguishable so a
+    reloaded value reports the offset its caller supplied. Their derived
+    Redis *keys* now deliberately do collide, because identity is the instant
+    (#537/#538) -- the two statements are about different projections and are
+    both true. See `test_datetime_key_identity.py`.
+    """
     bangkok = datetime.datetime(2026, 8, 7, 12, 0, tzinfo=TZ_PLUS_7)
     utc = datetime.datetime(2026, 8, 7, 12, 0, tzinfo=datetime.timezone.utc)
 
@@ -129,17 +142,63 @@ def test_naive_stays_naive():
 def test_legacy_offset_free_datetime_still_decodes():
     """Pre-#521 rows must keep loading; the decoder reads both shapes."""
     decoded = DATETIME_CODEC.decoder({"as_encodable": "20260807T12:00:00.123456"})
-    assert decoded == datetime.datetime(2026, 8, 7, 12, 0, 0, 123456)
+    assert decoded == datetime.datetime(
+        2026, 8, 7, 12, 0, 0, 123456, tzinfo=datetime.timezone.utc
+    )
 
 
-def test_legacy_datetime_decodes_naive_not_assumed_utc():
-    """A legacy string has no offset to recover, so none is invented.
+def test_legacy_datetime_is_assumed_utc():
+    """A legacy string has no offset stored, and is now read as UTC (#537).
 
-    Stamping UTC onto it would move every value ever written by a non-UTC
-    process and would break callers comparing it to `datetime.now()`.
+    This test previously asserted the opposite, and the history is the point.
+    #521 proposed assuming UTC; the assumption was written (commit `0342550`)
+    and reverted, because `datetime` is a valid `KeyField` type and `DB_key`
+    derived identity from `str(value)`. Stamping an offset shifted `str()`,
+    which shifted the derived key away from the key the row was stored under,
+    so loading and re-saving a legacy row wrote a second hash and orphaned the
+    original. This test pinned the naive behaviour precisely so that nobody
+    could reintroduce the assumption without first fixing that.
+
+    It has been fixed: keys now derive from `canonical_key_str`, which renders
+    the instant rather than the representation, so a legacy value and the same
+    value stamped UTC produce identical key bytes. The companion assertion is
+    `test_legacy_keyfield_row_keeps_its_stored_key` below.
     """
     decoded = DATETIME_CODEC.decoder({"as_encodable": "20260807T12:00:00.123456"})
+    assert decoded.tzinfo is datetime.timezone.utc
+    assert decoded.utcoffset() == datetime.timedelta(0)
+
+
+def test_the_legacy_branch_is_selected_by_shape_not_by_a_parser_raising():
+    """Branch selection must not depend on the interpreter minor version.
+
+    `fromisoformat` parses `20260807T12:00:00.123456` on 3.11+ and raises on
+    the 3.10 `requires-python` floor. While both branches produced the same
+    naive value that was harmless, but now that only one branch stamps UTC, a
+    try-order fallback would decode the same stored bytes aware on 3.10 and
+    naive on 3.12. Only one Python runs per CI job, so this asserts on the
+    branch predicate itself rather than on a version-dependent outcome.
+    """
+    from src.popoto.models.encoding import _LEGACY_DATETIME_RE
+
+    assert _LEGACY_DATETIME_RE.match("20260807T12:00:00.123456")
+    # A post-#521 deliberately naive value: date separators, never the legacy shape.
+    assert not _LEGACY_DATETIME_RE.match("2026-08-07T12:00:00.123456")
+    assert not _LEGACY_DATETIME_RE.match("2026-08-07T12:00:00.123456+07:00")
+
+
+def test_a_post_521_naive_value_is_not_swept_into_the_legacy_assumption():
+    """Deliberate naivety written after #521 must survive as naive."""
+    value = datetime.datetime(2026, 8, 7, 12, 0, 0, 123456)
+    decoded = DATETIME_CODEC.decoder(DATETIME_CODEC.encoder(value))
     assert decoded.tzinfo is None
+    assert decoded == value
+
+
+def test_a_malformed_stored_datetime_raises_rather_than_being_coerced():
+    """Guessing at junk would turn a corrupt row into a plausible wrong answer."""
+    with pytest.raises(ValueError):
+        DATETIME_CODEC.decoder({"as_encodable": "not a datetime at all"})
 
 
 def test_legacy_offset_free_time_still_decodes():
@@ -230,14 +289,27 @@ def test_datetime_keyfield_does_not_duplicate_on_resave(value):
 
 
 def test_legacy_keyfield_row_keeps_its_stored_key():
-    """The regression that blocks assuming UTC for legacy rows.
+    """The regression that used to block assuming UTC for legacy rows.
 
-    A legacy value decodes naive, so `str()` is unchanged and the derived key
-    still matches the key on disk. If it decoded aware, `str()` would gain a
-    "+00:00" and the row would duplicate on the next save.
+    History, because it is what makes the current assertion meaningful. This
+    test once pinned `str(legacy) == "2026-08-07 12:00:00.123456"`: a legacy
+    value decoded naive, so `str()` was unchanged and the derived key still
+    matched the key on disk. If it decoded aware, `str()` gained a "+00:00",
+    the derived key moved, and the row duplicated on the next save (#537).
+
+    Identity no longer comes from `str()`. `canonical_key_str` renders the
+    instant, so the aware-UTC legacy value and the naive one it used to decode
+    to produce the *same* key bytes -- which is precisely what made the
+    assumption adoptable. The assertion is now on the key rather than on the
+    value's repr, because the key is what was ever at risk.
     """
     legacy = DATETIME_CODEC.decoder({"as_encodable": "20260807T12:00:00.123456"})
-    assert str(legacy) == "2026-08-07 12:00:00.123456"
+    assert legacy.tzinfo is datetime.timezone.utc
+
+    naive_equivalent = legacy.replace(tzinfo=None)
+    assert (
+        DB_key("Event", legacy).redis_key == DB_key("Event", naive_equivalent).redis_key
+    )
 
     Event.create(at=legacy, note="first")
     loaded = Event.query.get(at=legacy)
@@ -245,6 +317,7 @@ def test_legacy_keyfield_row_keeps_its_stored_key():
     loaded.save()
 
     assert len(Event.query.all()) == 1
+    assert Event.query.get(at=legacy).note == "second"
 
 
 # --- end to end through Redis ----------------------------------------------

@@ -31,7 +31,6 @@ from src.popoto.embeddings import AbstractEmbeddingProvider
 from src.popoto.redis_db import POPOTO_REDIS_DB
 from src.popoto.models.query import QueryException
 
-
 # --- Mock Provider ---
 
 

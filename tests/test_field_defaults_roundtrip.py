@@ -18,7 +18,6 @@ import pytest
 from src import popoto
 from src.popoto.redis_db import POPOTO_REDIS_DB
 
-
 # --- Test Models (one per field type for isolation) ---
 
 
@@ -124,9 +123,9 @@ def test_static_default_roundtrip(model_class, expected_default):
     # Reload from Redis
     loaded = model_class.query.get(name="roundtrip1")
 
-    assert loaded.value is not None, (
-        f"{model_class.__name__}.value should not be None after reload"
-    )
+    assert (
+        loaded.value is not None
+    ), f"{model_class.__name__}.value should not be None after reload"
     assert loaded.value == expected_default, (
         f"{model_class.__name__}.value should be {expected_default!r} after reload, "
         f"got {loaded.value!r}"

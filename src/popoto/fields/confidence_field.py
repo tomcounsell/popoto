@@ -734,7 +734,9 @@ class ConfidenceField(Field):
                         }
                     )
                     continue
-                instance = decode_popoto_model_hashmap(model_class, redis_hash)
+                instance = decode_popoto_model_hashmap(
+                    model_class, redis_hash, source_redis_key=member_key
+                )
                 if instance is None:
                     report["errors"].append(
                         {"member_key": member_key, "error": "Failed to decode instance"}

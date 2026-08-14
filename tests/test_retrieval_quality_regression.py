@@ -43,15 +43,15 @@ FIXTURE_PATH = Path(__file__).parent / "fixtures" / "retr1_corpus.json"
 def load_fixture():
     """Load and validate the static retrieval-quality corpus fixture."""
     data = json.loads(FIXTURE_PATH.read_text())
-    assert len(data["records"]) == 200, (
-        f"expected 200 records, got {len(data['records'])}"
-    )
-    assert len(data["queries"]) == 20, (
-        f"expected 20 queries, got {len(data['queries'])}"
-    )
-    assert all(len(q["relevant_ids"]) == 20 for q in data["queries"]), (
-        "every query must have exactly 20 relevant_ids"
-    )
+    assert (
+        len(data["records"]) == 200
+    ), f"expected 200 records, got {len(data['records'])}"
+    assert (
+        len(data["queries"]) == 20
+    ), f"expected 20 queries, got {len(data['queries'])}"
+    assert all(
+        len(q["relevant_ids"]) == 20 for q in data["queries"]
+    ), "every query must have exactly 20 relevant_ids"
     return data
 
 
@@ -131,9 +131,9 @@ class TestFixtureShape:
     def test_every_query_has_20_relevant_ids(self):
         data = load_fixture()
         for q in data["queries"]:
-            assert len(q["relevant_ids"]) == 20, (
-                f"query {q['query_text']!r} has {len(q['relevant_ids'])} relevant_ids"
-            )
+            assert (
+                len(q["relevant_ids"]) == 20
+            ), f"query {q['query_text']!r} has {len(q['relevant_ids'])} relevant_ids"
 
     def test_record_ids_are_integers_0_to_199(self):
         data = load_fixture()
@@ -261,9 +261,9 @@ class TestColdIndexRecovery:
             result = assembler.assemble(query_cues={"topic": "CI pipeline"})
 
         # Result must still be a list (graceful degradation, no crash)
-        assert isinstance(result.records, list), (
-            "Cold-index fallback must return a list, not raise"
-        )
+        assert isinstance(
+            result.records, list
+        ), "Cold-index fallback must return a list, not raise"
 
         # The cold-index WARNING must appear, name the model, and point at the
         # reindex/backfill remedy (CONCERN C1 — observability is mandatory).
@@ -296,9 +296,9 @@ class TestColdIndexRecovery:
         cold_results = BM25Field.search(
             RegressionMemory, "content_bm25", "database index", limit=10
         )
-        assert cold_results == [], (
-            f"Expected empty BM25 results after clearing index, got {cold_results}"
-        )
+        assert (
+            cold_results == []
+        ), f"Expected empty BM25 results after clearing index, got {cold_results}"
 
         # Re-save records (backfill)
         _save_fixture_records(data)
@@ -307,9 +307,9 @@ class TestColdIndexRecovery:
         warm_results = BM25Field.search(
             RegressionMemory, "content_bm25", "database index", limit=10
         )
-        assert len(warm_results) > 0, (
-            "BM25 returned no results after backfill re-save. Index recovery failed."
-        )
+        assert (
+            len(warm_results) > 0
+        ), "BM25 returned no results after backfill re-save. Index recovery failed."
         # Verify results are relevant (database-topic records have IDs 20-39)
         retrieved_ids = set()
         for redis_key, _ in warm_results:
@@ -377,12 +377,12 @@ class TestEndToEndLexicalRetrieval:
         # Results should be topically relevant
         database_ids = set(range(20, 40))
         testing_ids = set(range(80, 100))
-        assert len(ids_database & database_ids) > 0, (
-            f"database query missed all database-topic records. Got: {sorted(ids_database)}"
-        )
-        assert len(ids_testing & testing_ids) > 0, (
-            f"testing query missed all testing-topic records. Got: {sorted(ids_testing)}"
-        )
+        assert (
+            len(ids_database & database_ids) > 0
+        ), f"database query missed all database-topic records. Got: {sorted(ids_database)}"
+        assert (
+            len(ids_testing & testing_ids) > 0
+        ), f"testing query missed all testing-topic records. Got: {sorted(ids_testing)}"
 
     def test_empty_db_returns_empty_list(self):
         """With empty DB, lexical mode assemble() returns empty list (no crash)."""

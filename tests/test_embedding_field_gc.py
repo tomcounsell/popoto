@@ -191,9 +191,9 @@ class TestOptInMarker:
             removed = EmbeddingField.garbage_collect(GcMemoryNoOptIn)
 
         assert removed == 0
-        assert spy.call_count == 0, (
-            "garbage_collect must NEVER unlink for non-opted-in models"
-        )
+        assert (
+            spy.call_count == 0
+        ), "garbage_collect must NEVER unlink for non-opted-in models"
         assert os.path.exists(stray), "stray file must survive"
 
     def test_marker_set_enables_gc(self):

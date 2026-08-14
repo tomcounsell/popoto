@@ -21,7 +21,6 @@ from tests.benchmarks.metrics.token_efficiency import (
 )
 from tests.benchmarks.scenarios.recipe_base import load_fixture, FIXTURES_DIR
 
-
 # ---------------------------------------------------------------------------
 # Fixture loading tests
 # ---------------------------------------------------------------------------
@@ -86,12 +85,12 @@ class TestFixtureLoading:
 
     def test_three_fixtures_exist(self):
         """Verify all 3 scenario fixtures exist in the fixtures directory."""
-        expected = {"support_agent.json", "coding_assistant.json", "research_agent.json"}
-        actual = {
-            f.name
-            for f in FIXTURES_DIR.iterdir()
-            if f.suffix == ".json"
+        expected = {
+            "support_agent.json",
+            "coding_assistant.json",
+            "research_agent.json",
         }
+        actual = {f.name for f in FIXTURES_DIR.iterdir() if f.suffix == ".json"}
         assert expected.issubset(actual), f"Missing fixtures: {expected - actual}"
 
 
@@ -163,9 +162,7 @@ class TestTokenUtilization:
     def test_all_high_relevance(self):
         records = ["record_a", "record_b", "record_c"]
         relevance = {"record_a": 0.9, "record_b": 0.8, "record_c": 0.7}
-        result = token_utilization_ratio(
-            records, relevance, key_fn=lambda r: r
-        )
+        result = token_utilization_ratio(records, relevance, key_fn=lambda r: r)
         # Median is 0.8, so record_a (0.9) and record_b (0.8) are >= median
         assert result["utilization_ratio"] > 0.5
 
@@ -238,9 +235,9 @@ class TestRecipeScenarioLifecycle:
         scenario = scenario_class()
         result = scenario.execute()
 
-        assert result.status == "ok", (
-            f"Scenario {class_name} failed: {result.error_message}"
-        )
+        assert (
+            result.status == "ok"
+        ), f"Scenario {class_name} failed: {result.error_message}"
         assert result.metadata.get("n_memories_saved", 0) > 0
         assert result.metadata.get("n_extraction_rounds", 0) > 0
 

@@ -366,7 +366,12 @@ class ResultsAggregator:
 
         curve = [(orig_values[k], sum(s) / len(s)) for k, s in value_scores.items()]
         # Sort numerically where possible; dict values go at end
-        curve.sort(key=lambda x: (isinstance(x[0], dict), x[0] if not isinstance(x[0], dict) else 0))
+        curve.sort(
+            key=lambda x: (
+                isinstance(x[0], dict),
+                x[0] if not isinstance(x[0], dict) else 0,
+            )
+        )
         return curve
 
     def detect_cliff_effects(
@@ -492,9 +497,7 @@ class ResultsAggregator:
                     sum(1 for p in pts if p.status == "ok")
                     for pts in self.pairwise_results.values()
                 ),
-                "overall_query_duration": self._compute_duration_stats(
-                    all_durations
-                ),
+                "overall_query_duration": self._compute_duration_stats(all_durations),
             },
             "constants": constants,
             "pairwise": pairwise,
@@ -526,7 +529,9 @@ class ResultsAggregator:
             summary["metadata"].update(extra_metadata)
 
         # Build timestamped filename
-        run_id = summary.get("run_id", datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S"))
+        run_id = summary.get(
+            "run_id", datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        )
         timestamped_name = f"sweep_{run_id}.json"
         filepath = RESULTS_DIR / timestamped_name
 

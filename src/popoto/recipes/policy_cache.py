@@ -636,9 +636,9 @@ async def temporal_discovery_handler(entries):
             # weekly epoch anchor.  The anchor is 1970-01-01 00:00 UTC, which
             # was a Thursday (tm_wday==3).  Self-check the anchor so the magic
             # 3 below is never silently wrong.
-            assert time.gmtime(0).tm_wday == 3, (
-                "epoch 1970-01-01 must be Thursday (tm_wday==3)"
-            )
+            assert (
+                time.gmtime(0).tm_wday == 3
+            ), "epoch 1970-01-01 must be Thursday (tm_wday==3)"
             # Map the peak weekday to a seconds offset from the Thursday
             # anchor, centered at the weekday's midpoint (43200 = 0.5 day).
             # Worked examples: Thu(bkt=3)->43200s, Sun(bkt=6)->302400s,

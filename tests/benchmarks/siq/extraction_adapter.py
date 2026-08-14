@@ -108,9 +108,7 @@ class ExtractionAdapter:
             record = self._model_class(
                 agent_id=self._agent_id,
                 content=fact.text.strip(),
-                importance=(
-                    fact.importance if fact.importance is not None else 0.5
-                ),
+                importance=(fact.importance if fact.importance is not None else 0.5),
             )
             if record.save() is False:
                 continue

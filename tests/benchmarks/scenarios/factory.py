@@ -30,7 +30,6 @@ from src.popoto.redis_db import POPOTO_REDIS_DB
 from ..overrides import apply_overrides
 from .base import Scenario, ScenarioResult
 
-
 IMPORTANCE_SHAPES = ("uniform", "clustered", "bimodal", "exponential", "flat")
 ACCESS_PATTERNS = ("all_recent", "half_stale", "mostly_stale", "interleaved")
 
@@ -194,9 +193,7 @@ class ScenarioFactory:
                     relevance = DecayingSortedField(
                         decay_rate=decay_rate, base_score_field="importance"
                     )
-                    certainty = ConfidenceField(
-                        initial_confidence=initial_confidence
-                    )
+                    certainty = ConfidenceField(initial_confidence=initial_confidence)
 
                     def compute_filter_score(self):
                         return self.importance or 0.0
@@ -258,10 +255,7 @@ class ScenarioFactory:
                 if acted_instances:
                     outcome_map = {}
                     for inst in acted_instances:
-                        key = (
-                            getattr(inst, "_redis_key", None)
-                            or inst.db_key.redis_key
-                        )
+                        key = getattr(inst, "_redis_key", None) or inst.db_key.redis_key
                         outcome_map[key] = "acted"
                     with apply_overrides(self.overrides):
                         ObservationProtocol.on_context_used(
@@ -315,9 +309,7 @@ class ScenarioFactory:
 
                 retrieved_ids = []
                 for r in results:
-                    key = (
-                        getattr(r, "_redis_key", None) or r.db_key.redis_key
-                    )
+                    key = getattr(r, "_redis_key", None) or r.db_key.redis_key
                     retrieved_ids.append(key)
 
                 # Ground truth: top records by importance are relevant
@@ -333,10 +325,7 @@ class ScenarioFactory:
                 relevant_ids = set()
                 relevance_scores = {}
                 for inst in self._instances:
-                    key = (
-                        getattr(inst, "_redis_key", None)
-                        or inst.db_key.redis_key
-                    )
+                    key = getattr(inst, "_redis_key", None) or inst.db_key.redis_key
                     imp = inst.importance or 0
                     relevance_scores[key] = imp
                     if inst in relevant_instances:

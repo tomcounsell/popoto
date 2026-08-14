@@ -975,7 +975,9 @@ class MemoryLifecycle:
             (k.encode() if isinstance(k, str) else k): v
             for k, v in (entry.get("payload") or {}).items()
         }
-        instance = decode_popoto_model_hashmap(self.model_class, redis_hash)
+        instance = decode_popoto_model_hashmap(
+            self.model_class, redis_hash, source_redis_key=redis_key
+        )
         if instance is None:
             logger.warning("restore: empty payload for %s", redis_key)
             return None

@@ -78,6 +78,51 @@ print(Restaurant.load(name="Taco Shack"))
 # => None
 ```
 
+### Datetime KeyFields
+
+A `KeyField` can hold a `datetime`, and its identity is the **instant**, not the
+representation you happened to pass. Popoto normalizes the value to UTC to build the
+key, so an aware value, its UTC equivalent, and the equivalent naive value all address
+one row:
+
+```python
+import datetime
+
+BANGKOK = datetime.timezone(datetime.timedelta(hours=7))
+
+class Reading(Model):
+    at = KeyField(type=datetime.datetime)
+    celsius = Field(type=float)
+
+Reading.create(at=datetime.datetime(2026, 8, 7, 12, 0, tzinfo=BANGKOK), celsius=31.4)
+
+# All three denote the same instant, so all three find the same row.
+Reading.query.get(at=datetime.datetime(2026, 8, 7, 12, 0, tzinfo=BANGKOK))
+Reading.query.get(at=datetime.datetime(2026, 8, 7, 5, 0, tzinfo=datetime.timezone.utc))
+Reading.query.get(at=datetime.datetime(2026, 8, 7, 5, 0))  # naive, read as UTC
+```
+
+The **stored value** still keeps the offset you supplied -- only the key is normalized:
+
+```python
+loaded = Reading.query.get(at=datetime.datetime(2026, 8, 7, 5, 0))
+print(loaded.at.utcoffset())   # => 7:00:00
+print(loaded.at.hour)          # => 12
+```
+
+Key and value are deliberately different projections: the key answers "which row",
+the value answers "what the caller wrote". A naive value is read as UTC, matching how
+`SortedField` has scored naive datetimes all along.
+
+Two consequences worth knowing before you rely on this:
+
+- If your data model needs a naive datetime and an aware UTC datetime to be **two
+  distinct rows**, a datetime `KeyField` cannot express that. Use a separate
+  discriminator field.
+- Rows written before Popoto 1.9.0 sit on the old, representation-derived keys. Run
+  `Model.audit_datetime_keys()` to see them and `Model.migrate_datetime_keys()` to move
+  them; see recipes 19 and 20 in `popoto.models.migrations`.
+
 ## Uniqueness
 
 When two restaurants share the same `name`, the second save overwrites the first. If
@@ -1984,8 +2029,13 @@ Index maintenance rides a single atomic Lua script (`TAG_SWAP_LUA`) that **diffs
 the record's previous tag membership against the new one and issues only the
 necessary `SREM`/`SADD` calls — so re-saving with changed tags never leaves
 orphaned Set members. The previous membership is read from a server-authoritative
-pointer side key (a standalone Redis Set), never a client snapshot. All commands
-are core Redis Set operations (`SADD`/`SREM`/`SMEMBERS`/`SUNION`/`SINTER`/`DEL`) —
+pointer side key (a standalone Redis Set, namespaced `$TagPtr:<Model:key>:<field_name>`
+alongside Popoto's other internal keys — `$Class:`, `$KeyF:`, `$SortedF:`, `$IdxPtr:`),
+never a client snapshot; a model name can never begin with `$`, so this key can
+never collide with a model key glob (see [Indexed Fields → Operator
+Note](indexed_fields.md#operator-note) for the equivalent `$IdxPtr:` story and the
+1.8.0-1.8.2 migration/self-heal behavior that also applies to this pointer). All
+commands are core Redis Set operations (`SADD`/`SREM`/`SMEMBERS`/`SUNION`/`SINTER`/`DEL`) —
 **no Redis modules**, so it runs identically on Redis and Valkey.
 
 ### ContextAssembler integration

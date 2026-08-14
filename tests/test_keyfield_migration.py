@@ -43,12 +43,12 @@ def test_filter_loaded_instance_has_correct_redis_key():
     assert original_key is not None, "_redis_key should be set after create"
 
     loaded = MigrationModel.query.filter(category="books")[0]
-    assert loaded._redis_key is not None, (
-        "_redis_key must not be None on filter()-loaded instance"
-    )
-    assert loaded._redis_key == original_key, (
-        f"filter()-loaded _redis_key mismatch: {loaded._redis_key} != {original_key}"
-    )
+    assert (
+        loaded._redis_key is not None
+    ), "_redis_key must not be None on filter()-loaded instance"
+    assert (
+        loaded._redis_key == original_key
+    ), f"filter()-loaded _redis_key mismatch: {loaded._redis_key} != {original_key}"
 
 
 def test_filter_loaded_instance_has_saved_field_values():
@@ -56,12 +56,12 @@ def test_filter_loaded_instance_has_saved_field_values():
     MigrationModel.create(category="books", slug="my-slug", title="Title")
 
     loaded = MigrationModel.query.filter(category="books")[0]
-    assert "category" in loaded._saved_field_values, (
-        "_saved_field_values must include KeyField 'category'"
-    )
-    assert "slug" in loaded._saved_field_values, (
-        "_saved_field_values must include KeyField 'slug'"
-    )
+    assert (
+        "category" in loaded._saved_field_values
+    ), "_saved_field_values must include KeyField 'category'"
+    assert (
+        "slug" in loaded._saved_field_values
+    ), "_saved_field_values must include KeyField 'slug'"
     assert loaded._saved_field_values["category"] == "books"
     assert loaded._saved_field_values["slug"] == "my-slug"
 
@@ -78,9 +78,9 @@ def test_keyfield_change_on_filter_loaded_no_duplicates():
     loaded.slug = "renamed"
     loaded.save(migrate_key=True)
 
-    assert not POPOTO_REDIS_DB.exists(old_key), (
-        f"Old key {old_key} should be deleted after migration"
-    )
+    assert not POPOTO_REDIS_DB.exists(
+        old_key
+    ), f"Old key {old_key} should be deleted after migration"
 
     all_items = MigrationModel.query.all()
     assert len(all_items) == 1, f"Expected 1 item after migration, got {len(all_items)}"
@@ -97,13 +97,13 @@ def test_get_loaded_instance_keyfield_migration():
     got.slug = "new-slug"
     got.save(migrate_key=True)
 
-    assert not POPOTO_REDIS_DB.exists(old_key), (
-        "Old key should be deleted after get()-loaded migration"
-    )
+    assert not POPOTO_REDIS_DB.exists(
+        old_key
+    ), "Old key should be deleted after get()-loaded migration"
     all_items = MigrationModel.query.all()
-    assert len(all_items) == 1, (
-        f"Expected 1 item after get() migration, got {len(all_items)}"
-    )
+    assert (
+        len(all_items) == 1
+    ), f"Expected 1 item after get() migration, got {len(all_items)}"
 
 
 def test_bulk_filter_keyfield_change_on_multiple():
@@ -120,13 +120,15 @@ def test_bulk_filter_keyfield_change_on_multiple():
         obj.save(migrate_key=True)
 
     all_items = MigrationModel.query.filter(category="games")
-    assert len(all_items) == 3, (
-        f"Expected 3 items after bulk migration, got {len(all_items)}"
-    )
+    assert (
+        len(all_items) == 3
+    ), f"Expected 3 items after bulk migration, got {len(all_items)}"
     slugs = sorted([item.slug for item in all_items])
-    assert slugs == ["renamed-0", "renamed-1", "renamed-2"], (
-        f"Unexpected slugs: {slugs}"
-    )
+    assert slugs == [
+        "renamed-0",
+        "renamed-1",
+        "renamed-2",
+    ], f"Unexpected slugs: {slugs}"
 
 
 def test_chained_filter_with_keyfield_change():
@@ -146,9 +148,10 @@ def test_chained_filter_with_keyfield_change():
     results = MigrationModel.query.filter(category="tools")
     assert len(results) == 2
     slugs = sorted([r.slug for r in results])
-    assert slugs == ["mallet", "wrench"], (
-        f"Unexpected slugs after chained filter migration: {slugs}"
-    )
+    assert slugs == [
+        "mallet",
+        "wrench",
+    ], f"Unexpected slugs after chained filter migration: {slugs}"
 
 
 def test_partial_save_non_key_field_preserves_key():
@@ -160,9 +163,9 @@ def test_partial_save_non_key_field_preserves_key():
     loaded.title = "Green Apple"
     loaded.save(update_fields=["title"])
 
-    assert POPOTO_REDIS_DB.exists(original_key), (
-        "Key should still exist for non-key partial save"
-    )
+    assert POPOTO_REDIS_DB.exists(
+        original_key
+    ), "Key should still exist for non-key partial save"
     reloaded = MigrationModel.query.get(category="food", slug="apple")
     assert reloaded.title == "Green Apple"
 
@@ -191,9 +194,9 @@ def test_unchanged_keyfield_no_unnecessary_migration():
     loaded.title = "Updated Sedan"
     loaded.save()
 
-    assert POPOTO_REDIS_DB.exists(original_key), (
-        "Key should still exist when KeyField unchanged"
-    )
+    assert POPOTO_REDIS_DB.exists(
+        original_key
+    ), "Key should still exist when KeyField unchanged"
     reloaded = MigrationModel.query.get(category="cars", slug="sedan")
     assert reloaded.title == "Updated Sedan"
 
@@ -201,9 +204,9 @@ def test_unchanged_keyfield_no_unnecessary_migration():
 def test_new_unsaved_instance_has_redis_key():
     """New instance with all KeyFields present should have _redis_key computed."""
     new_item = MigrationModel(category="test", slug="new")
-    assert new_item._redis_key is not None, (
-        "New instance with all KeyFields should have _redis_key"
-    )
-    assert new_item._is_persisted is False, (
-        "New instance should not be marked as persisted"
-    )
+    assert (
+        new_item._redis_key is not None
+    ), "New instance with all KeyFields should have _redis_key"
+    assert (
+        new_item._is_persisted is False
+    ), "New instance should not be marked as persisted"

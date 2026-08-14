@@ -458,7 +458,9 @@ class QueryBuilder:
         instances = []
         for key, data in zip(redis_keys, raw_results):
             if data:
-                instance = decode_popoto_model_hashmap(model_class, data)
+                instance = decode_popoto_model_hashmap(
+                    model_class, data, source_redis_key=key
+                )
                 instances.append(instance)
 
         if not self._no_track:
@@ -646,7 +648,9 @@ class QueryBuilder:
             instances = []
             for key, data in zip(pks, hashes):
                 if data:
-                    instance = decode_popoto_model_hashmap(model_class, data)
+                    instance = decode_popoto_model_hashmap(
+                        model_class, data, source_redis_key=key
+                    )
                     instances.append(instance)
 
             if not self._no_track:
@@ -836,7 +840,9 @@ class QueryBuilder:
             instances = []
             for key, data in zip(pks, hashes):
                 if data:
-                    instance = decode_popoto_model_hashmap(model_class, data)
+                    instance = decode_popoto_model_hashmap(
+                        model_class, data, source_redis_key=key
+                    )
                     instances.append(instance)
 
             return instances
@@ -905,7 +911,9 @@ class QueryBuilder:
         instances = []
         for (key, score), data in zip(scored, hashes):
             if data:
-                instance = decode_popoto_model_hashmap(model_class, data)
+                instance = decode_popoto_model_hashmap(
+                    model_class, data, source_redis_key=key
+                )
                 instance._bm25_score = score
                 instances.append(instance)
 
@@ -1011,7 +1019,9 @@ class QueryBuilder:
         instances = []
         for (key, score), data in zip(sorted_results, hashes):
             if data:
-                instance = decode_popoto_model_hashmap(model_class, data)
+                instance = decode_popoto_model_hashmap(
+                    model_class, data, source_redis_key=key
+                )
                 instance._rrf_score = score
                 instances.append(instance)
 
@@ -1689,7 +1699,9 @@ class Query:
             hashmap = POPOTO_REDIS_DB.hgetall(redis_key)
             if not hashmap:
                 return None
-            instance = decode_popoto_model_hashmap(self.model_class, hashmap)
+            instance = decode_popoto_model_hashmap(
+                self.model_class, hashmap, source_redis_key=redis_key
+            )
             _fire_on_read(self.model_class, [instance])
 
         else:
@@ -1750,9 +1762,11 @@ class Query:
 
         results = []
         live_instances = []
-        for hashmap in hashes_list:
+        for key, hashmap in zip(redis_keys, hashes_list):
             if hashmap:
-                instance = decode_popoto_model_hashmap(self.model_class, hashmap)
+                instance = decode_popoto_model_hashmap(
+                    self.model_class, hashmap, source_redis_key=key
+                )
                 results.append(instance)
                 live_instances.append(instance)
             else:
@@ -2947,9 +2961,13 @@ class Query:
 
         return [
             decode_popoto_model_hashmap(
-                model, redis_hash, fields_only=bool(values), lazy=lazy and not values
+                model,
+                redis_hash,
+                fields_only=bool(values),
+                lazy=lazy and not values,
+                source_redis_key=source_key,
             )
-            for redis_hash in hashes_list
+            for source_key, redis_hash in zip(db_keys, hashes_list)
             if redis_hash
         ]
 
@@ -2991,7 +3009,9 @@ class Query:
             hashmap = await async_redis.hgetall(redis_key)
             if not hashmap:
                 return None
-            instance = decode_popoto_model_hashmap(self.model_class, hashmap)
+            instance = decode_popoto_model_hashmap(
+                self.model_class, hashmap, source_redis_key=redis_key
+            )
             await to_thread(_fire_on_read, self.model_class, [instance])
         else:
             instances = await self.async_filter(**kwargs)
@@ -3033,9 +3053,11 @@ class Query:
 
         results = []
         live_instances = []
-        for hashmap in hashes_list:
+        for key, hashmap in zip(redis_keys, hashes_list):
             if hashmap:
-                instance = decode_popoto_model_hashmap(self.model_class, hashmap)
+                instance = decode_popoto_model_hashmap(
+                    self.model_class, hashmap, source_redis_key=key
+                )
                 results.append(instance)
                 live_instances.append(instance)
             else:
@@ -3338,9 +3360,13 @@ class Query:
 
         objects = [
             decode_popoto_model_hashmap(
-                model, redis_hash, fields_only=bool(values), lazy=lazy and not values
+                model,
+                redis_hash,
+                fields_only=bool(values),
+                lazy=lazy and not values,
+                source_redis_key=source_key,
             )
-            for redis_hash in hashes_list
+            for source_key, redis_hash in zip(db_keys, hashes_list)
             if redis_hash
         ]
         if not values:

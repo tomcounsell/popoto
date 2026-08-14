@@ -51,7 +51,11 @@ def _raw_redis() -> redis_lib.Redis:
 
 
 def _pointer_side_key(member_redis_key: str, field_name: str) -> str:
-    return f"{member_redis_key}\x00idxptr\x00{field_name}"
+    # Delegate to production so the derivation is asserted, never re-stated
+    # (it moved under the "$IdxPtr:" namespace in #540).
+    from popoto.fields.indexed_field_mixin import IndexedFieldMixin
+
+    return IndexedFieldMixin._pointer_side_key(member_redis_key, field_name)
 
 
 def _pre_1_8_0_decode(raw_hash: dict) -> dict:
@@ -115,9 +119,9 @@ class TestForwardCompatNoPointerFieldInHash:
         )
         raw_hash = r.hgetall(obj.db_key.redis_key.encode("utf-8"))
         for key_b in raw_hash:
-            assert b"\x00" not in key_b, (
-                f"Pointer field leaked into model hash: {key_b!r}"
-            )
+            assert (
+                b"\x00" not in key_b
+            ), f"Pointer field leaked into model hash: {key_b!r}"
 
     def test_pointer_lives_in_side_key_not_hash(self):
         r = _raw_redis()
@@ -125,12 +129,10 @@ class TestForwardCompatNoPointerFieldInHash:
             status="active3", email="fwd-compat3@example.com"
         )
         ptr_key = _pointer_side_key(obj.db_key.redis_key, "status")
-        assert r.get(ptr_key.encode("utf-8")) is not None, (
-            "Pointer side key was not written"
-        )
-        assert r.hget(
-            obj.db_key.redis_key.encode("utf-8"), b"status\x00idxset"
-        ) is None
+        assert (
+            r.get(ptr_key.encode("utf-8")) is not None
+        ), "Pointer side key was not written"
+        assert r.hget(obj.db_key.redis_key.encode("utf-8"), b"status\x00idxset") is None
 
 
 class TestDeleteReadsIndexPointerBeforeHashRemoval:
@@ -186,9 +188,9 @@ class TestDeleteReadsIndexPointerBeforeHashRemoval:
 
         obj.delete()
 
-        assert r.get(ptr_key.encode("utf-8")) is None, (
-            "Pointer side key was not cleaned up on delete()"
-        )
+        assert (
+            r.get(ptr_key.encode("utf-8")) is None
+        ), "Pointer side key was not cleaned up on delete()"
 
 
 class TestUniqueConflictLeavesNoOrphanHash:

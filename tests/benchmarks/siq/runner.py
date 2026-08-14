@@ -51,9 +51,7 @@ def replay(trace: SiqTrace, adapter) -> List[TurnResult]:
                 should_recall=turn.should_recall,
                 injected_ids=tuple(injected),
                 injected_tokens={
-                    i: token_counts.get(
-                        i, extra.get(i, 0) if extra is not None else 0
-                    )
+                    i: token_counts.get(i, extra.get(i, 0) if extra is not None else 0)
                     for i in injected
                 },
             )

@@ -215,8 +215,9 @@ harness, and it lost on every arm. Keep it off unless you have a reason from
 your own data.
 
 LoCoMo, lexical retrieval, `gpt-4o-mini` as both generator and judge at
-temperature 0, 77 scored items, identical corpus and sample across all five
-arms:
+temperature 0, 77 scored items, identical corpus and sample across all four
+extraction arms (the table's first row, raw ingestion, is the baseline rather
+than an extraction arm):
 
 | Ingestion path | Judged accuracy | Correct / 77 | Turns dropped | Records per turn |
 |---|---:|---:|---:|---:|

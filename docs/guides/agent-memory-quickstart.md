@@ -395,7 +395,7 @@ below lexical. Both runs are in [Benchmarks](../benchmarks.md).
 path is the default: save the raw turn.
 
 LLM fact extraction was measured against raw turn ingestion on the judged-answer
-harness across four models plus a heuristic sentence splitter, and every
+harness across three models plus a heuristic sentence splitter, and every
 extraction arm lost. The heuristic splitter scores 0.21 against raw ingestion's
 0.36 on the same 77 scored items; the Claude arms cost more, in proportion to
 how many turns they discard. Both failure modes are documented in

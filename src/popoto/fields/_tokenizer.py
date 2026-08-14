@@ -103,7 +103,5 @@ def tokenize(text, unique=True):
         return tokens
     else:
         return [
-            t
-            for t in raw_tokens
-            if len(t) >= MIN_TOKEN_LENGTH and t not in STOP_WORDS
+            t for t in raw_tokens if len(t) >= MIN_TOKEN_LENGTH and t not in STOP_WORDS
         ]

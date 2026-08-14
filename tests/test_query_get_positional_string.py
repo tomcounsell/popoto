@@ -87,9 +87,7 @@ class TestQueryGetPositionalString:
 
     def test_multi_key_model_positional_string(self):
         """Positional string lookup should work with multi-key models too."""
-        instance = MultiKeyPositionalModel.create(
-            key1="x", key2="y", value="multi"
-        )
+        instance = MultiKeyPositionalModel.create(key1="x", key2="y", value="multi")
         redis_key = instance.db_key.redis_key
 
         result = MultiKeyPositionalModel.query.get(redis_key)
