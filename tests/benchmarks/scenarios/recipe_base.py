@@ -139,9 +139,7 @@ class RecipeScenario(Scenario):
         """Load fixture, build model class, create SubconsciousMemory."""
         self._fixture = load_fixture(self.fixture_file)
 
-        self._model_class = _build_recipe_model_class(
-            self._prefix, self.overrides
-        )
+        self._model_class = _build_recipe_model_class(self._prefix, self.overrides)
 
         # Read SubconsciousMemory constructor args from overrides
         max_items = self.overrides.get("max_items", 100)
@@ -201,9 +199,7 @@ class RecipeScenario(Scenario):
                         {
                             "turn": len(messages),
                             "extracted_count": len(saved),
-                            "texts": [
-                                getattr(s, "content", str(s)) for s in saved
-                            ],
+                            "texts": [getattr(s, "content", str(s)) for s in saved],
                         }
                     )
                 except Exception as e:
@@ -241,9 +237,7 @@ class RecipeScenario(Scenario):
             first_query = list(queries.values())[0] if queries else None
             if first_query:
                 try:
-                    test_messages = [
-                        {"role": "user", "content": first_query["text"]}
-                    ]
+                    test_messages = [{"role": "user", "content": first_query["text"]}]
                     _, result = self._sm.inject_context(test_messages)
                     if result and result.records:
                         for record in result.records:
@@ -275,9 +269,7 @@ class RecipeScenario(Scenario):
                     sent_words = set(sent["text"].lower().split())
                     mem_words = set(content.lower().split())
                     if sent_words and mem_words:
-                        overlap = len(sent_words & mem_words) / max(
-                            len(sent_words), 1
-                        )
+                        overlap = len(sent_words & mem_words) / max(len(sent_words), 1)
                         if overlap >= 0.5:
                             all_relevant_ids.add(key)
                             break
@@ -287,9 +279,7 @@ class RecipeScenario(Scenario):
             self._saved_memories,
             all_relevance_scores,
             key_fn=lambda r: (
-                r.db_key.redis_key
-                if hasattr(r, "db_key")
-                else str(id(r))
+                r.db_key.redis_key if hasattr(r, "db_key") else str(id(r))
             ),
         )
 
@@ -301,12 +291,8 @@ class RecipeScenario(Scenario):
 
         # Write filter stats
         total_extracted = sum(er["extracted_count"] for er in self._extraction_results)
-        noise_count = sum(
-            1 for s in sentences if s["label"] == "noise"
-        )
-        meaningful_count = sum(
-            1 for s in sentences if s["label"] == "meaningful"
-        )
+        noise_count = sum(1 for s in sentences if s["label"] == "noise")
+        meaningful_count = sum(1 for s in sentences if s["label"] == "meaningful")
 
         return ScenarioResult(
             retrieved_ids=all_retrieved_ids,

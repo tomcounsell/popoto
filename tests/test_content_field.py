@@ -23,7 +23,6 @@ from src.popoto.fields.content_field import ContentField, set_default_store
 from src.popoto.stores.filesystem import FilesystemStore
 from src.popoto.redis_db import POPOTO_REDIS_DB
 
-
 # --- Test Models ---
 
 

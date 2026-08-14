@@ -600,24 +600,22 @@ class TestXClaimRedelivery:
         count = consumer.process_batch_sync()
 
         # Handler was called with the reclaimed entries
-        assert len(collected) == 2, (
-            f"Expected 2 reclaimed entries handled, got {len(collected)}"
-        )
+        assert (
+            len(collected) == 2
+        ), f"Expected 2 reclaimed entries handled, got {len(collected)}"
 
         # BLOCKER-1: entries are GONE from XPENDING (recurrence guard)
         pending_after = POPOTO_REDIS_DB.xpending(STREAM_KEY, "crash_group")
-        assert pending_after["pending"] == 0, (
-            f"Entries still pending after reclaim: {pending_after['pending']}"
-        )
+        assert (
+            pending_after["pending"] == 0
+        ), f"Entries still pending after reclaim: {pending_after['pending']}"
 
         # process_batch return value includes the reclaimed entries
         assert count >= 2
 
     def test_successful_redelivery_not_dead_lettered(self):
         """Entry reclaimed by surviving consumer and handled successfully is not dead-lettered."""
-        _setup_crashed_consumer(
-            STREAM_KEY, "success_group", n_entries=1, prefix="nodl"
-        )
+        _setup_crashed_consumer(STREAM_KEY, "success_group", n_entries=1, prefix="nodl")
 
         time.sleep(0.1)
 
@@ -638,9 +636,9 @@ class TestXClaimRedelivery:
 
         # Entry is NOT in dead-letter stream
         dead_entries = POPOTO_REDIS_DB.xrange(DEAD_LETTER_KEY)
-        assert len(dead_entries) == 0, (
-            f"Entry was incorrectly dead-lettered: {dead_entries}"
-        )
+        assert (
+            len(dead_entries) == 0
+        ), f"Entry was incorrectly dead-lettered: {dead_entries}"
 
         # Entry is gone from XPENDING
         pending = POPOTO_REDIS_DB.xpending(STREAM_KEY, "success_group")
@@ -709,9 +707,9 @@ class TestXClaimRedelivery:
         # Return value must be an int equal to reclaimed + fresh entries
         assert isinstance(total, int), f"Expected int, got {type(total)}"
         # Reclaimed entries (3) + fresh entries (2) = 5 total
-        assert total == n_crashed + n_fresh, (
-            f"Expected {n_crashed + n_fresh} total, got {total}"
-        )
+        assert (
+            total == n_crashed + n_fresh
+        ), f"Expected {n_crashed + n_fresh} total, got {total}"
         assert len(collected) == n_crashed + n_fresh
 
     def test_deleted_message_ids_xacked_without_handler_call(self):
@@ -754,9 +752,9 @@ class TestXClaimRedelivery:
 
         # Entry is gone from XPENDING (ACKed)
         pending = POPOTO_REDIS_DB.xpending(STREAM_KEY, "del_group")
-        assert pending["pending"] == 0, (
-            f"Deleted PEL entry should be ACKed, still pending: {pending['pending']}"
-        )
+        assert (
+            pending["pending"] == 0
+        ), f"Deleted PEL entry should be ACKed, still pending: {pending['pending']}"
 
 
 # --- Tests: Dead-Letter Threshold ---
@@ -938,9 +936,9 @@ class TestDeadLetterThreshold:
 
         dead_entries = POPOTO_REDIS_DB.xrange(DEAD_LETTER_KEY)
         # Entries ARE actually dead-lettered (not vacuously zero)
-        assert len(dead_entries) >= 1, (
-            f"Expected entries to be dead-lettered, got {len(dead_entries)}"
-        )
+        assert (
+            len(dead_entries) >= 1
+        ), f"Expected entries to be dead-lettered, got {len(dead_entries)}"
         # MAXLEN trimming keeps the stream bounded
         assert len(dead_entries) <= dead_letter_max_length + 2, (
             f"Dead-letter stream has {len(dead_entries)} entries, "

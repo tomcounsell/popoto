@@ -18,6 +18,16 @@ Example:
     )
 """
 
+import os
+
+#: Environment values that read as "on" for a boolean deploy-level switch.
+_TRUTHY = ("1", "true", "yes", "on")
+
+
+def _read_legacy_datetime_key_switch() -> bool:
+    """Read ``POPOTO_DATETIME_KEY_LEGACY`` from the environment (#537/#538)."""
+    return os.environ.get("POPOTO_DATETIME_KEY_LEGACY", "").strip().lower() in _TRUTHY
+
 
 class Defaults:
     """Central registry of tunable behavioral constants (Category 1).
@@ -237,6 +247,17 @@ class Defaults:
     EXTRACTION_DEFAULT_CONFIDENCE = 0.7  # signal applied when a provider asserts a fact but returns no explicit confidence
     EXTRACTION_ENTITY_PAIR_LINK_WEIGHT = 0.1  # matches CO_OCCURRENCE_INITIAL_WEIGHT; must stay <= CO_OCCURRENCE_WEIGHT_CAP (1.0) or CoOccurrenceField.link() raises
     EXTRACTION_MAX_ENTITIES_PER_FACT = 12  # cap on deduped entities paired per fact; combinations grow O(n^2), so a malformed/adversarial extraction with many entities can't blow up co-occurrence writes
+
+    # -- datetime KeyField identity (models/canonical_key.py, #537/#538) -------
+    # Deploy-level kill switch, not a tuning constant. When True,
+    # ``canonical_key_str`` falls back to ``str(value)`` for datetimes, which
+    # reproduces 1.8.2 key bytes exactly. Default is False (canonicalization
+    # ON) per the repo's default-on doctrine; the switch exists so an adopter
+    # can roll readers forward to >= 1.9.0 *before* any key byte moves, then
+    # run the migration, then lift it. Read from the environment at import so
+    # it can be set without editing model code; assign it directly to override
+    # at runtime. See migration cookbook recipe 19.
+    DATETIME_KEY_LEGACY = _read_legacy_datetime_key_switch()
 
 
 class TemporalPeriod:

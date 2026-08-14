@@ -4,6 +4,7 @@ Extracts every UNIQUE turn in the 2-dialogue fixture once per model tier and
 persists to the on-disk cache, so the benchmark runs that follow make zero
 API calls and every tier sees byte-identical inputs.
 """
+
 import json
 import sys
 import time

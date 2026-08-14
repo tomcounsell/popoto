@@ -15,7 +15,6 @@ import popoto
 from popoto.fields.confidence_field import ConfidenceField
 from popoto.redis_db import POPOTO_REDIS_DB
 
-
 # ---------------------------------------------------------------------------
 # Model definitions
 # ---------------------------------------------------------------------------
@@ -99,8 +98,11 @@ class TestGetManyCheckClean:
         assert check_after["total"] == 0
 
         # 8. get_many with skip_none=True -- only surviving instances
-        surviving_keys = [items[0].db_key.redis_key, items[2].db_key.redis_key,
-                          items[4].db_key.redis_key]
+        surviving_keys = [
+            items[0].db_key.redis_key,
+            items[2].db_key.redis_key,
+            items[4].db_key.redis_key,
+        ]
         results = IntegrationItem.query.get_many(
             redis_keys=surviving_keys, skip_none=True
         )
@@ -134,9 +136,7 @@ class TestGetManyCheckClean:
         IntegrationItem.clean_indexes()
 
         # After clean: skip_none returns only the surviving instance
-        results = IntegrationItem.query.get_many(
-            redis_keys=all_keys, skip_none=True
-        )
+        results = IntegrationItem.query.get_many(redis_keys=all_keys, skip_none=True)
         assert len(results) == 1
         assert results[0].name == "alive"
 

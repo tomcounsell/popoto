@@ -31,7 +31,6 @@ from src import popoto
 from src.popoto.fields.field import Field
 from src.popoto.models.encoding import _create_lazy_model
 
-
 # --- Test models ---
 
 
@@ -73,9 +72,9 @@ def test_lazy_load_partial_hash():
 
     # status: no declared default → None.
     assert instance.status is None
-    assert not isinstance(instance.status, Field), (
-        f"status leaked Field descriptor: {type(instance.status)}"
-    )
+    assert not isinstance(
+        instance.status, Field
+    ), f"status leaked Field descriptor: {type(instance.status)}"
 
     # count: static default 0 → 0.
     assert instance.count == 0
@@ -123,8 +122,8 @@ def test_lazy_load_partial_hash_redis_key_unaffected():
 
     instance = _create_lazy_model(PartialHashModel, partial_hash)
 
-    assert instance._redis_key is not None, (
-        "_redis_key must be set when KeyField is present in the partial hash"
-    )
+    assert (
+        instance._redis_key is not None
+    ), "_redis_key must be set when KeyField is present in the partial hash"
     assert "project" in instance._saved_field_values
     assert instance._saved_field_values["project"] == "with-redis-key"

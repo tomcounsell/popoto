@@ -69,9 +69,7 @@ class TestEmbedHappyPath:
     def test_embed_posts_correct_payload(self):
         provider = OllamaProvider(model="my-model")
         with patch("urllib.request.urlopen") as m:
-            m.return_value = _mock_urlopen_response(
-                {"embeddings": [[1.0, 2.0]]}
-            )
+            m.return_value = _mock_urlopen_response({"embeddings": [[1.0, 2.0]]})
             provider.embed(["hi"])
         # The first positional arg to urlopen is a Request object.
         req = m.call_args[0][0]
@@ -83,9 +81,7 @@ class TestEmbedHappyPath:
     def test_embed_honours_custom_base_url(self):
         provider = OllamaProvider(base_url="http://remote:9999/")
         with patch("urllib.request.urlopen") as m:
-            m.return_value = _mock_urlopen_response(
-                {"embeddings": [[0.0]]}
-            )
+            m.return_value = _mock_urlopen_response({"embeddings": [[0.0]]})
             provider.embed(["x"])
         req = m.call_args[0][0]
         # Trailing slash must be normalised.
@@ -102,9 +98,7 @@ class TestEmbedHappyPath:
     def test_input_type_accepted_but_ignored(self):
         provider = OllamaProvider()
         with patch("urllib.request.urlopen") as m:
-            m.return_value = _mock_urlopen_response(
-                {"embeddings": [[0.1, 0.2]]}
-            )
+            m.return_value = _mock_urlopen_response({"embeddings": [[0.1, 0.2]]})
             provider.embed(["hi"], input_type="query")
             provider.embed(["hi"], input_type="document")
         # Both calls should have gone through -- input_type was ignored,
@@ -119,9 +113,7 @@ class TestDimensions:
     def test_dimensions_auto_detected_after_first_call(self):
         provider = OllamaProvider()
         with patch("urllib.request.urlopen") as m:
-            m.return_value = _mock_urlopen_response(
-                {"embeddings": [[0.1] * 768]}
-            )
+            m.return_value = _mock_urlopen_response({"embeddings": [[0.1] * 768]})
             provider.embed(["hi"])
         assert provider.dimensions == 768
 
@@ -138,9 +130,7 @@ class TestDimensions:
     def test_dimensions_cached_across_calls(self):
         provider = OllamaProvider()
         with patch("urllib.request.urlopen") as m:
-            m.return_value = _mock_urlopen_response(
-                {"embeddings": [[0.1] * 384]}
-            )
+            m.return_value = _mock_urlopen_response({"embeddings": [[0.1] * 384]})
             provider.embed(["a"])
             provider.embed(["b"])
         assert provider.dimensions == 384

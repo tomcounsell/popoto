@@ -25,7 +25,6 @@ from typing import Any, Dict, List, Optional, Tuple, Type
 from .scenarios.base import Scenario
 from .sweep import ResultsAggregator, SweepRunner
 
-
 # Default split boundary: seeds 0-34 train, 35-49 validation
 TRAIN_SPLIT_BOUNDARY = 35
 
@@ -130,9 +129,7 @@ class SplitRunner:
         # Get train score for the default value
         train_default_score = 0.0
         default_points = [
-            p
-            for p in train_results
-            if p.value == current_default and p.status == "ok"
+            p for p in train_results if p.value == current_default and p.status == "ok"
         ]
         if default_points:
             train_default_score = sum(p.ndcg_at_5 for p in default_points) / len(
@@ -142,9 +139,7 @@ class SplitRunner:
         # Step 2: Validate on held-out set
         # Only sweep the best value and the default
         val_values = list({best_value, current_default})
-        val_results = self.validation_runner.run_single_sweep(
-            constant_name, val_values
-        )
+        val_results = self.validation_runner.run_single_sweep(constant_name, val_values)
         val_agg = ResultsAggregator()
         val_agg.add_sweep(constant_name, val_results)
 
@@ -161,9 +156,7 @@ class SplitRunner:
             )
 
         default_val_points = [
-            p
-            for p in val_results
-            if p.value == current_default and p.status == "ok"
+            p for p in val_results if p.value == current_default and p.status == "ok"
         ]
         if default_val_points:
             validation_default_score = sum(

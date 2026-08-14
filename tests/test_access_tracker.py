@@ -854,9 +854,9 @@ class TestCrossTTLBoundary:
             f"access_count changed from {initial_count} to {item.access_count} "
             "— dropped read must not increment the count"
         )
-        assert item.last_accessed is None, (
-            "last_accessed should remain None when the staged read was dropped"
-        )
+        assert (
+            item.last_accessed is None
+        ), "last_accessed should remain None when the staged read was dropped"
 
     def test_confirm_within_ttl_window_counts_normally(self):
         """A read confirmed within the TTL window is counted normally.
