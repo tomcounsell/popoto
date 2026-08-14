@@ -84,6 +84,62 @@ VALID_KEYFIELD_TYPES = [
 ]
 
 
+def _scan_hash_keys(pattern: str) -> list:  # type: ignore[type-arg]
+    """
+    Scan for keys matching ``pattern`` and filter out anything that is not
+    a Redis hash before it can reach a downstream HGETALL.
+
+    AutoKeyField (and the pattern-based `__startswith`/`__endswith`/
+    `__isnull` lookups on ordinary KeyFields) resolve by globbing the
+    model's own key space with `scan_keys()` rather than going through a
+    dedicated index Set. That key space is shared with Popoto's internal
+    side keys (e.g. the index/tag pointer keys namespaced under
+    `$IdxPtr:`/`$TagPtr:` as of #540/#547). Those are namespaced with a
+    leading `$`, which a model name can never start with, so a
+    same-version node never collides here.
+
+    During a *rolling upgrade*, however, a node still running a pre-#540
+    build (1.8.1/1.8.2) writes its index/tag pointer as a STRING/SET
+    suffixed onto the model hash key itself (`{model_hash_key}\\x00idxptr\\x00...`),
+    which *does* match this glob. Piping that key straight into HGETALL
+    raises WRONGTYPE and fails the whole batch (see #540) -- reproducing
+    `get_by_id()` returning None for a row that exists, for the duration
+    of the mixed-version window. Filter such keys out here so a stray
+    non-hash key is skipped rather than crashing or corrupting the read;
+    it self-heals once every node is upgraded and the record is
+    next written (the swap Lua adopts and deletes the legacy pointer).
+
+    This filter classifies scanned keys by their actual Redis TYPE rather
+    than by any byte pattern in the key name. That matters because a byte
+    pattern is neither necessary nor sufficient to identify a non-hash key:
+    the legacy `\\x00idxptr\\x00`/`\\x00tagptr\\x00` pointer keys are one
+    shape of non-hash companion key that can land in a model's glob, but
+    they are not the only one -- `ListField`'s capped-list companion key
+    (`{model_hash_key}::{field_name}`, a Redis LIST) contains no NUL byte
+    and would slip past a byte-pattern filter, feeding the same WRONGTYPE
+    crash into a same-version (not just rolling-upgrade) lookup. Conversely,
+    a `KeyField(type=str)` value is free to contain a literal NUL byte, so a
+    byte-pattern filter can wrongly drop a real hash key from the scan and
+    silently return an incomplete result set. TYPE-based filtering handles
+    both: it drops any non-hash companion key regardless of its name, and
+    it always keeps a hash-type model key regardless of what characters its
+    key text contains. The pipeline uses `transaction=False` (no MULTI/EXEC)
+    so this costs a single non-transactional round trip of `TYPE` calls
+    rather than paying for transactional guarantees this read-only check
+    doesn't need.
+    """
+    keys = scan_keys(pattern)
+    if not keys:
+        return keys
+    pipeline = POPOTO_REDIS_DB.pipeline(transaction=False)
+    for key in keys:
+        pipeline.type(key)
+    key_types = pipeline.execute()
+    return [
+        key for key, key_type in zip(keys, key_types) if key_type in (b"hash", "hash")
+    ]
+
+
 class KeyFieldMixin:
     """
     Mixin that transforms a Field into a key field for model identity and indexing.
@@ -452,7 +508,7 @@ class KeyFieldMixin:
                     if model._meta.fields[field_name].auto:
                         # Auto fields use pattern scan since they don't maintain index sets
                         keys_lists_to_intersect.append(
-                            scan_keys(get_key_pattern(query_value))
+                            _scan_hash_keys(get_key_pattern(query_value))
                         )
                     else:
                         keys_lists_to_intersect.append(
@@ -471,7 +527,7 @@ class KeyFieldMixin:
                     elif query_value is False:
                         # Use SCAN instead of KEYS to avoid blocking Redis
                         keys_lists_to_intersect.append(
-                            scan_keys(get_key_pattern("[^None]"))
+                            _scan_hash_keys(get_key_pattern("[^None]"))
                         )
                     else:
                         raise QueryException(
@@ -481,12 +537,16 @@ class KeyFieldMixin:
                 elif query_param.endswith("__startswith"):
                     # Use SCAN instead of KEYS to avoid blocking Redis
                     keys_lists_to_intersect.append(
-                        scan_keys(get_key_pattern(f"{DB_key.clean(query_value)}*"))
+                        _scan_hash_keys(
+                            get_key_pattern(f"{DB_key.clean(query_value)}*")
+                        )
                     )
                 elif query_param.endswith("__endswith"):
                     # Use SCAN instead of KEYS to avoid blocking Redis
                     keys_lists_to_intersect.append(
-                        scan_keys(get_key_pattern(f"*{DB_key.clean(query_value)}"))
+                        _scan_hash_keys(
+                            get_key_pattern(f"*{DB_key.clean(query_value)}")
+                        )
                     )
         logger.debug(keys_lists_to_intersect)
         if len(keys_lists_to_intersect):

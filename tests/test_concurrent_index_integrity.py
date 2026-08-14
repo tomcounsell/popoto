@@ -228,8 +228,14 @@ def _assert_no_unique_set_has_multiple(
 
 
 def _pointer_side_key(member_redis_key: str, field_name: str) -> str:
-    """Match production's IndexedFieldMixin._pointer_side_key() derivation (#476)."""
-    return f"{member_redis_key}\x00idxptr\x00{field_name}"
+    """Match production's IndexedFieldMixin._pointer_side_key() derivation (#476).
+
+    Delegated rather than restated: the derivation moved under the
+    "$IdxPtr:" namespace in #540 and a copy here would silently rot.
+    """
+    from popoto.fields.indexed_field_mixin import IndexedFieldMixin
+
+    return IndexedFieldMixin._pointer_side_key(member_redis_key, field_name)
 
 
 def _check_pointer_matches_set(
