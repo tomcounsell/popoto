@@ -4022,7 +4022,9 @@ state = lifecycle.assess(record)
 <span class="normal"><a href="#__codelineno-0-1149">1149</a></span>
 <span class="normal"><a href="#__codelineno-0-1150">1150</a></span>
 <span class="normal"><a href="#__codelineno-0-1151">1151</a></span>
-<span class="normal"><a href="#__codelineno-0-1152">1152</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-432" name="__codelineno-0-432"></a><span class="k">class</span><span class="w"> </span><span class="nc">MemoryLifecycle</span><span class="p">:</span>
+<span class="normal"><a href="#__codelineno-0-1152">1152</a></span>
+<span class="normal"><a href="#__codelineno-0-1153">1153</a></span>
+<span class="normal"><a href="#__codelineno-0-1154">1154</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-432" name="__codelineno-0-432"></a><span class="k">class</span><span class="w"> </span><span class="nc">MemoryLifecycle</span><span class="p">:</span>
 <a id="__codelineno-0-433" name="__codelineno-0-433"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Policy layer orchestrating memory tier transitions and auto-forget.</span>
 <a id="__codelineno-0-434" name="__codelineno-0-434"></a>
 <a id="__codelineno-0-435" name="__codelineno-0-435"></a><span class="sd">    Composes existing Popoto decay primitives — does not replace them.</span>
@@ -4568,181 +4570,183 @@ state = lifecycle.assess(record)
 <a id="__codelineno-0-975" name="__codelineno-0-975"></a>            <span class="p">(</span><span class="n">k</span><span class="o">.</span><span class="n">encode</span><span class="p">()</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="k">else</span> <span class="n">k</span><span class="p">):</span> <span class="n">v</span>
 <a id="__codelineno-0-976" name="__codelineno-0-976"></a>            <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="p">(</span><span class="n">entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;payload&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{})</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
 <a id="__codelineno-0-977" name="__codelineno-0-977"></a>        <span class="p">}</span>
-<a id="__codelineno-0-978" name="__codelineno-0-978"></a>        <span class="n">instance</span> <span class="o">=</span> <span class="n">decode_popoto_model_hashmap</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">,</span> <span class="n">redis_hash</span><span class="p">)</span>
-<a id="__codelineno-0-979" name="__codelineno-0-979"></a>        <span class="k">if</span> <span class="n">instance</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-980" name="__codelineno-0-980"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;restore: empty payload for </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">)</span>
-<a id="__codelineno-0-981" name="__codelineno-0-981"></a>            <span class="k">return</span> <span class="kc">None</span>
-<a id="__codelineno-0-982" name="__codelineno-0-982"></a>        <span class="c1"># save() re-runs every on_save hook, so all secondary indexes</span>
-<a id="__codelineno-0-983" name="__codelineno-0-983"></a>        <span class="c1"># (sorted sets, key sets, geo, unique) are rebuilt from scratch.</span>
-<a id="__codelineno-0-984" name="__codelineno-0-984"></a>        <span class="n">instance</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
-<a id="__codelineno-0-985" name="__codelineno-0-985"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">purge_tombstone</span><span class="p">(</span><span class="n">redis_key</span><span class="p">)</span>
-<a id="__codelineno-0-986" name="__codelineno-0-986"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;restored </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">)</span>
-<a id="__codelineno-0-987" name="__codelineno-0-987"></a>        <span class="k">return</span> <span class="n">instance</span>
-<a id="__codelineno-0-988" name="__codelineno-0-988"></a>
-<a id="__codelineno-0-989" name="__codelineno-0-989"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">purge_tombstone</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Tombstone</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-<a id="__codelineno-0-990" name="__codelineno-0-990"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Drop a tombstone permanently. Returns True if one was removed.&quot;&quot;&quot;</span>
-<a id="__codelineno-0-991" name="__codelineno-0-991"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">redis_key</span><span class="p">,</span> <span class="n">Tombstone</span><span class="p">):</span>
-<a id="__codelineno-0-992" name="__codelineno-0-992"></a>            <span class="n">redis_key</span> <span class="o">=</span> <span class="n">redis_key</span><span class="o">.</span><span class="n">redis_key</span>
-<a id="__codelineno-0-993" name="__codelineno-0-993"></a>        <span class="n">data_key</span><span class="p">,</span> <span class="n">index_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tombstone_keys</span><span class="p">()</span>
-<a id="__codelineno-0-994" name="__codelineno-0-994"></a>        <span class="n">pipeline</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">pipeline</span><span class="p">()</span>
-<a id="__codelineno-0-995" name="__codelineno-0-995"></a>        <span class="n">pipeline</span><span class="o">.</span><span class="n">hdel</span><span class="p">(</span><span class="n">data_key</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">)</span>
-<a id="__codelineno-0-996" name="__codelineno-0-996"></a>        <span class="n">pipeline</span><span class="o">.</span><span class="n">zrem</span><span class="p">(</span><span class="n">index_key</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">)</span>
-<a id="__codelineno-0-997" name="__codelineno-0-997"></a>        <span class="n">removed</span> <span class="o">=</span> <span class="n">pipeline</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>
-<a id="__codelineno-0-998" name="__codelineno-0-998"></a>        <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="n">removed</span> <span class="ow">and</span> <span class="n">removed</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
-<a id="__codelineno-0-999" name="__codelineno-0-999"></a>
-<a id="__codelineno-0-1000" name="__codelineno-0-1000"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">purge_all_tombstones</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-<a id="__codelineno-0-1001" name="__codelineno-0-1001"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Drop every retained tombstone. Returns the number removed.&quot;&quot;&quot;</span>
-<a id="__codelineno-0-1002" name="__codelineno-0-1002"></a>        <span class="n">count</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tombstone_count</span><span class="p">()</span>
-<a id="__codelineno-0-1003" name="__codelineno-0-1003"></a>        <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_tombstone_keys</span><span class="p">())</span>
-<a id="__codelineno-0-1004" name="__codelineno-0-1004"></a>        <span class="k">return</span> <span class="n">count</span>
-<a id="__codelineno-0-1005" name="__codelineno-0-1005"></a>
-<a id="__codelineno-0-1006" name="__codelineno-0-1006"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">forget_hard</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">record</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-<a id="__codelineno-0-1007" name="__codelineno-0-1007"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Delete a record outright, leaving no tombstone.</span>
-<a id="__codelineno-0-1008" name="__codelineno-0-1008"></a>
-<a id="__codelineno-0-1009" name="__codelineno-0-1009"></a><span class="sd">        The explicit, irreversible counterpart to ``tombstone()`` — kept</span>
-<a id="__codelineno-0-1010" name="__codelineno-0-1010"></a><span class="sd">        available so an adopter can still purge a record entirely (e.g. a</span>
-<a id="__codelineno-0-1011" name="__codelineno-0-1011"></a><span class="sd">        deletion request) rather than merely retiring it from retrieval.</span>
-<a id="__codelineno-0-1012" name="__codelineno-0-1012"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-1013" name="__codelineno-0-1013"></a>        <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-1014" name="__codelineno-0-1014"></a>            <span class="n">record</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
-<a id="__codelineno-0-1015" name="__codelineno-0-1015"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
-<a id="__codelineno-0-1016" name="__codelineno-0-1016"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-1017" name="__codelineno-0-1017"></a>                <span class="s2">&quot;forget_hard failed for </span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-1018" name="__codelineno-0-1018"></a>                <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;_redis_key&quot;</span><span class="p">,</span> <span class="s2">&quot;?&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-1019" name="__codelineno-0-1019"></a>                <span class="n">exc</span><span class="p">,</span>
-<a id="__codelineno-0-1020" name="__codelineno-0-1020"></a>            <span class="p">)</span>
-<a id="__codelineno-0-1021" name="__codelineno-0-1021"></a>            <span class="k">return</span> <span class="kc">False</span>
-<a id="__codelineno-0-1022" name="__codelineno-0-1022"></a>        <span class="k">return</span> <span class="kc">True</span>
-<a id="__codelineno-0-1023" name="__codelineno-0-1023"></a>
-<a id="__codelineno-0-1024" name="__codelineno-0-1024"></a>    <span class="c1"># -------------------------------------------------------------------</span>
-<a id="__codelineno-0-1025" name="__codelineno-0-1025"></a>    <span class="c1"># Internal passes</span>
+<a id="__codelineno-0-978" name="__codelineno-0-978"></a>        <span class="n">instance</span> <span class="o">=</span> <span class="n">decode_popoto_model_hashmap</span><span class="p">(</span>
+<a id="__codelineno-0-979" name="__codelineno-0-979"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">,</span> <span class="n">redis_hash</span><span class="p">,</span> <span class="n">source_redis_key</span><span class="o">=</span><span class="n">redis_key</span>
+<a id="__codelineno-0-980" name="__codelineno-0-980"></a>        <span class="p">)</span>
+<a id="__codelineno-0-981" name="__codelineno-0-981"></a>        <span class="k">if</span> <span class="n">instance</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-982" name="__codelineno-0-982"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;restore: empty payload for </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">)</span>
+<a id="__codelineno-0-983" name="__codelineno-0-983"></a>            <span class="k">return</span> <span class="kc">None</span>
+<a id="__codelineno-0-984" name="__codelineno-0-984"></a>        <span class="c1"># save() re-runs every on_save hook, so all secondary indexes</span>
+<a id="__codelineno-0-985" name="__codelineno-0-985"></a>        <span class="c1"># (sorted sets, key sets, geo, unique) are rebuilt from scratch.</span>
+<a id="__codelineno-0-986" name="__codelineno-0-986"></a>        <span class="n">instance</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<a id="__codelineno-0-987" name="__codelineno-0-987"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">purge_tombstone</span><span class="p">(</span><span class="n">redis_key</span><span class="p">)</span>
+<a id="__codelineno-0-988" name="__codelineno-0-988"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;restored </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">)</span>
+<a id="__codelineno-0-989" name="__codelineno-0-989"></a>        <span class="k">return</span> <span class="n">instance</span>
+<a id="__codelineno-0-990" name="__codelineno-0-990"></a>
+<a id="__codelineno-0-991" name="__codelineno-0-991"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">purge_tombstone</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Tombstone</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<a id="__codelineno-0-992" name="__codelineno-0-992"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Drop a tombstone permanently. Returns True if one was removed.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-993" name="__codelineno-0-993"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">redis_key</span><span class="p">,</span> <span class="n">Tombstone</span><span class="p">):</span>
+<a id="__codelineno-0-994" name="__codelineno-0-994"></a>            <span class="n">redis_key</span> <span class="o">=</span> <span class="n">redis_key</span><span class="o">.</span><span class="n">redis_key</span>
+<a id="__codelineno-0-995" name="__codelineno-0-995"></a>        <span class="n">data_key</span><span class="p">,</span> <span class="n">index_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tombstone_keys</span><span class="p">()</span>
+<a id="__codelineno-0-996" name="__codelineno-0-996"></a>        <span class="n">pipeline</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">pipeline</span><span class="p">()</span>
+<a id="__codelineno-0-997" name="__codelineno-0-997"></a>        <span class="n">pipeline</span><span class="o">.</span><span class="n">hdel</span><span class="p">(</span><span class="n">data_key</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">)</span>
+<a id="__codelineno-0-998" name="__codelineno-0-998"></a>        <span class="n">pipeline</span><span class="o">.</span><span class="n">zrem</span><span class="p">(</span><span class="n">index_key</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">)</span>
+<a id="__codelineno-0-999" name="__codelineno-0-999"></a>        <span class="n">removed</span> <span class="o">=</span> <span class="n">pipeline</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>
+<a id="__codelineno-0-1000" name="__codelineno-0-1000"></a>        <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="n">removed</span> <span class="ow">and</span> <span class="n">removed</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+<a id="__codelineno-0-1001" name="__codelineno-0-1001"></a>
+<a id="__codelineno-0-1002" name="__codelineno-0-1002"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">purge_all_tombstones</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<a id="__codelineno-0-1003" name="__codelineno-0-1003"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Drop every retained tombstone. Returns the number removed.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-1004" name="__codelineno-0-1004"></a>        <span class="n">count</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tombstone_count</span><span class="p">()</span>
+<a id="__codelineno-0-1005" name="__codelineno-0-1005"></a>        <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_tombstone_keys</span><span class="p">())</span>
+<a id="__codelineno-0-1006" name="__codelineno-0-1006"></a>        <span class="k">return</span> <span class="n">count</span>
+<a id="__codelineno-0-1007" name="__codelineno-0-1007"></a>
+<a id="__codelineno-0-1008" name="__codelineno-0-1008"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">forget_hard</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">record</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<a id="__codelineno-0-1009" name="__codelineno-0-1009"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Delete a record outright, leaving no tombstone.</span>
+<a id="__codelineno-0-1010" name="__codelineno-0-1010"></a>
+<a id="__codelineno-0-1011" name="__codelineno-0-1011"></a><span class="sd">        The explicit, irreversible counterpart to ``tombstone()`` — kept</span>
+<a id="__codelineno-0-1012" name="__codelineno-0-1012"></a><span class="sd">        available so an adopter can still purge a record entirely (e.g. a</span>
+<a id="__codelineno-0-1013" name="__codelineno-0-1013"></a><span class="sd">        deletion request) rather than merely retiring it from retrieval.</span>
+<a id="__codelineno-0-1014" name="__codelineno-0-1014"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-1015" name="__codelineno-0-1015"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-1016" name="__codelineno-0-1016"></a>            <span class="n">record</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
+<a id="__codelineno-0-1017" name="__codelineno-0-1017"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+<a id="__codelineno-0-1018" name="__codelineno-0-1018"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="__codelineno-0-1019" name="__codelineno-0-1019"></a>                <span class="s2">&quot;forget_hard failed for </span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-1020" name="__codelineno-0-1020"></a>                <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;_redis_key&quot;</span><span class="p">,</span> <span class="s2">&quot;?&quot;</span><span class="p">),</span>
+<a id="__codelineno-0-1021" name="__codelineno-0-1021"></a>                <span class="n">exc</span><span class="p">,</span>
+<a id="__codelineno-0-1022" name="__codelineno-0-1022"></a>            <span class="p">)</span>
+<a id="__codelineno-0-1023" name="__codelineno-0-1023"></a>            <span class="k">return</span> <span class="kc">False</span>
+<a id="__codelineno-0-1024" name="__codelineno-0-1024"></a>        <span class="k">return</span> <span class="kc">True</span>
+<a id="__codelineno-0-1025" name="__codelineno-0-1025"></a>
 <a id="__codelineno-0-1026" name="__codelineno-0-1026"></a>    <span class="c1"># -------------------------------------------------------------------</span>
-<a id="__codelineno-0-1027" name="__codelineno-0-1027"></a>
-<a id="__codelineno-0-1028" name="__codelineno-0-1028"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_tick_pass</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
-<a id="__codelineno-0-1029" name="__codelineno-0-1029"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Single-pass hydration: promote then forget, loading all non-semantic records once.</span>
-<a id="__codelineno-0-1030" name="__codelineno-0-1030"></a>
-<a id="__codelineno-0-1031" name="__codelineno-0-1031"></a><span class="sd">        Loads all non-semantic records using a single non-tracking query.</span>
-<a id="__codelineno-0-1032" name="__codelineno-0-1032"></a><span class="sd">        Evaluates promotion eligibility on the episodic subset, tracking which</span>
-<a id="__codelineno-0-1033" name="__codelineno-0-1033"></a><span class="sd">        records were promoted.  Then evaluates forget eligibility on records</span>
-<a id="__codelineno-0-1034" name="__codelineno-0-1034"></a><span class="sd">        that were NOT promoted this pass, using a re-check-tier guard</span>
-<a id="__codelineno-0-1035" name="__codelineno-0-1035"></a><span class="sd">        immediately before deletion to prevent concurrent promotion races.</span>
-<a id="__codelineno-0-1036" name="__codelineno-0-1036"></a>
-<a id="__codelineno-0-1037" name="__codelineno-0-1037"></a><span class="sd">        Returns:</span>
-<a id="__codelineno-0-1038" name="__codelineno-0-1038"></a><span class="sd">            Tuple (promoted_count, forgotten_count, tombstoned_count).</span>
-<a id="__codelineno-0-1039" name="__codelineno-0-1039"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-1040" name="__codelineno-0-1040"></a>        <span class="c1"># Load all non-semantic records once (non-tracking — no on_read() side-effects)</span>
-<a id="__codelineno-0-1041" name="__codelineno-0-1041"></a>        <span class="n">filters</span> <span class="o">=</span> <span class="p">{</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">partition_filters</span><span class="p">}</span>
-<a id="__codelineno-0-1042" name="__codelineno-0-1042"></a>        <span class="n">all_non_semantic</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-1043" name="__codelineno-0-1043"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">**</span><span class="n">filters</span><span class="p">)</span><span class="o">.</span><span class="n">no_track</span><span class="p">()</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
-<a id="__codelineno-0-1044" name="__codelineno-0-1044"></a>            <span class="k">if</span> <span class="n">filters</span>
-<a id="__codelineno-0-1045" name="__codelineno-0-1045"></a>            <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
-<a id="__codelineno-0-1046" name="__codelineno-0-1046"></a>        <span class="p">)</span>
-<a id="__codelineno-0-1047" name="__codelineno-0-1047"></a>
-<a id="__codelineno-0-1048" name="__codelineno-0-1048"></a>        <span class="c1"># Filter to non-semantic in-process</span>
-<a id="__codelineno-0-1049" name="__codelineno-0-1049"></a>        <span class="n">non_semantic_records</span> <span class="o">=</span> <span class="p">[</span>
-<a id="__codelineno-0-1050" name="__codelineno-0-1050"></a>            <span class="n">r</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">all_non_semantic</span> <span class="k">if</span> <span class="n">_get_tier</span><span class="p">(</span><span class="n">r</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">)</span> <span class="o">!=</span> <span class="s2">&quot;semantic&quot;</span>
-<a id="__codelineno-0-1051" name="__codelineno-0-1051"></a>        <span class="p">]</span>
-<a id="__codelineno-0-1052" name="__codelineno-0-1052"></a>
-<a id="__codelineno-0-1053" name="__codelineno-0-1053"></a>        <span class="n">promoted</span> <span class="o">=</span> <span class="mi">0</span>
-<a id="__codelineno-0-1054" name="__codelineno-0-1054"></a>        <span class="n">promoted_this_pass</span><span class="p">:</span> <span class="nb">set</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
-<a id="__codelineno-0-1055" name="__codelineno-0-1055"></a>
-<a id="__codelineno-0-1056" name="__codelineno-0-1056"></a>        <span class="c1"># --- Phase 1: Promote episodic → semantic ---</span>
-<a id="__codelineno-0-1057" name="__codelineno-0-1057"></a>        <span class="k">for</span> <span class="n">record</span> <span class="ow">in</span> <span class="n">non_semantic_records</span><span class="p">:</span>
-<a id="__codelineno-0-1058" name="__codelineno-0-1058"></a>            <span class="k">if</span> <span class="n">_get_tier</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">)</span> <span class="o">!=</span> <span class="s2">&quot;episodic&quot;</span><span class="p">:</span>
-<a id="__codelineno-0-1059" name="__codelineno-0-1059"></a>                <span class="k">continue</span>
-<a id="__codelineno-0-1060" name="__codelineno-0-1060"></a>            <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-1061" name="__codelineno-0-1061"></a>                <span class="n">new_tier</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_promote</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span>
-<a id="__codelineno-0-1062" name="__codelineno-0-1062"></a>            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
-<a id="__codelineno-0-1063" name="__codelineno-0-1063"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-1064" name="__codelineno-0-1064"></a>                    <span class="s2">&quot;tick() should_promote raised for </span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2"> — skipping&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-1065" name="__codelineno-0-1065"></a>                    <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;_redis_key&quot;</span><span class="p">,</span> <span class="s2">&quot;?&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-1066" name="__codelineno-0-1066"></a>                    <span class="n">exc</span><span class="p">,</span>
-<a id="__codelineno-0-1067" name="__codelineno-0-1067"></a>                <span class="p">)</span>
-<a id="__codelineno-0-1068" name="__codelineno-0-1068"></a>                <span class="k">continue</span>
-<a id="__codelineno-0-1069" name="__codelineno-0-1069"></a>
-<a id="__codelineno-0-1070" name="__codelineno-0-1070"></a>            <span class="k">if</span> <span class="n">new_tier</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-1071" name="__codelineno-0-1071"></a>                <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-1072" name="__codelineno-0-1072"></a>                    <span class="n">old_key</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;_redis_key&quot;</span><span class="p">,</span> <span class="s2">&quot;?&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-1073" name="__codelineno-0-1073"></a>                    <span class="nb">setattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">,</span> <span class="n">new_tier</span><span class="p">)</span>
-<a id="__codelineno-0-1074" name="__codelineno-0-1074"></a>                    <span class="c1"># migrate_key=True is required when tier_field is a KeyField,</span>
-<a id="__codelineno-0-1075" name="__codelineno-0-1075"></a>                    <span class="c1"># because the tier value is part of the Redis key identity.</span>
-<a id="__codelineno-0-1076" name="__codelineno-0-1076"></a>                    <span class="n">record</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">migrate_key</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-0-1077" name="__codelineno-0-1077"></a>                    <span class="n">promoted_this_pass</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="nb">id</span><span class="p">(</span><span class="n">record</span><span class="p">))</span>
-<a id="__codelineno-0-1078" name="__codelineno-0-1078"></a>                    <span class="n">promoted</span> <span class="o">+=</span> <span class="mi">1</span>
-<a id="__codelineno-0-1079" name="__codelineno-0-1079"></a>                    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
-<a id="__codelineno-0-1080" name="__codelineno-0-1080"></a>                        <span class="s2">&quot;promoted </span><span class="si">%s</span><span class="s2"> → </span><span class="si">%s</span><span class="s2"> (new key: </span><span class="si">%s</span><span class="s2">)&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-1081" name="__codelineno-0-1081"></a>                        <span class="n">old_key</span><span class="p">,</span>
-<a id="__codelineno-0-1082" name="__codelineno-0-1082"></a>                        <span class="n">new_tier</span><span class="p">,</span>
-<a id="__codelineno-0-1083" name="__codelineno-0-1083"></a>                        <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;_redis_key&quot;</span><span class="p">,</span> <span class="s2">&quot;?&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-1084" name="__codelineno-0-1084"></a>                    <span class="p">)</span>
-<a id="__codelineno-0-1085" name="__codelineno-0-1085"></a>                <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
-<a id="__codelineno-0-1086" name="__codelineno-0-1086"></a>                    <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-1087" name="__codelineno-0-1087"></a>                        <span class="s2">&quot;tick() promotion save failed for </span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2"> — skipping&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-1088" name="__codelineno-0-1088"></a>                        <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;_redis_key&quot;</span><span class="p">,</span> <span class="s2">&quot;?&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-1089" name="__codelineno-0-1089"></a>                        <span class="n">exc</span><span class="p">,</span>
-<a id="__codelineno-0-1090" name="__codelineno-0-1090"></a>                    <span class="p">)</span>
-<a id="__codelineno-0-1091" name="__codelineno-0-1091"></a>
-<a id="__codelineno-0-1092" name="__codelineno-0-1092"></a>        <span class="c1"># --- Phase 2: Forget low-importance idle records (not promoted this pass) ---</span>
-<a id="__codelineno-0-1093" name="__codelineno-0-1093"></a>        <span class="n">forgotten</span> <span class="o">=</span> <span class="mi">0</span>
-<a id="__codelineno-0-1094" name="__codelineno-0-1094"></a>        <span class="n">tombstoned</span> <span class="o">=</span> <span class="mi">0</span>
-<a id="__codelineno-0-1095" name="__codelineno-0-1095"></a>        <span class="k">for</span> <span class="n">record</span> <span class="ow">in</span> <span class="n">non_semantic_records</span><span class="p">:</span>
-<a id="__codelineno-0-1096" name="__codelineno-0-1096"></a>            <span class="k">if</span> <span class="nb">id</span><span class="p">(</span><span class="n">record</span><span class="p">)</span> <span class="ow">in</span> <span class="n">promoted_this_pass</span><span class="p">:</span>
-<a id="__codelineno-0-1097" name="__codelineno-0-1097"></a>                <span class="k">continue</span>
-<a id="__codelineno-0-1098" name="__codelineno-0-1098"></a>            <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-1099" name="__codelineno-0-1099"></a>                <span class="n">should</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_forget</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span>
-<a id="__codelineno-0-1100" name="__codelineno-0-1100"></a>            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
-<a id="__codelineno-0-1101" name="__codelineno-0-1101"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-1102" name="__codelineno-0-1102"></a>                    <span class="s2">&quot;tick() should_forget raised for </span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2"> — skipping&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-1103" name="__codelineno-0-1103"></a>                    <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;_redis_key&quot;</span><span class="p">,</span> <span class="s2">&quot;?&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-1104" name="__codelineno-0-1104"></a>                    <span class="n">exc</span><span class="p">,</span>
-<a id="__codelineno-0-1105" name="__codelineno-0-1105"></a>                <span class="p">)</span>
-<a id="__codelineno-0-1106" name="__codelineno-0-1106"></a>                <span class="k">continue</span>
-<a id="__codelineno-0-1107" name="__codelineno-0-1107"></a>
-<a id="__codelineno-0-1108" name="__codelineno-0-1108"></a>            <span class="k">if</span> <span class="n">should</span><span class="p">:</span>
-<a id="__codelineno-0-1109" name="__codelineno-0-1109"></a>                <span class="c1"># Re-check-tier guard: re-read the authoritative tier from Redis</span>
-<a id="__codelineno-0-1110" name="__codelineno-0-1110"></a>                <span class="c1"># before deleting to avoid racing with a concurrent promotion.</span>
-<a id="__codelineno-0-1111" name="__codelineno-0-1111"></a>                <span class="c1"># Use the same key identity that was resolved at hydration time.</span>
-<a id="__codelineno-0-1112" name="__codelineno-0-1112"></a>                <span class="n">live_key</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;_redis_key&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
-<a id="__codelineno-0-1113" name="__codelineno-0-1113"></a>                <span class="k">if</span> <span class="n">live_key</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-1114" name="__codelineno-0-1114"></a>                    <span class="k">continue</span>
-<a id="__codelineno-0-1115" name="__codelineno-0-1115"></a>                <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-1116" name="__codelineno-0-1116"></a>                    <span class="n">raw_tier</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">hget</span><span class="p">(</span><span class="n">live_key</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">)</span>
-<a id="__codelineno-0-1117" name="__codelineno-0-1117"></a>                <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-<a id="__codelineno-0-1118" name="__codelineno-0-1118"></a>                    <span class="n">raw_tier</span> <span class="o">=</span> <span class="kc">None</span>
-<a id="__codelineno-0-1119" name="__codelineno-0-1119"></a>
-<a id="__codelineno-0-1120" name="__codelineno-0-1120"></a>                <span class="k">if</span> <span class="n">raw_tier</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-1121" name="__codelineno-0-1121"></a>                    <span class="c1"># Key no longer exists — skip delete</span>
-<a id="__codelineno-0-1122" name="__codelineno-0-1122"></a>                    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;forget guard: key absent, skipping </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">live_key</span><span class="p">)</span>
-<a id="__codelineno-0-1123" name="__codelineno-0-1123"></a>                    <span class="k">continue</span>
-<a id="__codelineno-0-1124" name="__codelineno-0-1124"></a>
-<a id="__codelineno-0-1125" name="__codelineno-0-1125"></a>                <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-1126" name="__codelineno-0-1126"></a>                    <span class="n">live_tier</span> <span class="o">=</span> <span class="n">decode_lazy_field</span><span class="p">(</span><span class="n">raw_tier</span><span class="p">)</span>
-<a id="__codelineno-0-1127" name="__codelineno-0-1127"></a>                <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-<a id="__codelineno-0-1128" name="__codelineno-0-1128"></a>                    <span class="n">live_tier</span> <span class="o">=</span> <span class="kc">None</span>
-<a id="__codelineno-0-1129" name="__codelineno-0-1129"></a>
-<a id="__codelineno-0-1130" name="__codelineno-0-1130"></a>                <span class="k">if</span> <span class="n">live_tier</span> <span class="o">==</span> <span class="s2">&quot;semantic&quot;</span><span class="p">:</span>
-<a id="__codelineno-0-1131" name="__codelineno-0-1131"></a>                    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
-<a id="__codelineno-0-1132" name="__codelineno-0-1132"></a>                        <span class="s2">&quot;forget guard: tier is now semantic, skipping </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">live_key</span>
-<a id="__codelineno-0-1133" name="__codelineno-0-1133"></a>                    <span class="p">)</span>
-<a id="__codelineno-0-1134" name="__codelineno-0-1134"></a>                    <span class="k">continue</span>
-<a id="__codelineno-0-1135" name="__codelineno-0-1135"></a>
-<a id="__codelineno-0-1136" name="__codelineno-0-1136"></a>                <span class="c1"># Forgetting tombstones rather than deletes (#491): the record</span>
-<a id="__codelineno-0-1137" name="__codelineno-0-1137"></a>                <span class="c1"># leaves every retrieval path but its full payload, fingerprint,</span>
-<a id="__codelineno-0-1138" name="__codelineno-0-1138"></a>                <span class="c1"># and death metadata are archived, so restore() can undo the</span>
-<a id="__codelineno-0-1139" name="__codelineno-0-1139"></a>                <span class="c1"># decision.</span>
-<a id="__codelineno-0-1140" name="__codelineno-0-1140"></a>                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">tombstone</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="n">reason</span><span class="o">=</span><span class="s2">&quot;lifecycle&quot;</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-1141" name="__codelineno-0-1141"></a>                    <span class="n">forgotten</span> <span class="o">+=</span> <span class="mi">1</span>
-<a id="__codelineno-0-1142" name="__codelineno-0-1142"></a>                    <span class="n">tombstoned</span> <span class="o">+=</span> <span class="mi">1</span>
-<a id="__codelineno-0-1143" name="__codelineno-0-1143"></a>
-<a id="__codelineno-0-1144" name="__codelineno-0-1144"></a>        <span class="k">return</span> <span class="n">promoted</span><span class="p">,</span> <span class="n">forgotten</span><span class="p">,</span> <span class="n">tombstoned</span>
+<a id="__codelineno-0-1027" name="__codelineno-0-1027"></a>    <span class="c1"># Internal passes</span>
+<a id="__codelineno-0-1028" name="__codelineno-0-1028"></a>    <span class="c1"># -------------------------------------------------------------------</span>
+<a id="__codelineno-0-1029" name="__codelineno-0-1029"></a>
+<a id="__codelineno-0-1030" name="__codelineno-0-1030"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_tick_pass</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
+<a id="__codelineno-0-1031" name="__codelineno-0-1031"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Single-pass hydration: promote then forget, loading all non-semantic records once.</span>
+<a id="__codelineno-0-1032" name="__codelineno-0-1032"></a>
+<a id="__codelineno-0-1033" name="__codelineno-0-1033"></a><span class="sd">        Loads all non-semantic records using a single non-tracking query.</span>
+<a id="__codelineno-0-1034" name="__codelineno-0-1034"></a><span class="sd">        Evaluates promotion eligibility on the episodic subset, tracking which</span>
+<a id="__codelineno-0-1035" name="__codelineno-0-1035"></a><span class="sd">        records were promoted.  Then evaluates forget eligibility on records</span>
+<a id="__codelineno-0-1036" name="__codelineno-0-1036"></a><span class="sd">        that were NOT promoted this pass, using a re-check-tier guard</span>
+<a id="__codelineno-0-1037" name="__codelineno-0-1037"></a><span class="sd">        immediately before deletion to prevent concurrent promotion races.</span>
+<a id="__codelineno-0-1038" name="__codelineno-0-1038"></a>
+<a id="__codelineno-0-1039" name="__codelineno-0-1039"></a><span class="sd">        Returns:</span>
+<a id="__codelineno-0-1040" name="__codelineno-0-1040"></a><span class="sd">            Tuple (promoted_count, forgotten_count, tombstoned_count).</span>
+<a id="__codelineno-0-1041" name="__codelineno-0-1041"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-1042" name="__codelineno-0-1042"></a>        <span class="c1"># Load all non-semantic records once (non-tracking — no on_read() side-effects)</span>
+<a id="__codelineno-0-1043" name="__codelineno-0-1043"></a>        <span class="n">filters</span> <span class="o">=</span> <span class="p">{</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">partition_filters</span><span class="p">}</span>
+<a id="__codelineno-0-1044" name="__codelineno-0-1044"></a>        <span class="n">all_non_semantic</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-0-1045" name="__codelineno-0-1045"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">**</span><span class="n">filters</span><span class="p">)</span><span class="o">.</span><span class="n">no_track</span><span class="p">()</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
+<a id="__codelineno-0-1046" name="__codelineno-0-1046"></a>            <span class="k">if</span> <span class="n">filters</span>
+<a id="__codelineno-0-1047" name="__codelineno-0-1047"></a>            <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
+<a id="__codelineno-0-1048" name="__codelineno-0-1048"></a>        <span class="p">)</span>
+<a id="__codelineno-0-1049" name="__codelineno-0-1049"></a>
+<a id="__codelineno-0-1050" name="__codelineno-0-1050"></a>        <span class="c1"># Filter to non-semantic in-process</span>
+<a id="__codelineno-0-1051" name="__codelineno-0-1051"></a>        <span class="n">non_semantic_records</span> <span class="o">=</span> <span class="p">[</span>
+<a id="__codelineno-0-1052" name="__codelineno-0-1052"></a>            <span class="n">r</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">all_non_semantic</span> <span class="k">if</span> <span class="n">_get_tier</span><span class="p">(</span><span class="n">r</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">)</span> <span class="o">!=</span> <span class="s2">&quot;semantic&quot;</span>
+<a id="__codelineno-0-1053" name="__codelineno-0-1053"></a>        <span class="p">]</span>
+<a id="__codelineno-0-1054" name="__codelineno-0-1054"></a>
+<a id="__codelineno-0-1055" name="__codelineno-0-1055"></a>        <span class="n">promoted</span> <span class="o">=</span> <span class="mi">0</span>
+<a id="__codelineno-0-1056" name="__codelineno-0-1056"></a>        <span class="n">promoted_this_pass</span><span class="p">:</span> <span class="nb">set</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+<a id="__codelineno-0-1057" name="__codelineno-0-1057"></a>
+<a id="__codelineno-0-1058" name="__codelineno-0-1058"></a>        <span class="c1"># --- Phase 1: Promote episodic → semantic ---</span>
+<a id="__codelineno-0-1059" name="__codelineno-0-1059"></a>        <span class="k">for</span> <span class="n">record</span> <span class="ow">in</span> <span class="n">non_semantic_records</span><span class="p">:</span>
+<a id="__codelineno-0-1060" name="__codelineno-0-1060"></a>            <span class="k">if</span> <span class="n">_get_tier</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">)</span> <span class="o">!=</span> <span class="s2">&quot;episodic&quot;</span><span class="p">:</span>
+<a id="__codelineno-0-1061" name="__codelineno-0-1061"></a>                <span class="k">continue</span>
+<a id="__codelineno-0-1062" name="__codelineno-0-1062"></a>            <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-1063" name="__codelineno-0-1063"></a>                <span class="n">new_tier</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_promote</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span>
+<a id="__codelineno-0-1064" name="__codelineno-0-1064"></a>            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+<a id="__codelineno-0-1065" name="__codelineno-0-1065"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="__codelineno-0-1066" name="__codelineno-0-1066"></a>                    <span class="s2">&quot;tick() should_promote raised for </span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2"> — skipping&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-1067" name="__codelineno-0-1067"></a>                    <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;_redis_key&quot;</span><span class="p">,</span> <span class="s2">&quot;?&quot;</span><span class="p">),</span>
+<a id="__codelineno-0-1068" name="__codelineno-0-1068"></a>                    <span class="n">exc</span><span class="p">,</span>
+<a id="__codelineno-0-1069" name="__codelineno-0-1069"></a>                <span class="p">)</span>
+<a id="__codelineno-0-1070" name="__codelineno-0-1070"></a>                <span class="k">continue</span>
+<a id="__codelineno-0-1071" name="__codelineno-0-1071"></a>
+<a id="__codelineno-0-1072" name="__codelineno-0-1072"></a>            <span class="k">if</span> <span class="n">new_tier</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-1073" name="__codelineno-0-1073"></a>                <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-1074" name="__codelineno-0-1074"></a>                    <span class="n">old_key</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;_redis_key&quot;</span><span class="p">,</span> <span class="s2">&quot;?&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-1075" name="__codelineno-0-1075"></a>                    <span class="nb">setattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">,</span> <span class="n">new_tier</span><span class="p">)</span>
+<a id="__codelineno-0-1076" name="__codelineno-0-1076"></a>                    <span class="c1"># migrate_key=True is required when tier_field is a KeyField,</span>
+<a id="__codelineno-0-1077" name="__codelineno-0-1077"></a>                    <span class="c1"># because the tier value is part of the Redis key identity.</span>
+<a id="__codelineno-0-1078" name="__codelineno-0-1078"></a>                    <span class="n">record</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">migrate_key</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-1079" name="__codelineno-0-1079"></a>                    <span class="n">promoted_this_pass</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="nb">id</span><span class="p">(</span><span class="n">record</span><span class="p">))</span>
+<a id="__codelineno-0-1080" name="__codelineno-0-1080"></a>                    <span class="n">promoted</span> <span class="o">+=</span> <span class="mi">1</span>
+<a id="__codelineno-0-1081" name="__codelineno-0-1081"></a>                    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+<a id="__codelineno-0-1082" name="__codelineno-0-1082"></a>                        <span class="s2">&quot;promoted </span><span class="si">%s</span><span class="s2"> → </span><span class="si">%s</span><span class="s2"> (new key: </span><span class="si">%s</span><span class="s2">)&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-1083" name="__codelineno-0-1083"></a>                        <span class="n">old_key</span><span class="p">,</span>
+<a id="__codelineno-0-1084" name="__codelineno-0-1084"></a>                        <span class="n">new_tier</span><span class="p">,</span>
+<a id="__codelineno-0-1085" name="__codelineno-0-1085"></a>                        <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;_redis_key&quot;</span><span class="p">,</span> <span class="s2">&quot;?&quot;</span><span class="p">),</span>
+<a id="__codelineno-0-1086" name="__codelineno-0-1086"></a>                    <span class="p">)</span>
+<a id="__codelineno-0-1087" name="__codelineno-0-1087"></a>                <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+<a id="__codelineno-0-1088" name="__codelineno-0-1088"></a>                    <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="__codelineno-0-1089" name="__codelineno-0-1089"></a>                        <span class="s2">&quot;tick() promotion save failed for </span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2"> — skipping&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-1090" name="__codelineno-0-1090"></a>                        <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;_redis_key&quot;</span><span class="p">,</span> <span class="s2">&quot;?&quot;</span><span class="p">),</span>
+<a id="__codelineno-0-1091" name="__codelineno-0-1091"></a>                        <span class="n">exc</span><span class="p">,</span>
+<a id="__codelineno-0-1092" name="__codelineno-0-1092"></a>                    <span class="p">)</span>
+<a id="__codelineno-0-1093" name="__codelineno-0-1093"></a>
+<a id="__codelineno-0-1094" name="__codelineno-0-1094"></a>        <span class="c1"># --- Phase 2: Forget low-importance idle records (not promoted this pass) ---</span>
+<a id="__codelineno-0-1095" name="__codelineno-0-1095"></a>        <span class="n">forgotten</span> <span class="o">=</span> <span class="mi">0</span>
+<a id="__codelineno-0-1096" name="__codelineno-0-1096"></a>        <span class="n">tombstoned</span> <span class="o">=</span> <span class="mi">0</span>
+<a id="__codelineno-0-1097" name="__codelineno-0-1097"></a>        <span class="k">for</span> <span class="n">record</span> <span class="ow">in</span> <span class="n">non_semantic_records</span><span class="p">:</span>
+<a id="__codelineno-0-1098" name="__codelineno-0-1098"></a>            <span class="k">if</span> <span class="nb">id</span><span class="p">(</span><span class="n">record</span><span class="p">)</span> <span class="ow">in</span> <span class="n">promoted_this_pass</span><span class="p">:</span>
+<a id="__codelineno-0-1099" name="__codelineno-0-1099"></a>                <span class="k">continue</span>
+<a id="__codelineno-0-1100" name="__codelineno-0-1100"></a>            <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-1101" name="__codelineno-0-1101"></a>                <span class="n">should</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_forget</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span>
+<a id="__codelineno-0-1102" name="__codelineno-0-1102"></a>            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+<a id="__codelineno-0-1103" name="__codelineno-0-1103"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="__codelineno-0-1104" name="__codelineno-0-1104"></a>                    <span class="s2">&quot;tick() should_forget raised for </span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2"> — skipping&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-1105" name="__codelineno-0-1105"></a>                    <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;_redis_key&quot;</span><span class="p">,</span> <span class="s2">&quot;?&quot;</span><span class="p">),</span>
+<a id="__codelineno-0-1106" name="__codelineno-0-1106"></a>                    <span class="n">exc</span><span class="p">,</span>
+<a id="__codelineno-0-1107" name="__codelineno-0-1107"></a>                <span class="p">)</span>
+<a id="__codelineno-0-1108" name="__codelineno-0-1108"></a>                <span class="k">continue</span>
+<a id="__codelineno-0-1109" name="__codelineno-0-1109"></a>
+<a id="__codelineno-0-1110" name="__codelineno-0-1110"></a>            <span class="k">if</span> <span class="n">should</span><span class="p">:</span>
+<a id="__codelineno-0-1111" name="__codelineno-0-1111"></a>                <span class="c1"># Re-check-tier guard: re-read the authoritative tier from Redis</span>
+<a id="__codelineno-0-1112" name="__codelineno-0-1112"></a>                <span class="c1"># before deleting to avoid racing with a concurrent promotion.</span>
+<a id="__codelineno-0-1113" name="__codelineno-0-1113"></a>                <span class="c1"># Use the same key identity that was resolved at hydration time.</span>
+<a id="__codelineno-0-1114" name="__codelineno-0-1114"></a>                <span class="n">live_key</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;_redis_key&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-0-1115" name="__codelineno-0-1115"></a>                <span class="k">if</span> <span class="n">live_key</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-1116" name="__codelineno-0-1116"></a>                    <span class="k">continue</span>
+<a id="__codelineno-0-1117" name="__codelineno-0-1117"></a>                <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-1118" name="__codelineno-0-1118"></a>                    <span class="n">raw_tier</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">hget</span><span class="p">(</span><span class="n">live_key</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tier_field</span><span class="p">)</span>
+<a id="__codelineno-0-1119" name="__codelineno-0-1119"></a>                <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+<a id="__codelineno-0-1120" name="__codelineno-0-1120"></a>                    <span class="n">raw_tier</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-1121" name="__codelineno-0-1121"></a>
+<a id="__codelineno-0-1122" name="__codelineno-0-1122"></a>                <span class="k">if</span> <span class="n">raw_tier</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-1123" name="__codelineno-0-1123"></a>                    <span class="c1"># Key no longer exists — skip delete</span>
+<a id="__codelineno-0-1124" name="__codelineno-0-1124"></a>                    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;forget guard: key absent, skipping </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">live_key</span><span class="p">)</span>
+<a id="__codelineno-0-1125" name="__codelineno-0-1125"></a>                    <span class="k">continue</span>
+<a id="__codelineno-0-1126" name="__codelineno-0-1126"></a>
+<a id="__codelineno-0-1127" name="__codelineno-0-1127"></a>                <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-1128" name="__codelineno-0-1128"></a>                    <span class="n">live_tier</span> <span class="o">=</span> <span class="n">decode_lazy_field</span><span class="p">(</span><span class="n">raw_tier</span><span class="p">)</span>
+<a id="__codelineno-0-1129" name="__codelineno-0-1129"></a>                <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+<a id="__codelineno-0-1130" name="__codelineno-0-1130"></a>                    <span class="n">live_tier</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-1131" name="__codelineno-0-1131"></a>
+<a id="__codelineno-0-1132" name="__codelineno-0-1132"></a>                <span class="k">if</span> <span class="n">live_tier</span> <span class="o">==</span> <span class="s2">&quot;semantic&quot;</span><span class="p">:</span>
+<a id="__codelineno-0-1133" name="__codelineno-0-1133"></a>                    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+<a id="__codelineno-0-1134" name="__codelineno-0-1134"></a>                        <span class="s2">&quot;forget guard: tier is now semantic, skipping </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">live_key</span>
+<a id="__codelineno-0-1135" name="__codelineno-0-1135"></a>                    <span class="p">)</span>
+<a id="__codelineno-0-1136" name="__codelineno-0-1136"></a>                    <span class="k">continue</span>
+<a id="__codelineno-0-1137" name="__codelineno-0-1137"></a>
+<a id="__codelineno-0-1138" name="__codelineno-0-1138"></a>                <span class="c1"># Forgetting tombstones rather than deletes (#491): the record</span>
+<a id="__codelineno-0-1139" name="__codelineno-0-1139"></a>                <span class="c1"># leaves every retrieval path but its full payload, fingerprint,</span>
+<a id="__codelineno-0-1140" name="__codelineno-0-1140"></a>                <span class="c1"># and death metadata are archived, so restore() can undo the</span>
+<a id="__codelineno-0-1141" name="__codelineno-0-1141"></a>                <span class="c1"># decision.</span>
+<a id="__codelineno-0-1142" name="__codelineno-0-1142"></a>                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">tombstone</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="n">reason</span><span class="o">=</span><span class="s2">&quot;lifecycle&quot;</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-1143" name="__codelineno-0-1143"></a>                    <span class="n">forgotten</span> <span class="o">+=</span> <span class="mi">1</span>
+<a id="__codelineno-0-1144" name="__codelineno-0-1144"></a>                    <span class="n">tombstoned</span> <span class="o">+=</span> <span class="mi">1</span>
 <a id="__codelineno-0-1145" name="__codelineno-0-1145"></a>
-<a id="__codelineno-0-1146" name="__codelineno-0-1146"></a>    <span class="c1"># -------------------------------------------------------------------</span>
-<a id="__codelineno-0-1147" name="__codelineno-0-1147"></a>    <span class="c1"># Convenience: all() fallback for models without partition filters</span>
+<a id="__codelineno-0-1146" name="__codelineno-0-1146"></a>        <span class="k">return</span> <span class="n">promoted</span><span class="p">,</span> <span class="n">forgotten</span><span class="p">,</span> <span class="n">tombstoned</span>
+<a id="__codelineno-0-1147" name="__codelineno-0-1147"></a>
 <a id="__codelineno-0-1148" name="__codelineno-0-1148"></a>    <span class="c1"># -------------------------------------------------------------------</span>
-<a id="__codelineno-0-1149" name="__codelineno-0-1149"></a>
-<a id="__codelineno-0-1150" name="__codelineno-0-1150"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_get_all_records</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
-<a id="__codelineno-0-1151" name="__codelineno-0-1151"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Return all records for this model class.&quot;&quot;&quot;</span>
-<a id="__codelineno-0-1152" name="__codelineno-0-1152"></a>        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
+<a id="__codelineno-0-1149" name="__codelineno-0-1149"></a>    <span class="c1"># Convenience: all() fallback for models without partition filters</span>
+<a id="__codelineno-0-1150" name="__codelineno-0-1150"></a>    <span class="c1"># -------------------------------------------------------------------</span>
+<a id="__codelineno-0-1151" name="__codelineno-0-1151"></a>
+<a id="__codelineno-0-1152" name="__codelineno-0-1152"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_get_all_records</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
+<a id="__codelineno-0-1153" name="__codelineno-0-1153"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Return all records for this model class.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-1154" name="__codelineno-0-1154"></a>        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -5805,7 +5809,9 @@ a filter each read path must remember to apply.</p>
 <span class="normal"><a href="#__codelineno-0-984">984</a></span>
 <span class="normal"><a href="#__codelineno-0-985">985</a></span>
 <span class="normal"><a href="#__codelineno-0-986">986</a></span>
-<span class="normal"><a href="#__codelineno-0-987">987</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-957" name="__codelineno-0-957"></a><span class="k">def</span><span class="w"> </span><span class="nf">restore</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Tombstone</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Any</span><span class="p">]:</span>
+<span class="normal"><a href="#__codelineno-0-987">987</a></span>
+<span class="normal"><a href="#__codelineno-0-988">988</a></span>
+<span class="normal"><a href="#__codelineno-0-989">989</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-957" name="__codelineno-0-957"></a><span class="k">def</span><span class="w"> </span><span class="nf">restore</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Tombstone</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Any</span><span class="p">]:</span>
 <a id="__codelineno-0-958" name="__codelineno-0-958"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Bring a tombstoned record back into the live corpus.</span>
 <a id="__codelineno-0-959" name="__codelineno-0-959"></a>
 <a id="__codelineno-0-960" name="__codelineno-0-960"></a><span class="sd">    Args:</span>
@@ -5826,16 +5832,18 @@ a filter each read path must remember to apply.</p>
 <a id="__codelineno-0-975" name="__codelineno-0-975"></a>        <span class="p">(</span><span class="n">k</span><span class="o">.</span><span class="n">encode</span><span class="p">()</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="k">else</span> <span class="n">k</span><span class="p">):</span> <span class="n">v</span>
 <a id="__codelineno-0-976" name="__codelineno-0-976"></a>        <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="p">(</span><span class="n">entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;payload&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{})</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
 <a id="__codelineno-0-977" name="__codelineno-0-977"></a>    <span class="p">}</span>
-<a id="__codelineno-0-978" name="__codelineno-0-978"></a>    <span class="n">instance</span> <span class="o">=</span> <span class="n">decode_popoto_model_hashmap</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">,</span> <span class="n">redis_hash</span><span class="p">)</span>
-<a id="__codelineno-0-979" name="__codelineno-0-979"></a>    <span class="k">if</span> <span class="n">instance</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-980" name="__codelineno-0-980"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;restore: empty payload for </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">)</span>
-<a id="__codelineno-0-981" name="__codelineno-0-981"></a>        <span class="k">return</span> <span class="kc">None</span>
-<a id="__codelineno-0-982" name="__codelineno-0-982"></a>    <span class="c1"># save() re-runs every on_save hook, so all secondary indexes</span>
-<a id="__codelineno-0-983" name="__codelineno-0-983"></a>    <span class="c1"># (sorted sets, key sets, geo, unique) are rebuilt from scratch.</span>
-<a id="__codelineno-0-984" name="__codelineno-0-984"></a>    <span class="n">instance</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
-<a id="__codelineno-0-985" name="__codelineno-0-985"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">purge_tombstone</span><span class="p">(</span><span class="n">redis_key</span><span class="p">)</span>
-<a id="__codelineno-0-986" name="__codelineno-0-986"></a>    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;restored </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">)</span>
-<a id="__codelineno-0-987" name="__codelineno-0-987"></a>    <span class="k">return</span> <span class="n">instance</span>
+<a id="__codelineno-0-978" name="__codelineno-0-978"></a>    <span class="n">instance</span> <span class="o">=</span> <span class="n">decode_popoto_model_hashmap</span><span class="p">(</span>
+<a id="__codelineno-0-979" name="__codelineno-0-979"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">,</span> <span class="n">redis_hash</span><span class="p">,</span> <span class="n">source_redis_key</span><span class="o">=</span><span class="n">redis_key</span>
+<a id="__codelineno-0-980" name="__codelineno-0-980"></a>    <span class="p">)</span>
+<a id="__codelineno-0-981" name="__codelineno-0-981"></a>    <span class="k">if</span> <span class="n">instance</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-982" name="__codelineno-0-982"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;restore: empty payload for </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">)</span>
+<a id="__codelineno-0-983" name="__codelineno-0-983"></a>        <span class="k">return</span> <span class="kc">None</span>
+<a id="__codelineno-0-984" name="__codelineno-0-984"></a>    <span class="c1"># save() re-runs every on_save hook, so all secondary indexes</span>
+<a id="__codelineno-0-985" name="__codelineno-0-985"></a>    <span class="c1"># (sorted sets, key sets, geo, unique) are rebuilt from scratch.</span>
+<a id="__codelineno-0-986" name="__codelineno-0-986"></a>    <span class="n">instance</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<a id="__codelineno-0-987" name="__codelineno-0-987"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">purge_tombstone</span><span class="p">(</span><span class="n">redis_key</span><span class="p">)</span>
+<a id="__codelineno-0-988" name="__codelineno-0-988"></a>    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;restored </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">)</span>
+<a id="__codelineno-0-989" name="__codelineno-0-989"></a>    <span class="k">return</span> <span class="n">instance</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -5858,25 +5866,25 @@ a filter each read path must remember to apply.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/recipes/memory_lifecycle.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-989">989</a></span>
-<span class="normal"><a href="#__codelineno-0-990">990</a></span>
-<span class="normal"><a href="#__codelineno-0-991">991</a></span>
-<span class="normal"><a href="#__codelineno-0-992">992</a></span>
-<span class="normal"><a href="#__codelineno-0-993">993</a></span>
-<span class="normal"><a href="#__codelineno-0-994">994</a></span>
-<span class="normal"><a href="#__codelineno-0-995">995</a></span>
-<span class="normal"><a href="#__codelineno-0-996">996</a></span>
-<span class="normal"><a href="#__codelineno-0-997">997</a></span>
-<span class="normal"><a href="#__codelineno-0-998">998</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-989" name="__codelineno-0-989"></a><span class="k">def</span><span class="w"> </span><span class="nf">purge_tombstone</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Tombstone</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-<a id="__codelineno-0-990" name="__codelineno-0-990"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Drop a tombstone permanently. Returns True if one was removed.&quot;&quot;&quot;</span>
-<a id="__codelineno-0-991" name="__codelineno-0-991"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">redis_key</span><span class="p">,</span> <span class="n">Tombstone</span><span class="p">):</span>
-<a id="__codelineno-0-992" name="__codelineno-0-992"></a>        <span class="n">redis_key</span> <span class="o">=</span> <span class="n">redis_key</span><span class="o">.</span><span class="n">redis_key</span>
-<a id="__codelineno-0-993" name="__codelineno-0-993"></a>    <span class="n">data_key</span><span class="p">,</span> <span class="n">index_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tombstone_keys</span><span class="p">()</span>
-<a id="__codelineno-0-994" name="__codelineno-0-994"></a>    <span class="n">pipeline</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">pipeline</span><span class="p">()</span>
-<a id="__codelineno-0-995" name="__codelineno-0-995"></a>    <span class="n">pipeline</span><span class="o">.</span><span class="n">hdel</span><span class="p">(</span><span class="n">data_key</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">)</span>
-<a id="__codelineno-0-996" name="__codelineno-0-996"></a>    <span class="n">pipeline</span><span class="o">.</span><span class="n">zrem</span><span class="p">(</span><span class="n">index_key</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">)</span>
-<a id="__codelineno-0-997" name="__codelineno-0-997"></a>    <span class="n">removed</span> <span class="o">=</span> <span class="n">pipeline</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>
-<a id="__codelineno-0-998" name="__codelineno-0-998"></a>    <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="n">removed</span> <span class="ow">and</span> <span class="n">removed</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-991"> 991</a></span>
+<span class="normal"><a href="#__codelineno-0-992"> 992</a></span>
+<span class="normal"><a href="#__codelineno-0-993"> 993</a></span>
+<span class="normal"><a href="#__codelineno-0-994"> 994</a></span>
+<span class="normal"><a href="#__codelineno-0-995"> 995</a></span>
+<span class="normal"><a href="#__codelineno-0-996"> 996</a></span>
+<span class="normal"><a href="#__codelineno-0-997"> 997</a></span>
+<span class="normal"><a href="#__codelineno-0-998"> 998</a></span>
+<span class="normal"><a href="#__codelineno-0-999"> 999</a></span>
+<span class="normal"><a href="#__codelineno-0-1000">1000</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-991" name="__codelineno-0-991"></a><span class="k">def</span><span class="w"> </span><span class="nf">purge_tombstone</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Tombstone</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<a id="__codelineno-0-992" name="__codelineno-0-992"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Drop a tombstone permanently. Returns True if one was removed.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-993" name="__codelineno-0-993"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">redis_key</span><span class="p">,</span> <span class="n">Tombstone</span><span class="p">):</span>
+<a id="__codelineno-0-994" name="__codelineno-0-994"></a>        <span class="n">redis_key</span> <span class="o">=</span> <span class="n">redis_key</span><span class="o">.</span><span class="n">redis_key</span>
+<a id="__codelineno-0-995" name="__codelineno-0-995"></a>    <span class="n">data_key</span><span class="p">,</span> <span class="n">index_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tombstone_keys</span><span class="p">()</span>
+<a id="__codelineno-0-996" name="__codelineno-0-996"></a>    <span class="n">pipeline</span> <span class="o">=</span> <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">pipeline</span><span class="p">()</span>
+<a id="__codelineno-0-997" name="__codelineno-0-997"></a>    <span class="n">pipeline</span><span class="o">.</span><span class="n">hdel</span><span class="p">(</span><span class="n">data_key</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">)</span>
+<a id="__codelineno-0-998" name="__codelineno-0-998"></a>    <span class="n">pipeline</span><span class="o">.</span><span class="n">zrem</span><span class="p">(</span><span class="n">index_key</span><span class="p">,</span> <span class="n">redis_key</span><span class="p">)</span>
+<a id="__codelineno-0-999" name="__codelineno-0-999"></a>    <span class="n">removed</span> <span class="o">=</span> <span class="n">pipeline</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>
+<a id="__codelineno-0-1000" name="__codelineno-0-1000"></a>    <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="n">removed</span> <span class="ow">and</span> <span class="n">removed</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -5899,15 +5907,15 @@ a filter each read path must remember to apply.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/recipes/memory_lifecycle.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1000">1000</a></span>
-<span class="normal"><a href="#__codelineno-0-1001">1001</a></span>
-<span class="normal"><a href="#__codelineno-0-1002">1002</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1002">1002</a></span>
 <span class="normal"><a href="#__codelineno-0-1003">1003</a></span>
-<span class="normal"><a href="#__codelineno-0-1004">1004</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1000" name="__codelineno-0-1000"></a><span class="k">def</span><span class="w"> </span><span class="nf">purge_all_tombstones</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-<a id="__codelineno-0-1001" name="__codelineno-0-1001"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Drop every retained tombstone. Returns the number removed.&quot;&quot;&quot;</span>
-<a id="__codelineno-0-1002" name="__codelineno-0-1002"></a>    <span class="n">count</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tombstone_count</span><span class="p">()</span>
-<a id="__codelineno-0-1003" name="__codelineno-0-1003"></a>    <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_tombstone_keys</span><span class="p">())</span>
-<a id="__codelineno-0-1004" name="__codelineno-0-1004"></a>    <span class="k">return</span> <span class="n">count</span>
+<span class="normal"><a href="#__codelineno-0-1004">1004</a></span>
+<span class="normal"><a href="#__codelineno-0-1005">1005</a></span>
+<span class="normal"><a href="#__codelineno-0-1006">1006</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1002" name="__codelineno-0-1002"></a><span class="k">def</span><span class="w"> </span><span class="nf">purge_all_tombstones</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<a id="__codelineno-0-1003" name="__codelineno-0-1003"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Drop every retained tombstone. Returns the number removed.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-1004" name="__codelineno-0-1004"></a>    <span class="n">count</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tombstone_count</span><span class="p">()</span>
+<a id="__codelineno-0-1005" name="__codelineno-0-1005"></a>    <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_tombstone_keys</span><span class="p">())</span>
+<a id="__codelineno-0-1006" name="__codelineno-0-1006"></a>    <span class="k">return</span> <span class="n">count</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -5933,9 +5941,7 @@ deletion request) rather than merely retiring it from retrieval.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/recipes/memory_lifecycle.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1006">1006</a></span>
-<span class="normal"><a href="#__codelineno-0-1007">1007</a></span>
-<span class="normal"><a href="#__codelineno-0-1008">1008</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1008">1008</a></span>
 <span class="normal"><a href="#__codelineno-0-1009">1009</a></span>
 <span class="normal"><a href="#__codelineno-0-1010">1010</a></span>
 <span class="normal"><a href="#__codelineno-0-1011">1011</a></span>
@@ -5949,23 +5955,25 @@ deletion request) rather than merely retiring it from retrieval.</p>
 <span class="normal"><a href="#__codelineno-0-1019">1019</a></span>
 <span class="normal"><a href="#__codelineno-0-1020">1020</a></span>
 <span class="normal"><a href="#__codelineno-0-1021">1021</a></span>
-<span class="normal"><a href="#__codelineno-0-1022">1022</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1006" name="__codelineno-0-1006"></a><span class="k">def</span><span class="w"> </span><span class="nf">forget_hard</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">record</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-<a id="__codelineno-0-1007" name="__codelineno-0-1007"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Delete a record outright, leaving no tombstone.</span>
-<a id="__codelineno-0-1008" name="__codelineno-0-1008"></a>
-<a id="__codelineno-0-1009" name="__codelineno-0-1009"></a><span class="sd">    The explicit, irreversible counterpart to ``tombstone()`` — kept</span>
-<a id="__codelineno-0-1010" name="__codelineno-0-1010"></a><span class="sd">    available so an adopter can still purge a record entirely (e.g. a</span>
-<a id="__codelineno-0-1011" name="__codelineno-0-1011"></a><span class="sd">    deletion request) rather than merely retiring it from retrieval.</span>
-<a id="__codelineno-0-1012" name="__codelineno-0-1012"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-1013" name="__codelineno-0-1013"></a>    <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-1014" name="__codelineno-0-1014"></a>        <span class="n">record</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
-<a id="__codelineno-0-1015" name="__codelineno-0-1015"></a>    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
-<a id="__codelineno-0-1016" name="__codelineno-0-1016"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-1017" name="__codelineno-0-1017"></a>            <span class="s2">&quot;forget_hard failed for </span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-1018" name="__codelineno-0-1018"></a>            <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;_redis_key&quot;</span><span class="p">,</span> <span class="s2">&quot;?&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-1019" name="__codelineno-0-1019"></a>            <span class="n">exc</span><span class="p">,</span>
-<a id="__codelineno-0-1020" name="__codelineno-0-1020"></a>        <span class="p">)</span>
-<a id="__codelineno-0-1021" name="__codelineno-0-1021"></a>        <span class="k">return</span> <span class="kc">False</span>
-<a id="__codelineno-0-1022" name="__codelineno-0-1022"></a>    <span class="k">return</span> <span class="kc">True</span>
+<span class="normal"><a href="#__codelineno-0-1022">1022</a></span>
+<span class="normal"><a href="#__codelineno-0-1023">1023</a></span>
+<span class="normal"><a href="#__codelineno-0-1024">1024</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1008" name="__codelineno-0-1008"></a><span class="k">def</span><span class="w"> </span><span class="nf">forget_hard</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">record</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<a id="__codelineno-0-1009" name="__codelineno-0-1009"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Delete a record outright, leaving no tombstone.</span>
+<a id="__codelineno-0-1010" name="__codelineno-0-1010"></a>
+<a id="__codelineno-0-1011" name="__codelineno-0-1011"></a><span class="sd">    The explicit, irreversible counterpart to ``tombstone()`` — kept</span>
+<a id="__codelineno-0-1012" name="__codelineno-0-1012"></a><span class="sd">    available so an adopter can still purge a record entirely (e.g. a</span>
+<a id="__codelineno-0-1013" name="__codelineno-0-1013"></a><span class="sd">    deletion request) rather than merely retiring it from retrieval.</span>
+<a id="__codelineno-0-1014" name="__codelineno-0-1014"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-1015" name="__codelineno-0-1015"></a>    <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-1016" name="__codelineno-0-1016"></a>        <span class="n">record</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
+<a id="__codelineno-0-1017" name="__codelineno-0-1017"></a>    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+<a id="__codelineno-0-1018" name="__codelineno-0-1018"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="__codelineno-0-1019" name="__codelineno-0-1019"></a>            <span class="s2">&quot;forget_hard failed for </span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-1020" name="__codelineno-0-1020"></a>            <span class="nb">getattr</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="s2">&quot;_redis_key&quot;</span><span class="p">,</span> <span class="s2">&quot;?&quot;</span><span class="p">),</span>
+<a id="__codelineno-0-1021" name="__codelineno-0-1021"></a>            <span class="n">exc</span><span class="p">,</span>
+<a id="__codelineno-0-1022" name="__codelineno-0-1022"></a>        <span class="p">)</span>
+<a id="__codelineno-0-1023" name="__codelineno-0-1023"></a>        <span class="k">return</span> <span class="kc">False</span>
+<a id="__codelineno-0-1024" name="__codelineno-0-1024"></a>    <span class="k">return</span> <span class="kc">True</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

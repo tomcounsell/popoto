@@ -3448,7 +3448,9 @@ ConfidenceField.update_confidence(memory, "certainty", signal=0.9)</p>
 <span class="normal"><a href="#__codelineno-0-767">767</a></span>
 <span class="normal"><a href="#__codelineno-0-768">768</a></span>
 <span class="normal"><a href="#__codelineno-0-769">769</a></span>
-<span class="normal"><a href="#__codelineno-0-770">770</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-118" name="__codelineno-0-118"></a><span class="k">class</span><span class="w"> </span><span class="nc">ConfidenceField</span><span class="p">(</span><span class="n">Field</span><span class="p">):</span>
+<span class="normal"><a href="#__codelineno-0-770">770</a></span>
+<span class="normal"><a href="#__codelineno-0-771">771</a></span>
+<span class="normal"><a href="#__codelineno-0-772">772</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-118" name="__codelineno-0-118"></a><span class="k">class</span><span class="w"> </span><span class="nc">ConfidenceField</span><span class="p">(</span><span class="n">Field</span><span class="p">):</span>
 <a id="__codelineno-0-119" name="__codelineno-0-119"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;A Field that tracks confidence metadata in a companion Redis hash.</span>
 <a id="__codelineno-0-120" name="__codelineno-0-120"></a>
 <a id="__codelineno-0-121" name="__codelineno-0-121"></a><span class="sd">    Not a SortedField — confidence is metadata, not a ranking dimension.</span>
@@ -4067,40 +4069,42 @@ ConfidenceField.update_confidence(memory, "certainty", signal=0.9)</p>
 <a id="__codelineno-0-734" name="__codelineno-0-734"></a>                        <span class="p">}</span>
 <a id="__codelineno-0-735" name="__codelineno-0-735"></a>                    <span class="p">)</span>
 <a id="__codelineno-0-736" name="__codelineno-0-736"></a>                    <span class="k">continue</span>
-<a id="__codelineno-0-737" name="__codelineno-0-737"></a>                <span class="n">instance</span> <span class="o">=</span> <span class="n">decode_popoto_model_hashmap</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">redis_hash</span><span class="p">)</span>
-<a id="__codelineno-0-738" name="__codelineno-0-738"></a>                <span class="k">if</span> <span class="n">instance</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-739" name="__codelineno-0-739"></a>                    <span class="n">report</span><span class="p">[</span><span class="s2">&quot;errors&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-740" name="__codelineno-0-740"></a>                        <span class="p">{</span><span class="s2">&quot;member_key&quot;</span><span class="p">:</span> <span class="n">member_key</span><span class="p">,</span> <span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="s2">&quot;Failed to decode instance&quot;</span><span class="p">}</span>
-<a id="__codelineno-0-741" name="__codelineno-0-741"></a>                    <span class="p">)</span>
-<a id="__codelineno-0-742" name="__codelineno-0-742"></a>                    <span class="k">continue</span>
-<a id="__codelineno-0-743" name="__codelineno-0-743"></a>            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-<a id="__codelineno-0-744" name="__codelineno-0-744"></a>                <span class="n">report</span><span class="p">[</span><span class="s2">&quot;errors&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">({</span><span class="s2">&quot;member_key&quot;</span><span class="p">:</span> <span class="n">member_key</span><span class="p">,</span> <span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)})</span>
-<a id="__codelineno-0-745" name="__codelineno-0-745"></a>                <span class="k">continue</span>
-<a id="__codelineno-0-746" name="__codelineno-0-746"></a>
-<a id="__codelineno-0-747" name="__codelineno-0-747"></a>            <span class="c1"># Build the partitioned hash key</span>
-<a id="__codelineno-0-748" name="__codelineno-0-748"></a>            <span class="n">partitioned_key</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_data_hash_key</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">)</span>
-<a id="__codelineno-0-749" name="__codelineno-0-749"></a>            <span class="n">partition_label</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-750" name="__codelineno-0-750"></a>                <span class="n">partitioned_key</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;:data:&quot;</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
-<a id="__codelineno-0-751" name="__codelineno-0-751"></a>                <span class="k">if</span> <span class="s2">&quot;:data:&quot;</span> <span class="ow">in</span> <span class="n">partitioned_key</span>
-<a id="__codelineno-0-752" name="__codelineno-0-752"></a>                <span class="k">else</span> <span class="s2">&quot;default&quot;</span>
-<a id="__codelineno-0-753" name="__codelineno-0-753"></a>            <span class="p">)</span>
-<a id="__codelineno-0-754" name="__codelineno-0-754"></a>
-<a id="__codelineno-0-755" name="__codelineno-0-755"></a>            <span class="k">if</span> <span class="n">partition_label</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">report</span><span class="p">[</span><span class="s2">&quot;partitions&quot;</span><span class="p">]:</span>
-<a id="__codelineno-0-756" name="__codelineno-0-756"></a>                <span class="n">report</span><span class="p">[</span><span class="s2">&quot;partitions&quot;</span><span class="p">][</span><span class="n">partition_label</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
-<a id="__codelineno-0-757" name="__codelineno-0-757"></a>            <span class="n">report</span><span class="p">[</span><span class="s2">&quot;partitions&quot;</span><span class="p">][</span><span class="n">partition_label</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
-<a id="__codelineno-0-758" name="__codelineno-0-758"></a>
-<a id="__codelineno-0-759" name="__codelineno-0-759"></a>            <span class="k">if</span> <span class="ow">not</span> <span class="n">dry_run</span><span class="p">:</span>
-<a id="__codelineno-0-760" name="__codelineno-0-760"></a>                <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">hset</span><span class="p">(</span><span class="n">partitioned_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">,</span> <span class="n">raw_value</span><span class="p">)</span>
-<a id="__codelineno-0-761" name="__codelineno-0-761"></a>                <span class="n">report</span><span class="p">[</span><span class="s2">&quot;migrated&quot;</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
-<a id="__codelineno-0-762" name="__codelineno-0-762"></a>
-<a id="__codelineno-0-763" name="__codelineno-0-763"></a>        <span class="c1"># Delete the old unpartitioned hash after successful migration</span>
-<a id="__codelineno-0-764" name="__codelineno-0-764"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">dry_run</span> <span class="ow">and</span> <span class="n">report</span><span class="p">[</span><span class="s2">&quot;migrated&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">report</span><span class="p">[</span><span class="s2">&quot;total&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span>
-<a id="__codelineno-0-765" name="__codelineno-0-765"></a>            <span class="n">report</span><span class="p">[</span><span class="s2">&quot;errors&quot;</span><span class="p">]</span>
-<a id="__codelineno-0-766" name="__codelineno-0-766"></a>        <span class="p">):</span>
-<a id="__codelineno-0-767" name="__codelineno-0-767"></a>            <span class="k">if</span> <span class="n">report</span><span class="p">[</span><span class="s2">&quot;migrated&quot;</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-<a id="__codelineno-0-768" name="__codelineno-0-768"></a>                <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">unpartitioned_key</span><span class="p">)</span>
-<a id="__codelineno-0-769" name="__codelineno-0-769"></a>
-<a id="__codelineno-0-770" name="__codelineno-0-770"></a>        <span class="k">return</span> <span class="n">report</span>
+<a id="__codelineno-0-737" name="__codelineno-0-737"></a>                <span class="n">instance</span> <span class="o">=</span> <span class="n">decode_popoto_model_hashmap</span><span class="p">(</span>
+<a id="__codelineno-0-738" name="__codelineno-0-738"></a>                    <span class="n">model_class</span><span class="p">,</span> <span class="n">redis_hash</span><span class="p">,</span> <span class="n">source_redis_key</span><span class="o">=</span><span class="n">member_key</span>
+<a id="__codelineno-0-739" name="__codelineno-0-739"></a>                <span class="p">)</span>
+<a id="__codelineno-0-740" name="__codelineno-0-740"></a>                <span class="k">if</span> <span class="n">instance</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-741" name="__codelineno-0-741"></a>                    <span class="n">report</span><span class="p">[</span><span class="s2">&quot;errors&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+<a id="__codelineno-0-742" name="__codelineno-0-742"></a>                        <span class="p">{</span><span class="s2">&quot;member_key&quot;</span><span class="p">:</span> <span class="n">member_key</span><span class="p">,</span> <span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="s2">&quot;Failed to decode instance&quot;</span><span class="p">}</span>
+<a id="__codelineno-0-743" name="__codelineno-0-743"></a>                    <span class="p">)</span>
+<a id="__codelineno-0-744" name="__codelineno-0-744"></a>                    <span class="k">continue</span>
+<a id="__codelineno-0-745" name="__codelineno-0-745"></a>            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+<a id="__codelineno-0-746" name="__codelineno-0-746"></a>                <span class="n">report</span><span class="p">[</span><span class="s2">&quot;errors&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">({</span><span class="s2">&quot;member_key&quot;</span><span class="p">:</span> <span class="n">member_key</span><span class="p">,</span> <span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)})</span>
+<a id="__codelineno-0-747" name="__codelineno-0-747"></a>                <span class="k">continue</span>
+<a id="__codelineno-0-748" name="__codelineno-0-748"></a>
+<a id="__codelineno-0-749" name="__codelineno-0-749"></a>            <span class="c1"># Build the partitioned hash key</span>
+<a id="__codelineno-0-750" name="__codelineno-0-750"></a>            <span class="n">partitioned_key</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_data_hash_key</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">)</span>
+<a id="__codelineno-0-751" name="__codelineno-0-751"></a>            <span class="n">partition_label</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-0-752" name="__codelineno-0-752"></a>                <span class="n">partitioned_key</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;:data:&quot;</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+<a id="__codelineno-0-753" name="__codelineno-0-753"></a>                <span class="k">if</span> <span class="s2">&quot;:data:&quot;</span> <span class="ow">in</span> <span class="n">partitioned_key</span>
+<a id="__codelineno-0-754" name="__codelineno-0-754"></a>                <span class="k">else</span> <span class="s2">&quot;default&quot;</span>
+<a id="__codelineno-0-755" name="__codelineno-0-755"></a>            <span class="p">)</span>
+<a id="__codelineno-0-756" name="__codelineno-0-756"></a>
+<a id="__codelineno-0-757" name="__codelineno-0-757"></a>            <span class="k">if</span> <span class="n">partition_label</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">report</span><span class="p">[</span><span class="s2">&quot;partitions&quot;</span><span class="p">]:</span>
+<a id="__codelineno-0-758" name="__codelineno-0-758"></a>                <span class="n">report</span><span class="p">[</span><span class="s2">&quot;partitions&quot;</span><span class="p">][</span><span class="n">partition_label</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+<a id="__codelineno-0-759" name="__codelineno-0-759"></a>            <span class="n">report</span><span class="p">[</span><span class="s2">&quot;partitions&quot;</span><span class="p">][</span><span class="n">partition_label</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+<a id="__codelineno-0-760" name="__codelineno-0-760"></a>
+<a id="__codelineno-0-761" name="__codelineno-0-761"></a>            <span class="k">if</span> <span class="ow">not</span> <span class="n">dry_run</span><span class="p">:</span>
+<a id="__codelineno-0-762" name="__codelineno-0-762"></a>                <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">hset</span><span class="p">(</span><span class="n">partitioned_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">,</span> <span class="n">raw_value</span><span class="p">)</span>
+<a id="__codelineno-0-763" name="__codelineno-0-763"></a>                <span class="n">report</span><span class="p">[</span><span class="s2">&quot;migrated&quot;</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+<a id="__codelineno-0-764" name="__codelineno-0-764"></a>
+<a id="__codelineno-0-765" name="__codelineno-0-765"></a>        <span class="c1"># Delete the old unpartitioned hash after successful migration</span>
+<a id="__codelineno-0-766" name="__codelineno-0-766"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">dry_run</span> <span class="ow">and</span> <span class="n">report</span><span class="p">[</span><span class="s2">&quot;migrated&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">report</span><span class="p">[</span><span class="s2">&quot;total&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span>
+<a id="__codelineno-0-767" name="__codelineno-0-767"></a>            <span class="n">report</span><span class="p">[</span><span class="s2">&quot;errors&quot;</span><span class="p">]</span>
+<a id="__codelineno-0-768" name="__codelineno-0-768"></a>        <span class="p">):</span>
+<a id="__codelineno-0-769" name="__codelineno-0-769"></a>            <span class="k">if</span> <span class="n">report</span><span class="p">[</span><span class="s2">&quot;migrated&quot;</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+<a id="__codelineno-0-770" name="__codelineno-0-770"></a>                <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">unpartitioned_key</span><span class="p">)</span>
+<a id="__codelineno-0-771" name="__codelineno-0-771"></a>
+<a id="__codelineno-0-772" name="__codelineno-0-772"></a>        <span class="k">return</span> <span class="n">report</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -6058,7 +6062,9 @@ writes each entry to the appropriate partitioned hash.</p>
 <span class="normal"><a href="#__codelineno-0-767">767</a></span>
 <span class="normal"><a href="#__codelineno-0-768">768</a></span>
 <span class="normal"><a href="#__codelineno-0-769">769</a></span>
-<span class="normal"><a href="#__codelineno-0-770">770</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-673" name="__codelineno-0-673"></a><span class="nd">@classmethod</span>
+<span class="normal"><a href="#__codelineno-0-770">770</a></span>
+<span class="normal"><a href="#__codelineno-0-771">771</a></span>
+<span class="normal"><a href="#__codelineno-0-772">772</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-673" name="__codelineno-0-673"></a><span class="nd">@classmethod</span>
 <a id="__codelineno-0-674" name="__codelineno-0-674"></a><span class="k">def</span><span class="w"> </span><span class="nf">migrate_to_partitioned</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model_class</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">dry_run</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
 <a id="__codelineno-0-675" name="__codelineno-0-675"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Migrate existing unpartitioned hash data into partitioned hashes.</span>
 <a id="__codelineno-0-676" name="__codelineno-0-676"></a>
@@ -6122,40 +6128,42 @@ writes each entry to the appropriate partitioned hash.</p>
 <a id="__codelineno-0-734" name="__codelineno-0-734"></a>                    <span class="p">}</span>
 <a id="__codelineno-0-735" name="__codelineno-0-735"></a>                <span class="p">)</span>
 <a id="__codelineno-0-736" name="__codelineno-0-736"></a>                <span class="k">continue</span>
-<a id="__codelineno-0-737" name="__codelineno-0-737"></a>            <span class="n">instance</span> <span class="o">=</span> <span class="n">decode_popoto_model_hashmap</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">redis_hash</span><span class="p">)</span>
-<a id="__codelineno-0-738" name="__codelineno-0-738"></a>            <span class="k">if</span> <span class="n">instance</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-739" name="__codelineno-0-739"></a>                <span class="n">report</span><span class="p">[</span><span class="s2">&quot;errors&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-740" name="__codelineno-0-740"></a>                    <span class="p">{</span><span class="s2">&quot;member_key&quot;</span><span class="p">:</span> <span class="n">member_key</span><span class="p">,</span> <span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="s2">&quot;Failed to decode instance&quot;</span><span class="p">}</span>
-<a id="__codelineno-0-741" name="__codelineno-0-741"></a>                <span class="p">)</span>
-<a id="__codelineno-0-742" name="__codelineno-0-742"></a>                <span class="k">continue</span>
-<a id="__codelineno-0-743" name="__codelineno-0-743"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-<a id="__codelineno-0-744" name="__codelineno-0-744"></a>            <span class="n">report</span><span class="p">[</span><span class="s2">&quot;errors&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">({</span><span class="s2">&quot;member_key&quot;</span><span class="p">:</span> <span class="n">member_key</span><span class="p">,</span> <span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)})</span>
-<a id="__codelineno-0-745" name="__codelineno-0-745"></a>            <span class="k">continue</span>
-<a id="__codelineno-0-746" name="__codelineno-0-746"></a>
-<a id="__codelineno-0-747" name="__codelineno-0-747"></a>        <span class="c1"># Build the partitioned hash key</span>
-<a id="__codelineno-0-748" name="__codelineno-0-748"></a>        <span class="n">partitioned_key</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_data_hash_key</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">)</span>
-<a id="__codelineno-0-749" name="__codelineno-0-749"></a>        <span class="n">partition_label</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-750" name="__codelineno-0-750"></a>            <span class="n">partitioned_key</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;:data:&quot;</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
-<a id="__codelineno-0-751" name="__codelineno-0-751"></a>            <span class="k">if</span> <span class="s2">&quot;:data:&quot;</span> <span class="ow">in</span> <span class="n">partitioned_key</span>
-<a id="__codelineno-0-752" name="__codelineno-0-752"></a>            <span class="k">else</span> <span class="s2">&quot;default&quot;</span>
-<a id="__codelineno-0-753" name="__codelineno-0-753"></a>        <span class="p">)</span>
-<a id="__codelineno-0-754" name="__codelineno-0-754"></a>
-<a id="__codelineno-0-755" name="__codelineno-0-755"></a>        <span class="k">if</span> <span class="n">partition_label</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">report</span><span class="p">[</span><span class="s2">&quot;partitions&quot;</span><span class="p">]:</span>
-<a id="__codelineno-0-756" name="__codelineno-0-756"></a>            <span class="n">report</span><span class="p">[</span><span class="s2">&quot;partitions&quot;</span><span class="p">][</span><span class="n">partition_label</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
-<a id="__codelineno-0-757" name="__codelineno-0-757"></a>        <span class="n">report</span><span class="p">[</span><span class="s2">&quot;partitions&quot;</span><span class="p">][</span><span class="n">partition_label</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
-<a id="__codelineno-0-758" name="__codelineno-0-758"></a>
-<a id="__codelineno-0-759" name="__codelineno-0-759"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">dry_run</span><span class="p">:</span>
-<a id="__codelineno-0-760" name="__codelineno-0-760"></a>            <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">hset</span><span class="p">(</span><span class="n">partitioned_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">,</span> <span class="n">raw_value</span><span class="p">)</span>
-<a id="__codelineno-0-761" name="__codelineno-0-761"></a>            <span class="n">report</span><span class="p">[</span><span class="s2">&quot;migrated&quot;</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
-<a id="__codelineno-0-762" name="__codelineno-0-762"></a>
-<a id="__codelineno-0-763" name="__codelineno-0-763"></a>    <span class="c1"># Delete the old unpartitioned hash after successful migration</span>
-<a id="__codelineno-0-764" name="__codelineno-0-764"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">dry_run</span> <span class="ow">and</span> <span class="n">report</span><span class="p">[</span><span class="s2">&quot;migrated&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">report</span><span class="p">[</span><span class="s2">&quot;total&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span>
-<a id="__codelineno-0-765" name="__codelineno-0-765"></a>        <span class="n">report</span><span class="p">[</span><span class="s2">&quot;errors&quot;</span><span class="p">]</span>
-<a id="__codelineno-0-766" name="__codelineno-0-766"></a>    <span class="p">):</span>
-<a id="__codelineno-0-767" name="__codelineno-0-767"></a>        <span class="k">if</span> <span class="n">report</span><span class="p">[</span><span class="s2">&quot;migrated&quot;</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-<a id="__codelineno-0-768" name="__codelineno-0-768"></a>            <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">unpartitioned_key</span><span class="p">)</span>
-<a id="__codelineno-0-769" name="__codelineno-0-769"></a>
-<a id="__codelineno-0-770" name="__codelineno-0-770"></a>    <span class="k">return</span> <span class="n">report</span>
+<a id="__codelineno-0-737" name="__codelineno-0-737"></a>            <span class="n">instance</span> <span class="o">=</span> <span class="n">decode_popoto_model_hashmap</span><span class="p">(</span>
+<a id="__codelineno-0-738" name="__codelineno-0-738"></a>                <span class="n">model_class</span><span class="p">,</span> <span class="n">redis_hash</span><span class="p">,</span> <span class="n">source_redis_key</span><span class="o">=</span><span class="n">member_key</span>
+<a id="__codelineno-0-739" name="__codelineno-0-739"></a>            <span class="p">)</span>
+<a id="__codelineno-0-740" name="__codelineno-0-740"></a>            <span class="k">if</span> <span class="n">instance</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-741" name="__codelineno-0-741"></a>                <span class="n">report</span><span class="p">[</span><span class="s2">&quot;errors&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+<a id="__codelineno-0-742" name="__codelineno-0-742"></a>                    <span class="p">{</span><span class="s2">&quot;member_key&quot;</span><span class="p">:</span> <span class="n">member_key</span><span class="p">,</span> <span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="s2">&quot;Failed to decode instance&quot;</span><span class="p">}</span>
+<a id="__codelineno-0-743" name="__codelineno-0-743"></a>                <span class="p">)</span>
+<a id="__codelineno-0-744" name="__codelineno-0-744"></a>                <span class="k">continue</span>
+<a id="__codelineno-0-745" name="__codelineno-0-745"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+<a id="__codelineno-0-746" name="__codelineno-0-746"></a>            <span class="n">report</span><span class="p">[</span><span class="s2">&quot;errors&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">({</span><span class="s2">&quot;member_key&quot;</span><span class="p">:</span> <span class="n">member_key</span><span class="p">,</span> <span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)})</span>
+<a id="__codelineno-0-747" name="__codelineno-0-747"></a>            <span class="k">continue</span>
+<a id="__codelineno-0-748" name="__codelineno-0-748"></a>
+<a id="__codelineno-0-749" name="__codelineno-0-749"></a>        <span class="c1"># Build the partitioned hash key</span>
+<a id="__codelineno-0-750" name="__codelineno-0-750"></a>        <span class="n">partitioned_key</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_data_hash_key</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">)</span>
+<a id="__codelineno-0-751" name="__codelineno-0-751"></a>        <span class="n">partition_label</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-0-752" name="__codelineno-0-752"></a>            <span class="n">partitioned_key</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;:data:&quot;</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+<a id="__codelineno-0-753" name="__codelineno-0-753"></a>            <span class="k">if</span> <span class="s2">&quot;:data:&quot;</span> <span class="ow">in</span> <span class="n">partitioned_key</span>
+<a id="__codelineno-0-754" name="__codelineno-0-754"></a>            <span class="k">else</span> <span class="s2">&quot;default&quot;</span>
+<a id="__codelineno-0-755" name="__codelineno-0-755"></a>        <span class="p">)</span>
+<a id="__codelineno-0-756" name="__codelineno-0-756"></a>
+<a id="__codelineno-0-757" name="__codelineno-0-757"></a>        <span class="k">if</span> <span class="n">partition_label</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">report</span><span class="p">[</span><span class="s2">&quot;partitions&quot;</span><span class="p">]:</span>
+<a id="__codelineno-0-758" name="__codelineno-0-758"></a>            <span class="n">report</span><span class="p">[</span><span class="s2">&quot;partitions&quot;</span><span class="p">][</span><span class="n">partition_label</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+<a id="__codelineno-0-759" name="__codelineno-0-759"></a>        <span class="n">report</span><span class="p">[</span><span class="s2">&quot;partitions&quot;</span><span class="p">][</span><span class="n">partition_label</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+<a id="__codelineno-0-760" name="__codelineno-0-760"></a>
+<a id="__codelineno-0-761" name="__codelineno-0-761"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">dry_run</span><span class="p">:</span>
+<a id="__codelineno-0-762" name="__codelineno-0-762"></a>            <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">hset</span><span class="p">(</span><span class="n">partitioned_key</span><span class="p">,</span> <span class="n">member_key</span><span class="p">,</span> <span class="n">raw_value</span><span class="p">)</span>
+<a id="__codelineno-0-763" name="__codelineno-0-763"></a>            <span class="n">report</span><span class="p">[</span><span class="s2">&quot;migrated&quot;</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+<a id="__codelineno-0-764" name="__codelineno-0-764"></a>
+<a id="__codelineno-0-765" name="__codelineno-0-765"></a>    <span class="c1"># Delete the old unpartitioned hash after successful migration</span>
+<a id="__codelineno-0-766" name="__codelineno-0-766"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">dry_run</span> <span class="ow">and</span> <span class="n">report</span><span class="p">[</span><span class="s2">&quot;migrated&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">report</span><span class="p">[</span><span class="s2">&quot;total&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span>
+<a id="__codelineno-0-767" name="__codelineno-0-767"></a>        <span class="n">report</span><span class="p">[</span><span class="s2">&quot;errors&quot;</span><span class="p">]</span>
+<a id="__codelineno-0-768" name="__codelineno-0-768"></a>    <span class="p">):</span>
+<a id="__codelineno-0-769" name="__codelineno-0-769"></a>        <span class="k">if</span> <span class="n">report</span><span class="p">[</span><span class="s2">&quot;migrated&quot;</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+<a id="__codelineno-0-770" name="__codelineno-0-770"></a>            <span class="n">POPOTO_REDIS_DB</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">unpartitioned_key</span><span class="p">)</span>
+<a id="__codelineno-0-771" name="__codelineno-0-771"></a>
+<a id="__codelineno-0-772" name="__codelineno-0-772"></a>    <span class="k">return</span> <span class="n">report</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

@@ -12,7 +12,7 @@
         <meta name="author" content="Tom Counsell">
       
       
-        <link rel="canonical" href="https://popoto.io/reference/popoto/fields/_tokenizer/">
+        <link rel="canonical" href="https://popoto.io/reference/popoto/models/canonical_key/">
       
       
       
@@ -25,7 +25,7 @@
     
     
       
-        <title>popoto.fields._tokenizer - Popoto Documentation</title>
+        <title>popoto.models.canonical_key - Popoto Documentation</title>
       
     
     
@@ -78,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#popotofields_tokenizer" class="md-skip">
+        <a href="#popotomodelscanonical_key" class="md-skip">
           Skip to content
         </a>
       
@@ -112,7 +112,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              popoto.fields._tokenizer
+              popoto.models.canonical_key
             
           </span>
         </div>
@@ -2413,22 +2413,22 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#popoto.fields._tokenizer" class="md-nav__link">
+  <a href="#popoto.models.canonical_key" class="md-nav__link">
     <span class="md-ellipsis">
       
-        _tokenizer
+        canonical_key
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="_tokenizer">
+    <nav class="md-nav" aria-label="canonical_key">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#popoto.fields._tokenizer.tokenize" class="md-nav__link">
+  <a href="#popoto.models.canonical_key.canonical_key_str" class="md-nav__link">
     <span class="md-ellipsis">
       
-        tokenize
+        canonical_key_str
       
     </span>
   </a>
@@ -2460,26 +2460,40 @@
   
 
 
-<h1 id="popotofields_tokenizer"><code>popoto.fields._tokenizer</code><a class="headerlink" href="#popotofields_tokenizer" title="Permanent link">&para;</a></h1>
+<h1 id="popotomodelscanonical_key"><code>popoto.models.canonical_key</code><a class="headerlink" href="#popotomodelscanonical_key" title="Permanent link">&para;</a></h1>
 
 
 <div class="doc doc-object doc-module">
 
 
 
-<h2 id="popoto.fields._tokenizer" class="doc doc-heading">
-            <code>popoto.fields._tokenizer</code>
+<h2 id="popoto.models.canonical_key" class="doc doc-heading">
+            <code>popoto.models.canonical_key</code>
 
 
-<a href="#popoto.fields._tokenizer" class="headerlink" title="Permanent link">&para;</a></h2>
+<a href="#popoto.models.canonical_key" class="headerlink" title="Permanent link">&para;</a></h2>
 
     <div class="doc doc-contents first">
 
-        <p>Shared tokenization logic for text-indexing fields.</p>
-<p>Used by ExistenceFilter (Bloom filter) and BM25Field (ranked keyword search).
-Extracts the tokenization logic into a shared module so both fields use
-identical preprocessing: lowercase, split on non-word characters, filter
-short tokens, and remove common English stop words.</p>
+        <p>Canonical string forms for values that become Redis key bytes.</p>
+<p>Popoto derives a row's identity from its KeyField values: <code>DB_key</code> joins
+them with colons and that string <em>is</em> the Redis key. Historically each value
+was rendered with <code>str()</code>, which works for <code>str</code>/<code>int</code>/<code>Decimal</code> but
+is unstable for <code>datetime</code>: <code>str()</code> carries the UTC offset when the value
+is aware and omits it when the value is naive, so identity depended on how the
+value happened to decode rather than on the instant it denotes.</p>
+<p>That instability is the root of two defects (#537, #538). Before 1.8.2 an
+aware value reloaded naive, so a re-save derived a <em>different</em> key, wrote a
+second hash and orphaned the first. And it blocked #521's proposed
+"assume UTC for legacy offset-free rows" change, because stamping an offset on
+read shifts <code>str()</code> and therefore shifts the key.</p>
+<p><code>canonical_key_str</code> fixes the projection nobody had touched. Identity becomes
+a function of the instant; the <em>stored value</em> still keeps the caller's exact
+offset (#521), because key and value are deliberately different projections.</p>
+<p>Dispatch is on <code>datetime.datetime</code> only. Every other type -- including
+<code>datetime.date</code> and <code>datetime.time</code> -- returns <code>str(value)</code>, byte-for-byte
+what 1.8.2 produced. See :func:<code>canonical_key_str</code> for why the two siblings are
+excluded rather than deferred.</p>
 
 
 
@@ -2504,92 +2518,87 @@ short tokens, and remove common English stop words.</p>
 <div class="doc doc-object doc-function">
 
 
-<h3 id="popoto.fields._tokenizer.tokenize" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">tokenize</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">unique</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></code>
+<h3 id="popoto.models.canonical_key.canonical_key_str" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">canonical_key_str</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">force</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span></code>
 
-<a href="#popoto.fields._tokenizer.tokenize" class="headerlink" title="Permanent link">&para;</a></h3>
+<a href="#popoto.models.canonical_key.canonical_key_str" class="headerlink" title="Permanent link">&para;</a></h3>
 
 
     <div class="doc doc-contents ">
 
-        <p>Tokenize a text string into individual terms for indexing.</p>
-<p>Lowercases the input, splits on non-word characters, filters out tokens
-shorter than 3 characters and common English stop words.</p>
-
-
-<p><span class="doc-section-title">Parameters:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Type</th>
-          <th>Description</th>
-          <th>Default</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                <code>text</code>
-            </td>
-            <td>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>The text string to tokenize.</p>
-              </div>
-            </td>
-            <td>
-                <em>required</em>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>unique</code>
-            </td>
-            <td>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>If True (default), deduplicate tokens. Set to False to
-preserve raw term counts needed for BM25 term frequency.</p>
-              </div>
-            </td>
-            <td>
-                  <code>True</code>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-
-    <p><span class="doc-section-title">Returns:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Type</th>
-          <th>Description</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>list[str]: Tokens suitable for indexing. Deduplicated if unique=True,
-raw (with repeats) if unique=False.
-Returns an empty list if no tokens survive filtering.</p>
-              </div>
-            </td>
-          </tr>
-      </tbody>
-    </table>
+        <p>Render <em>value</em> as the bytes it contributes to a Redis key.</p>
+<p>For a <code>datetime.datetime</code>: normalize to UTC and render
+<code>%Y-%m-%dT%H:%M:%S.%f</code> plus a literal <code>Z</code>. An aware value is converted
+with <code>astimezone</code>; a naive value is <em>assumed UTC</em> and converted with
+<code>replace(tzinfo=utc)</code>, which is the same doctrine <code>convert_to_numeric</code>
+has applied to sorted-set scores since #519 and that <code>auto_now</code> has
+applied to stamping since #421. Consequence, and it is the point: an aware
+<code>12:00+07:00</code>, its UTC equivalent <code>05:00+00:00</code>, and the naive
+<code>05:00</code> all render identically and therefore address one row.</p>
+<p>For every other value: <code>str(value)</code>, byte-identical to 1.8.2. <code>None</code>
+renders <code>"None"</code>, which <code>Model.db_key</code> and <code>_has_unstable_db_key</code>
+both depend on.</p>
+<p><code>datetime.date</code> has no offset to lose. <code>datetime.time</code> is excluded for
+PR #532's reason: a naive <code>time.isoformat()</code> with microseconds is
+byte-identical to the legacy <code>%H:%M:%S.%f</code> form, so a legacy time cannot
+be told apart from a deliberately naive one, and an <em>aware</em> time's <code>str()</code>
+already carries its offset stably. Neither type has the bug, so neither is
+a deferral.</p>
+<p>This runs strictly <em>before</em> <code>DB_key.clean()</code>. The canonical form contains
+colons and hyphens, which <code>clean()</code> already escapes (#525); the two
+compose and this function must never be taught to escape anything itself.</p>
+<p>Setting <code>POPOTO_DATETIME_KEY_LEGACY=1</code> restores 1.8.2's <code>str(value)</code>
+for datetimes without a model-code edit, so an adopter can roll readers
+forward before moving key bytes. See the migration cookbook, recipe 19.</p>
+<p><code>force=True</code> ignores that switch and always renders the canonical form.
+This exists for exactly one caller: the #537/#538 audit and migration in
+<code>datetime_key_migration.py</code>, whose entire job is to find and move rows
+that are <em>not</em> on their canonical key. If the audit computed its target
+through the gated default, the switch would make every row look
+already-canonical -- <code>is_clean</code> would be <code>True</code> and the migration
+would report nothing to move, even over a genuine #538 duplicate pair --
+which defeats the tool the switch exists to let operators run safely.
+Every other caller (<code>DB_key.__str__</code>, the two index-hash helpers in
+<code>base.py</code>) must stay gated, because those sit on the <em>write</em> path: while
+the switch is set, live writes still need to derive 1.8.2 key bytes so a
+fleet mid-rollout keeps reading its own writes. Only the read-only audit
+(and the migration, which delegates to it) needs the truth regardless of
+the switch.</p>
 
 
             <details class="mkdocstrings-source">
-              <summary>Source code in <code>src/popoto/fields/_tokenizer.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-76"> 76</a></span>
+              <summary>Source code in <code>src/popoto/models/canonical_key.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-46"> 46</a></span>
+<span class="normal"><a href="#__codelineno-0-47"> 47</a></span>
+<span class="normal"><a href="#__codelineno-0-48"> 48</a></span>
+<span class="normal"><a href="#__codelineno-0-49"> 49</a></span>
+<span class="normal"><a href="#__codelineno-0-50"> 50</a></span>
+<span class="normal"><a href="#__codelineno-0-51"> 51</a></span>
+<span class="normal"><a href="#__codelineno-0-52"> 52</a></span>
+<span class="normal"><a href="#__codelineno-0-53"> 53</a></span>
+<span class="normal"><a href="#__codelineno-0-54"> 54</a></span>
+<span class="normal"><a href="#__codelineno-0-55"> 55</a></span>
+<span class="normal"><a href="#__codelineno-0-56"> 56</a></span>
+<span class="normal"><a href="#__codelineno-0-57"> 57</a></span>
+<span class="normal"><a href="#__codelineno-0-58"> 58</a></span>
+<span class="normal"><a href="#__codelineno-0-59"> 59</a></span>
+<span class="normal"><a href="#__codelineno-0-60"> 60</a></span>
+<span class="normal"><a href="#__codelineno-0-61"> 61</a></span>
+<span class="normal"><a href="#__codelineno-0-62"> 62</a></span>
+<span class="normal"><a href="#__codelineno-0-63"> 63</a></span>
+<span class="normal"><a href="#__codelineno-0-64"> 64</a></span>
+<span class="normal"><a href="#__codelineno-0-65"> 65</a></span>
+<span class="normal"><a href="#__codelineno-0-66"> 66</a></span>
+<span class="normal"><a href="#__codelineno-0-67"> 67</a></span>
+<span class="normal"><a href="#__codelineno-0-68"> 68</a></span>
+<span class="normal"><a href="#__codelineno-0-69"> 69</a></span>
+<span class="normal"><a href="#__codelineno-0-70"> 70</a></span>
+<span class="normal"><a href="#__codelineno-0-71"> 71</a></span>
+<span class="normal"><a href="#__codelineno-0-72"> 72</a></span>
+<span class="normal"><a href="#__codelineno-0-73"> 73</a></span>
+<span class="normal"><a href="#__codelineno-0-74"> 74</a></span>
+<span class="normal"><a href="#__codelineno-0-75"> 75</a></span>
+<span class="normal"><a href="#__codelineno-0-76"> 76</a></span>
 <span class="normal"><a href="#__codelineno-0-77"> 77</a></span>
 <span class="normal"><a href="#__codelineno-0-78"> 78</a></span>
 <span class="normal"><a href="#__codelineno-0-79"> 79</a></span>
@@ -2613,45 +2622,61 @@ Returns an empty list if no tokens survive filtering.</p>
 <span class="normal"><a href="#__codelineno-0-97"> 97</a></span>
 <span class="normal"><a href="#__codelineno-0-98"> 98</a></span>
 <span class="normal"><a href="#__codelineno-0-99"> 99</a></span>
-<span class="normal"><a href="#__codelineno-0-100">100</a></span>
-<span class="normal"><a href="#__codelineno-0-101">101</a></span>
-<span class="normal"><a href="#__codelineno-0-102">102</a></span>
-<span class="normal"><a href="#__codelineno-0-103">103</a></span>
-<span class="normal"><a href="#__codelineno-0-104">104</a></span>
-<span class="normal"><a href="#__codelineno-0-105">105</a></span>
-<span class="normal"><a href="#__codelineno-0-106">106</a></span>
-<span class="normal"><a href="#__codelineno-0-107">107</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-76" name="__codelineno-0-76"></a><span class="k">def</span><span class="w"> </span><span class="nf">tokenize</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">unique</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
-<a id="__codelineno-0-77" name="__codelineno-0-77"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Tokenize a text string into individual terms for indexing.</span>
-<a id="__codelineno-0-78" name="__codelineno-0-78"></a>
-<a id="__codelineno-0-79" name="__codelineno-0-79"></a><span class="sd">    Lowercases the input, splits on non-word characters, filters out tokens</span>
-<a id="__codelineno-0-80" name="__codelineno-0-80"></a><span class="sd">    shorter than 3 characters and common English stop words.</span>
-<a id="__codelineno-0-81" name="__codelineno-0-81"></a>
-<a id="__codelineno-0-82" name="__codelineno-0-82"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-83" name="__codelineno-0-83"></a><span class="sd">        text: The text string to tokenize.</span>
-<a id="__codelineno-0-84" name="__codelineno-0-84"></a><span class="sd">        unique: If True (default), deduplicate tokens. Set to False to</span>
-<a id="__codelineno-0-85" name="__codelineno-0-85"></a><span class="sd">            preserve raw term counts needed for BM25 term frequency.</span>
-<a id="__codelineno-0-86" name="__codelineno-0-86"></a>
-<a id="__codelineno-0-87" name="__codelineno-0-87"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-88" name="__codelineno-0-88"></a><span class="sd">        list[str]: Tokens suitable for indexing. Deduplicated if unique=True,</span>
-<a id="__codelineno-0-89" name="__codelineno-0-89"></a><span class="sd">            raw (with repeats) if unique=False.</span>
-<a id="__codelineno-0-90" name="__codelineno-0-90"></a><span class="sd">            Returns an empty list if no tokens survive filtering.</span>
+<span class="normal"><a href="#__codelineno-0-100">100</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-46" name="__codelineno-0-46"></a><span class="k">def</span><span class="w"> </span><span class="nf">canonical_key_str</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">force</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<a id="__codelineno-0-47" name="__codelineno-0-47"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Render *value* as the bytes it contributes to a Redis key.</span>
+<a id="__codelineno-0-48" name="__codelineno-0-48"></a>
+<a id="__codelineno-0-49" name="__codelineno-0-49"></a><span class="sd">    For a ``datetime.datetime``: normalize to UTC and render</span>
+<a id="__codelineno-0-50" name="__codelineno-0-50"></a><span class="sd">    ``%Y-%m-%dT%H:%M:%S.%f`` plus a literal ``Z``. An aware value is converted</span>
+<a id="__codelineno-0-51" name="__codelineno-0-51"></a><span class="sd">    with ``astimezone``; a naive value is *assumed UTC* and converted with</span>
+<a id="__codelineno-0-52" name="__codelineno-0-52"></a><span class="sd">    ``replace(tzinfo=utc)``, which is the same doctrine ``convert_to_numeric``</span>
+<a id="__codelineno-0-53" name="__codelineno-0-53"></a><span class="sd">    has applied to sorted-set scores since #519 and that ``auto_now`` has</span>
+<a id="__codelineno-0-54" name="__codelineno-0-54"></a><span class="sd">    applied to stamping since #421. Consequence, and it is the point: an aware</span>
+<a id="__codelineno-0-55" name="__codelineno-0-55"></a><span class="sd">    ``12:00+07:00``, its UTC equivalent ``05:00+00:00``, and the naive</span>
+<a id="__codelineno-0-56" name="__codelineno-0-56"></a><span class="sd">    ``05:00`` all render identically and therefore address one row.</span>
+<a id="__codelineno-0-57" name="__codelineno-0-57"></a>
+<a id="__codelineno-0-58" name="__codelineno-0-58"></a><span class="sd">    For every other value: ``str(value)``, byte-identical to 1.8.2. ``None``</span>
+<a id="__codelineno-0-59" name="__codelineno-0-59"></a><span class="sd">    renders ``&quot;None&quot;``, which ``Model.db_key`` and ``_has_unstable_db_key``</span>
+<a id="__codelineno-0-60" name="__codelineno-0-60"></a><span class="sd">    both depend on.</span>
+<a id="__codelineno-0-61" name="__codelineno-0-61"></a>
+<a id="__codelineno-0-62" name="__codelineno-0-62"></a><span class="sd">    ``datetime.date`` has no offset to lose. ``datetime.time`` is excluded for</span>
+<a id="__codelineno-0-63" name="__codelineno-0-63"></a><span class="sd">    PR #532&#39;s reason: a naive ``time.isoformat()`` with microseconds is</span>
+<a id="__codelineno-0-64" name="__codelineno-0-64"></a><span class="sd">    byte-identical to the legacy ``%H:%M:%S.%f`` form, so a legacy time cannot</span>
+<a id="__codelineno-0-65" name="__codelineno-0-65"></a><span class="sd">    be told apart from a deliberately naive one, and an *aware* time&#39;s ``str()``</span>
+<a id="__codelineno-0-66" name="__codelineno-0-66"></a><span class="sd">    already carries its offset stably. Neither type has the bug, so neither is</span>
+<a id="__codelineno-0-67" name="__codelineno-0-67"></a><span class="sd">    a deferral.</span>
+<a id="__codelineno-0-68" name="__codelineno-0-68"></a>
+<a id="__codelineno-0-69" name="__codelineno-0-69"></a><span class="sd">    This runs strictly *before* ``DB_key.clean()``. The canonical form contains</span>
+<a id="__codelineno-0-70" name="__codelineno-0-70"></a><span class="sd">    colons and hyphens, which ``clean()`` already escapes (#525); the two</span>
+<a id="__codelineno-0-71" name="__codelineno-0-71"></a><span class="sd">    compose and this function must never be taught to escape anything itself.</span>
+<a id="__codelineno-0-72" name="__codelineno-0-72"></a>
+<a id="__codelineno-0-73" name="__codelineno-0-73"></a><span class="sd">    Setting ``POPOTO_DATETIME_KEY_LEGACY=1`` restores 1.8.2&#39;s ``str(value)``</span>
+<a id="__codelineno-0-74" name="__codelineno-0-74"></a><span class="sd">    for datetimes without a model-code edit, so an adopter can roll readers</span>
+<a id="__codelineno-0-75" name="__codelineno-0-75"></a><span class="sd">    forward before moving key bytes. See the migration cookbook, recipe 19.</span>
+<a id="__codelineno-0-76" name="__codelineno-0-76"></a>
+<a id="__codelineno-0-77" name="__codelineno-0-77"></a><span class="sd">    ``force=True`` ignores that switch and always renders the canonical form.</span>
+<a id="__codelineno-0-78" name="__codelineno-0-78"></a><span class="sd">    This exists for exactly one caller: the #537/#538 audit and migration in</span>
+<a id="__codelineno-0-79" name="__codelineno-0-79"></a><span class="sd">    ``datetime_key_migration.py``, whose entire job is to find and move rows</span>
+<a id="__codelineno-0-80" name="__codelineno-0-80"></a><span class="sd">    that are *not* on their canonical key. If the audit computed its target</span>
+<a id="__codelineno-0-81" name="__codelineno-0-81"></a><span class="sd">    through the gated default, the switch would make every row look</span>
+<a id="__codelineno-0-82" name="__codelineno-0-82"></a><span class="sd">    already-canonical -- ``is_clean`` would be ``True`` and the migration</span>
+<a id="__codelineno-0-83" name="__codelineno-0-83"></a><span class="sd">    would report nothing to move, even over a genuine #538 duplicate pair --</span>
+<a id="__codelineno-0-84" name="__codelineno-0-84"></a><span class="sd">    which defeats the tool the switch exists to let operators run safely.</span>
+<a id="__codelineno-0-85" name="__codelineno-0-85"></a><span class="sd">    Every other caller (``DB_key.__str__``, the two index-hash helpers in</span>
+<a id="__codelineno-0-86" name="__codelineno-0-86"></a><span class="sd">    ``base.py``) must stay gated, because those sit on the *write* path: while</span>
+<a id="__codelineno-0-87" name="__codelineno-0-87"></a><span class="sd">    the switch is set, live writes still need to derive 1.8.2 key bytes so a</span>
+<a id="__codelineno-0-88" name="__codelineno-0-88"></a><span class="sd">    fleet mid-rollout keeps reading its own writes. Only the read-only audit</span>
+<a id="__codelineno-0-89" name="__codelineno-0-89"></a><span class="sd">    (and the migration, which delegates to it) needs the truth regardless of</span>
+<a id="__codelineno-0-90" name="__codelineno-0-90"></a><span class="sd">    the switch.</span>
 <a id="__codelineno-0-91" name="__codelineno-0-91"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-92" name="__codelineno-0-92"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">text</span><span class="p">:</span>
-<a id="__codelineno-0-93" name="__codelineno-0-93"></a>        <span class="k">return</span> <span class="p">[]</span>
-<a id="__codelineno-0-94" name="__codelineno-0-94"></a>    <span class="n">lowered</span> <span class="o">=</span> <span class="n">text</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
-<a id="__codelineno-0-95" name="__codelineno-0-95"></a>    <span class="n">raw_tokens</span> <span class="o">=</span> <span class="n">_SPLIT_PATTERN</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">lowered</span><span class="p">)</span>
-<a id="__codelineno-0-96" name="__codelineno-0-96"></a>    <span class="k">if</span> <span class="n">unique</span><span class="p">:</span>
-<a id="__codelineno-0-97" name="__codelineno-0-97"></a>        <span class="n">seen</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
-<a id="__codelineno-0-98" name="__codelineno-0-98"></a>        <span class="n">tokens</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-0-99" name="__codelineno-0-99"></a>        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">raw_tokens</span><span class="p">:</span>
-<a id="__codelineno-0-100" name="__codelineno-0-100"></a>            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">MIN_TOKEN_LENGTH</span> <span class="ow">and</span> <span class="n">t</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">STOP_WORDS</span> <span class="ow">and</span> <span class="n">t</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">seen</span><span class="p">:</span>
-<a id="__codelineno-0-101" name="__codelineno-0-101"></a>                <span class="n">seen</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
-<a id="__codelineno-0-102" name="__codelineno-0-102"></a>                <span class="n">tokens</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
-<a id="__codelineno-0-103" name="__codelineno-0-103"></a>        <span class="k">return</span> <span class="n">tokens</span>
-<a id="__codelineno-0-104" name="__codelineno-0-104"></a>    <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-105" name="__codelineno-0-105"></a>        <span class="k">return</span> <span class="p">[</span>
-<a id="__codelineno-0-106" name="__codelineno-0-106"></a>            <span class="n">t</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">raw_tokens</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">MIN_TOKEN_LENGTH</span> <span class="ow">and</span> <span class="n">t</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">STOP_WORDS</span>
-<a id="__codelineno-0-107" name="__codelineno-0-107"></a>        <span class="p">]</span>
+<a id="__codelineno-0-92" name="__codelineno-0-92"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span>
+<a id="__codelineno-0-93" name="__codelineno-0-93"></a>        <span class="n">force</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">Defaults</span><span class="o">.</span><span class="n">DATETIME_KEY_LEGACY</span>
+<a id="__codelineno-0-94" name="__codelineno-0-94"></a>    <span class="p">):</span>
+<a id="__codelineno-0-95" name="__codelineno-0-95"></a>        <span class="k">if</span> <span class="n">value</span><span class="o">.</span><span class="n">tzinfo</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-96" name="__codelineno-0-96"></a>            <span class="n">as_utc</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">tzinfo</span><span class="o">=</span><span class="n">datetime</span><span class="o">.</span><span class="n">timezone</span><span class="o">.</span><span class="n">utc</span><span class="p">)</span>
+<a id="__codelineno-0-97" name="__codelineno-0-97"></a>        <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-98" name="__codelineno-0-98"></a>            <span class="n">as_utc</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">astimezone</span><span class="p">(</span><span class="n">datetime</span><span class="o">.</span><span class="n">timezone</span><span class="o">.</span><span class="n">utc</span><span class="p">)</span>
+<a id="__codelineno-0-99" name="__codelineno-0-99"></a>        <span class="k">return</span> <span class="n">as_utc</span><span class="o">.</span><span class="n">strftime</span><span class="p">(</span><span class="n">CANONICAL_DATETIME_FORMAT</span><span class="p">)</span> <span class="o">+</span> <span class="n">CANONICAL_UTC_SUFFIX</span>
+<a id="__codelineno-0-100" name="__codelineno-0-100"></a>    <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

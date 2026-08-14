@@ -7681,6 +7681,7 @@ popoto.enable_error_reporting(dsn="https://your-key@your-org.ingest.sentry.io/yo
 | `POPOTO_TEST_DB` | `15` | Redis DB number used by the pytest plugin for test isolation. Overrides the `popoto_test_db` ini option. DB 0 is rejected to prevent accidental production data loss. |
 | `POPOTO_ASYNC_MAX_CONNECTIONS` | `128` | Maximum async Redis connection pool size (BlockingConnectionPool). |
 | `POPOTO_SYNC_MAX_CONNECTIONS` | `128` | Maximum sync Redis connection pool size (BlockingConnectionPool). |
+| `POPOTO_DATETIME_KEY_LEGACY` | unset (falsy) | Kill switch that restores 1.8.2 `str(value)` key bytes for `KeyField(type=datetime)` values on the write path, so a fleet can roll readers forward before moving key bytes. Does not affect `audit_datetime_keys()`, which always reports the truth. See [Datetime KeyFields](fields.md#datetime-keyfields) and migration cookbook recipe 19. |
 
 ## Thread Safety
 
@@ -7913,6 +7914,51 @@ print(loaded.cuisine)
 print(Restaurant.load(name="Taco Shack"))
 # => None
 ```
+
+### Datetime KeyFields
+
+A `KeyField` can hold a `datetime`, and its identity is the **instant**, not the
+representation you happened to pass. Popoto normalizes the value to UTC to build the
+key, so an aware value, its UTC equivalent, and the equivalent naive value all address
+one row:
+
+```python
+import datetime
+
+BANGKOK = datetime.timezone(datetime.timedelta(hours=7))
+
+class Reading(Model):
+    at = KeyField(type=datetime.datetime)
+    celsius = Field(type=float)
+
+Reading.create(at=datetime.datetime(2026, 8, 7, 12, 0, tzinfo=BANGKOK), celsius=31.4)
+
+# All three denote the same instant, so all three find the same row.
+Reading.query.get(at=datetime.datetime(2026, 8, 7, 12, 0, tzinfo=BANGKOK))
+Reading.query.get(at=datetime.datetime(2026, 8, 7, 5, 0, tzinfo=datetime.timezone.utc))
+Reading.query.get(at=datetime.datetime(2026, 8, 7, 5, 0))  # naive, read as UTC
+```
+
+The **stored value** still keeps the offset you supplied -- only the key is normalized:
+
+```python
+loaded = Reading.query.get(at=datetime.datetime(2026, 8, 7, 5, 0))
+print(loaded.at.utcoffset())   # => 7:00:00
+print(loaded.at.hour)          # => 12
+```
+
+Key and value are deliberately different projections: the key answers "which row",
+the value answers "what the caller wrote". A naive value is read as UTC, matching how
+`SortedField` has scored naive datetimes all along.
+
+Two consequences worth knowing before you rely on this:
+
+- If your data model needs a naive datetime and an aware UTC datetime to be **two
+  distinct rows**, a datetime `KeyField` cannot express that. Use a separate
+  discriminator field.
+- Rows written before Popoto 1.9.0 sit on the old, representation-derived keys. Run
+  `Model.audit_datetime_keys()` to see them and `Model.migrate_datetime_keys()` to move
+  them; see recipes 19 and 20 in `popoto.models.migrations`.
 
 ## Uniqueness
 
@@ -12662,6 +12708,10 @@ $IndexF:User:status:inactive  -> {User:ghi789}
 ```
 
 This mirrors the `$KeyF` pattern used by KeyField.
+
+A `datetime` value in an index key follows the same canonical form as a datetime
+`KeyField`: UTC-normalized and fixed-width, `$IndexF:Event:at:2026-08-07T05:00:00.123456Z`.
+See [Datetime KeyFields](fields.md#datetime-keyfields).
 
 ### Save Behavior
 

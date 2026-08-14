@@ -4634,9 +4634,9 @@ list if no significant patterns found.</p>
 <a id="__codelineno-0-636" name="__codelineno-0-636"></a>            <span class="c1"># weekly epoch anchor.  The anchor is 1970-01-01 00:00 UTC, which</span>
 <a id="__codelineno-0-637" name="__codelineno-0-637"></a>            <span class="c1"># was a Thursday (tm_wday==3).  Self-check the anchor so the magic</span>
 <a id="__codelineno-0-638" name="__codelineno-0-638"></a>            <span class="c1"># 3 below is never silently wrong.</span>
-<a id="__codelineno-0-639" name="__codelineno-0-639"></a>            <span class="k">assert</span> <span class="n">time</span><span class="o">.</span><span class="n">gmtime</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">tm_wday</span> <span class="o">==</span> <span class="mi">3</span><span class="p">,</span> <span class="p">(</span>
-<a id="__codelineno-0-640" name="__codelineno-0-640"></a>                <span class="s2">&quot;epoch 1970-01-01 must be Thursday (tm_wday==3)&quot;</span>
-<a id="__codelineno-0-641" name="__codelineno-0-641"></a>            <span class="p">)</span>
+<a id="__codelineno-0-639" name="__codelineno-0-639"></a>            <span class="k">assert</span> <span class="p">(</span>
+<a id="__codelineno-0-640" name="__codelineno-0-640"></a>                <span class="n">time</span><span class="o">.</span><span class="n">gmtime</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">tm_wday</span> <span class="o">==</span> <span class="mi">3</span>
+<a id="__codelineno-0-641" name="__codelineno-0-641"></a>            <span class="p">),</span> <span class="s2">&quot;epoch 1970-01-01 must be Thursday (tm_wday==3)&quot;</span>
 <a id="__codelineno-0-642" name="__codelineno-0-642"></a>            <span class="c1"># Map the peak weekday to a seconds offset from the Thursday</span>
 <a id="__codelineno-0-643" name="__codelineno-0-643"></a>            <span class="c1"># anchor, centered at the weekday&#39;s midpoint (43200 = 0.5 day).</span>
 <a id="__codelineno-0-644" name="__codelineno-0-644"></a>            <span class="c1"># Worked examples: Thu(bkt=3)-&gt;43200s, Sun(bkt=6)-&gt;302400s,</span>

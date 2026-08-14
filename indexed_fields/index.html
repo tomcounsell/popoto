@@ -3047,6 +3047,9 @@ surfaces conflicts earlier for the common case.</p>
 <a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>$IndexF:User:status:inactive  -&gt; {User:ghi789}
 </code></pre></div>
 <p>This mirrors the <code>$KeyF</code> pattern used by KeyField.</p>
+<p>A <code>datetime</code> value in an index key follows the same canonical form as a datetime
+<code>KeyField</code>: UTC-normalized and fixed-width, <code>$IndexF:Event:at:2026-08-07T05:00:00.123456Z</code>.
+See <a href="../fields/#datetime-keyfields">Datetime KeyFields</a>.</p>
 <h3 id="save-behavior">Save Behavior<a class="headerlink" href="#save-behavior" title="Permanent link">&para;</a></h3>
 <p>When a model instance is saved, an atomic server-side Lua script (<code>INDEX_SWAP_LUA</code>)
 handles the index update in a single Redis command:</p>

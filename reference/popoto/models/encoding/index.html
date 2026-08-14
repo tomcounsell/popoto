@@ -2803,59 +2803,59 @@ for the common case.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/models/encoding.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-227">227</a></span>
-<span class="normal"><a href="#__codelineno-0-228">228</a></span>
-<span class="normal"><a href="#__codelineno-0-229">229</a></span>
-<span class="normal"><a href="#__codelineno-0-230">230</a></span>
-<span class="normal"><a href="#__codelineno-0-231">231</a></span>
-<span class="normal"><a href="#__codelineno-0-232">232</a></span>
-<span class="normal"><a href="#__codelineno-0-233">233</a></span>
-<span class="normal"><a href="#__codelineno-0-234">234</a></span>
-<span class="normal"><a href="#__codelineno-0-235">235</a></span>
-<span class="normal"><a href="#__codelineno-0-236">236</a></span>
-<span class="normal"><a href="#__codelineno-0-237">237</a></span>
-<span class="normal"><a href="#__codelineno-0-238">238</a></span>
-<span class="normal"><a href="#__codelineno-0-239">239</a></span>
-<span class="normal"><a href="#__codelineno-0-240">240</a></span>
-<span class="normal"><a href="#__codelineno-0-241">241</a></span>
-<span class="normal"><a href="#__codelineno-0-242">242</a></span>
-<span class="normal"><a href="#__codelineno-0-243">243</a></span>
-<span class="normal"><a href="#__codelineno-0-244">244</a></span>
-<span class="normal"><a href="#__codelineno-0-245">245</a></span>
-<span class="normal"><a href="#__codelineno-0-246">246</a></span>
-<span class="normal"><a href="#__codelineno-0-247">247</a></span>
-<span class="normal"><a href="#__codelineno-0-248">248</a></span>
-<span class="normal"><a href="#__codelineno-0-249">249</a></span>
-<span class="normal"><a href="#__codelineno-0-250">250</a></span>
-<span class="normal"><a href="#__codelineno-0-251">251</a></span>
-<span class="normal"><a href="#__codelineno-0-252">252</a></span>
-<span class="normal"><a href="#__codelineno-0-253">253</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-227" name="__codelineno-0-227"></a><span class="k">def</span><span class="w"> </span><span class="nf">decode_custom_types</span><span class="p">(</span><span class="n">obj</span><span class="p">):</span>
-<a id="__codelineno-0-228" name="__codelineno-0-228"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Msgpack object-hook that restores tagged dicts to their Python types.</span>
-<a id="__codelineno-0-229" name="__codelineno-0-229"></a>
-<a id="__codelineno-0-230" name="__codelineno-0-230"></a><span class="sd">    This is the counterpart to the type-specific encoders in TYPE_ENCODER_DECODERS.</span>
-<a id="__codelineno-0-231" name="__codelineno-0-231"></a><span class="sd">    When MessagePack deserializes data, custom types come back as plain dicts</span>
-<a id="__codelineno-0-232" name="__codelineno-0-232"></a><span class="sd">    with sentinel keys. This function detects those sentinel keys and applies</span>
-<a id="__codelineno-0-233" name="__codelineno-0-233"></a><span class="sd">    the appropriate decoder to reconstruct the original Python type.</span>
-<a id="__codelineno-0-234" name="__codelineno-0-234"></a>
-<a id="__codelineno-0-235" name="__codelineno-0-235"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-236" name="__codelineno-0-236"></a><span class="sd">        obj: Any value returned from msgpack.unpackb(). If it&#39;s a dict with</span>
-<a id="__codelineno-0-237" name="__codelineno-0-237"></a><span class="sd">             &quot;as_encodable&quot; and a recognized sentinel key, it will be decoded.</span>
-<a id="__codelineno-0-238" name="__codelineno-0-238"></a><span class="sd">             Otherwise, returned unchanged.</span>
-<a id="__codelineno-0-239" name="__codelineno-0-239"></a>
-<a id="__codelineno-0-240" name="__codelineno-0-240"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-241" name="__codelineno-0-241"></a><span class="sd">        The decoded Python object (Decimal, datetime, etc.) if obj was an</span>
-<a id="__codelineno-0-242" name="__codelineno-0-242"></a><span class="sd">        encoded custom type, otherwise obj unchanged.</span>
-<a id="__codelineno-0-243" name="__codelineno-0-243"></a>
-<a id="__codelineno-0-244" name="__codelineno-0-244"></a><span class="sd">    Design Note:</span>
-<a id="__codelineno-0-245" name="__codelineno-0-245"></a><span class="sd">        The &quot;as_encodable&quot; check is a fast-path optimization. Most dicts in</span>
-<a id="__codelineno-0-246" name="__codelineno-0-246"></a><span class="sd">        user data won&#39;t have this key, so we can skip the sentinel key scan</span>
-<a id="__codelineno-0-247" name="__codelineno-0-247"></a><span class="sd">        for the common case.</span>
-<a id="__codelineno-0-248" name="__codelineno-0-248"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-249" name="__codelineno-0-249"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="s2">&quot;as_encodable&quot;</span> <span class="ow">in</span> <span class="n">obj</span><span class="p">:</span>
-<a id="__codelineno-0-250" name="__codelineno-0-250"></a>        <span class="k">for</span> <span class="n">keystring</span> <span class="ow">in</span> <span class="n">DECODERS_BY_KEYSTRING</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
-<a id="__codelineno-0-251" name="__codelineno-0-251"></a>            <span class="k">if</span> <span class="n">keystring</span> <span class="ow">in</span> <span class="n">obj</span><span class="p">:</span>
-<a id="__codelineno-0-252" name="__codelineno-0-252"></a>                <span class="k">return</span> <span class="n">DECODERS_BY_KEYSTRING</span><span class="p">[</span><span class="n">keystring</span><span class="p">](</span><span class="n">obj</span><span class="p">)</span>
-<a id="__codelineno-0-253" name="__codelineno-0-253"></a>    <span class="k">return</span> <span class="n">obj</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-273">273</a></span>
+<span class="normal"><a href="#__codelineno-0-274">274</a></span>
+<span class="normal"><a href="#__codelineno-0-275">275</a></span>
+<span class="normal"><a href="#__codelineno-0-276">276</a></span>
+<span class="normal"><a href="#__codelineno-0-277">277</a></span>
+<span class="normal"><a href="#__codelineno-0-278">278</a></span>
+<span class="normal"><a href="#__codelineno-0-279">279</a></span>
+<span class="normal"><a href="#__codelineno-0-280">280</a></span>
+<span class="normal"><a href="#__codelineno-0-281">281</a></span>
+<span class="normal"><a href="#__codelineno-0-282">282</a></span>
+<span class="normal"><a href="#__codelineno-0-283">283</a></span>
+<span class="normal"><a href="#__codelineno-0-284">284</a></span>
+<span class="normal"><a href="#__codelineno-0-285">285</a></span>
+<span class="normal"><a href="#__codelineno-0-286">286</a></span>
+<span class="normal"><a href="#__codelineno-0-287">287</a></span>
+<span class="normal"><a href="#__codelineno-0-288">288</a></span>
+<span class="normal"><a href="#__codelineno-0-289">289</a></span>
+<span class="normal"><a href="#__codelineno-0-290">290</a></span>
+<span class="normal"><a href="#__codelineno-0-291">291</a></span>
+<span class="normal"><a href="#__codelineno-0-292">292</a></span>
+<span class="normal"><a href="#__codelineno-0-293">293</a></span>
+<span class="normal"><a href="#__codelineno-0-294">294</a></span>
+<span class="normal"><a href="#__codelineno-0-295">295</a></span>
+<span class="normal"><a href="#__codelineno-0-296">296</a></span>
+<span class="normal"><a href="#__codelineno-0-297">297</a></span>
+<span class="normal"><a href="#__codelineno-0-298">298</a></span>
+<span class="normal"><a href="#__codelineno-0-299">299</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-273" name="__codelineno-0-273"></a><span class="k">def</span><span class="w"> </span><span class="nf">decode_custom_types</span><span class="p">(</span><span class="n">obj</span><span class="p">):</span>
+<a id="__codelineno-0-274" name="__codelineno-0-274"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Msgpack object-hook that restores tagged dicts to their Python types.</span>
+<a id="__codelineno-0-275" name="__codelineno-0-275"></a>
+<a id="__codelineno-0-276" name="__codelineno-0-276"></a><span class="sd">    This is the counterpart to the type-specific encoders in TYPE_ENCODER_DECODERS.</span>
+<a id="__codelineno-0-277" name="__codelineno-0-277"></a><span class="sd">    When MessagePack deserializes data, custom types come back as plain dicts</span>
+<a id="__codelineno-0-278" name="__codelineno-0-278"></a><span class="sd">    with sentinel keys. This function detects those sentinel keys and applies</span>
+<a id="__codelineno-0-279" name="__codelineno-0-279"></a><span class="sd">    the appropriate decoder to reconstruct the original Python type.</span>
+<a id="__codelineno-0-280" name="__codelineno-0-280"></a>
+<a id="__codelineno-0-281" name="__codelineno-0-281"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-282" name="__codelineno-0-282"></a><span class="sd">        obj: Any value returned from msgpack.unpackb(). If it&#39;s a dict with</span>
+<a id="__codelineno-0-283" name="__codelineno-0-283"></a><span class="sd">             &quot;as_encodable&quot; and a recognized sentinel key, it will be decoded.</span>
+<a id="__codelineno-0-284" name="__codelineno-0-284"></a><span class="sd">             Otherwise, returned unchanged.</span>
+<a id="__codelineno-0-285" name="__codelineno-0-285"></a>
+<a id="__codelineno-0-286" name="__codelineno-0-286"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-287" name="__codelineno-0-287"></a><span class="sd">        The decoded Python object (Decimal, datetime, etc.) if obj was an</span>
+<a id="__codelineno-0-288" name="__codelineno-0-288"></a><span class="sd">        encoded custom type, otherwise obj unchanged.</span>
+<a id="__codelineno-0-289" name="__codelineno-0-289"></a>
+<a id="__codelineno-0-290" name="__codelineno-0-290"></a><span class="sd">    Design Note:</span>
+<a id="__codelineno-0-291" name="__codelineno-0-291"></a><span class="sd">        The &quot;as_encodable&quot; check is a fast-path optimization. Most dicts in</span>
+<a id="__codelineno-0-292" name="__codelineno-0-292"></a><span class="sd">        user data won&#39;t have this key, so we can skip the sentinel key scan</span>
+<a id="__codelineno-0-293" name="__codelineno-0-293"></a><span class="sd">        for the common case.</span>
+<a id="__codelineno-0-294" name="__codelineno-0-294"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-295" name="__codelineno-0-295"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="s2">&quot;as_encodable&quot;</span> <span class="ow">in</span> <span class="n">obj</span><span class="p">:</span>
+<a id="__codelineno-0-296" name="__codelineno-0-296"></a>        <span class="k">for</span> <span class="n">keystring</span> <span class="ow">in</span> <span class="n">DECODERS_BY_KEYSTRING</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+<a id="__codelineno-0-297" name="__codelineno-0-297"></a>            <span class="k">if</span> <span class="n">keystring</span> <span class="ow">in</span> <span class="n">obj</span><span class="p">:</span>
+<a id="__codelineno-0-298" name="__codelineno-0-298"></a>                <span class="k">return</span> <span class="n">DECODERS_BY_KEYSTRING</span><span class="p">[</span><span class="n">keystring</span><span class="p">](</span><span class="n">obj</span><span class="p">)</span>
+<a id="__codelineno-0-299" name="__codelineno-0-299"></a>    <span class="k">return</span> <span class="n">obj</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -2997,53 +2997,7 @@ fields to store numpy arrays efficiently.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/models/encoding.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-256">256</a></span>
-<span class="normal"><a href="#__codelineno-0-257">257</a></span>
-<span class="normal"><a href="#__codelineno-0-258">258</a></span>
-<span class="normal"><a href="#__codelineno-0-259">259</a></span>
-<span class="normal"><a href="#__codelineno-0-260">260</a></span>
-<span class="normal"><a href="#__codelineno-0-261">261</a></span>
-<span class="normal"><a href="#__codelineno-0-262">262</a></span>
-<span class="normal"><a href="#__codelineno-0-263">263</a></span>
-<span class="normal"><a href="#__codelineno-0-264">264</a></span>
-<span class="normal"><a href="#__codelineno-0-265">265</a></span>
-<span class="normal"><a href="#__codelineno-0-266">266</a></span>
-<span class="normal"><a href="#__codelineno-0-267">267</a></span>
-<span class="normal"><a href="#__codelineno-0-268">268</a></span>
-<span class="normal"><a href="#__codelineno-0-269">269</a></span>
-<span class="normal"><a href="#__codelineno-0-270">270</a></span>
-<span class="normal"><a href="#__codelineno-0-271">271</a></span>
-<span class="normal"><a href="#__codelineno-0-272">272</a></span>
-<span class="normal"><a href="#__codelineno-0-273">273</a></span>
-<span class="normal"><a href="#__codelineno-0-274">274</a></span>
-<span class="normal"><a href="#__codelineno-0-275">275</a></span>
-<span class="normal"><a href="#__codelineno-0-276">276</a></span>
-<span class="normal"><a href="#__codelineno-0-277">277</a></span>
-<span class="normal"><a href="#__codelineno-0-278">278</a></span>
-<span class="normal"><a href="#__codelineno-0-279">279</a></span>
-<span class="normal"><a href="#__codelineno-0-280">280</a></span>
-<span class="normal"><a href="#__codelineno-0-281">281</a></span>
-<span class="normal"><a href="#__codelineno-0-282">282</a></span>
-<span class="normal"><a href="#__codelineno-0-283">283</a></span>
-<span class="normal"><a href="#__codelineno-0-284">284</a></span>
-<span class="normal"><a href="#__codelineno-0-285">285</a></span>
-<span class="normal"><a href="#__codelineno-0-286">286</a></span>
-<span class="normal"><a href="#__codelineno-0-287">287</a></span>
-<span class="normal"><a href="#__codelineno-0-288">288</a></span>
-<span class="normal"><a href="#__codelineno-0-289">289</a></span>
-<span class="normal"><a href="#__codelineno-0-290">290</a></span>
-<span class="normal"><a href="#__codelineno-0-291">291</a></span>
-<span class="normal"><a href="#__codelineno-0-292">292</a></span>
-<span class="normal"><a href="#__codelineno-0-293">293</a></span>
-<span class="normal"><a href="#__codelineno-0-294">294</a></span>
-<span class="normal"><a href="#__codelineno-0-295">295</a></span>
-<span class="normal"><a href="#__codelineno-0-296">296</a></span>
-<span class="normal"><a href="#__codelineno-0-297">297</a></span>
-<span class="normal"><a href="#__codelineno-0-298">298</a></span>
-<span class="normal"><a href="#__codelineno-0-299">299</a></span>
-<span class="normal"><a href="#__codelineno-0-300">300</a></span>
-<span class="normal"><a href="#__codelineno-0-301">301</a></span>
-<span class="normal"><a href="#__codelineno-0-302">302</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-302">302</a></span>
 <span class="normal"><a href="#__codelineno-0-303">303</a></span>
 <span class="normal"><a href="#__codelineno-0-304">304</a></span>
 <span class="normal"><a href="#__codelineno-0-305">305</a></span>
@@ -3077,87 +3031,133 @@ fields to store numpy arrays efficiently.</p>
 <span class="normal"><a href="#__codelineno-0-333">333</a></span>
 <span class="normal"><a href="#__codelineno-0-334">334</a></span>
 <span class="normal"><a href="#__codelineno-0-335">335</a></span>
-<span class="normal"><a href="#__codelineno-0-336">336</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-256" name="__codelineno-0-256"></a><span class="k">def</span><span class="w"> </span><span class="nf">encode_popoto_model_obj</span><span class="p">(</span><span class="n">obj</span><span class="p">:</span> <span class="s2">&quot;Model&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
-<a id="__codelineno-0-257" name="__codelineno-0-257"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Encode a model instance into a dict of ``{field_name_bytes: msgpack_bytes}``.</span>
-<a id="__codelineno-0-258" name="__codelineno-0-258"></a>
-<a id="__codelineno-0-259" name="__codelineno-0-259"></a><span class="sd">    Transforms all field values on a model into a dictionary suitable for</span>
-<a id="__codelineno-0-260" name="__codelineno-0-260"></a><span class="sd">    Redis HSET operations. Each field name becomes a UTF-8 encoded key,</span>
-<a id="__codelineno-0-261" name="__codelineno-0-261"></a><span class="sd">    and each value is MessagePack-serialized (with custom type handling).</span>
-<a id="__codelineno-0-262" name="__codelineno-0-262"></a>
-<a id="__codelineno-0-263" name="__codelineno-0-263"></a><span class="sd">    Relationship fields are stored as the related instance&#39;s ``redis_key``.</span>
-<a id="__codelineno-0-264" name="__codelineno-0-264"></a><span class="sd">    Custom types (Decimal, datetime, etc.) use tagged-dict encoding.</span>
-<a id="__codelineno-0-265" name="__codelineno-0-265"></a>
-<a id="__codelineno-0-266" name="__codelineno-0-266"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-267" name="__codelineno-0-267"></a><span class="sd">        obj: A Popoto Model instance to serialize. Must have _meta.fields</span>
-<a id="__codelineno-0-268" name="__codelineno-0-268"></a><span class="sd">             populated by the metaclass.</span>
-<a id="__codelineno-0-269" name="__codelineno-0-269"></a>
-<a id="__codelineno-0-270" name="__codelineno-0-270"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-271" name="__codelineno-0-271"></a><span class="sd">        A dict mapping bytes (field names) to bytes (packed values), ready</span>
-<a id="__codelineno-0-272" name="__codelineno-0-272"></a><span class="sd">        for direct use with Redis HSET/HMSET commands.</span>
-<a id="__codelineno-0-273" name="__codelineno-0-273"></a>
-<a id="__codelineno-0-274" name="__codelineno-0-274"></a><span class="sd">    Raises:</span>
-<a id="__codelineno-0-275" name="__codelineno-0-275"></a><span class="sd">        ModelException: If a Relationship field contains a value that isn&#39;t</span>
-<a id="__codelineno-0-276" name="__codelineno-0-276"></a><span class="sd">                        an instance of the expected related model.</span>
-<a id="__codelineno-0-277" name="__codelineno-0-277"></a>
-<a id="__codelineno-0-278" name="__codelineno-0-278"></a><span class="sd">    Encoding Strategy:</span>
-<a id="__codelineno-0-279" name="__codelineno-0-279"></a><span class="sd">        1. Relationship fields: Store the related object&#39;s db_key (Redis key</span>
-<a id="__codelineno-0-280" name="__codelineno-0-280"></a><span class="sd">           string), not the full object. This enables lazy loading and avoids</span>
-<a id="__codelineno-0-281" name="__codelineno-0-281"></a><span class="sd">           circular serialization.</span>
-<a id="__codelineno-0-282" name="__codelineno-0-282"></a><span class="sd">        2. Custom types (Decimal, datetime, etc.): Use TYPE_ENCODER_DECODERS</span>
-<a id="__codelineno-0-283" name="__codelineno-0-283"></a><span class="sd">           to wrap the value with a sentinel key for later type reconstruction.</span>
-<a id="__codelineno-0-284" name="__codelineno-0-284"></a><span class="sd">        3. All other types: Direct MessagePack serialization (handles None,</span>
-<a id="__codelineno-0-285" name="__codelineno-0-285"></a><span class="sd">           str, int, float, bool, list, dict natively).</span>
-<a id="__codelineno-0-286" name="__codelineno-0-286"></a>
-<a id="__codelineno-0-287" name="__codelineno-0-287"></a><span class="sd">    Integration:</span>
-<a id="__codelineno-0-288" name="__codelineno-0-288"></a><span class="sd">        Called by Model.save() as part of the persistence pipeline. The returned</span>
-<a id="__codelineno-0-289" name="__codelineno-0-289"></a><span class="sd">        dict is passed directly to Redis via HSET.</span>
-<a id="__codelineno-0-290" name="__codelineno-0-290"></a>
-<a id="__codelineno-0-291" name="__codelineno-0-291"></a><span class="sd">    Note:</span>
-<a id="__codelineno-0-292" name="__codelineno-0-292"></a><span class="sd">        NumPy array support is enabled via msgpack_numpy patching, allowing</span>
-<a id="__codelineno-0-293" name="__codelineno-0-293"></a><span class="sd">        fields to store numpy arrays efficiently.</span>
-<a id="__codelineno-0-294" name="__codelineno-0-294"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-295" name="__codelineno-0-295"></a>    <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-296" name="__codelineno-0-296"></a>        <span class="kn">import</span><span class="w"> </span><span class="nn">msgpack_numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">m</span>
-<a id="__codelineno-0-297" name="__codelineno-0-297"></a>
-<a id="__codelineno-0-298" name="__codelineno-0-298"></a>        <span class="n">m</span><span class="o">.</span><span class="n">patch</span><span class="p">()</span>
-<a id="__codelineno-0-299" name="__codelineno-0-299"></a>    <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
-<a id="__codelineno-0-300" name="__codelineno-0-300"></a>        <span class="k">pass</span>
-<a id="__codelineno-0-301" name="__codelineno-0-301"></a>
-<a id="__codelineno-0-302" name="__codelineno-0-302"></a>    <span class="n">encoded_hashmap</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
-<a id="__codelineno-0-303" name="__codelineno-0-303"></a>    <span class="k">for</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">field</span> <span class="ow">in</span> <span class="n">obj</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-<a id="__codelineno-0-304" name="__codelineno-0-304"></a>        <span class="c1"># Skip capped ListField values -- they are stored in a separate Redis list key</span>
-<a id="__codelineno-0-305" name="__codelineno-0-305"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..fields.shortcuts</span><span class="w"> </span><span class="kn">import</span> <span class="n">ListField</span>
-<a id="__codelineno-0-306" name="__codelineno-0-306"></a>
-<a id="__codelineno-0-307" name="__codelineno-0-307"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">ListField</span><span class="p">)</span> <span class="ow">and</span> <span class="n">field</span><span class="o">.</span><span class="n">_capped</span><span class="p">:</span>
-<a id="__codelineno-0-308" name="__codelineno-0-308"></a>            <span class="k">continue</span>
-<a id="__codelineno-0-309" name="__codelineno-0-309"></a>
-<a id="__codelineno-0-310" name="__codelineno-0-310"></a>        <span class="n">value</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">field_name</span><span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-336">336</a></span>
+<span class="normal"><a href="#__codelineno-0-337">337</a></span>
+<span class="normal"><a href="#__codelineno-0-338">338</a></span>
+<span class="normal"><a href="#__codelineno-0-339">339</a></span>
+<span class="normal"><a href="#__codelineno-0-340">340</a></span>
+<span class="normal"><a href="#__codelineno-0-341">341</a></span>
+<span class="normal"><a href="#__codelineno-0-342">342</a></span>
+<span class="normal"><a href="#__codelineno-0-343">343</a></span>
+<span class="normal"><a href="#__codelineno-0-344">344</a></span>
+<span class="normal"><a href="#__codelineno-0-345">345</a></span>
+<span class="normal"><a href="#__codelineno-0-346">346</a></span>
+<span class="normal"><a href="#__codelineno-0-347">347</a></span>
+<span class="normal"><a href="#__codelineno-0-348">348</a></span>
+<span class="normal"><a href="#__codelineno-0-349">349</a></span>
+<span class="normal"><a href="#__codelineno-0-350">350</a></span>
+<span class="normal"><a href="#__codelineno-0-351">351</a></span>
+<span class="normal"><a href="#__codelineno-0-352">352</a></span>
+<span class="normal"><a href="#__codelineno-0-353">353</a></span>
+<span class="normal"><a href="#__codelineno-0-354">354</a></span>
+<span class="normal"><a href="#__codelineno-0-355">355</a></span>
+<span class="normal"><a href="#__codelineno-0-356">356</a></span>
+<span class="normal"><a href="#__codelineno-0-357">357</a></span>
+<span class="normal"><a href="#__codelineno-0-358">358</a></span>
+<span class="normal"><a href="#__codelineno-0-359">359</a></span>
+<span class="normal"><a href="#__codelineno-0-360">360</a></span>
+<span class="normal"><a href="#__codelineno-0-361">361</a></span>
+<span class="normal"><a href="#__codelineno-0-362">362</a></span>
+<span class="normal"><a href="#__codelineno-0-363">363</a></span>
+<span class="normal"><a href="#__codelineno-0-364">364</a></span>
+<span class="normal"><a href="#__codelineno-0-365">365</a></span>
+<span class="normal"><a href="#__codelineno-0-366">366</a></span>
+<span class="normal"><a href="#__codelineno-0-367">367</a></span>
+<span class="normal"><a href="#__codelineno-0-368">368</a></span>
+<span class="normal"><a href="#__codelineno-0-369">369</a></span>
+<span class="normal"><a href="#__codelineno-0-370">370</a></span>
+<span class="normal"><a href="#__codelineno-0-371">371</a></span>
+<span class="normal"><a href="#__codelineno-0-372">372</a></span>
+<span class="normal"><a href="#__codelineno-0-373">373</a></span>
+<span class="normal"><a href="#__codelineno-0-374">374</a></span>
+<span class="normal"><a href="#__codelineno-0-375">375</a></span>
+<span class="normal"><a href="#__codelineno-0-376">376</a></span>
+<span class="normal"><a href="#__codelineno-0-377">377</a></span>
+<span class="normal"><a href="#__codelineno-0-378">378</a></span>
+<span class="normal"><a href="#__codelineno-0-379">379</a></span>
+<span class="normal"><a href="#__codelineno-0-380">380</a></span>
+<span class="normal"><a href="#__codelineno-0-381">381</a></span>
+<span class="normal"><a href="#__codelineno-0-382">382</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-302" name="__codelineno-0-302"></a><span class="k">def</span><span class="w"> </span><span class="nf">encode_popoto_model_obj</span><span class="p">(</span><span class="n">obj</span><span class="p">:</span> <span class="s2">&quot;Model&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<a id="__codelineno-0-303" name="__codelineno-0-303"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Encode a model instance into a dict of ``{field_name_bytes: msgpack_bytes}``.</span>
+<a id="__codelineno-0-304" name="__codelineno-0-304"></a>
+<a id="__codelineno-0-305" name="__codelineno-0-305"></a><span class="sd">    Transforms all field values on a model into a dictionary suitable for</span>
+<a id="__codelineno-0-306" name="__codelineno-0-306"></a><span class="sd">    Redis HSET operations. Each field name becomes a UTF-8 encoded key,</span>
+<a id="__codelineno-0-307" name="__codelineno-0-307"></a><span class="sd">    and each value is MessagePack-serialized (with custom type handling).</span>
+<a id="__codelineno-0-308" name="__codelineno-0-308"></a>
+<a id="__codelineno-0-309" name="__codelineno-0-309"></a><span class="sd">    Relationship fields are stored as the related instance&#39;s ``redis_key``.</span>
+<a id="__codelineno-0-310" name="__codelineno-0-310"></a><span class="sd">    Custom types (Decimal, datetime, etc.) use tagged-dict encoding.</span>
 <a id="__codelineno-0-311" name="__codelineno-0-311"></a>
-<a id="__codelineno-0-312" name="__codelineno-0-312"></a>        <span class="c1"># use db_key string for relationships</span>
-<a id="__codelineno-0-313" name="__codelineno-0-313"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..fields.relationship</span><span class="w"> </span><span class="kn">import</span> <span class="n">Relationship</span>
-<a id="__codelineno-0-314" name="__codelineno-0-314"></a>
-<a id="__codelineno-0-315" name="__codelineno-0-315"></a>        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">Relationship</span><span class="p">):</span>
-<a id="__codelineno-0-316" name="__codelineno-0-316"></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
-<a id="__codelineno-0-317" name="__codelineno-0-317"></a>                <span class="c1"># Lazy-loaded redis_key string — already in storage format</span>
-<a id="__codelineno-0-318" name="__codelineno-0-318"></a>                <span class="n">encoded_value</span> <span class="o">=</span> <span class="n">msgpack</span><span class="o">.</span><span class="n">packb</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
-<a id="__codelineno-0-319" name="__codelineno-0-319"></a>            <span class="k">elif</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">field</span><span class="o">.</span><span class="n">model</span><span class="p">):</span>
-<a id="__codelineno-0-320" name="__codelineno-0-320"></a>                <span class="k">raise</span> <span class="n">ModelException</span><span class="p">(</span>
-<a id="__codelineno-0-321" name="__codelineno-0-321"></a>                    <span class="sa">f</span><span class="s2">&quot;Relationship field requires </span><span class="si">{</span><span class="n">field</span><span class="o">.</span><span class="n">model</span><span class="si">}</span><span class="s2"> model instance. got </span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2"> instead&quot;</span>
-<a id="__codelineno-0-322" name="__codelineno-0-322"></a>                <span class="p">)</span>
-<a id="__codelineno-0-323" name="__codelineno-0-323"></a>            <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-324" name="__codelineno-0-324"></a>                <span class="n">encoded_value</span> <span class="o">=</span> <span class="n">msgpack</span><span class="o">.</span><span class="n">packb</span><span class="p">(</span><span class="n">value</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">)</span>
-<a id="__codelineno-0-325" name="__codelineno-0-325"></a>                <span class="c1"># todo: refactor to store db_key list, not redis_key</span>
-<a id="__codelineno-0-326" name="__codelineno-0-326"></a>
-<a id="__codelineno-0-327" name="__codelineno-0-327"></a>        <span class="k">elif</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">field</span><span class="o">.</span><span class="n">type</span> <span class="ow">in</span> <span class="n">TYPE_ENCODER_DECODERS</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
-<a id="__codelineno-0-328" name="__codelineno-0-328"></a>            <span class="n">encoded_value</span> <span class="o">=</span> <span class="n">msgpack</span><span class="o">.</span><span class="n">packb</span><span class="p">(</span>
-<a id="__codelineno-0-329" name="__codelineno-0-329"></a>                <span class="n">TYPE_ENCODER_DECODERS</span><span class="p">[</span><span class="n">field</span><span class="o">.</span><span class="n">type</span><span class="p">]</span><span class="o">.</span><span class="n">encoder</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
-<a id="__codelineno-0-330" name="__codelineno-0-330"></a>            <span class="p">)</span>
-<a id="__codelineno-0-331" name="__codelineno-0-331"></a>        <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-332" name="__codelineno-0-332"></a>            <span class="n">encoded_value</span> <span class="o">=</span> <span class="n">msgpack</span><span class="o">.</span><span class="n">packb</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
-<a id="__codelineno-0-333" name="__codelineno-0-333"></a>
-<a id="__codelineno-0-334" name="__codelineno-0-334"></a>        <span class="n">encoded_hashmap</span><span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="n">ENCODING</span><span class="p">)]</span> <span class="o">=</span> <span class="n">encoded_value</span>
-<a id="__codelineno-0-335" name="__codelineno-0-335"></a>
-<a id="__codelineno-0-336" name="__codelineno-0-336"></a>    <span class="k">return</span> <span class="n">encoded_hashmap</span>
+<a id="__codelineno-0-312" name="__codelineno-0-312"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-313" name="__codelineno-0-313"></a><span class="sd">        obj: A Popoto Model instance to serialize. Must have _meta.fields</span>
+<a id="__codelineno-0-314" name="__codelineno-0-314"></a><span class="sd">             populated by the metaclass.</span>
+<a id="__codelineno-0-315" name="__codelineno-0-315"></a>
+<a id="__codelineno-0-316" name="__codelineno-0-316"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-317" name="__codelineno-0-317"></a><span class="sd">        A dict mapping bytes (field names) to bytes (packed values), ready</span>
+<a id="__codelineno-0-318" name="__codelineno-0-318"></a><span class="sd">        for direct use with Redis HSET/HMSET commands.</span>
+<a id="__codelineno-0-319" name="__codelineno-0-319"></a>
+<a id="__codelineno-0-320" name="__codelineno-0-320"></a><span class="sd">    Raises:</span>
+<a id="__codelineno-0-321" name="__codelineno-0-321"></a><span class="sd">        ModelException: If a Relationship field contains a value that isn&#39;t</span>
+<a id="__codelineno-0-322" name="__codelineno-0-322"></a><span class="sd">                        an instance of the expected related model.</span>
+<a id="__codelineno-0-323" name="__codelineno-0-323"></a>
+<a id="__codelineno-0-324" name="__codelineno-0-324"></a><span class="sd">    Encoding Strategy:</span>
+<a id="__codelineno-0-325" name="__codelineno-0-325"></a><span class="sd">        1. Relationship fields: Store the related object&#39;s db_key (Redis key</span>
+<a id="__codelineno-0-326" name="__codelineno-0-326"></a><span class="sd">           string), not the full object. This enables lazy loading and avoids</span>
+<a id="__codelineno-0-327" name="__codelineno-0-327"></a><span class="sd">           circular serialization.</span>
+<a id="__codelineno-0-328" name="__codelineno-0-328"></a><span class="sd">        2. Custom types (Decimal, datetime, etc.): Use TYPE_ENCODER_DECODERS</span>
+<a id="__codelineno-0-329" name="__codelineno-0-329"></a><span class="sd">           to wrap the value with a sentinel key for later type reconstruction.</span>
+<a id="__codelineno-0-330" name="__codelineno-0-330"></a><span class="sd">        3. All other types: Direct MessagePack serialization (handles None,</span>
+<a id="__codelineno-0-331" name="__codelineno-0-331"></a><span class="sd">           str, int, float, bool, list, dict natively).</span>
+<a id="__codelineno-0-332" name="__codelineno-0-332"></a>
+<a id="__codelineno-0-333" name="__codelineno-0-333"></a><span class="sd">    Integration:</span>
+<a id="__codelineno-0-334" name="__codelineno-0-334"></a><span class="sd">        Called by Model.save() as part of the persistence pipeline. The returned</span>
+<a id="__codelineno-0-335" name="__codelineno-0-335"></a><span class="sd">        dict is passed directly to Redis via HSET.</span>
+<a id="__codelineno-0-336" name="__codelineno-0-336"></a>
+<a id="__codelineno-0-337" name="__codelineno-0-337"></a><span class="sd">    Note:</span>
+<a id="__codelineno-0-338" name="__codelineno-0-338"></a><span class="sd">        NumPy array support is enabled via msgpack_numpy patching, allowing</span>
+<a id="__codelineno-0-339" name="__codelineno-0-339"></a><span class="sd">        fields to store numpy arrays efficiently.</span>
+<a id="__codelineno-0-340" name="__codelineno-0-340"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-341" name="__codelineno-0-341"></a>    <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-342" name="__codelineno-0-342"></a>        <span class="kn">import</span><span class="w"> </span><span class="nn">msgpack_numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">m</span>
+<a id="__codelineno-0-343" name="__codelineno-0-343"></a>
+<a id="__codelineno-0-344" name="__codelineno-0-344"></a>        <span class="n">m</span><span class="o">.</span><span class="n">patch</span><span class="p">()</span>
+<a id="__codelineno-0-345" name="__codelineno-0-345"></a>    <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+<a id="__codelineno-0-346" name="__codelineno-0-346"></a>        <span class="k">pass</span>
+<a id="__codelineno-0-347" name="__codelineno-0-347"></a>
+<a id="__codelineno-0-348" name="__codelineno-0-348"></a>    <span class="n">encoded_hashmap</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+<a id="__codelineno-0-349" name="__codelineno-0-349"></a>    <span class="k">for</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">field</span> <span class="ow">in</span> <span class="n">obj</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+<a id="__codelineno-0-350" name="__codelineno-0-350"></a>        <span class="c1"># Skip capped ListField values -- they are stored in a separate Redis list key</span>
+<a id="__codelineno-0-351" name="__codelineno-0-351"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..fields.shortcuts</span><span class="w"> </span><span class="kn">import</span> <span class="n">ListField</span>
+<a id="__codelineno-0-352" name="__codelineno-0-352"></a>
+<a id="__codelineno-0-353" name="__codelineno-0-353"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">ListField</span><span class="p">)</span> <span class="ow">and</span> <span class="n">field</span><span class="o">.</span><span class="n">_capped</span><span class="p">:</span>
+<a id="__codelineno-0-354" name="__codelineno-0-354"></a>            <span class="k">continue</span>
+<a id="__codelineno-0-355" name="__codelineno-0-355"></a>
+<a id="__codelineno-0-356" name="__codelineno-0-356"></a>        <span class="n">value</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">field_name</span><span class="p">)</span>
+<a id="__codelineno-0-357" name="__codelineno-0-357"></a>
+<a id="__codelineno-0-358" name="__codelineno-0-358"></a>        <span class="c1"># use db_key string for relationships</span>
+<a id="__codelineno-0-359" name="__codelineno-0-359"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..fields.relationship</span><span class="w"> </span><span class="kn">import</span> <span class="n">Relationship</span>
+<a id="__codelineno-0-360" name="__codelineno-0-360"></a>
+<a id="__codelineno-0-361" name="__codelineno-0-361"></a>        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">Relationship</span><span class="p">):</span>
+<a id="__codelineno-0-362" name="__codelineno-0-362"></a>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+<a id="__codelineno-0-363" name="__codelineno-0-363"></a>                <span class="c1"># Lazy-loaded redis_key string — already in storage format</span>
+<a id="__codelineno-0-364" name="__codelineno-0-364"></a>                <span class="n">encoded_value</span> <span class="o">=</span> <span class="n">msgpack</span><span class="o">.</span><span class="n">packb</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+<a id="__codelineno-0-365" name="__codelineno-0-365"></a>            <span class="k">elif</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">field</span><span class="o">.</span><span class="n">model</span><span class="p">):</span>
+<a id="__codelineno-0-366" name="__codelineno-0-366"></a>                <span class="k">raise</span> <span class="n">ModelException</span><span class="p">(</span>
+<a id="__codelineno-0-367" name="__codelineno-0-367"></a>                    <span class="sa">f</span><span class="s2">&quot;Relationship field requires </span><span class="si">{</span><span class="n">field</span><span class="o">.</span><span class="n">model</span><span class="si">}</span><span class="s2"> model instance. got </span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2"> instead&quot;</span>
+<a id="__codelineno-0-368" name="__codelineno-0-368"></a>                <span class="p">)</span>
+<a id="__codelineno-0-369" name="__codelineno-0-369"></a>            <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-370" name="__codelineno-0-370"></a>                <span class="n">encoded_value</span> <span class="o">=</span> <span class="n">msgpack</span><span class="o">.</span><span class="n">packb</span><span class="p">(</span><span class="n">value</span><span class="o">.</span><span class="n">db_key</span><span class="o">.</span><span class="n">redis_key</span><span class="p">)</span>
+<a id="__codelineno-0-371" name="__codelineno-0-371"></a>                <span class="c1"># todo: refactor to store db_key list, not redis_key</span>
+<a id="__codelineno-0-372" name="__codelineno-0-372"></a>
+<a id="__codelineno-0-373" name="__codelineno-0-373"></a>        <span class="k">elif</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">field</span><span class="o">.</span><span class="n">type</span> <span class="ow">in</span> <span class="n">TYPE_ENCODER_DECODERS</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+<a id="__codelineno-0-374" name="__codelineno-0-374"></a>            <span class="n">encoded_value</span> <span class="o">=</span> <span class="n">msgpack</span><span class="o">.</span><span class="n">packb</span><span class="p">(</span>
+<a id="__codelineno-0-375" name="__codelineno-0-375"></a>                <span class="n">TYPE_ENCODER_DECODERS</span><span class="p">[</span><span class="n">field</span><span class="o">.</span><span class="n">type</span><span class="p">]</span><span class="o">.</span><span class="n">encoder</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+<a id="__codelineno-0-376" name="__codelineno-0-376"></a>            <span class="p">)</span>
+<a id="__codelineno-0-377" name="__codelineno-0-377"></a>        <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-378" name="__codelineno-0-378"></a>            <span class="n">encoded_value</span> <span class="o">=</span> <span class="n">msgpack</span><span class="o">.</span><span class="n">packb</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+<a id="__codelineno-0-379" name="__codelineno-0-379"></a>
+<a id="__codelineno-0-380" name="__codelineno-0-380"></a>        <span class="n">encoded_hashmap</span><span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="n">ENCODING</span><span class="p">)]</span> <span class="o">=</span> <span class="n">encoded_value</span>
+<a id="__codelineno-0-381" name="__codelineno-0-381"></a>
+<a id="__codelineno-0-382" name="__codelineno-0-382"></a>    <span class="k">return</span> <span class="n">encoded_hashmap</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -3168,7 +3168,7 @@ fields to store numpy arrays efficiently.</p>
 
 
 <h3 id="popoto.models.encoding.decode_popoto_model_hashmap" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">decode_popoto_model_hashmap</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">redis_hash</span><span class="p">,</span> <span class="n">fields_only</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">lazy</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">decode_popoto_model_hashmap</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">redis_hash</span><span class="p">,</span> <span class="n">fields_only</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">lazy</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">source_redis_key</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
 
 <a href="#popoto.models.encoding.decode_popoto_model_hashmap" class="headerlink" title="Permanent link">&para;</a></h3>
 
@@ -3259,6 +3259,26 @@ a fully-instantiated Model object or a plain dictionary of field values.</p>
                   <code>False</code>
             </td>
           </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>source_redis_key</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The key this hash was actually read from. When given
+  it becomes the instance's <code>_redis_key</code>, so the instance knows
+  where it came from rather than inferring it from the decoded
+  values. Callers that have the key should always pass it; the
+  fallback recomputation is for callers that genuinely do not
+  (see the identity-provenance note below).</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
       </tbody>
     </table>
 
@@ -3320,62 +3340,28 @@ a fully-instantiated Model object or a plain dictionary of field values.</p>
   <p>Relationship fields are stored as Redis key strings, not full objects.
 The Model's <strong>getattribute</strong> handles lazy loading of related objects
 when accessed.</p>
-</details>
+</details>        <p>Identity provenance (#537/#538):
+    Without <em>source_redis_key</em> an instance's <code>_redis_key</code> is recomputed
+    from its decoded KeyField values, so the instance's idea of where it
+    came from follows the decode. That is the precise mechanism by which
+    row duplication was <em>silent</em>: when a decode change shifts a KeyField's
+    rendering, <code>_saved_field_values</code> and the attribute still agree (both
+    hold the decoded value) so <code>save()</code>'s KeyMutationError guard sees no
+    change, and the recomputed <code>_redis_key</code> already matches the new
+    derivation so <code>save()</code>'s obsolete-key branch never fires either.
+    Two independent safety nets, both blinded by the same recomputation;
+    the row is written to a second hash and the original is orphaned with
+    no exception and no log line.</p>
+<div class="highlight"><pre><span></span><code>Passing the real source key converts that silent duplication into
+``save()``&#39;s existing *rename* path. It also makes the datetime-key
+migration lazily self-healing: a pre-migration row that happens to be
+re-saved before the operator runs the migration moves itself.
+</code></pre></div>
+
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/models/encoding.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-339">339</a></span>
-<span class="normal"><a href="#__codelineno-0-340">340</a></span>
-<span class="normal"><a href="#__codelineno-0-341">341</a></span>
-<span class="normal"><a href="#__codelineno-0-342">342</a></span>
-<span class="normal"><a href="#__codelineno-0-343">343</a></span>
-<span class="normal"><a href="#__codelineno-0-344">344</a></span>
-<span class="normal"><a href="#__codelineno-0-345">345</a></span>
-<span class="normal"><a href="#__codelineno-0-346">346</a></span>
-<span class="normal"><a href="#__codelineno-0-347">347</a></span>
-<span class="normal"><a href="#__codelineno-0-348">348</a></span>
-<span class="normal"><a href="#__codelineno-0-349">349</a></span>
-<span class="normal"><a href="#__codelineno-0-350">350</a></span>
-<span class="normal"><a href="#__codelineno-0-351">351</a></span>
-<span class="normal"><a href="#__codelineno-0-352">352</a></span>
-<span class="normal"><a href="#__codelineno-0-353">353</a></span>
-<span class="normal"><a href="#__codelineno-0-354">354</a></span>
-<span class="normal"><a href="#__codelineno-0-355">355</a></span>
-<span class="normal"><a href="#__codelineno-0-356">356</a></span>
-<span class="normal"><a href="#__codelineno-0-357">357</a></span>
-<span class="normal"><a href="#__codelineno-0-358">358</a></span>
-<span class="normal"><a href="#__codelineno-0-359">359</a></span>
-<span class="normal"><a href="#__codelineno-0-360">360</a></span>
-<span class="normal"><a href="#__codelineno-0-361">361</a></span>
-<span class="normal"><a href="#__codelineno-0-362">362</a></span>
-<span class="normal"><a href="#__codelineno-0-363">363</a></span>
-<span class="normal"><a href="#__codelineno-0-364">364</a></span>
-<span class="normal"><a href="#__codelineno-0-365">365</a></span>
-<span class="normal"><a href="#__codelineno-0-366">366</a></span>
-<span class="normal"><a href="#__codelineno-0-367">367</a></span>
-<span class="normal"><a href="#__codelineno-0-368">368</a></span>
-<span class="normal"><a href="#__codelineno-0-369">369</a></span>
-<span class="normal"><a href="#__codelineno-0-370">370</a></span>
-<span class="normal"><a href="#__codelineno-0-371">371</a></span>
-<span class="normal"><a href="#__codelineno-0-372">372</a></span>
-<span class="normal"><a href="#__codelineno-0-373">373</a></span>
-<span class="normal"><a href="#__codelineno-0-374">374</a></span>
-<span class="normal"><a href="#__codelineno-0-375">375</a></span>
-<span class="normal"><a href="#__codelineno-0-376">376</a></span>
-<span class="normal"><a href="#__codelineno-0-377">377</a></span>
-<span class="normal"><a href="#__codelineno-0-378">378</a></span>
-<span class="normal"><a href="#__codelineno-0-379">379</a></span>
-<span class="normal"><a href="#__codelineno-0-380">380</a></span>
-<span class="normal"><a href="#__codelineno-0-381">381</a></span>
-<span class="normal"><a href="#__codelineno-0-382">382</a></span>
-<span class="normal"><a href="#__codelineno-0-383">383</a></span>
-<span class="normal"><a href="#__codelineno-0-384">384</a></span>
-<span class="normal"><a href="#__codelineno-0-385">385</a></span>
-<span class="normal"><a href="#__codelineno-0-386">386</a></span>
-<span class="normal"><a href="#__codelineno-0-387">387</a></span>
-<span class="normal"><a href="#__codelineno-0-388">388</a></span>
-<span class="normal"><a href="#__codelineno-0-389">389</a></span>
-<span class="normal"><a href="#__codelineno-0-390">390</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-390">390</a></span>
 <span class="normal"><a href="#__codelineno-0-391">391</a></span>
 <span class="normal"><a href="#__codelineno-0-392">392</a></span>
 <span class="normal"><a href="#__codelineno-0-393">393</a></span>
@@ -3411,94 +3397,217 @@ when accessed.</p>
 <span class="normal"><a href="#__codelineno-0-423">423</a></span>
 <span class="normal"><a href="#__codelineno-0-424">424</a></span>
 <span class="normal"><a href="#__codelineno-0-425">425</a></span>
-<span class="normal"><a href="#__codelineno-0-426">426</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-339" name="__codelineno-0-339"></a><span class="k">def</span><span class="w"> </span><span class="nf">decode_popoto_model_hashmap</span><span class="p">(</span>
-<a id="__codelineno-0-340" name="__codelineno-0-340"></a>    <span class="n">model_class</span><span class="p">:</span> <span class="s2">&quot;Model&quot;</span><span class="p">,</span> <span class="n">redis_hash</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">fields_only</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">lazy</span><span class="o">=</span><span class="kc">False</span>
-<a id="__codelineno-0-341" name="__codelineno-0-341"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Model&quot;</span><span class="p">:</span>
-<a id="__codelineno-0-342" name="__codelineno-0-342"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Decode a Redis hash into a model instance (or a raw fields dict).</span>
-<a id="__codelineno-0-343" name="__codelineno-0-343"></a>
-<a id="__codelineno-0-344" name="__codelineno-0-344"></a><span class="sd">    The inverse of encode_popoto_model_obj(). Takes raw Redis hash data</span>
-<a id="__codelineno-0-345" name="__codelineno-0-345"></a><span class="sd">    (bytes keys and MessagePack-encoded values) and reconstructs either</span>
-<a id="__codelineno-0-346" name="__codelineno-0-346"></a><span class="sd">    a fully-instantiated Model object or a plain dictionary of field values.</span>
-<a id="__codelineno-0-347" name="__codelineno-0-347"></a>
-<a id="__codelineno-0-348" name="__codelineno-0-348"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-349" name="__codelineno-0-349"></a><span class="sd">        model_class: The Model subclass to instantiate.</span>
-<a id="__codelineno-0-350" name="__codelineno-0-350"></a><span class="sd">        redis_hash: Mapping of ``{field_name_bytes: msgpack_bytes}`` from Redis.</span>
-<a id="__codelineno-0-351" name="__codelineno-0-351"></a><span class="sd">        fields_only: If ``True``, return a plain dict instead of a model instance.</span>
-<a id="__codelineno-0-352" name="__codelineno-0-352"></a><span class="sd">                     Keys remain as bytes (not decoded to strings). Useful for</span>
-<a id="__codelineno-0-353" name="__codelineno-0-353"></a><span class="sd">                     bulk operations where Model instantiation overhead is</span>
-<a id="__codelineno-0-354" name="__codelineno-0-354"></a><span class="sd">                     unwanted, such as Query.values() projections.</span>
-<a id="__codelineno-0-355" name="__codelineno-0-355"></a><span class="sd">        lazy: If ``True``, defer field deserialization until access. Fields are</span>
-<a id="__codelineno-0-356" name="__codelineno-0-356"></a><span class="sd">              decoded on-demand when first accessed, reducing overhead for bulk</span>
-<a id="__codelineno-0-357" name="__codelineno-0-357"></a><span class="sd">              queries where only a subset of fields are used.</span>
-<a id="__codelineno-0-358" name="__codelineno-0-358"></a>
-<a id="__codelineno-0-359" name="__codelineno-0-359"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-360" name="__codelineno-0-360"></a><span class="sd">        A model instance, a dict (when *fields_only*), or ``None`` if the hash</span>
-<a id="__codelineno-0-361" name="__codelineno-0-361"></a><span class="sd">        is empty.</span>
-<a id="__codelineno-0-362" name="__codelineno-0-362"></a>
-<a id="__codelineno-0-363" name="__codelineno-0-363"></a><span class="sd">    Decoding Process:</span>
-<a id="__codelineno-0-364" name="__codelineno-0-364"></a><span class="sd">        1. Each value is unpacked via msgpack.unpackb()</span>
-<a id="__codelineno-0-365" name="__codelineno-0-365"></a><span class="sd">        2. decode_custom_types() checks for sentinel keys and reconstructs</span>
-<a id="__codelineno-0-366" name="__codelineno-0-366"></a><span class="sd">           special types (Decimal, datetime, etc.)</span>
-<a id="__codelineno-0-367" name="__codelineno-0-367"></a><span class="sd">        3. Field names are decoded from bytes to strings (unless fields_only)</span>
-<a id="__codelineno-0-368" name="__codelineno-0-368"></a><span class="sd">        4. The resulting dict is passed to model_class() to create the instance</span>
-<a id="__codelineno-0-369" name="__codelineno-0-369"></a>
-<a id="__codelineno-0-370" name="__codelineno-0-370"></a><span class="sd">    Integration:</span>
-<a id="__codelineno-0-371" name="__codelineno-0-371"></a><span class="sd">        Called by:</span>
-<a id="__codelineno-0-372" name="__codelineno-0-372"></a><span class="sd">        - DB_key.get() for single-object retrieval</span>
-<a id="__codelineno-0-373" name="__codelineno-0-373"></a><span class="sd">        - Query iteration for bulk object loading</span>
-<a id="__codelineno-0-374" name="__codelineno-0-374"></a><span class="sd">        - Query.values() for projection queries (with fields_only=True)</span>
-<a id="__codelineno-0-375" name="__codelineno-0-375"></a>
-<a id="__codelineno-0-376" name="__codelineno-0-376"></a><span class="sd">    Note:</span>
-<a id="__codelineno-0-377" name="__codelineno-0-377"></a><span class="sd">        Relationship fields are stored as Redis key strings, not full objects.</span>
-<a id="__codelineno-0-378" name="__codelineno-0-378"></a><span class="sd">        The Model&#39;s __getattribute__ handles lazy loading of related objects</span>
-<a id="__codelineno-0-379" name="__codelineno-0-379"></a><span class="sd">        when accessed.</span>
-<a id="__codelineno-0-380" name="__codelineno-0-380"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-381" name="__codelineno-0-381"></a>    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">redis_hash</span><span class="p">):</span>
-<a id="__codelineno-0-382" name="__codelineno-0-382"></a>        <span class="k">if</span> <span class="n">fields_only</span><span class="p">:</span>
-<a id="__codelineno-0-383" name="__codelineno-0-383"></a>            <span class="n">model_attrs</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-384" name="__codelineno-0-384"></a>                <span class="n">key_b</span><span class="p">:</span> <span class="n">decode_custom_types</span><span class="p">(</span>
-<a id="__codelineno-0-385" name="__codelineno-0-385"></a>                    <span class="n">msgpack</span><span class="o">.</span><span class="n">unpackb</span><span class="p">(</span><span class="n">value_b</span><span class="p">,</span> <span class="n">strict_map_key</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-<a id="__codelineno-0-386" name="__codelineno-0-386"></a>                <span class="p">)</span>
-<a id="__codelineno-0-387" name="__codelineno-0-387"></a>                <span class="k">for</span> <span class="n">key_b</span><span class="p">,</span> <span class="n">value_b</span> <span class="ow">in</span> <span class="n">redis_hash</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
-<a id="__codelineno-0-388" name="__codelineno-0-388"></a>                <span class="c1"># Skip internal pointer fields. #476: current code no longer</span>
-<a id="__codelineno-0-389" name="__codelineno-0-389"></a>                <span class="c1"># writes these into the hash; kept for pre-#476 legacy</span>
-<a id="__codelineno-0-390" name="__codelineno-0-390"></a>                <span class="c1"># records until they self-heal on next write.</span>
-<a id="__codelineno-0-391" name="__codelineno-0-391"></a>                <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span>
-<a id="__codelineno-0-392" name="__codelineno-0-392"></a>                    <span class="sa">b</span><span class="s2">&quot;</span><span class="se">\x00</span><span class="s2">&quot;</span> <span class="ow">in</span> <span class="n">key_b</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">key_b</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">)</span> <span class="k">else</span> <span class="s2">&quot;</span><span class="se">\x00</span><span class="s2">&quot;</span> <span class="ow">in</span> <span class="n">key_b</span>
-<a id="__codelineno-0-393" name="__codelineno-0-393"></a>                <span class="p">)</span>
-<a id="__codelineno-0-394" name="__codelineno-0-394"></a>            <span class="p">}</span>
-<a id="__codelineno-0-395" name="__codelineno-0-395"></a>            <span class="k">return</span> <span class="n">model_attrs</span>
-<a id="__codelineno-0-396" name="__codelineno-0-396"></a>
-<a id="__codelineno-0-397" name="__codelineno-0-397"></a>        <span class="k">if</span> <span class="n">lazy</span><span class="p">:</span>
-<a id="__codelineno-0-398" name="__codelineno-0-398"></a>            <span class="c1"># Lazy loading: store raw bytes, decode on access</span>
-<a id="__codelineno-0-399" name="__codelineno-0-399"></a>            <span class="k">return</span> <span class="n">_create_lazy_model</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">redis_hash</span><span class="p">)</span>
-<a id="__codelineno-0-400" name="__codelineno-0-400"></a>
-<a id="__codelineno-0-401" name="__codelineno-0-401"></a>        <span class="n">model_attrs</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-402" name="__codelineno-0-402"></a>            <span class="n">key_b</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">ENCODING</span><span class="p">):</span> <span class="n">decode_custom_types</span><span class="p">(</span>
-<a id="__codelineno-0-403" name="__codelineno-0-403"></a>                <span class="n">msgpack</span><span class="o">.</span><span class="n">unpackb</span><span class="p">(</span><span class="n">value_b</span><span class="p">,</span> <span class="n">strict_map_key</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-<a id="__codelineno-0-404" name="__codelineno-0-404"></a>            <span class="p">)</span>
-<a id="__codelineno-0-405" name="__codelineno-0-405"></a>            <span class="k">for</span> <span class="n">key_b</span><span class="p">,</span> <span class="n">value_b</span> <span class="ow">in</span> <span class="n">redis_hash</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
-<a id="__codelineno-0-406" name="__codelineno-0-406"></a>            <span class="k">if</span> <span class="sa">b</span><span class="s2">&quot;</span><span class="se">\x00</span><span class="s2">&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">key_b</span>  <span class="c1"># skip internal pointer fields (e.g. \x00idxset)</span>
-<a id="__codelineno-0-407" name="__codelineno-0-407"></a>        <span class="p">}</span>
-<a id="__codelineno-0-408" name="__codelineno-0-408"></a>
-<a id="__codelineno-0-409" name="__codelineno-0-409"></a>        <span class="c1"># Create the model instance</span>
-<a id="__codelineno-0-410" name="__codelineno-0-410"></a>        <span class="n">model_instance</span> <span class="o">=</span> <span class="n">model_class</span><span class="p">(</span><span class="o">**</span><span class="n">model_attrs</span><span class="p">)</span>
-<a id="__codelineno-0-411" name="__codelineno-0-411"></a>
-<a id="__codelineno-0-412" name="__codelineno-0-412"></a>        <span class="c1"># Load capped ListField data from separate Redis list keys</span>
-<a id="__codelineno-0-413" name="__codelineno-0-413"></a>        <span class="n">_load_capped_list_fields</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">)</span>
-<a id="__codelineno-0-414" name="__codelineno-0-414"></a>
-<a id="__codelineno-0-415" name="__codelineno-0-415"></a>        <span class="c1"># Store the loaded field values for proper cleanup on delete</span>
-<a id="__codelineno-0-416" name="__codelineno-0-416"></a>        <span class="c1"># This ensures that if the model is modified and then deleted,</span>
-<a id="__codelineno-0-417" name="__codelineno-0-417"></a>        <span class="c1"># the on_delete hooks use the original saved values</span>
-<a id="__codelineno-0-418" name="__codelineno-0-418"></a>        <span class="n">model_instance</span><span class="o">.</span><span class="n">_saved_field_values</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-419" name="__codelineno-0-419"></a>            <span class="n">field_name</span><span class="p">:</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">)</span>
-<a id="__codelineno-0-420" name="__codelineno-0-420"></a>            <span class="k">for</span> <span class="n">field_name</span> <span class="ow">in</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
-<a id="__codelineno-0-421" name="__codelineno-0-421"></a>        <span class="p">}</span>
-<a id="__codelineno-0-422" name="__codelineno-0-422"></a>        <span class="n">model_instance</span><span class="o">.</span><span class="n">_is_persisted</span> <span class="o">=</span> <span class="kc">True</span>
+<span class="normal"><a href="#__codelineno-0-426">426</a></span>
+<span class="normal"><a href="#__codelineno-0-427">427</a></span>
+<span class="normal"><a href="#__codelineno-0-428">428</a></span>
+<span class="normal"><a href="#__codelineno-0-429">429</a></span>
+<span class="normal"><a href="#__codelineno-0-430">430</a></span>
+<span class="normal"><a href="#__codelineno-0-431">431</a></span>
+<span class="normal"><a href="#__codelineno-0-432">432</a></span>
+<span class="normal"><a href="#__codelineno-0-433">433</a></span>
+<span class="normal"><a href="#__codelineno-0-434">434</a></span>
+<span class="normal"><a href="#__codelineno-0-435">435</a></span>
+<span class="normal"><a href="#__codelineno-0-436">436</a></span>
+<span class="normal"><a href="#__codelineno-0-437">437</a></span>
+<span class="normal"><a href="#__codelineno-0-438">438</a></span>
+<span class="normal"><a href="#__codelineno-0-439">439</a></span>
+<span class="normal"><a href="#__codelineno-0-440">440</a></span>
+<span class="normal"><a href="#__codelineno-0-441">441</a></span>
+<span class="normal"><a href="#__codelineno-0-442">442</a></span>
+<span class="normal"><a href="#__codelineno-0-443">443</a></span>
+<span class="normal"><a href="#__codelineno-0-444">444</a></span>
+<span class="normal"><a href="#__codelineno-0-445">445</a></span>
+<span class="normal"><a href="#__codelineno-0-446">446</a></span>
+<span class="normal"><a href="#__codelineno-0-447">447</a></span>
+<span class="normal"><a href="#__codelineno-0-448">448</a></span>
+<span class="normal"><a href="#__codelineno-0-449">449</a></span>
+<span class="normal"><a href="#__codelineno-0-450">450</a></span>
+<span class="normal"><a href="#__codelineno-0-451">451</a></span>
+<span class="normal"><a href="#__codelineno-0-452">452</a></span>
+<span class="normal"><a href="#__codelineno-0-453">453</a></span>
+<span class="normal"><a href="#__codelineno-0-454">454</a></span>
+<span class="normal"><a href="#__codelineno-0-455">455</a></span>
+<span class="normal"><a href="#__codelineno-0-456">456</a></span>
+<span class="normal"><a href="#__codelineno-0-457">457</a></span>
+<span class="normal"><a href="#__codelineno-0-458">458</a></span>
+<span class="normal"><a href="#__codelineno-0-459">459</a></span>
+<span class="normal"><a href="#__codelineno-0-460">460</a></span>
+<span class="normal"><a href="#__codelineno-0-461">461</a></span>
+<span class="normal"><a href="#__codelineno-0-462">462</a></span>
+<span class="normal"><a href="#__codelineno-0-463">463</a></span>
+<span class="normal"><a href="#__codelineno-0-464">464</a></span>
+<span class="normal"><a href="#__codelineno-0-465">465</a></span>
+<span class="normal"><a href="#__codelineno-0-466">466</a></span>
+<span class="normal"><a href="#__codelineno-0-467">467</a></span>
+<span class="normal"><a href="#__codelineno-0-468">468</a></span>
+<span class="normal"><a href="#__codelineno-0-469">469</a></span>
+<span class="normal"><a href="#__codelineno-0-470">470</a></span>
+<span class="normal"><a href="#__codelineno-0-471">471</a></span>
+<span class="normal"><a href="#__codelineno-0-472">472</a></span>
+<span class="normal"><a href="#__codelineno-0-473">473</a></span>
+<span class="normal"><a href="#__codelineno-0-474">474</a></span>
+<span class="normal"><a href="#__codelineno-0-475">475</a></span>
+<span class="normal"><a href="#__codelineno-0-476">476</a></span>
+<span class="normal"><a href="#__codelineno-0-477">477</a></span>
+<span class="normal"><a href="#__codelineno-0-478">478</a></span>
+<span class="normal"><a href="#__codelineno-0-479">479</a></span>
+<span class="normal"><a href="#__codelineno-0-480">480</a></span>
+<span class="normal"><a href="#__codelineno-0-481">481</a></span>
+<span class="normal"><a href="#__codelineno-0-482">482</a></span>
+<span class="normal"><a href="#__codelineno-0-483">483</a></span>
+<span class="normal"><a href="#__codelineno-0-484">484</a></span>
+<span class="normal"><a href="#__codelineno-0-485">485</a></span>
+<span class="normal"><a href="#__codelineno-0-486">486</a></span>
+<span class="normal"><a href="#__codelineno-0-487">487</a></span>
+<span class="normal"><a href="#__codelineno-0-488">488</a></span>
+<span class="normal"><a href="#__codelineno-0-489">489</a></span>
+<span class="normal"><a href="#__codelineno-0-490">490</a></span>
+<span class="normal"><a href="#__codelineno-0-491">491</a></span>
+<span class="normal"><a href="#__codelineno-0-492">492</a></span>
+<span class="normal"><a href="#__codelineno-0-493">493</a></span>
+<span class="normal"><a href="#__codelineno-0-494">494</a></span>
+<span class="normal"><a href="#__codelineno-0-495">495</a></span>
+<span class="normal"><a href="#__codelineno-0-496">496</a></span>
+<span class="normal"><a href="#__codelineno-0-497">497</a></span>
+<span class="normal"><a href="#__codelineno-0-498">498</a></span>
+<span class="normal"><a href="#__codelineno-0-499">499</a></span>
+<span class="normal"><a href="#__codelineno-0-500">500</a></span>
+<span class="normal"><a href="#__codelineno-0-501">501</a></span>
+<span class="normal"><a href="#__codelineno-0-502">502</a></span>
+<span class="normal"><a href="#__codelineno-0-503">503</a></span>
+<span class="normal"><a href="#__codelineno-0-504">504</a></span>
+<span class="normal"><a href="#__codelineno-0-505">505</a></span>
+<span class="normal"><a href="#__codelineno-0-506">506</a></span>
+<span class="normal"><a href="#__codelineno-0-507">507</a></span>
+<span class="normal"><a href="#__codelineno-0-508">508</a></span>
+<span class="normal"><a href="#__codelineno-0-509">509</a></span>
+<span class="normal"><a href="#__codelineno-0-510">510</a></span>
+<span class="normal"><a href="#__codelineno-0-511">511</a></span>
+<span class="normal"><a href="#__codelineno-0-512">512</a></span>
+<span class="normal"><a href="#__codelineno-0-513">513</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-390" name="__codelineno-0-390"></a><span class="k">def</span><span class="w"> </span><span class="nf">decode_popoto_model_hashmap</span><span class="p">(</span>
+<a id="__codelineno-0-391" name="__codelineno-0-391"></a>    <span class="n">model_class</span><span class="p">:</span> <span class="s2">&quot;Model&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-392" name="__codelineno-0-392"></a>    <span class="n">redis_hash</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
+<a id="__codelineno-0-393" name="__codelineno-0-393"></a>    <span class="n">fields_only</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-0-394" name="__codelineno-0-394"></a>    <span class="n">lazy</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-0-395" name="__codelineno-0-395"></a>    <span class="n">source_redis_key</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-396" name="__codelineno-0-396"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Model&quot;</span><span class="p">:</span>
+<a id="__codelineno-0-397" name="__codelineno-0-397"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Decode a Redis hash into a model instance (or a raw fields dict).</span>
+<a id="__codelineno-0-398" name="__codelineno-0-398"></a>
+<a id="__codelineno-0-399" name="__codelineno-0-399"></a><span class="sd">    The inverse of encode_popoto_model_obj(). Takes raw Redis hash data</span>
+<a id="__codelineno-0-400" name="__codelineno-0-400"></a><span class="sd">    (bytes keys and MessagePack-encoded values) and reconstructs either</span>
+<a id="__codelineno-0-401" name="__codelineno-0-401"></a><span class="sd">    a fully-instantiated Model object or a plain dictionary of field values.</span>
+<a id="__codelineno-0-402" name="__codelineno-0-402"></a>
+<a id="__codelineno-0-403" name="__codelineno-0-403"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-404" name="__codelineno-0-404"></a><span class="sd">        model_class: The Model subclass to instantiate.</span>
+<a id="__codelineno-0-405" name="__codelineno-0-405"></a><span class="sd">        redis_hash: Mapping of ``{field_name_bytes: msgpack_bytes}`` from Redis.</span>
+<a id="__codelineno-0-406" name="__codelineno-0-406"></a><span class="sd">        fields_only: If ``True``, return a plain dict instead of a model instance.</span>
+<a id="__codelineno-0-407" name="__codelineno-0-407"></a><span class="sd">                     Keys remain as bytes (not decoded to strings). Useful for</span>
+<a id="__codelineno-0-408" name="__codelineno-0-408"></a><span class="sd">                     bulk operations where Model instantiation overhead is</span>
+<a id="__codelineno-0-409" name="__codelineno-0-409"></a><span class="sd">                     unwanted, such as Query.values() projections.</span>
+<a id="__codelineno-0-410" name="__codelineno-0-410"></a><span class="sd">        lazy: If ``True``, defer field deserialization until access. Fields are</span>
+<a id="__codelineno-0-411" name="__codelineno-0-411"></a><span class="sd">              decoded on-demand when first accessed, reducing overhead for bulk</span>
+<a id="__codelineno-0-412" name="__codelineno-0-412"></a><span class="sd">              queries where only a subset of fields are used.</span>
+<a id="__codelineno-0-413" name="__codelineno-0-413"></a><span class="sd">        source_redis_key: The key this hash was actually read from. When given</span>
+<a id="__codelineno-0-414" name="__codelineno-0-414"></a><span class="sd">              it becomes the instance&#39;s ``_redis_key``, so the instance knows</span>
+<a id="__codelineno-0-415" name="__codelineno-0-415"></a><span class="sd">              where it came from rather than inferring it from the decoded</span>
+<a id="__codelineno-0-416" name="__codelineno-0-416"></a><span class="sd">              values. Callers that have the key should always pass it; the</span>
+<a id="__codelineno-0-417" name="__codelineno-0-417"></a><span class="sd">              fallback recomputation is for callers that genuinely do not</span>
+<a id="__codelineno-0-418" name="__codelineno-0-418"></a><span class="sd">              (see the identity-provenance note below).</span>
+<a id="__codelineno-0-419" name="__codelineno-0-419"></a>
+<a id="__codelineno-0-420" name="__codelineno-0-420"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-421" name="__codelineno-0-421"></a><span class="sd">        A model instance, a dict (when *fields_only*), or ``None`` if the hash</span>
+<a id="__codelineno-0-422" name="__codelineno-0-422"></a><span class="sd">        is empty.</span>
 <a id="__codelineno-0-423" name="__codelineno-0-423"></a>
-<a id="__codelineno-0-424" name="__codelineno-0-424"></a>        <span class="k">return</span> <span class="n">model_instance</span>
-<a id="__codelineno-0-425" name="__codelineno-0-425"></a>
-<a id="__codelineno-0-426" name="__codelineno-0-426"></a>    <span class="k">return</span> <span class="kc">None</span>
+<a id="__codelineno-0-424" name="__codelineno-0-424"></a><span class="sd">    Decoding Process:</span>
+<a id="__codelineno-0-425" name="__codelineno-0-425"></a><span class="sd">        1. Each value is unpacked via msgpack.unpackb()</span>
+<a id="__codelineno-0-426" name="__codelineno-0-426"></a><span class="sd">        2. decode_custom_types() checks for sentinel keys and reconstructs</span>
+<a id="__codelineno-0-427" name="__codelineno-0-427"></a><span class="sd">           special types (Decimal, datetime, etc.)</span>
+<a id="__codelineno-0-428" name="__codelineno-0-428"></a><span class="sd">        3. Field names are decoded from bytes to strings (unless fields_only)</span>
+<a id="__codelineno-0-429" name="__codelineno-0-429"></a><span class="sd">        4. The resulting dict is passed to model_class() to create the instance</span>
+<a id="__codelineno-0-430" name="__codelineno-0-430"></a>
+<a id="__codelineno-0-431" name="__codelineno-0-431"></a><span class="sd">    Integration:</span>
+<a id="__codelineno-0-432" name="__codelineno-0-432"></a><span class="sd">        Called by:</span>
+<a id="__codelineno-0-433" name="__codelineno-0-433"></a><span class="sd">        - DB_key.get() for single-object retrieval</span>
+<a id="__codelineno-0-434" name="__codelineno-0-434"></a><span class="sd">        - Query iteration for bulk object loading</span>
+<a id="__codelineno-0-435" name="__codelineno-0-435"></a><span class="sd">        - Query.values() for projection queries (with fields_only=True)</span>
+<a id="__codelineno-0-436" name="__codelineno-0-436"></a>
+<a id="__codelineno-0-437" name="__codelineno-0-437"></a><span class="sd">    Note:</span>
+<a id="__codelineno-0-438" name="__codelineno-0-438"></a><span class="sd">        Relationship fields are stored as Redis key strings, not full objects.</span>
+<a id="__codelineno-0-439" name="__codelineno-0-439"></a><span class="sd">        The Model&#39;s __getattribute__ handles lazy loading of related objects</span>
+<a id="__codelineno-0-440" name="__codelineno-0-440"></a><span class="sd">        when accessed.</span>
+<a id="__codelineno-0-441" name="__codelineno-0-441"></a>
+<a id="__codelineno-0-442" name="__codelineno-0-442"></a><span class="sd">    Identity provenance (#537/#538):</span>
+<a id="__codelineno-0-443" name="__codelineno-0-443"></a><span class="sd">        Without *source_redis_key* an instance&#39;s ``_redis_key`` is recomputed</span>
+<a id="__codelineno-0-444" name="__codelineno-0-444"></a><span class="sd">        from its decoded KeyField values, so the instance&#39;s idea of where it</span>
+<a id="__codelineno-0-445" name="__codelineno-0-445"></a><span class="sd">        came from follows the decode. That is the precise mechanism by which</span>
+<a id="__codelineno-0-446" name="__codelineno-0-446"></a><span class="sd">        row duplication was *silent*: when a decode change shifts a KeyField&#39;s</span>
+<a id="__codelineno-0-447" name="__codelineno-0-447"></a><span class="sd">        rendering, ``_saved_field_values`` and the attribute still agree (both</span>
+<a id="__codelineno-0-448" name="__codelineno-0-448"></a><span class="sd">        hold the decoded value) so ``save()``&#39;s KeyMutationError guard sees no</span>
+<a id="__codelineno-0-449" name="__codelineno-0-449"></a><span class="sd">        change, and the recomputed ``_redis_key`` already matches the new</span>
+<a id="__codelineno-0-450" name="__codelineno-0-450"></a><span class="sd">        derivation so ``save()``&#39;s obsolete-key branch never fires either.</span>
+<a id="__codelineno-0-451" name="__codelineno-0-451"></a><span class="sd">        Two independent safety nets, both blinded by the same recomputation;</span>
+<a id="__codelineno-0-452" name="__codelineno-0-452"></a><span class="sd">        the row is written to a second hash and the original is orphaned with</span>
+<a id="__codelineno-0-453" name="__codelineno-0-453"></a><span class="sd">        no exception and no log line.</span>
+<a id="__codelineno-0-454" name="__codelineno-0-454"></a>
+<a id="__codelineno-0-455" name="__codelineno-0-455"></a><span class="sd">        Passing the real source key converts that silent duplication into</span>
+<a id="__codelineno-0-456" name="__codelineno-0-456"></a><span class="sd">        ``save()``&#39;s existing *rename* path. It also makes the datetime-key</span>
+<a id="__codelineno-0-457" name="__codelineno-0-457"></a><span class="sd">        migration lazily self-healing: a pre-migration row that happens to be</span>
+<a id="__codelineno-0-458" name="__codelineno-0-458"></a><span class="sd">        re-saved before the operator runs the migration moves itself.</span>
+<a id="__codelineno-0-459" name="__codelineno-0-459"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-460" name="__codelineno-0-460"></a>    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">redis_hash</span><span class="p">):</span>
+<a id="__codelineno-0-461" name="__codelineno-0-461"></a>        <span class="k">if</span> <span class="n">fields_only</span><span class="p">:</span>
+<a id="__codelineno-0-462" name="__codelineno-0-462"></a>            <span class="n">model_attrs</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-0-463" name="__codelineno-0-463"></a>                <span class="n">key_b</span><span class="p">:</span> <span class="n">decode_custom_types</span><span class="p">(</span>
+<a id="__codelineno-0-464" name="__codelineno-0-464"></a>                    <span class="n">msgpack</span><span class="o">.</span><span class="n">unpackb</span><span class="p">(</span><span class="n">value_b</span><span class="p">,</span> <span class="n">strict_map_key</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<a id="__codelineno-0-465" name="__codelineno-0-465"></a>                <span class="p">)</span>
+<a id="__codelineno-0-466" name="__codelineno-0-466"></a>                <span class="k">for</span> <span class="n">key_b</span><span class="p">,</span> <span class="n">value_b</span> <span class="ow">in</span> <span class="n">redis_hash</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+<a id="__codelineno-0-467" name="__codelineno-0-467"></a>                <span class="c1"># Skip internal pointer fields. #476: current code no longer</span>
+<a id="__codelineno-0-468" name="__codelineno-0-468"></a>                <span class="c1"># writes these into the hash; kept for pre-#476 legacy</span>
+<a id="__codelineno-0-469" name="__codelineno-0-469"></a>                <span class="c1"># records until they self-heal on next write.</span>
+<a id="__codelineno-0-470" name="__codelineno-0-470"></a>                <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span>
+<a id="__codelineno-0-471" name="__codelineno-0-471"></a>                    <span class="sa">b</span><span class="s2">&quot;</span><span class="se">\x00</span><span class="s2">&quot;</span> <span class="ow">in</span> <span class="n">key_b</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">key_b</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">)</span> <span class="k">else</span> <span class="s2">&quot;</span><span class="se">\x00</span><span class="s2">&quot;</span> <span class="ow">in</span> <span class="n">key_b</span>
+<a id="__codelineno-0-472" name="__codelineno-0-472"></a>                <span class="p">)</span>
+<a id="__codelineno-0-473" name="__codelineno-0-473"></a>            <span class="p">}</span>
+<a id="__codelineno-0-474" name="__codelineno-0-474"></a>            <span class="k">return</span> <span class="n">model_attrs</span>
+<a id="__codelineno-0-475" name="__codelineno-0-475"></a>
+<a id="__codelineno-0-476" name="__codelineno-0-476"></a>        <span class="k">if</span> <span class="n">lazy</span><span class="p">:</span>
+<a id="__codelineno-0-477" name="__codelineno-0-477"></a>            <span class="c1"># Lazy loading: store raw bytes, decode on access</span>
+<a id="__codelineno-0-478" name="__codelineno-0-478"></a>            <span class="k">return</span> <span class="n">_create_lazy_model</span><span class="p">(</span>
+<a id="__codelineno-0-479" name="__codelineno-0-479"></a>                <span class="n">model_class</span><span class="p">,</span> <span class="n">redis_hash</span><span class="p">,</span> <span class="n">source_redis_key</span><span class="o">=</span><span class="n">source_redis_key</span>
+<a id="__codelineno-0-480" name="__codelineno-0-480"></a>            <span class="p">)</span>
+<a id="__codelineno-0-481" name="__codelineno-0-481"></a>
+<a id="__codelineno-0-482" name="__codelineno-0-482"></a>        <span class="n">model_attrs</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-0-483" name="__codelineno-0-483"></a>            <span class="n">key_b</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">ENCODING</span><span class="p">):</span> <span class="n">decode_custom_types</span><span class="p">(</span>
+<a id="__codelineno-0-484" name="__codelineno-0-484"></a>                <span class="n">msgpack</span><span class="o">.</span><span class="n">unpackb</span><span class="p">(</span><span class="n">value_b</span><span class="p">,</span> <span class="n">strict_map_key</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<a id="__codelineno-0-485" name="__codelineno-0-485"></a>            <span class="p">)</span>
+<a id="__codelineno-0-486" name="__codelineno-0-486"></a>            <span class="k">for</span> <span class="n">key_b</span><span class="p">,</span> <span class="n">value_b</span> <span class="ow">in</span> <span class="n">redis_hash</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+<a id="__codelineno-0-487" name="__codelineno-0-487"></a>            <span class="k">if</span> <span class="sa">b</span><span class="s2">&quot;</span><span class="se">\x00</span><span class="s2">&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">key_b</span>  <span class="c1"># skip internal pointer fields (e.g. \x00idxset)</span>
+<a id="__codelineno-0-488" name="__codelineno-0-488"></a>        <span class="p">}</span>
+<a id="__codelineno-0-489" name="__codelineno-0-489"></a>
+<a id="__codelineno-0-490" name="__codelineno-0-490"></a>        <span class="c1"># Create the model instance</span>
+<a id="__codelineno-0-491" name="__codelineno-0-491"></a>        <span class="n">model_instance</span> <span class="o">=</span> <span class="n">model_class</span><span class="p">(</span><span class="o">**</span><span class="n">model_attrs</span><span class="p">)</span>
+<a id="__codelineno-0-492" name="__codelineno-0-492"></a>
+<a id="__codelineno-0-493" name="__codelineno-0-493"></a>        <span class="c1"># Identity provenance: prefer the key this hash was actually read from</span>
+<a id="__codelineno-0-494" name="__codelineno-0-494"></a>        <span class="c1"># over __init__&#39;s recomputation from the decoded values. Set before</span>
+<a id="__codelineno-0-495" name="__codelineno-0-495"></a>        <span class="c1"># _load_capped_list_fields, which reads _redis_key to find the list keys.</span>
+<a id="__codelineno-0-496" name="__codelineno-0-496"></a>        <span class="k">if</span> <span class="n">source_redis_key</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-497" name="__codelineno-0-497"></a>            <span class="n">model_instance</span><span class="o">.</span><span class="n">_redis_key</span> <span class="o">=</span> <span class="n">_as_key_str</span><span class="p">(</span><span class="n">source_redis_key</span><span class="p">)</span>
+<a id="__codelineno-0-498" name="__codelineno-0-498"></a>
+<a id="__codelineno-0-499" name="__codelineno-0-499"></a>        <span class="c1"># Load capped ListField data from separate Redis list keys</span>
+<a id="__codelineno-0-500" name="__codelineno-0-500"></a>        <span class="n">_load_capped_list_fields</span><span class="p">(</span><span class="n">model_class</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">)</span>
+<a id="__codelineno-0-501" name="__codelineno-0-501"></a>
+<a id="__codelineno-0-502" name="__codelineno-0-502"></a>        <span class="c1"># Store the loaded field values for proper cleanup on delete</span>
+<a id="__codelineno-0-503" name="__codelineno-0-503"></a>        <span class="c1"># This ensures that if the model is modified and then deleted,</span>
+<a id="__codelineno-0-504" name="__codelineno-0-504"></a>        <span class="c1"># the on_delete hooks use the original saved values</span>
+<a id="__codelineno-0-505" name="__codelineno-0-505"></a>        <span class="n">model_instance</span><span class="o">.</span><span class="n">_saved_field_values</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-0-506" name="__codelineno-0-506"></a>            <span class="n">field_name</span><span class="p">:</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model_instance</span><span class="p">,</span> <span class="n">field_name</span><span class="p">)</span>
+<a id="__codelineno-0-507" name="__codelineno-0-507"></a>            <span class="k">for</span> <span class="n">field_name</span> <span class="ow">in</span> <span class="n">model_instance</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+<a id="__codelineno-0-508" name="__codelineno-0-508"></a>        <span class="p">}</span>
+<a id="__codelineno-0-509" name="__codelineno-0-509"></a>        <span class="n">model_instance</span><span class="o">.</span><span class="n">_is_persisted</span> <span class="o">=</span> <span class="kc">True</span>
+<a id="__codelineno-0-510" name="__codelineno-0-510"></a>
+<a id="__codelineno-0-511" name="__codelineno-0-511"></a>        <span class="k">return</span> <span class="n">model_instance</span>
+<a id="__codelineno-0-512" name="__codelineno-0-512"></a>
+<a id="__codelineno-0-513" name="__codelineno-0-513"></a>    <span class="k">return</span> <span class="kc">None</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -3576,31 +3685,31 @@ for the first time.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/popoto/models/encoding.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-548">548</a></span>
-<span class="normal"><a href="#__codelineno-0-549">549</a></span>
-<span class="normal"><a href="#__codelineno-0-550">550</a></span>
-<span class="normal"><a href="#__codelineno-0-551">551</a></span>
-<span class="normal"><a href="#__codelineno-0-552">552</a></span>
-<span class="normal"><a href="#__codelineno-0-553">553</a></span>
-<span class="normal"><a href="#__codelineno-0-554">554</a></span>
-<span class="normal"><a href="#__codelineno-0-555">555</a></span>
-<span class="normal"><a href="#__codelineno-0-556">556</a></span>
-<span class="normal"><a href="#__codelineno-0-557">557</a></span>
-<span class="normal"><a href="#__codelineno-0-558">558</a></span>
-<span class="normal"><a href="#__codelineno-0-559">559</a></span>
-<span class="normal"><a href="#__codelineno-0-560">560</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-548" name="__codelineno-0-548"></a><span class="k">def</span><span class="w"> </span><span class="nf">decode_lazy_field</span><span class="p">(</span><span class="n">value_bytes</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">):</span>
-<a id="__codelineno-0-549" name="__codelineno-0-549"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Decode a single msgpack-encoded field value.</span>
-<a id="__codelineno-0-550" name="__codelineno-0-550"></a>
-<a id="__codelineno-0-551" name="__codelineno-0-551"></a><span class="sd">    Called by Model.__getattribute__ when accessing a lazily-loaded field</span>
-<a id="__codelineno-0-552" name="__codelineno-0-552"></a><span class="sd">    for the first time.</span>
-<a id="__codelineno-0-553" name="__codelineno-0-553"></a>
-<a id="__codelineno-0-554" name="__codelineno-0-554"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-555" name="__codelineno-0-555"></a><span class="sd">        value_bytes: Raw msgpack bytes from Redis.</span>
-<a id="__codelineno-0-556" name="__codelineno-0-556"></a>
-<a id="__codelineno-0-557" name="__codelineno-0-557"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-558" name="__codelineno-0-558"></a><span class="sd">        The decoded Python value with custom types restored.</span>
-<a id="__codelineno-0-559" name="__codelineno-0-559"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-560" name="__codelineno-0-560"></a>    <span class="k">return</span> <span class="n">decode_custom_types</span><span class="p">(</span><span class="n">msgpack</span><span class="o">.</span><span class="n">unpackb</span><span class="p">(</span><span class="n">value_bytes</span><span class="p">,</span> <span class="n">strict_map_key</span><span class="o">=</span><span class="kc">False</span><span class="p">))</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-644">644</a></span>
+<span class="normal"><a href="#__codelineno-0-645">645</a></span>
+<span class="normal"><a href="#__codelineno-0-646">646</a></span>
+<span class="normal"><a href="#__codelineno-0-647">647</a></span>
+<span class="normal"><a href="#__codelineno-0-648">648</a></span>
+<span class="normal"><a href="#__codelineno-0-649">649</a></span>
+<span class="normal"><a href="#__codelineno-0-650">650</a></span>
+<span class="normal"><a href="#__codelineno-0-651">651</a></span>
+<span class="normal"><a href="#__codelineno-0-652">652</a></span>
+<span class="normal"><a href="#__codelineno-0-653">653</a></span>
+<span class="normal"><a href="#__codelineno-0-654">654</a></span>
+<span class="normal"><a href="#__codelineno-0-655">655</a></span>
+<span class="normal"><a href="#__codelineno-0-656">656</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-644" name="__codelineno-0-644"></a><span class="k">def</span><span class="w"> </span><span class="nf">decode_lazy_field</span><span class="p">(</span><span class="n">value_bytes</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">):</span>
+<a id="__codelineno-0-645" name="__codelineno-0-645"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Decode a single msgpack-encoded field value.</span>
+<a id="__codelineno-0-646" name="__codelineno-0-646"></a>
+<a id="__codelineno-0-647" name="__codelineno-0-647"></a><span class="sd">    Called by Model.__getattribute__ when accessing a lazily-loaded field</span>
+<a id="__codelineno-0-648" name="__codelineno-0-648"></a><span class="sd">    for the first time.</span>
+<a id="__codelineno-0-649" name="__codelineno-0-649"></a>
+<a id="__codelineno-0-650" name="__codelineno-0-650"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-651" name="__codelineno-0-651"></a><span class="sd">        value_bytes: Raw msgpack bytes from Redis.</span>
+<a id="__codelineno-0-652" name="__codelineno-0-652"></a>
+<a id="__codelineno-0-653" name="__codelineno-0-653"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-654" name="__codelineno-0-654"></a><span class="sd">        The decoded Python value with custom types restored.</span>
+<a id="__codelineno-0-655" name="__codelineno-0-655"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-656" name="__codelineno-0-656"></a>    <span class="k">return</span> <span class="n">decode_custom_types</span><span class="p">(</span><span class="n">msgpack</span><span class="o">.</span><span class="n">unpackb</span><span class="p">(</span><span class="n">value_bytes</span><span class="p">,</span> <span class="n">strict_map_key</span><span class="o">=</span><span class="kc">False</span><span class="p">))</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
