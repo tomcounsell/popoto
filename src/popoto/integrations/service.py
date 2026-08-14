@@ -532,11 +532,13 @@ class MemoryService:
     # -- observability ---------------------------------------------------
 
     def _record_failure(self, operation: str, exc: BaseException) -> None:
-        """Log a swallowed exception and increment its counter.
+        """Log a swallowed exception and try to increment its counter.
 
-        A hook has no console. Without both halves of this -- a durable log
-        line and a counter ``doctor`` can read -- a user whose Redis moved
-        would see memory quietly stop working with nothing to look at.
+        A hook has no console, so the log line is the reliable channel --
+        it always lands. The counter is best-effort against the same
+        client that just failed: when Redis itself is unreachable, the
+        counter write also fails silently, which is exactly the case a
+        user whose Redis moved needs the log line for.
         """
         logger.warning("popoto memory %s failed: %s", operation, exc)
         stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
