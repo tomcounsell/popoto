@@ -1984,8 +1984,13 @@ Index maintenance rides a single atomic Lua script (`TAG_SWAP_LUA`) that **diffs
 the record's previous tag membership against the new one and issues only the
 necessary `SREM`/`SADD` calls — so re-saving with changed tags never leaves
 orphaned Set members. The previous membership is read from a server-authoritative
-pointer side key (a standalone Redis Set), never a client snapshot. All commands
-are core Redis Set operations (`SADD`/`SREM`/`SMEMBERS`/`SUNION`/`SINTER`/`DEL`) —
+pointer side key (a standalone Redis Set, namespaced `$TagPtr:<Model:key>:<field_name>`
+alongside Popoto's other internal keys — `$Class:`, `$KeyF:`, `$SortedF:`, `$IdxPtr:`),
+never a client snapshot; a model name can never begin with `$`, so this key can
+never collide with a model key glob (see [Indexed Fields → Operator
+Note](indexed_fields.md#operator-note) for the equivalent `$IdxPtr:` story and the
+1.8.0-1.8.2 migration/self-heal behavior that also applies to this pointer). All
+commands are core Redis Set operations (`SADD`/`SREM`/`SMEMBERS`/`SUNION`/`SINTER`/`DEL`) —
 **no Redis modules**, so it runs identically on Redis and Valkey.
 
 ### ContextAssembler integration
