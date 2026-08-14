@@ -228,12 +228,16 @@ What to read:
 
 A memory failure must never break a user's turn, so every path swallows and
 continues. Swallowing silently is the failure mode that makes users conclude
-memory does not work, so each swallowed exception both appends to
-`POPOTO_MEMORY_LOG` and increments a Redis counter that `doctor` reads back.
+memory does not work, so each swallowed exception always appends a line to
+`POPOTO_MEMORY_LOG` -- that's the reliable channel. It also tries to
+increment a Redis counter that `doctor` reads back, but that write is
+best-effort against the same client that just failed: when the failure is
+Redis being unreachable, the counter does not get incremented, which is
+exactly when `doctor` has nothing to read back anyway.
 
 | Situation | Behavior |
 |---|---|
-| Redis down, read hook | exit 0, no output, one log line, counter incremented |
+| Redis down, read hook | exit 0, no output, one log line, counter not incremented (same client is down) |
 | Redis down, write hook | exit 0, turn dropped, logged. No retry queue |
 | Malformed JSON on stdin | exit 0, no output, logged as `hook_decode` |
 | Empty prompt | no retrieval attempted, no output |
