@@ -13,6 +13,7 @@ JSON document on stdout.
 
 import json
 import os
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -48,6 +49,27 @@ WRITE_FIXTURES = [
 
 def load(name):
     return json.loads((FIXTURES / name).read_text())
+
+
+def _down_redis_url():
+    """A ``redis://`` URL that is guaranteed closed at call time.
+
+    ``redis://127.0.0.1:6399/0`` used to be hardcoded here as a stand-in for
+    "Redis is down", but this suite does not own port 6399 -- any other
+    process (a developer's spare redis-server, another worktree's fixture)
+    can be listening on it, which flips these tests from "hook degrades
+    gracefully" to "hook writes real records into a stranger's DB 0". Bind
+    an ephemeral port and close it immediately: the OS hands out a port
+    nothing is listening on, so ``ECONNREFUSED`` is guaranteed regardless of
+    what else is running on the machine.
+    """
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    finally:
+        sock.close()
+    return f"redis://127.0.0.1:{port}/0"
 
 
 def make_service(tmp_path, **overrides):
@@ -350,7 +372,7 @@ def test_read_hook_with_redis_down(tmp_path):
     result = _run_cli(
         load("claude_code_user_prompt_submit.json"),
         {
-            "POPOTO_MEMORY_URL": "redis://127.0.0.1:6399/0",
+            "POPOTO_MEMORY_URL": _down_redis_url(),
             "POPOTO_MEMORY_LOG": str(log),
         },
     )
@@ -365,7 +387,7 @@ def test_write_hook_with_redis_down(tmp_path):
     result = _run_cli(
         load("claude_code_stop.json"),
         {
-            "POPOTO_MEMORY_URL": "redis://127.0.0.1:6399/0",
+            "POPOTO_MEMORY_URL": _down_redis_url(),
             "POPOTO_MEMORY_LOG": str(log),
         },
     )
@@ -392,7 +414,7 @@ def test_doctor_reports_the_failure_counters(tmp_path):
     """Every degraded state above must be visible without reading the log."""
     log = tmp_path / "down.log"
     env = {
-        "POPOTO_MEMORY_URL": "redis://127.0.0.1:6399/0",
+        "POPOTO_MEMORY_URL": _down_redis_url(),
         "POPOTO_MEMORY_LOG": str(log),
     }
     _run_cli(load("claude_code_user_prompt_submit.json"), env)

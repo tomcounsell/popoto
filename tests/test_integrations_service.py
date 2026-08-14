@@ -375,6 +375,10 @@ class _UnreachableService(MemoryService):
 
 
 def test_status_survives_an_unreachable_server(tmp_path):
+    # NOTE: this URL is decorative, not the unreachability mechanism -- unlike
+    # tests/test_integrations_hooks.py (which relies on a genuinely closed
+    # port), _UnreachableService overrides `.redis` with a `_DeadRedis` stub
+    # above, so no connection to this address is ever attempted.
     service = _UnreachableService(
         MemoryConfig(
             agent_id=AGENT,
@@ -396,6 +400,9 @@ def test_feedback_degrades_quietly_when_redis_is_down(tmp_path):
     subprocess against a closed port, by
     ``tests/test_integrations_hooks.py::test_read_hook_with_redis_down``.
     """
+    # NOTE: decorative URL, same as above -- _UnreachableService's `.redis`
+    # override (a `_DeadRedis` stub) is what makes every call fail here, not
+    # this port being closed.
     service = _UnreachableService(
         MemoryConfig(
             agent_id=AGENT,
