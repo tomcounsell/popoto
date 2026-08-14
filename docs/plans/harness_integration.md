@@ -247,7 +247,7 @@ Python core in `src/` (ships in the wheel); harness assets at repo root under `p
 | Variable | Default | Notes |
 |---|---|---|
 | `POPOTO_MEMORY_URL` | `redis://localhost:6379/0` | Standard Redis URL; Valkey identical |
-| `POPOTO_MEMORY_AGENT_ID` | basename of cwd | Per-project scoping by default, so one repo's memories do not bleed into another |
+| `POPOTO_MEMORY_AGENT_ID` | basename of cwd | Tags writes and is honored as a read filter on the composite-score path only; the default lexical/BM25 path does not yet filter by it ([#576](https://github.com/tomcounsell/popoto/issues/576)) |
 | `POPOTO_MEMORY_MAX_ITEMS` | 5 | Harness default; diverges from the benchmark, stated explicitly |
 | `POPOTO_MEMORY_MAX_TOKENS` | 800 | Under Codex's 2500-token `additionalContextLimit` |
 | `POPOTO_MEMORY_INGEST` | `raw` | `raw` \| `heuristic` \| `llm`; non-raw prints the #489 measured cost on first use |

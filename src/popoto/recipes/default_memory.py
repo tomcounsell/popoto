@@ -21,8 +21,12 @@ Field choices and why:
 ``memory_id`` (AutoKeyField)
     A generated key so callers never invent one.
 ``agent_id`` (KeyField)
-    Partition key. Every other index partitions by it, so two agents
-    sharing one Redis never see each other's memories.
+    Partition key. Every other index partitions by it, and an explicit
+    ``.filter(agent_id=...)`` query always honors that partition -- but
+    the default lexical/BM25 retrieval path does not yet filter by it
+    (`#576 <https://github.com/tomcounsell/popoto/issues/576>`_), so two
+    agents sharing one Redis via the default loop can retrieve each
+    other's memories. Not a project-isolation boundary today.
 ``content`` (StringField)
     The memory text. Also the ``BM25Field`` source and the field the
     content-first injection format reads.
