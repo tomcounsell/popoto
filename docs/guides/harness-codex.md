@@ -70,12 +70,19 @@ This was reproduced first-hand against codex-cli 0.144.4: with a project
 `.codex/hooks.json` and `codex exec --enable hooks
 --dangerously-bypass-hook-trust`, no hook ran and nothing was reported.
 
-Install at `~/.codex/hooks.json` instead. If you need per-project scoping,
-scope the memory rather than the hook:
+Install at `~/.codex/hooks.json` instead.
+
+`POPOTO_MEMORY_AGENT_ID` tags writes and is honored as a read filter only on
+the composite-score retrieval path — the shipped default lexical/BM25 path
+does not filter by it yet ([#576](https://github.com/tomcounsell/popoto/issues/576)), so setting it per project does **not**
+isolate one project's memories from another's on the same database:
 
 ```bash
 export POPOTO_MEMORY_AGENT_ID=my-project
 ```
+
+If you need real per-project isolation today, point each project at its own
+`POPOTO_MEMORY_URL` database instead.
 
 ## Context limit
 

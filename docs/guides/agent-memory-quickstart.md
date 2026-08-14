@@ -27,8 +27,12 @@ sm.report_outcomes(assembly, outcome="acted")      # feedback: reinforce what wa
 ```
 
 That is a working memory loop with query-sensitive retrieval on by default.
-`agent_id` is the only required argument; it partitions every index, so two
-agents sharing one Redis never see each other's memories.
+`agent_id` is the only required argument; it partitions every index, and an
+explicit `.filter(agent_id=...)` query (Levels 1+ below) always honors that
+partition. `inject_context`'s default retrieval path (lexical/BM25) does not
+yet filter by it ([#576](https://github.com/tomcounsell/popoto/issues/576)), so at Level 0 two agents sharing one Redis can
+retrieve each other's memories — a distinct Redis database per agent is the
+actual isolation boundary until that lands.
 
 This is also the configuration the published benchmarks run. If you take
 nothing else from this page, take this.
