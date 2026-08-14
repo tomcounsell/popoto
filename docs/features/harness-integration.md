@@ -154,12 +154,14 @@ that measured cost the first time it is used.
 ## Configuration
 
 Every variable is optional. The zero-configuration path is "local Redis or
-Valkey on the default port, memories scoped to this project".
+Valkey on the default port, memories tagged with this project's agent id" —
+see the scoping caveat on `POPOTO_MEMORY_AGENT_ID` below before wiring the
+hook into more than one project on one database.
 
 | Variable | Default | Notes |
 |---|---|---|
 | `POPOTO_MEMORY_URL` | `REDIS_URL`, else `redis://localhost:6379/0` | Valkey URLs are identical |
-| `POPOTO_MEMORY_AGENT_ID` | basename of the working directory | Per-project scoping, so one repo's memories do not bleed into another |
+| `POPOTO_MEMORY_AGENT_ID` | basename of the working directory | Tags writes and is honored as a read filter on the composite-score retrieval path. The shipped default is the lexical/BM25 path, which does **not** yet filter by it ([#576](https://github.com/tomcounsell/popoto/issues/576)) — a project's memories can be retrieved by another `agent_id` on the same database. Not a project-isolation boundary today; use a distinct `POPOTO_MEMORY_URL` database per project for that instead |
 | `POPOTO_MEMORY_MAX_ITEMS` | `5` | Diverges from the benchmark; see below |
 | `POPOTO_MEMORY_MAX_TOKENS` | `800` | Under Codex's 2500-token `additionalContextLimit` |
 | `POPOTO_MEMORY_INGEST` | `raw` | `raw` or `heuristic` |
