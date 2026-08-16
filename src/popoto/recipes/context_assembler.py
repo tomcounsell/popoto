@@ -67,7 +67,7 @@ import statistics
 import time
 import warnings
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 from ..fields.bm25_field import BM25Field
 from ..fields.co_occurrence_field import CoOccurrenceField
@@ -1698,9 +1698,15 @@ class ContextAssembler:
         closed = POPOTO_REDIS_DB.zrangebyscore(invalid_at_key, "-inf", t)
         # valid_from > t: not yet started.
         future = POPOTO_REDIS_DB.zrangebyscore(valid_from_key, f"({t}", "+inf")
+        # redis-py types every command ``Awaitable[T] | T`` for both the sync
+        # and async clients, so mypy cannot see that these are concrete lists
+        # on the sync client we actually use. Same family as the existing
+        # narrowing casts elsewhere in this module; see CLAUDE.md's note that
+        # this error class is redis-py-version-dependent.
+        closed_list = cast("list[Any]", closed)
+        future_list = cast("list[Any]", future)
         return {
-            k.decode() if isinstance(k, bytes) else k
-            for k in list(closed) + list(future)
+            k.decode() if isinstance(k, bytes) else k for k in closed_list + future_list
         }
 
     @staticmethod

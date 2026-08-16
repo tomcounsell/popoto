@@ -47,6 +47,7 @@ Example:
 
 import logging
 import time
+from typing import Any
 
 from ..redis_db import POPOTO_REDIS_DB
 from .constants import Defaults
@@ -411,7 +412,9 @@ def _apply_contradicted(instance, pipeline, superseded_by=None):
     _apply_supersession(instance, pipeline, superseded_by)
 
 
-def _apply_supersession(instance, pipeline, superseded_by=None):
+def _apply_supersession(
+    instance: Any, pipeline: Any, superseded_by: Any = None
+) -> None:
     """Close a contradicted record's interval and chain it to its correction.
 
     No-op unless the model declares a ValidityField *and* the correcting
