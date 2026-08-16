@@ -19,6 +19,11 @@ Tests cover:
 - Exclusion semantics: a record with no interval is UNMANAGED and stays visible
 - ContextAssembler: invalidated records absent, ``assemble(as_of=t)`` replay,
   kill switch, no-ValidityField passthrough, max_items fill
+- The ``ObservationProtocol`` ``contradicted`` -> ``_apply_supersession`` wiring:
+  the happy path via ``instance._superseded_by``, and its three no-op paths
+  (no ValidityField, no successor signalled, unsaved instance)
+- A pin on the documented ``CyclicDecayField`` gating gap (``CYCLIC_DECAY_LUA``
+  is ungated by design; a direct ``top_by_decay`` on one is not gated)
 - Every Failure Path case in the plan, including the D9 TTL warning
 - p50 micro-benchmark of gated vs ungated retrieval at 20k records
 """
@@ -33,17 +38,20 @@ import time
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
 
+import msgpack
 import pytest
 from src import popoto
 from src.popoto import SupersessionProtocol, ValidityField
 from src.popoto.fields import validity_field as validity_module
 from src.popoto.fields.confidence_field import ConfidenceField
 from src.popoto.fields.constants import Defaults
+from src.popoto.fields.cyclic_decay_field import CyclicDecayField
 from src.popoto.fields.decaying_sorted_field import (
     DECAY_SCORE_LUA,
     DecayingSortedField,
     validity_gate_args,
 )
+from src.popoto.fields.observation import ObservationProtocol
 from src.popoto.models.query import Query, QueryBuilder
 from src.popoto.recipes import context_assembler as assembler_module
 from src.popoto.recipes.context_assembler import ContextAssembler
@@ -115,6 +123,51 @@ class BenchFact(popoto.Model):
     validity = ValidityField()
 
 
+#: One cycle with a non-zero amplitude, so ``weaken_cycle`` (a pre-#580
+#: ``contradicted`` effect) is observable in the companion hash.
+OBSERVED_CYCLES = [(86400.0, 4.0, 0.0)]
+
+
+class ObservedFact(popoto.Model):
+    """Outcome-reporting model WITH a validity axis.
+
+    Carries all three arms ``_apply_contradicted`` touches (cyclic decay,
+    confidence, validity) so the #580 supersession wiring can be asserted
+    alongside the pre-#580 effects it must not disturb. Its decay arm is a
+    ``CyclicDecayField`` on purpose — that also makes it the fixture for the
+    documented ``CYCLIC_DECAY_LUA`` gating gap.
+    """
+
+    name = popoto.UniqueKeyField()
+    importance = popoto.FloatField(default=1.0)
+    relevance = CyclicDecayField(base_score_field="importance", cycles=OBSERVED_CYCLES)
+    certainty = ConfidenceField(initial_confidence=0.5)
+    validity = ValidityField()
+
+
+class PlainObservedFact(popoto.Model):
+    """``ObservedFact`` minus the ValidityField — every shipped model today.
+
+    The no-op oracle: reporting ``contradicted`` on this model must produce
+    byte-identical effects whether or not a successor is signalled.
+    """
+
+    name = popoto.UniqueKeyField()
+    importance = popoto.FloatField(default=1.0)
+    relevance = CyclicDecayField(base_score_field="importance", cycles=OBSERVED_CYCLES)
+    certainty = ConfidenceField(initial_confidence=0.5)
+
+
+class ObservedMemory(popoto.Model):
+    """Partitioned ``CyclicDecayField`` + validity — the assembler contrast."""
+
+    memory_id = popoto.AutoKeyField()
+    agent_id = popoto.KeyField()
+    content = popoto.StringField(default="")
+    relevance = CyclicDecayField(partition_by="agent_id", cycles=OBSERVED_CYCLES)
+    validity = ValidityField()
+
+
 ALL_MODELS = [
     ValidFact,
     PlainFact,
@@ -123,6 +176,9 @@ ALL_MODELS = [
     ValidMemory,
     PlainMemory,
     BenchFact,
+    ObservedFact,
+    PlainObservedFact,
+    ObservedMemory,
 ]
 
 VALIDITY_MODELS = [
@@ -131,6 +187,8 @@ VALIDITY_MODELS = [
     (TTLFact, "validity"),
     (ValidMemory, "validity"),
     (BenchFact, "validity"),
+    (ObservedFact, "validity"),
+    (ObservedMemory, "validity"),
 ]
 
 
@@ -154,10 +212,24 @@ def _wipe_validity_keys():
             POPOTO_REDIS_DB.delete(*keys)
 
 
+#: Models whose companion hashes (cycle amplitudes, pressure clocks,
+#: confidence) carry state across ``delete_all()`` and would otherwise let one
+#: test's ``contradicted`` report bias the next test's baseline.
+COMPANION_STATE_MODELS = ["ObservedFact", "PlainObservedFact", "ObservedMemory"]
+
+
+def _wipe_companion_state():
+    for name in COMPANION_STATE_MODELS:
+        keys = list(POPOTO_REDIS_DB.keys(f"*{name}*"))
+        if keys:
+            POPOTO_REDIS_DB.delete(*keys)
+
+
 def _reset():
     for model in ALL_MODELS:
         model.delete_all()
     _wipe_validity_keys()
+    _wipe_companion_state()
     validity_module._TTL_WARNED.clear()
 
 
@@ -201,6 +273,22 @@ def _interval(model, field_name, instance):
         _zscore(keys["invalid_at"], member),
         _zscore(keys["ingested_at"], member),
     )
+
+
+def _cycle_amplitudes(instance, field_name="relevance"):
+    """Per-member cycle amplitudes from a CyclicDecayField's companion hash.
+
+    The observable trace of ``weaken_cycle`` / ``strengthen_cycle``, i.e. of a
+    pre-#580 ``contradicted`` effect.
+    """
+    field = instance._meta.fields[field_name]
+    raw = POPOTO_REDIS_DB.hget(
+        field.get_cycles_hash_key(instance, field_name),
+        instance.db_key.redis_key,
+    )
+    if not raw:
+        return []
+    return [cycle[1] for cycle in msgpack.unpackb(raw, raw=False)]
 
 
 # ---------------------------------------------------------------------------
@@ -1371,6 +1459,269 @@ class TestFailurePaths:
         assert [
             r for r in caplog.records if "truncates supersession chains" in r.message
         ] == []
+
+
+# ---------------------------------------------------------------------------
+# K2. The ObservationProtocol `contradicted` -> supersession wiring
+# ---------------------------------------------------------------------------
+
+
+def _validity_keyspace():
+    """Every live key under the ``$ValidityF`` prefix, as a set of strings."""
+    return {
+        k.decode() if isinstance(k, bytes) else k
+        for k in POPOTO_REDIS_DB.keys("$ValidityF*")
+    }
+
+
+def _chain_links(model, field_name, old, new):
+    """Return ``(fwd, rev)`` chain-link values for an ``old -> new`` pair."""
+    keys = ValidityField.get_all_keys(model, field_name)
+
+    def _get(key, field):
+        raw = POPOTO_REDIS_DB.hget(key, field)
+        return raw.decode() if isinstance(raw, bytes) else raw
+
+    return (
+        _get(keys["chain_fwd"], old.db_key.redis_key),
+        _get(keys["chain_rev"], new.db_key.redis_key),
+    )
+
+
+def _report_contradicted(instance, superseded_by=None):
+    """Report a ``contradicted`` outcome the way an application would.
+
+    The correcting record is signalled through the private
+    ``instance._superseded_by`` attribute rather than through ``outcome_map``,
+    because ``outcome_map`` is a ``key -> outcome`` mapping with no slot for a
+    second instance. This is the mechanism ``_apply_supersession`` actually
+    reads (``observation.py``), so it is the mechanism under test.
+    """
+    if superseded_by is not None:
+        instance._superseded_by = superseded_by
+    ObservationProtocol.on_context_used(
+        [instance], {instance.db_key.redis_key: "contradicted"}
+    )
+
+
+class TestContradictedSupersessionWiring:
+    """``_apply_contradicted`` -> ``_apply_supersession`` (plan Failure Paths).
+
+    Contradiction stops being a scalar nudge and becomes provenance: when the
+    model declares a ``ValidityField`` *and* the correcting record is known,
+    reporting ``contradicted`` closes the stale record's interval and writes
+    both chain links. Every other combination is a strict no-op, which is the
+    property that matters most in practice — no shipped model declares a
+    ``ValidityField``, so the no-op path is the one every existing adopter
+    takes.
+    """
+
+    def test_contradicted_with_a_successor_closes_and_chains(self):
+        old = _save(ObservedFact, name="old")
+        new = _save(ObservedFact, name="new")
+        assert _interval(ObservedFact, "validity", old)[1] == float("inf")
+
+        _report_contradicted(old, superseded_by=new)
+
+        valid_from, invalid_at, _ = _interval(ObservedFact, "validity", old)
+        assert invalid_at != float("inf"), "interval was not closed"
+        assert invalid_at >= valid_from
+
+        fwd, rev = _chain_links(ObservedFact, "validity", old, new)
+        assert fwd == new.db_key.redis_key
+        assert rev == old.db_key.redis_key
+
+        # ...and the closure is visible to the retrieval + traversal APIs.
+        assert SupersessionProtocol.superseded_by(old).name == "new"
+        assert SupersessionProtocol.supersedes(new).name == "old"
+        assert _names(ObservedFact.query.filter(validity__current=True)) == ["new"]
+
+    def test_contradicted_leaves_the_successor_open(self):
+        """The correction must not be closed by its own arrival."""
+        old = _save(ObservedFact, name="old")
+        new = _save(ObservedFact, name="new")
+        _report_contradicted(old, superseded_by=new)
+        assert _interval(ObservedFact, "validity", new)[1] == float("inf")
+
+    def test_no_validity_field_is_a_strict_no_op(self):
+        """The case every shipped model takes today: nothing new is written.
+
+        Asserted two ways: no key appears anywhere under the ``$ValidityF``
+        prefix, and the pre-#580 ``contradicted`` effects land identically
+        whether or not a successor is signalled.
+        """
+        before_keys = _validity_keyspace()
+
+        signalled = _save(PlainObservedFact, name="signalled")
+        control = _save(PlainObservedFact, name="control")
+        successor = _save(PlainObservedFact, name="successor")
+
+        _report_contradicted(control)
+        _report_contradicted(signalled, superseded_by=successor)
+
+        assert (
+            _validity_keyspace() == before_keys
+        ), "supersession state was written for a model with no ValidityField"
+
+        # Pre-existing effects: identical with and without the successor.
+        assert ConfidenceField.get_confidence(
+            signalled, "certainty"
+        ) == ConfidenceField.get_confidence(control, "certainty")
+        assert ConfidenceField.get_confidence(signalled, "certainty") < 0.5
+        assert _cycle_amplitudes(signalled) == _cycle_amplitudes(control)
+        assert _cycle_amplitudes(signalled) < [c[1] for c in OBSERVED_CYCLES]
+
+    def test_no_successor_signalled_is_a_no_op(self):
+        """A ValidityField alone is not enough — the correction must be known."""
+        old = _save(ObservedFact, name="old")
+        _save(ObservedFact, name="new")
+
+        _report_contradicted(old)
+
+        assert _interval(ObservedFact, "validity", old)[1] == float("inf")
+        keys = ValidityField.get_all_keys(ObservedFact, "validity")
+        assert POPOTO_REDIS_DB.hlen(keys["chain_fwd"]) == 0
+        assert POPOTO_REDIS_DB.hlen(keys["chain_rev"]) == 0
+        assert SupersessionProtocol.superseded_by(old) is None
+        # The scalar effects still ran.
+        assert ConfidenceField.get_confidence(old, "certainty") < 0.5
+
+    def test_unsaved_successor_degrades_with_no_partial_state(self):
+        """An unsaved correction must not close the incumbent into a dangling
+        chain: the whole supersession degrades, incumbent left open."""
+        old = _save(ObservedFact, name="old")
+        ghost = ObservedFact(name="ghost")
+
+        _report_contradicted(old, superseded_by=ghost)
+
+        assert _interval(ObservedFact, "validity", old)[1] == float("inf")
+        keys = ValidityField.get_all_keys(ObservedFact, "validity")
+        assert POPOTO_REDIS_DB.hlen(keys["chain_fwd"]) == 0
+        assert POPOTO_REDIS_DB.hlen(keys["chain_rev"]) == 0
+        assert _names(ObservedFact.query.filter(validity__current=True)) == ["old"]
+
+    def test_unsaved_contradicted_instance_degrades_with_no_partial_state(self):
+        """The reported instance itself is unsaved: silent, and no index state.
+
+        ``on_context_used`` must not raise, and none of the six validity keys
+        may gain an entry — not a ``valid_from``, not a chain link.
+
+        Runs on ``ValidFact`` (plain ``DecayingSortedField``) rather than
+        ``ObservedFact`` deliberately: ``_apply_contradicted``'s *unrelated*,
+        pre-#580 ``weaken_cycle`` call raises ``TypeError`` on an unsaved
+        instance of any ``CyclicDecayField``-bearing model, which would mask
+        the supersession behavior under test here.
+        """
+        new = _save(ValidFact, name="new")
+        unsaved = ValidFact(name="never-saved")
+
+        before_keys = _validity_keyspace()
+        _report_contradicted(unsaved, superseded_by=new)
+
+        keys = ValidityField.get_all_keys(ValidFact, "validity")
+        assert POPOTO_REDIS_DB.hlen(keys["chain_fwd"]) == 0
+        assert POPOTO_REDIS_DB.hlen(keys["chain_rev"]) == 0
+        # `new`'s own opening interval is the only membership state present.
+        assert POPOTO_REDIS_DB.zcard(keys["valid_from"]) == 1
+        assert POPOTO_REDIS_DB.zcard(keys["invalid_at"]) == 1
+        assert POPOTO_REDIS_DB.zscore(
+            keys["invalid_at"], new.db_key.redis_key
+        ) == float("inf")
+        assert _validity_keyspace() == before_keys
+        assert SupersessionProtocol.chain(unsaved) == []
+
+    def test_a_non_contradicted_outcome_never_supersedes(self):
+        """Only ``contradicted`` routes to ``_apply_supersession``."""
+        old = _save(ObservedFact, name="old")
+        new = _save(ObservedFact, name="new")
+        old._superseded_by = new
+
+        for outcome in ("acted", "used", "dismissed", "deferred"):
+            ObservationProtocol.on_context_used([old], {old.db_key.redis_key: outcome})
+            assert _interval(ObservedFact, "validity", old)[1] == float(
+                "inf"
+            ), f"outcome '{outcome}' closed the interval"
+
+
+# ---------------------------------------------------------------------------
+# K3. Pinned known gap: CYCLIC_DECAY_LUA carries no validity gate
+# ---------------------------------------------------------------------------
+
+
+class TestCyclicDecayGatingGap:
+    """PINS A DOCUMENTED GAP, NOT A DESIRED BEHAVIOR.
+
+    ``CYCLIC_DECAY_LUA`` was deliberately left unmodified by #580 (an explicit
+    plan No-Go), so a **direct** ``Model.query.top_by_decay()`` on a
+    ``CyclicDecayField`` receives no gating from any of the three layers:
+    Layer 1 never reaches the cyclic script, Layer 2 only enforces membership
+    after ``composite_score``'s union, and Layer 3 only runs inside
+    ``ContextAssembler``. ``ContextAssembler`` paths are therefore unaffected —
+    it never calls ``top_by_decay``, and its own cyclic proxy results are
+    post-filtered by ``_scope_by_validity``.
+
+    If someone later gates ``CYCLIC_DECAY_LUA``, this test SHOULD fail. That is
+    the point: delete it and update the "Known limitations" section of
+    ``docs/features/validity-and-supersession.md`` rather than working around
+    the failure.
+    """
+
+    def test_direct_top_by_decay_on_a_cyclic_field_returns_the_superseded_record(
+        self,
+    ):
+        old = _save(ObservedFact, name="old")
+        new = _save(ObservedFact, name="new")
+        SupersessionProtocol.invalidate(old, superseded_by=new)
+
+        # The record IS closed — this is a gating gap, not a write-path bug.
+        assert _interval(ObservedFact, "validity", old)[1] != float("inf")
+        assert _names(ObservedFact.query.filter(validity__current=True)) == ["new"]
+
+        assert _names(ObservedFact.query.top_by_decay("relevance", n=10)) == [
+            "new",
+            "old",
+        ]
+
+    def test_the_plain_decay_field_contrast_is_gated(self):
+        """CONTROL: the same call on a plain ``DecayingSortedField`` IS gated.
+
+        Without this, the test above could pass for an unrelated reason (a
+        broken close, a misread index) rather than because the cyclic script
+        lacks the gate.
+        """
+        old = _save(ValidFact, name="old")
+        new = _save(ValidFact, name="new")
+        SupersessionProtocol.invalidate(old, superseded_by=new)
+        assert _names(ValidFact.query.top_by_decay("relevance", n=10)) == ["new"]
+
+    def test_the_assembler_path_on_a_cyclic_field_is_still_gated(self):
+        """Layer 3 covers what the cyclic script does not — the live path."""
+        old = _save(ObservedMemory, agent_id="a1", content="stale")
+        new = _save(ObservedMemory, agent_id="a1", content="fresh")
+        assembler = ContextAssembler(
+            model_class=ObservedMemory,
+            score_weights={"relevance": 1.0},
+            max_items=10,
+        )
+
+        before = {
+            r.content
+            for r in assembler.assemble(
+                query_cues={"content": "stale"}, partition_filters={"agent_id": "a1"}
+            ).records
+        }
+        assert "stale" in before
+
+        SupersessionProtocol.invalidate(old, superseded_by=new)
+
+        after = {
+            r.content
+            for r in assembler.assemble(
+                query_cues={"content": "stale"}, partition_filters={"agent_id": "a1"}
+            ).records
+        }
+        assert "stale" not in after
+        assert "fresh" in after
 
 
 # ---------------------------------------------------------------------------

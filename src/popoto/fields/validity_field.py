@@ -69,7 +69,7 @@ Example:
 
 import logging
 import time
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional, Union, cast
 
 import redis.client
 
@@ -77,6 +77,14 @@ from ..models.db_key import DB_key
 from ..redis_db import POPOTO_REDIS_DB, scan_keys
 from .constants import Defaults
 from .field import Field
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle guard
+    from ..models.base import Model
+
+    #: Every key helper here reads only class-level metadata, so callers pass
+    #: either the model class (``SupersessionProtocol``) or a live instance
+    #: (``on_save`` / ``on_delete``). Both are accepted deliberately.
+    ModelLike = Union[Model, type[Model]]
 
 logger = logging.getLogger("POPOTO.ValidityField")
 
@@ -90,7 +98,7 @@ CLOSE_BEFORE_START_ERROR = "POPOTO_VALIDITY_CLOSE_BEFORE_START"
 
 #: Models already warned about the TTL/validity interaction (plan D9). Keyed by
 #: ``(model name, field name)`` so the warning fires exactly once per pair.
-_TTL_WARNED: set = set()
+_TTL_WARNED: "set[tuple[str, str]]" = set()
 
 
 # SUPERSEDE_LUA — atomic interval closure + chain linking + open-pointer repoint.
@@ -271,34 +279,37 @@ class ValidityField(Field):
     # ------------------------------------------------------------------
 
     @classmethod
-    def get_prefix_db_key(cls, model: "Model", field_name: str) -> DB_key:  # noqa: F821
+    def get_prefix_db_key(cls, model: "ModelLike", field_name: str) -> DB_key:
         """Return the ``$ValidityF:{Model}:{field}`` prefix all six keys extend."""
-        return cls.get_special_use_field_db_key(model, field_name)
+        # ``Field.get_special_use_field_db_key`` annotates an instance but reads
+        # only ``_meta``, which a model class carries too — hence ``ModelLike``
+        # here and the narrowing cast at the boundary.
+        return cls.get_special_use_field_db_key(cast("Model", model), field_name)
 
     @classmethod
-    def get_valid_from_key(cls, model: "Model", field_name: str) -> str:  # noqa: F821
+    def get_valid_from_key(cls, model: "ModelLike", field_name: str) -> str:
         """Redis key of the ``valid_from`` ZSET (member -> valid-from epoch)."""
         return DB_key(cls.get_prefix_db_key(model, field_name), "valid_from").redis_key
 
     @classmethod
-    def get_invalid_at_key(cls, model: "Model", field_name: str) -> str:  # noqa: F821
+    def get_invalid_at_key(cls, model: "ModelLike", field_name: str) -> str:
         """Redis key of the ``invalid_at`` ZSET (member -> close epoch, ``+inf`` = open)."""
         return DB_key(cls.get_prefix_db_key(model, field_name), "invalid_at").redis_key
 
     @classmethod
-    def get_ingested_at_key(cls, model: "Model", field_name: str) -> str:  # noqa: F821
+    def get_ingested_at_key(cls, model: "ModelLike", field_name: str) -> str:
         """Redis key of the ``ingested_at`` ZSET (member -> transaction-time epoch)."""
         return DB_key(cls.get_prefix_db_key(model, field_name), "ingested_at").redis_key
 
     @classmethod
-    def get_chain_fwd_key(cls, model: "Model", field_name: str) -> str:  # noqa: F821
+    def get_chain_fwd_key(cls, model: "ModelLike", field_name: str) -> str:
         """Redis key of the forward chain HASH (old redis_key -> superseding key)."""
         return DB_key(
             cls.get_prefix_db_key(model, field_name), "chain", "fwd"
         ).redis_key
 
     @classmethod
-    def get_chain_rev_key(cls, model: "Model", field_name: str) -> str:  # noqa: F821
+    def get_chain_rev_key(cls, model: "ModelLike", field_name: str) -> str:
         """Redis key of the reverse chain HASH (new redis_key -> superseded key)."""
         return DB_key(
             cls.get_prefix_db_key(model, field_name), "chain", "rev"
@@ -306,7 +317,7 @@ class ValidityField(Field):
 
     @classmethod
     def get_open_pointer_key(
-        cls, model: "Model", field_name: str, identity_digest: str  # noqa: F821
+        cls, model: "ModelLike", field_name: str, identity_digest: str
     ) -> str:
         """Redis key of the open-claim pointer STRING for one identity digest.
 
@@ -324,7 +335,7 @@ class ValidityField(Field):
 
     @classmethod
     def get_interval_keys(
-        cls, model: "Model", field_name: str  # noqa: F821
+        cls, model: "ModelLike", field_name: str
     ) -> "tuple[str, str]":
         """Return ``(valid_from_key, invalid_at_key)`` for a model/field pair.
 
@@ -348,9 +359,7 @@ class ValidityField(Field):
         )
 
     @classmethod
-    def get_all_keys(
-        cls, model: "Model", field_name: str  # noqa: F821
-    ) -> "dict[str, str]":
+    def get_all_keys(cls, model: "ModelLike", field_name: str) -> "dict[str, str]":
         """Return the five non-identity keys as a name -> Redis key mapping.
 
         Keys: ``valid_from``, ``invalid_at``, ``ingested_at``, ``chain_fwd``,
@@ -373,7 +382,7 @@ class ValidityField(Field):
     @classmethod
     def resolve_valid_keys(
         cls,
-        model: "Model",  # noqa: F821
+        model: "ModelLike",
         field_name: str,
         as_of: Optional[float] = None,
     ) -> "set[str]":
@@ -417,14 +426,23 @@ class ValidityField(Field):
         """
         t = time.time() if as_of is None else float(as_of)
         valid_from_key, invalid_at_key = cls.get_interval_keys(model, field_name)
-        started = POPOTO_REDIS_DB.zrangebyscore(valid_from_key, "-inf", t)
-        still_open = POPOTO_REDIS_DB.zrangebyscore(invalid_at_key, f"({t}", "+inf")
+        # redis-py types every command ``Awaitable[T] | T`` for both the sync and
+        # async clients, so mypy cannot see that these are concrete lists on the
+        # sync client we actually use. Same narrowing cast as
+        # ``ContextAssembler._resolve_excluded_keys``; CLAUDE.md notes this error
+        # family is redis-py-version-dependent.
+        started = cast(
+            "list[Any]", POPOTO_REDIS_DB.zrangebyscore(valid_from_key, "-inf", t)
+        )
+        still_open = cast(
+            "list[Any]", POPOTO_REDIS_DB.zrangebyscore(invalid_at_key, f"({t}", "+inf")
+        )
         return {_as_str(m) for m in started} & {_as_str(m) for m in still_open}
 
     @classmethod
     def is_valid_at(
         cls,
-        model: "Model",  # noqa: F821
+        model: "ModelLike",
         field_name: str,
         member_key: str,
         as_of: Optional[float] = None,
@@ -437,8 +455,15 @@ class ValidityField(Field):
         """
         t = time.time() if as_of is None else float(as_of)
         valid_from_key, invalid_at_key = cls.get_interval_keys(model, field_name)
-        start = POPOTO_REDIS_DB.zscore(valid_from_key, member_key)
-        close = POPOTO_REDIS_DB.zscore(invalid_at_key, member_key)
+        # redis-py types ZSCORE ``Awaitable[float | None] | float | None`` to cover
+        # the async client; narrow to the sync reply (see the cast note in
+        # :meth:`resolve_valid_keys`).
+        start = cast(
+            "Optional[float]", POPOTO_REDIS_DB.zscore(valid_from_key, member_key)
+        )
+        close = cast(
+            "Optional[float]", POPOTO_REDIS_DB.zscore(invalid_at_key, member_key)
+        )
         if start is None or close is None:
             return False
         if float(close) == Defaults.VALIDITY_OPEN_SENTINEL:
@@ -452,7 +477,7 @@ class ValidityField(Field):
     @classmethod
     def execute_supersede(
         cls,
-        model: "Model",  # noqa: F821
+        model: "ModelLike",
         field_name: str,
         *,
         new_member: str = "",
@@ -561,7 +586,7 @@ class ValidityField(Field):
     # ------------------------------------------------------------------
 
     @classmethod
-    def warn_if_ttl(cls, model: "Model", field_name: str) -> bool:  # noqa: F821
+    def warn_if_ttl(cls, model: "ModelLike", field_name: str) -> bool:
         """Warn once when a ``ValidityField`` model also declares a TTL.
 
         A TTL truncates supersession chains and silently breaks ``as_of``
@@ -597,7 +622,7 @@ class ValidityField(Field):
     @classmethod
     def on_save(
         cls,
-        model_instance: "Model",  # noqa: F821
+        model_instance: "Model",
         field_name: str,
         field_value: Any,
         pipeline: Optional[redis.client.Pipeline] = None,
@@ -646,7 +671,7 @@ class ValidityField(Field):
     @classmethod
     def on_delete(
         cls,
-        model_instance: "Model",  # noqa: F821
+        model_instance: "Model",
         field_name: str,
         field_value: Any,
         pipeline: Optional[redis.client.Pipeline] = None,
@@ -727,7 +752,7 @@ class ValidityField(Field):
     @classmethod
     def filter_query(
         cls,
-        model_class: "Model",  # noqa: F821
+        model: "Model",
         field_name: str,
         **query_params: Any,
     ) -> "set[Any]":
@@ -744,7 +769,7 @@ class ValidityField(Field):
         results (plan D2).
 
         Args:
-            model_class: The model class being queried.
+            model: The model class being queried.
             field_name: Name of this field on the model.
             **query_params: ``{field}__as_of`` and/or ``{field}__current``.
 
@@ -756,7 +781,7 @@ class ValidityField(Field):
             ValueError: If ``__current`` is not a bool or ``__as_of`` is not a
                 finite number.
         """
-        valid_from_key, invalid_at_key = cls.get_interval_keys(model_class, field_name)
+        valid_from_key, invalid_at_key = cls.get_interval_keys(model, field_name)
         results = []
 
         for query_param, query_value in query_params.items():
@@ -771,9 +796,13 @@ class ValidityField(Field):
                 if query_value:
                     results.append(valid)
                 else:
+                    # Narrow the sync ZRANGE replies (see the cast note in
+                    # :meth:`resolve_valid_keys`).
                     everything = set(
-                        POPOTO_REDIS_DB.zrange(invalid_at_key, 0, -1)
-                    ) | set(POPOTO_REDIS_DB.zrange(valid_from_key, 0, -1))
+                        cast("list[Any]", POPOTO_REDIS_DB.zrange(invalid_at_key, 0, -1))
+                    ) | set(
+                        cast("list[Any]", POPOTO_REDIS_DB.zrange(valid_from_key, 0, -1))
+                    )
                     results.append(everything - valid)
 
             elif query_param == f"{field_name}__as_of":
@@ -804,6 +833,12 @@ class ValidityField(Field):
         intersects the raw index replies while assembler-side consumers want
         decoded ``str`` keys.
         """
-        started = POPOTO_REDIS_DB.zrangebyscore(valid_from_key, "-inf", t)
-        still_open = POPOTO_REDIS_DB.zrangebyscore(invalid_at_key, f"({t}", "+inf")
+        # Narrow the sync ZRANGEBYSCORE replies (see the cast note in
+        # :meth:`resolve_valid_keys`).
+        started = cast(
+            "list[Any]", POPOTO_REDIS_DB.zrangebyscore(valid_from_key, "-inf", t)
+        )
+        still_open = cast(
+            "list[Any]", POPOTO_REDIS_DB.zrangebyscore(invalid_at_key, f"({t}", "+inf")
+        )
         return set(started) & set(still_open)

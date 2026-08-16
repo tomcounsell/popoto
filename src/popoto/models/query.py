@@ -415,9 +415,20 @@ class QueryBuilder:
 
         # Validity gating (#580, plan D5). Resolves to ("", "", "") whenever the
         # model has no ValidityField or the kill switch is off, which disables
-        # the gate inside the script. top_by_decay is the one path where this
-        # layer is *authoritative*: its result is the member list itself, with
-        # no ZUNIONSTORE afterwards to reintroduce a skipped member.
+        # the gate inside the script. On a plain DecayingSortedField,
+        # top_by_decay is the one path where this layer is *authoritative*: its
+        # result is the member list itself, with no ZUNIONSTORE afterwards to
+        # reintroduce a skipped member.
+        #
+        # NOT so for a CyclicDecayField: the branch below dispatches to
+        # CYCLIC_DECAY_LUA, which is deliberately left ungated (an explicit plan
+        # No-Go — its KEYS 1-4 are taken and its header comment forbids
+        # renumbering). So a *direct* top_by_decay() call on a CyclicDecayField
+        # returns superseded records. Assembler paths are unaffected: they never
+        # call top_by_decay, and layers 2 and 3 cover them. Pinned by
+        # tests/test_validity_field.py::TestCyclicDecayGatingGap and documented
+        # under "Known limitations" in docs/features/validity-and-supersession.md
+        # — if you gate the cyclic script, update all three.
         gate_invalid_key, gate_valid_key, gate_as_of = validity_gate_args(
             model_class, as_of=as_of
         )

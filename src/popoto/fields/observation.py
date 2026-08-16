@@ -161,6 +161,23 @@ class ObservationProtocol:
             protocol lives) for guidance on mapping bespoke outcomes into
             the canonical vocabulary.
 
+        Signalling a correction with ``contradicted``:
+            ``outcome_map`` is ``{redis_key: outcome}`` and has no slot for a
+            second instance, so a caller that knows *what* corrected a memory
+            names it by setting the private ``_superseded_by`` attribute on the
+            contradicted instance before reporting the outcome::
+
+                stale._superseded_by = corrected
+                ObservationProtocol.on_context_used(
+                    [stale], {stale.db_key.redis_key: "contradicted"}
+                )
+
+            On a model declaring a ValidityField this closes ``stale``'s
+            validity interval and writes the supersession edge to ``corrected``
+            (issue #580). Without the attribute — and on every model with no
+            ValidityField — ``contradicted`` behaves exactly as before. See
+            ``_apply_supersession``.
+
         Raises:
             ValueError: If any outcome string is not a valid outcome.
         """
@@ -422,11 +439,31 @@ def _apply_supersession(
     performs interval closure and both chain links in a single EVAL, so a
     half-linked chain is unobservable.
 
+    How the correcting record reaches here
+    --------------------------------------
+    ``ObservationProtocol.on_context_used`` takes an ``outcome_map`` shaped
+    ``{redis_key: outcome}``. That mapping has no slot for a second instance,
+    so the public call cannot carry the correction — the only route through
+    the protocol is to tag the contradicted instance before reporting it::
+
+        stale._superseded_by = corrected          # the signal
+        ObservationProtocol.on_context_used(
+            [stale], {stale.db_key.redis_key: "contradicted"}
+        )
+
+    ``instance._superseded_by`` is therefore the documented public mechanism,
+    not an internal accident; the ``superseded_by=`` parameter is the plumbing
+    it resolves to, and is also usable by direct callers of
+    ``_apply_contradicted`` (widening ``outcome_map``'s value shape to a
+    ``(outcome, instance)`` tuple would be a breaking change to a shipped
+    signature, so it was rejected).
+
     Args:
         instance: The contradicted Model instance.
         pipeline: Redis pipeline for batched operations.
         superseded_by: The correcting Model instance, or None. Falls back to
-            ``instance._superseded_by`` when not passed explicitly.
+            ``instance._superseded_by`` when not passed explicitly — which is
+            the route every ``on_context_used`` caller takes.
     """
     from .supersession import SupersessionProtocol
     from .validity_field import ValidityField

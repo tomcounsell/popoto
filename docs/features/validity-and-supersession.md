@@ -242,9 +242,12 @@ inclusion: skip if `invalid_at <= as_of` (closed) or `valid_from > as_of` (not
 yet started). Every `KEYS[n]` read is guarded `KEYS[n] or ''`, so a caller
 that passes a short `numkeys` (existing hand-`eval` test call sites included)
 gets `nil` → `''` → gate disabled, with byte-identical scores to the
-pre-#580 script. This layer is **authoritative for `top_by_decay`**, whose
-result is the member list itself with no later union — the one path where
-"skip in the range read" *is* "excluded from the result."
+pre-#580 script. This layer is **authoritative for `top_by_decay` on a plain
+`DecayingSortedField`**, whose result is the member list itself with no later
+union — the one path where "skip in the range read" *is* "excluded from the
+result." It does **not** cover `top_by_decay` on a `CyclicDecayField`, which
+runs `CYCLIC_DECAY_LUA` instead; that script was deliberately left ungated —
+see "Known limitations".
 
 **Layer 2 — the `composite_score` mask (`QueryBuilder._apply_validity_mask`).**
 `composite_score` merges its per-index temp ZSETs with `ZUNIONSTORE ...
@@ -268,9 +271,10 @@ candidate record whose key is in it. Mirrors the tag-scoping pattern
 (`_scope_by_tags`) already established for issue #492.
 
 No layer is load-bearing for a path another layer already covers — Layer 1 is
-the only mechanism for `top_by_decay`; Layer 2 is the only one that enforces
-membership on the composite path; Layer 3 is the only one that reaches
-`fuse`/BM25/graph.
+the only mechanism for `top_by_decay` on a plain `DecayingSortedField`; Layer 2
+is the only one that enforces membership on the composite path; Layer 3 is the
+only one that reaches `fuse`/BM25/graph. The one path no layer covers is a
+direct `top_by_decay` on a `CyclicDecayField` — see "Known limitations".
 
 ## Point-in-time reconstruction
 
@@ -309,6 +313,26 @@ including `DefaultMemory`, does.
 
 ## Known limitations
 
+- **A direct `Model.query.top_by_decay()` on a `CyclicDecayField` is not
+  gated.** #580 extended `DECAY_SCORE_LUA` only; `CYCLIC_DECAY_LUA` was
+  deliberately left unmodified (an explicit plan No-Go), so it takes no
+  `invalid_at`/`valid_from` `KEYS` and no as-of `ARGV`. A `top_by_decay` call
+  that resolves to a `CyclicDecayField` therefore receives gating from none of
+  the three layers: Layer 1 never reaches the cyclic script, Layer 2 only acts
+  after `composite_score`'s union, and Layer 3 only runs inside
+  `ContextAssembler`. A superseded record will be returned by such a call.
+
+    Scope: this is a docs/direct-caller gap, **not** a live retrieval bug.
+    `ContextAssembler` never calls `top_by_decay`; its push path uses
+    `composite_score` (Layer 2), and every candidate it assembles is
+    post-filtered by `_scope_by_validity` (Layer 3), including results from its
+    cyclic decay proxy. `composite_score` on a `CyclicDecayField` is likewise
+    covered by Layer 2's mask. Only a caller reaching past the assembler
+    straight to `top_by_decay` on a cyclic field sees the gap; such a caller
+    should use `composite_score`, or intersect with
+    `filter(validity__current=True)`. Pinned by
+    `tests/test_validity_field.py::TestCyclicDecayGatingGap`, which fails
+    loudly if the gate is ever added — update this entry then.
 - **Gating costs up to two `ZSCORE`s per member inside the decay Lua**, and
   `DECAY_SCORE_LUA` full-scans its partition regardless of gating (a
   pre-existing property, not introduced here). Measured locally on a 20k-record
