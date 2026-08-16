@@ -36,7 +36,6 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 import pytest
 from src import popoto
 from src.popoto import SupersessionProtocol, ValidityField
-from src.popoto.fields import supersession as supersession_module
 from src.popoto.fields import validity_field as validity_module
 from src.popoto.fields.confidence_field import ConfidenceField
 from src.popoto.fields.constants import Defaults
@@ -1084,7 +1083,9 @@ class TestUnmanagedRecords:
         ) == ["legacy", "managed"]
 
     def test_unmanaged_record_survives_the_assembler(self):
-        managed = _save(ValidMemory, agent_id="a1", content="managed")
+        _save(
+            ValidMemory, agent_id="a1", content="managed"
+        )  # decoy: keeps the partition multi-record
         legacy = _save(ValidMemory, agent_id="a1", content="legacy")
         for key in ValidityField.get_all_keys(ValidMemory, "validity").values():
             POPOTO_REDIS_DB.zrem(key, legacy.db_key.redis_key)
