@@ -747,6 +747,7 @@ interleave: core owns `fields/validity_field.py` + `fields/constants.py`; protoc
 | Format clean | `black --check src/ tests/` | exit code 0 |
 | Type check | `mypy src/` | error count not increased vs. base in the same env |
 | Docs build | `mkdocs build --strict` | exit code 0 |
+| Full suite (not just the nine named files) | `pytest -q --ignore=tests/test_dataframe_field.py` | no failures attributable to this branch |
 
 ## Critique Results
 

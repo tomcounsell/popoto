@@ -261,6 +261,168 @@ class ValidityField(Field):
     retrieval path gates on validity server-side instead of via a filter kwarg.
     """
 
+    # Export/import (issue #580 review blocker, PR #582): no validity byte
+    # lives in the model hash -- the interval and chain state live entirely
+    # in the six derived keys documented in the module docstring. A plain
+    # re-save's ``on_save`` opens a *fresh* interval in mode="open" and has
+    # no way to know about a prior close time or supersession chain, so the
+    # ``Field`` default of ``roundtrip_policy = "rebuild"`` is a false claim
+    # here: a transfer export/import round trip would silently reopen every
+    # superseded record, because gating is subtractive (see the warning on
+    # :meth:`resolve_valid_keys`) and a record with no interval entry is
+    # fully retrievable. "carry" restores the interval scores and chain
+    # links explicitly, after ``save()`` has already run.
+    roundtrip_policy: str = "carry"
+
+    #: Sentinel written into exported ``invalid_at`` in place of Python's
+    #: ``float('inf')``. ``to_jsonable`` (transfer/format.py) passes floats
+    #: through unchanged, and ``json.dumps`` would then emit the bare literal
+    #: ``Infinity`` -- a token Python's own ``json.loads`` accepts back
+    #: (so it *would* round-trip end-to-end) but which is not valid JSON per
+    #: spec and would break any non-Python consumer of the export. A plain
+    #: string sentinel keeps every exported line spec-valid JSON, consistent
+    #: with the rest of the transfer format's convention of tagging
+    #: non-primitive values explicitly rather than relying on interpreter
+    #: leniency.
+    OPEN_SENTINEL_TOKEN = "+inf"
+
+    @classmethod
+    def export_state(  # type: ignore[override]
+        cls,
+        model_instance: "Model",
+        field_name: str,
+        field_value: Any,
+        **kwargs: Any,
+    ) -> "Optional[dict[str, Any]]":
+        """Export this record's interval scores and supersession chain links.
+
+        Reads the member's score from each of the three interval ZSETs plus
+        its own forward/reverse chain-link entries, if any.
+
+        The identity-scoped open-claim pointer
+        (``{prefix}:open:{digest}``, see :meth:`get_open_pointer_key`) is
+        deliberately NOT carried: it is keyed by identity digest rather than
+        by record and is explicitly out of scope for per-field state (see
+        :meth:`get_all_keys`'s docstring). ``on_save`` never writes it
+        either on this path -- it calls :meth:`execute_supersede` with no
+        ``identity_digest``, so ``mode="open"`` always resolves ``ptr_key``
+        to ``''`` and :data:`SUPERSEDE_LUA` skips the ``SET`` entirely.
+        A record round-tripped through export/import therefore never leaves
+        a stale pointer aimed at it (see :meth:`import_state`).
+
+        Returns:
+            ``{"valid_from": float, "invalid_at": float | "+inf",
+            "ingested_at": float, "chain_fwd": str | None,
+            "chain_rev": str | None}``, or ``None`` when this instance has
+            no interval entry at all (never saved through this field, or
+            already deleted).
+        """
+        field = model_instance._meta.fields.get(field_name)
+        if not isinstance(field, ValidityField):
+            return None
+
+        member_key = model_instance.db_key.redis_key
+        keys = cls.get_all_keys(model_instance, field_name)
+
+        valid_from = cast(
+            "Optional[float]", POPOTO_REDIS_DB.zscore(keys["valid_from"], member_key)
+        )
+        invalid_at = cast(
+            "Optional[float]", POPOTO_REDIS_DB.zscore(keys["invalid_at"], member_key)
+        )
+        ingested_at = cast(
+            "Optional[float]", POPOTO_REDIS_DB.zscore(keys["ingested_at"], member_key)
+        )
+        if valid_from is None and invalid_at is None and ingested_at is None:
+            return None
+
+        fwd = POPOTO_REDIS_DB.hget(keys["chain_fwd"], member_key)
+        rev = POPOTO_REDIS_DB.hget(keys["chain_rev"], member_key)
+
+        invalid_at_out: Union[float, str]
+        if invalid_at is None or float(invalid_at) == Defaults.VALIDITY_OPEN_SENTINEL:
+            invalid_at_out = cls.OPEN_SENTINEL_TOKEN
+        else:
+            invalid_at_out = float(invalid_at)
+
+        return {
+            "valid_from": float(valid_from) if valid_from is not None else None,
+            "invalid_at": invalid_at_out,
+            "ingested_at": float(ingested_at) if ingested_at is not None else None,
+            "chain_fwd": _as_str(fwd) if fwd is not None else None,
+            "chain_rev": _as_str(rev) if rev is not None else None,
+        }
+
+    @classmethod
+    def import_state(
+        cls,
+        model_instance: "Model",
+        field_name: str,
+        state: Any,
+        **kwargs: Any,
+    ) -> None:
+        """Restore this record's interval scores and chain links after import.
+
+        Written with plain ``ZADD``/``HSET`` -- deliberately NOT through
+        :data:`SUPERSEDE_LUA` and NOT with the ``NX`` guards ``on_save``
+        uses. The transfer driver calls ``import_state`` *after* ``save()``,
+        so ``on_save`` has already run: it seeds ``valid_from`` /
+        ``ingested_at`` / ``invalid_at`` via ``ZADD NX`` in mode="open",
+        i.e. a fresh, open interval with no close time and no chain. An
+        ``NX`` write here would be a silent no-op against those
+        already-present scores, discarding the carried close time and chain
+        -- exactly the resurrection bug this field exists to prevent.
+        Plain ``ZADD``/``HSET`` overwrite instead.
+
+        No open-claim pointer is written (see :meth:`export_state`): it is
+        out of scope for per-field state, and ``on_save`` never touches it
+        on this path either, so a restored CLOSED record cannot leave a
+        stale pointer aimed at it.
+
+        Chain links are restored independently of import order: ``HSET``
+        does not require the counterpart record to already exist, and
+        ``_walk_links``-style chain traversal already treats a link to a
+        record with no interval entry as a chain end (see
+        :meth:`on_delete`'s "Known limitation" note), so a partially
+        imported chain converges once both sides have landed.
+        """
+        if not state:
+            return None
+
+        field = model_instance._meta.fields.get(field_name)
+        if not isinstance(field, ValidityField):
+            return None
+
+        member_key = model_instance.db_key.redis_key
+        keys = cls.get_all_keys(model_instance, field_name)
+
+        valid_from = state.get("valid_from")
+        if valid_from is not None:
+            POPOTO_REDIS_DB.zadd(keys["valid_from"], {member_key: float(valid_from)})
+
+        invalid_at = state.get("invalid_at")
+        if invalid_at is not None:
+            score = (
+                Defaults.VALIDITY_OPEN_SENTINEL
+                if invalid_at == cls.OPEN_SENTINEL_TOKEN
+                else float(invalid_at)
+            )
+            POPOTO_REDIS_DB.zadd(keys["invalid_at"], {member_key: score})
+
+        ingested_at = state.get("ingested_at")
+        if ingested_at is not None:
+            POPOTO_REDIS_DB.zadd(keys["ingested_at"], {member_key: float(ingested_at)})
+
+        chain_fwd = state.get("chain_fwd")
+        if chain_fwd:
+            POPOTO_REDIS_DB.hset(keys["chain_fwd"], member_key, chain_fwd)
+
+        chain_rev = state.get("chain_rev")
+        if chain_rev:
+            POPOTO_REDIS_DB.hset(keys["chain_rev"], member_key, chain_rev)
+
+        return None
+
     def __init__(self, **kwargs: Any) -> None:
         """Initialize the field.
 

@@ -26,9 +26,14 @@ Tests cover:
   is ungated by design; a direct ``top_by_decay`` on one is not gated)
 - Every Failure Path case in the plan, including the D9 TTL warning
 - p50 micro-benchmark of gated vs ungated retrieval at 20k records
+- Transfer round trip (issue #580 review blocker, PR #582): a superseded
+  record stays closed and non-retrievable, an open record stays open, and
+  the supersession chain survives export -> import (``roundtrip_policy``
+  must be "carry", not the inherited "rebuild")
 """
 
 import inspect
+import io
 import os
 import re
 import statistics
@@ -56,6 +61,7 @@ from src.popoto.models.query import Query, QueryBuilder
 from src.popoto.recipes import context_assembler as assembler_module
 from src.popoto.recipes.context_assembler import ContextAssembler
 from src.popoto.redis_db import POPOTO_REDIS_DB
+from src.popoto.transfer import export_records, import_records
 
 # --- Test Models ---
 
@@ -1829,3 +1835,87 @@ class TestValidityBenchmark:
         p50 = _p50(lambda: assembler._resolve_excluded_keys(None))
         print(f"\n[validity excluded-key resolution p50 @ {BENCH_N}] {p50:.2f}ms")
         assert p50 < 25.0
+
+
+class TestTransferRoundTrip:
+    """Export -> import must not resurrect superseded records (#580 / #582).
+
+    ``ValidityField`` stores no bytes in the model hash; the interval and
+    chain state live entirely in the six derived keys. A plain re-save's
+    ``on_save`` always opens a *fresh* interval (mode="open"), so the
+    ``Field`` default ``roundtrip_policy = "rebuild"`` would silently give
+    every imported record a brand-new open interval — dropping any
+    ``invalid_at`` closure and supersession chain. Because all validity
+    gating is subtractive (see ``resolve_valid_keys``'s warning), a record
+    with no interval entry is fully retrievable, so that bug is a silent
+    resurrection of every superseded record on export/import.
+    """
+
+    def _round_trip(self, model, *, delete_first=True):
+        """Export every record of ``model``, optionally clear it, and import."""
+        result = export_records(model)
+        if delete_first:
+            for instance in model.query.all():
+                instance.delete()
+        report = import_records(model, io.StringIO(result.data))
+        return report
+
+    def test_closed_record_stays_closed_and_non_retrievable(self):
+        old = _save(ValidFact, name="rt-old")
+        new = _save(ValidFact, name="rt-new")
+        closed = SupersessionProtocol.invalidate(old, superseded_by=new)
+        assert closed == old.db_key.redis_key
+        # Sanity: old is closed pre-export.
+        assert _interval(ValidFact, "validity", old)[1] != float("inf")
+
+        self._round_trip(ValidFact)
+
+        old_after = ValidFact.query.filter(name="rt-old").first()
+        new_after = ValidFact.query.filter(name="rt-new").first()
+        assert old_after is not None
+        assert new_after is not None
+
+        # The closure must survive the round trip -- not reopen to +inf.
+        _, invalid_at, _ = _interval(ValidFact, "validity", old_after)
+        assert invalid_at is not None
+        assert invalid_at != float("inf"), (
+            "superseded record reopened across export/import: "
+            "roundtrip_policy is resurrecting closed records"
+        )
+
+        # And it must be excluded from default (current) retrieval.
+        current = ValidFact.query.filter(validity__current=True)
+        assert "rt-old" not in _names(current)
+        assert "rt-new" in _names(current)
+
+    def test_open_record_stays_open(self):
+        rec = _save(ValidFact, name="rt-open")
+        self._round_trip(ValidFact)
+
+        rec_after = ValidFact.query.filter(name="rt-open").first()
+        assert rec_after is not None
+        _, invalid_at, _ = _interval(ValidFact, "validity", rec_after)
+        assert invalid_at == float("inf")
+
+        current = ValidFact.query.filter(validity__current=True)
+        assert "rt-open" in _names(current)
+
+    def test_supersession_chain_links_survive_round_trip(self):
+        old = _save(ValidFact, name="rt-chain-old")
+        new = _save(ValidFact, name="rt-chain-new")
+        SupersessionProtocol.invalidate(old, superseded_by=new)
+
+        self._round_trip(ValidFact)
+
+        old_after = ValidFact.query.filter(name="rt-chain-old").first()
+        new_after = ValidFact.query.filter(name="rt-chain-new").first()
+        keys = ValidityField.get_all_keys(ValidFact, "validity")
+
+        fwd = POPOTO_REDIS_DB.hget(keys["chain_fwd"], old_after.db_key.redis_key)
+        rev = POPOTO_REDIS_DB.hget(keys["chain_rev"], new_after.db_key.redis_key)
+        assert fwd is not None
+        assert rev is not None
+        fwd_str = fwd.decode() if isinstance(fwd, bytes) else fwd
+        rev_str = rev.decode() if isinstance(rev, bytes) else rev
+        assert fwd_str == new_after.db_key.redis_key
+        assert rev_str == old_after.db_key.redis_key
