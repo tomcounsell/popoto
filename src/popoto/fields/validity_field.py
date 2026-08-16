@@ -331,7 +331,7 @@ class ValidityField(Field):
         This is the stable seam every other validity consumer builds on: the
         decay-Lua gate passes these two as extra ``KEYS``, the composite-score
         mask ``ZRANGESTORE``s from them, and the assembler's
-        ``_resolve_valid_keys`` reads them directly. Returned in the order
+        ``_resolve_excluded_keys`` reads them directly. Returned in the order
         ``(valid_from, invalid_at)``; an as-of-``t`` member satisfies
         ``valid_from <= t AND invalid_at > t``.
 
@@ -380,10 +380,24 @@ class ValidityField(Field):
         """Return the record keys whose interval covers ``as_of``.
 
         Two read-only ``ZRANGEBYSCORE``s intersected:
-        ``valid_from <= as_of`` AND ``invalid_at > as_of``. This is the
-        assembler-facing helper (``_resolve_valid_keys`` / ``_scope_by_validity``
-        in ``context_assembler.py``) and the query-layer mask's Python
-        equivalent.
+        ``valid_from <= as_of`` AND ``invalid_at > as_of``.
+
+        .. warning::
+
+           This is a **whitelist**: a record with no entry in either ZSET is
+           absent from the result. That makes it wrong for retrieval gating,
+           and it is deliberately **not** used by any retrieval path. All three
+           gating layers are *subtractive* — they exclude records that are
+           positively known to be closed or not-yet-started, and leave
+           unmanaged records (no interval at all) fully visible. Using this
+           method to gate retrieval would silently hide every record that
+           predates the field's adoption on a model. The assembler uses
+           ``ContextAssembler._resolve_excluded_keys`` instead, and the query
+           layer uses ``QueryBuilder._apply_validity_mask``.
+
+        Retained as the public, deliberate-query helper for callers that
+        genuinely want "which records positively claim validity at ``t``" —
+        e.g. audit and provenance tooling, not context assembly.
 
         Args:
             model: The model class (or instance) owning the field.
