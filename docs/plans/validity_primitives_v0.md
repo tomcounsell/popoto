@@ -1,11 +1,13 @@
 ---
-status: Planning
+status: Ready
 type: feature
 appetite: Large
 owner: Valor Engels
 created: 2026-08-16
 tracking: https://github.com/tomcounsell/popoto/issues/580
 last_comment_id: none
+revision_applied: true
+revision_applied_at: 2026-08-16T16:49:43Z
 ---
 
 # V0 — Validity primitives: ValidityField, SupersessionProtocol, assembler validity gating
@@ -125,6 +127,12 @@ four merged patterns this plan reuses rather than reinvents:
   style are copied directly.
 - **`TAG_SWAP_LUA` (`tag_field.py:125`, `on_save` at `287-290`)** — the canonical
   `pipeline=`-threading shape for a Lua-backed field hook.
+- **Epic #456, build-order comment (2026-08-16)** — not a merged PR, but the settled
+  integration contract this plan is accountable to, and the load-bearing citation behind D3:
+  *"Append-only survives: supersede/retract annotations drive validity-index updates via one
+  `SUPERSEDE_LUA`; entry hashes are never mutated, the zsets are derived index state."* Also
+  the source of "one supersession mechanism" (M5 writes through V0's protocol) and of the
+  hot-path rule that gating is never a second sorted-field intersection.
 
 **No prior fixes failed**, so the `## Why Previous Fixes Failed` section is omitted.
 
@@ -302,18 +310,58 @@ The atomicity criterion falls out of the design rather than being defended by a 
 `invalid_at` ZSET *is* the gating index, so closing an interval and removing a record from
 retrieval are literally the same `ZADD`. There is no window because there is no second step.
 
-**D5 — Decay-Lua gate.** In `DECAY_SCORE_LUA`, `KEYS[3]` = `invalid_at`, `KEYS[4]` =
-`valid_from`, `ARGV[7]` = as-of. The check goes immediately after
-`local member = members[i]` (`decaying_sorted_field.py:82-84`) — the cheapest position,
-skipping the base-score `HGET` and all decay math for excluded members. Lua 5.1 has no `goto`,
-so the existing body is wrapped in `if include then ... end` rather than short-circuited.
-Empty key strings disable the gate and make the path bit-identical to today, per the
-`MODULATION_DISABLED` precedent. The comments at `decaying_sorted_field.py:62-66` and
-`cyclic_decay_field.py:66-71` explicitly forbid renumbering existing KEYS; appending 3 and 4
-respects that. `CYCLIC_DECAY_LUA` is **not** modified (its KEYS 1-4 are taken and its
-consumers are covered by the assembler post-filter) — see No-Gos.
+**Gating is three layers, not one.** The first draft of this plan claimed the decay-Lua gate
+alone enforced membership on the default path. Plan critique falsified that, and I confirmed
+it directly at `query.py:591-600`: `composite_score` merges its per-index temp ZSETs with
+`ZUNIONSTORE ... AGGREGATE SUM`. A member the decay Lua skips is merely *absent from the decay
+arm* — under `SUM` its decay contribution becomes 0, but it still surfaces in the composite
+result with whatever score the confidence / co-occurrence / similarity arms give it. Skipping
+is not excluding. The three layers below each have a distinct, non-overlapping job, and no
+layer is load-bearing for a path another layer already covers.
 
-**D6 — Assembler.** `_resolve_valid_keys(as_of)` returns `set[str] | None` (None = gating
+**D5 — Decay-Lua gate (layer 1: `top_by_decay` + decay-arm pre-trim).** In `DECAY_SCORE_LUA`,
+`KEYS[3]` = `invalid_at`, `KEYS[4]` = `valid_from`, `ARGV[7]` = as-of. The check goes
+immediately after `local member = members[i]` (`decaying_sorted_field.py:82-84`) — the cheapest
+position, skipping the base-score `HGET` and all decay math for excluded members. Lua 5.1 has
+no `goto`, so the existing body is wrapped in `if include then ... end`.
+
+This layer *is* authoritative for `top_by_decay`, whose result is the member list itself with
+no later union — which is the path the issue's hot-path requirement names, and where gating
+inside the range read is what keeps validity out of the filter kwargs. For the composite path
+it is a pre-trim (real work saved: the decay arm's `HGET`s and sort) but **not** the membership
+guarantee; D5b is.
+
+Nil-safety, per critique blocker 2: the guards are `local invalid_key = KEYS[3] or ''`, exactly
+mirroring the existing `local confidence_hash_key = KEYS[2] or ''` at
+`decaying_sorted_field.py:67`. Callers that pass fewer keys get Lua `nil`, which coerces to
+`''`, which disables the gate. That means **existing hand-`eval` callers need no `numkeys`
+change at all** — `tests/test_lua_decay_scoring.py` (numkeys 1 and 2) and
+`tests/test_confidence_modulated_decay.py` (numkeys 1, 2, 2) keep working unmodified and
+become the byte-parity oracle for "gate off ⇒ scores unchanged." Only the three production
+call sites bump 2 → 4.
+
+The comments at `decaying_sorted_field.py:62-66` and `cyclic_decay_field.py:66-71` explicitly
+forbid renumbering existing KEYS; appending 3 and 4 respects that. `CYCLIC_DECAY_LUA` is
+**not** modified — see No-Gos.
+
+**D5b — Composite validity mask (layer 2: every `composite_score` caller).** After the
+`ZUNIONSTORE` at `query.py:591-600`, when gating is on, intersect the composite key with a
+validity mask so closed members are *removed*, not merely zero-weighted:
+
+```
+ZRANGESTORE  m_open   invalid_at   (t  +inf  BYSCORE     # invalid_at > t
+ZRANGESTORE  m_started valid_from  -inf t    BYSCORE     # valid_from <= t
+ZINTERSTORE  mask 2 m_open m_started WEIGHTS 0 0
+ZINTERSTORE  composite_key 2 composite_key mask WEIGHTS 1 0
+```
+
+Four core commands, no Lua, no Redis modules; `ZRANGESTORE` is Redis >= 6.2 / Valkey, the same
+floor `bm25_field.py:604` already asserts for `ZMSCORE`. Temp keys join the existing
+`temp_keys` cleanup list and get the same 5s `EXPIRE` as every other `$CSQ:` temp key. This
+layer — not D5 — is what makes a bare `Model.query.composite_score()` correct, which matters
+because the assembler is not the only caller.
+
+**D6 — Assembler post-filter (layer 3: `fuse` / BM25 / graph arms).** `_resolve_valid_keys(as_of)` returns `set[str] | None` (None = gating
 disabled or model has no `ValidityField`), computed from two read-only `ZRANGEBYSCORE`s;
 `_scope_by_validity(records, allowed)` is a pure passthrough when `allowed is None`. Applied
 at the same three points tag scoping uses (`context_assembler.py:1689`, `1691`, `1761`), and
@@ -373,10 +421,26 @@ Not user-facing UI. The observable failure surfaces are exceptions (`ValueError`
 
 New file `tests/test_validity_field.py` carries the bulk. Existing tests affected:
 
-- [ ] `tests/test_decaying_sorted_field.py` — UPDATE: it imports `DECAY_SCORE_LUA` directly
-  (`test_decaying_sorted_field.py:26`). Any test that `eval`s the script by hand must bump
-  `numkeys` 2 → 4 and pass two empty key strings. Add a gate-disabled score-parity test.
-- [ ] `tests/test_cyclic_decay_field.py` — UPDATE if it asserts on `DECAY_SCORE_LUA` KEYS
+**Corrected per critique blocker 2.** Three test files hand-`eval` `DECAY_SCORE_LUA` with
+`numkeys` of 1 or 2 — `tests/test_lua_decay_scoring.py` (`:76`, `:82`),
+`tests/test_confidence_modulated_decay.py` (`:171`, `:188`, `:376`), and
+`tests/test_decaying_sorted_field.py` (`:474`, `:507`, `:571`, `:639`, `:743`). The first
+draft missed two of the three and claimed a mandatory 2 → 4 bump in tests. Both were wrong:
+because D5's guards are `KEYS[3] or ''`, a short `numkeys` yields Lua `nil` → `''` → gate off,
+so **no existing test needs its `numkeys` changed**. Leaving them unmodified is deliberate —
+they are the byte-parity oracle proving the disabled path is unchanged, and editing them would
+destroy that evidence.
+
+- [ ] `tests/test_lua_decay_scoring.py` — NO CHANGE (deliberate): pre-change score oracle.
+  Add one new test here asserting gate-on exclusion with explicit `numkeys=4`.
+- [ ] `tests/test_confidence_modulated_decay.py` — NO CHANGE (deliberate): same role for the
+  confidence-modulated scores.
+- [ ] `tests/test_decaying_sorted_field.py` — UPDATE: add gate-on/gate-off coverage for
+  `top_by_decay`; leave the five existing hand-`eval` sites untouched.
+- [ ] `tests/test_composite_score_query.py` — UPDATE: add D5b mask coverage, including the
+  `ZUNIONSTORE`/`SUM` leak case (a closed member scored by the confidence arm must not
+  surface) — the regression that motivated D5b.
+- [ ] `tests/test_cyclic_decay_field.py` — UPDATE only if it asserts on `DECAY_SCORE_LUA` KEYS
   arity; `CYCLIC_DECAY_LUA` itself is unchanged.
 - [ ] `tests/test_context_assembler.py` — UPDATE: `assemble()` gains an `as_of` kwarg
   (keyword-only, defaulted) — additive, but assert the no-`ValidityField` passthrough stays
@@ -414,9 +478,16 @@ No test is DELETEd or REPLACEd. All changes are additive or mechanical `numkeys`
 gating silently no-ops, and `ARGV` indices shift — corrupting `base_score_field` or the
 confidence parameters. Fails silently, not loudly. This is the single most dangerous edit here.
 **Mitigation:** All three sites (`query.py:427`, `query.py:1257`, `context_assembler.py:749`)
-are named in one build task assigned to one builder. A `Verification` row greps for
-`eval(\s*DECAY_SCORE_LUA,\s*2` and requires zero matches. A test asserts confidence modulation
-still produces its pre-change scores with the gate disabled.
+are named in one build task assigned to one builder. Guarded by a **test, not a grep** — the
+first draft's `grep -rn "DECAY_SCORE_LUA,$" -A1 src/ | grep -c "^\s*2,"` row was inert
+(critique blocker 1: `grep -A1` prefixes context lines with `file-lineno-`, so the inner
+pattern never matches and the row prints `0` against a broken tree as readily as a fixed one).
+Replaced by `test_decay_eval_call_sites_pass_four_keys`, which walks the three call sites via
+`inspect.getsource` and asserts each `eval(DECAY_SCORE_LUA, ...)` passes `4`, plus a
+behavioral test per site asserting a closed member is absent from its output. The structural
+test must be demonstrated failing against the pre-fix tree (red-state proof) and that FAIL
+output pasted into the PR description. A third test asserts confidence modulation still
+produces its pre-change scores with the gate disabled.
 
 ### Risk 2: `+inf` ZSET score behaves differently across Redis/Valkey or across redis-py versions
 **Impact:** Open intervals mis-read as closed; every record vanishes from assembly.
@@ -429,10 +500,12 @@ engines are covered without extra harness work.
 **Impact:** Gating removes candidates *after* the `max_items * 2` limit was spent, so a
 partition with many superseded records returns short results.
 **Mitigation:** Same hazard tag scoping already has, and the same shape of answer — the
-existing `max_items * 2` overfetch absorbs it. The Lua gate handles the composite/decay arms
-*before* truncation, so the post-filter's residual job is only the BM25/graph arms. Add a test
-asserting a heavily-superseded partition still fills `max_items` when enough valid records
-exist.
+existing `max_items * 2` overfetch absorbs it. With D5b in place, the composite arm is gated
+*inside* `composite_score`, before its own `ZREVRANGE` top-K, so its `limit` is spent on valid
+members only and it contributes no shrinkage. The post-filter's residual shrinkage is confined
+to the `fuse`/BM25/graph arms. (The first draft asserted this on the strength of D5 alone,
+which was wrong — see the three-layer note in Technical Approach.) Add a test asserting a
+heavily-superseded partition still fills `max_items` when enough valid records exist.
 
 ### Risk 4: The benchmark acceptance criterion is not runnable in this dispatch
 **Impact:** An acceptance criterion goes unmet at merge.
@@ -469,8 +542,10 @@ existing `invalid_at` entry** (open-or-absent), using the same `ZSCORE`-guard as
 **Mitigation:** Accepted and documented, not prevented. The assembler already takes a
 point-in-time view of a live store (tag scoping has the identical property). The worst case is
 one stale record in one assembly, which the next call corrects — versus the cost of holding a
-consistent snapshot across a multi-arm retrieval. The Lua gate re-checks at score time, so the
-composite arm is tighter than the post-filter regardless.
+consistent snapshot across a multi-arm retrieval. The composite arm is tighter than the
+post-filter regardless, because D5b re-derives its mask inside `composite_score` at merge time
+rather than reusing the assembler's earlier snapshot. (The first draft credited this tightness
+to D5, the decay Lua; that was wrong under `ZUNIONSTORE`/`SUM` — see the three-layer note.)
 
 ## No-Gos (Out of Scope)
 
@@ -586,7 +661,9 @@ interleave: core owns `fields/validity_field.py` + `fields/constants.py`; protoc
 
 #### 1. Field + `SUPERSEDE_LUA` core
 - **Task ID**: build-validity-core
-- **Depends On**: none
+- **Depends On**: PM sign-off on Open Questions 2 and 3 (per critique CONCERN — the build must
+  not silently assume an answer to a written acceptance criterion). Building may proceed in
+  parallel with the request, but **merge is gated on OQ2**.
 - **Validates**: `tests/test_validity_field.py` (create)
 - **Assigned To**: validity-core-builder — **Agent Type**: builder — **Parallel**: true
 - Create `src/popoto/fields/validity_field.py`: `ValidityField(Field)`, key helpers per D1,
@@ -616,9 +693,13 @@ interleave: core owns `fields/validity_field.py` + `fields/constants.py`; protoc
 - **Validates**: `tests/test_validity_field.py`, `tests/test_decaying_sorted_field.py`,
   `tests/test_context_assembler.py`
 - **Assigned To**: gating-builder — **Agent Type**: builder — **Parallel**: true
-- `DECAY_SCORE_LUA`: append `KEYS[3]`/`KEYS[4]`/`ARGV[7]` per D5; update the header comment.
-- Bump `numkeys` 2 → 4 and pass the two keys (or `''`) at **all three** call sites:
-  `query.py:425-436`, `query.py:1255-1266`, `context_assembler.py:747-757`.
+- `DECAY_SCORE_LUA`: append `KEYS[3]`/`KEYS[4]`/`ARGV[7]` per D5, using `KEYS[n] or ''`
+  nil-safe guards; update the header comment.
+- Bump `numkeys` 2 → 4 and pass the two keys (or `''`) at **all three** production call sites:
+  `query.py:425-436`, `query.py:1255-1266`, `context_assembler.py:747-757`. Do **not** touch
+  the `numkeys` of any test call site (see Test Impact).
+- Implement the D5b composite validity mask after the `ZUNIONSTORE` at `query.py:591-600`,
+  registering both temp keys into the existing `temp_keys` cleanup list.
 - `_resolve_valid_keys` / `_scope_by_validity` per D6; apply at `context_assembler.py:1689`,
   `1691`, `1761`; add `as_of` to `assemble()`; auto-detect the model's `ValidityField` in
   `__init__`.
@@ -657,7 +738,8 @@ interleave: core owns `fields/validity_field.py` + `fields/constants.py`; protoc
 | New tests pass | `pytest tests/test_validity_field.py -q` | exit code 0 |
 | Decay tests still pass | `pytest tests/test_decaying_sorted_field.py tests/test_cyclic_decay_field.py -q` | exit code 0 |
 | Assembler tests still pass | `pytest tests/test_context_assembler.py -q` | exit code 0 |
-| No stale `numkeys=2` decay EVAL | `grep -rn "DECAY_SCORE_LUA,$" -A1 src/ \| grep -c "^\s*2,"` | match count == 0 |
+| All 3 decay EVAL sites pass 4 keys (replaces the inert grep row) | `pytest tests/test_validity_field.py -q -k "eval_call_sites_pass_four_keys"` | exit code 0 |
+| Composite mask closes the ZUNIONSTORE/SUM leak | `pytest tests/test_composite_score_query.py -q -k "validity"` | exit code 0 |
 | Gate is not a filter kwarg on the default path | `grep -c "validity__current" src/popoto/recipes/context_assembler.py` | match count == 0 |
 | No Redis-module commands introduced | `grep -rnE "\b(BF\.\|CMS\.\|TOPK\.\|TS\.)" src/popoto/fields/validity_field.py src/popoto/fields/supersession.py` | exit code 1 |
 | `CYCLIC_DECAY_LUA` untouched | `git diff main --stat -- src/popoto/fields/cyclic_decay_field.py \| wc -l \| tr -d ' '` | output contains `0` |
@@ -668,7 +750,109 @@ interleave: core owns `fields/validity_field.py` + `fields/constants.py`; protoc
 
 ## Critique Results
 
-<!-- Populated by /do-plan-critique. -->
+**Depth:** FULL (forced by `appetite: Large`) — critics: Risk & Robustness, Scope & Value,
+History & Consistency. **Verdict: NEEDS REVISION** (3 blockers, 1 concern, 1 nit).
+
+### BLOCKER 1 — The Verification row guarding the plan's own riskiest edit is inert
+
+*Critics: Risk & Robustness, History & Consistency (2/3).* **Location:** Verification table,
+row "No stale `numkeys=2` decay EVAL" / Risk 1 mitigation.
+
+`grep -rn "DECAY_SCORE_LUA,$" -A1 src/ | grep -c "^\s*2,"` always prints `0`. `grep -A1`
+prefixes context lines with `file-lineno-`, so `^\s*2,` can never match. The driver ran this
+exact command against the current tree — where all three call sites *are* still `numkeys=2` —
+and it printed `0`. The check cannot distinguish "fixed" from "still broken." Risk 1's prose
+also names a *different* command (`eval(\s*DECAY_SCORE_LUA,\s*2`) than the table row, so the
+plan's two descriptions of its single most important safety net disagree.
+
+**Implementation Note:** grep-based checks on multi-line Python call sites have now broken once
+for this exact hazard. Replace the row with a pytest that uses `inspect.getsource` on the three
+call sites (`query.py:426`, `query.py:1256`, `context_assembler.py:748`) and regex-matches the
+literal `numkeys` argument, or at minimum `grep -Pzo 'DECAY_SCORE_LUA,\s*\n\s*2\b'` in null-data
+mode. Whatever replaces it must be **proved to return non-zero against the pre-fix tree** before
+it is trusted post-fix, and Risk 1's prose and the table row must be made textually identical.
+
+### BLOCKER 2 — Test Impact misses two files that hand-eval `DECAY_SCORE_LUA`
+
+*Critics: History & Consistency, Risk & Robustness (2/3).* **Location:** Test Impact / D5.
+
+Test Impact names only `test_decaying_sorted_field.py` and `test_cyclic_decay_field.py`. Two
+more test files `eval(DECAY_SCORE_LUA, ...)` directly with hardcoded numkeys and appear nowhere
+in Test Impact, Risk 1, or tasks 3/4: `tests/test_lua_decay_scoring.py` (numkeys=1 at `:76`,
+numkeys=2 at `:82`) and `tests/test_confidence_modulated_decay.py` (numkeys=1 at `:171`,
+numkeys=2 at `:188` and `:376`). These are precisely the byte-exact pre-change score oracles.
+
+**Implementation Note:** those callers omit `KEYS[3]`/`KEYS[4]` entirely, so in Lua they are
+`nil`, not the `''` the "empty key strings disable the gate" convention is written against.
+D5 must use the existing nil-safe shape — `local invalid_key = KEYS[3] or ''` /
+`local valid_key = KEYS[4] or ''`, mirroring `decaying_sorted_field.py:67`'s
+`local confidence_hash_key = KEYS[2] or ''` — *before* any `~= ''` comparison. With that
+fallback in place no test `numkeys` bump is actually required, which also contradicts Test
+Impact's claim that a 2 → 4 bump is mandatory. Add both files to Test Impact and gate on
+`pytest tests/test_lua_decay_scoring.py tests/test_confidence_modulated_decay.py -q`.
+
+### BLOCKER 3 — The Lua gate does not exclude records from `composite_score`
+
+*Critics: Risk & Robustness (Skeptic), Scope & Value (Simplifier) — cross-validated, elevated
+per the war-room rule.* **Location:** D5, Risk 3 mitigation, Race 3 mitigation.
+
+Risk 3 claims "the Lua gate handles the composite/decay arms *before* truncation, so the
+post-filter's residual job is only the BM25/graph arms," and Race 3 claims "the composite arm is
+tighter than the post-filter regardless." `composite_score` combines per-index temp ZSETs with
+**`ZUNIONSTORE`** (`query.py:592-600`). A member the gate skips is merely *absent from the decay
+temp ZSET*; under `SUM` its decay contribution becomes `0` — it is **not** removed from the
+union if any other weighted arm (e.g. a `ConfidenceField` index) still scores it. Since
+`ContextAssembler` only ever calls `composite_score`/`fuse` (the plan's own Freshness Check note
+2), D6's post-filter — not D5 — is what actually enforces membership on the default path, and a
+bare `Model.query.composite_score()` caller outside the assembler is not gated at all.
+
+**Implementation Note:** correct both mitigations to state the gate fully excludes only
+single-index paths (`top_by_decay`) and merely zeroes a contribution in multi-index
+`composite_score`. Add a test that calls
+`composite_score(indexes={"relevance": 0.5, "confidence": 0.5})` where `relevance` is the gated
+`DecayingSortedField` and `confidence` is a `ConfidenceField` arm still holding the superseded
+member, asserting the member survives the union pre-`_scope_by_validity` — the planned
+single-index test cannot catch this. Then re-decide whether D5 (which hosts the plan's
+self-declared "single most dangerous edit") earns its risk in this wave at all, or ships scoped
+explicitly to non-assembler callers.
+
+### CONCERN — Build is sequenced past an unresolved, self-flagged scope question
+
+*Critic: Scope & Value.* **Location:** Team Orchestration / Step by Step Tasks vs. Open Question 2.
+
+All six agents and every build task are scheduled with no dependency on Open Question 2, which
+the plan itself says "would measure nothing today" and leaves as "Needs Tom's call — it is a
+written acceptance criterion, so I am not self-clearing it."
+
+**Implementation Note:** procedural, not code. Add an explicit dependency —
+`build-validity-core` **Depends On**: PM sign-off on Open Questions 2 and 3 — to Step by Step
+Tasks, so the decision is recorded in a review round rather than assumed by a six-agent build.
+
+### NIT — D3's load-bearing `#456` citation is absent from Prior Art
+
+*Critic: History & Consistency.* D3 rejects `Relationship`-based chain links entirely on the
+strength of "the #456 build-order comment," but #456 is not among Prior Art's enumerated
+precedents (#495/#491, #476, #492, `TAG_SWAP_LUA`) and is not independently verifiable from the
+plan. Add it to Prior Art, or inline the comment text with a file:line.
+
+### Structural checks
+
+| Check | Status | Detail |
+|---|---|---|
+| Required sections | PASS | All present and non-empty |
+| Task numbering | PASS | Tasks 1-6 contiguous |
+| Dependencies valid | PASS | All 5 `Depends On` IDs resolve; no cycles |
+| File paths exist | PASS | 23/26; the 3 missing are the files this plan creates |
+| Prerequisites met | PASS | All 4 pass under `.worktrees/dev-49da033b/.venv`; the *ambient* shell python resolves `popoto` to `src/ai/.venv` and lacks `sentence_transformers` — builders must use the worktree venv explicitly |
+| Cross-references | PASS | Every Success Criterion maps to a task; No-Gos and Rabbit Holes do not reappear as planned work |
+| Verification commands executable | **FAIL** | 1 of 12 rows is inert (BLOCKER 1) |
+
+**Verified-correct claims** (checked by the critique driver, do not re-litigate): the
+`grep` for `valid_from|invalid_at|ingested_at|supersede` in `src/` returns zero hits; the three
+production `DECAY_SCORE_LUA` call sites are exactly as listed and all `numkeys=2`; `str.strip`
+does yield the `$ValidityF` prefix for `ValidityField` (D1 correct); and `+inf` round-trips
+correctly through `ZADD`/`ZSCORE`/`ZRANGEBYSCORE`/Lua `tonumber` on this machine, so Risk 2 is
+real but low.
 
 ---
 
@@ -697,3 +881,25 @@ interleave: core owns `fields/validity_field.py` + `fields/constants.py`; protoc
    is a no-op for every model without a `ValidityField`, which is all of them today —
    including `DefaultMemory` (see No-Gos) — so the blast radius of "on by default" is zero at
    merge and grows only as adopters opt in by declaring the field.
+
+---
+
+## Critique Resolution (revision pass, 2026-08-16)
+
+All three blockers were independently reproduced against the tree before being addressed; none
+were taken on the critic's word.
+
+| Finding | Verified how | Resolution |
+|---|---|---|
+| BLOCKER 1 (inert grep) | Ran the row's command; confirmed `grep -A1`'s `file-lineno-` prefix makes `^\s*2,` unmatchable | Row deleted. Replaced with `test_decay_eval_call_sites_pass_four_keys` (`inspect.getsource` over the three sites) plus a per-site behavioral test. Red-state proof against the pre-fix tree is required and its FAIL output goes in the PR description. Risk 1 prose rewritten to name the same check as the table. |
+| BLOCKER 2 (missed test files, nil vs `''`) | `grep -n DECAY_SCORE_LUA tests/` — found `test_lua_decay_scoring.py` (numkeys 1, 2) and `test_confidence_modulated_decay.py` (numkeys 1, 2, 2), neither in Test Impact | D5 now specifies `KEYS[3] or ''` / `KEYS[4] or ''`, mirroring `decaying_sorted_field.py:67`. Consequence: **no test needs a `numkeys` bump**, and the first draft's claim that one was mandatory is retracted. All three files added to Test Impact, the two oracles explicitly marked NO CHANGE (deliberate) so the byte-parity evidence survives. |
+| BLOCKER 3 (`ZUNIONSTORE`/`SUM` leak) | Read `query.py:591-600` directly — `zunionstore(composite_key, resolved_keys, aggregate=aggregate)`. Confirmed: absence from the decay arm zeroes a contribution, it does not remove a member | The most consequential finding; it falsified the plan's central claim. Technical Approach now opens with an explicit three-layer gating model. **D5b added**: a `ZRANGESTORE`×2 + `ZINTERSTORE`×2 validity mask applied to `composite_key` after the union — core commands only, Valkey-safe, and it fixes bare `Model.query.composite_score()` callers too, which no assembler-level fix reaches. Risk 3 and Race 3 mitigations corrected and annotated with what they previously got wrong. |
+| CONCERN (build sequenced past OQ2) | — | Accepted. `build-validity-core` now depends on PM sign-off for Open Questions 2 and 3; the p50/benchmark task is explicitly gated on OQ2's answer. |
+| NIT (#456 missing from Prior Art) | — | Accepted. #456's build-order comment added to Prior Art with the append-only clause quoted, since D3 rests on it. |
+
+**On blocker 3's "re-decide whether D5 earns its risk at all":** D5 is kept, with its authority
+narrowed and stated. It is the only mechanism for `top_by_decay`, where the result *is* the
+member list and no union follows — and `top_by_decay` is the path the issue's hot-path
+requirement actually names. What D5 no longer claims is membership enforcement on the composite
+path; D5b owns that. Its residual risk (the `numkeys` edit) is now guarded by a test with a
+required red-state proof rather than by a grep that could not fail.
