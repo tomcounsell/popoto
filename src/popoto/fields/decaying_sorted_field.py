@@ -48,6 +48,10 @@ logger = logging.getLogger("POPOTO.DecayingSortedField")
 # KEYS[1] = sorted set key (member -> last_updated_timestamp)
 # KEYS[2] = ConfidenceField ":data" companion hash (member -> msgpack payload).
 #           Empty string / absent = confidence modulation disabled.
+# KEYS[3] = ValidityField "invalid_at" ZSET (member -> close epoch, +inf = open).
+#           Empty string / absent = validity gating disabled (#580, plan D5).
+# KEYS[4] = ValidityField "valid_from" ZSET (member -> valid-from epoch).
+#           Empty string / absent = validity gating disabled.
 # ARGV[1] = current timestamp (seconds)
 # ARGV[2] = decay rate (e.g. 0.5)
 # ARGV[3] = max results to return
@@ -57,6 +61,17 @@ logger = logging.getLogger("POPOTO.DecayingSortedField")
 #           default for members with no confidence data AND the centering
 #           constant, so a zero-evidence record is bit-exactly neutral for any
 #           configured initial_confidence (not just 0.5).
+# ARGV[7] = as-of epoch seconds for the validity gate. Absent / unparseable =
+#           gate disabled, exactly like an empty KEYS[3]/KEYS[4].
+#
+# Validity gate convention (#580): KEYS[3]/KEYS[4]/ARGV[7] are APPENDED, never
+# renumbered -- see the KEYS[2] note inside the script. All three must be
+# present and non-empty for the gate to engage; any of them empty or absent
+# leaves this script byte-for-byte equivalent to the pre-#580 version, which is
+# what lets existing callers pass numkeys of 1 or 2 unmodified and serve as the
+# score-parity oracle. Membership is decided server-side inside the existing
+# range read: no extra round trip and, crucially, no filter kwarg (a surviving
+# filter param would kill sorted-range limit pushdown).
 DECAY_SCORE_LUA = """
 local zset_key = KEYS[1]
 -- Confidence hash is KEYS[2] *in this script only*. The CyclicDecayField fork
@@ -65,15 +80,27 @@ local zset_key = KEYS[1]
 -- them: reusing KEYS[2] there would cmsgpack.unpack the cycles array as a
 -- confidence dict, which corrupts silently instead of erroring.
 local confidence_hash_key = KEYS[2] or ''
+-- Validity gate keys (#580). Appended, never renumbered. `KEYS[n] or ''`
+-- mirrors the KEYS[2] guard above: Lua 5.1 hands out nil (not '') for indices
+-- past numkeys, so callers passing numkeys 1 or 2 get the gate disabled rather
+-- than an error, and their scores stay byte-identical to pre-#580.
+local invalid_key = KEYS[3] or ''
+local valid_key = KEYS[4] or ''
 local now = tonumber(ARGV[1])
 local decay_rate = tonumber(ARGV[2])
 local max_results = tonumber(ARGV[3])
 local base_score_field = ARGV[4]
 local s = tonumber(ARGV[5]) or 0
 local c0 = tonumber(ARGV[6]) or 0.5
+local as_of = tonumber(ARGV[7] or '')
 
 -- When modulation is off, never pay for the extra HGET per member.
 local modulate = confidence_hash_key ~= '' and s ~= 0
+
+-- Validity gating engages only with both interval ZSETs AND an as-of. Any one
+-- missing means "gate disabled" -- the same empty-string-is-off convention the
+-- confidence modulation guard uses.
+local gate = invalid_key ~= '' and valid_key ~= '' and as_of ~= nil
 
 -- Get all members with their last_updated timestamps
 local members = redis.call('ZRANGE', zset_key, 0, -1, 'WITHSCORES')
@@ -83,70 +110,104 @@ for i = 1, #members, 2 do
     local member = members[i]
     local last_updated = tonumber(members[i + 1])
 
-    local base_score = 1.0
-    if base_score_field ~= '' then
-        -- Read base score from the model's own hash
-        local raw = redis.call('HGET', member, base_score_field)
-        if raw then
-            local ok, decoded = pcall(cmsgpack.unpack, raw)
-            if ok and type(decoded) == 'number' then
-                base_score = decoded
-            elseif ok and type(decoded) == 'table' and decoded['as_encodable'] then
-                -- Handle Decimal type (tagged dict encoding)
-                base_score = tonumber(decoded['as_encodable']) or 1.0
+    -- Validity gate (#580, plan D5). Placed here deliberately: it is the
+    -- cheapest possible position, before the base-score HGET and before all
+    -- decay math, so an excluded member costs at most two ZSCOREs. Lua 5.1
+    -- has no `goto`, hence the `if include then` wrapper around the body
+    -- rather than a `continue`.
+    --
+    -- A member is skipped when its interval does not cover as_of:
+    --   invalid_at <= as_of  (already closed)  or  valid_from > as_of (not yet
+    --   started). Redis renders the +inf open sentinel as 'inf', which Lua
+    --   5.1's tonumber parses via strtod, so an open record's `n <= as_of` is
+    --   false. A member absent from either ZSET has no interval and is left
+    --   alone -- the gate is an exclusion rule, not a whitelist.
+    local include = true
+    if gate then
+        local closed_at = redis.call('ZSCORE', invalid_key, member)
+        if closed_at then
+            local cn = tonumber(closed_at)
+            if cn ~= nil and cn <= as_of then
+                include = false
             end
         end
-    end
-
-    -- Compute elapsed time in days (minimum 0.01 to avoid division by zero)
-    local elapsed_days = math.max((now - last_updated) / 86400, 0.01)
-
-    -- Power-law decay: base_score * elapsed^(-decay_rate)
-    -- Sign-preserving: math.pow only takes non-negative base, so split sign
-    -- from magnitude. Positive-base output is bitwise unchanged.
-    local sign = base_score < 0 and -1 or 1
-    local mag = math.abs(base_score)
-    local decayed = sign * mag * math.pow(elapsed_days, -decay_rate)
-
-    if modulate then
-        -- Per-member effective decay rate from accumulated outcome evidence.
-        -- Payload shape matches CAPPED_BAYESIAN_UPDATE_LUA's writer; anything
-        -- missing / undecodable / non-numeric falls back to c0 (neutral).
-        local c = c0
-        local craw = redis.call('HGET', confidence_hash_key, member)
-        if craw then
-            local ok, data = pcall(cmsgpack.unpack, craw)
-            if ok and type(data) == 'table' then
-                local v = data['confidence'] or data[1]
-                if type(v) == 'number' then
-                    c = v
+        if include then
+            local started_at = redis.call('ZSCORE', valid_key, member)
+            if started_at then
+                local sn = tonumber(started_at)
+                if sn ~= nil and sn > as_of then
+                    include = false
                 end
             end
         end
-        -- Defensive clamp: the hash could hold anything.
-        c = math.max(0, math.min(1, c))
-
-        local eff = decay_rate * math.pow(2, s * 2 * (c0 - c))
-
-        -- Correction factor, applied on top of TODAY'S formula so neutrality is
-        -- bit-exact: when c == c0 the exponent is exactly 0 and math.pow(x, -0)
-        -- is exactly 1.0.
-        --
-        -- The math.max(elapsed_days, 1.0) guard is load-bearing, NOT redundant.
-        -- elapsed_days is floored at 0.01, and for t < 1 the term t^(-rate) is a
-        -- multiplier > 1 that a LARGER rate amplifies MORE (at t=0.01, rate 0.66
-        -- gives x21.9 vs x5.0 for rate 0.35). Without the guard, modulation runs
-        -- backwards for the first 24 hours and boosts exactly the low-confidence
-        -- junk it is meant to bury -- and since agent memory is touched
-        -- constantly, most of the working set lives in that region. Clamping the
-        -- correction's base to >= 1.0 makes the term exactly 1.0 for fresh
-        -- records, so modulation only ever applies in the region where a higher
-        -- rate means a lower score.
-        decayed = decayed
-            * math.pow(math.max(elapsed_days, 1.0), -(eff - decay_rate))
     end
 
-    table.insert(scored, {member, decayed})
+    if include then
+        local base_score = 1.0
+        if base_score_field ~= '' then
+            -- Read base score from the model's own hash
+            local raw = redis.call('HGET', member, base_score_field)
+            if raw then
+                local ok, decoded = pcall(cmsgpack.unpack, raw)
+                if ok and type(decoded) == 'number' then
+                    base_score = decoded
+                elseif ok and type(decoded) == 'table' and decoded['as_encodable'] then
+                    -- Handle Decimal type (tagged dict encoding)
+                    base_score = tonumber(decoded['as_encodable']) or 1.0
+                end
+            end
+        end
+
+        -- Compute elapsed time in days (minimum 0.01 to avoid division by zero)
+        local elapsed_days = math.max((now - last_updated) / 86400, 0.01)
+
+        -- Power-law decay: base_score * elapsed^(-decay_rate)
+        -- Sign-preserving: math.pow only takes non-negative base, so split sign
+        -- from magnitude. Positive-base output is bitwise unchanged.
+        local sign = base_score < 0 and -1 or 1
+        local mag = math.abs(base_score)
+        local decayed = sign * mag * math.pow(elapsed_days, -decay_rate)
+
+        if modulate then
+            -- Per-member effective decay rate from accumulated outcome evidence.
+            -- Payload shape matches CAPPED_BAYESIAN_UPDATE_LUA's writer; anything
+            -- missing / undecodable / non-numeric falls back to c0 (neutral).
+            local c = c0
+            local craw = redis.call('HGET', confidence_hash_key, member)
+            if craw then
+                local ok, data = pcall(cmsgpack.unpack, craw)
+                if ok and type(data) == 'table' then
+                    local v = data['confidence'] or data[1]
+                    if type(v) == 'number' then
+                        c = v
+                    end
+                end
+            end
+            -- Defensive clamp: the hash could hold anything.
+            c = math.max(0, math.min(1, c))
+
+            local eff = decay_rate * math.pow(2, s * 2 * (c0 - c))
+
+            -- Correction factor, applied on top of TODAY'S formula so neutrality
+            -- is bit-exact: when c == c0 the exponent is exactly 0 and
+            -- math.pow(x, -0) is exactly 1.0.
+            --
+            -- The math.max(elapsed_days, 1.0) guard is load-bearing, NOT
+            -- redundant. elapsed_days is floored at 0.01, and for t < 1 the term
+            -- t^(-rate) is a multiplier > 1 that a LARGER rate amplifies MORE (at
+            -- t=0.01, rate 0.66 gives x21.9 vs x5.0 for rate 0.35). Without the
+            -- guard, modulation runs backwards for the first 24 hours and boosts
+            -- exactly the low-confidence junk it is meant to bury -- and since
+            -- agent memory is touched constantly, most of the working set lives
+            -- in that region. Clamping the correction's base to >= 1.0 makes the
+            -- term exactly 1.0 for fresh records, so modulation only ever applies
+            -- in the region where a higher rate means a lower score.
+            decayed = decayed
+                * math.pow(math.max(elapsed_days, 1.0), -(eff - decay_rate))
+        end
+
+        table.insert(scored, {member, decayed})
+    end
 end
 
 -- Two-level total-order comparator. Lua 5.1 table.sort is unstable and
@@ -400,3 +461,69 @@ def confidence_modulation_args(
         )
 
     return (data_hash_key, str(strength), str(conf_field.initial_confidence))
+
+
+#: The gate-off triple for :data:`DECAY_SCORE_LUA`'s ``KEYS[3]``/``KEYS[4]``/
+#: ``ARGV[7]``. Mirrors :data:`MODULATION_DISABLED`: passing it produces
+#: byte-identical scores to the pre-#580 script, so every call site can pass the
+#: extra key slots unconditionally instead of branching on numkeys.
+VALIDITY_GATE_DISABLED: tuple[str, str, str] = ("", "", "")
+
+
+def resolve_validity_field_name(model_class: Any) -> Optional[str]:
+    """Return the name of the model's ``ValidityField``, or ``None``.
+
+    First declared field wins, matching the auto-detection style used for the
+    ConfidenceField / BM25Field / TagField seams elsewhere. Returns ``None``
+    for models with no validity axis, which is every model that has not opted
+    in — the overwhelmingly common case, and the one that must stay free.
+    """
+    from .validity_field import ValidityField
+
+    fields = getattr(getattr(model_class, "_meta", None), "fields", {}) or {}
+    for name, f in fields.items():
+        if isinstance(f, ValidityField):
+            return name
+    return None
+
+
+def validity_gate_args(
+    model_class: Any, as_of: Optional[float] = None
+) -> tuple[str, str, str]:
+    """Build ``(invalid_at_key, valid_from_key, as_of)`` for a decay ``EVAL``.
+
+    The single resolver behind all three production ``DECAY_SCORE_LUA`` call
+    sites, so there is exactly one place that knows the gate's KEYS/ARGV order
+    (``KEYS[3]`` = ``invalid_at``, ``KEYS[4]`` = ``valid_from``, ``ARGV[7]`` =
+    as-of).
+
+    ``Defaults.VALIDITY_GATING_ENABLED`` is read **here, at call time**, never
+    captured at import time: the kill switch has to take effect at runtime for
+    adopters who cannot edit model code (issue #580, plan D6).
+
+    Args:
+        model_class: The Model class being queried. ``None`` is tolerated and
+            resolves to the disabled triple, for callers whose model context is
+            optional.
+        as_of: Epoch seconds to evaluate membership at. ``None`` means "now".
+
+    Returns:
+        tuple[str, str, str]: ``VALIDITY_GATE_DISABLED`` when gating is off or
+        the model declares no ``ValidityField``.
+    """
+    import time
+
+    if not Defaults.VALIDITY_GATING_ENABLED or model_class is None:
+        return VALIDITY_GATE_DISABLED
+
+    field_name = resolve_validity_field_name(model_class)
+    if field_name is None:
+        return VALIDITY_GATE_DISABLED
+
+    from .validity_field import ValidityField
+
+    valid_from_key, invalid_at_key = ValidityField.get_interval_keys(
+        model_class, field_name
+    )
+    t = time.time() if as_of is None else float(as_of)
+    return (invalid_at_key, valid_from_key, repr(t))

@@ -197,7 +197,7 @@ def _get_instance_key(instance):
     return instance.db_key.redis_key
 
 
-def _apply_outcome(instance, outcome, pipeline=None):
+def _apply_outcome(instance, outcome, pipeline=None, superseded_by=None):
     """Apply effects for a single outcome on a single instance.
 
     Creates an internal pipeline for atomicity when no pipeline is provided.
@@ -207,6 +207,10 @@ def _apply_outcome(instance, outcome, pipeline=None):
         outcome: One of "acted", "used", "dismissed", "deferred",
             "contradicted".
         pipeline: Optional Redis pipeline for batch operations.
+        superseded_by: Optional Model instance carrying the corrected claim.
+            Only meaningful for the "contradicted" outcome, where it is
+            recorded as a supersession edge on models that declare a
+            ValidityField. Ignored otherwise.
     """
     # Use internal pipeline for atomicity if none provided
     use_internal_pipeline = pipeline is None
@@ -220,7 +224,7 @@ def _apply_outcome(instance, outcome, pipeline=None):
     elif outcome == "deferred":
         _apply_deferred(instance, pipeline)
     elif outcome == "contradicted":
-        _apply_contradicted(instance, pipeline)
+        _apply_contradicted(instance, pipeline, superseded_by=superseded_by)
     elif outcome == "used":
         _apply_used(instance, pipeline)
 
@@ -324,12 +328,26 @@ def _apply_deferred(instance, pipeline):
         instance.discard_staged_access(pipeline=pipeline)
 
 
-def _apply_contradicted(instance, pipeline):
+def _apply_contradicted(instance, pipeline, superseded_by=None):
     """Contradicted: discard staged reads, aggressively weaken cycles.
+
+    Also records *what* contradicted the memory, when that is knowable: on a
+    model declaring a ValidityField, and given the instance carrying the
+    corrected claim, the record's validity interval is closed and a
+    supersession edge is written (issue #580). Contradiction stops being a
+    scalar nudge and becomes provenance.
+
+    The correcting instance is supplied either as ``superseded_by`` or, for
+    callers that only reach this through ``on_context_used``, as the private
+    ``instance._superseded_by`` attribute. Both are optional: with neither
+    present — and on every model without a ValidityField, which is every
+    shipped model today — this is a strict no-op and the pre-#580 effects are
+    unchanged.
 
     Args:
         instance: A Model instance.
         pipeline: Redis pipeline for batched operations.
+        superseded_by: Optional Model instance that supersedes ``instance``.
     """
     from .cyclic_decay_field import CyclicDecayField
 
@@ -386,6 +404,46 @@ def _apply_contradicted(instance, pipeline):
                             instance.resolve_pressure(cdf_name, pipeline=pipeline)
             except (TypeError, ValueError, AttributeError):
                 pass
+
+    # Record the supersession edge (ValidityField, issue #580). Strictly
+    # additive: no ValidityField on the model, or no correcting instance, means
+    # nothing runs at all.
+    _apply_supersession(instance, pipeline, superseded_by)
+
+
+def _apply_supersession(instance, pipeline, superseded_by=None):
+    """Close a contradicted record's interval and chain it to its correction.
+
+    No-op unless the model declares a ValidityField *and* the correcting
+    instance is known. Delegates to ``SupersessionProtocol.invalidate``, which
+    performs interval closure and both chain links in a single EVAL, so a
+    half-linked chain is unobservable.
+
+    Args:
+        instance: The contradicted Model instance.
+        pipeline: Redis pipeline for batched operations.
+        superseded_by: The correcting Model instance, or None. Falls back to
+            ``instance._superseded_by`` when not passed explicitly.
+    """
+    from .supersession import SupersessionProtocol
+    from .validity_field import ValidityField
+
+    successor = superseded_by
+    if successor is None:
+        successor = getattr(instance, "_superseded_by", None)
+    if successor is None:
+        return
+
+    fields = getattr(getattr(instance, "_meta", None), "fields", None) or {}
+    if not any(isinstance(field, ValidityField) for field in fields.values()):
+        return
+
+    try:
+        SupersessionProtocol.invalidate(
+            instance, superseded_by=successor, pipeline=pipeline
+        )
+    except (TypeError, ValueError):
+        pass  # Graceful degradation for unsaved instances
 
 
 def _apply_used(instance, pipeline):
