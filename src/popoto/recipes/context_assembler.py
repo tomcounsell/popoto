@@ -1641,18 +1641,30 @@ class ContextAssembler:
             return records
         return [r for r in records if _get_key(r) in allowed_keys]
 
-    def _resolve_valid_keys(self, as_of: float | None = None) -> set[str] | None:
-        """Resolve validity gating to the set of currently-valid Redis keys.
+    def _resolve_excluded_keys(self, as_of: float | None = None) -> set[str] | None:
+        """Resolve validity gating to the set of Redis keys to DROP.
 
         Layer 3 of validity gating (issue #580, plan D6), and the only layer
         that reaches the ``fuse`` / BM25 / graph-propagation arms: those bypass
         the ``filters`` dict entirely, so neither the decay-Lua gate (layer 1,
-        inside ``DECAY_SCORE_LUA``) nor the composite mask (layer 2, inside
-        ``composite_score``) can see them. Exactly the shape tag scoping already
-        established — a candidate-key post-filter is the only mode-agnostic seam.
+        inside ``DECAY_SCORE_LUA``) nor the composite difference (layer 2,
+        inside ``composite_score``) can see them. Exactly the shape tag scoping
+        already established — a candidate-key post-filter is the only
+        mode-agnostic seam.
 
-        Two read-only ``ZRANGEBYSCORE``s, run once per ``assemble()`` call, via
-        :meth:`ValidityField.resolve_valid_keys`.
+        THIS RETURNS AN EXCLUSION SET, NOT A WHITELIST, and that is deliberate.
+        All three gating layers must agree on the same rule: drop a record only
+        when it is provably closed (``invalid_at <= as_of``) or provably not yet
+        started (``valid_from > as_of``). A record with **no entry in either
+        interval ZSET** is *unmanaged* and stays fully retrievable. Resolving
+        the valid set instead — e.g. via ``ValidityField.resolve_valid_keys``,
+        which intersects the two ranges — would silently hide every record that
+        predates the day a ``ValidityField`` was added to an existing model,
+        since none of those has an interval until it is next saved. That is a
+        data-visibility regression, not a stricter gate. Do not "simplify" this
+        into a valid-key intersection.
+
+        Two read-only ``ZRANGEBYSCORE``s, run once per ``assemble()`` call.
 
         ``Defaults.VALIDITY_GATING_ENABLED`` is read **here, at call time**, not
         captured at import: the deploy-level kill switch has to take effect at
@@ -1662,10 +1674,11 @@ class ContextAssembler:
             as_of: Epoch seconds to evaluate membership at. ``None`` = now.
 
         Returns:
-            ``set[str]`` of valid record keys, or ``None`` meaning "no scoping,
-            behavior byte-identical to pre-#580" — returned when the model
-            declares no ``ValidityField`` (which is every model that has not
-            opted in) or when the kill switch is off.
+            ``set[str]`` of record keys to drop, or ``None`` meaning "no
+            scoping, behavior byte-identical to pre-#580" — returned when the
+            model declares no ``ValidityField`` (which is every model that has
+            not opted in) or when the kill switch is off. An empty set is NOT
+            the same as ``None``; it means gating ran and excluded nothing.
 
         Note:
             This is a point-in-time snapshot of a live store. A supersession
@@ -1676,22 +1689,35 @@ class ContextAssembler:
             return None
         if not Defaults.VALIDITY_GATING_ENABLED:
             return None
-        return ValidityField.resolve_valid_keys(
-            self.model_class, self._validity_field_name, as_of=as_of
+
+        t = time.time() if as_of is None else float(as_of)
+        valid_from_key, invalid_at_key = ValidityField.get_interval_keys(
+            self.model_class, self._validity_field_name
         )
+        # invalid_at <= t: already closed. The +inf open sentinel never matches.
+        closed = POPOTO_REDIS_DB.zrangebyscore(invalid_at_key, "-inf", t)
+        # valid_from > t: not yet started.
+        future = POPOTO_REDIS_DB.zrangebyscore(valid_from_key, f"({t}", "+inf")
+        return {
+            k.decode() if isinstance(k, bytes) else k
+            for k in list(closed) + list(future)
+        }
 
     @staticmethod
     def _scope_by_validity(
-        records: list[Any], allowed_keys: set[str] | None
+        records: list[Any], excluded_keys: set[str] | None
     ) -> list[Any]:
-        """Keep only records whose Redis key is currently valid.
+        """Drop records whose validity interval provably does not cover the as-of.
 
-        No-op passthrough when ``allowed_keys`` is None (gating disabled, or the
-        model has no ``ValidityField``).
+        No-op passthrough when ``excluded_keys`` is None (gating disabled, or the
+        model has no ``ValidityField``). Records absent from ``excluded_keys``
+        are kept — including unmanaged records with no interval at all, which is
+        the whole point of taking an exclusion set rather than a whitelist. See
+        :meth:`_resolve_excluded_keys`.
         """
-        if allowed_keys is None:
+        if excluded_keys is None:
             return records
-        return [r for r in records if _get_key(r) in allowed_keys]
+        return [r for r in records if _get_key(r) not in excluded_keys]
 
     def assemble(
         self,
@@ -1771,11 +1797,13 @@ class ContextAssembler:
         # scoping — every code path below is then byte-identical to pre-#492.
         allowed_tag_keys = self._resolve_tag_keys(tags, tag_match)
 
-        # Validity gating (issue #580, plan D6 / layer 3). Snapshot the valid-key
-        # set once and post-filter every arm — the fuse/BM25/graph arms bypass
-        # the filters dict, so the server-side layers cannot reach them. ``None``
-        # means no gating; every path below is then byte-identical to pre-#580.
-        allowed_valid_keys = self._resolve_valid_keys(as_of)
+        # Validity gating (issue #580, plan D6 / layer 3). Snapshot the key set
+        # once and post-filter every arm — the fuse/BM25/graph arms bypass
+        # the filters dict, so the server-side layers cannot reach them. This is
+        # an EXCLUSION set, matching layers 1 and 2: unmanaged records (no
+        # interval at all) are kept. ``None`` means no gating; every path below
+        # is then byte-identical to pre-#580.
+        excluded_valid_keys = self._resolve_excluded_keys(as_of)
         self._assembly_as_of = as_of
 
         pull_records = []
@@ -1786,12 +1814,12 @@ class ContextAssembler:
         if query_cues:
             pull_records, all_pull_candidates = self._pull_path(query_cues, filters)
             pull_records = self._scope_by_tags(pull_records, allowed_tag_keys)
-            pull_records = self._scope_by_validity(pull_records, allowed_valid_keys)
+            pull_records = self._scope_by_validity(pull_records, excluded_valid_keys)
             all_pull_candidates = self._scope_by_tags(
                 all_pull_candidates, allowed_tag_keys
             )
             all_pull_candidates = self._scope_by_validity(
-                all_pull_candidates, allowed_valid_keys
+                all_pull_candidates, excluded_valid_keys
             )
 
         # [CONFIDENCE GATE] Opt-in, off-by-default (issue #463). Reads the
@@ -1862,7 +1890,7 @@ class ContextAssembler:
         if self._cyclic_decay_field_name is not None:
             push_records = self._push_path(filters)
             push_records = self._scope_by_tags(push_records, allowed_tag_keys)
-            push_records = self._scope_by_validity(push_records, allowed_valid_keys)
+            push_records = self._scope_by_validity(push_records, excluded_valid_keys)
 
         # --- Merge + deduplicate ---
         seen_keys = set()

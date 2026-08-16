@@ -658,6 +658,8 @@ class QueryBuilder:
             # an absent member scores 0 rather than being removed -- so it still
             # surfaces on whatever a ConfidenceField / co-occurrence /
             # similarity arm gives it. Skipping is not excluding; this is.
+            # Subtracts only demonstrably-invalid members: a record with no
+            # interval entry is unmanaged and stays visible (see the method).
             self._apply_validity_mask(
                 composite_key, model_name, uid, temp_keys, as_of=as_of
             )
@@ -1510,7 +1512,7 @@ class QueryBuilder:
         temp_keys: list[str],
         as_of: Optional[float] = None,
     ) -> None:
-        """Remove currently-invalid members from a composite result (plan D5b).
+        """Remove *demonstrably invalid* members from a composite result (D5b).
 
         This is layer 2 of validity gating, and the only layer that enforces
         *membership* on the ``composite_score`` path. The decay-Lua gate (layer
@@ -1518,25 +1520,37 @@ class QueryBuilder:
         ... AGGREGATE SUM`` then reads that absence as a 0 contribution, not as
         an exclusion, so the member still surfaces on the strength of any other
         weighted arm (a ``ConfidenceField`` index, ``co_occurrence_boost``,
-        ``similarity_boost``). Intersecting with a validity mask removes it.
+        ``similarity_boost``). Subtracting an exclusion set removes it.
+
+        THIS IS A SET DIFFERENCE, NOT AN INTERSECTION -- do not "simplify" it
+        back to a ``ZINTERSTORE`` against a valid-member mask. The rule is
+        *exclusion*, matching ``DECAY_SCORE_LUA``'s gate exactly: a member is
+        dropped only when it is provably closed or provably not-yet-started. A
+        record with **no entry in either interval ZSET** is an *unmanaged*
+        record and stays fully retrievable. An intersect-with-whitelist mask
+        would instead delete every such record -- i.e. every row that predates
+        the day a ``ValidityField`` was added to an existing model, none of
+        which has an interval until it is next saved. That is a silent
+        data-visibility regression, not a stricter gate.
 
         Four core commands, no Lua and no Redis modules, so this is Valkey-safe:
 
-        - ``ZRANGESTORE m_open    invalid_at (t +inf BYSCORE`` -> still open
-        - ``ZRANGESTORE m_started valid_from -inf t  BYSCORE`` -> already started
-        - ``ZINTERSTORE mask 2 m_open m_started WEIGHTS 0 0`` -> valid at ``t``
-        - ``ZINTERSTORE composite_key 2 composite_key mask WEIGHTS 1 0``
+        - ``ZRANGESTORE m_closed invalid_at -inf t  BYSCORE`` -> closed at ``t``
+        - ``ZRANGESTORE m_future valid_from (t  +inf BYSCORE`` -> not yet started
+        - ``ZUNIONSTORE m_excl 2 m_closed m_future WEIGHTS 0 0`` -> the excluded
+        - ``ZDIFFSTORE composite_key 2 composite_key m_excl``
 
-        The zero weights make the mask score-neutral: composite scores pass
-        through unchanged and only membership is affected. ``ZRANGESTORE``
-        requires Redis >= 6.2 / Valkey — the same floor ``bm25_field.py``
-        already asserts for ``ZMSCORE``.
+        ``ZDIFFSTORE`` keeps the left-hand scores, so composite scores pass
+        through unchanged and only membership is affected. Both it and
+        ``ZRANGESTORE`` require Redis >= 6.2 / Valkey — the same floor
+        ``bm25_field.py`` already asserts for ``ZMSCORE``, so this adds no new
+        compatibility surface.
 
         No-op (leaving the composite byte-identical to pre-#580) when the kill
         switch is off or the model declares no ``ValidityField``.
 
         Args:
-            composite_key: The post-``ZUNIONSTORE`` key, masked in place.
+            composite_key: The post-``ZUNIONSTORE`` key, filtered in place.
             model_name: Model class name, for the ``$CSQ:`` temp-key namespace.
             uid: The per-query unique suffix shared by every temp key.
             temp_keys: The caller's cleanup list; all three temps are appended.
@@ -1552,13 +1566,14 @@ class QueryBuilder:
             return
 
         t = float(as_of_repr)
-        open_key = f"$CSQ:{model_name}:validopen:{uid}"
-        started_key = f"$CSQ:{model_name}:validstarted:{uid}"
-        mask_key = f"$CSQ:{model_name}:validmask:{uid}"
-        temp_keys.extend([open_key, started_key, mask_key])
+        closed_key = f"$CSQ:{model_name}:validclosed:{uid}"
+        future_key = f"$CSQ:{model_name}:validfuture:{uid}"
+        excluded_key = f"$CSQ:{model_name}:validexcl:{uid}"
+        temp_keys.extend([closed_key, future_key, excluded_key])
 
-        # invalid_at > t (exclusive lower bound, so a record closed exactly at t
-        # is already closed at t) -- +inf, the open sentinel, always qualifies.
+        # invalid_at <= t -- already closed at t. Inclusive upper bound: a record
+        # closed exactly at t is closed at t. The +inf open sentinel can never
+        # fall in this range, so open records are never collected here.
         #
         # The per-argument ignores below are load-bearing: redis-py annotates
         # zrangestore's start/end as `int`, which is only correct for the
@@ -1566,27 +1581,33 @@ class QueryBuilder:
         # be str/float -- "(", "-inf" and "+inf" have no int spelling -- so the
         # upstream annotation is simply too narrow.
         POPOTO_REDIS_DB.zrangestore(
-            open_key,
+            closed_key,
             invalid_at_key,
-            f"({t}",  # type: ignore[arg-type]
-            "+inf",  # type: ignore[arg-type]
-            byscore=True,
-        )
-        # valid_from <= t
-        POPOTO_REDIS_DB.zrangestore(
-            started_key,
-            valid_from_key,
             "-inf",  # type: ignore[arg-type]
             t,  # type: ignore[arg-type]
             byscore=True,
         )
-        POPOTO_REDIS_DB.expire(open_key, 5)
-        POPOTO_REDIS_DB.expire(started_key, 5)
+        # valid_from > t -- not yet started at t (exclusive lower bound).
+        POPOTO_REDIS_DB.zrangestore(
+            future_key,
+            valid_from_key,
+            f"({t}",  # type: ignore[arg-type]
+            "+inf",  # type: ignore[arg-type]
+            byscore=True,
+        )
+        POPOTO_REDIS_DB.expire(closed_key, 5)
+        POPOTO_REDIS_DB.expire(future_key, 5)
 
-        POPOTO_REDIS_DB.zinterstore(mask_key, {open_key: 0, started_key: 0})
-        POPOTO_REDIS_DB.expire(mask_key, 5)
+        # Union, not intersect: a member is excluded if it fails EITHER end of
+        # the interval test. Weights are 0 only for tidiness -- ZDIFFSTORE
+        # ignores the right-hand scores entirely.
+        POPOTO_REDIS_DB.zunionstore(excluded_key, {closed_key: 0, future_key: 0})
+        POPOTO_REDIS_DB.expire(excluded_key, 5)
 
-        POPOTO_REDIS_DB.zinterstore(composite_key, {composite_key: 1, mask_key: 0})
+        # Set difference. Members with no interval entry appear in neither
+        # exclusion set, so they survive -- see the docstring for why that is
+        # the required behavior and not an oversight.
+        POPOTO_REDIS_DB.zdiffstore(composite_key, [composite_key, excluded_key])
         POPOTO_REDIS_DB.expire(composite_key, 5)
 
     @staticmethod

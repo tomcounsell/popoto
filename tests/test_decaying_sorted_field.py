@@ -1,6 +1,7 @@
 """Tests for DecayingSortedField — time-weighted scoring via Lua decay computation.
 
 Tests cover:
+- Validity gating of top_by_decay: gate on/off, as_of, unmanaged records (#580)
 - Field initialization (decay_rate, base_score_field, defaults)
 - Validation (decay_rate > 0)
 - Save behavior (timestamp stored as sorted set score)
@@ -26,7 +27,11 @@ from src.popoto.fields.decaying_sorted_field import (
     DECAY_SCORE_LUA,
     confidence_modulation_args,
 )
+from src.popoto.fields.constants import Defaults
+from src.popoto.fields.supersession import SupersessionProtocol
+from src.popoto.fields.validity_field import ValidityField
 from src.popoto.models.query import QueryException
+from src.popoto.redis_db import POPOTO_REDIS_DB
 
 # --- Test Models ---
 
@@ -814,3 +819,88 @@ class TestExport:
         from src.popoto import DecayingSortedField as DSF
 
         assert DSF is DecayingSortedField
+
+
+# --- Validity gating (#580) ---
+
+
+class DecayValidityItem(popoto.Model):
+    """DecayingSortedField alongside a ValidityField, for the #580 gate."""
+
+    name = popoto.UniqueKeyField()
+    relevance = DecayingSortedField()
+    validity = ValidityField()
+
+
+class TestValidityGating:
+    """top_by_decay with the decay-Lua validity gate on and off (#580, D5).
+
+    top_by_decay is the one retrieval path where the Lua gate is
+    *authoritative*: its result is the member list itself, with no
+    ZUNIONSTORE afterwards that could reintroduce a skipped member.
+    """
+
+    def setup_method(self):
+        DecayValidityItem.delete_all()
+        for key in ValidityField.get_all_keys(DecayValidityItem, "validity").values():
+            POPOTO_REDIS_DB.delete(key)
+
+    def teardown_method(self):
+        Defaults.VALIDITY_GATING_ENABLED = True
+        DecayValidityItem.delete_all()
+        for key in ValidityField.get_all_keys(DecayValidityItem, "validity").values():
+            POPOTO_REDIS_DB.delete(key)
+
+    def _pair(self):
+        old = DecayValidityItem(name="old")
+        old.save()
+        new = DecayValidityItem(name="new")
+        new.save()
+        return old, new
+
+    def test_closed_member_is_absent_with_the_gate_on(self):
+        old, _ = self._pair()
+        SupersessionProtocol.invalidate(old, superseded_by=None)
+        results = DecayValidityItem.query.top_by_decay("relevance", n=10)
+        assert [r.name for r in results] == ["new"]
+
+    def test_kill_switch_restores_the_closed_member(self):
+        old, _ = self._pair()
+        SupersessionProtocol.invalidate(old)
+        Defaults.VALIDITY_GATING_ENABLED = False
+        results = DecayValidityItem.query.top_by_decay("relevance", n=10)
+        assert sorted(r.name for r in results) == ["new", "old"]
+
+    def test_as_of_returns_the_pre_closure_view(self):
+        old, _ = self._pair()
+        before_closure = time.time()
+        time.sleep(0.02)
+        SupersessionProtocol.invalidate(old)
+        results = DecayValidityItem.query.top_by_decay(
+            "relevance", n=10, as_of=before_closure
+        )
+        assert "old" in [r.name for r in results]
+
+    def test_unmanaged_member_is_never_hidden(self):
+        """No interval == unmanaged == visible. The gate excludes, it does not
+        whitelist — otherwise adding the field to an existing model would hide
+        every record written before that day."""
+        old, new = self._pair()
+        SupersessionProtocol.invalidate(old)
+        keys = ValidityField.get_all_keys(DecayValidityItem, "validity")
+        for key_name in ("valid_from", "invalid_at", "ingested_at"):
+            POPOTO_REDIS_DB.zrem(keys[key_name], new.db_key.redis_key)
+        results = DecayValidityItem.query.top_by_decay("relevance", n=10)
+        assert [r.name for r in results] == ["new"]
+
+    def test_model_without_a_validity_field_is_unaffected(self):
+        """The overwhelmingly common case stays byte-identical."""
+        for i in range(3):
+            item = DecayItem(name=f"gate-{i}")
+            item.save()
+        gated = [r.name for r in DecayItem.query.top_by_decay("relevance", n=10)]
+        Defaults.VALIDITY_GATING_ENABLED = False
+        ungated = [r.name for r in DecayItem.query.top_by_decay("relevance", n=10)]
+        assert gated == ungated
+        for i in range(3):
+            DecayItem.query.get(name=f"gate-{i}").delete()

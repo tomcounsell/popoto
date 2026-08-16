@@ -10,6 +10,7 @@ Tests cover:
 - Post-effects: on_read, on_surfaced, competitive suppression
 - Output formatting: structured (JSON), XML, natural language
 - Edge cases: no query cues, no CyclicDecayField, empty results
+- Validity gating: assemble(as_of=), kill switch, no-ValidityField passthrough (#580)
 """
 
 import json
@@ -32,6 +33,8 @@ from src.popoto.fields.cyclic_decay_field import CyclicDecayField  # noqa: E402
 from src.popoto.fields.decaying_sorted_field import DecayingSortedField  # noqa: E402
 from src.popoto.fields.existence_filter import ExistenceFilter  # noqa: E402
 from src.popoto.fields.field import Field  # noqa: E402
+from src.popoto.fields.supersession import SupersessionProtocol  # noqa: E402
+from src.popoto.fields.validity_field import ValidityField  # noqa: E402
 from src.popoto.fields.shortcuts import (  # noqa: E402
     AutoKeyField,
     FloatField,
@@ -150,6 +153,8 @@ def _clean_all():
         "*FixtureMemory*",
         "*AltFixtureMemory*",
         "*GateMemory*",
+        "*ValidityMemory*",
+        "$ValidityF:*Memory*",
         "$EF:*Memory*",
         "$CoOcF:*Memory*",
         "$ConfidencF:*Memory*",
@@ -1769,3 +1774,154 @@ class TestConfidenceGate:
         }
         # Not applied -> records untouched, even in refuse mode.
         assert result.metadata["pull_count"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Validity gating (#580) — assemble(as_of=), kill switch, passthrough
+# ---------------------------------------------------------------------------
+
+
+class ValidityMemory(Model):
+    """SimpleMemory plus a validity axis (#580)."""
+
+    memory_id = AutoKeyField()
+    agent_id = KeyField()
+    content = Field(type=str)
+    relevance = DecayingSortedField(partition_by="agent_id")
+    validity = ValidityField()
+
+
+class TestAssemblerValidityGating:
+    """Layer 3: the candidate-key post-filter that reaches every arm.
+
+    The fuse / BM25 / graph-propagation arms bypass the ``filters`` dict, so
+    neither the decay-Lua gate nor the composite mask can see them — this is
+    the only mode-agnostic seam, exactly as tag scoping established.
+    """
+
+    def setup_method(self):
+        self._wipe()
+
+    def teardown_method(self):
+        Defaults.VALIDITY_GATING_ENABLED = True
+        self._wipe()
+
+    @staticmethod
+    def _wipe():
+        ValidityMemory.delete_all()
+        for key in ValidityField.get_all_keys(ValidityMemory, "validity").values():
+            POPOTO_REDIS_DB.delete(key)
+
+    @staticmethod
+    def _assembler(model_class=ValidityMemory, max_items=10):
+        return ContextAssembler(
+            model_class=model_class,
+            score_weights={"relevance": 1.0},
+            max_items=max_items,
+        )
+
+    @staticmethod
+    def _save(model_class, **kwargs):
+        instance = model_class(**kwargs)
+        instance.save()
+        return instance
+
+    def test_validity_field_is_auto_detected(self):
+        assert self._assembler()._validity_field_name == "validity"
+        assert self._assembler(SimpleMemory)._validity_field_name is None
+
+    def test_invalidated_record_is_absent_on_the_next_call(self):
+        stale = self._save(ValidityMemory, agent_id="a1", content="stale")
+        self._save(ValidityMemory, agent_id="a1", content="fresh")
+        assembler = self._assembler()
+
+        before = assembler.assemble(
+            query_cues={"content": "stale"}, partition_filters={"agent_id": "a1"}
+        )
+        assert "stale" in {r.content for r in before.records}
+
+        SupersessionProtocol.invalidate(stale)
+
+        after = assembler.assemble(
+            query_cues={"content": "stale"}, partition_filters={"agent_id": "a1"}
+        )
+        assert "stale" not in {r.content for r in after.records}
+
+    def test_as_of_reconstructs_the_historical_view(self):
+        stale = self._save(ValidityMemory, agent_id="a1", content="stale")
+        time.sleep(0.02)
+        t_between = time.time()
+        time.sleep(0.02)
+        fresh = self._save(ValidityMemory, agent_id="a1", content="fresh")
+        SupersessionProtocol.invalidate(stale, superseded_by=fresh)
+
+        result = self._assembler().assemble(
+            query_cues={"content": "stale"},
+            partition_filters={"agent_id": "a1"},
+            as_of=t_between,
+        )
+        contents = {r.content for r in result.records}
+        assert "stale" in contents
+        assert "fresh" not in contents
+
+    def test_kill_switch_restores_ungated_assembly(self):
+        stale = self._save(ValidityMemory, agent_id="a1", content="stale")
+        self._save(ValidityMemory, agent_id="a1", content="fresh")
+        SupersessionProtocol.invalidate(stale)
+        assembler = self._assembler()
+
+        Defaults.VALIDITY_GATING_ENABLED = False
+        assert assembler._resolve_excluded_keys(None) is None
+        result = assembler.assemble(
+            query_cues={"content": "stale"}, partition_filters={"agent_id": "a1"}
+        )
+        assert "stale" in {r.content for r in result.records}
+
+    def test_model_without_a_validity_field_is_an_exact_passthrough(self):
+        for i in range(4):
+            self._save(SimpleMemory, agent_id="a1", content=f"item-{i}")
+        assembler = self._assembler(SimpleMemory)
+        assert assembler._resolve_excluded_keys(None) is None
+
+        baseline = assembler.assemble(
+            query_cues={"content": "item-1"}, partition_filters={"agent_id": "a1"}
+        )
+        with_as_of = assembler.assemble(
+            query_cues={"content": "item-1"},
+            partition_filters={"agent_id": "a1"},
+            as_of=time.time() - 3600,
+        )
+        assert [r.db_key.redis_key for r in baseline.records] == [
+            r.db_key.redis_key for r in with_as_of.records
+        ]
+        assert baseline.metadata["pull_count"] == with_as_of.metadata["pull_count"]
+
+    def test_heavily_superseded_partition_still_fills_max_items(self):
+        for i in range(6):
+            self._save(ValidityMemory, agent_id="a1", content=f"valid-{i}")
+        for i in range(12):
+            stale = self._save(ValidityMemory, agent_id="a1", content=f"stale-{i}")
+            SupersessionProtocol.invalidate(stale)
+
+        result = self._assembler(max_items=5).assemble(
+            query_cues={"content": "valid-0"}, partition_filters={"agent_id": "a1"}
+        )
+        assert len(result.records) == 5
+        assert all(r.content.startswith("valid-") for r in result.records)
+
+    def test_excluded_keys_is_an_exclusion_set_not_a_whitelist(self):
+        stale = self._save(ValidityMemory, agent_id="a1", content="stale")
+        unmanaged = self._save(ValidityMemory, agent_id="a1", content="unmanaged")
+        SupersessionProtocol.invalidate(stale)
+        keys = ValidityField.get_all_keys(ValidityMemory, "validity")
+        for key_name in ("valid_from", "invalid_at", "ingested_at"):
+            POPOTO_REDIS_DB.zrem(keys[key_name], unmanaged.db_key.redis_key)
+
+        excluded = self._assembler()._resolve_excluded_keys(None)
+        assert excluded == {stale.db_key.redis_key}
+
+        result = self._assembler().assemble(
+            query_cues={"content": "unmanaged"},
+            partition_filters={"agent_id": "a1"},
+        )
+        assert "unmanaged" in {r.content for r in result.records}

@@ -15,6 +15,7 @@ Tests cover:
 - post_filter callback
 - Partition filter integration
 - limit=0 -> empty list
+- Validity mask: the ZUNIONSTORE/SUM leak, its control, kill switch (#580)
 """
 
 import sys
@@ -31,7 +32,10 @@ from src.popoto.fields.decaying_sorted_field import DecayingSortedField
 from src.popoto.fields.access_tracker import AccessTrackerMixin
 from src.popoto.fields.write_filter import WriteFilterMixin
 from src.popoto.fields.co_occurrence_field import CoOccurrenceField
-from src.popoto.models.query import QueryException
+from src.popoto.fields.constants import Defaults
+from src.popoto.fields.supersession import SupersessionProtocol
+from src.popoto.fields.validity_field import ValidityField
+from src.popoto.models.query import QueryBuilder, QueryException
 from src.popoto.redis_db import POPOTO_REDIS_DB
 
 # --- Test Models ---
@@ -736,3 +740,112 @@ class TestTemperatureParameter:
         # post_filter sees temperature-scaled score: 100 / 0.5 = 200
         assert len(post_scores) == 1
         assert abs(post_scores[0] - 200.0) < 0.01
+
+
+# --- Validity mask tests (#580, plan D5b) ---
+
+
+class ValidityComposite(popoto.Model):
+    """Decay + confidence arms alongside a ValidityField."""
+
+    name = popoto.UniqueKeyField()
+    importance = popoto.FloatField(default=1.0)
+    relevance = DecayingSortedField(base_score_field="importance")
+    certainty = ConfidenceField(initial_confidence=0.5)
+    validity = ValidityField()
+
+
+class TestCompositeValidityMask:
+    """The ZUNIONSTORE/SUM leak the composite validity mask closes.
+
+    A member the decay-Lua gate skips is merely *absent from the decay arm*.
+    Under AGGREGATE SUM that absence reads as a 0 contribution, not as an
+    exclusion, so any other weighted arm — here a ConfidenceField — still
+    floats the closed member into the result. Skipping is not excluding.
+    """
+
+    def setup_method(self):
+        ValidityComposite.delete_all()
+        for key in ValidityField.get_all_keys(ValidityComposite, "validity").values():
+            POPOTO_REDIS_DB.delete(key)
+
+    def teardown_method(self):
+        Defaults.VALIDITY_GATING_ENABLED = True
+        ValidityComposite.delete_all()
+        for key in ValidityField.get_all_keys(ValidityComposite, "validity").values():
+            POPOTO_REDIS_DB.delete(key)
+
+    def _closed_but_confident(self):
+        old = ValidityComposite(name="old", importance=1.0)
+        old.save()
+        new = ValidityComposite(name="new", importance=1.0)
+        new.save()
+        for _ in range(4):
+            ConfidenceField.update_confidence(old, "certainty", signal=0.95)
+        ConfidenceField.update_confidence(new, "certainty", signal=0.2)
+        SupersessionProtocol.invalidate(old, superseded_by=new)
+        return old, new
+
+    def test_closed_member_does_not_surface_through_the_union(self):
+        self._closed_but_confident()
+        results = ValidityComposite.query.composite_score(
+            indexes={"relevance": 0.5, "certainty": 0.5}, limit=10
+        )
+        assert [r.name for r in results] == ["new"]
+
+    def test_control_the_leak_reproduces_with_the_mask_disabled(self, monkeypatch):
+        """CONTROL — without this, the test above proves nothing.
+
+        With the mask removed the decay gate is still active, and the closed
+        member still surfaces on the strength of the confidence arm alone.
+        """
+        self._closed_but_confident()
+        monkeypatch.setattr(QueryBuilder, "_apply_validity_mask", lambda *a, **kw: None)
+        results = ValidityComposite.query.composite_score(
+            indexes={"relevance": 0.5, "certainty": 0.5}, limit=10
+        )
+        assert "old" in [r.name for r in results]
+
+    def test_kill_switch_disables_the_mask(self):
+        self._closed_but_confident()
+        Defaults.VALIDITY_GATING_ENABLED = False
+        results = ValidityComposite.query.composite_score(
+            indexes={"relevance": 0.5, "certainty": 0.5}, limit=10
+        )
+        assert "old" in [r.name for r in results]
+
+    def test_unmanaged_member_survives_the_mask(self):
+        """The mask subtracts provably-invalid members; it does not whitelist."""
+        old, new = self._closed_but_confident()
+        keys = ValidityField.get_all_keys(ValidityComposite, "validity")
+        for name in ("valid_from", "invalid_at", "ingested_at"):
+            POPOTO_REDIS_DB.zrem(keys[name], new.db_key.redis_key)
+        results = ValidityComposite.query.composite_score(
+            indexes={"relevance": 0.5, "certainty": 0.5}, limit=10
+        )
+        assert [r.name for r in results] == ["new"]
+
+    def test_mask_temp_keys_are_cleaned_up(self):
+        self._closed_but_confident()
+        ValidityComposite.query.composite_score(
+            indexes={"relevance": 0.5, "certainty": 0.5}, limit=10
+        )
+        assert POPOTO_REDIS_DB.keys("$CSQ:ValidityComposite:valid*") == []
+
+    def test_model_without_a_validity_field_is_unaffected(self):
+        for name, importance in (("a", 1.0), ("b", 2.0)):
+            SimpleDecayModel(name=name).save()
+        gated = [
+            r.name
+            for r in SimpleDecayModel.query.composite_score(
+                indexes={"score": 1.0}, limit=10
+            )
+        ]
+        Defaults.VALIDITY_GATING_ENABLED = False
+        ungated = [
+            r.name
+            for r in SimpleDecayModel.query.composite_score(
+                indexes={"score": 1.0}, limit=10
+            )
+        ]
+        assert gated == ungated
