@@ -1153,6 +1153,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../features/validity-and-supersession/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ValidityField and Supersession
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../features/prediction-ledger/" class="md-nav__link">
         
   
@@ -2951,6 +2979,16 @@ hydrated in chunks (500 keys at a time, by default), so a record deleted after k
 resolution is counted as <code>vanished</code> and simply omitted, and a record created
 afterward is absent from the export. <code>result.matched_count</code> versus
 <code>result.record_count</code> shows you the gap if one exists.</p>
+<p><code>ValidityField</code> declares <code>roundtrip_policy = "carry"</code> and carries all six of its
+derived Redis keys (<code>valid_from</code>, <code>invalid_at</code>, <code>ingested_at</code>, <code>chain:fwd</code>,
+<code>chain:rev</code>, and the per-identity <code>open:{digest}</code> pointer) through export and
+import — without it, a round trip would silently reopen every superseded record.
+Because there is no reverse index from record to identity digest, exporting a
+record with a <code>ValidityField</code> costs one extra <code>SCAN</code> over that field's
+<code>open:*</code> pointers to find any aimed at it; this only runs on the export path, not
+on save or read. See
+<a href="../../features/validity-and-supersession/#export-import">ValidityField and SupersessionProtocol</a>
+for the full accounting.</p>
 <h3 id="exportresult"><code>ExportResult</code><a class="headerlink" href="#exportresult" title="Permanent link">&para;</a></h3>
 <p><code>export_records()</code> returns an <code>ExportResult</code>:</p>
 <table>

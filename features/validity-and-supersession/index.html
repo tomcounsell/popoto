@@ -12,13 +12,13 @@
         <meta name="author" content="Tom Counsell">
       
       
-        <link rel="canonical" href="https://popoto.io/features/confidence-field/">
+        <link rel="canonical" href="https://popoto.io/features/validity-and-supersession/">
       
       
-        <link rel="prev" href="../cyclic-decay-field/">
+        <link rel="prev" href="../observation-protocol/">
       
       
-        <link rel="next" href="../co-occurrence-field/">
+        <link rel="next" href="../prediction-ledger/">
       
       
         
@@ -29,7 +29,7 @@
     
     
       
-        <title>ConfidenceField - Popoto Documentation</title>
+        <title>ValidityField and Supersession - Popoto Documentation</title>
       
     
     
@@ -82,7 +82,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#confidencefield" class="md-skip">
+        <a href="#validityfield-and-supersessionprotocol" class="md-skip">
           Skip to content
         </a>
       
@@ -116,7 +116,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              ConfidenceField
+              ValidityField and Supersession
             
           </span>
         </div>
@@ -1046,37 +1046,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    ConfidenceField
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../confidence-field/" class="md-nav__link">
         
   
   
@@ -1092,281 +1065,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#overview" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Overview
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#parameters" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Parameters
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#usage" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Usage
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#update-formula" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Update Formula
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Update Formula">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#running-mean-regime-evidence_count-cap" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Running-Mean Regime (evidence_count &lt; cap)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#forgetting-regime-evidence_count-cap" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Forgetting Regime (evidence_count &gt;= cap)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#update-behavior-summary" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Update Behavior Summary
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#entrainment-with-observationprotocol" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Entrainment with ObservationProtocol
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Entrainment with ObservationProtocol">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#auto-discharge" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Auto-discharge
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#api-reference" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        API Reference
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="API Reference">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#confidencefieldupdate_confidenceinstance-field_name-signal" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        ConfidenceField.update_confidence(instance, field_name, signal)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#confidencefieldget_confidenceinstance-field_name" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        ConfidenceField.get_confidence(instance, field_name)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#confidencefieldget_confidence_datainstance-field_name" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        ConfidenceField.get_confidence_data(instance, field_name)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#inspecting-companion-hash-keys" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Inspecting Companion Hash Keys
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#partitioned-reads" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Partitioned Reads
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Partitioned Reads">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#hscan-filtered-reads" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        HSCAN Filtered Reads
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#migration-helper" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Migration Helper
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#confidence-feeds-forgetting" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Confidence Feeds Forgetting
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#redis-key-patterns" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Redis Key Patterns
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#working-example-popoto-kitchen" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Working Example: Popoto Kitchen
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#companion-fields" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Companion Fields
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1460,10 +1158,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../validity-and-supersession/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ValidityField and Supersession
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1479,6 +1204,203 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#keyspace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Keyspace
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#export-import" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Export &amp; import
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validityfield-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ValidityField API
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ValidityField API">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#query-filters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Query filters
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-exclusion-rule" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The exclusion rule
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#supersessionprotocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SupersessionProtocol
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SupersessionProtocol">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#identity-normalization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Identity normalization
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mutations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mutations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bidirectional-chain-traversal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bidirectional chain traversal
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#three-gating-layers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Three gating layers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#point-in-time-reconstruction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Point-in-time reconstruction
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#kill-switch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kill switch
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known limitations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -2995,10 +2917,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#parameters" class="md-nav__link">
+  <a href="#keyspace" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Parameters
+        Keyspace
       
     </span>
   </a>
@@ -3006,10 +2928,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#usage" class="md-nav__link">
+  <a href="#export-import" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Usage
+        Export &amp; import
       
     </span>
   </a>
@@ -3017,44 +2939,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#update-formula" class="md-nav__link">
+  <a href="#validityfield-api" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Update Formula
+        ValidityField API
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Update Formula">
+    <nav class="md-nav" aria-label="ValidityField API">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#running-mean-regime-evidence_count-cap" class="md-nav__link">
+  <a href="#query-filters" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Running-Mean Regime (evidence_count &lt; cap)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#forgetting-regime-evidence_count-cap" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Forgetting Regime (evidence_count &gt;= cap)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#update-behavior-summary" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Update Behavior Summary
+        Query filters
       
     </span>
   </a>
@@ -3067,22 +2967,55 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#entrainment-with-observationprotocol" class="md-nav__link">
+  <a href="#the-exclusion-rule" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Entrainment with ObservationProtocol
+        The exclusion rule
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Entrainment with ObservationProtocol">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#supersessionprotocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SupersessionProtocol
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SupersessionProtocol">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#auto-discharge" class="md-nav__link">
+  <a href="#identity-normalization" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Auto-discharge
+        Identity normalization
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mutations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mutations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bidirectional-chain-traversal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bidirectional chain traversal
       
     </span>
   </a>
@@ -3095,110 +3028,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#api-reference" class="md-nav__link">
+  <a href="#three-gating-layers" class="md-nav__link">
     <span class="md-ellipsis">
       
-        API Reference
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="API Reference">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#confidencefieldupdate_confidenceinstance-field_name-signal" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        ConfidenceField.update_confidence(instance, field_name, signal)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#confidencefieldget_confidenceinstance-field_name" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        ConfidenceField.get_confidence(instance, field_name)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#confidencefieldget_confidence_datainstance-field_name" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        ConfidenceField.get_confidence_data(instance, field_name)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#inspecting-companion-hash-keys" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Inspecting Companion Hash Keys
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#partitioned-reads" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Partitioned Reads
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Partitioned Reads">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#hscan-filtered-reads" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        HSCAN Filtered Reads
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#migration-helper" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Migration Helper
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#confidence-feeds-forgetting" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Confidence Feeds Forgetting
+        Three gating layers
       
     </span>
   </a>
@@ -3206,10 +3039,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#redis-key-patterns" class="md-nav__link">
+  <a href="#point-in-time-reconstruction" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Redis Key Patterns
+        Point-in-time reconstruction
       
     </span>
   </a>
@@ -3217,10 +3050,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#working-example-popoto-kitchen" class="md-nav__link">
+  <a href="#kill-switch" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Working Example: Popoto Kitchen
+        Kill switch
       
     </span>
   </a>
@@ -3228,10 +3061,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#companion-fields" class="md-nav__link">
+  <a href="#known-limitations" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Companion Fields
+        Known limitations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
       
     </span>
   </a>
@@ -3258,302 +3102,415 @@
   
 
 
-<h1 id="confidencefield">ConfidenceField<a class="headerlink" href="#confidencefield" title="Permanent link">&para;</a></h1>
-<p>A <code>Field</code> subclass that tracks confidence metadata per member, updated atomically via Lua script using a capped-evidence Bayesian rule.</p>
+<h1 id="validityfield-and-supersessionprotocol">ValidityField and SupersessionProtocol<a class="headerlink" href="#validityfield-and-supersessionprotocol" title="Permanent link">&para;</a></h1>
+<p><code>ValidityField</code> gives popoto models a validity axis — a way to say <em>this record
+stopped being true, since when, and what replaced it</em> — that is orthogonal to
+everything else in the ORM. <a href="../decaying-sorted-field/"><code>DecayingSortedField</code></a>
+and <a href="../confidence-field/"><code>ConfidenceField</code></a> answer "how important is this
+memory, and how sure am I?"; <code>ValidityField</code> answers the prior question, "is
+this memory still a member of the corpus at all?" <code>SupersessionProtocol</code> is
+the write-side vocabulary on top of it: "this new claim replaces whatever was
+previously believed about <code>(subject, predicate)</code>." Both feed
+<a href="../context-assembler/"><code>ContextAssembler</code></a>, which excludes superseded records
+from default retrieval the moment they close, while <code>filter(validity__as_of=t)</code>
+keeps them fully queryable for historical replay.</p>
 <h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
-<p><code>ConfidenceField</code> maintains a confidence score for each record, allowing the system to track how certain it should be about a given piece of information. The update rule is a <strong>capped-evidence Bayesian</strong> (also called "forgetful Bayesian"): within an evidence window it is an exact running mean — order-invariant and prior-weighted; beyond the cap it is bounded exponential forgetting at a constant rate.</p>
-<p>The field stores its metadata in a companion Redis hash:</p>
+<p>An agent learns "user is on the free plan." Two weeks later it learns "user
+upgraded to enterprise." Without a validity axis the stale fact keeps its
+place in every index and only loses ground gradually, through
+<a href="../decaying-sorted-field/">decay</a> — so <code>ContextAssembler</code> can still pack it
+into context ahead of the correction. <code>ValidityField</code> makes the first fact
+stop being a <em>member</em> of default retrieval the instant it is closed.</p>
+<p>The core split:</p>
 <ul>
-<li><code>{confidence, evidence_count, corroborations, contradictions}</code></li>
+<li><strong>Validity decides membership.</strong> A record is either a candidate for default
+  retrieval or it isn't — closed, or not yet started.</li>
+<li><strong>Decay decides ordering among the valid.</strong> Once membership is settled,
+  <a href="../decaying-sorted-field/"><code>DecayingSortedField</code></a> and friends rank what
+  remains.</li>
 </ul>
-<h2 id="parameters">Parameters<a class="headerlink" href="#parameters" title="Permanent link">&para;</a></h2>
-<table>
-<thead>
-<tr>
-<th>Parameter</th>
-<th>Type</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>initial_confidence</code></td>
-<td>float</td>
-<td>0.5</td>
-<td>Starting confidence for new members (0-1). Acts as one prior pseudo-observation in the running mean.</td>
-</tr>
-<tr>
-<td><code>evidence_cap</code></td>
-<td>int</td>
-<td>20</td>
-<td>Maximum effective evidence count. Within this window updates are a running mean; beyond it updates apply a fixed gain of <code>1/(cap+1)</code>, producing bounded exponential forgetting. Must be an integer ≥ 1.</td>
-</tr>
-<tr>
-<td><code>partition_by</code></td>
-<td>str or tuple</td>
-<td><code>()</code></td>
-<td>Field name(s) to partition the companion hash by. Splits the single Redis hash into per-partition hashes for efficient reads.</td>
-</tr>
-</tbody>
-</table>
-<blockquote>
-<p><strong>Warning — same cap across processes</strong>: The <code>evidence_cap</code> is passed per-call and is NOT stored in the companion hash. All processes updating the same companion hash entry must be configured with identical <code>evidence_cap</code> values. Divergent caps produce silently inconsistent gain schedules with no runtime detection.</p>
-</blockquote>
-<h2 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">UniqueKeyField</span><span class="p">,</span> <span class="n">StringField</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.confidence_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConfidenceField</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">Memory</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">key</span> <span class="o">=</span> <span class="n">UniqueKeyField</span><span class="p">()</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">()</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">certainty</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="p">(</span><span class="n">initial_confidence</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
+<p>The two axes compose because neither knows the other's constants: a
+<code>ValidityField</code> never appears in a decay formula, and a decay rate never
+gates membership.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">KeyField</span><span class="p">,</span> <span class="n">ValidityField</span><span class="p">,</span> <span class="n">SupersessionProtocol</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">Fact</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">fact_id</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">validity</span> <span class="o">=</span> <span class="n">ValidityField</span><span class="p">()</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="n">identity</span> <span class="o">=</span> <span class="n">SupersessionProtocol</span><span class="o">.</span><span class="n">identity_key</span><span class="p">(</span><span class="s2">&quot;user_42&quot;</span><span class="p">,</span> <span class="s2">&quot;subscription_plan&quot;</span><span class="p">)</span>
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="c1"># Create a memory</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="n">memory</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="s2">&quot;fact1&quot;</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="s2">&quot;The sky is blue&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="n">old</span> <span class="o">=</span> <span class="n">Fact</span><span class="p">(</span><span class="n">fact_id</span><span class="o">=</span><span class="s2">&quot;free&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="n">SupersessionProtocol</span><span class="o">.</span><span class="n">supersede</span><span class="p">(</span><span class="n">old</span><span class="p">,</span> <span class="n">identity_key</span><span class="o">=</span><span class="n">identity</span><span class="p">)</span>      <span class="c1"># -&gt; None (first claim, opens only)</span>
 <a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="c1"># Corroborate (signal &gt;= 0.5 increases confidence)</span>
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="n">ConfidenceField</span><span class="o">.</span><span class="n">update_confidence</span><span class="p">(</span><span class="n">memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">,</span> <span class="n">signal</span><span class="o">=</span><span class="mf">0.9</span><span class="p">)</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="n">new</span> <span class="o">=</span> <span class="n">Fact</span><span class="p">(</span><span class="n">fact_id</span><span class="o">=</span><span class="s2">&quot;enterprise&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="n">SupersessionProtocol</span><span class="o">.</span><span class="n">supersede</span><span class="p">(</span><span class="n">new</span><span class="p">,</span> <span class="n">identity_key</span><span class="o">=</span><span class="n">identity</span><span class="p">)</span>      <span class="c1"># -&gt; old&#39;s redis_key (closed it)</span>
 <a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="c1"># Contradict (signal &lt; 0.5 decreases confidence)</span>
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="n">ConfidenceField</span><span class="o">.</span><span class="n">update_confidence</span><span class="p">(</span><span class="n">memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">,</span> <span class="n">signal</span><span class="o">=</span><span class="mf">0.1</span><span class="p">)</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="n">Fact</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">validity__current</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>        <span class="c1"># -&gt; [new]</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="n">Fact</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">validity__as_of</span><span class="o">=</span><span class="n">two_weeks_ago</span><span class="p">)</span>  <span class="c1"># -&gt; [old]</span>
 <a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>
-<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="c1"># Read current confidence</span>
-<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="n">confidence</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">get_confidence</span><span class="p">(</span><span class="n">memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>
-<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="c1"># Read all metadata</span>
-<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="n">data</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">get_confidence_data</span><span class="p">(</span><span class="n">memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="c1"># Returns: {confidence: 0.5, evidence_count: 2, corroborations: 1, contradictions: 1}</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="n">SupersessionProtocol</span><span class="o">.</span><span class="n">chain</span><span class="p">(</span><span class="n">new</span><span class="p">)</span>  <span class="c1"># -&gt; [old, new], oldest first</span>
 </code></pre></div>
-<h2 id="update-formula">Update Formula<a class="headerlink" href="#update-formula" title="Permanent link">&para;</a></h2>
-<p>The update rule uses a capped effective-evidence count:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>n_eff = min(evidence_count + 1, cap)
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>new_confidence = confidence + (signal - confidence) / (n_eff + 1)
-</code></pre></div>
-<p>The <code>+1</code> in <code>evidence_count + 1</code> is an inlined prior pseudo-count — <code>initial_confidence</code> behaves as one real observation. Results are clamped to <code>[0, 1]</code>.</p>
-<h3 id="running-mean-regime-evidence_count-cap">Running-Mean Regime (evidence_count &lt; cap)<a class="headerlink" href="#running-mean-regime-evidence_count-cap" title="Permanent link">&para;</a></h3>
-<p>While the real evidence count is below the cap, the formula is an exact running mean over <code>{prior, s1, s2, …, sn}</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>confidence after n updates = (initial_confidence + s1 + s2 + … + sn) / (n + 1)
-</code></pre></div>
-<p>This is order-invariant up to ~1e-12 (IEEE-754 intermediate rounding; the closed form is the oracle, not bit-identical output). The first update from <code>initial_confidence=0.5</code> with <code>signal=0.9</code> yields <strong>0.7</strong>, not 0.9 — the prior is never erased.</p>
-<h3 id="forgetting-regime-evidence_count-cap">Forgetting Regime (evidence_count &gt;= cap)<a class="headerlink" href="#forgetting-regime-evidence_count-cap" title="Permanent link">&para;</a></h3>
-<p>Once the evidence count reaches the cap, the effective gain is fixed at <code>1/(cap+1)</code>. With <code>cap=20</code> (default), each update multiplies <code>(confidence - signal)</code> by <code>20/21 ≈ 0.952</code>.</p>
-<p><strong>Worked example</strong>: a belief with <code>confidence=0.9</code> and <code>evidence_count=20</code> (at the cap) subjected to 15 consecutive contradictions at <code>signal=0.1</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>After k contradictions: confidence = 0.1 + 0.8 × (20/21)^k
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>Crossing 0.5 requires:  0.8 × (20/21)^k &lt; 0.4
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>                        k &gt; ln(0.4/0.8) / ln(20/21) ≈ 14.2 → 15 contradictions
-</code></pre></div>
-<p>This is bounded exponential forgetting: well-established beliefs take roughly 15 systematic contradictions to cross the midpoint at the default cap.</p>
-<h3 id="update-behavior-summary">Update Behavior Summary<a class="headerlink" href="#update-behavior-summary" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>Regime</th>
-<th>Condition</th>
-<th>Behavior</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Running mean</td>
-<td>evidence_count &lt; cap (20)</td>
-<td>Exact mean of {prior, all signals}; order-invariant to ~1e-12</td>
-</tr>
-<tr>
-<td>Fixed forgetting</td>
-<td>evidence_count &gt;= cap</td>
-<td>Constant gain <code>1/(cap+1)</code>; ~15 contradictions cross 0.5 from 0.9</td>
-</tr>
-</tbody>
-</table>
-<h2 id="entrainment-with-observationprotocol">Entrainment with ObservationProtocol<a class="headerlink" href="#entrainment-with-observationprotocol" title="Permanent link">&para;</a></h2>
-<p>When used with <code>ObservationProtocol</code>, confidence is automatically updated based on how the agent uses retrieved memories:</p>
-<table>
-<thead>
-<tr>
-<th>Outcome</th>
-<th>Effect on Confidence</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>acted</code></td>
-<td>Corroborate (signal=0.9)</td>
-</tr>
-<tr>
-<td><code>dismissed</code></td>
-<td>No change</td>
-</tr>
-<tr>
-<td><code>deferred</code></td>
-<td>No change</td>
-</tr>
-<tr>
-<td><code>contradicted</code></td>
-<td>Contradict (signal=0.1)</td>
-</tr>
-</tbody>
-</table>
-<h3 id="auto-discharge">Auto-discharge<a class="headerlink" href="#auto-discharge" title="Permanent link">&para;</a></h3>
-<p>When confidence drops strictly below <code>AUTO_DISCHARGE_CONFIDENCE_THRESHOLD</code> (0.1), homeostatic pressure on any <code>CyclicDecayField</code> is automatically resolved (discharged). This prevents low-confidence memories from building urgency.</p>
-<p>The comparison uses an epsilon guard: discharge fires only when <code>conf &lt; 0.1 - 1e-9</code>. A confidence value that rounds to exactly 0.1 in display but is stored as <code>0.09999999999999998</code> (a common IEEE-754 artifact on the first contradiction from a default prior) does <strong>not</strong> trigger discharge. A genuine drop — one clearly below the threshold by more than epsilon — still does.</p>
-<h2 id="api-reference">API Reference<a class="headerlink" href="#api-reference" title="Permanent link">&para;</a></h2>
-<h3 id="confidencefieldupdate_confidenceinstance-field_name-signal"><code>ConfidenceField.update_confidence(instance, field_name, signal)</code><a class="headerlink" href="#confidencefieldupdate_confidenceinstance-field_name-signal" title="Permanent link">&para;</a></h3>
-<p>Atomically update confidence using the capped-evidence Bayesian formula.</p>
-<ul>
-<li><strong>signal</strong>: Float 0-1. Values &gt;= 0.5 corroborate, &lt; 0.5 contradict.</li>
-<li><strong>Returns</strong>: The new confidence value.</li>
-<li><strong>Raises</strong>: <code>TypeError</code> if unsaved or wrong field type; <code>ValueError</code> if signal out of range.</li>
-</ul>
-<blockquote>
-<p><strong>Warning</strong>: All processes calling <code>update_confidence</code> on the same companion hash entry must use identical <code>evidence_cap</code> values. The cap is not stored in Redis and divergent values produce silently inconsistent update trajectories.</p>
-</blockquote>
-<h3 id="confidencefieldget_confidenceinstance-field_name"><code>ConfidenceField.get_confidence(instance, field_name)</code><a class="headerlink" href="#confidencefieldget_confidenceinstance-field_name" title="Permanent link">&para;</a></h3>
-<p>Read the current confidence value.</p>
-<ul>
-<li><strong>Returns</strong>: Float confidence value, or <code>initial_confidence</code> if no data exists.</li>
-</ul>
-<h3 id="confidencefieldget_confidence_datainstance-field_name"><code>ConfidenceField.get_confidence_data(instance, field_name)</code><a class="headerlink" href="#confidencefieldget_confidence_datainstance-field_name" title="Permanent link">&para;</a></h3>
-<p>Read all confidence metadata.</p>
-<ul>
-<li><strong>Returns</strong>: Dict with keys <code>confidence</code>, <code>evidence_count</code>, <code>corroborations</code>, <code>contradictions</code>.</li>
-</ul>
-<p>Note: <code>evidence_count</code> reflects real observations only — the prior pseudo-count is internal to the Lua update and does not inflate this counter.</p>
-<h3 id="inspecting-companion-hash-keys">Inspecting Companion Hash Keys<a class="headerlink" href="#inspecting-companion-hash-keys" title="Permanent link">&para;</a></h3>
-<p>Each <code>ConfidenceField</code> stores its confidence metadata in a companion Redis hash alongside
-the main model hash. The public companion key methods let you build these Redis keys
-for debugging, monitoring, or direct Redis inspection without reverse-engineering
-suffix conventions.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">redis</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">UniqueKeyField</span><span class="p">,</span> <span class="n">StringField</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.confidence_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConfidenceField</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="k">class</span><span class="w"> </span><span class="nc">Memory</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="n">key</span> <span class="o">=</span> <span class="n">UniqueKeyField</span><span class="p">()</span>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">()</span>
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    <span class="n">certainty</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="p">(</span><span class="n">initial_confidence</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
-<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>
-<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="c1"># Create and update a memory</span>
-<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="n">memory</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="s2">&quot;fact1&quot;</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="s2">&quot;The sky is blue&quot;</span><span class="p">)</span>
-<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="n">ConfidenceField</span><span class="o">.</span><span class="n">update_confidence</span><span class="p">(</span><span class="n">memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">,</span> <span class="n">signal</span><span class="o">=</span><span class="mf">0.9</span><span class="p">)</span>
-<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>
-<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="c1"># Get the companion hash key for direct Redis inspection</span>
-<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="n">field</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">_options</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="s2">&quot;certainty&quot;</span><span class="p">]</span>
-<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="n">hash_key</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_data_hash_key</span><span class="p">(</span><span class="n">memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">)</span>
-<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a><span class="nb">print</span><span class="p">(</span><span class="n">hash_key</span><span class="p">)</span>
-<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="c1"># =&gt; &quot;$ConfidencF:Memory:certainty:data&quot;</span>
-<a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a>
-<a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a><span class="c1"># Inspect the raw companion hash in Redis</span>
-<a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a><span class="n">r</span> <span class="o">=</span> <span class="n">redis</span><span class="o">.</span><span class="n">from_url</span><span class="p">(</span><span class="s2">&quot;redis://localhost:6379&quot;</span><span class="p">)</span>
-<a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a><span class="n">raw_data</span> <span class="o">=</span> <span class="n">r</span><span class="o">.</span><span class="n">hgetall</span><span class="p">(</span><span class="n">hash_key</span><span class="p">)</span>
-<a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a><span class="nb">print</span><span class="p">(</span><span class="n">raw_data</span><span class="p">)</span>
-<a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a><span class="c1"># Shows all members and their msgpack-encoded confidence metadata</span>
-</code></pre></div>
-<p>When you do not have an instance loaded, use <code>get_data_hash_key_from_values</code> to build
-the key from explicit values:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># Build the key without loading a model instance</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">key</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">get_data_hash_key_from_values</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">)</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="c1"># =&gt; &quot;$ConfidencF:Memory:certainty:data&quot;</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="c1"># For partitioned fields, pass the partition values as keyword arguments</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="c1"># key = field.get_data_hash_key_from_values(Memory, &quot;certainty&quot;, project=&quot;atlas&quot;)</span>
-</code></pre></div>
-<h2 id="partitioned-reads">Partitioned Reads<a class="headerlink" href="#partitioned-reads" title="Permanent link">&para;</a></h2>
-<p>When the companion hash grows large (thousands of members), reads become expensive because
-<code>HGETALL</code> loads every entry. The <code>partition_by</code> parameter splits the hash by one or more
-field values, so each read only touches the relevant partition.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">Memory</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>    <span class="n">project</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="n">key</span> <span class="o">=</span> <span class="n">UniqueKeyField</span><span class="p">()</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">StringField</span><span class="p">()</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">certainty</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="p">(</span><span class="n">initial_confidence</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">partition_by</span><span class="o">=</span><span class="s1">&#39;project&#39;</span><span class="p">)</span>
-</code></pre></div>
-<p>All read and write operations automatically resolve the correct partition hash from the
-model instance. Queries on partitioned ConfidenceFields must include the partition field
-value(s), or a <code>QueryException</code> is raised.</p>
-<p>See <a href="../../multi-tenancy/#hash-based-field-partitioning-confidencefield">Multi-Tenancy: Hash-based field partitioning</a>
-for the full pattern including migration from unpartitioned data.</p>
-<h3 id="hscan-filtered-reads">HSCAN Filtered Reads<a class="headerlink" href="#hscan-filtered-reads" title="Permanent link">&para;</a></h3>
-<p>For unpartitioned hashes, <code>get_confidence_filtered()</code> uses HSCAN with MATCH to iterate
-without loading all entries into memory:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">results</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">get_confidence_filtered</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">,</span> <span class="n">pattern</span><span class="o">=</span><span class="s2">&quot;Memory:atlas:*&quot;</span><span class="p">)</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="c1"># Returns: {member_key: {confidence, evidence_count, ...}}</span>
-</code></pre></div>
-<h3 id="migration-helper">Migration Helper<a class="headerlink" href="#migration-helper" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Dry run — see what would happen</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="n">report</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">migrate_to_partitioned</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">,</span> <span class="n">dry_run</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="c1"># Execute migration</span>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="n">report</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="o">.</span><span class="n">migrate_to_partitioned</span><span class="p">(</span><span class="n">Memory</span><span class="p">,</span> <span class="s2">&quot;certainty&quot;</span><span class="p">)</span>
-</code></pre></div>
-<h2 id="confidence-feeds-forgetting">Confidence Feeds Forgetting<a class="headerlink" href="#confidence-feeds-forgetting" title="Permanent link">&para;</a></h2>
-<p>Confidence used to be a read-only signal for ranking and promotion. It now closes the loop: the
-evidence a record accumulates changes how fast it is forgotten.</p>
-<p><strong>Faster decay.</strong> <a href="../decaying-sorted-field/#confidence-modulated-decay"><code>DecayingSortedField</code></a> and
-<a href="../cyclic-decay-field/#confidence-modulated-decay"><code>CyclicDecayField</code></a> read each record's confidence
-inside their ranking Lua and derive a per-record effective decay rate,
-<code>eff = decay_rate * 2 ^ (s * 2 * (c0 - c))</code>. The zero point is this field's own
-<code>initial_confidence</code>, so a record with no evidence is bit-exactly neutral for any configured <code>c0</code>.
-When a model has exactly one <code>ConfidenceField</code>, this is on with no configuration.</p>
-<p><strong>Eligibility for forgetting.</strong> <a href="../../recipes/#memorylifecycle"><code>MemoryLifecycle</code></a> reads confidence
-on both sides of the ledger: it promotes records to the protected semantic tier, and it also makes
-weakly-evidenced records eligible for removal. Its forget rule:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>(importance &lt; FORGET_IMPORTANCE_FLOOR
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a> OR (confidence &lt; FORGET_CONFIDENCE_CEILING AND evidence_count &gt;= FORGET_MIN_EVIDENCE))
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>AND idle &gt; FORGET_IDLE_SECONDS
-</code></pre></div>
-<p><code>evidence_count</code> is load-bearing. Confidence starts at <code>initial_confidence</code> and moves on <em>every</em>
-signal, so without a minimum track record one unlucky dismissal could bury a memory. Records that
-cross the rule are <strong>tombstoned</strong>, not deleted — reversible via <code>restore()</code>.</p>
-<p><code>ConfidenceField</code> remains the single source of truth for evidence. Nothing about modulation or
-forgetting is persisted back onto the record: the decay path is a pure reader of this field's
-<code>:data</code> hash, so there is no second copy of derived state to desync.</p>
-<h2 id="redis-key-patterns">Redis Key Patterns<a class="headerlink" href="#redis-key-patterns" title="Permanent link">&para;</a></h2>
+<h2 id="keyspace">Keyspace<a class="headerlink" href="#keyspace" title="Permanent link">&para;</a></h2>
+<p><code>ValidityField</code> owns six Redis keys per model/field, all under the
+<code>$ValidityF:{Model}:{field}</code> prefix. No bytes are written into the model's own
+hash — chain links live in derived state so an append-only journal can adopt
+the field unchanged.</p>
 <table>
 <thead>
 <tr>
 <th>Key</th>
 <th>Type</th>
-<th>Description</th>
+<th>Contents</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>$ConfidencF:{Model}:{field}:data</code></td>
-<td>HASH</td>
-<td>Unpartitioned: all members' confidence metadata</td>
+<td><code>$ValidityF:{Model}:{field}:valid_from</code></td>
+<td>ZSET</td>
+<td>member = record redis_key, score = valid-from epoch</td>
 </tr>
 <tr>
-<td><code>$ConfidencF:{Model}:{field}:data:{partition_value}</code></td>
+<td><code>$ValidityF:{Model}:{field}:invalid_at</code></td>
+<td>ZSET</td>
+<td>member = record redis_key, score = close epoch, <code>+inf</code> when open</td>
+</tr>
+<tr>
+<td><code>$ValidityF:{Model}:{field}:ingested_at</code></td>
+<td>ZSET</td>
+<td>member = record redis_key, score = ingest (transaction-time) epoch</td>
+</tr>
+<tr>
+<td><code>$ValidityF:{Model}:{field}:chain:fwd</code></td>
 <td>HASH</td>
-<td>Partitioned: members in one partition</td>
+<td>old redis_key → superseding redis_key</td>
+</tr>
+<tr>
+<td><code>$ValidityF:{Model}:{field}:chain:rev</code></td>
+<td>HASH</td>
+<td>new redis_key → superseded redis_key</td>
+</tr>
+<tr>
+<td><code>$ValidityF:{Model}:{field}:open:{digest}</code></td>
+<td>STRING</td>
+<td>identity digest → currently-open record's redis_key</td>
 </tr>
 </tbody>
 </table>
-<h2 id="working-example-popoto-kitchen">Working Example: Popoto Kitchen<a class="headerlink" href="#working-example-popoto-kitchen" title="Permanent link">&para;</a></h2>
-<p>The <a href="https://github.com/tomcounsell/popoto/tree/main/examples">Popoto Kitchen example app</a>
-includes a <code>ReviewScore</code> model that demonstrates <code>ConfidenceField</code> with
-<code>partition_by="restaurant"</code>. Run the operations demo to see capped-evidence updates,
-companion hash key inspection, and partitioned confidence in action:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nb">cd</span><span class="w"> </span>examples
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>uv<span class="w"> </span>run<span class="w"> </span>popoto-kitchen<span class="w"> </span>--seed-only<span class="w"> </span>--clear
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>uv<span class="w"> </span>run<span class="w"> </span>popoto-kitchen<span class="w"> </span>--ops
+<p><code>+inf</code> is the open-interval sentinel stored as <code>invalid_at</code>'s score for any
+record still believed true. It is native to both Redis and Valkey sorted
+sets — <code>ZADD</code> stores it, <code>ZSCORE</code> returns the string <code>"inf"</code>, <code>ZRANGEBYSCORE
+"(t" "+inf"</code> includes it, and Lua 5.1's <code>tonumber()</code> parses it via <code>strtod</code> —
+so no read path needs special-case handling for an open record.</p>
+<p>An as-of-<code>t</code> membership test is <code>valid_from &lt;= t AND invalid_at &gt; t</code>: two
+<code>ZRANGEBYSCORE</code>s intersected client-side, or two <code>ZSCORE</code>s inside Lua.</p>
+<h2 id="export-import">Export &amp; import<a class="headerlink" href="#export-import" title="Permanent link">&para;</a></h2>
+<p><code>ValidityField</code> declares <code>roundtrip_policy = "carry"</code> (see
+<a href="../../field-authoring/">Writing Custom Fields</a> for the protocol, and
+<a href="../../guides/export-import/">Export &amp; Import</a> for the user-facing guide). All
+six derived keys above survive a <code>popoto.transfer</code> round trip:</p>
+<table>
+<thead>
+<tr>
+<th>Carried</th>
+<th>How</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>valid_from</code>, <code>invalid_at</code>, <code>ingested_at</code> scores</td>
+<td>exported per record, re-<code>ZADD</code>ed after <code>save()</code></td>
+</tr>
+<tr>
+<td><code>chain:fwd</code> / <code>chain:rev</code> links for the record</td>
+<td>exported per record, re-<code>HSET</code></td>
+</tr>
+<tr>
+<td><code>open:{digest}</code> pointers naming the record</td>
+<td>digests exported per record, re-<code>SET</code></td>
+</tr>
+</tbody>
+</table>
+<p>This is not optional bookkeeping. Because no validity byte lives in the model
+hash, <code>"rebuild"</code> — the <code>Field</code> default — would give every imported record a
+brand-new <em>open</em> interval, and since all three gating layers are subtractive, a
+record with no closure is fully retrievable. An export/import would therefore
+silently resurrect every superseded record. Carrying the <code>open:{digest}</code>
+pointer matters for the same reason one step later:
+<code>SupersessionProtocol.supersede(new, identity_key=...)</code> resolves the incumbent
+<em>only</em> through that pointer, so a round trip that dropped it would leave the
+identity's next supersession closing nothing while repointing at the newcomer,
+orphaning the incumbent open forever.</p>
+<p>Cost: the digest is opaque and there is no record → identity reverse lookup, so
+export <code>SCAN</code>s <code>{prefix}:open:*</code> once per record to find the pointers aimed at
+it. Export is an admin-path operation and that cost is accepted deliberately —
+the same trade <code>on_delete</code> already makes. Save and read paths are untouched.</p>
+<p>Restore ordering does not matter: <code>import_state</code> runs <em>after</em> <code>save()</code> and
+writes plain <code>ZADD</code>/<code>HSET</code>/<code>SET</code> (never the <code>NX</code> forms <code>on_save</code> uses, which
+would no-op against the fresh interval <code>on_save</code> just seeded), and a chain link
+whose counterpart has not landed yet reads as a chain end until it does.</p>
+<h2 id="validityfield-api"><code>ValidityField</code> API<a class="headerlink" href="#validityfield-api" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">Fact</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="n">fact_id</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="n">validity</span> <span class="o">=</span> <span class="n">ValidityField</span><span class="p">()</span>
 </code></pre></div>
-<p>See <a href="https://github.com/tomcounsell/popoto/blob/main/examples/popoto_kitchen/operations.py"><code>examples/popoto_kitchen/operations.py</code></a>
-for the full source.</p>
-<h2 id="companion-fields">Companion Fields<a class="headerlink" href="#companion-fields" title="Permanent link">&para;</a></h2>
-<p><code>ConfidenceField</code> works alongside other memory system fields:</p>
+<p>A plain <code>Field</code>, deliberately <strong>not</strong> a <code>SortedFieldMixin</code> — this is
+load-bearing, not an oversight. <code>SortedFieldMixin</code> fields can win a query's
+ordering; validity must never do that, since it decides membership, not
+priority. As a plain field it also stays out of the reindex/migration loops
+that iterate sorted fields.</p>
+<p><code>ValidityField.on_save</code> opens an interval automatically at save time using the
+field's value as <code>valid_from</code> (or save time, if unset). <code>ValidityField.on_delete</code>
+removes every trace of the record from the six keys — records are normally
+<em>closed</em>, not deleted, so this only matters for an explicit <code>delete()</code>.</p>
+<h3 id="query-filters">Query filters<a class="headerlink" href="#query-filters" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Filter</th>
+<th>Semantics</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>{field}__current=True</code></td>
+<td>Records whose interval covers <em>now</em></td>
+</tr>
+<tr>
+<td><code>{field}__current=False</code></td>
+<td>The <strong>literal complement</strong> of <code>current=True</code>: closed records AND records that have not yet started</td>
+</tr>
+<tr>
+<td><code>{field}__as_of=t</code></td>
+<td>Records whose interval covers epoch <code>t</code></td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">Fact</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">validity__current</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">Fact</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">validity__current</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">Fact</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">validity__as_of</span><span class="o">=</span><span class="mf">1755000000.0</span><span class="p">)</span>
+</code></pre></div>
+<div class="admonition warning">
+<p class="admonition-title">A record with no interval is returned by neither <code>current=True</code> nor <code>current=False</code></p>
+<p><code>{field}__current</code> and <code>{field}__as_of</code> are <em>deliberate, positive</em> queries
+over <code>valid_from</code>/<code>invalid_at</code> membership. A record that has no entry in
+either ZSET — because a <code>ValidityField</code> was added to a model after that
+record was written, and the record has not been re-saved since — makes no
+claim about its own validity, so it does not satisfy <code>current=True</code> (it
+isn't provably valid) and it does not satisfy <code>current=False</code> either (that
+filter's complement is computed over the <em>union of every member with an
+interval entry</em>, which excludes it too). This is exactly why these filters
+are deliberate queries and not what gates default retrieval — see
+"The exclusion rule" below.</p>
+</div>
+<p>Because these are <code>filter()</code> params, using them consumes a filter slot and
+therefore <strong>disables sorted-range limit pushdown</strong> on that query. That is
+expected, and it is precisely why the default retrieval path (decay Lua,
+composite mask, assembler post-filter) gates server-side instead of by
+appending a filter kwarg: <code>filter(limit=N, order_by=&lt;sorted field&gt;)</code> pushdown
+stays active with validity gating enabled, because gating is never a filter
+param on the default path.</p>
+<h2 id="the-exclusion-rule">The exclusion rule<a class="headerlink" href="#the-exclusion-rule" title="Permanent link">&para;</a></h2>
+<p><strong>All gating in this feature is subtractive.</strong> Every layer — the decay-Lua
+gate, the composite mask, and the assembler post-filter — asks "is this
+record <em>provably</em> closed or <em>provably</em> not yet started?" and drops it only on
+a yes. A record with no entry in either interval ZSET is <strong>unmanaged</strong> and
+stays fully retrievable everywhere.</p>
+<p>This is what makes adding a <code>ValidityField</code> to an existing model safe. Every
+record written before the field existed has no <code>valid_from</code>/<code>invalid_at</code>
+entry until it is next saved (or explicitly supersedes/is superseded). Under
+a subtractive rule those records keep showing up in retrieval exactly as
+before. Under an <em>inclusive</em> rule (a whitelist of provably-valid keys) they
+would all silently vanish the moment gating turned on — a data-visibility
+regression dressed up as "stricter" behavior.</p>
+<div class="admonition warning">
+<p class="admonition-title"><code>ValidityField.resolve_valid_keys</code> is a whitelist — do not use it for gating</p>
+<p><code>ValidityField.resolve_valid_keys(model, field_name, as_of=t)</code> intersects
+<code>valid_from &lt;= t</code> with <code>invalid_at &gt; t</code> and returns the records that
+<em>positively claim</em> validity at <code>t</code>. That is the opposite selection from
+every gating layer, which computes an <em>exclusion</em> set instead. Retained as
+a public helper for callers that genuinely want "which records claim
+validity right now" — audit and provenance tooling — never for retrieval
+gating. Passing its result to a whitelist-style filter would hide every
+unmanaged record. The gating call sites are
+<code>QueryBuilder._apply_validity_mask</code> (composite path) and
+<code>ContextAssembler._resolve_excluded_keys</code> (assembler path); both compute
+exclusion sets, not whitelists.</p>
+</div>
+<h2 id="supersessionprotocol"><code>SupersessionProtocol</code><a class="headerlink" href="#supersessionprotocol" title="Permanent link">&para;</a></h2>
+<p><code>SupersessionProtocol</code> is a stateless coordinator of <code>@staticmethod</code>s —
+never a mixin, never instantiated — mirroring
+<a href="../observation-protocol/"><code>ObservationProtocol</code></a>'s shape.</p>
+<h3 id="identity-normalization">Identity normalization<a class="headerlink" href="#identity-normalization" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">SupersessionProtocol</span><span class="o">.</span><span class="n">identity_key</span><span class="p">(</span><span class="n">subject</span><span class="p">,</span> <span class="n">predicate</span><span class="p">)</span>
+</code></pre></div>
+<p>Casefolds and strips each component, collapses internal whitespace, joins
+the two with a <code>\x00</code> separator, and hashes the result with
+<code>blake2b(digest_size=8)</code> into 16 lowercase hex characters. The <code>\x00</code> join
+prevents delimiter-collision false merges (<code>("ab", "c")</code> cannot collide with
+<code>("a", "bc")</code>); the digest keeps raw user text out of the Redis keyspace.
+Deterministic and LLM-free by design — semantic identity normalization ("is
+<code>plan</code> the same predicate as <code>subscription_tier</code>?") is a downstream, opt-in
+concern, not core.</p>
+<h3 id="mutations">Mutations<a class="headerlink" href="#mutations" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">SupersessionProtocol</span><span class="o">.</span><span class="n">supersede</span><span class="p">(</span><span class="n">new_instance</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">identity_key</span><span class="o">=...</span><span class="p">,</span> <span class="n">at</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">SupersessionProtocol</span><span class="o">.</span><span class="n">invalidate</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="n">at</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">superseded_by</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+</code></pre></div>
+<p><code>supersede()</code> closes whichever record is currently open for <code>identity_key</code>,
+chains it to <code>new_instance</code>, and repoints the identity's open pointer — one
+atomic <code>EVAL</code> (<code>SUPERSEDE_LUA</code>). The first claim about a new identity simply
+opens and writes no chain link, returning <code>None</code>. <code>invalidate()</code> is the
+direct, identity-free form: close one specific record, optionally chaining it
+to whatever replaced it.</p>
+<p>Both route through <code>ValidityField.execute_supersede</code>, the single seam that
+knows <code>SUPERSEDE_LUA</code>'s KEYS/ARGV order. Key mutation properties, all
+enforced inside the one script:</p>
 <ul>
-<li><strong>DecayingSortedField</strong>: Composite scoring via <code>priority = decay_score * confidence</code>, and
-  <a href="../decaying-sorted-field/#confidence-modulated-decay">confidence-modulated decay</a> — confidence sets
-  each record's effective decay <em>rate</em>, not just its magnitude</li>
-<li><strong>CyclicDecayField</strong>: Auto-discharge when confidence drops below threshold; inherits confidence
-  modulation (confidence hash bound at <code>KEYS[4]</code> in its forked Lua)</li>
-<li><strong>MemoryLifecycle</strong>: Confidence gates promotion <em>and</em> forgetting; low-confidence idle records with
-  enough evidence are tombstoned</li>
-<li><strong>WriteFilterMixin</strong>: Use confidence in <code>compute_filter_score()</code> for directed forgetting</li>
-<li><strong><a href="../context-assembler/#confidence-gate">ContextAssembler</a></strong>: <code>get_confidence()</code> on the rank-0 pull-path candidate drives the opt-in confidence gate — <code>assemble()</code> can refuse or flag a low-confidence answer instead of injecting it</li>
-<li><strong>AccessTrackerMixin</strong>: Read tracking independent of confidence</li>
+<li><strong>Closed, never deleted.</strong> Superseding a record closes its interval; the
+  record and its chain links survive for provenance and <code>as_of</code> replay.</li>
+<li><strong>Atomic.</strong> Interval closure, chain-link writes, and open-pointer repoint
+  happen in one <code>EVAL</code>. There is no observable state where a record is
+  interval-closed but still index-visible, or closed but unchained.</li>
+<li><strong>Idempotent under retry.</strong> A <code>ZSCORE != +inf</code> guard refuses to re-close an
+  already-closed record, so two writers racing the same identity serialize
+  into a two-link chain rather than forking.</li>
+<li><strong>Graceful degradation on unsaved instances.</strong> Key resolution is wrapped in
+  <code>except (TypeError, ValueError)</code>; an unsaved instance degrades to a no-op
+  <em>before</em> any write is issued, so no partial index state (no <code>valid_from</code>
+  entry, no chain link, no pointer) is ever left behind.</li>
+</ul>
+<h3 id="bidirectional-chain-traversal">Bidirectional chain traversal<a class="headerlink" href="#bidirectional-chain-traversal" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">SupersessionProtocol</span><span class="o">.</span><span class="n">superseded_by</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>  <span class="c1"># one hop forward, or None at the head</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">SupersessionProtocol</span><span class="o">.</span><span class="n">supersedes</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>     <span class="c1"># one hop backward, or None at the tail</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">SupersessionProtocol</span><span class="o">.</span><span class="n">chain</span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>          <span class="c1"># full chain, oldest first, from any anchor</span>
+</code></pre></div>
+<p><code>chain()</code> walks backward to the oldest ancestor and forward to the newest
+descendant, so it is recoverable from any member, not just an endpoint.
+Traversal terminates on a cycle (a <code>seen</code> set) and on a dangling link — a
+chain HASH entry naming a record whose <code>valid_from</code> entry no longer exists,
+which happens when <code>on_delete</code> has scrubbed that record's own chain <em>fields</em>
+but a neighbor's link still names it as a <em>value</em>.</p>
+<h2 id="three-gating-layers">Three gating layers<a class="headerlink" href="#three-gating-layers" title="Permanent link">&para;</a></h2>
+<p><code>ContextAssembler</code> never calls <code>top_by_decay</code> — every retrieval call is
+<code>composite_score</code> or <code>fuse</code>, and the BM25 and graph-propagation arms bypass
+the <code>filters</code> dict entirely. That single fact is why validity gating is not
+one mechanism but three, each with a distinct, non-overlapping job:</p>
+<p><strong>Layer 1 — decay-Lua gate.</strong> <code>DECAY_SCORE_LUA</code> grows <code>KEYS[3]</code> (<code>invalid_at</code>),
+<code>KEYS[4]</code> (<code>valid_from</code>), and <code>ARGV[7]</code> (as-of). Per member, before the
+base-score <code>HGET</code> and before any decay math, up to two <code>ZSCORE</code>s decide
+inclusion: skip if <code>invalid_at &lt;= as_of</code> (closed) or <code>valid_from &gt; as_of</code> (not
+yet started). Every <code>KEYS[n]</code> read is guarded <code>KEYS[n] or ''</code>, so a caller
+that passes a short <code>numkeys</code> (existing hand-<code>eval</code> test call sites included)
+gets <code>nil</code> → <code>''</code> → gate disabled, with byte-identical scores to the
+pre-#580 script. This layer is <strong>authoritative for <code>top_by_decay</code> on a plain
+<code>DecayingSortedField</code></strong>, whose result is the member list itself with no later
+union — the one path where "skip in the range read" <em>is</em> "excluded from the
+result." It does <strong>not</strong> cover <code>top_by_decay</code> on a <code>CyclicDecayField</code>, which
+runs <code>CYCLIC_DECAY_LUA</code> instead; that script was deliberately left ungated —
+see "Known limitations".</p>
+<p><strong>Layer 2 — the <code>composite_score</code> mask (<code>QueryBuilder._apply_validity_mask</code>).</strong>
+<code>composite_score</code> merges its per-index temp ZSETs with <code>ZUNIONSTORE ...
+AGGREGATE SUM</code>. A member the decay Lua skips is merely <em>absent from the decay
+arm</em> — under <code>SUM</code> its decay contribution becomes <code>0</code>, but it can still
+surface in the composite result on the strength of any other weighted arm (a
+<code>ConfidenceField</code> index, <code>co_occurrence_boost</code>, <code>similarity_boost</code>). Skipping
+is not excluding. After the union, <code>_apply_validity_mask</code> runs four core
+commands — <code>ZRANGESTORE</code> the closed set, <code>ZRANGESTORE</code> the not-yet-started
+set, union them into an exclusion set, and <code>ZDIFFSTORE</code> that exclusion set out
+of the composite key — which is what actually enforces membership on this
+path, and the only layer that reaches a bare <code>Model.query.composite_score()</code>
+call outside the assembler.</p>
+<p><strong>Layer 3 — the assembler post-filter (<code>ContextAssembler._resolve_excluded_keys</code>
+/ <code>_scope_by_validity</code>).</strong> Covers the <code>fuse</code>, BM25, and graph-propagation
+arms, none of which route through <code>composite_score</code>'s <code>ZUNIONSTORE</code> or
+consult the <code>filters</code> dict at all. Two read-only <code>ZRANGEBYSCORE</code>s per
+<code>assemble()</code> call produce an exclusion set; <code>_scope_by_validity</code> drops any
+candidate record whose key is in it. Mirrors the tag-scoping pattern
+(<code>_scope_by_tags</code>) already established for issue #492.</p>
+<p>No layer is load-bearing for a path another layer already covers — Layer 1 is
+the only mechanism for <code>top_by_decay</code> on a plain <code>DecayingSortedField</code>; Layer 2
+is the only one that enforces membership on the composite path; Layer 3 is the
+only one that reaches <code>fuse</code>/BM25/graph. The one path no layer covers is a
+direct <code>top_by_decay</code> on a <code>CyclicDecayField</code> — see "Known limitations".</p>
+<h2 id="point-in-time-reconstruction">Point-in-time reconstruction<a class="headerlink" href="#point-in-time-reconstruction" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">result</span> <span class="o">=</span> <span class="n">ContextAssembler</span><span class="p">(</span><span class="n">Fact</span><span class="p">)</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span><span class="n">query_cues</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;topic&quot;</span><span class="p">:</span> <span class="s2">&quot;plan&quot;</span><span class="p">},</span> <span class="n">as_of</span><span class="o">=</span><span class="n">two_weeks_ago</span><span class="p">)</span>
+</code></pre></div>
+<p><code>assemble()</code> gains a keyword-only <code>as_of: float | None = None</code>. The default
+<code>None</code> means "now" — only currently-valid records. Passing an epoch
+reconstructs what the agent believed at that instant, superseded records
+included, applied consistently across all three gating layers (the same
+instant is threaded through the decay-Lua gate, the composite mask, and the
+post-filter). <code>composite_score</code> and <code>top_by_decay</code> accept the same
+keyword-only <code>as_of</code> directly, for callers that bypass the assembler.</p>
+<p>A model with no <code>ValidityField</code> — every shipped model today — makes <code>as_of</code>
+and all three gating layers a pure passthrough; retrieval stays byte-identical
+to pre-#580 behavior.</p>
+<h2 id="kill-switch">Kill switch<a class="headerlink" href="#kill-switch" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">Defaults</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">Defaults</span><span class="o">.</span><span class="n">VALIDITY_GATING_ENABLED</span> <span class="o">=</span> <span class="kc">False</span>  <span class="c1"># restores byte-identical pre-#580 retrieval</span>
+</code></pre></div>
+<p><code>Defaults.VALIDITY_GATING_ENABLED</code> is a deploy-level boolean, default <code>True</code>,
+read <strong>at call time</strong> in every gating layer — never captured at import — so
+it takes effect at runtime for adopters who cannot edit model code. With it
+off, interval and chain <em>maintenance</em> still runs (the six keys stay correct),
+but no retrieval path consults them: <code>filter(validity__current=...)</code> and
+<code>filter(validity__as_of=...)</code> still work, since those are deliberate queries
+this switch does not govern. The blast radius of leaving it on by default is
+zero until a model actually declares a <code>ValidityField</code> — no shipped model,
+including <code>DefaultMemory</code>, does.</p>
+<h2 id="known-limitations">Known limitations<a class="headerlink" href="#known-limitations" title="Permanent link">&para;</a></h2>
+<ul>
+<li>
+<p><strong>A direct <code>Model.query.top_by_decay()</code> on a <code>CyclicDecayField</code> is not
+  gated.</strong> #580 extended <code>DECAY_SCORE_LUA</code> only; <code>CYCLIC_DECAY_LUA</code> was
+  deliberately left unmodified (an explicit plan No-Go), so it takes no
+  <code>invalid_at</code>/<code>valid_from</code> <code>KEYS</code> and no as-of <code>ARGV</code>. A <code>top_by_decay</code> call
+  that resolves to a <code>CyclicDecayField</code> therefore receives gating from none of
+  the three layers: Layer 1 never reaches the cyclic script, Layer 2 only acts
+  after <code>composite_score</code>'s union, and Layer 3 only runs inside
+  <code>ContextAssembler</code>. A superseded record will be returned by such a call.</p>
+<p>Scope: this is a docs/direct-caller gap, <strong>not</strong> a live retrieval bug.
+<code>ContextAssembler</code> never calls <code>top_by_decay</code>; its push path uses
+<code>composite_score</code> (Layer 2), and every candidate it assembles is
+post-filtered by <code>_scope_by_validity</code> (Layer 3), including results from its
+cyclic decay proxy. <code>composite_score</code> on a <code>CyclicDecayField</code> is likewise
+covered by Layer 2's mask. Only a caller reaching past the assembler
+straight to <code>top_by_decay</code> on a cyclic field sees the gap; such a caller
+should use <code>composite_score</code>, or intersect with
+<code>filter(validity__current=True)</code>. Pinned by
+<code>tests/test_validity_field.py::TestCyclicDecayGatingGap</code>, which fails
+loudly if the gate is ever added — update this entry then.
+- <strong>Gating costs up to two <code>ZSCORE</code>s per member inside the decay Lua</strong>, and
+  <code>DECAY_SCORE_LUA</code> full-scans its partition regardless of gating (a
+  pre-existing property, not introduced here). Measured locally on a 20k-record
+  partition: <code>top_by_decay</code> at ~1.4x wall time gated vs. ungated (~37ms
+  ungated / ~51ms gated). The cost scales with partition size, not with how
+  many records are actually closed.
+- <strong>The TTL warning fires on first save, not at model-definition time.</strong>
+  <code>ValidityField.warn_if_ttl</code> logs once per <code>(model, field)</code> pair the first
+  time a record on a <code>Meta.ttl</code>-bearing model is saved, not when the class
+  body executes — so the warning is observable in test output and logs, not
+  at import time.
+- <strong>A TTL on a <code>ValidityField</code>-bearing model truncates chains and breaks
+  <code>as_of</code> correctness.</strong> Redis expires the record's hash on its own schedule;
+  the record's interval and chain-link entries do not expire with it, so a
+  chain walk or an <code>as_of</code> reconstruction can reference a record that no
+  longer exists. The warning is deliberately advisory, not a raised
+  exception — refusing outright would break adopters who legitimately want
+  bounded history.</p>
+</li>
+</ul>
+<h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../observation-protocol/">ObservationProtocol</a> — the outcome vocabulary
+  that reports contradiction; <code>_apply_contradicted</code> writes provenance through
+  this protocol when the model has a <code>ValidityField</code></li>
+<li><a href="../decaying-sorted-field/">DecayingSortedField</a> — the ordering axis
+  validity composes with</li>
+<li><a href="../context-assembler/">ContextAssembler</a> — the retrieval-to-injection
+  bridge that auto-detects a model's <code>ValidityField</code> and applies <code>as_of</code></li>
+<li><a href="../confidence-field/">ConfidenceField</a> — the arm whose contribution the
+  composite mask (Layer 2) must subtract out, not merely zero</li>
 </ul>
 
 

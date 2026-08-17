@@ -1429,6 +1429,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../validity-and-supersession/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ValidityField and Supersession
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../prediction-ledger/" class="md-nav__link">
         
   
@@ -3330,6 +3358,13 @@ interactions, and authority level determines how long directives persist.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Aggressive decay — only very recent records</span>
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">hot</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">top_by_decay</span><span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="n">decay_rate</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
 </code></pre></div>
+<p>On a model that also declares a <a href="../validity-and-supersession/"><code>ValidityField</code></a>, a
+keyword-only <code>as_of</code> reconstructs ranking at a past moment instead of now:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">past</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">top_by_decay</span><span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="n">as_of</span><span class="o">=</span><span class="n">two_weeks_ago</span><span class="p">)</span>
+</code></pre></div>
+<p><code>as_of</code> is ignored on models without a <code>ValidityField</code>. See
+<a href="../validity-and-supersession/#point-in-time-reconstruction">ValidityField and SupersessionProtocol</a>
+for how membership is evaluated at a past instant.</p>
 <h2 id="confidence-modulated-decay">Confidence-Modulated Decay<a class="headerlink" href="#confidence-modulated-decay" title="Permanent link">&para;</a></h2>
 <p><code>base_score_field</code> scales the curve's <strong>magnitude</strong>, which never changes relative order: a demoted
 record starts lower but is never forgotten <em>sooner</em>. Confidence modulation changes the <strong>rate</strong>, so
@@ -3338,8 +3373,8 @@ memories persist longer; repeatedly dismissed or contradicted ones fall away fas
 <h3 id="the-formula">The formula<a class="headerlink" href="#the-formula" title="Permanent link">&para;</a></h3>
 <p>Per record, the effective decay rate is derived from that record's
 <a href="../confidence-field/"><code>ConfidenceField</code></a> value:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>eff   = decay_rate * 2 ^ (s * 2 * (c0 - c))
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>score = base_score * t ^ (-decay_rate) * max(t, 1.0) ^ (-(eff - decay_rate))
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>eff   = decay_rate * 2 ^ (s * 2 * (c0 - c))
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>score = base_score * t ^ (-decay_rate) * max(t, 1.0) ^ (-(eff - decay_rate))
 </code></pre></div>
 <ul>
 <li><code>c</code> — the record's confidence, clamped to <code>[0, 1]</code></li>
@@ -3383,19 +3418,19 @@ without anything being written. Re-run <code>top_by_decay()</code> rather than c
 stability matters to your application.</p>
 <h3 id="usage_1">Usage<a class="headerlink" href="#usage_1" title="Permanent link">&para;</a></h3>
 <p>Auto-detection means the common case needs no configuration at all:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">KeyField</span><span class="p">,</span> <span class="n">Field</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields</span><span class="w"> </span><span class="kn">import</span> <span class="n">DecayingSortedField</span>
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.confidence_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConfidenceField</span>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="k">class</span><span class="w"> </span><span class="nc">Memory</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>    <span class="n">agent_id</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
-<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
-<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>    <span class="n">certainty</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="p">()</span>          <span class="c1"># exactly one -&gt; modulation is ON</span>
-<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>    <span class="n">relevance</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">()</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">KeyField</span><span class="p">,</span> <span class="n">Field</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields</span><span class="w"> </span><span class="kn">import</span> <span class="n">DecayingSortedField</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.confidence_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConfidenceField</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="k">class</span><span class="w"> </span><span class="nc">Memory</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>    <span class="n">agent_id</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>    <span class="n">certainty</span> <span class="o">=</span> <span class="n">ConfidenceField</span><span class="p">()</span>          <span class="c1"># exactly one -&gt; modulation is ON</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>    <span class="n">relevance</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">()</span>
 </code></pre></div>
 <p>Name the field explicitly when a model carries more than one <code>ConfidenceField</code>, or opt out:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">relevance</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span><span class="n">confidence_modulation_field</span><span class="o">=</span><span class="s2">&quot;certainty&quot;</span><span class="p">)</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="n">relevance</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span><span class="n">confidence_modulation_field</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>   <span class="c1"># opt out</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">relevance</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span><span class="n">confidence_modulation_field</span><span class="o">=</span><span class="s2">&quot;certainty&quot;</span><span class="p">)</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="n">relevance</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span><span class="n">confidence_modulation_field</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>   <span class="c1"># opt out</span>
 </code></pre></div>
 <p>Resolution order:</p>
 <table>
@@ -3436,9 +3471,9 @@ stability matters to your application.</p>
 <p>Modulation is <strong>default-on</strong> via auto-detection, so an upgrade can change ranking without any model
 change. The deploy-level kill switch turns modulation off without editing
 model definitions:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">Defaults</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>
-<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="n">Defaults</span><span class="o">.</span><span class="n">DECAY_CONFIDENCE_MODULATION_ENABLED</span> <span class="o">=</span> <span class="kc">False</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">Defaults</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="n">Defaults</span><span class="o">.</span><span class="n">DECAY_CONFIDENCE_MODULATION_ENABLED</span> <span class="o">=</span> <span class="kc">False</span>
 </code></pre></div>
 <p>Set it at process start, before queries run. It is re-read on every call, so toggling it at runtime
 takes effect immediately.</p>
@@ -3447,24 +3482,24 @@ takes effect immediately.</p>
 When that field declares <code>partition_by</code>, one decay index can span several <code>:data</code> hashes and no
 single hash covers the result set. Rather than silently modulating some members and not others, the
 query raises <code>QueryException</code> naming the filters it needs:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">top_by_decay</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="c1"># QueryException: ... ConfidenceField &#39;certainty&#39; ... is partitioned by project.</span>
-<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="c1"># Query must include filter(s) for: project.</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">top_by_decay</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="c1"># QueryException: ... ConfidenceField &#39;certainty&#39; ... is partitioned by project.</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="c1"># Query must include filter(s) for: project.</span>
 </code></pre></div>
 <p>Add the missing filter, or set <code>confidence_modulation_field=False</code> on the decay field.</p>
 <h2 id="tuning">Tuning<a class="headerlink" href="#tuning" title="Permanent link">&para;</a></h2>
 <p>The <code>decay_rate</code> default is configurable via <code>Defaults</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">Defaults</span>
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>
-<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="n">Defaults</span><span class="o">.</span><span class="n">DECAY_RATE</span> <span class="o">=</span> <span class="mf">0.3</span>  <span class="c1"># Slower decay globally</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">Defaults</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="n">Defaults</span><span class="o">.</span><span class="n">DECAY_RATE</span> <span class="o">=</span> <span class="mf">0.3</span>  <span class="c1"># Slower decay globally</span>
 </code></pre></div>
 <p>Explicit kwargs always override <code>Defaults</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="c1"># This field uses 0.7 regardless of Defaults.DECAY_RATE</span>
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="n">fast_decay</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span><span class="n">decay_rate</span><span class="o">=</span><span class="mf">0.7</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="c1"># This field uses 0.7 regardless of Defaults.DECAY_RATE</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="n">fast_decay</span> <span class="o">=</span> <span class="n">DecayingSortedField</span><span class="p">(</span><span class="n">decay_rate</span><span class="o">=</span><span class="mf">0.7</span><span class="p">)</span>
 </code></pre></div>
 <p>Modulation strength is tuned the same way:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="n">Defaults</span><span class="o">.</span><span class="n">DECAY_CONFIDENCE_MODULATION_STRENGTH</span> <span class="o">=</span> <span class="mf">0.3</span>  <span class="c1"># gentler evidence coupling</span>
-<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="n">Defaults</span><span class="o">.</span><span class="n">DECAY_CONFIDENCE_MODULATION_STRENGTH</span> <span class="o">=</span> <span class="mf">0.0</span>  <span class="c1"># exact no-op</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="n">Defaults</span><span class="o">.</span><span class="n">DECAY_CONFIDENCE_MODULATION_STRENGTH</span> <span class="o">=</span> <span class="mf">0.3</span>  <span class="c1"># gentler evidence coupling</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="n">Defaults</span><span class="o">.</span><span class="n">DECAY_CONFIDENCE_MODULATION_STRENGTH</span> <span class="o">=</span> <span class="mf">0.0</span>  <span class="c1"># exact no-op</span>
 </code></pre></div>
 <p>See <a href="../../guides/tuning-magic-numbers/#decayingsortedfield-cyclicdecayfield">Tuning Magic Numbers</a>
 for ranges and provenance.</p>
@@ -3483,6 +3518,7 @@ for ranges and provenance.</p>
 <ul>
 <li><a href="../cyclic-decay-field/">CyclicDecayField</a> — adds cyclical resonance and homeostatic pressure</li>
 <li><a href="../confidence-field/">ConfidenceField</a> — the evidence signal that modulates the rate</li>
+<li><a href="../validity-and-supersession/">ValidityField and SupersessionProtocol</a> — the orthogonal membership axis: validity decides whether a record is retrievable at all, decay decides its rank among what remains</li>
 <li><a href="../agent-memory/">Agent Memory overview</a> — full primitives reference</li>
 </ul>
 

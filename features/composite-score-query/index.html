@@ -1161,6 +1161,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../validity-and-supersession/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ValidityField and Supersession
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../prediction-ledger/" class="md-nav__link">
         
   
@@ -2995,7 +3023,9 @@
 <a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    <span class="n">post_filter</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Callable</span><span class="p">[[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">],</span> <span class="nb">bool</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>    <span class="n">co_occurrence_boost</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    <span class="n">temperature</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>    <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>    <span class="n">as_of</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
 </code></pre></div>
 <p>Also available as <code>Query.composite_score()</code> (convenience method that creates a QueryBuilder internally).</p>
 <h3 id="parameters">Parameters<a class="headerlink" href="#parameters" title="Permanent link">&para;</a></h3>
@@ -3050,6 +3080,12 @@
 <td><code>float</code></td>
 <td><code>1.0</code></td>
 <td>Score scaling factor. Divides each composite score by this value. Low values (0.02-0.1) sharpen discrimination; high values (2.0+) flatten scores. Must be &gt; 0.</td>
+</tr>
+<tr>
+<td><code>as_of</code></td>
+<td><code>float</code></td>
+<td><code>None</code></td>
+<td>Keyword-only. Epoch seconds at which <a href="../validity-and-supersession/"><code>ValidityField</code></a> membership is evaluated (issue #580). <code>None</code> means "now". Ignored on models without a <code>ValidityField</code>.</td>
 </tr>
 </tbody>
 </table>

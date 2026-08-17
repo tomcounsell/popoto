@@ -1413,6 +1413,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../validity-and-supersession/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ValidityField and Supersession
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../prediction-ledger/" class="md-nav__link">
         
   
@@ -3247,6 +3275,16 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Top 10 directives by combined decay + cyclic + pressure score</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">top</span> <span class="o">=</span> <span class="n">Directive</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">agent_id</span><span class="o">=</span><span class="s2">&quot;agent-1&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">top_by_decay</span><span class="p">(</span><span class="n">n</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
 </code></pre></div>
+<div class="admonition warning">
+<p class="admonition-title"><code>top_by_decay()</code> on a <code>CyclicDecayField</code> is not gated by <code>ValidityField</code></p>
+<p><code>CYCLIC_DECAY_LUA</code> was deliberately left unmodified by the validity-gating work
+(issue #580), so a direct <code>top_by_decay()</code> call on a model with a <code>CyclicDecayField</code>
+can return a superseded record. This is a direct-caller gap only: <code>ContextAssembler</code>
+never calls <code>top_by_decay</code>, and its push path (<code>composite_score</code>) plus the assembler
+post-filter both gate cyclic results correctly. See
+<a href="../validity-and-supersession/#known-limitations">ValidityField and SupersessionProtocol</a>
+for the full accounting.</p>
+</div>
 <h3 id="resolving-pressure">Resolving Pressure<a class="headerlink" href="#resolving-pressure" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># Discharge accumulated urgency for a directive</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">directive</span><span class="o">.</span><span class="n">resolve_pressure</span><span class="p">(</span><span class="s2">&quot;relevance&quot;</span><span class="p">)</span>

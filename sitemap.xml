@@ -173,6 +173,10 @@
          <lastmod>2026-08-17</lastmod>
     </url>
     <url>
+         <loc>https://popoto.io/features/validity-and-supersession/</loc>
+         <lastmod>2026-08-17</lastmod>
+    </url>
+    <url>
          <loc>https://popoto.io/guides/agent-memory-quickstart/</loc>
          <lastmod>2026-08-17</lastmod>
     </url>
@@ -357,11 +361,19 @@
          <lastmod>2026-08-17</lastmod>
     </url>
     <url>
+         <loc>https://popoto.io/reference/popoto/fields/supersession/</loc>
+         <lastmod>2026-08-17</lastmod>
+    </url>
+    <url>
          <loc>https://popoto.io/reference/popoto/fields/tag_field/</loc>
          <lastmod>2026-08-17</lastmod>
     </url>
     <url>
          <loc>https://popoto.io/reference/popoto/fields/unique_field_mixin/</loc>
+         <lastmod>2026-08-17</lastmod>
+    </url>
+    <url>
+         <loc>https://popoto.io/reference/popoto/fields/validity_field/</loc>
          <lastmod>2026-08-17</lastmod>
     </url>
     <url>

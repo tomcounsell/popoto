@@ -1153,6 +1153,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../features/validity-and-supersession/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ValidityField and Supersession
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../features/prediction-ledger/" class="md-nav__link">
         
   
@@ -2739,6 +2767,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#validityfield-filters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ValidityField Filters
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#semantic-search" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3868,6 +3907,17 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validityfield-filters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ValidityField Filters
+      
+    </span>
+  </a>
   
 </li>
       
@@ -5244,6 +5294,41 @@ displaying "2.3 km away" in a delivery app interface.</p>
 </code></pre></div>
 <p>See <a href="../fields/#geofield">Models and Fields</a> for more on defining GeoFields, and
 <a href="../relationship/">Relationship Field</a> for linking drivers to orders.</p>
+<h2 id="validityfield-filters">ValidityField Filters<a class="headerlink" href="#validityfield-filters" title="Permanent link">&para;</a></h2>
+<p><code>ValidityField</code> filters restrict results to records whose bitemporal validity interval
+covers a given moment, rather than filtering on a stored value.</p>
+<table>
+<thead>
+<tr>
+<th>Lookup</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>{field}__current=True</code></td>
+<td>Records whose interval covers <em>now</em></td>
+</tr>
+<tr>
+<td><code>{field}__current=False</code></td>
+<td>Records that are closed, or not yet started (complement of <code>current=True</code> over managed records only). Building the complement reads both interval sets in full, so this lookup is O(N) where <code>current=True</code> is O(log N + M)</td>
+</tr>
+<tr>
+<td><code>{field}__as_of=t</code></td>
+<td>Records whose interval covered epoch <code>t</code></td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-65-1" name="__codelineno-65-1" href="#__codelineno-65-1"></a><span class="n">Fact</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">validity__current</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-65-2" name="__codelineno-65-2" href="#__codelineno-65-2"></a><span class="n">Fact</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">validity__as_of</span><span class="o">=</span><span class="n">two_weeks_ago</span><span class="p">)</span>
+</code></pre></div>
+<p>Using either lookup consumes a filter slot, so it disables sorted-range <code>limit</code>
+pushdown on that query — the default retrieval path (<code>composite_score()</code>,
+<code>top_by_decay()</code>, <code>ContextAssembler.assemble()</code>) instead accepts a keyword-only
+<code>as_of</code> parameter and gates server-side, keeping pushdown intact. See
+<a href="../features/validity-and-supersession/">ValidityField and SupersessionProtocol</a> for
+the full semantics, including why a record with no interval entry satisfies
+neither <code>current=True</code> nor <code>current=False</code>.</p>
 <h2 id="semantic-search">Semantic Search<a class="headerlink" href="#semantic-search" title="Permanent link">&para;</a></h2>
 <p><code>semantic_search()</code> finds instances by meaning rather than exact field values. It embeds the
 query text via the configured provider, computes cosine similarity against all stored embeddings,
@@ -5251,28 +5336,28 @@ and returns the top-K most similar instances.</p>
 <p>This requires a model with an <code>EmbeddingField</code> and a configured embedding provider (via
 <code>popoto.configure()</code> or per-field). See <a href="../fields/#embeddingfield">EmbeddingField</a> for setup.</p>
 <h3 id="basic-similarity-search">Basic Similarity Search<a class="headerlink" href="#basic-similarity-search" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-65-1" name="__codelineno-65-1" href="#__codelineno-65-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.content_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">ContentField</span>
-<a id="__codelineno-65-2" name="__codelineno-65-2" href="#__codelineno-65-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.embedding_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">EmbeddingField</span>
-<a id="__codelineno-65-3" name="__codelineno-65-3" href="#__codelineno-65-3"></a>
-<a id="__codelineno-65-4" name="__codelineno-65-4" href="#__codelineno-65-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">Memory</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
-<a id="__codelineno-65-5" name="__codelineno-65-5" href="#__codelineno-65-5"></a>    <span class="n">topic</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
-<a id="__codelineno-65-6" name="__codelineno-65-6" href="#__codelineno-65-6"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">ContentField</span><span class="p">()</span>
-<a id="__codelineno-65-7" name="__codelineno-65-7" href="#__codelineno-65-7"></a>    <span class="n">relevance</span> <span class="o">=</span> <span class="n">SortedField</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
-<a id="__codelineno-65-8" name="__codelineno-65-8" href="#__codelineno-65-8"></a>    <span class="n">embedding</span> <span class="o">=</span> <span class="n">EmbeddingField</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">&quot;content&quot;</span><span class="p">)</span>
-<a id="__codelineno-65-9" name="__codelineno-65-9" href="#__codelineno-65-9"></a>
-<a id="__codelineno-65-10" name="__codelineno-65-10" href="#__codelineno-65-10"></a><span class="c1"># Find memories semantically similar to a query</span>
-<a id="__codelineno-65-11" name="__codelineno-65-11" href="#__codelineno-65-11"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">semantic_search</span><span class="p">(</span><span class="s2">&quot;revenue trends&quot;</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-66-1" name="__codelineno-66-1" href="#__codelineno-66-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.content_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">ContentField</span>
+<a id="__codelineno-66-2" name="__codelineno-66-2" href="#__codelineno-66-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">popoto.fields.embedding_field</span><span class="w"> </span><span class="kn">import</span> <span class="n">EmbeddingField</span>
+<a id="__codelineno-66-3" name="__codelineno-66-3" href="#__codelineno-66-3"></a>
+<a id="__codelineno-66-4" name="__codelineno-66-4" href="#__codelineno-66-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">Memory</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
+<a id="__codelineno-66-5" name="__codelineno-66-5" href="#__codelineno-66-5"></a>    <span class="n">topic</span> <span class="o">=</span> <span class="n">KeyField</span><span class="p">()</span>
+<a id="__codelineno-66-6" name="__codelineno-66-6" href="#__codelineno-66-6"></a>    <span class="n">content</span> <span class="o">=</span> <span class="n">ContentField</span><span class="p">()</span>
+<a id="__codelineno-66-7" name="__codelineno-66-7" href="#__codelineno-66-7"></a>    <span class="n">relevance</span> <span class="o">=</span> <span class="n">SortedField</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+<a id="__codelineno-66-8" name="__codelineno-66-8" href="#__codelineno-66-8"></a>    <span class="n">embedding</span> <span class="o">=</span> <span class="n">EmbeddingField</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">&quot;content&quot;</span><span class="p">)</span>
+<a id="__codelineno-66-9" name="__codelineno-66-9" href="#__codelineno-66-9"></a>
+<a id="__codelineno-66-10" name="__codelineno-66-10" href="#__codelineno-66-10"></a><span class="c1"># Find memories semantically similar to a query</span>
+<a id="__codelineno-66-11" name="__codelineno-66-11" href="#__codelineno-66-11"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">semantic_search</span><span class="p">(</span><span class="s2">&quot;revenue trends&quot;</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>
 </code></pre></div>
 <p>When called without <code>indexes</code>, results are ranked purely by cosine similarity.</p>
 <h3 id="combined-with-sorted-indexes">Combined with Sorted Indexes<a class="headerlink" href="#combined-with-sorted-indexes" title="Permanent link">&para;</a></h3>
 <p>Pass <code>indexes</code> to blend semantic similarity with other sorted field scores using
 <code>composite_score()</code> under the hood:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-66-1" name="__codelineno-66-1" href="#__codelineno-66-1"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">semantic_search</span><span class="p">(</span>
-<a id="__codelineno-66-2" name="__codelineno-66-2" href="#__codelineno-66-2"></a>    <span class="s2">&quot;revenue trends&quot;</span><span class="p">,</span>
-<a id="__codelineno-66-3" name="__codelineno-66-3" href="#__codelineno-66-3"></a>    <span class="n">indexes</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;relevance&quot;</span><span class="p">:</span> <span class="mf">0.4</span><span class="p">},</span>
-<a id="__codelineno-66-4" name="__codelineno-66-4" href="#__codelineno-66-4"></a>    <span class="n">limit</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
-<a id="__codelineno-66-5" name="__codelineno-66-5" href="#__codelineno-66-5"></a>    <span class="n">temperature</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
-<a id="__codelineno-66-6" name="__codelineno-66-6" href="#__codelineno-66-6"></a><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-67-1" name="__codelineno-67-1" href="#__codelineno-67-1"></a><span class="n">results</span> <span class="o">=</span> <span class="n">Memory</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">semantic_search</span><span class="p">(</span>
+<a id="__codelineno-67-2" name="__codelineno-67-2" href="#__codelineno-67-2"></a>    <span class="s2">&quot;revenue trends&quot;</span><span class="p">,</span>
+<a id="__codelineno-67-3" name="__codelineno-67-3" href="#__codelineno-67-3"></a>    <span class="n">indexes</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;relevance&quot;</span><span class="p">:</span> <span class="mf">0.4</span><span class="p">},</span>
+<a id="__codelineno-67-4" name="__codelineno-67-4" href="#__codelineno-67-4"></a>    <span class="n">limit</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+<a id="__codelineno-67-5" name="__codelineno-67-5" href="#__codelineno-67-5"></a>    <span class="n">temperature</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+<a id="__codelineno-67-6" name="__codelineno-67-6" href="#__codelineno-67-6"></a><span class="p">)</span>
 </code></pre></div>
 <p>The similarity scores are injected as an additional weighted signal alongside the
 sorted field indexes, producing a unified ranking.</p>
@@ -5345,21 +5430,21 @@ helps you write efficient code. Here are the key patterns to follow.</p>
 <h3 id="use-count-instead-of-lenall">Use <code>count()</code> Instead of <code>len(all())</code><a class="headerlink" href="#use-count-instead-of-lenall" title="Permanent link">&para;</a></h3>
 <p>The <code>count()</code> method uses Redis <code>SCARD</code> for O(1) cardinality checks when called without filters.
 This is approximately 186x faster than loading all objects just to count them.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-67-1" name="__codelineno-67-1" href="#__codelineno-67-1"></a><span class="c1"># Good: O(1) using Redis SCARD</span>
-<a id="__codelineno-67-2" name="__codelineno-67-2" href="#__codelineno-67-2"></a><span class="n">total</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">count</span><span class="p">()</span>
-<a id="__codelineno-67-3" name="__codelineno-67-3" href="#__codelineno-67-3"></a>
-<a id="__codelineno-67-4" name="__codelineno-67-4" href="#__codelineno-67-4"></a><span class="c1"># Bad: Loads all objects into memory first</span>
-<a id="__codelineno-67-5" name="__codelineno-67-5" href="#__codelineno-67-5"></a><span class="n">total</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">())</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-68-1" name="__codelineno-68-1" href="#__codelineno-68-1"></a><span class="c1"># Good: O(1) using Redis SCARD</span>
+<a id="__codelineno-68-2" name="__codelineno-68-2" href="#__codelineno-68-2"></a><span class="n">total</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">count</span><span class="p">()</span>
+<a id="__codelineno-68-3" name="__codelineno-68-3" href="#__codelineno-68-3"></a>
+<a id="__codelineno-68-4" name="__codelineno-68-4" href="#__codelineno-68-4"></a><span class="c1"># Bad: Loads all objects into memory first</span>
+<a id="__codelineno-68-5" name="__codelineno-68-5" href="#__codelineno-68-5"></a><span class="n">total</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">())</span>
 </code></pre></div>
 <h3 id="use-values-for-partial-field-access">Use <code>values()</code> for Partial Field Access<a class="headerlink" href="#use-values-for-partial-field-access" title="Permanent link">&para;</a></h3>
 <p>When you only need a few fields, use the <code>values</code> parameter. This is 2-4x faster than loading
 full model instances because it uses <code>HMGET</code> instead of <code>HGETALL</code> and skips model instantiation.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-68-1" name="__codelineno-68-1" href="#__codelineno-68-1"></a><span class="c1"># Good: Only fetches name and rating fields</span>
-<a id="__codelineno-68-2" name="__codelineno-68-2" href="#__codelineno-68-2"></a><span class="n">data</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">values</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;rating&quot;</span><span class="p">))</span>
-<a id="__codelineno-68-3" name="__codelineno-68-3" href="#__codelineno-68-3"></a><span class="c1"># =&gt; [{&quot;name&quot;: &quot;Burger Palace&quot;, &quot;rating&quot;: 4.5}, ...]</span>
-<a id="__codelineno-68-4" name="__codelineno-68-4" href="#__codelineno-68-4"></a>
-<a id="__codelineno-68-5" name="__codelineno-68-5" href="#__codelineno-68-5"></a><span class="c1"># Better: If all fields are KeyFields, no Redis commands needed at all</span>
-<a id="__codelineno-68-6" name="__codelineno-68-6" href="#__codelineno-68-6"></a><span class="n">names</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">values</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">,))</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-69-1" name="__codelineno-69-1" href="#__codelineno-69-1"></a><span class="c1"># Good: Only fetches name and rating fields</span>
+<a id="__codelineno-69-2" name="__codelineno-69-2" href="#__codelineno-69-2"></a><span class="n">data</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">values</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;rating&quot;</span><span class="p">))</span>
+<a id="__codelineno-69-3" name="__codelineno-69-3" href="#__codelineno-69-3"></a><span class="c1"># =&gt; [{&quot;name&quot;: &quot;Burger Palace&quot;, &quot;rating&quot;: 4.5}, ...]</span>
+<a id="__codelineno-69-4" name="__codelineno-69-4" href="#__codelineno-69-4"></a>
+<a id="__codelineno-69-5" name="__codelineno-69-5" href="#__codelineno-69-5"></a><span class="c1"># Better: If all fields are KeyFields, no Redis commands needed at all</span>
+<a id="__codelineno-69-6" name="__codelineno-69-6" href="#__codelineno-69-6"></a><span class="n">names</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">values</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">,))</span>
 </code></pre></div>
 <p>When all requested fields are KeyFields, Popoto extracts values directly from the Redis key
 strings without any additional Redis commands.</p>
@@ -5367,37 +5452,37 @@ strings without any additional Redis commands.</p>
 <p>Exact match and <code>__in</code> lookups use Redis set operations (O(1) per value). Pattern filters
 like <code>__startswith</code>, <code>__endswith</code>, and <code>__contains</code> use Redis <code>SCAN</code> which iterates through
 keys.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-69-1" name="__codelineno-69-1" href="#__codelineno-69-1"></a><span class="c1"># Good: Uses Redis set lookup - O(1)</span>
-<a id="__codelineno-69-2" name="__codelineno-69-2" href="#__codelineno-69-2"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Burger Palace&quot;</span><span class="p">)</span>
-<a id="__codelineno-69-3" name="__codelineno-69-3" href="#__codelineno-69-3"></a>
-<a id="__codelineno-69-4" name="__codelineno-69-4" href="#__codelineno-69-4"></a><span class="c1"># Good: Uses SUNION for efficient OR queries</span>
-<a id="__codelineno-69-5" name="__codelineno-69-5" href="#__codelineno-69-5"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">name__in</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;Burger Palace&quot;</span><span class="p">,</span> <span class="s2">&quot;Sushi Zen&quot;</span><span class="p">])</span>
-<a id="__codelineno-69-6" name="__codelineno-69-6" href="#__codelineno-69-6"></a>
-<a id="__codelineno-69-7" name="__codelineno-69-7" href="#__codelineno-69-7"></a><span class="c1"># Slower: Scans all keys matching pattern</span>
-<a id="__codelineno-69-8" name="__codelineno-69-8" href="#__codelineno-69-8"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">name__startswith</span><span class="o">=</span><span class="s2">&quot;B&quot;</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-70-1" name="__codelineno-70-1" href="#__codelineno-70-1"></a><span class="c1"># Good: Uses Redis set lookup - O(1)</span>
+<a id="__codelineno-70-2" name="__codelineno-70-2" href="#__codelineno-70-2"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Burger Palace&quot;</span><span class="p">)</span>
+<a id="__codelineno-70-3" name="__codelineno-70-3" href="#__codelineno-70-3"></a>
+<a id="__codelineno-70-4" name="__codelineno-70-4" href="#__codelineno-70-4"></a><span class="c1"># Good: Uses SUNION for efficient OR queries</span>
+<a id="__codelineno-70-5" name="__codelineno-70-5" href="#__codelineno-70-5"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">name__in</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;Burger Palace&quot;</span><span class="p">,</span> <span class="s2">&quot;Sushi Zen&quot;</span><span class="p">])</span>
+<a id="__codelineno-70-6" name="__codelineno-70-6" href="#__codelineno-70-6"></a>
+<a id="__codelineno-70-7" name="__codelineno-70-7" href="#__codelineno-70-7"></a><span class="c1"># Slower: Scans all keys matching pattern</span>
+<a id="__codelineno-70-8" name="__codelineno-70-8" href="#__codelineno-70-8"></a><span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">name__startswith</span><span class="o">=</span><span class="s2">&quot;B&quot;</span><span class="p">)</span>
 </code></pre></div>
 <h3 id="use-sortedfield-for-range-queries">Use SortedField for Range Queries<a class="headerlink" href="#use-sortedfield-for-range-queries" title="Permanent link">&para;</a></h3>
 <p>SortedField filters use Redis sorted sets with O(log N + M) time complexity where N is the
 index size and M is the result count. This is much faster than filtering in Python.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-70-1" name="__codelineno-70-1" href="#__codelineno-70-1"></a><span class="c1"># Good: Uses Redis ZRANGEBYSCORE - O(log N + M)</span>
-<a id="__codelineno-70-2" name="__codelineno-70-2" href="#__codelineno-70-2"></a><span class="n">MenuItem</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">price__gte</span><span class="o">=</span><span class="mf">5.0</span><span class="p">,</span> <span class="n">price__lte</span><span class="o">=</span><span class="mf">15.0</span><span class="p">)</span>
-<a id="__codelineno-70-3" name="__codelineno-70-3" href="#__codelineno-70-3"></a>
-<a id="__codelineno-70-4" name="__codelineno-70-4" href="#__codelineno-70-4"></a><span class="c1"># Avoid: Would require loading all items and filtering in Python</span>
-<a id="__codelineno-70-5" name="__codelineno-70-5" href="#__codelineno-70-5"></a><span class="c1"># (Popoto doesn&#39;t support this pattern, but the principle applies)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-71-1" name="__codelineno-71-1" href="#__codelineno-71-1"></a><span class="c1"># Good: Uses Redis ZRANGEBYSCORE - O(log N + M)</span>
+<a id="__codelineno-71-2" name="__codelineno-71-2" href="#__codelineno-71-2"></a><span class="n">MenuItem</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">price__gte</span><span class="o">=</span><span class="mf">5.0</span><span class="p">,</span> <span class="n">price__lte</span><span class="o">=</span><span class="mf">15.0</span><span class="p">)</span>
+<a id="__codelineno-71-3" name="__codelineno-71-3" href="#__codelineno-71-3"></a>
+<a id="__codelineno-71-4" name="__codelineno-71-4" href="#__codelineno-71-4"></a><span class="c1"># Avoid: Would require loading all items and filtering in Python</span>
+<a id="__codelineno-71-5" name="__codelineno-71-5" href="#__codelineno-71-5"></a><span class="c1"># (Popoto doesn&#39;t support this pattern, but the principle applies)</span>
 </code></pre></div>
 <h3 id="limit-results-when-possible">Limit Results When Possible<a class="headerlink" href="#limit-results-when-possible" title="Permanent link">&para;</a></h3>
 <p>Apply <code>limit</code> to reduce the number of objects loaded from Redis. When combined with
 <code>order_by</code> on a KeyField, the limit is applied before loading objects.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-71-1" name="__codelineno-71-1" href="#__codelineno-71-1"></a><span class="c1"># Good: Only loads 10 objects</span>
-<a id="__codelineno-71-2" name="__codelineno-71-2" href="#__codelineno-71-2"></a><span class="n">top_10</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">order_by</span><span class="o">=</span><span class="s2">&quot;-rating&quot;</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-72-1" name="__codelineno-72-1" href="#__codelineno-72-1"></a><span class="c1"># Good: Only loads 10 objects</span>
+<a id="__codelineno-72-2" name="__codelineno-72-2" href="#__codelineno-72-2"></a><span class="n">top_10</span> <span class="o">=</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">order_by</span><span class="o">=</span><span class="s2">&quot;-rating&quot;</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
 </code></pre></div>
 <h3 id="lazy-loading-for-bulk-queries">Lazy Loading for Bulk Queries<a class="headerlink" href="#lazy-loading-for-bulk-queries" title="Permanent link">&para;</a></h3>
 <p>When iterating over query results, Popoto uses lazy deserialization by default. Field values
 are only decoded from msgpack when you access them. This significantly reduces overhead when
 you only use a subset of fields.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-72-1" name="__codelineno-72-1" href="#__codelineno-72-1"></a><span class="c1"># Only decodes &#39;name&#39; and &#39;rating&#39; fields, not &#39;location&#39; or &#39;cuisine&#39;</span>
-<a id="__codelineno-72-2" name="__codelineno-72-2" href="#__codelineno-72-2"></a><span class="k">for</span> <span class="n">restaurant</span> <span class="ow">in</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">():</span>
-<a id="__codelineno-72-3" name="__codelineno-72-3" href="#__codelineno-72-3"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">restaurant</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">restaurant</span><span class="o">.</span><span class="n">rating</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-73-1" name="__codelineno-73-1" href="#__codelineno-73-1"></a><span class="c1"># Only decodes &#39;name&#39; and &#39;rating&#39; fields, not &#39;location&#39; or &#39;cuisine&#39;</span>
+<a id="__codelineno-73-2" name="__codelineno-73-2" href="#__codelineno-73-2"></a><span class="k">for</span> <span class="n">restaurant</span> <span class="ow">in</span> <span class="n">Restaurant</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">():</span>
+<a id="__codelineno-73-3" name="__codelineno-73-3" href="#__codelineno-73-3"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">restaurant</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">restaurant</span><span class="o">.</span><span class="n">rating</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 </code></pre></div>
 <p>Fields absent from the stored Redis hash (e.g., a row written before the field was added
 to the model, or a hash partially written by a crashed process) resolve to the field's
@@ -5471,6 +5556,16 @@ declared <code>default</code> -- or <code>None</code> if no default is set -- ma
 <td><code>composite_score(...)</code></td>
 <td>ZUNIONSTORE + ZREVRANGE + pipeline HGETALL</td>
 <td>O(K log K + M)</td>
+</tr>
+<tr>
+<td><code>filter(validity__current=True)</code> / <code>filter(validity__as_of=t)</code></td>
+<td>ZRANGEBYSCORE (x2), intersected</td>
+<td>O(log N + M)</td>
+</tr>
+<tr>
+<td><code>filter(validity__current=False)</code></td>
+<td>the above, plus ZRANGE (x2) over both interval sets to build the complement</td>
+<td>O(N)</td>
 </tr>
 <tr>
 <td><code>keyword_search(...)</code></td>
