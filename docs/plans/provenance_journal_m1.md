@@ -947,16 +947,22 @@ corrected here):
 | Docs build | `.venv/bin/python -m mkdocs build --strict` | exit code 0 |
 | Docs page exists in nav | `grep -q 'features/provenance-journal.md' mkdocs.yml` | exit code 0 |
 | No Redis-module commands (anti-criterion) | `grep -rqE '(BF\|CMS\|TOPK\|TDIGEST\|JSON\|FT\|TS)\.[A-Z]' src/popoto/recipes/provenance_journal.py src/popoto/fields/append_only.py` | exit code != 0 |
-| No silent exception swallowing (anti-criterion) | `.venv/bin/python -c "import re,sys; src=open('src/popoto/recipes/provenance_journal.py').read()+open('src/popoto/fields/append_only.py').read(); sys.exit(0 if re.search(r'except[^\n]*:\s*\n\s*(pass|\.\.\.)\s*\n', src) else 1)"` | exit code != 0 |
+| No silent exception swallowing (anti-criterion) | `.venv/bin/python -c "import re,sys; src=open('src/popoto/recipes/provenance_journal.py').read()+open('src/popoto/fields/append_only.py').read(); sys.exit(1 if re.search(r'except[^\n]*:\s*\n\s*(pass\|\.\.\.)\s*\n', src) else 0)"` | exit code 0 |
 | Write path never uses SupersessionProtocol (anti-criterion, guards the #588 workaround) | `grep -qE 'SupersessionProtocol\.(supersede\|invalidate)\(' src/popoto/recipes/provenance_journal.py` | exit code != 0 |
 | No extraction-path wiring leaked in (anti-criterion for the M3 No-Go) | `git diff --quiet origin/main -- src/popoto/recipes/subconscious_memory.py` | exit code 0 |
 | `models/base.py` untouched (anti-criterion for D2) | `git diff --quiet origin/main -- src/popoto/models/base.py` | exit code 0 |
 
-Note on the two `(A\|B)` patterns above: the `\|` is **markdown table-cell escaping only**.
-The pattern that runs is `(BF|CMS|TOPK|TDIGEST|JSON|FT|TS)\.[A-Z]` and
-`SupersessionProtocol\.(supersede|invalidate)\(` respectively — bare `|` alternation inside
-single quotes. A builder transcribing these must unescape the table pipes, not copy the
-backslashes.
+Note on the `(A\|B)` patterns above: every `\|` in the table is **markdown table-cell escaping
+only**. The patterns that actually run are `(BF|CMS|TOPK|TDIGEST|JSON|FT|TS)\.[A-Z]`,
+`SupersessionProtocol\.(supersede|invalidate)\(`, and `except[^\n]*:\s*\n\s*(pass|\.\.\.)\s*\n`
+— bare `|` alternation. A builder transcribing these must unescape the table pipes, not copy
+the backslashes.
+
+Polarity note: every row above is written so the **passing** state is the natural one for its
+command — `exit code 0` where a command succeeds on success, `exit code != 0` only for the two
+`grep -q` absence checks, where "grep found nothing" genuinely is a nonzero exit. No row
+inverts a Python `sys.exit` to achieve its expectation, so a later reader cannot "correct" a
+row into a real inversion.
 
 ## Critique Results
 
