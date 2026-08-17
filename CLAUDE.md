@@ -20,6 +20,8 @@ scripts/ci-local.sh             # local CI gates: lint + tests + stress + docs (
 
 Tests are auto-isolated on Redis DB 15 via the `popoto.pytest_plugin` entry point (both `import popoto` and `import src.popoto` collapse onto one canonical module/connection). Override with `POPOTO_TEST_DB=<n>`; DB 0 is rejected to prevent accidental production data loss.
 
+**Ad-hoc scripts (outside pytest) default to DB 0, which is a LIVE agent store on this machine.** `POPOTO_TEST_DB` only binds the pytest plugin, and `POPOTO_REDIS_DB` is the Python global client's name, not an environment variable — setting it does nothing. The only env var that binds the connection is `REDIS_URL`, and it is read at import time: run repro scripts with `REDIS_URL=redis://localhost:6379/15` set *before* `import popoto` (see #577 — this mistake has written to the live store twice).
+
 ### Verifying in a worktree (read before trusting a test or mypy number)
 
 A `.worktrees/` checkout can report a confident, wrong number in five ways — each cost a review round on PR #495. `scripts/ci-local.sh` checks four automatically:
