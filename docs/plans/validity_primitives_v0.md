@@ -743,14 +743,14 @@ interleave: core owns `fields/validity_field.py` + `fields/constants.py`; protoc
 
 | Check | Command | Expected |
 |---|---|---|
-| Package under test is this checkout | `python -c "import popoto,os;print(os.path.realpath(popoto.__file__))"` | output contains `.worktrees/dev-49da033b` |
+| Package under test is this checkout | `python -c "import popoto,os;print(os.path.realpath(popoto.__file__))"` | output starts with `git rev-parse --show-toplevel`. (Was pinned to a literal `.worktrees/dev-49da033b`, which fails for a correct checkout once the branch is rebuilt in a differently-named worktree.) |
 | New tests pass | `pytest tests/test_validity_field.py -q` | exit code 0 |
 | Decay tests still pass | `pytest tests/test_decaying_sorted_field.py tests/test_cyclic_decay_field.py -q` | exit code 0 |
 | Assembler tests still pass | `pytest tests/test_context_assembler.py -q` | exit code 0 |
 | All 3 decay EVAL sites pass 4 keys (replaces the inert grep row) | `pytest tests/test_validity_field.py -q -k "eval_call_sites_pass_four_keys"` | exit code 0 |
 | Composite mask closes the ZUNIONSTORE/SUM leak | `pytest tests/test_composite_score_query.py -q -k "validity"` | exit code 0 |
 | Gate is not a filter kwarg on the default path | `grep -c "validity__current" src/popoto/recipes/context_assembler.py` | match count == 0 |
-| No Redis-module commands introduced | `grep -rnE "\b(BF\.\|CMS\.\|TOPK\.\|TS\.)" src/popoto/fields/validity_field.py src/popoto/fields/supersession.py` | exit code 1 |
+| No Redis-module commands introduced | `grep -rnE '"\s*(BF\|CMS\|TOPK\|TS)\.' src/popoto/fields/validity_field.py src/popoto/fields/supersession.py` | exit code 1. Matches the command only inside a string literal, i.e. where it would actually be dispatched. The previous `\b(BF\.\|...)` form was self-matching — `validity_field.py:32`'s own prohibition prose contains the tokens, so the row reported failure on a clean tree. Red state confirmed: the new form still matches `execute_command("BF.ADD", ...)`. |
 | `CYCLIC_DECAY_LUA` untouched | `git diff main --stat -- src/popoto/fields/cyclic_decay_field.py \| wc -l \| tr -d ' '` | output contains `0` |
 | No model-hash mutation for chain links (D3) | `grep -cE "HSET.*supersed" src/popoto/fields/supersession.py` | match count == 0 |
 | Format clean | `black --check src/ tests/` | exit code 0 |

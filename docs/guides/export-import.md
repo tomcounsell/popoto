@@ -72,7 +72,7 @@ Because there is no reverse index from record to identity digest, exporting a
 record with a `ValidityField` costs one extra `SCAN` over that field's
 `open:*` pointers to find any aimed at it; this only runs on the export path, not
 on save or read. See
-[ValidityField and SupersessionProtocol](../features/validity-and-supersession.md#export--import)
+[ValidityField and SupersessionProtocol](../features/validity-and-supersession.md#export-import)
 for the full accounting.
 
 ### `ExportResult`
