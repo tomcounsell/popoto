@@ -47,13 +47,15 @@ This is a deterministic pattern gate, not an oracle. Read the holes:
   worse than useless. The cost is a real, enumerated hole: a bare 40-hex-char
   secret with no vendor prefix is not caught by the entropy backstop. It is
   still caught if it appears as ``password=<sha>`` or similar.
-- **Digit-free tokens are excluded from entropy scoring**
-  (:func:`_is_prose_compound`). Entropy per character does not separate
-  ``ExtractionProviderRegistry`` (3.87 bits) from a real secret, so scoring
-  every long token voided 4.7% of this repo's own documentation paragraphs.
-  The cost: a randomly generated secret containing no digit at all escapes
-  the backstop -- ~3% of 20-character base64 strings, ~0.4% at 32. Only
-  ``high_entropy`` is affected; every named format has its own detector.
+- **Digit-free tokens, and tokens with no long separator-free run, are
+  excluded from entropy scoring** (:func:`_entropy_candidate`). Entropy per
+  character does not separate ``ExtractionProviderRegistry`` (3.87 bits) or
+  ``text-embedding-3-small`` from a real secret, so scoring whole tokens
+  voided 11.6% of this repo's own documentation paragraphs. The cost: a
+  secret escapes the backstop if it contains no digit (~3% of 20-char base64,
+  ~0.4% at 32) or if a separator breaks it at least every
+  ``NR_ENTROPY_MIN_TOKEN_LEN`` characters. Only ``high_entropy`` is affected;
+  every named format has its own detector.
 - **A novel credential format with no known prefix, low entropy, and no
   assignment context can pass.** The detector corpus is explicit and lives in
   one module so it can be extended; issue #561's module M9 (seeded audit) is
@@ -245,32 +247,47 @@ _STRUCTURAL_EXCLUSIONS = (
 _ENTROPY_CHARSET = re.compile(r"^[A-Za-z0-9+/=_\-]+$")
 
 
-def _is_prose_compound(token: str) -> bool:
-    """True if ``token`` reads as English text rather than an encoded blob.
+#: Separator characters that are inside the entropy charset but are word
+#: boundaries in technical prose: ``text-embedding-3-small``,
+#: ``BM25/vector/composite``, ``POPOTO_MEMORY_MAX_ITEMS=10``.
+_SEGMENT_SEPARATORS = re.compile(r"[-_/=+]+")
 
-    Shannon entropy per character is a poor discriminator at these lengths.
-    ``conversational-adjacency`` scores 3.69 bits/char and
-    ``ExtractionProviderRegistry`` 3.87, both above the 3.5 threshold, purely
-    because their letters are mostly distinct. Measured against this repo's
-    own documentation, entropy alone put 35 of 900 long paragraphs (3.9%)
-    into the ``high_entropy`` bucket, every one a false positive of that
-    shape -- and at turn level a single such token voids the whole turn.
 
-    The discriminator that actually separates the two populations is
-    *digits*. Encoded secrets are drawn from an alphabet that includes them;
-    hyphenated compounds and CamelCase identifiers contain none. So a token
-    with no digit at all is treated as prose and not entropy-scored. Applying
-    this cut takes the same corpus from 4.7% of paragraphs blocked to 0.8%,
-    with every remaining block a true positive.
+def _entropy_candidate(token: str) -> Optional[str]:
+    """Return the substring of ``token`` worth entropy-scoring, or None.
 
-    **This widens an enumerated hole and the trade is deliberate.** A
-    randomly generated secret containing no digit whatsoever now escapes the
-    entropy backstop: roughly 3% of 20-character base64 strings and 0.4% at
-    32 characters. It applies *only* to ``high_entropy``, which is the
-    unknown-format backstop -- every vendor-prefixed token, JWT, PEM block,
-    URL userinfo, and assignment form has its own detector and is unaffected.
+    Shannon entropy per character is a poor discriminator on whole tokens at
+    these lengths. ``conversational-adjacency`` scores 3.69 bits/char and
+    ``ExtractionProviderRegistry`` 3.87, both over the 3.5 threshold, purely
+    because their letters are mostly distinct. Scoring whole tokens blocked
+    4.7% of this repo's documentation paragraphs, and at turn level a single
+    such token voids the entire turn.
+
+    Two structural cuts, in order:
+
+    1. **No digit anywhere -> not a candidate.** Encoded secrets draw from an
+       alphabet containing digits; hyphenated compounds and CamelCase
+       identifiers do not.
+    2. **Score only the longest separator-free run.** Entropy is a property
+       of a contiguous encoded run, not of a phrase. ``text-embedding-3-small``
+       has a digit, but its longest run is ``embedding`` (9 chars); a real
+       base64 secret is one unbroken run. This is what separates
+       ``POPOTO_MEMORY_MAX_ITEMS=10`` from ``Zq7Z1kXpLm4TvB8NwR2yHc6JdFgA9sQe``.
+
+    The run must still meet ``NR_ENTROPY_MIN_TOKEN_LEN`` on its own.
+
+    **The enumerated cost.** A randomly generated secret escapes the entropy
+    backstop if it contains no digit at all (~3% of 20-character base64
+    strings, ~0.4% at 32) or if it is broken by a separator at least every
+    ``NR_ENTROPY_MIN_TOKEN_LEN`` characters. Both apply *only* to
+    ``high_entropy``, the unknown-format backstop -- every vendor-prefixed
+    token, JWT, PEM block, URL userinfo, and assignment form has its own
+    detector and is unaffected.
     """
-    return not any(char.isdigit() for char in token)
+    if not any(char.isdigit() for char in token):
+        return None
+    longest = max(_SEGMENT_SEPARATORS.split(token), key=len, default="")
+    return longest or None
 
 
 def _shannon_entropy(token: str) -> float:
@@ -375,9 +392,10 @@ def _scan_high_entropy(text: str) -> Optional[NeverRecordVerdict]:
             continue
         if not _ENTROPY_CHARSET.match(token):
             continue
-        if _is_prose_compound(token):
+        candidate = _entropy_candidate(token)
+        if candidate is None or len(candidate) < min_len:
             continue
-        if _shannon_entropy(token) >= min_bits:
+        if _shannon_entropy(candidate) >= min_bits:
             return NeverRecordVerdict(
                 blocked=True, reason="high_entropy", detector="shannon"
             )
@@ -572,6 +590,11 @@ class NeverRecordMixin:
     # round trip. Matches WriteFilterMixin's precedent.
     roundtrip_policy: str = "rebuild"
 
+    #: Verdict from the most recent _check_never_record() on this instance:
+    #: a blocking NeverRecordVerdict, or None when the scan came back clean.
+    #: Content-free by construction, like every other verdict.
+    _never_record_verdict: Optional[NeverRecordVerdict] = None
+
     if TYPE_CHECKING:
         # Supplied by Model, which every user of this mixin also
         # inherits from. Declared for the type checker only.
@@ -619,10 +642,16 @@ class NeverRecordMixin:
         for value in self._never_record_scan_values():
             verdict = scan_never_record(value)
             if verdict.blocked:
+                # Recorded on the instance so a caller that only sees
+                # save() -> False can tell a privacy drop from a rejected
+                # write without re-scanning the content. The verdict is
+                # content-free, so holding it costs nothing.
+                self._never_record_verdict = verdict
                 write_tombstone(type(self).__name__, verdict)
                 raise NeverRecordException(
                     f"never-record: {verdict.reason} ({verdict.detector})"
                 )
+        self._never_record_verdict = None
         return _CLEAN
 
     @classmethod

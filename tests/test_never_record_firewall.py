@@ -471,26 +471,42 @@ def test_hyphenated_technical_prose_is_not_high_entropy(content):
     assert not scan_never_record(content).blocked
 
 
-def test_digit_bearing_tokens_are_still_entropy_scored():
-    """The prose cut keys on digits, which real encoded secrets carry."""
+def test_contiguous_encoded_runs_are_still_entropy_scored():
+    """A real secret is one unbroken run, and is still caught."""
     assert scan_never_record("tok Zq7Z1kXpLm4TvB8NwR2yHc6JdFgA9sQe").blocked
-    assert scan_never_record("tok Zq7Z-1kXpLm4Tv-B8NwR2yHc6JdFgA9sQe").blocked
     assert scan_never_record("blob aGVsbG8gd29ybGQ7dGhpcyBpczY0IQ==").blocked
+    # A separator is fine as long as one run still clears the threshold.
+    assert scan_never_record("tok ab-Zq7Z1kXpLm4TvB8NwR2yHc6JdFgA9sQe").blocked
 
 
-def test_digitless_secret_escapes_the_entropy_backstop():
-    """Pin the enumerated hole so it cannot regress silently.
+@pytest.mark.parametrize(
+    "content",
+    [
+        # No digit anywhere.
+        "tok ZqZkXpLmTvBNwRyHcJdFgAsQeXyZ",
+        # Has digits, but no separator-free run reaches the length threshold.
+        "tok Zq7Z-1kXpLm4Tv-B8NwR2yHc6JdFgA9sQe",
+    ],
+)
+def test_enumerated_entropy_holes_are_pinned(content):
+    """Pin the two holes the structural cuts create, so they cannot drift.
 
-    A digit-free random token is NOT caught by the entropy backstop -- the
-    deliberate cost of not blocking ordinary technical prose. Documented in
-    the module docstring and on the feature page. If a future change makes
-    this blocked, that is an improvement, but it must be a considered one:
-    it will also re-block CamelCase identifiers.
+    These are NOT caught by the entropy backstop. That is the deliberate,
+    documented cost of not blocking ordinary technical prose like
+    ``text-embedding-3-small`` and ``POPOTO_MEMORY_MAX_ITEMS=10``. If a
+    future change starts blocking these, that is potentially an improvement
+    -- but it must be a considered one, because it will also re-block the
+    prose corpus above.
     """
-    assert not scan_never_record("tok ZqZkXpLmTvBNwRyHcJdFgAsQeXyZ").blocked
-    # ...but the same secret behind any recognized shape is still caught.
-    assert scan_never_record("password=ZqZkXpLmTvBNwRyHcJdFgAsQeXyZ").blocked
-    assert scan_never_record("sk-ant-ZqZkXpLmTvBNwRyHcJdFgAsQeXyZ").blocked
+    assert not scan_never_record(content).blocked
+
+
+def test_holes_close_when_the_secret_carries_any_known_shape():
+    """The entropy holes are backstop-only; named detectors still fire."""
+    secret = "ZqZkXpLmTvBNwRyHcJdFgAsQeXyZ"
+    assert scan_never_record(f"password={secret}").blocked
+    assert scan_never_record(f"sk-ant-{secret}").blocked
+    assert scan_never_record(f"postgres://user:{secret}@host/db").blocked
 
 
 def test_assignment_threshold_is_read_at_scan_time():

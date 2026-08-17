@@ -35,9 +35,8 @@ def _read_never_record_switch() -> bool:
     Returns True when the never-record firewall is ENABLED. The env var is
     phrased as a disable so the default-on doctrine holds when it is unset.
     """
-    return os.environ.get("POPOTO_NEVER_RECORD_DISABLE", "").strip().lower() not in (
-        _TRUTHY
-    )
+    value = os.environ.get("POPOTO_NEVER_RECORD_DISABLE", "").strip().lower()
+    return value not in _TRUTHY
 
 
 class Defaults:

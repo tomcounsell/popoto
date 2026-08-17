@@ -649,6 +649,23 @@ Critic result files: `scratchpad/critique_561/`. No `docs/sdlc/do-plan-critique.
 exists in this repo, so the critique ran on the generic path and recorded no
 verdict to any substrate — this table is the record.
 
+## Review Results (round 2)
+
+`/do-pr-review` at `a9c4066`. Verdict: **CHANGES REQUESTED** — 0 blockers, 2
+tech debt, 2 nits. The round-1 blocker and all three round-1 tech-debt items
+were confirmed resolved, with CI green on ruff, pytest (Redis), and pytest
+(Valkey).
+
+| Finding | Resolution |
+|---|---|
+| **"every remaining block a true positive" is false, and it is asserted on the public feature page.** All 18 surviving `high_entropy` blocks were false positives (`text-embedding-3-small`, `POPOTO_MEMORY_MAX_ITEMS=10`, `BM25/vector/composite`). | Confirmed by re-measuring. The round-1 sweep excluded `docs/plans/`, where nearly all survivors live, and I generalized a precision claim from a corpus that did not exercise it. Two fixes: (a) added a third structural cut — score only the longest separator-free run, which must clear the length threshold alone, since entropy is a property of a contiguous encoded run rather than of a phrase; (b) corrected the claim everywhere it appeared. Re-measured on the **full** 5147-paragraph corpus including plans: **zero** `high_entropy` blocks, 0.47% blocked overall, all by named detectors. The new hole (separator-broken secret) is documented and pinned by `test_enumerated_entropy_holes_are_pinned`. |
+| PR body never updated after round 1 — stale counts, missing latency, missing the new hole | Rewritten. |
+
+Lesson recorded rather than smoothed over: the round-1 fix was measured on a
+corpus that excluded the documents containing the failure mode, and the
+resulting claim was stated with more confidence than the evidence supported.
+The corrected measurement uses the full corpus.
+
 ## Review Results (round 1)
 
 `/do-pr-review` on PR #587. Verdict: **CHANGES REQUESTED** — 1 blocker, 3 tech
@@ -658,7 +675,7 @@ debt, 2 nits. Resolution:
 |---|---|
 | **BLOCKER** — the 5 new `Defaults` attributes are not in `MODULE_CONSTANTS` or the exclusion set, failing `tests/benchmarks/test_defaults_sync.py` on both CI jobs | Reproduced locally and confirmed. Registered all 5 in the exclusion set with rationale (they are read from `Defaults` at scan time with no module-level alias, and are a security posture rather than a sweepable retrieval dial). |
 | Plan's Verification block named 3 test files that do not exist | Corrected above, with the failure mode called out. |
-| Over-blocking materially wider than disclosed: `high_entropy` voided 11.6% of long paragraphs; the no-false-positive corpus contained no technical prose | Root-caused: entropy per char does not separate `ExtractionProviderRegistry` (3.87 bits) from a secret. Added a digit-based structural cut. Measured on this repo's docs: 4.7% → 0.8% of ≥200-char paragraphs, all remaining blocks true positives. Six technical-prose cases added to the corpus. The widened hole is documented in the module docstring, the feature page, and pinned by `test_digitless_secret_escapes_the_entropy_backstop`. |
+| Over-blocking materially wider than disclosed: `high_entropy` voided 11.6% of long paragraphs; the no-false-positive corpus contained no technical prose | Root-caused: entropy per char does not separate `ExtractionProviderRegistry` (3.87 bits) from a secret. See round 2 — the first fix was insufficient and its success claim was wrong. |
 | 10 KB scan-time measurement missing from the PR body (plan required reporting it) | Measured: **p50 5.11 ms** on a 12.5 KB clean turn, 1.30 ms when a hit short-circuits early. This is **over the plan's 5 ms report threshold**, so it is reported rather than silently accepted — see Open Question 4. |
 | `NR_ASSIGNMENT_MIN_VALUE_LEN` was compiled into a module-level regex, so runtime overrides silently did nothing | Moved both the assignment and URL-userinfo length checks to scan time. Pinned by `test_assignment_threshold_is_read_at_scan_time`. |
 
@@ -685,16 +702,29 @@ the build. The build proceeds on the stated default; each is cheap to reverse.
    the entropy backstop (it is still caught by `credential_assignment` if it
    appears as `password=<sha>`). The alternative is dropping every commit SHA a
    developer's memory ever mentions. Confirm the trade.
-3. **Scan latency is over the plan's own report threshold.** The Risks table
-   said to measure scan time on a 10 KB turn and "if it exceeds ~5 ms, report
-   rather than silently accept." Measured p50 is **5.11 ms** on a 12.5 KB
-   clean turn (Python 3.12.13, macOS). Reporting it as instructed rather than
-   clearing it. Context for the decision: this is on the *write* path, not
-   the 400 ms read-hook budget, and it is paid once per turn at the turn-level
-   gate plus once per surviving record at the save-level gate. A hit
-   short-circuits at 1.30 ms. It looks acceptable, but the plan reserved that
-   call, so it is the PM's.
-4. **Plan-doc location.** Repo convention commits plan docs to `main`. This lane
+3. **RESOLVED — scan latency.** The Risks table said to measure scan time on a
+   10 KB turn and "if it exceeds ~5 ms, report rather than silently accept."
+   The first measurement (5.11 ms) was taken on a **12.5 KB** payload, above
+   the specified size, and was escalated rather than cleared. Re-measured at
+   the specified size (Python 3.12.13, macOS, single process):
+
+   | Payload | p50 | p95 |
+   |---|---|---|
+   | 10,240 chars, clean | **3.92 ms** | 4.19 ms |
+   | 12,500 chars, clean | 4.84 ms | 4.92 ms |
+   | early hit (credential in first token) | 0.77 ms | — |
+
+   Under the threshold at the specified size, so the gate is met rather than
+   waived. PM ruling: accepted, no hold, report the numbers in the PR body.
+   Context: this is the *write* path, not the 400 ms read-hook budget.
+4. **RESOLVED — plan-doc location.** PM ruling: carrying the plan on the
+   session branch is fine; it merges with the PR. Recorded for the next lane —
+   repo convention commits plan docs to `main`, but a worktree lane with
+   concurrent peers on the shared checkout should not push to `main` mid-run.
+
+Superseded (kept for the record):
+
+5. **Plan-doc location.** Repo convention commits plan docs to `main`. This lane
    runs in an isolated worktree with concurrent lanes active on the shared
    checkout, so the plan is carried on the session branch and lands with the
    implementation PR instead. Confirm this is acceptable or say whether the plan

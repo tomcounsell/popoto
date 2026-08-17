@@ -420,14 +420,13 @@ class SubconsciousMemory:
                     saved.append(instance)
                     self._seed_associations(instance, fact)
                     self._seed_confidence(instance, fact)
-                elif (
-                    Defaults.NEVER_RECORD_ENABLED
-                    and scan_never_record(fact.text).blocked
-                ):
-                    # save() returned False and the fact is firewall-blocked,
-                    # so this is a deliberate drop, not a rejected write. Note
-                    # it so an all-dropped turn is not misreported as an
-                    # outage. The tombstone was already written inside save().
+                elif getattr(instance, "_never_record_verdict", None) is not None:
+                    # save() returned False and the firewall recorded why, so
+                    # this is a deliberate drop rather than a rejected write.
+                    # Read from the instance instead of re-scanning the text:
+                    # the verdict is authoritative and costs nothing. Note it
+                    # so an all-dropped turn is not misreported as an outage.
+                    # The tombstone was already written inside save().
                     privacy_dropped = True
             except Exception as e:
                 logger.warning("Failed to save extracted memory: %s", e)

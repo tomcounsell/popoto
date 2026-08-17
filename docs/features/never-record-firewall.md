@@ -69,27 +69,37 @@ of aiming at zero false negatives on the class above. If a memory you wanted
 disappeared, check `never_record_counts()` — the drop is recorded even though
 the content is not.
 
-**The entropy backstop is deliberately narrowed, in two ways.** Shannon
-entropy per character does not actually separate secrets from technical
-English at these lengths: `conversational-adjacency` scores 3.69 bits/char
-and `ExtractionProviderRegistry` 3.87, both over the 3.5 threshold. Measured
-against this repo's own documentation, entropy alone blocked 4.7% of
-paragraphs over 200 characters — and at turn level a single such token voids
-the entire turn. Two structural cuts bring that to 0.8%, with every remaining
-block a true positive:
+**The entropy backstop is deliberately narrowed, in three ways.** Shannon
+entropy per character does not separate secrets from technical English at
+these lengths: `conversational-adjacency` scores 3.69 bits/char and
+`ExtractionProviderRegistry` 3.87, both over the 3.5 threshold. Measured
+against this repo's own documentation, scoring whole tokens blocked 11.6% of
+paragraphs over 200 characters — and at turn level one such token voids the
+entire turn. Three structural cuts apply before scoring:
 
-- *Canonical git SHAs and UUIDs are not entropy-scored.* Developer memory
-  mentions commit SHAs constantly.
-- *Tokens containing no digit at all are not entropy-scored.* Encoded secrets
-  draw from an alphabet that includes digits; hyphenated compounds and
-  CamelCase identifiers do not.
+- *Canonical git SHAs and UUIDs are not scored.* Developer memory mentions
+  commit SHAs constantly.
+- *Tokens with no digit anywhere are not scored.* Encoded secrets draw from
+  an alphabet containing digits; hyphenated compounds and CamelCase
+  identifiers do not.
+- *Only the longest separator-free run is scored, and it must clear the
+  length threshold on its own.* Entropy is a property of a contiguous
+  encoded run, not of a phrase. This is what separates
+  `text-embedding-3-small` and `POPOTO_MEMORY_MAX_ITEMS=10` from
+  `Zq7Z1kXpLm4TvB8NwR2yHc6JdFgA9sQe`.
 
-Both cuts are real holes, stated precisely: a bare 40-hex-character secret,
-or any randomly generated secret that happens to contain no digit (~3% of
-20-character base64 strings, ~0.4% at 32 characters), escapes the entropy
-backstop. Neither cut touches any other detector — the same secret is still
-caught as `password=<value>`, behind a vendor prefix, or in any other named
-shape.
+Together these take the measured false-positive rate on that corpus (5147
+paragraphs, including this repo's plan documents) to zero `high_entropy`
+blocks, at 0.47% of paragraphs blocked overall — all by the named detectors,
+mostly documentation that literally discusses off-the-record markers.
+
+Each cut is a real hole, stated precisely. A secret escapes the entropy
+backstop if it is a bare 40-hex-character string, if it contains no digit at
+all (~3% of 20-character base64 strings, ~0.4% at 32), or if a separator
+breaks it at least every 20 characters. **No cut touches any other
+detector** — the same secret is still caught as `password=<value>`, behind a
+vendor prefix, in a URL, or in any other named shape. The backstop exists
+for unknown formats; it is not the guarantee.
 
 **A novel credential format can pass** if it has no recognized prefix, no
 assignment context, and entropy below the threshold. The detector corpus
