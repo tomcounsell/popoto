@@ -27,7 +27,7 @@ cannot do unaided is decide what belongs there:
 
 Each primitive below covers one of those. Each is independently useful.
 
-## The 16 primitives
+## The 17 primitives
 
 | Primitive | What it does | Full reference |
 |-----------|--------------|----------------|
@@ -43,6 +43,7 @@ Each primitive below covers one of those. Each is independently useful.
 | ObservationProtocol | Outcome-driven effects: acted, dismissed, deferred, contradicted, used | [page](observation-protocol.md) |
 | AccessTrackerMixin | Two-stage read tracking: reads stage cheaply, then promote on confirmation | [reference](../fields.md#accesstrackermixin) |
 | WriteFilterMixin | Gates persistence: low-value records are discarded before they reach Redis | [reference](../fields.md#writefiltermixin) |
+| NeverRecordMixin | Deterministic privacy gate: credentials and secrets are blocked before they reach Redis | [page](never-record-firewall.md) |
 | EventStreamMixin | Append-only mutation log via Redis Streams | [reference](../fields.md#eventstreammixin) |
 | TagField | Optional multi-value scoping for a centrally hosted Redis serving many agents | [reference](../fields.md#tagfield) |
 | ValidityField | Bitemporal validity intervals: a record is either a member of default retrieval or it isn't | [page](validity-and-supersession.md) |
@@ -89,7 +90,7 @@ counted separately, never summed into the primitive count.
 
   underneath, on every record:
     DecayingSortedField · ConfidenceField · WriteFilterMixin ·
-    PredictionLedger · TagField · EventStreamMixin
+    NeverRecordMixin · PredictionLedger · TagField · EventStreamMixin
   over time, across the corpus:
     MemoryLifecycle: promote, forget, tombstone, restore
 ```

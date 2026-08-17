@@ -19,6 +19,7 @@ Agent-memory primitives and composed layers shipped in Popoto. Start at
 | [Hybrid Retrieval (BM25 + RRF)](hybrid-retrieval.md) | BM25 keyword search fused with vector scores via RRF | Stable |
 | [LLM Memory Extraction](llm-memory-extraction.md) | Pluggable extraction providers (heuristic default, opt-in Claude) for `SubconsciousMemory` | Stable |
 | [Metacognitive Layer](metacognitive-layer.md) | Retrieval quality scoring, FOK, `"used"` outcome, AdaptiveAssembler | Stable |
+| [NeverRecordFirewall](never-record-firewall.md) | Deterministic pre-storage privacy gate that blocks credentials and secrets from ever reaching Redis | Stable |
 | [ObservationProtocol](observation-protocol.md) | Outcome-driven memory effects: acted, dismissed, deferred, contradicted, used | Stable |
 | [ParametricSweep](parametric-sweep.md) | Automated benchmark sweeps for tuning numeric constants | Stable |
 | [PolicyCache](policy-cache.md) | Learned action selection with crystallization and TD updates | Stable |

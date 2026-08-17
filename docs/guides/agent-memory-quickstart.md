@@ -6,7 +6,7 @@ understand what each piece buys before you keep or drop it.
 
 > **Prerequisites:** `pip install popoto` and Redis running on `localhost:6379`.
 >
-> **Full reference:** [Agent Memory](../features/agent-memory.md) maps all 14
+> **Full reference:** [Agent Memory](../features/agent-memory.md) maps all 15
 > primitives and the layers composed on them.
 
 ## Level 0: Import the defaults
@@ -36,6 +36,12 @@ actual isolation boundary until that lands.
 
 This is also the configuration the published benchmarks run. If you take
 nothing else from this page, take this.
+
+`DefaultMemory` also carries `NeverRecordMixin`, so credential- and
+secret-shaped content is blocked before it reaches Redis with no extra setup
+— see [NeverRecordFirewall](../features/never-record-firewall.md). If you
+hand-build the schema at Levels 1-4 below, that protection is not there for
+free; add `NeverRecordMixin` to your own model class if you want it.
 
 The levels below exist for when you want to shape the schema yourself. See the
 [SubconsciousMemory recipe](subconscious-memory-recipe.md) for the default
@@ -447,7 +453,7 @@ does not re-export field types. Always import from `popoto` directly.
 
 - **[SubconsciousMemory Recipe](subconscious-memory-recipe.md):** the per-turn loop from Level 0, with every knob
 - **[Query-Blind Retrieval](query-blind-retrieval.md):** when composite ranking is right, and when it costs you the answer
-- **[Agent Memory](../features/agent-memory.md):** all 16 primitives and the layers composed on them
+- **[Agent Memory](../features/agent-memory.md):** all 17 primitives and the layers composed on them
 - **[Benchmarks](../benchmarks.md):** the numbers behind the defaults, including the runs that came out badly
 - **[Tuning Magic Numbers](tuning-magic-numbers.md):** decay rates, confidence signals, and thresholds
 - **[PolicyCache Recipe](policy-cache-recipe.md):** RL-style learned action selection on these primitives

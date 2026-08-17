@@ -48,6 +48,50 @@ Source: `src/popoto/fields/write_filter.py`
 | `_wf_min_threshold` | **0.1** (sweep 2026-04-17) | [0.05, 0.5] | **Medium** (variance 0.068) |
 | `_wf_priority_threshold` | 0.7 | [0.5, 0.9] | Low |
 
+### NeverRecordMixin
+
+Source: `src/popoto/privacy/never_record.py`, constants in `src/popoto/fields/constants.py`
+
+| Constant | Default | Optimal Range | Sensitivity |
+|----------|---------|--------------|-------------|
+| `NR_ENTROPY_MIN_TOKEN_LEN` | 20 | — | Not swept |
+| `NR_ENTROPY_MIN_BITS` | 3.5 | — | Not swept |
+| `NR_ASSIGNMENT_MIN_VALUE_LEN` | 6 | — | Not swept |
+| `NR_TOMBSTONE_LOG_MAX` | 1000 | n/a (capacity bound) | n/a |
+| `NEVER_RECORD_ENABLED` | `True` (auto-detected; env override) | n/a (boolean) | n/a |
+
+None of the four `NR_*` numeric constants have been through this guide's benchmark
+harness — there is no sweep file backing any of them, and no retrieval-quality
+metric applies to a privacy gate's block/allow decision the way it applies to a
+decay rate or a threshold. They are set by argument, not by measurement:
+
+- `NR_ENTROPY_MIN_TOKEN_LEN` (20) is the shortest whitespace token the entropy
+  backstop will score. Below 20 characters, ordinary base64-ish English words
+  start to dominate the token population and the detector becomes noise rather
+  than signal.
+- `NR_ENTROPY_MIN_BITS` (3.5) is the Shannon bits-per-character threshold above
+  which a token is treated as random rather than natural language. Random
+  base64 runs roughly 5.5-6.0 bits/char, random hex roughly 4.0; English text
+  rendered over the same character set sits well below 3.5. The value is
+  deliberately conservative toward over-blocking, not corpus-tuned.
+- `NR_ASSIGNMENT_MIN_VALUE_LEN` (6) is the shortest value after a
+  `password=`/`token:`-style prefix that counts as a credential assignment; it
+  is also the shortest accepted password in a `scheme://user:password@host`
+  URL.
+- `NR_TOMBSTONE_LOG_MAX` (1000) caps the `$NR:{Class}:drops` LIST to a recent
+  window. The `$NR:{Class}:counts` HASH is unbounded and is the authoritative
+  count; the list exists for recent-drop inspection, not auditing at scale.
+
+`NEVER_RECORD_ENABLED` is not a tuning constant at all — like
+`DATETIME_KEY_LEGACY`, it is a deploy-level kill switch. It is default `True`
+(the firewall runs), backed by the `POPOTO_NEVER_RECORD_DISABLE` environment
+variable read at import, and assignable directly at runtime to disable the
+firewall without touching model code. See
+[NeverRecordFirewall](../features/never-record-firewall.md) for the guarantee
+this gate makes and the enumerated holes in it (canonical git SHAs and UUIDs
+are excluded from entropy scoring, for example) — those are shape decisions,
+not values a sweep would tune.
+
 ### DecayingSortedField / CyclicDecayField
 
 | Constant | Default | Optimal Range | Sensitivity |

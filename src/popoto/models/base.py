@@ -1124,12 +1124,22 @@ class Model(metaclass=ModelBase):
         """Persist the model instance to Redis.
 
         Executes the complete save workflow:
+            0. Never-record firewall, if the model carries NeverRecordMixin
+               (runs first, before every step below -- see below)
             1. Validate and format field values (pre_save)
             2. Serialize instance to Redis hash map
             3. Store hash map with HSET command
             4. Add key to model's class set (for .all() queries)
             5. Handle key migration if KeyFields changed
             6. Trigger Field.on_save() hooks for secondary indexes
+
+        Gate order note (#561): a model carrying
+        :class:`~popoto.privacy.never_record.NeverRecordMixin` is scanned for
+        credential-shaped and off-the-record content BEFORE the write filter
+        and before pre_save(). A blocked save returns False and writes
+        nothing -- no hash, no index, no BM25 posting, no embedding call.
+        That ordering is the guarantee, so do not move the check later.
+        Disable deploy-wide with POPOTO_NEVER_RECORD_DISABLE=1.
 
         Args:
             pipeline: Optional Redis pipeline for atomic batch operations.

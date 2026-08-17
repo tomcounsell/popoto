@@ -166,6 +166,40 @@ The query cue is only meaningful in **query-sensitive** modes (lexical or hybrid
 
 ### Post-turn: `extract_memories(response_text, importance)`
 
+Before anything else, `extract_memories()` runs the never-record firewall
+(`scan_never_record()`) against the whole `response_text`. This is a turn-level
+gate, not a per-record one: if the text matches an off-the-record marker or any
+other blocked shape, the **entire turn is voided** — no facts are extracted, the
+extraction provider is never called, and the method returns `[]`. Running the
+check before the extractor also means that on the `ClaudeExtractionProvider`
+path, a turn carrying an off-the-record marker never reaches the API at all. A
+content-free tombstone is still written (see
+[NeverRecordFirewall](../features/never-record-firewall.md)). This applies
+regardless of `model_class` — the guarantee does not depend on the model
+carrying `NeverRecordMixin`.
+
+If the turn passes that gate, per-fact drops can still happen further down the
+pipeline: when `model_class` carries `NeverRecordMixin`, an individual fact's
+`save()` call can itself be blocked. `extract_memories()` distinguishes "nothing
+extracted" from "everything extracted was privacy-dropped" via the
+`last_extraction_privacy_dropped` property:
+
+```python
+saved = sm.extract_memories(answer, importance=0.6)
+if not saved and sm.last_extraction_privacy_dropped:
+    # The empty return is a deliberate privacy drop, not a failure.
+    ...
+```
+
+`last_extraction_privacy_dropped` is `True` when the most recent
+`extract_memories()` call returned `[]` because the turn-level gate blocked the
+whole turn, or because every extracted fact was blocked on save. It is reset to
+`False` at the top of every call, so it always describes the immediately
+preceding one. This exists because an empty return is otherwise
+indistinguishable from an extraction outage — without the flag, a caller like
+`MemoryService.capture()` would log every successful privacy drop as a broken
+write path.
+
 By default (no `extraction_provider` passed to the constructor):
 
 1. Splits the LLM response into sentences

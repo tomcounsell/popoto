@@ -1406,6 +1406,72 @@ class StrictMemory(WriteFilterMixin, Model):
 See [Agent Memory](features/agent-memory.md) for the broader
 agent memory context and how WriteFilter fits with DecayingSortedField and AccessTracker.
 
+## NeverRecordMixin
+
+`NeverRecordMixin` gates `save()` calls against a deterministic never-record firewall:
+credential- and secret-shaped content is blocked before it ever reaches Redis. It is
+**not** a `Field`, and deliberately **not** a `WriteFilterMixin` subclass — the write
+filter is a scalar salience score with one `compute_filter_score()` slot per class;
+the firewall is a boolean content predicate with its own tombstone side effect. See
+[NeverRecordFirewall](features/never-record-firewall.md) for the full guarantee,
+the nine reason codes, and the enumerated holes in the detector corpus.
+
+```python
+from popoto import Model, KeyField, Field, NeverRecordMixin
+
+class Memory(NeverRecordMixin, Model):
+    agent_id = KeyField()
+    content = Field(type=str)
+```
+
+```python
+# Blocked — save() returns False, nothing is written to Redis
+leaked = Memory(agent_id="a1", content="my key is sk-ant-api03-AAAA...")
+leaked.save()  # => False
+
+# Ordinary content persists normally
+note = Memory(agent_id="a1", content="deploy uses blue-green")
+note.save()  # => True
+```
+
+The gate runs inside `Model.save()`, **before** the `WriteFilterMixin` check and
+before `pre_save()`. A blocked save returns `False` and writes nothing at all — no
+serialization, no HSET, no index writes, no BM25 tokenization, no embedding call, no
+co-occurrence edge.
+
+No fragment of the blocked content is ever stored. Instead, a content-free tombstone
+is written to two plain Redis structures (no modules, so this works identically on
+Redis and Valkey):
+
+- `$NR:{ClassName}:counts` — HASH, incremented per reason code via `HINCRBY`
+- `$NR:{ClassName}:drops` — LIST, capped at `Defaults.NR_TOMBSTONE_LOG_MAX` entries via `LPUSH` + `LTRIM`
+
+Two classmethods read that audit trail back:
+
+```python
+Memory.never_record_counts()
+# => {"credential_prefix": 3, "high_entropy": 1}
+
+Memory.never_record_log(limit=100)
+# => [{"id": "<uuid4>", "reason": "credential_prefix", "detector": "vendor_token", "at": 1755400000.123}, ...]
+```
+
+`never_record_counts()` returns `{reason_code: count}` for this model, and
+`never_record_log()` returns the most recent tombstones, newest first. Both are
+content-free by construction: the log's `id` is a random `uuid4`, not derived from
+the dropped content, so the log cannot be used as an oracle to confirm a guessed
+secret.
+
+Disable the firewall globally with the `POPOTO_NEVER_RECORD_DISABLE` environment
+variable, or by setting `Defaults.NEVER_RECORD_ENABLED = False` at runtime — see
+[Environment Variables](configuration.md#environment-variables).
+
+!!! tip
+    `NeverRecordMixin` composes with `WriteFilterMixin` on the same model. Order
+    them however you like in the inheritance list — the never-record check always
+    runs first inside `Model.save()`, regardless of mixin order, so a blocked save
+    never reaches `compute_filter_score()`.
+
 ## ContentField
 
 `ContentField` routes large content values (documents, text, binary data) to filesystem
