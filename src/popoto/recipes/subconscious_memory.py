@@ -60,6 +60,7 @@ from ..extraction import HeuristicExtractionProvider
 from ..fields.confidence_field import ConfidenceField
 from ..fields.constants import Defaults
 from ..fields.observation import ObservationProtocol
+from ..privacy.never_record import scan_never_record, write_tombstone
 
 logger = logging.getLogger("POPOTO.SubconsciousMemory")
 
@@ -250,6 +251,30 @@ class SubconsciousMemory:
             content_field=content_field,
         )
 
+        # Never-record firewall (#561): whether the most recent
+        # extract_memories() call returned empty *because* content was
+        # deliberately dropped, as opposed to failing. Callers use this to
+        # keep a privacy drop out of their failure channel -- see
+        # MemoryService.capture().
+        self._last_extraction_privacy_dropped = False
+
+    @property
+    def last_extraction_privacy_dropped(self) -> bool:
+        """Whether the last ``extract_memories()`` call dropped for privacy.
+
+        True when that call returned ``[]`` because the never-record
+        firewall blocked the turn, or blocked every candidate fact. Reset at
+        the top of every ``extract_memories()`` call, so it always describes
+        the immediately preceding one.
+
+        This exists because an empty return is otherwise indistinguishable
+        from an outage, and ``MemoryService.capture()`` treats an empty
+        return from non-empty text as a failure worth logging. Without this
+        flag, every successful privacy drop would be recorded as a broken
+        write path -- noise proportional to how well the firewall works.
+        """
+        return self._last_extraction_privacy_dropped
+
     @property
     def assembler(self) -> ContextAssembler:
         """The :class:`ContextAssembler` this recipe assembles context with.
@@ -356,11 +381,29 @@ class SubconsciousMemory:
             List of saved model instances. Empty list if response_text
             is empty or contains no extractable facts.
         """
+        self._last_extraction_privacy_dropped = False
+
         if not response_text or not response_text.strip():
             return []
 
+        # Never-record firewall, turn level (#561). Runs before the extractor
+        # so an off-the-record marker voids the WHOLE turn -- including facts
+        # derived from adjacent sentences, which a per-record gate cannot do
+        # because the marker may live in a sentence that produced no fact.
+        # Running before the provider also means that on the
+        # ClaudeExtractionProvider path the content is never sent to the LLM
+        # API at all. Applies regardless of model_class, so the guarantee
+        # does not depend on anyone remembering to add the mixin.
+        if Defaults.NEVER_RECORD_ENABLED:
+            verdict = scan_never_record(response_text)
+            if verdict.blocked:
+                write_tombstone(self.model_class.__name__, verdict)
+                self._last_extraction_privacy_dropped = True
+                return []
+
         facts = self._extractor.extract(response_text)
         saved = []
+        privacy_dropped = False
 
         for fact in facts:
             eff_importance = (
@@ -377,8 +420,19 @@ class SubconsciousMemory:
                     saved.append(instance)
                     self._seed_associations(instance, fact)
                     self._seed_confidence(instance, fact)
+                elif getattr(instance, "_never_record_verdict", None) is not None:
+                    # save() returned False and the firewall recorded why, so
+                    # this is a deliberate drop rather than a rejected write.
+                    # Read from the instance instead of re-scanning the text:
+                    # the verdict is authoritative and costs nothing. Note it
+                    # so an all-dropped turn is not misreported as an outage.
+                    # The tombstone was already written inside save().
+                    privacy_dropped = True
             except Exception as e:
                 logger.warning("Failed to save extracted memory: %s", e)
+
+        if not saved and privacy_dropped:
+            self._last_extraction_privacy_dropped = True
 
         return saved
 

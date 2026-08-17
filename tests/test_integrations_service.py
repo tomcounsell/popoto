@@ -18,7 +18,10 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 from popoto.integrations.config import MemoryConfig, derive_agent_id  # noqa: E402
-from popoto.integrations.service import MemoryService  # noqa: E402
+from popoto.integrations.service import (  # noqa: E402
+    COUNTER_KEY_PREFIX,
+    MemoryService,
+)
 from popoto.recipes import DefaultMemory  # noqa: E402
 from popoto.redis_db import POPOTO_REDIS_DB  # noqa: E402
 
@@ -506,3 +509,55 @@ def test_kill_switch_accepts_the_usual_spellings():
         assert MemoryConfig.from_env({"POPOTO_MEMORY_ENABLED": value}).enabled is False
     for value in ("1", "true", "yes", "on", ""):
         assert MemoryConfig.from_env({"POPOTO_MEMORY_ENABLED": value}).enabled is True
+
+
+# --- never-record firewall: a privacy drop is not an outage (#561) ----------
+
+
+def test_privacy_drop_is_not_recorded_as_a_capture_failure(tmp_path):
+    """A deliberate drop must stay out of the failure counter and the log.
+
+    ``capture()`` treats an empty result from non-empty text as evidence the
+    write path has silently stopped working. The never-record firewall makes
+    empty results legitimate, so without a guard every credential paste and
+    every off-the-record turn would look like an outage — noise proportional
+    to how well the firewall works.
+    """
+    service = make_service(tmp_path)
+    counter_key = f"{COUNTER_KEY_PREFIX}:{AGENT}:capture"
+    POPOTO_REDIS_DB.delete(counter_key)
+
+    keys = service.capture("Off the record: the prod password rotates on Fridays.")
+
+    assert keys == []
+    assert POPOTO_REDIS_DB.get(counter_key) is None
+    assert not (tmp_path / "memory.log").exists()
+    assert DefaultMemory.never_record_counts().get("off_the_record") == 1
+
+
+def test_credential_paste_through_capture_is_dropped_silently(tmp_path):
+    service = make_service(tmp_path)
+    counter_key = f"{COUNTER_KEY_PREFIX}:{AGENT}:capture"
+    POPOTO_REDIS_DB.delete(counter_key)
+
+    secret = "sk-ant-api03-ZZQQWWEERRTTYYUUIIOOPPAASSDDFFGG"
+    assert service.capture(f"my api key is {secret}") == []
+    assert POPOTO_REDIS_DB.get(counter_key) is None
+    assert not (tmp_path / "memory.log").exists()
+
+
+def test_genuine_empty_result_still_records_a_failure(tmp_path):
+    """The outage alarm must survive: only privacy drops are exempted."""
+
+    class EmptyProvider:
+        def extract(self, text):
+            return []
+
+    service = make_service(tmp_path)
+    service.memory._extractor = EmptyProvider()
+    counter_key = f"{COUNTER_KEY_PREFIX}:{AGENT}:capture"
+    POPOTO_REDIS_DB.delete(counter_key)
+
+    assert service.capture("an ordinary turn with no secrets in it") == []
+    assert POPOTO_REDIS_DB.get(counter_key) is not None
+    assert (tmp_path / "memory.log").exists()

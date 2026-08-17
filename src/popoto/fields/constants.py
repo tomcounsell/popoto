@@ -29,6 +29,16 @@ def _read_legacy_datetime_key_switch() -> bool:
     return os.environ.get("POPOTO_DATETIME_KEY_LEGACY", "").strip().lower() in _TRUTHY
 
 
+def _read_never_record_switch() -> bool:
+    """Read ``POPOTO_NEVER_RECORD_DISABLE`` from the environment (#561).
+
+    Returns True when the never-record firewall is ENABLED. The env var is
+    phrased as a disable so the default-on doctrine holds when it is unset.
+    """
+    value = os.environ.get("POPOTO_NEVER_RECORD_DISABLE", "").strip().lower()
+    return value not in _TRUTHY
+
+
 class Defaults:
     """Central registry of tunable behavioral constants (Category 1).
 
@@ -281,6 +291,32 @@ class Defaults:
     # it can be set without editing model code; assign it directly to override
     # at runtime. See migration cookbook recipe 19.
     DATETIME_KEY_LEGACY = _read_legacy_datetime_key_switch()
+
+    # -- never-record firewall (privacy/never_record.py, #561) ----------------
+    # Shortest whitespace token the entropy backstop will consider. Below 20
+    # chars, ordinary base64-ish words (identifiers, hashes-of-hashes in
+    # prose) dominate and the detector becomes noise rather than a backstop.
+    NR_ENTROPY_MIN_TOKEN_LEN = 20
+    # Shannon entropy in bits/char at or above which a credential-charset
+    # token is treated as an unknown-prefix secret. Random base64 sits near
+    # 5.5-6.0 and random hex near 4.0; English text over the same alphabet
+    # sits well below 3.5. Not corpus-tuned -- deliberately conservative in
+    # the over-blocking direction, per #561 ("over-blocking accepted").
+    NR_ENTROPY_MIN_BITS = 3.5
+    # Shortest value after ``password=``/``token:`` that counts as a secret.
+    # Also the shortest URL-userinfo password.
+    NR_ASSIGNMENT_MIN_VALUE_LEN = 6
+    # Cap on the capped-LIST audit log of content-free drop tombstones. The
+    # HASH counters are unbounded and authoritative; this list is a recent
+    # window for eyeballing drop cadence.
+    NR_TOMBSTONE_LOG_MAX = 1000
+    # Deploy-level kill switch, not a tuning constant. False disables the
+    # never-record firewall entirely. Default is enabled per the repo's
+    # default-on doctrine; the switch exists because a PyPI adopter cannot
+    # always edit model code to remove a mixin. Read from the environment at
+    # import (``POPOTO_NEVER_RECORD_DISABLE``); assign directly to override
+    # at runtime.
+    NEVER_RECORD_ENABLED = _read_never_record_switch()
 
 
 class TemporalPeriod:

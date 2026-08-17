@@ -58,7 +58,12 @@ from ..fields.sorted_field_mixin import SortedFieldMixin
 from ..fields.geo_field import GeoField
 from ..fields.relationship import Relationship
 from ..redis_db import POPOTO_REDIS_DB
-from ..exceptions import ModelException, KeyMutationError, SkipSaveException
+from ..exceptions import (
+    ModelException,
+    KeyMutationError,
+    NeverRecordException,
+    SkipSaveException,
+)
 
 logger = logging.getLogger("POPOTO.model_base")
 
@@ -1119,12 +1124,22 @@ class Model(metaclass=ModelBase):
         """Persist the model instance to Redis.
 
         Executes the complete save workflow:
+            0. Never-record firewall, if the model carries NeverRecordMixin
+               (runs first, before every step below -- see below)
             1. Validate and format field values (pre_save)
             2. Serialize instance to Redis hash map
             3. Store hash map with HSET command
             4. Add key to model's class set (for .all() queries)
             5. Handle key migration if KeyFields changed
             6. Trigger Field.on_save() hooks for secondary indexes
+
+        Gate order note (#561): a model carrying
+        :class:`~popoto.privacy.never_record.NeverRecordMixin` is scanned for
+        credential-shaped and off-the-record content BEFORE the write filter
+        and before pre_save(). A blocked save returns False and writes
+        nothing -- no hash, no index, no BM25 posting, no embedding call.
+        That ordering is the guarantee, so do not move the check later.
+        Disable deploy-wide with POPOTO_NEVER_RECORD_DISABLE=1.
 
         Args:
             pipeline: Optional Redis pipeline for atomic batch operations.
@@ -1213,6 +1228,20 @@ class Model(metaclass=ModelBase):
                         f"migrate_key=True. KeyField values form the model's "
                         f"Redis identity and cannot be changed accidentally."
                     )
+
+        # NeverRecordMixin: the never-record firewall (#561). Runs BEFORE the
+        # write filter and before pre_save(), so blocked content is never
+        # serialized, never HSET, and never reaches an index, BM25 tokenizer,
+        # embedding provider, or co-occurrence edge. This ordering is the
+        # whole guarantee -- do not move it below pre_save().
+        from ..fields.constants import Defaults
+        from ..privacy.never_record import NeverRecordMixin
+
+        if isinstance(self, NeverRecordMixin) and Defaults.NEVER_RECORD_ENABLED:
+            try:
+                self._check_never_record()
+            except NeverRecordException:
+                return pipeline if pipeline else False
 
         # WriteFilterMixin: check write filter before any save work
         from ..fields.write_filter import WriteFilterMixin

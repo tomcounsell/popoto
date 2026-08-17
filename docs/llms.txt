@@ -19,7 +19,7 @@
 
 ## Understand and tune
 
-- [Agent Memory Overview](https://popoto.io/features/agent-memory/): the 16 primitives, the layers composed on them, and how they fit together
+- [Agent Memory Overview](https://popoto.io/features/agent-memory/): the 17 primitives, the layers composed on them, and how they fit together
 - [DecayingSortedField](https://popoto.io/features/decaying-sorted-field/): time-decayed scoring, confidence-modulated decay
 - [CyclicDecayField](https://popoto.io/features/cyclic-decay-field/): temporal rhythms and homeostatic pressure
 - [ConfidenceField](https://popoto.io/features/confidence-field/): capped-evidence Bayesian certainty
@@ -33,6 +33,7 @@
 - [PredictionLedger](https://popoto.io/features/prediction-ledger/): predictions, outcomes, and error feedback into confidence
 - [PolicyCache](https://popoto.io/features/policy-cache/): reinforcement-learning-style action selection
 - [Metacognitive Layer](https://popoto.io/features/metacognitive-layer/): retrieval-quality scoring and the adaptive assembler
+- [NeverRecordFirewall](https://popoto.io/features/never-record-firewall/): deterministic pre-storage privacy gate that blocks credentials, keys, and other secrets before they reach Redis
 - [Tuning Magic Numbers](https://popoto.io/guides/tuning-magic-numbers/): every behavioral constant and its empirical basis
 - [Parametric Sweep](https://popoto.io/features/parametric-sweep/): the harness that tunes those constants
 

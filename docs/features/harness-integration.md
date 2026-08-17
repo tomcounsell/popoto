@@ -151,6 +151,35 @@ one turn in, one record out, stored verbatim.
 `POPOTO_MEMORY_INGEST=heuristic` switches to sentence-splitting and logs
 that measured cost the first time it is used.
 
+### Credentials and off-the-record turns are dropped before ingestion
+
+"Stored verbatim" is the point of raw ingestion and also its hazard: a hook
+fires on every turn, and terminal turns contain pasted API keys. The
+[never-record firewall](never-record-firewall.md) runs ahead of the write
+path so that class of content never reaches Redis.
+
+It is deterministic — regex and entropy, no model — and it runs at two
+points. At the turn level, inside `SubconsciousMemory.extract_memories()`,
+*before* the extraction provider is called: an off-the-record marker voids
+the entire turn rather than a guessed span, and on the
+`ClaudeExtractionProvider` path the text is never sent to the API at all. At
+the record level, inside `Model.save()`, before serialization or any index
+write. `DefaultMemory` — the model this harness writes through — carries the
+mixin, so this is on by default with no configuration.
+
+A drop leaves a content-free tombstone: a random id and a reason code, never
+a fragment of the text. Read the tally with
+`DefaultMemory.never_record_counts()`.
+
+Two caveats worth knowing before you rely on it. Over-blocking is accepted by
+design, so a long random-looking token in an otherwise useful turn can cost
+you that memory. And the guarantee covers an enumerated class of shapes, not
+"secrets" in general — the [feature
+page](never-record-firewall.md#what-this-does-not-guarantee) lists the holes
+explicitly. `POPOTO_NEVER_RECORD_DISABLE=1` turns it off entirely; note that
+this is a core Popoto variable, not one of the `POPOTO_MEMORY_*` harness
+variables below.
+
 ## Configuration
 
 Every variable is optional. The zero-configuration path is "local Redis or
@@ -245,6 +274,7 @@ exactly when `doctor` has nothing to read back anyway.
 | Empty assistant message | nothing written |
 | Missing `session_id` | recall still runs; outcome reporting degrades to a no-op |
 | Nothing retrieved | no `additionalContext` key at all, rather than an empty header |
+| Turn dropped by the never-record firewall | nothing written, **no log line, no counter increment** -- a deliberate drop is not a failure. Counted in `$NR:DefaultMemory:counts` instead |
 
 Output is built as one string and written once, because Codex treats stdout
 that starts with `{` but fails to parse as a hook failure.

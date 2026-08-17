@@ -241,8 +241,17 @@ class MemoryService:
 
         if keys:
             self._touch("capture")
+        elif getattr(self.memory, "last_extraction_privacy_dropped", False):
+            # The never-record firewall dropped this turn on purpose (#561).
+            # Nothing failed, so this must stay out of the failure counter and
+            # out of the plaintext failure log -- otherwise every credential
+            # paste and every off-the-record turn would look like the write
+            # path had silently stopped working, and the noise would scale
+            # with how well the firewall works. The drop is already counted in
+            # `$NR:{ClassName}:counts`, which is its correct counter.
+            pass
         else:
-            # Non-empty text always yields at least one fact, so reaching
+            # Non-empty text otherwise yields at least one fact, so reaching
             # here means the save was rejected or the server is gone. The
             # recipe swallows that internally; record it so `doctor` can
             # show a write path that has silently stopped working.

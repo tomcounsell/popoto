@@ -399,6 +399,7 @@ popoto.enable_error_reporting(dsn="https://your-key@your-org.ingest.sentry.io/yo
 | `POPOTO_ASYNC_MAX_CONNECTIONS` | `128` | Maximum async Redis connection pool size (BlockingConnectionPool). |
 | `POPOTO_SYNC_MAX_CONNECTIONS` | `128` | Maximum sync Redis connection pool size (BlockingConnectionPool). |
 | `POPOTO_DATETIME_KEY_LEGACY` | unset (falsy) | Kill switch that restores 1.8.2 `str(value)` key bytes for `KeyField(type=datetime)` values on the write path, so a fleet can roll readers forward before moving key bytes. Does not affect `audit_datetime_keys()`, which always reports the truth. See [Datetime KeyFields](fields.md#datetime-keyfields) and migration cookbook recipe 19. |
+| `POPOTO_NEVER_RECORD_DISABLE` | unset (falsy) | Kill switch for the never-record firewall (`NeverRecordMixin`). The firewall is default-on: unset, it blocks credential- and secret-shaped content on `save()` for any model that carries the mixin. A truthy value disables the check globally, restoring pre-firewall behavior with no model code change. See [NeverRecordMixin](fields.md#neverrecordmixin). |
 
 ## Thread Safety
 

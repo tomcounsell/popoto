@@ -60,3 +60,22 @@ class SkipSaveException(ModelException):
     """
 
     pass
+
+
+class NeverRecordException(SkipSaveException):
+    """Raised by NeverRecordMixin when content must never be stored (#561).
+
+    Subclasses SkipSaveException on purpose: every existing handler that
+    already swallows a filtered save keeps working unchanged -- including
+    ``Model.save()``'s own catch and the broad ``except Exception`` in
+    ``SubconsciousMemory.extract_memories()`` -- while callers that need to
+    tell a privacy drop apart from a salience skip can catch this subclass.
+
+    The message carries only a reason code and detector name. It must never
+    quote the matched text, an offset, or a length: exception messages reach
+    plaintext log files (``MemoryService._record_failure`` writes
+    ``f"{type(exc).__name__}: {exc}"`` to disk), so a quoted match would
+    leak through a side channel the tombstone design closed.
+    """
+
+    pass
